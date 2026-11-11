@@ -1,3 +1,15 @@
+import { randomUUID } from "node:crypto";
+import {
+  type ClaimState,
+  type ClaimTransitionEvent,
+  canonicalRuleKey,
+  reduce as claimReduce,
+  deriveControlNumber,
+  noeMachine,
+  notrMachine,
+  repositories,
+} from "@chartwarden/billing";
+import * as schema from "@chartwarden/db/schema";
 // apps/backend/src/modules/23-billing-medicare/routes/write-service-drizzle.ts — the Drizzle-backed
 // M23WriteRouteService (§4.1 mutating surface: claim assemble / update-draft / delete-draft / validate /
 // submit / replace / void, validation override, rule-config CRUD, NOE/NOTR submit + cancel, eligibility
@@ -9,7 +21,7 @@
 // ALWAYS the server-assembled {@link M23WriteActor} (never the body). The lifecycle methods do NOT
 // re-implement state logic — they drive the pure @chartwarden/billing machines (`claim` reducer + `noeMachine` /
 // `notrMachine`) and persist the result with the §2.5 version check (`transitionToState` →
-// VERSION_CONFLICT → 412). The §4.10 `m23.*` events are emitted through the injected {@link WriteOutboxPort}
+// 409 STALE_VERSION). The §4.10 `m23.*` events are emitted through the injected {@link WriteOutboxPort}
 // in the SAME unit of work as the mutation (transactional outbox, D2); the §4.8 worker jobs through the
 // injected {@link JobEnqueuePort}. M23 carries NO PHI and NEVER the MBI digit (D13 / §3.6 / §8.7); money is
 // INTEGER CENTS (D8).
@@ -26,23 +38,21 @@
 // re-assembly delete needs, and `withOrgContext` comes from the always-importable `@chartwarden/tenancy`
 // foundation. AI-BLOCK (D13): no `@chartwarden/ai-platform` import here; the per-route `actor_kind='ai_*'` reject
 // is composed at the route (see ./actor `rejectAiActor`).
-import { randomUUID } from "node:crypto";
-import {
-  type ClaimState,
-  type ClaimTransitionEvent,
-  canonicalRuleKey,
-  reduce as claimReduce,
-  deriveControlNumber,
-  noeMachine,
-  notrMachine,
-  repositories,
-} from "@chartwarden/billing";
-import * as schema from "@chartwarden/db/schema";
+import { StaleVersionError, isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, ConflictError, DegradedError, NotFoundError } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
 import { M23_QUEUES } from "../jobs/queues";
+import {
+  UNPARK_PATCH,
+  appendQueuedNoticeAttempt,
+  buildExternalNoticeFilingService,
+  noticeFiledExternally,
+  orgBillsOutside,
+  parkNotice,
+  patchExternalFiling,
+} from "../services/external-notice-filing";
 import { buildNoticeCorrectionService } from "../services/notice-correction-service";
 import {
   PriorElectionNotClosedError,
@@ -79,6 +89,7 @@ import type {
   NoticeSubmissionAcceptedView,
   OverrideValidationResultArgs,
   ProviderCcnPort,
+  RecordExternalFilingArgs,
   ReplaceClaimArgs,
   SecretCipherPort,
   UpdateDraftClaimArgs,
@@ -290,17 +301,6 @@ async function deleteDraftClaimSubtree(
     .where(and(eq(schema.claim.id, claimId), eq(schema.claim.organizationId, organizationId)));
 }
 
-const PG_UNIQUE_VIOLATION = "23505";
-
-/** True when `err` (or its driver cause) is a Postgres unique-index violation. */
-function isUniqueViolation(err: unknown): boolean {
-  const code = (e: unknown): unknown => (e as { code?: unknown } | null)?.code;
-  return (
-    code(err) === PG_UNIQUE_VIOLATION ||
-    code((err as { cause?: unknown } | null)?.cause) === PG_UNIQUE_VIOLATION
-  );
-}
-
 /** Run `fn`; a lost first-create race (unique violation) becomes a typed 409, never a 500. */
 const mapUniqueViolation =
   (message: string) =>
@@ -395,6 +395,13 @@ export function buildDrizzleM23WriteService(
     now,
   });
 
+  // The tenant that bills outside ChartWarden files its notices itself (owner decision D4): record the date it did.
+  const externalFiling = buildExternalNoticeFilingService(db, {
+    billsOutside: ports.billsOutside,
+    ...(ports.outbox ? { outbox: ports.outbox } : {}),
+    now,
+  });
+
   /** The NOE's patient's latest earlier live-ended stay (`null` = none, an unknown NOE, or the port unbound). */
   const priorLiveEndedStayFor = async (
     actor: M23WriteActor,
@@ -432,11 +439,9 @@ export function buildDrizzleM23WriteService(
     }
   };
 
-  const conflict412 = (currentVersion: number | null): ChartWardenError =>
-    new ChartWardenError(
-      "VERSION_CONFLICT",
+  const staleVersion = (currentVersion: number | null): ChartWardenError =>
+    new StaleVersionError(
       `the record was modified concurrently (current version ${currentVersion ?? "unknown"})`,
-      412,
     );
 
   /** Map a pure-reducer rejection to the structured response envelope. */
@@ -505,7 +510,7 @@ export function buildDrizzleM23WriteService(
           ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
           : {}),
       });
-      if (!res.ok) throw conflict412(res.currentVersion);
+      if (!res.ok) throw staleVersion(res.currentVersion);
       row = res.row;
     } else {
       row = await repo.create({
@@ -761,7 +766,7 @@ export function buildDrizzleM23WriteService(
             totalExpectedPaymentCents: args.totalExpectedPaymentCents ?? totalCharge,
           },
         );
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
         return buildClaimDetail(tx, res.row);
       });
     },
@@ -818,7 +823,7 @@ export function buildDrizzleM23WriteService(
           stepped.state,
           { latestValidationRunId: validationRunId },
         );
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
         await new repositories.ClaimStateHistoryRepository(tx).append({
           organizationId: actor.organizationId,
           claimId: claim.id,
@@ -844,10 +849,21 @@ export function buildDrizzleM23WriteService(
       });
     },
 
-    async submitClaim(actor, claimId): Promise<ClaimSubmissionAcceptedView> {
+    async submitClaim(actor, claimId, route): Promise<ClaimSubmissionAcceptedView> {
       requireStepUp(actor);
+      if (
+        !route.reviewedSourceFingerprint ||
+        !/^[0-9a-f]{64}$/.test(route.reviewedSourceFingerprint)
+      ) {
+        throw new ChartWardenError(
+          "CLAIM_PREVIEW_REQUIRED",
+          "a valid reviewed claim preview is required",
+          409,
+        );
+      }
       return inOrgCtx(actor, async (tx) => {
         const claim = await loadClaim(tx, actor, claimId);
+        if (claim.version !== route.expectedVersion) throw staleVersion(claim.version);
         if (claim.state !== "ready") {
           throw new ConflictError("only a READY claim can be submitted");
         }
@@ -886,11 +902,26 @@ export function buildDrizzleM23WriteService(
           claimControlNumber,
           attemptIndex,
           outcome: "queued",
+          reviewedSourceFingerprint: route.reviewedSourceFingerprint,
         });
+        if (submission.reviewedSourceFingerprint !== route.reviewedSourceFingerprint) {
+          throw new ConflictError(
+            "an idempotent submission key already exists for a different reviewed claim snapshot",
+          );
+        }
         const { jobId } = await jobs.enqueue(
           "claim.submit",
           `${actor.organizationId}:${claim.id}:${attemptIndex}`,
-          { claimId: claim.id, submissionId: submission.id, claimControlNumber, attemptIndex },
+          {
+            claimId: claim.id,
+            submissionId: submission.id,
+            claimControlNumber,
+            attemptIndex,
+            reviewedSourceFingerprint: route.reviewedSourceFingerprint,
+            ...(route.expectedRouteFingerprint
+              ? { expectedRouteFingerprint: route.expectedRouteFingerprint }
+              : {}),
+          },
         );
         // D2 outbox-only: the worker performs the upload + the READY→SUBMITTED transition + `m23.claim.submitted`.
         await emit(tx, {
@@ -903,6 +934,10 @@ export function buildDrizzleM23WriteService(
             submissionId: submission.id,
             claimControlNumber,
             attemptIndex,
+            reviewedSourceFingerprint: route.reviewedSourceFingerprint,
+            ...(route.expectedRouteFingerprint
+              ? { expectedRouteFingerprint: route.expectedRouteFingerprint }
+              : {}),
           },
         });
         return { submissionId: submission.id, jobId, attemptIndex, claimControlNumber };
@@ -1099,7 +1134,7 @@ export function buildDrizzleM23WriteService(
             : {}),
           ...(args.setReason !== undefined ? { setReason: args.setReason } : {}),
         });
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
         return mapRuleConfig(res.row);
       });
     },
@@ -1112,12 +1147,15 @@ export function buildDrizzleM23WriteService(
           throw new NotFoundError("rule config");
         }
         const res = await repo.deleteWithVersion(ruleConfigId, args.expectedVersion);
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
       });
     },
 
     // ── NOE / NOTR fast path ──
     async submitNoe(actor, noeId): Promise<NoticeSubmissionAcceptedView> {
+      // Owner decision D4: an org that bills outside ChartWarden files the NOE itself, so it is parked, never queued. Read
+      // before the transaction (the seam opens its own org context); a failed read is a typed 503, never a guess.
+      const outside = await orgBillsOutside(ports.billsOutside, actor.organizationId);
       // Readmission — the prior election must be closed out first (the M6 lookup opens its own org context, so it
       // runs before this method's transaction rather than holding two connections).
       const priorStay = await priorLiveEndedStayFor(actor, noeId);
@@ -1131,24 +1169,35 @@ export function buildDrizzleM23WriteService(
         const repo = new repositories.NoeRepository(tx);
         let noe = await repo.findById(noeId);
         if (!noe || noe.organizationId !== actor.organizationId) throw new NotFoundError("noe");
+        if (noe.externalFilingStatus === "filed") throw noticeFiledExternally("noe");
         if (noe.state === "draft") {
           const stepped = noeMachine.reduce(noe.state, "assemble");
           if (stepped.error) throw reduceError(stepped.error, "assemble");
           const res = await repo.transitionToState(noe.id, noe.version, stepped.state);
-          if (!res.ok) throw conflict412(res.currentVersion);
+          if (!res.ok) throw staleVersion(res.currentVersion);
           noe = res.row;
         }
         if (noe.state !== "ready") {
           throw new ConflictError(`a NOE in state '${noe.state}' cannot be submitted`);
         }
-        const submission = await new repositories.ClaimSubmissionRepository(tx).append({
+        if (outside) {
+          // The attempt log is not touched from here: a leftover queued attempt belongs to the job that owns it, which closes it
+          // when it runs (a worker may be uploading it right now; closing it from the request path would file the notice twice).
+          await parkNotice(repo, noe);
+          return { submissionId: null, jobId: null, kind: "noe", externalFiling: "pending" };
+        }
+        // ChartWarden transmits for this org (again): a notice parked earlier goes the normal way and its marker clears.
+        if (noe.externalFilingStatus === "pending") {
+          noe = await patchExternalFiling(repo, noe, UNPARK_PATCH);
+        }
+        const submissions = new repositories.ClaimSubmissionRepository(tx);
+        // the NEXT index after a closed attempt (a park, then a switch back): index 0 would hand back the closed row
+        const submission = await appendQueuedNoticeAttempt(submissions, {
           organizationId: actor.organizationId,
           providerEntityId: noe.providerEntityId,
           kind: "noe",
           noeId: noe.id,
           claimControlNumber: noe.noeControlNumber,
-          attemptIndex: 0,
-          outcome: "queued",
         });
         const { jobId } = await jobs.enqueue("noe.submit", `${actor.organizationId}:${noe.id}`, {
           noeId: noe.id,
@@ -1175,39 +1224,50 @@ export function buildDrizzleM23WriteService(
         const repo = new repositories.NoeRepository(tx);
         const noe = await repo.findById(noeId);
         if (!noe || noe.organizationId !== actor.organizationId) throw new NotFoundError("noe");
+        // On file with Medicare (the tenant's own filing): not ours to hide. The correction is Medicare's, outside ChartWarden.
+        if (noe.externalFilingStatus === "filed") throw noticeFiledExternally("noe", "cancelled");
         const stepped = noeMachine.reduce(noe.state, "cancel", {
           electionReversed: args.electionReversed,
         });
         if (stepped.error) throw reduceError(stepped.error, "cancel");
         const res = await repo.transitionToState(noe.id, noe.version, stepped.state);
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
         return mapNoe(res.row);
       });
     },
 
     async submitNotr(actor, notrId): Promise<NoticeSubmissionAcceptedView> {
+      // Owner decision D4 (see submitNoe): an org that bills outside ChartWarden files the NOTR itself.
+      const outside = await orgBillsOutside(ports.billsOutside, actor.organizationId);
       return inOrgCtx(actor, async (tx) => {
         const repo = new repositories.NotrRepository(tx);
         let notr = await repo.findById(notrId);
         if (!notr || notr.organizationId !== actor.organizationId) throw new NotFoundError("notr");
+        if (notr.externalFilingStatus === "filed") throw noticeFiledExternally("notr");
         if (notr.state === "draft") {
           const stepped = notrMachine.reduce(notr.state, "assemble");
           if (stepped.error) throw reduceError(stepped.error, "assemble");
           const res = await repo.transitionToState(notr.id, notr.version, stepped.state);
-          if (!res.ok) throw conflict412(res.currentVersion);
+          if (!res.ok) throw staleVersion(res.currentVersion);
           notr = res.row;
         }
         if (notr.state !== "ready") {
           throw new ConflictError(`a NOTR in state '${notr.state}' cannot be submitted`);
         }
-        const submission = await new repositories.ClaimSubmissionRepository(tx).append({
+        if (outside) {
+          await parkNotice(repo, notr);
+          return { submissionId: null, jobId: null, kind: "notr", externalFiling: "pending" };
+        }
+        if (notr.externalFilingStatus === "pending") {
+          notr = await patchExternalFiling(repo, notr, UNPARK_PATCH);
+        }
+        const submissions = new repositories.ClaimSubmissionRepository(tx);
+        const submission = await appendQueuedNoticeAttempt(submissions, {
           organizationId: actor.organizationId,
           providerEntityId: notr.providerEntityId,
           kind: "notr",
           notrId: notr.id,
           claimControlNumber: notr.notrControlNumber,
-          attemptIndex: 0,
-          outcome: "queued",
         });
         const { jobId } = await jobs.enqueue("notr.submit", `${actor.organizationId}:${notr.id}`, {
           notrId: notr.id,
@@ -1234,14 +1294,27 @@ export function buildDrizzleM23WriteService(
         const repo = new repositories.NotrRepository(tx);
         const notr = await repo.findById(notrId);
         if (!notr || notr.organizationId !== actor.organizationId) throw new NotFoundError("notr");
+        if (notr.externalFilingStatus === "filed") throw noticeFiledExternally("notr", "cancelled");
         const stepped = notrMachine.reduce(notr.state, "cancel", {
           terminatingEventReversed: args.terminatingEventReversed,
         });
         if (stepped.error) throw reduceError(stepped.error, "cancel");
         const res = await repo.transitionToState(notr.id, notr.version, stepped.state);
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
         return mapNotr(res.row);
       });
+    },
+
+    async recordNoeExternalFiling(actor, noeId, args: RecordExternalFilingArgs): Promise<NoeView> {
+      return mapNoe(await externalFiling.recordNoe(actor, noeId, args.filedOn));
+    },
+
+    async recordNotrExternalFiling(
+      actor,
+      notrId,
+      args: RecordExternalFilingArgs,
+    ): Promise<NotrView> {
+      return mapNotr(await externalFiling.recordNotr(actor, notrId, args.filedOn));
     },
 
     async correctNoe(actor, noeId, args: CorrectNoticeArgs) {
@@ -1353,7 +1426,7 @@ export function buildDrizzleM23WriteService(
         const res = await repo.updateWithVersion(current.id, current.version, {
           lastSandboxTestAt: checkedAt,
         });
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
       });
       return {
         providerEntityId,

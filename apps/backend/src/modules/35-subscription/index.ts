@@ -116,7 +116,7 @@ export {
   type PlatformContractView,
   type TenantPricingView,
   buildContractService,
-  readBillingServiceMode,
+  orgHasContract,
 } from "./pricing/contract-service";
 export { type PricingRouteDeps, registerPricingRoutes } from "./pricing/pricing.routes";
 export {
@@ -124,7 +124,11 @@ export {
   type PricingPlanView,
   buildPricingPlanService,
 } from "./pricing/plan-service";
+export { SYSTEM_TRIGGER, modeTriggerOf } from "./pricing/mode-trigger";
+export { buildOnboardingBillingModePort } from "./pricing/onboarding-billing-mode-port";
+export { createOutsideModeReconciler } from "./pricing/outside-reconcile";
 export {
+  type ModeTrigger,
   type OnboardingPricingPort,
   type OnboardingTenantFacts,
   type PlanContractStep,

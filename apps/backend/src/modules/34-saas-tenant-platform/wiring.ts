@@ -321,6 +321,8 @@ export function buildDrizzlePlatformService(deps: {
   /** The onboarding advance pass, run for a tenant after a BAA write (post-commit, best effort). Omitted: the sweep only. */
   advanceOnboarding?: DrizzleTenantPlatformDeps["advanceOnboarding"];
   warn?: DrizzleTenantPlatformDeps["warn"];
+  /** M22's BAA document check: a BAA record links only a signed BAA filed for its own tenant, and go-live rests on it. REQUIRED. */
+  baaDocuments: DrizzleTenantPlatformDeps["baaDocuments"];
 }): ReturnType<typeof createDrizzleTenantPlatformBackend> {
   const outbox: OutboxPublishPort = deps.outbox ?? {
     async publish(_tx, input) {
@@ -432,6 +434,7 @@ export function buildDrizzlePlatformService(deps: {
     },
     platformJobId: M34_PLATFORM_JOB_ID,
     ...(deps.advanceOnboarding ? { advanceOnboarding: deps.advanceOnboarding } : {}),
+    baaDocuments: deps.baaDocuments,
     ...(deps.warn ? { warn: deps.warn } : {}),
   };
   return createDrizzleTenantPlatformBackend(drizzleDeps);

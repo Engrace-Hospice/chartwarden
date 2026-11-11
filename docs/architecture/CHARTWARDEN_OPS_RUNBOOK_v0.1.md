@@ -1080,7 +1080,7 @@ Maintained in `infra/secrets/inventory.yaml` (encrypted via SOPS):
 | `M34_TENANT_KEK_RETIRED` (prior KEKs, unwrap-only) | Backend, workers | Pruned only after re-wrap, §8.3.3 | | |
 | `TWO_FACTOR_ENCRYPTION_KEY` (TOTP secrets + backup codes) | Backend | **Not rotatable today**, §8.3.3 | | |
 | `M24_CREDENTIAL_ENCRYPTION_KEY` (Medicaid trading-partner secrets AND M23 MAC-portal client secrets) | Backend | **Not rotatable today**, §8.3.3. Required in production (boot refuses without it); unset elsewhere, `POST /api/v1/billing/mac-credentials` and M24 credential writes answer 503 `SEAM_UNBOUND` and store nothing | | |
-| `CLEARINGHOUSE_VENDOR` + the vendor's own credential (clearinghouse binding, ADR-0053 D3) | Backend | Per vendor contract. Not a secret itself; unset = unbound (`CH_NOT_WIRED`). A vendor named with no adapter in the build, a missing credential, or no database refuses to boot. `stedi` reads `STEDI_API_KEY` and records every submission in `clearinghouse_submission_attempt` (submit side only today). A `stedi` claim goes on Stedi's JSON route (it carries no ISA13); the ISA13 of every other 837I is a number remembered per submission in `clearinghouse_interchange_number`, so a redelivered job re-sends the same one (ADR-0053 amendment 2026-10-26). `direct_mac` wraps the M23 launch gateway and needs it plus the database. With any vendor set the M23 workers send and pull acks only through it (no fallback to the legacy portal; ADR-0053 D10). Payer configuration is vendor-specific: Claim.MD requires `CLAIMMD_M23_PAYER_ROUTES` scoped by organization/provider/MAC/account/usage and rejects the legacy global `CLEARINGHOUSE_PAYER_ID`; other vendors retain the configured active M40 X12 payer id. `CLEARINGHOUSE_USAGE` is optional for non-Claim.MD; Claim.MD usage follows `CLAIMMD_ACCOUNT_USAGE`. While a vendor is set, 8xC/8xD transfer notices are not submitted (fail closed, #750), and a `direct_mac` upload that may have landed is `CH_IN_DOUBT`: it is never auto-retried; settle it through the clearinghouse attempt resolution routes | | |
+| `CLEARINGHOUSE_VENDOR` + the vendor's own credential (clearinghouse binding, ADR-0053 D3) | Backend | Per vendor contract. Not a secret itself; unset = unbound (`CH_NOT_WIRED`). A vendor named with no adapter in the build, a missing credential, or no database refuses to boot. `stedi` reads `STEDI_API_KEY` and records every submission in `clearinghouse_submission_attempt` (submit side only today). A `stedi` claim goes on Stedi's JSON route (it carries no ISA13); the ISA13 of every other 837I is a number remembered per submission in `clearinghouse_interchange_number`, so a redelivered job re-sends the same one (ADR-0053 amendment 2026-10-26). `direct_mac` wraps the M23 launch gateway and needs it plus the database. With any vendor set the M23 workers send and pull acks only through it (no fallback to the legacy portal; ADR-0053 D10). Per organization (ADR-0053 amendment 2026-11-06) this platform vendor serves ONLY the organizations named in `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` that have no config of their own; every other organization is held until it chooses its own: see §8.6 for the cutover. Payer configuration is vendor-specific: Claim.MD requires `CLAIMMD_M23_PAYER_ROUTES` scoped by organization/provider/MAC/account/usage and rejects the legacy global `CLEARINGHOUSE_PAYER_ID`; other vendors retain the configured active M40 X12 payer id. `CLEARINGHOUSE_USAGE` is optional for non-Claim.MD; Claim.MD usage follows `CLAIMMD_ACCOUNT_USAGE`. While a vendor is set, 8xC/8xD transfer notices are not submitted (fail closed, #750), and a `direct_mac` upload that may have landed is `CH_IN_DOUBT`: it is never auto-retried; settle it through the clearinghouse attempt resolution routes | | |
 | `EPISODE_ALERT_API_KEY` + `EPISODE_ALERT_BASE_URL` (Episode Alert eligibility transport, #758) and `DDE_PROVIDER` (ADR-0103 D2) | Backend | Proposed 90 days or the vendor contract, whichever is shorter. Not read by `apps/` yet (wiring is #760); no credential issued until the BAA is signed. `DDE_PROVIDER` is not a secret and stays unset (`manual`) until an Episode Alert DDE adapter exists. See `docs/audits/clearinghouse-integration/EPISODE_ALERT_SECRETS_RUNBOOK_20261025.md` | | |
 | `MESSAGING_ENCRYPTION_KEY` (message bodies) | Backend, workers | **Not rotatable today**, §8.3.3 | | |
 | `SOPS_AGE_KEY` (decryption key for secrets-in-Git) | Each VM at startup | Annual (with operator presence) | | |
@@ -1267,6 +1267,48 @@ of the three as requiring a **re-encryption project**, not a rotation — and no
 data is recoverable by re-entry (a user re-enrols 2FA; an operator re-enters a trading-partner
 secret) except for message bodies, which are not.
 
+`M24_CREDENTIAL_ENCRYPTION_KEY` also keys the M23 tenant clearinghouse credentials and their **fingerprints** (migrations
+1434–1436: an HMAC under a key derived from it, held unique across organizations so one credential belongs to one tenant). Every
+fingerprint row records the public id of the key it was computed under (`credential_fingerprint_key_id`; NULL = before 1436). A
+re-encryption project for this key must:
+
+1. Before the new value goes live, derive the old value's **fingerprint subkey** (never put the old KEK itself anywhere):
+   `bun scripts/m23-derive-fingerprint-subkey.ts < old-kek-file` reads the KEK from stdin (or paste it and press Ctrl-D), never
+   echoes it, and prints `subkey=<base64>` and `keyId=<16 hex>`. Check that `keyId` matches the `keyId` the running API logs as
+   `M23_FINGERPRINT_KEY`. Put the subkey in `M23_CLEARINGHOUSE_RETIRED_FINGERPRINT_KEYS` (comma-separated, each padded standard
+   base64, 44 chars; the API refuses to boot on a malformed entry or on the current KEK itself) when the new value goes live. From
+   then on every credential save reserves the key under the new **and** the retired fingerprint keys, so a reservation recorded
+   under the old key still collides. A subkey only computes fingerprints: it cannot derive a DEK, so it opens nothing, and each
+   tenant's sealed credential must still be re-entered.
+2. Have each tenant re-enter its current credential (that save records it under the new key too). Any write to a tenant's config
+   whose credential opens (recording a BAA, verifying, activating) also re-reserves it under every configured key.
+3. **Retired credentials** (rotated away, or freed by a switch to `outside`) can only be matched while the old value is still
+   configured: their plaintext is gone, so they can never be re-fingerprinted. Before removing the old value, list the unreleased
+   reservations not under the new key (the API logs its current key id at boot, `M23_FINGERPRINT_KEY`):
+   `SELECT organization_id, vendor, credential_fingerprint_key_id, reserved_at FROM tenant_clearinghouse_credential_reservation
+   WHERE released_at IS NULL AND credential_fingerprint_key_id IS DISTINCT FROM '<new key id>'`. Each row is one of three things,
+   and the rows cannot tell them apart:
+   - a credential the tenant has since re-entered (it then also has a row under the new key): nothing to do;
+   - a **current credential not yet re-entered** (the tenant's config still holds it under the old key): do NOT release it (the
+     release route keeps it anyway); have the tenant re-enter it before the old value goes, or its protection lapses too;
+   - a retired one: have platform ops release it, or accept in writing that its protection lapses.
+   Removing the old value ends the protection of every reservation only it computed. The API says so at boot (the check runs when
+   the platform DB and the credential KEK are both configured; it is an audited cross-tenant platform read): it logs
+   `M23_FINGERPRINT_KEY_UNCONFIGURED` (an error, naming only key ids) for held reservations under a key that is neither current nor
+   retired, and `M23_FINGERPRINT_KEY` lists the current and retired key ids it loaded. **While any such key id is held, every
+   credential save (tenant and platform onboarding lanes) is refused with 503 `CLEARINGHOUSE_FINGERPRINT_KEYS_INCOMPLETE`**; so are
+   saves while the check has not finished or has failed (`M23_PLATFORM_CREDENTIAL_CHECK_FAILED`). The fix is to configure the missing
+   subkey and restart, or to release (platform ops) every reservation under the unknown key; a refused save re-runs the check at most
+   once a minute, so a release lifts the refusal without a restart.
+   Rows with a NULL key id (recorded before migration 1436, or re-reserved when the credential could not be opened) cannot be
+   attributed to a key: the check counts them and logs `M23_FINGERPRINT_KEY_UNVERIFIABLE` (an error, with the count only); they do
+   not block saves. They were computed under the KEK current when they were written. Before removing a retired value, resolve each
+   one like the rows above: the tenant re-enters the credential, or platform ops releases it, or you accept in writing that its
+   protection may lapse. `SELECT organization_id, vendor, reserved_at FROM tenant_clearinghouse_credential_reservation WHERE
+   released_at IS NULL AND credential_fingerprint_key_id IS NULL` lists them.
+   Releases happen only through the platform release route: migration 1437's trigger refuses setting `released_at` unless the
+   transaction carries the release path's own setting (`app.clearinghouse_release`), so no other app-role code path frees one.
+
 > **Update (M36 WP 2.13, ADR-0058 P1; code on branch `feat/m36-wp213-body-key-ring`, backfill not yet run anywhere):** message
 > bodies are moving off `MESSAGING_ENCRYPTION_KEY` onto the M34 wrapped-DEK ring (`tenant_key_ring`), which rotates (a new DEK
 > version; old rows stay readable by their recorded version) and shreds (destroying the ring makes ring-sealed bodies unreadable).
@@ -1370,6 +1412,105 @@ All break-glass usage:
 - Logged in physical security log
 - Logged in `audit_event` with severity=critical, event_type=`security.break_glass_used`
 - Reviewed by compliance officer within 24 hours
+
+### 8.6 Tenant Clearinghouse: Cutover and Operation (ADR-0053 amendment 2026-11-06)
+
+Each tenant chooses its own clearinghouse (`stedi`, `claimmd`, or `outside` = it bills outside ChartWarden) and holds its own sealed
+credential and its own vendor BAA. The platform's env vendor (`CLEARINGHOUSE_VENDOR`) now serves **only** the organizations named in
+`CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS`.
+
+**Before deploying (cutover).**
+
+1. List every organization that sends through the platform's env vendor today and has no `tenant_clearinghouse_config` row (the
+   organizations with rows in `clearinghouse_submission_attempt` or M41 commercial submissions are the ones to check), and put each in
+   `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` (comma-separated organization uuids, no blank entries; the API refuses a malformed list).
+   **Prerequisite:** the list needs the platform vendor bound. With `CLEARINGHOUSE_VENDOR` unset, naming any organization refuses boot
+   in production (`names organizations but CLEARINGHOUSE_VENDOR is not set`); set `CLEARINGHOUSE_VENDOR` (`stedi`, `claimmd` or
+   `direct_mac`) and that vendor's own credential as well. The production example environment file ships `CLEARINGHOUSE_VENDOR`
+   commented out: uncomment it together with the list. An organization with no row that is **not** listed resolves `not_chosen` the moment this ships: its claims (voids included), NOE, NOTR
+   and transfer notices are **held** (not failed, no DLQ), and its acknowledgment and 835 pulls skip, **in shadow mode too**
+   (`CLAIMS_BILLING_ENFORCEMENT` only governs the HTTP gate; the worker hold is a transport fact). An incomplete list therefore stops
+   every unlisted tenant's claims, and a NOE inside its 5-day window runs out while it is held.
+2. The listed organizations send PHI under the **platform's** vendor BAA, not one the tenant holds. The API logs their ids at boot
+   (`Tenant clearinghouses: organizations served by the platform env binding`, ids only): check the list against it.
+3. A tenant that will use its **own Claim.MD account** can file a NOE / NOTR only with `M23_CLAIMMD_NOTICE_UPLOAD_ENABLED=true`
+   (deployment-wide, off by default). With it off the upload is refused `NOT_WIRED` and the notice is not filed; the first time such an
+   account is bound in a process the backend logs one warning naming the organization (`M23_CLAIMMD_NOTICE_UPLOAD_ENABLED is not
+   true`). Set the flag before any tenant activates its own Claim.MD account.
+4. `CLEARINGHOUSE_PAYER_ID` (the X12 payer id of an active M40 payer) is needed by tenants on Stedi and by the fallback organizations
+   on a non-Claim.MD platform vendor. With `CLEARINGHOUSE_VENDOR=claimmd` it must stay **unset** (the API refuses to boot with it:
+   Claim.MD routes only through `CLAIMMD_M23_PAYER_ROUTES`), so a Stedi tenant has no payer id on such a deployment.
+
+**What a hold looks like, and what to do.**
+
+- A held job raises one alert per organization, reason and severity per six-hour window (`m23.clearinghouse.unbound_hold`; M41's
+  shared crons use `m41.clearinghouse.unbound_with_work`, per queue). A held **NOE, NOTR or transfer notice** alerts at **CRITICAL** (a
+  CMS deadline is at stake); a held claim at `warn`; neither absorbs the other, and each re-alerts when a window turns over. The alert
+  is the only signal that the work is held. "Alerted" means M36's emitter persisted an alert that resolved at least one recipient
+  (persisted, not delivered: out-of-band delivery follows each recipient's own preferences). If the router throws, or the alert
+  resolved nobody (an organization with no administrators: `ALERT_NO_RECIPIENT` is logged), it is retried on the next held job; the
+  emitter absorbs a retry inside the same window, so such an alert reaches nobody until the window turns over. A stored credential that cannot be opened (`CLEARINGHOUSE_CREDENTIAL_UNREADABLE`) holds the same way:
+  the tenant must enter the credential again.
+- A **credential rotation** returns a live config to `draft` at once: its notices wait for a connection test (or attestation) and the
+  tenant's own re-activation. Do not rotate while a NOE / NOTR is due.
+- **Re-recording a changed BAA** (even a `documentRef` typo fix) takes a live config to `verified`: it is held until a platform
+  operator re-verifies the new record (`POST /api/v1/platform/tenants/:orgSlug/clearinghouse/baa/verify`) **and** the tenant
+  re-activates it. Re-verify promptly; the notice dates do not move.
+- **Vendor and mode lock.** While any production attempt is in flight (reserved) or was sent in the last 90 days, the tenant cannot
+  change vendor or mode (409 `CLEARINGHOUSE_VENDOR_LOCKED`); it can again only after 90 days with no production attempt. A tenant that
+  sends continuously is locked for as long as it does, and no operator override exists (the platform lane runs the same rule and is
+  onboarding-only besides). The one exception is a **revoked BAA** (next item): while the vendor BAA is revoked, the tenant, and only
+  the tenant, may change vendor or mode or switch to `outside` although production traffic is recent. The exception is not one-shot:
+  once the tenant has **left** the revoked vendor, the lock counts only attempts reserved after the departure, so a tenant that picked
+  the wrong next vendor can still move on (A to B to C, or A to B to `outside`) while B's own traffic locks B as ever. Sandbox
+  (test-mode), released and voided attempts do not lock. A platform operator releases an old credential
+  (`POST …/clearinghouse/credentials/release`) under the same 90-day condition counted from ALL attempts, revoked BAA or not.
+- **Revoking a vendor BAA (the vendor ended it).** An operator holding `tenant_clearinghouse.revoke_baa_platform` (platform_ops; fresh
+  step-up, a human actor) revokes the tenant's recorded BAA with `POST /api/v1/platform/tenants/:orgSlug/clearinghouse/baa/revoke`
+  (`Idempotency-Key`; `If-Match` = the `baa.recordedAt` read from `GET …/clearinghouse`; body
+  `{"reasonCode": "vendor_terminated", "ticketRef": "SEC-42"}`). **There is no free-text field**: the reason is one of
+  `vendor_terminated`, `account_closed`, `baa_expired`, `other`, and the ticket is the one you act under (the tenant can read the audit
+  trail, so a ticket reference is all it carries). Limits: 10 revokes per operator (across tenants) and 20 in all per ten minutes; past
+  that it answers 429 (a store outage does not block it). Procedure: (1) read the tenant's config and note `baa.recordedAt`;
+  (2) revoke; (3) the system tells the tenant (an alert to its billing manager, compliance officer and org administrators, and a
+  platform-ops notice to the ops sink and the optional webhook, on every revoke): confirm they saw it. What it does, in one
+  transaction under the tenant's own scope: voids the BAA verification, records who and the closed reason, takes a live config out of
+  `active`, writes the audit row `m34.tenant_onboarding.clearinghouse_baa_revoked` and publishes `m23.tenant_clearinghouse.baa_revoked`;
+  if the audit row or the announcement cannot be written, nothing is revoked. The credential is not touched (the revoke does not need
+  the KEK), except a row sealed before migration 1434, which loses its credential with the BAA.
+  **What stays held:** the tenant's claim jobs (voids included), NOE, NOTR and transfer notices are held (the held-work alerts above
+  fire, the NOE / NOTR / transfer-notice one at CRITICAL and naming `baa_revoked`: a CMS deadline does not move, so revoke only when
+  the BAA has really ended), and the claims gate answers 402 `clearinghouse_baa_revoked`. No new job or tick starts after the commit.
+  A job already past its pre-flight finishes: an M41 drain re-checks before each row and stops at the next one; an M23 claim or notice
+  job already running is not interrupted (at most one per worker slot per queue).
+  **What it does not do:** it is not an expiry (a BAA never ends by itself, and no vendor-side signal reaches ChartWarden: an operator
+  revokes when told), it frees no credential (the release stays under its own 90-day condition), it deletes nothing, and the platform's
+  single Claim.MD webhook cannot apply anything for a tenant's own account.
+  **In-flight responses are not received while revoked, by design:** acknowledgments (999 / 277CA) and 835 remittances are pulled only
+  through an active config, so the revoke stops their pull too (as a draft or a re-recorded BAA does); they stay with the vendor, and
+  once the tenant has left that vendor ChartWarden never pulls them. Fetch any remittance the vendor still owes by hand from the vendor.
+  Both pulls (M23's 999 / 277CA crons and M25's 835 pull) raise `m23.clearinghouse.revoked_responses_pending` once per organization per
+  day while any production attempt is in flight or was sent within the 90-day window (the same attempt set the lock uses, a proxy:
+  M23 has no per-claim adjudication state), with the counts. The revoke's own alert carries the same counts. M41 commercial
+  submissions queued for the tenant stay queued and raise `m41.clearinghouse.unbound_with_work`.
+  **Getting out:** while revoked, `baa/verify` and the tenant's activation answer 409 `CLEARINGHOUSE_BAA_REVOKED`. The tenant either
+  (a) records a NEW BAA (`POST /api/v1/tenant/clearinghouse/baa`; a new agreement, which clears the revocation and starts at
+  unverified; the identical document counts), then an operator verifies it and the tenant activates the config again, or (b) leaves
+  the vendor: it may change vendor or switch to `outside` although production traffic is recent (the lock exception above), which
+  voids the revoked record and the revocation together with the vendor change; a **same-vendor mode change keeps the revocation**.
+  **Verifying a re-recorded document that was revoked before:** the platform view's `baa.previousRevocation` says when, and
+  `sameDocument` says whether the record is the revoked document (compared on letters and digits). `baa/verify` then answers 409
+  `CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED` until the request carries `"acknowledgePreviousRevocation": true`; the audit row records
+  that the earlier revocation was superseded. The tenant never sees the history or the ticket. The operator's own choice write stays
+  onboarding-only: an operator can never move a live tenant to another vendor. Revoking a BAA that is already revoked, or never
+  recorded, is a 409 (`CLEARINGHOUSE_BAA_REVOKED`, `CLEARINGHOUSE_BAA_NOT_RECORDED`). A second approver is not required (an owner
+  decision, not built): the key is held by the one `platform_ops` role.
+- **Closure.** There is no purge path for a closed tenant's sealed credential or its held fingerprints. The M34 certified tenant shred
+  runs the M23 `billing_record` eraser, which deletes the submission-attempt and interchange-number rows but has no step for
+  `tenant_clearinghouse_config` or `tenant_clearinghouse_credential_reservation` (neither grants DELETE to the application or the
+  destruction role, and both reference the organization row with `ON DELETE RESTRICT`); the credential is sealed under the platform
+  KEK, not the tenant's DEK, so destroying the tenant's DEK does not make it unreadable either. They stay, and the held fingerprints
+  keep reserving those credentials, until a database-level procedure removes them.
 
 ---
 

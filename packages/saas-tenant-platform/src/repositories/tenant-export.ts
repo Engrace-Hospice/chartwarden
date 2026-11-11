@@ -8,7 +8,19 @@
 // the per-module shard-receipt event ledger. The bundle assembly + SEC-052 download controls live in the
 // worker / route.
 import { type DbClient, schema } from "@chartwarden/db";
-import { type SQL, and, asc, desc, eq, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
+import {
+  type SQL,
+  and,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  inArray,
+  isNotNull,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 
 const J = schema.tenantExportJob;
 const E = schema.tenantExportJobEvent;
@@ -19,11 +31,19 @@ export interface TenantExportEventCursor {
   readonly id: string;
 }
 
-/** Keyset cursor for the platform-ops job list (newest-first by (requestedAt, id)). */
+/**
+ * Keyset cursor for the platform-ops job list (newest-first by (requestedAt, id)). `requestedAt` is an ISO timestamp at the DATABASE's
+ * precision, microseconds: it is the `cursorTs` the page's last row carried, never a JS Date (a Date holds milliseconds, and resuming at
+ * `< .123000` drops every other row of that millisecond). A cursor issued before this carries milliseconds and still works: it is a
+ * valid, merely coarser, timestamp.
+ */
 export interface TenantExportJobCursor {
-  readonly requestedAt: Date;
+  readonly requestedAt: string;
   readonly id: string;
 }
+
+/** A job row plus its `requestedAt` rendered at microsecond precision: what the next page's cursor carries. */
+export type TenantExportJobPageRow = schema.TenantExportJob & { readonly cursorTs: string };
 
 function eventOlderThan(cursor?: TenantExportEventCursor): SQL | undefined {
   if (!cursor) return undefined;
@@ -33,12 +53,10 @@ function eventOlderThan(cursor?: TenantExportEventCursor): SQL | undefined {
   );
 }
 
+/** Row comparison on exactly the columns, at exactly the precision, the list's ORDER BY uses: `(requested_at, id)` descending. */
 function jobOlderThan(cursor?: TenantExportJobCursor): SQL | undefined {
   if (!cursor) return undefined;
-  return or(
-    lt(J.requestedAt, cursor.requestedAt),
-    and(eq(J.requestedAt, cursor.requestedAt), lt(J.id, cursor.id)),
-  );
+  return sql`(${J.requestedAt}, ${J.id}) < (${cursor.requestedAt}::timestamptz, ${cursor.id}::uuid)`;
 }
 
 /**
@@ -130,10 +148,13 @@ export class TenantExportRepository {
     heldOnly?: boolean;
     cursor?: TenantExportJobCursor;
     limit?: number;
-  }): Promise<readonly schema.TenantExportJob[]> {
+  }): Promise<readonly TenantExportJobPageRow[]> {
     const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
     return this.db
-      .select()
+      .select({
+        ...getTableColumns(J),
+        cursorTs: sql<string>`to_char(${J.requestedAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+      })
       .from(J)
       .where(
         and(

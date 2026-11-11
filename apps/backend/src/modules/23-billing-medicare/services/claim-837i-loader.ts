@@ -97,6 +97,11 @@ export interface Claim837iLoaderDeps {
   readonly previewIntegrityKey?: string;
   /** Stable non-secret account identifier; never the Claim.MD AccountKey. */
   readonly accountReference?: string;
+  /**
+   * The same identifier resolved per organization (a tenant's own Claim.MD account is not the platform's); wins over
+   * `accountReference` when both are set. The preview route and the submit worker must resolve it the same way.
+   */
+  readonly accountReferenceFor?: (organizationId: string) => Promise<string>;
 }
 
 export interface LoadClaim837iArgs {
@@ -336,8 +341,11 @@ async function loadOnce(
   // A builder refusal is a field-name-only gap, so the caller never holds an unsendable input.
   const rendered = render837i(mapped.value);
   if (!rendered.ok) return fail(rendered.gaps);
+  const accountReference = deps.accountReferenceFor
+    ? await deps.accountReferenceFor(claim.organizationId)
+    : deps.accountReference;
   const sourceFingerprint =
-    deps.previewIntegrityKey && deps.previewIntegrityKey.length >= 32 && deps.accountReference
+    deps.previewIntegrityKey && deps.previewIntegrityKey.length >= 32 && accountReference
       ? fingerprintClaim837iBusinessInput(
           mapped.value as unknown as Record<string, unknown>,
           deps.previewIntegrityKey,
@@ -347,7 +355,7 @@ async function loadOnce(
             providerEntityId: claim.providerEntityId,
             patientPayerId: claim.patientPayerId,
             claimVersion: claim.version,
-            accountReference: deps.accountReference,
+            accountReference,
             usage: context.usage,
             payerId: context.payerId,
             billingNpi: context.billingNpi ?? null,

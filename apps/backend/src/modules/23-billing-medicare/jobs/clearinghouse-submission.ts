@@ -3,6 +3,7 @@
 // legacy launch-gateway ports; set, the claim/NOE/NOTR submit + retry workers and the 999/277CA ack crons go through
 // the transport and NEVER fall back to the legacy MAC portal. Claim workers distinguish a known pre-send refusal
 // from a transport result explicitly marked ambiguous; only the latter remains in doubt.
+import { ChartWardenError } from "@chartwarden/types";
 import type {
   AckEvent,
   ClearinghouseBinding,
@@ -15,17 +16,22 @@ import type {
 } from "@chartwarden/x12-837-client";
 import {
   CH,
+  bindingForOrg,
   claimMdFilename,
   compareStediClaimJsonToX12,
+  cursorVendorKey,
   extractX12NoticeEvidence,
   extractX12SubmissionEvidence,
+  isPerOrgBinding,
   routeAckEvent,
   scopeKey,
 } from "@chartwarden/x12-837-client";
 import type { ClaimMdNoticeEvidencePort } from "../claimmd-evidence/notice-store";
-import type {
-  ClaimMdReceiptIdentifier,
-  ClaimMdSubmissionEvidencePort,
+import {
+  type ClaimMdReceiptIdentifier,
+  type ClaimMdSubmissionEvidencePort,
+  type TenantClaimMdEvidence,
+  claimMdEvidenceFor,
 } from "../claimmd-evidence/store";
 import {
   type CredentialAlertPort,
@@ -33,10 +39,22 @@ import {
   withCredentialGuard,
 } from "./clearinghouse-credential-guard";
 
+/** What a context is for. `payerRoute: "skip"`: it is not addressed to a payer (an ack or remittance pull), so no Claim.MD payer route is resolved. */
+export interface ClearinghouseContextOptions {
+  readonly payerRoute?: "skip";
+}
+
 /** Resolves the per-call clearinghouse context (the composition root reads provider entity + MAC credential). */
 export interface ClearinghouseContextPort {
-  /** Context for one provider entity; throws when it has no MAC submitter credential (nothing to submit as). */
-  contextFor(organizationId: string, providerEntityId: string): Promise<ClearinghouseContext>;
+  /**
+   * Context for one provider entity; throws when it has no MAC submitter credential (nothing to submit as). For a Claim.MD account it
+   * also throws when no payer route is configured, unless `options.payerRoute` is `"skip"`: only a claim is addressed to a payer.
+   */
+  contextFor(
+    organizationId: string,
+    providerEntityId: string,
+    options?: ClearinghouseContextOptions,
+  ): Promise<ClearinghouseContext>;
   /** Provider entities of the org that have a credential, i.e. whose acknowledgments are pulled. */
   providerEntitiesFor(organizationId: string): Promise<readonly string[]>;
 }
@@ -53,6 +71,8 @@ export interface M23TransportDeps {
   /** Mandatory for Claim.MD; committed before the vendor transport is invoked. */
   readonly claimMdEvidence?: ClaimMdSubmissionEvidencePort;
   readonly claimMdNoticeEvidence?: ClaimMdNoticeEvidencePort;
+  /** The stores a tenant's OWN Claim.MD account (`account: "tenant"`) records under; absent, such a send fails closed. */
+  readonly tenantClaimMdEvidence?: TenantClaimMdEvidence;
   /** Separate, default-off gate. A configured clearinghouse vendor alone never enables notice uploads. */
   readonly claimMdNoticeUploadsEnabled?: boolean;
   /** Durable ack cursors (#749); absent, every ack pull starts from a null cursor. */
@@ -83,11 +103,43 @@ export async function priorClaimAttempt(
   );
 }
 
-/** The vendor the workers must use, or null for the legacy ports. */
+/** The vendor the workers must use, or null for the legacy ports. A per-organization binding is resolved with {@link transportForOrg}. */
 export function activeTransport(deps: {
   readonly transport?: M23TransportDeps;
 }): M23TransportDeps | null {
   return deps.transport?.binding.vendor ? deps.transport : null;
+}
+
+/** True when each organization has its own clearinghouse (tenant clearinghouses); the legacy ports are then never a fallback. */
+export function hasPerOrgTransport(deps: { readonly transport?: M23TransportDeps }): boolean {
+  return deps.transport !== undefined && isPerOrgBinding(deps.transport.binding);
+}
+
+/**
+ * The transport that serves `organizationId`: null for the legacy ports (no transport injected, or one platform binding
+ * with no vendor), else the injected deps with THAT organization's binding in place. With per-organization bindings it is
+ * never null: an organization with no live clearinghouse gets an UNBOUND binding (`vendor` null, every call answers
+ * CH_NOT_WIRED), never the legacy MAC portal, so nothing is sent through an account that is not the organization's own.
+ */
+export async function transportForOrg(
+  deps: { readonly transport?: M23TransportDeps },
+  organizationId: string,
+): Promise<M23TransportDeps | null> {
+  const t = deps.transport;
+  if (!t) return null;
+  if (!isPerOrgBinding(t.binding)) return t.binding.vendor ? t : null;
+  return { ...t, binding: await bindingForOrg(t.binding, organizationId) };
+}
+
+/** Refuse, with the port's own code, to send for an organization whose resolved binding is unbound. */
+export function assertOrgBound(transport: M23TransportDeps, what: string): void {
+  if (transport.binding.vendor === null) {
+    throw failure(
+      what,
+      CH.NOT_WIRED,
+      "no clearinghouse is active for this organization; choose and activate one first",
+    );
+  }
 }
 
 /** Every legacy upload kind has a port kind (the 8xC/8xD transfer notice is `transfer_notice`, ADR-0053 amendment). */
@@ -123,6 +175,31 @@ function failure(
     ambiguous,
     `clearinghouse ${what} failed (${code}): ${reason}`,
   );
+}
+
+/**
+ * A PHI-free label for an error: a typed refusal's stable code, else the error's class name, never its message (which can carry a
+ * connection string or a row). What a job error, a log line or an alert may say about an unexpected failure.
+ */
+export const failureLabel = (err: unknown): string =>
+  err instanceof ChartWardenError || err instanceof ClearinghouseTransportError
+    ? err.code
+    : err instanceof Error
+      ? err.name
+      : "failed";
+
+/**
+ * A step BEFORE anything reaches a vendor (resolving the org's transport, building its context) that threw: nothing was sent, so
+ * it is a typed, retryable, NON-ambiguous refusal. An untyped throw here would be read by the claim worker as "the outcome of the
+ * send is uncertain" and park a send that never happened (`TRANSPORT_OUTCOME_UNCERTAIN`).
+ */
+async function beforeSend<T>(kind: string, what: string, step: () => Promise<T>): Promise<T> {
+  try {
+    return await step();
+  } catch (err) {
+    if (err instanceof ClearinghouseTransportError) throw err;
+    throw failure(kind, CH.UNAVAILABLE, `${what} (${failureLabel(err)})`);
+  }
 }
 
 type TransportUploadKind = "claim_837i" | "noe" | "notr" | "transfer_notice";
@@ -184,6 +261,26 @@ function payloadFor(
 }
 
 /**
+ * `MacPortalPort.upload` when each organization has its own clearinghouse: the organization's transport is resolved per
+ * call, and an organization with none fails closed (never the legacy portal).
+ */
+export function transportUploadPerOrg(deps: {
+  readonly transport?: M23TransportDeps;
+}): TransportUpload {
+  return async (input) => {
+    const transport = await beforeSend(
+      input.kind,
+      "the organization's clearinghouse could not be resolved",
+      () => transportForOrg(deps, input.organizationId),
+    );
+    if (!transport)
+      throw failure(input.kind, CH.NOT_WIRED, "no clearinghouse transport is injected");
+    assertOrgBound(transport, input.kind);
+    return transportUpload(transport)(input);
+  };
+}
+
+/**
  * `MacPortalPort.upload` over the transport. The legacy return shape is kept; typed errors preserve whether a degraded
  * answer proves a pre-send refusal or whether the external outcome is ambiguous.
  */
@@ -198,7 +295,11 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         "this file kind is not routable through the clearinghouse",
       );
     }
-    const ctx = await transport.contexts.contextFor(input.organizationId, input.providerEntityId);
+    const ctx = await beforeSend(kind, "the clearinghouse context could not be built", () =>
+      transport.contexts.contextFor(input.organizationId, input.providerEntityId),
+    );
+    // A tenant's own Claim.MD account records under its own stores, the platform account under the platform's (never crossed).
+    const evidence = claimMdEvidenceFor(transport, input.organizationId, ctx.usage);
     let evidenceId: string | null = null;
     let noticeEvidenceId: string | null = null;
     if (transport.binding.vendor === "claimmd") {
@@ -217,7 +318,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
       if (exact.format !== "x12")
         throw failure(kind, CH.INVALID_REQUEST, "Claim.MD evidence requires the final X12 payload");
       if (kind === "claim") {
-        const evidenceStore = transport.claimMdEvidence;
+        const evidenceStore = evidence.submission;
         if (
           !evidenceStore ||
           !input.claimId ||
@@ -275,13 +376,19 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
             accountReference: evidenceStore.accountReference,
             usage: ctx.usage,
             x12Claim: outbound,
-            ...(input.submittedLines === undefined ? {} : {
-              submittedLines: input.submittedLines.map((line) => {
-                if (line.internalClaimLineId === null)
-                  throw failure(kind, CH.INVALID_REQUEST, "original claim-line identity is unavailable");
-                return { ...line, internalClaimLineId: line.internalClaimLineId };
-              }),
-            }),
+            ...(input.submittedLines === undefined
+              ? {}
+              : {
+                  submittedLines: input.submittedLines.map((line) => {
+                    if (line.internalClaimLineId === null)
+                      throw failure(
+                        kind,
+                        CH.INVALID_REQUEST,
+                        "original claim-line identity is unavailable",
+                      );
+                    return { ...line, internalClaimLineId: line.internalClaimLineId };
+                  }),
+                }),
             payloadSha256: parsed.payloadSha256,
             outboundReference: claimMdFilename(
               scopeKey(ctx),
@@ -295,7 +402,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         }
       } else {
         const noticeKind = input.kind === "claim_837i" ? null : input.kind;
-        const noticeStore = transport.claimMdNoticeEvidence;
+        const noticeStore = evidence.notice;
         if (!noticeKind || !transport.claimMdNoticeUploadsEnabled || !noticeStore)
           throw failure(
             kind,
@@ -376,10 +483,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         result.degraded.reason,
         result.degraded.ambiguous === true || result.degraded.code === CH.IN_DOUBT,
       );
-    if (
-      (evidenceId && transport.claimMdEvidence) ||
-      (noticeEvidenceId && transport.claimMdNoticeEvidence)
-    ) {
+    if ((evidenceId && evidence.submission) || (noticeEvidenceId && evidence.notice)) {
       const value = result.data.clearinghouseSubmissionId;
       const fieldNamespace: Record<
         string,
@@ -412,9 +516,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         },
       ];
       try {
-        const evidencePort = evidenceId
-          ? transport.claimMdEvidence!
-          : transport.claimMdNoticeEvidence!;
+        const evidencePort = evidenceId ? evidence.submission! : evidence.notice!;
         await evidencePort.observe({
           evidenceId: evidenceId ?? noticeEvidenceId!,
           organizationId: input.organizationId,
@@ -467,9 +569,21 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}/;
 /** Map a port event to the M23 ack alphabet (two-stage routing per ADR-0053 D2). Pure. */
 export function ackFromEvent(
   event: AckEvent,
-  scope: { organizationId: string; providerEntityId: string; macJurisdiction: string },
+  scope: {
+    organizationId: string;
+    providerEntityId: string;
+    macJurisdiction: string;
+    /** `tenant` when the event came from the org's OWN vendor account (its own id space). */
+    account?: "tenant";
+  },
 ): TransportAck {
   const routed = routeAckEvent(event);
+  // claim_ack_file_uq is (jurisdiction, uri), not org-scoped: a tenant account's ids are its own, so its key names the org.
+  // The platform account's key is unchanged (rows already stored for it keep deduping).
+  const ackFileUri =
+    scope.account === "tenant"
+      ? `clearinghouse:tenant:${scope.organizationId}:${event.eventId}`
+      : `clearinghouse:${event.eventId}`;
   return {
     organizationId: scope.organizationId,
     providerEntityId: scope.providerEntityId,
@@ -480,7 +594,7 @@ export function ackFromEvent(
     payerControlNumber: event.payerClaimNumber ?? null,
     reasonCodes: event.reasonCodes,
     macJurisdiction: scope.macJurisdiction,
-    ackFileUri: `clearinghouse:${event.eventId}`,
+    ackFileUri,
     day: ISO_DAY.test(event.occurredAt) ? event.occurredAt.slice(0, 10) : null,
   };
 }
@@ -577,10 +691,9 @@ export async function pullTransportAcks(
       );
       if (outcome === "backlog") backlog.push(`org ${organizationId} provider ${providerEntityId}`);
     } catch (err) {
-      // Ids and the (PHI-free) failure text only.
-      failures.push(
-        `org ${organizationId} provider ${providerEntityId}: ${err instanceof Error ? err.message : "failed"}`,
-      );
+      // Ids and a code or class only: the error's message can carry the vendor's reason text (see `failure`), and this string
+      // reaches the job error (BullMQ's failedReason) and the logs.
+      failures.push(`org ${organizationId} provider ${providerEntityId}: ${failureLabel(err)}`);
     }
   }
   return { failures, backlog, quarantined };
@@ -594,7 +707,10 @@ async function pullEntity(
   onPage: PageHandler,
   quarantined: QuarantinedAck[],
 ): Promise<"done" | "backlog"> {
-  const ctx = await transport.contexts.contextFor(organizationId, providerEntityId);
+  // An ack pull is not addressed to a payer: it must not fail for want of a Claim.MD payer route.
+  const ctx = await transport.contexts.contextFor(organizationId, providerEntityId, {
+    payerRoute: "skip",
+  });
   const macJurisdiction = ctx.jurisdiction;
   if (!macJurisdiction) return "done";
   const { vendor, transport: port } = transport.binding;
@@ -603,7 +719,11 @@ async function pullEntity(
     organizationId,
     providerEntityId,
     usage: ctx.usage,
-    vendor: vendor ?? "",
+    // A tenant's own account has its own position space (never the platform account's cursor, and vice versa).
+    vendor: cursorVendorKey({
+      vendor: vendor ?? "",
+      ...(transport.binding.account ? { account: transport.binding.account } : {}),
+    }),
     kind,
   };
   let state: AckCursorState = store ? await store.read(key) : { cursor: null, version: 0 };
@@ -667,7 +787,12 @@ async function pullEntity(
         }
         continue;
       }
-      const ack = ackFromEvent(event, { organizationId, providerEntityId, macJurisdiction });
+      const ack = ackFromEvent(event, {
+        organizationId,
+        providerEntityId,
+        macJurisdiction,
+        ...(transport.binding.account ? { account: transport.binding.account } : {}),
+      });
       if (ack.kind === kind) acks.push(ack);
     }
     if (acks.length > 0) await onPage(acks);

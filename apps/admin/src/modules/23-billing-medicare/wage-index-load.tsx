@@ -1,15 +1,18 @@
 import {
   Button,
-  EmptyState,
+  Glyph,
   InlineAlert,
   Modal,
-  Panel,
+  NO_ANSWER,
   ReverifyLink,
   SelectField,
+  StatGrid,
+  TableScroll,
   TextAreaField,
   TextField,
   focusFirstInvalid,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/23-billing-medicare — PLATFORM WAGE-INDEX LOAD (M23 §4.1 #42, GAP-144). The annual CMS
 // hospice wage index into the PLATFORM-SHARED table, by a ChartWarden platform administrator:
@@ -45,6 +48,8 @@ import {
 
 const PREVIEW_ROWS = 12;
 const PROBLEMS_SHOWN = 20;
+/** The preview's problem list, which the table field is described by while there are problems. */
+const PROBLEMS_ID = "wage-index-problems";
 const NOW_FY = fiscalYearStartingOf(new Date());
 const FY_OPTIONS = [NOW_FY + 1, NOW_FY, NOW_FY - 1].map((fy) => ({
   value: String(fy),
@@ -133,7 +138,7 @@ export function WageIndexLoad(): JSX.Element {
           </div>
         </header>
 
-        <div className="wx-stat-grid grid-cols-1 md:grid-cols-3" aria-label="Load summary">
+        <StatGrid label="Load summary" className="wx-work-summary">
           <div className="wx-stat-card">
             <div>
               <span className="wx-stat-label">Fiscal year</span>
@@ -147,7 +152,7 @@ export function WageIndexLoad(): JSX.Element {
               <span
                 className={
                   parsed.rows.length > 0 && parsed.problems.length === 0
-                    ? "wx-stat-value wx-nums text-[var(--color-success)]"
+                    ? "wx-stat-value wx-nums wx-text-success"
                     : "wx-stat-value wx-nums"
                 }
               >
@@ -162,7 +167,7 @@ export function WageIndexLoad(): JSX.Element {
               <span
                 className={
                   parsed.problems.length > 0
-                    ? "wx-stat-value wx-nums text-[var(--color-error)]"
+                    ? "wx-stat-value wx-nums wx-text-error"
                     : "wx-stat-value wx-nums"
                 }
               >
@@ -171,19 +176,21 @@ export function WageIndexLoad(): JSX.Element {
               <span className="wx-row-sub">Fix every one before loading</span>
             </div>
           </div>
-        </div>
+        </StatGrid>
 
         {draft ? (
           <InlineAlert tone="info">
             Restored the table, fiscal year and source reference from before you re-verified.
           </InlineAlert>
         ) : null}
-        <Panel
-          title="Source"
-          icon="file-text"
-          description="Which fiscal year this table is for, and where it was published."
-        >
-          <div className="grid gap-3 md:grid-cols-[14rem_1fr]">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h2>Source</h2>
+          </div>
+          <p className="wx-source-line">
+            Which fiscal year this table is for, and where it was published.
+          </p>
+          <div className="wx-form-grid">
             <SelectField
               label="Fiscal year"
               value={String(fy)}
@@ -207,14 +214,17 @@ export function WageIndexLoad(): JSX.Element {
               }}
             />
           </div>
-        </Panel>
+        </section>
 
-        <Panel
-          title="Wage-index table"
-          icon="upload"
-          description="One row per CCN: CCN, wage index — or CCN, CBSA, wage index. Comma, tab or semicolon separated; a header row is skipped."
-        >
-          <div className="flex flex-col gap-3">
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h2>Wage-index table</h2>
+          </div>
+          <p className="wx-source-line">
+            One row per CCN: CCN, wage index — or CCN, CBSA, wage index. Comma, tab or semicolon
+            separated; a header row is skipped.
+          </p>
+          <div className="wx-form-stack">
             <TextField
               type="file"
               label="Upload a CSV"
@@ -224,6 +234,7 @@ export function WageIndexLoad(): JSX.Element {
             />
             <TextAreaField
               label="Paste the table"
+              aria-describedby={parsed.problems.length > 0 ? PROBLEMS_ID : undefined}
               rows={8}
               value={table}
               error={tableError}
@@ -234,13 +245,13 @@ export function WageIndexLoad(): JSX.Element {
               }}
             />
           </div>
-        </Panel>
+        </section>
 
         <PreviewPanel parsed={parsed} />
 
         {result ? <LoadResult result={result} /> : null}
 
-        <div className="flex items-center justify-end gap-3">
+        <div className="wx-form-actions">
           <Button onClick={review}>Review and load</Button>
         </div>
       </div>
@@ -268,35 +279,39 @@ type Parsed = ReturnType<typeof parseWageIndexTable>;
 function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
   const shown = parsed.rows.slice(0, PREVIEW_ROWS);
   return (
-    <Panel
-      title="Preview"
-      icon="eye"
-      flush={shown.length > 0}
-      description={
-        parsed.rows.length > PREVIEW_ROWS
-          ? `First ${PREVIEW_ROWS} of ${plural(parsed.rows.length, "row")}.`
-          : undefined
-      }
-    >
+    <section className="wx-drawer-card">
+      <div className="wx-drawer-card-head">
+        <h2>Preview</h2>
+      </div>
+      {parsed.rows.length > PREVIEW_ROWS ? (
+        <p className="wx-source-line">
+          {`First ${PREVIEW_ROWS} of ${plural(parsed.rows.length, "row")}.`}
+        </p>
+      ) : null}
       {parsed.problems.length > 0 ? (
-        <InlineAlert tone="error">
-          <strong>{plural(parsed.problems.length, "problem")} in the table</strong>
-          <ul className="m-0 pl-5">
+        // Not a live region: the list re-parses on every keystroke, so announcing it would re-read it per edit. It is announced once
+        // per review instead — Review focuses the table field, whose description is its (static) error plus this list.
+        <div id={PROBLEMS_ID}>
+          <InlineAlert tone="error" live={false}>
+            <strong>{plural(parsed.problems.length, "problem")} in the table</strong>
+          </InlineAlert>
+          <ul className="wx-bullet-list">
             {parsed.problems.slice(0, PROBLEMS_SHOWN).map((p) => (
               <li key={`${p.line}-${p.message}`}>
                 Line {p.line}: {p.message}
               </li>
             ))}
           </ul>
-        </InlineAlert>
+        </div>
       ) : null}
       {shown.length === 0 ? (
-        <EmptyState
-          title="No rows yet"
-          description="Upload or paste the CMS table to preview it here."
-        />
+        <div className="wx-list-state">
+          <Glyph name="eye" size={24} />
+          <strong>No rows yet</strong>
+          <span className="wx-row-sub">Upload or paste the CMS table to preview it here.</span>
+        </div>
       ) : (
-        <div className="wx-list-table-wrap">
+        <TableScroll>
           <table className="wx-list-table wx-list-table-static">
             <caption className="wx-sr-only">Wage-index rows to load</caption>
             <thead>
@@ -322,9 +337,9 @@ function PreviewPanel({ parsed }: { readonly parsed: Parsed }): JSX.Element {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableScroll>
       )}
-    </Panel>
+    </section>
   );
 }
 
@@ -357,8 +372,9 @@ function ConfirmLoadModal({
   onLoaded,
 }: ConfirmLoadModalProps): JSX.Element {
   const client = useApiClient();
-  // One key per confirmation: a retry of the SAME submission (a timeout, a 5xx) replays safely; a new review is new.
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  // One key per confirmation, held by the shared useAttemptKey: a retry of the SAME submission after a lost reply (no answer, a gateway
+  // page, the in-flight 409) replays safely; any answer the app gave (a refusal included, the server caches it) renews it; a new review is new.
+  const attempt = useAttemptKey();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<LoadErrorView | null>(null);
   const count = parsed.rows.length;
@@ -366,11 +382,14 @@ function ConfirmLoadModal({
   async function submit(): Promise<void> {
     setBusy(true);
     setFailure(null);
+    const body = { fiscalYearStarting, sourceReference, rows: [...parsed.rows] };
+    const idempotencyKey = attempt.keyFor(JSON.stringify(body));
     try {
       const res = await client.POST("/api/v1/admin/billing/wage-indexes/load", {
-        body: { fiscalYearStarting, sourceReference, rows: [...parsed.rows] },
+        body,
         headers: { "Idempotency-Key": idempotencyKey },
       });
+      attempt.settle(res.response.status, res.error);
       setBusy(false);
       if (res.error || !res.data) {
         setFailure(loadErrorView(res.response?.status ?? null, res.error, parsed.sourceLines));
@@ -378,6 +397,7 @@ function ConfirmLoadModal({
       }
       onLoaded(res.data);
     } catch {
+      attempt.settle(NO_ANSWER);
       setBusy(false);
       setFailure(loadErrorView(null, undefined, parsed.sourceLines));
     }
@@ -394,20 +414,22 @@ function ConfirmLoadModal({
         </p>
         <p>Source: {sourceReference}</p>
         {failure ? (
-          <InlineAlert tone="error">
-            <strong>{failure.title}</strong>
-            <p className="m-0">{failure.message}</p>
+          // The alert text is a <p>, which cannot hold the detail list: one live region wraps both so the details are announced.
+          <div role="alert">
+            <InlineAlert tone="error" live={false}>
+              <strong>{failure.title}</strong> {failure.message}
+            </InlineAlert>
             {failure.details.length > 0 ? (
-              <ul className="m-0 pl-5">
+              <ul className="wx-bullet-list">
                 {failure.details.map((d) => (
                   <li key={d}>{d}</li>
                 ))}
               </ul>
             ) : null}
-          </InlineAlert>
+          </div>
         ) : null}
         {failure?.stepUp ? (
-          <div className="flex justify-start">
+          <div className="wx-drawer-actions">
             <ReverifyLink onNavigate={onReverify}>Re-verify and come back</ReverifyLink>
           </div>
         ) : null}

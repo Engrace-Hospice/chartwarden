@@ -1,7 +1,7 @@
 // apps/admin/src/modules/36-messaging — channel-member API module.
 // Member list/add/remove over the generated client.
 import type { ApiClient } from "@chartwarden/ui";
-import { type ReadResult, toReadResult } from "./ui";
+import { type ReadResult, UNREACHABLE_MESSAGE, toReadResult } from "./ui";
 
 export const MEMBER_ROLES = ["owner", "member", "read_only", "portal_caregiver"] as const;
 export type MemberRole = (typeof MEMBER_ROLES)[number];
@@ -24,19 +24,24 @@ export async function listMembers(
   return result.kind === "ok" ? { kind: "ok", data: result.data.members } : result;
 }
 
-/** A write's outcome: null on success, else the operator-facing message. */
+/** A write's outcome: null on success, else the operator-facing message. openapi-fetch rethrows a network failure; it becomes the message. */
 export async function addMember(
   client: ApiClient,
   channelId: string,
   userId: string,
   role: MemberRole,
 ): Promise<string | null> {
-  const { error, response } = await client.POST("/api/v1/messaging/channels/{id}/members", {
-    params: { path: { id: channelId } },
-    body: { userId, role },
-  });
-  if (response.status === 403) return "You do not have permission to add members to this channel.";
-  return error ? "Could not add the member." : null;
+  try {
+    const { error, response } = await client.POST("/api/v1/messaging/channels/{id}/members", {
+      params: { path: { id: channelId } },
+      body: { userId, role },
+    });
+    if (response.status === 403)
+      return "You do not have permission to add members to this channel.";
+    return error ? "Could not add the member." : null;
+  } catch {
+    return UNREACHABLE_MESSAGE;
+  }
 }
 
 export async function removeMember(
@@ -44,10 +49,14 @@ export async function removeMember(
   channelId: string,
   userId: string,
 ): Promise<string | null> {
-  const { error, response } = await client.DELETE(
-    "/api/v1/messaging/channels/{id}/members/{userId}",
-    { params: { path: { id: channelId, userId } } },
-  );
-  if (response.status === 403) return "You do not have permission to remove this member.";
-  return error ? "Could not remove the member." : null;
+  try {
+    const { error, response } = await client.DELETE(
+      "/api/v1/messaging/channels/{id}/members/{userId}",
+      { params: { path: { id: channelId, userId } } },
+    );
+    if (response.status === 403) return "You do not have permission to remove this member.";
+    return error ? "Could not remove the member." : null;
+  } catch {
+    return UNREACHABLE_MESSAGE;
+  }
 }

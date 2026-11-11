@@ -8,6 +8,7 @@ export const M25_ROUTE_CLASSES: readonly RouteClassRule[] = [
   { cls: "new_work", method: "POST", path: "/api/v1/reopenings/:id/submit" },
   { cls: "open", method: "*", path: "/api/v1/reopenings/*" },
   { cls: "open", method: "*", path: "/api/v1/remittance/*" },
+  { cls: "open", method: "*", path: "/api/v1/billing/operations/investigations/*" },
   { cls: "open", method: "*", path: "/api/v1/denials/*" },
   { cls: "open", method: "*", path: "/api/v1/denial-route-rules/*" },
   { cls: "open", method: "*", path: "/api/v1/appeals/*" },

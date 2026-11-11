@@ -97,6 +97,37 @@ export function hasDatabaseErrorInChain(err: unknown, depth = 0): boolean {
 }
 
 /**
+ * SQLSTATEs (by prefix) after which the outcome of a COMMIT is NOT known even though the database answered: the connection or the server
+ * went away around the statement, or the server itself says so.
+ *   08xxx   connection exception (PgBouncer's 08P01 included)
+ *   57P0x   admin shutdown, crash shutdown, cannot connect now, database dropped, idle-session timeout
+ *   40003   statement completion unknown
+ *   58xxx   system error (an I/O failure on the server)
+ *   XXxxx   internal error (XX000 and its class)
+ * Every other SQLSTATE is the database's own refusal of the statement (a serialization failure, a deferred constraint, a deadlock): the
+ * transaction is rolled back.
+ */
+const OUTCOME_UNKNOWN_SQLSTATE = /^(08|57P0|40003|58|XX)/;
+
+/**
+ * True when `err` or anything on its `cause` chain is a refusal the database answered with a DEFINITE error class (a `pg` DatabaseError
+ * whose SQLSTATE is not one of `OUTCOME_UNKNOWN_SQLSTATE`), and nothing on the chain says the outcome is unknown. A failure of a COMMIT
+ * that meets this is a rollback; anything else (a socket reset, a timeout, a connection-class or server-error SQLSTATE, no database error
+ * at all) leaves it unknown whether the commit landed. Bounded, so a cycle terminates.
+ */
+export function isDefiniteDatabaseRefusal(err: unknown): boolean {
+  const codes = sqlStatesInChain(err);
+  return codes.length > 0 && !codes.some((code) => OUTCOME_UNKNOWN_SQLSTATE.test(code));
+}
+
+/** Every SQLSTATE of a `pg` DatabaseError on `err`'s cause chain, outermost first: an id, never a value (a code names an error class). */
+export function sqlStatesInChain(err: unknown, depth = 0): readonly string[] {
+  if (depth > 5 || !(err instanceof Error)) return [];
+  const below = sqlStatesInChain(asDict(err).cause, depth + 1);
+  return isPgDatabaseError(err) ? [asDict(err).code as string, ...below] : below;
+}
+
+/**
  * Replace every single-quoted literal in a SQL statement with a placeholder.
  *
  * Drizzle parameterises, so a statement normally reaches here with `$1`-style placeholders and no

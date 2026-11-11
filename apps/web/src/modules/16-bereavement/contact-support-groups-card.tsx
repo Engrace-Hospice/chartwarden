@@ -5,7 +5,7 @@
 // server renders nothing either. Enrolling picks from the OPEN groups; a withdrawal records why (the family asked, or staff removed them).
 // Every write carries one Idempotency-Key per attempt; a stale refusal (409: full, closed, already enrolled or withdrawn) closes the dialog,
 // is said in the panel and the list is read again; any other failure is said in the dialog, which stays open.
-import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
+import { Button, LoadingSpinner, StatusPill, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useCallback, useId, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -26,7 +26,6 @@ import {
   td,
   th,
   useActionStatus,
-  useIdempotencyKey,
   visuallyHidden,
 } from "./bereavement-ui";
 import { useLoaded } from "./mailing-load";
@@ -186,7 +185,7 @@ function EnrollModal({
     return { ...res, data: res.data ? res.data.data : null };
   }, [client]);
   const { state } = useLoaded<GroupListItem[]>(fetcher, "The open groups could not be loaded.");
-  const keys = useIdempotencyKey();
+  const keys = useAttemptKey();
   const [groupId, setGroupId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -202,7 +201,7 @@ function EnrollModal({
       error: err,
       status,
     } = await enrollContact(client, chosen, contactId, keys.keyFor(`enroll:${chosen}`));
-    keys.settle(status);
+    keys.settle(status, err);
     setBusy(false);
     if (err || !data) {
       const message = errorMessage(err, "The family could not be enrolled.");
@@ -264,7 +263,7 @@ function WithdrawModal({
 }): JSX.Element {
   const client = useApiClient();
   const descId = useId();
-  const keys = useIdempotencyKey();
+  const keys = useAttemptKey();
   const [reason, setReason] = useState<WithdrawReason>("requested");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -284,7 +283,7 @@ function WithdrawModal({
       reason,
       keys.keyFor(`withdraw:${enrollment.enrollmentId}:${reason}`),
     );
-    keys.settle(status);
+    keys.settle(status, err);
     setBusy(false);
     if (err || !data) {
       const message = errorMessage(err, "The family could not be withdrawn.");

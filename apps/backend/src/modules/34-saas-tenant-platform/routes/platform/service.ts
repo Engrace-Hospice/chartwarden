@@ -13,8 +13,16 @@
 //     the foot of this file). The command methods here record the lifecycle intent + emit the outbox
 //     descriptor; they do NOT directly mutate cross-tenant rows from the request thread.
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
-import { assertExecutedBaaHasDocument } from "./baa-guards";
-import { type CursorPage, paginate } from "./concurrency";
+import type { OnboardingProgress } from "../../onboarding/progress";
+import { type CursorPage, PLATFORM_CURSOR_SCOPE, paginate } from "../keyset-page";
+import {
+  type BaaDocumentCheck,
+  assertBaaDocumentFiled,
+  assertExecutedBaaHasDocument,
+  baaLinkNeedsJudging,
+  governingBaaIds,
+  withGoverningFacts,
+} from "./baa-guards";
 
 // ── enqueue port (the thin worker-trigger seam the command routes inject) ─────────────────────────────
 
@@ -50,6 +58,12 @@ export interface TenantSummaryView {
   readonly planLabel: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /**
+   * Where the tenant is in the onboarding wizard ("7 of 13, current step, go-live state"), whatever its lifecycle status (a live
+   * tenant reads `live`, one past onboarding `closed`); null only where the progress is not read (the in-memory slice). Judged over
+   * the gating steps only, exactly as the wizard and the activation guard judge them.
+   */
+  readonly onboardingProgress: OnboardingProgress | null;
 }
 
 /** The §5.2 full overview the `GET /platform/tenants/:orgSlug` screen renders. */
@@ -157,6 +171,9 @@ export interface SignupIntentView {
   readonly tenantAccountId: string | null;
 }
 
+/** The audit event an operator's change to the onboarding-step catalog leaves (the operator, the reason and the step; platform-wide, no tenant). */
+export const ONBOARDING_TEMPLATE_UPSERTED_EVENT = "m34.onboarding_template.upserted";
+
 // ── platform-tenant BAA register (§3.8 / D11) ──
 export interface BaaRecordView {
   readonly id: string;
@@ -169,6 +186,22 @@ export interface BaaRecordView {
   readonly expiresOn: string | null;
   readonly documentId: string | null;
   readonly attestedAt: string | null;
+}
+/** 409 for a POST naming a canonical template's key: canonical templates are migration-owned and never edited through the route. */
+export function canonicalTemplateConflict(key: string): ChartWardenError {
+  return new ChartWardenError(
+    "ONBOARDING_TEMPLATE_CANONICAL",
+    `the template '${key}' is canonical: canonical templates change only by migration`,
+    409,
+  );
+}
+
+/** A register list row: the record plus what go-live judges of it (`governingBaaIds` / `withGoverningFacts`). */
+export interface BaaRegisterListItem extends BaaRecordView {
+  /** This is the record go-live and step 3 judge for its tenant (`pickGoverningBaa`). */
+  readonly governing: boolean;
+  /** The governing record's link verifies as a signed BAA filed for this tenant (M22); null on a record that does not govern. */
+  readonly documentFiled: boolean | null;
 }
 /**
  * A tenant-export job as the §4.1 platform-ops list renders it (GAP-098).
@@ -327,7 +360,7 @@ export interface TenantPlatformRouteService {
   ): Promise<{ tenantAccountId: string; state: string }>;
   // ── tenant-invitations (§4.1) ──
   listInvitations(
-    filter: { status?: string },
+    filter: { status?: string; tenantAccountId?: string },
     cursor: string | undefined,
     limit: number | undefined,
   ): Promise<CursorPage<TenantInvitationView>>;
@@ -351,6 +384,10 @@ export interface TenantPlatformRouteService {
       description: string | null;
       canonicalOrder: number;
       isCanonical: boolean;
+      /** Why the operator changes the catalog (normalised and screened by the route); recorded on the audit row beside the operator. */
+      reason: string;
+      /** The operator's membership, recorded on the audit row (null where the session carries none). */
+      operatorMembershipId: string | null;
     },
   ): Promise<OnboardingTemplateView>;
   // ── support sessions (§4.1; F01/D8/D16) ──
@@ -388,7 +425,7 @@ export interface TenantPlatformRouteService {
     filter: { tenantAccountId?: string; status?: string },
     cursor: string | undefined,
     limit: number | undefined,
-  ): Promise<CursorPage<BaaRecordView>>;
+  ): Promise<CursorPage<BaaRegisterListItem>>;
   createBaaRecord(actorUserId: string, args: CreateBaaRecordArgs): Promise<BaaRecordView>;
   updateBaaRecord(
     baaId: string,
@@ -431,6 +468,7 @@ interface TenantRecord {
   latestStatusEvent: { id: string; toStatus: string; occurredAt: string; reason: string } | null;
   keyRing: KeyRingMetadataView | null;
   onboarding: { totalTasks: number; doneTasks: number; currentStep: string | null };
+  onboardingProgress: OnboardingProgress | null;
   baa: { status: string; expiresOn: string | null } | null;
   activeGrants: number;
   activeSessions: number;
@@ -506,6 +544,7 @@ const toSummary = (r: TenantRecord): TenantSummaryView => ({
   planLabel: r.planLabel,
   createdAt: r.createdAt,
   updatedAt: r.updatedAt,
+  onboardingProgress: r.onboardingProgress,
 });
 
 /** Read-only inspection surface over the slice (the route tests assert against it). */
@@ -515,7 +554,16 @@ export interface TenantPlatformBackendInspect {
   enqueuedJobs(): ReadonlyArray<{ queue: M34QueueName; jobKey: string }>;
 }
 
-export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSeed = {}): {
+/** What the in-memory twin cannot hold itself: M22's check that a BAA's document is a signed BAA filed for the tenant. */
+export interface InMemoryTenantPlatformOptions {
+  /** Unbound: linking a document is a 503, exactly as in the Drizzle service (no document store to look in). */
+  readonly baaDocumentFiled?: BaaDocumentCheck;
+}
+
+export function createInMemoryTenantPlatformBackend(
+  seed: TenantPlatformRouteSeed = {},
+  options: InMemoryTenantPlatformOptions = {},
+): {
   service: TenantPlatformRouteService;
   enqueue: EnqueuePort;
   inspect: TenantPlatformBackendInspect;
@@ -580,6 +628,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         destructionCertificateId: null,
       },
       onboarding: { totalTasks: 0, doneTasks: 0, currentStep: null },
+      onboardingProgress: null,
       baa: { status: "executed", expiresOn: null },
       activeGrants: 0,
       activeSessions: 0,
@@ -697,7 +746,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           )
           .map(toSummary),
       );
-      return paginate(rows, cursor, limit);
+      return paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
     },
     async isTenantSlugTaken(slug) {
       return tenants.has(slug); // the slice has no retired-slug aliases; the Drizzle service reads them
@@ -751,6 +800,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         },
         keyRing: null,
         onboarding: { totalTasks: 0, doneTasks: 0, currentStep: null },
+        onboardingProgress: null,
         baa: null,
         activeGrants: 0,
         activeSessions: 0,
@@ -844,9 +894,12 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         [...tenants.values()]
           .flatMap((t) => [...t.invitations.values()])
           .filter((i) => (filter.status ? i.status === filter.status : true))
+          .filter((i) =>
+            filter.tenantAccountId ? i.tenantAccountId === filter.tenantAccountId : true,
+          )
           .map((i) => ({ ...i, createdAt: i.issuedAt })),
       );
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...i }) => i) };
     },
     async issueInvitation(_actorUserId, args) {
@@ -880,10 +933,13 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
     },
     async listOnboardingTemplates(cursor, limit) {
       const rows = desc([...templates.values()].map((t) => ({ ...t })));
-      return paginate(rows, cursor, limit);
+      return paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
     },
     async upsertOnboardingTemplate(_actorUserId, args) {
+      // A step becomes canonical (gating go-live for every tenant) only by migration: this upsert never promotes one.
+      if (args.isCanonical) throw canonicalTemplateConflict(args.key);
       const existing = templates.get(args.key);
+      if (existing?.isCanonical) throw canonicalTemplateConflict(args.key);
       const view: OnboardingTemplateView = {
         id: existing?.id ?? subId(),
         key: args.key,
@@ -906,14 +962,14 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           .filter((s) => (filter.status ? s.status === filter.status : true))
           .map((s) => ({ ...sessionView(s), createdAt: s.startedAt })),
       );
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...s }) => s) };
     },
     async listSessionEvents(sessionId, cursor, limit) {
       const s = sessions.get(sessionId);
       if (!s) throw new NotFoundError("support session");
       const rows = desc([...s.events].map((e) => ({ ...e, createdAt: e.occurredAt })));
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...e }) => e) };
     },
     async startSession(args) {
@@ -1013,7 +1069,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           .filter((i) => (filter.source ? i.source === filter.source : true))
           .map((i) => ({ ...i, createdAt: i.receivedAt })),
       );
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...i }) => i) };
     },
     async qualifyIntent(intentId, actorMembershipId, args) {
@@ -1063,19 +1119,33 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
 
     // ── platform-tenant BAA register (§3.8 / D11) ──
     async listBaaRecords(filter, cursor, limit) {
-      const rows = desc(
-        [...baaRecords.values()]
-          .filter((b) =>
-            filter.tenantAccountId ? b.tenantAccountId === filter.tenantAccountId : true,
-          )
-          .filter((b) => (filter.status ? b.baaStatus === filter.status : true))
-          .map((b) => ({ ...b, createdAt: b.executedOn ?? b.effectiveOn ?? "0000-00-00" })),
+      // judged over each tenant's whole register (before the status filter), as go-live judges it
+      const all = desc(
+        [...baaRecords.values()].map((b) => ({
+          ...b,
+          createdAt: b.executedOn ?? b.effectiveOn ?? "0000-00-00",
+        })),
       );
-      const page = paginate(rows, cursor, limit);
-      return { ...page, items: page.items.map(({ createdAt: _c, ...b }) => b) };
+      const governingIds = governingBaaIds(all);
+      const rows = all
+        .filter((b) =>
+          filter.tenantAccountId ? b.tenantAccountId === filter.tenantAccountId : true,
+        )
+        .filter((b) => (filter.status ? b.baaStatus === filter.status : true));
+      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
+      const items = page.items.map(({ createdAt: _c, ...b }) => b);
+      return {
+        ...page,
+        items: await withGoverningFacts(items, governingIds, options.baaDocumentFiled),
+      };
     },
     async createBaaRecord(_actorUserId, args) {
       assertExecutedBaaHasDocument(args);
+      await assertBaaDocumentFiled(options.baaDocumentFiled, {
+        organizationId:
+          tenants.get(args.tenantAccountId)?.organizationId ?? uuidFromCounter("e", 1),
+        documentId: args.documentId,
+      });
       // UNIQUE (tenant_account, addendum_version) — a duplicate is a 409 (the DB index enforces it in prod).
       for (const b of baaRecords.values()) {
         if (
@@ -1116,7 +1186,13 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         expiresOn: args.expiresOn ?? b.expiresOn,
         documentId: args.documentId ?? b.documentId,
       };
-      assertExecutedBaaHasDocument(view);
+      if (baaLinkNeedsJudging(b, args)) {
+        assertExecutedBaaHasDocument(view);
+        await assertBaaDocumentFiled(options.baaDocumentFiled, {
+          organizationId: view.organizationId,
+          documentId: view.documentId,
+        });
+      }
       baaRecords.set(baaId, view);
       return view;
     },
@@ -1132,7 +1208,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           .filter((j) => (filter.held === undefined ? true : j.held === filter.held))
           .map((j) => ({ ...j, createdAt: j.requestedAt })),
       );
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       return {
         ...page,
         items: page.items.map(({ createdAt: _c, held, ...j }) => ({
@@ -1181,7 +1257,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           .filter((f) => (filter.flagKind ? f.flagKind === filter.flagKind : true))
           .map((f) => ({ ...f, createdAt: f.updatedAt })),
       );
-      const page = paginate(rows, cursor, limit);
+      const page = paginate(PLATFORM_CURSOR_SCOPE, rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...f }) => f) };
     },
     async upsertFeatureFlag(_actorUserId, args) {

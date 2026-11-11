@@ -31,7 +31,7 @@ export function PageHead({
 
 /** A page section heading above a table (the redesign has no section card for a bare table). */
 export function SectionTitle({ children }: { children: ReactNode }): JSX.Element {
-  return <h2 className="m-0 text-base font-semibold">{children}</h2>;
+  return <h2 className="wx-section-title">{children}</h2>;
 }
 
 /** Loading state in the list-state card. */
@@ -49,7 +49,7 @@ export function ErrorState({
   onRetry,
 }: { message: string; onRetry: () => void }): JSX.Element {
   return (
-    <div className="wx-list-state" role="alert">
+    <div className="wx-list-state">
       <InlineAlert tone="error">{message}</InlineAlert>
       <Button tone="secondary" onClick={onRetry}>
         Try again
@@ -67,8 +67,8 @@ export function EmptyListState({
   return (
     <div className="wx-list-state">
       <Glyph name={glyph} size={24} />
-      <span className="font-semibold">{title}</span>
-      {description ? <span className="text-sm">{description}</span> : null}
+      <strong>{title}</strong>
+      {description ? <span className="wx-row-sub">{description}</span> : null}
     </div>
   );
 }
@@ -91,9 +91,9 @@ export function StandingNotice({
   // A plain role="note" is never announced. Urgent notices interrupt (alert); the rest are polite (status).
   // Deliberately a <div>, not an <output>, and it must not sit inside another live region.
   return (
-    <div role={urgent ? "alert" : "status"} className="wx-drawer-card flex items-center gap-3">
+    <div role={urgent ? "alert" : "status"} className="wx-drawer-card wx-action-row is-middle">
       <StatusPill label={tone === "success" ? "OK" : "Notice"} tone={tone} />
-      <span className="text-sm">{children}</span>
+      <span>{children}</span>
     </div>
   );
 }

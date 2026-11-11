@@ -55,6 +55,31 @@ export function decodeKeyset(
   return key ? { createdAt: key.a, id: key.id } : null;
 }
 
+/**
+ * Where the page after `key` starts. The cursor names the LAST ROW THE CLIENT SAW, so the continuation is the row after it in the order
+ * the rows arrived in: not a re-comparison of timestamps. A row's `createdAt` here is a JS Date's ISO string (milliseconds) while the
+ * database ordered the rows at microseconds, so two rows of one millisecond can sit in an order the `(createdAt, id)` comparison
+ * disagrees with, and comparing them repeated or skipped a row at the page boundary. A row that is gone since (deleted, or its key
+ * changed) falls back to the keyset comparison.
+ */
+function pageStartAfter<T extends CursorKeyset>(rows: readonly T[], key: CursorKeyset): number {
+  const seen = rows.findIndex((r) => r.id === key.id);
+  if (seen !== -1) return seen + 1;
+  const next = rows.findIndex(
+    (r) => r.createdAt < key.createdAt || (r.createdAt === key.createdAt && r.id < key.id),
+  );
+  return next === -1 ? rows.length : next;
+}
+
+/**
+ * Judge `cursor` (absent is fine) exactly as {@link paginate} will, WITHOUT paging: a list whose rows are read inside a database
+ * transaction calls this first, so a bad cursor (422 INVALID_CURSOR) opens no transaction at all. On a platform list that transaction is
+ * a `withPlatformContext` (a cross-tenant bypass whose entry writes an audit row), so a bad request must not get that far.
+ */
+export function assertPageCursor(scope: string, cursor: string | undefined): void {
+  decodeKeyset(scope, cursor, "text", { id: "text" });
+}
+
 /** Keyset-paginate `rows` (already DESC-sorted by `(createdAt, id)`) into a {@link CursorPage}. */
 export function paginate<T extends CursorKeyset>(
   scope: string,
@@ -65,13 +90,7 @@ export function paginate<T extends CursorKeyset>(
   const size = pageSizeOf(limit);
   // In-memory string compare, never cast: the anchors and ids of these lists are not all instants/uuids.
   const key = decodeKeyset(scope, cursor, "text", { id: "text" });
-  let start = 0;
-  if (key) {
-    start = rows.findIndex(
-      (r) => r.createdAt < key.createdAt || (r.createdAt === key.createdAt && r.id < key.id),
-    );
-    if (start === -1) start = rows.length;
-  }
+  const start = key ? pageStartAfter(rows, key) : 0;
   const slice = rows.slice(start, start + size);
   const hasMore = start + size < rows.length;
   const last = slice[slice.length - 1];

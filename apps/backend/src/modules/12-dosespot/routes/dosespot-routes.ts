@@ -1,9 +1,3 @@
-import {
-  type AbacTarget,
-  hasOrgWideScope,
-  requireAbac,
-  requirePermission,
-} from "@chartwarden/auth";
 // apps/backend/src/modules/12-dosespot/routes/dosespot-routes.ts — M12-T08 the §4.1 route inventory behind
 // the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth, M3) on the §4.6 keys
 // M12 registers into M3's catalog (M12_CONTRIBUTED_PERMISSIONS). Org binding is server-side
@@ -31,9 +25,17 @@ import {
 // ordering-physician flag is read from the body. M11's `signer_eligible` / `cosigner_role_match` resolve against
 // M11's order store (no row for a medication_order id) so they are not bound here; cosign (GAP-034) is enforced in the service from the session + stored order.
 import {
+  type AbacTarget,
+  hasOrgWideScope,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+} from "@chartwarden/auth";
+import {
   type PreHandler,
   membershipActorOf,
   orgOf,
+  rejectAiActor,
   requireIdempotencyKey,
   writeActorOf,
 } from "@chartwarden/shared/route-kit";
@@ -109,6 +111,15 @@ const REPORT_ERROR = P("prescribing.report_error");
 const COVERAGE = P("prescribing.coverage_determine");
 const REFILL_DECIDE = P("prescribing.refill_decide");
 const ROSTER = P("prescribing.admin.roster");
+// The roster WRITES (link a member to a physician record, revoke them) decide who may prescribe under which NPI: a fresh step-up, a human actor
+// and an Idempotency-Key, like the other M12 admin writes (tenant-config/routes.ts). The link also records the acting member as its asserter,
+// so the linked member cannot be the one who confirms it.
+const ROSTER_WRITE: readonly PreHandler[] = [
+  ROSTER,
+  requireStepUp("prescribing.admin.roster") as PreHandler,
+  rejectAiActor("AI principals cannot change the prescriber roster") as PreHandler,
+  requireIdempotencyKey(),
+];
 const POLICY = P("prescribing.admin.policy");
 const HISTORY_READ = P("prescribing.history.read");
 const HISTORY_RECONCILE = P("prescribing.history.reconcile");
@@ -734,9 +745,9 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // membership to the M40 ExternalPhysician a verbal order names (spec §2.2/§2.3, no on-behalf signing).
   app.post(
     "/api/v1/admin/dosespot-prescribers/:membershipId/enroll",
-    { preHandler: [ROSTER, IDEMPOTENT] },
+    { preHandler: [...ROSTER_WRITE] },
     async (request, reply) => {
-      const { organizationId } = membershipActorOf(request);
+      const { organizationId, userId: actingMembershipId } = membershipActorOf(request);
       const { membershipId } = parse(MembershipParamsSchema, request.params);
       const b = parse(EnrollPrescriberRequest, request.body);
       const res = await service.enrollPrescriber(
@@ -744,6 +755,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
         membershipId,
         b.deaAuthorizedSchedules ?? [],
         b.externalPhysicianMdmId,
+        actingMembershipId,
       );
       return reply.code(201).send(res);
     },
@@ -752,7 +764,7 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 27 — revoke a prescriber.
   app.post(
     "/api/v1/admin/dosespot-prescribers/:membershipId/revoke",
-    { preHandler: [ROSTER, IDEMPOTENT] },
+    { preHandler: [...ROSTER_WRITE] },
     async (request) => {
       const { organizationId } = membershipActorOf(request);
       const { membershipId } = parse(MembershipParamsSchema, request.params);

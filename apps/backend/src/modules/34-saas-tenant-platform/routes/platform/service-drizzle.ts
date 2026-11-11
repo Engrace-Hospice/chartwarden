@@ -23,6 +23,7 @@ import { randomUUID } from "node:crypto";
 // repo/seam separately). SAFETY: the shred command requires `status='destruction_pending'` and enqueues
 // `tenant.shred` (whose worker calls the `m34_destroy_tenant_key_ring` SECURITY DEFINER fn + M4 destruction-
 // cert registry — never this request thread); this adapter never nulls DEK ciphertext directly.
+import { auditPlatformEvent } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
 import {
@@ -52,6 +53,7 @@ import {
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
+import type { OnboardingBaaDocumentPort } from "../../../../bootstrap/onboarding-baa-document-port";
 import { isTenantSlugTaken } from "../../../../bootstrap/tenant-slug-registry";
 import {
   type InvitationDeliveryPort,
@@ -61,14 +63,34 @@ import {
 } from "../../invitation-token";
 import type { ProvisionJobPort } from "../../jobs/provision-job-port";
 import { voidPendingGoLiveForDataChange } from "../../onboarding/go-live-void";
+import type { OnboardingProgress } from "../../onboarding/progress";
 import type { WizardActivation } from "../../onboarding/wizard-store-drizzle";
+import {
+  type CursorPage,
+  PLATFORM_CURSOR_SCOPE,
+  assertPageCursor,
+  decodeKeyset,
+  encodeKeyset,
+  pageSizeOf,
+  paginate,
+} from "../keyset-page";
 import { evaluateActivationGuards, pickGoverningBaa } from "./activation-guards";
-import { assertExecutedBaaHasDocument } from "./baa-guards";
-import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
+import {
+  type BaaDocumentCheck,
+  assertBaaDocumentFiled,
+  assertExecutedBaaHasDocument,
+  baaLinkNeedsJudging,
+  governingBaaDocumentFiled,
+  governingBaaIds,
+  withGoverningFacts,
+} from "./baa-guards";
 import { partitionEffects } from "./effect-ledger";
 import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-guards";
+import { readOnboardingProgress } from "./onboarding-progress-drizzle";
+import { ONBOARDING_TEMPLATE_UPSERTED_EVENT, canonicalTemplateConflict } from "./service";
 import type {
   BaaRecordView,
+  BaaRegisterListItem,
   CloseSupportSessionArgs,
   CreateBaaRecordArgs,
   ElevateSupportSessionArgs,
@@ -180,15 +202,18 @@ export interface DrizzleTenantPlatformDeps {
     organizationId: string;
   }) => Promise<void>;
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
+  /**
+   * M22's BAA document adapter: a BAA record may link only a signed BAA filed for its own tenant (judged in the write's transaction),
+   * and go-live rests on the governing BAA's document. REQUIRED: a backend built without it would judge go-live on the status alone.
+   */
+  readonly baaDocuments: Pick<OnboardingBaaDocumentPort, "isFiled">;
 }
 
 const A = schema.tenantAccount;
 const ORG = schema.organizations;
 const BAA = schema.platformTenantBaaRecord;
-const TASK = schema.onboardingTask;
 const SS = schema.supportSession;
 const SCG = schema.supportConsentGrant;
-
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 const isoReq = (d: Date): string => d.toISOString();
 
@@ -273,6 +298,12 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
    */
   activateApprovedTenant: WizardActivation;
 } {
+  /** M22's BAA-document check bound to ONE transaction (the write's own). */
+  const boundTo =
+    (tx: PlatformTx): BaaDocumentCheck =>
+    (ref) =>
+      deps.baaDocuments.isFiled(tx as never, ref);
+
   /**
    * Run `fn` in one audited platform-context tx (the only place cross-tenant rows are read/written). `crossTenant` (default
    * true) is the audit severity: critical when the unit of work reads or writes tenant DATA, warn when it does not.
@@ -309,7 +340,11 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     }
   };
 
-  const toSummary = (a: schema.TenantAccount, orgSlug: string): TenantSummaryView => ({
+  const toSummary = (
+    a: schema.TenantAccount,
+    orgSlug: string,
+    onboardingProgress: OnboardingProgress | null,
+  ): TenantSummaryView => ({
     id: a.id,
     organizationId: a.organizationId,
     orgSlug,
@@ -318,6 +353,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     planLabel: a.planLabel,
     createdAt: isoReq(a.createdAt),
     updatedAt: isoReq(a.updatedAt),
+    onboardingProgress,
   });
 
   /** Resolve an account by org slug (the platform routes address tenants by slug). */
@@ -364,12 +400,20 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       onboarding.listTasksByTenant(tenantAccountId),
       new BaaRegisterRepository(tx).listByTenantAccountId(tenantAccountId),
     ]);
+    const governing = pickGoverningBaa(baaRows);
+    // The guard rests on the governing BAA's document too: executed with a link that does not verify (another tenant's document, another
+    // kind, none) is not an executed BAA.
     const guards = evaluateActivationGuards({
       canonicalTemplateKeys: templates
         .filter((t) => t.isCanonical && !t.isOptional)
         .map((t) => t.key),
       tasks,
-      latestBaa: pickGoverningBaa(baaRows),
+      latestBaa: governing
+        ? {
+            ...governing,
+            documentFiled: await governingBaaDocumentFiled(governing, boundTo(tx)),
+          }
+        : undefined,
       today: new Date(),
     });
     return {
@@ -519,6 +563,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
   const service: TenantPlatformRouteService = {
     // ── tenants (live cross-tenant reads under withPlatformContext) ──
     async listTenants(filter, cursor, limit): Promise<CursorPage<TenantSummaryView>> {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list tenants", async (tx) => {
         const rows = await tx
           .select({ account: A, slug: ORG.slug })
@@ -526,7 +572,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           .innerJoin(ORG, eq(A.organizationId, ORG.id))
           .orderBy(desc(A.createdAt), desc(A.id));
         const views = rows
-          .map((r) => toSummary(r.account, r.slug))
+          .map((r) => toSummary(r.account, r.slug, null))
           .filter((v) => (filter.status ? v.status === filter.status : true))
           .filter((v) => (filter.planLabel ? v.planLabel === filter.planLabel : true))
           .filter((v) => (filter.createdAfter ? v.createdAt > filter.createdAfter : true))
@@ -535,7 +581,16 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
               ? v.legalBusinessName.toLowerCase().includes(filter.search.toLowerCase())
               : true,
           );
-        return paginate(views, cursor, limit);
+        const page = paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
+        // Progress is read for the tenants on THIS page only (three queries, never three per tenant), after the filter and the cut.
+        const progress = await readOnboardingProgress(
+          tx,
+          page.items.map((v) => ({ id: v.id, status: v.status })),
+        );
+        return {
+          ...page,
+          items: page.items.map((v) => ({ ...v, onboardingProgress: progress.get(v.id) ?? null })),
+        };
       });
     },
 
@@ -560,7 +615,10 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
 
         const [event] = await accRepo.listStatusEvents(account.id, { limit: 1 });
         const keyRing = await krRepo.findByTenantAccountId(account.id);
-        const tasks = await tx.select().from(TASK).where(eq(TASK.tenantAccountId, account.id));
+        const progress =
+          (await readOnboardingProgress(tx, [{ id: account.id, status: account.status }])).get(
+            account.id,
+          ) ?? null;
         const baaRows = await new BaaRegisterRepository(tx).listByTenantAccountId(account.id);
         const latestBaa = baaRows[0] ?? null;
         const sessions = await tx
@@ -571,14 +629,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const activeSessions = sessions.filter((s) => s.support_session.closedAt === null).length;
         const grants = await new SupportRepository(tx).listActiveConsentGrants(account.id);
 
-        const doneTasks = tasks.filter((t) => t.status === "done" || t.status === "skipped").length;
-        const currentStep =
-          tasks.find((t) => t.status === "in_progress")?.templateKey ??
-          tasks.find((t) => t.status === "pending")?.templateKey ??
-          null;
-
         return {
-          ...toSummary(account, slug),
+          ...toSummary(account, slug, progress),
           latestStatusEvent: event
             ? {
                 id: event.id,
@@ -594,7 +646,13 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
                 destroyedAt: iso(keyRing.destroyedAt),
               }
             : null,
-          onboarding: { totalTasks: tasks.length, doneTasks, currentStep },
+          // Judged over the gating steps in the wizard's order, like the progress above: it used to count every task row
+          // (retired history included) and name whichever pending row the database returned first.
+          onboarding: {
+            totalTasks: progress?.totalCount ?? 0,
+            doneTasks: progress?.doneCount ?? 0,
+            currentStep: progress?.currentStepKey ?? null,
+          },
           baa: latestBaa
             ? { status: latestBaa.baaStatus, expiresOn: dateOnly(latestBaa.expiresOn) }
             : null,
@@ -837,10 +895,17 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
 
     // ── tenant-invitations ──
     async listInvitations(filter, cursor, limit) {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list invitations", async (tx) => {
         const rows = await tx
           .select()
           .from(schema.tenantInvitation)
+          .where(
+            filter.tenantAccountId
+              ? eq(schema.tenantInvitation.tenantAccountId, filter.tenantAccountId)
+              : undefined,
+          )
           .orderBy(desc(schema.tenantInvitation.issuedAt), desc(schema.tenantInvitation.id));
         const views = rows
           .filter((i) => (filter.status ? i.status === filter.status : true))
@@ -853,7 +918,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             expiresAt: iso(i.expiresAt),
             createdAt: isoReq(i.issuedAt),
           }));
-        const p = paginate(views, cursor, limit);
+        const p = paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
         return { ...p, items: p.items.map(({ createdAt: _c, ...i }) => i) };
       });
     },
@@ -957,6 +1022,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
 
     // ── onboarding-templates (platform-shared catalog) ──
     async listOnboardingTemplates(cursor, limit): Promise<CursorPage<OnboardingTemplateView>> {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list onboarding templates", async (tx) => {
         const rows = await new OnboardingRepository(tx).listTemplates();
         const views = rows.map((t) => ({
@@ -971,13 +1038,26 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const sorted = [...views].sort((a, b) =>
           a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
         );
-        return paginate(sorted, cursor, limit);
+        return paginate(PLATFORM_CURSOR_SCOPE, sorted, cursor, limit);
       });
     },
 
     async upsertOnboardingTemplate(actorUserId, args): Promise<OnboardingTemplateView> {
       return inPlatformCtx("platform-ops upsert onboarding template", async (tx) => {
+        // Names the operator for any trigger that reads app.user_id. This table's own trigger (the org-less baseline) does not: it records
+        // the change as a system row with no actor, so the operator is named by the explicit audit event below, which is the record.
+        await actingAs(tx, actorUserId);
         const T = schema.onboardingTaskTemplate;
+        // A step becomes canonical (gating go-live for every tenant) only by migration: this upsert never promotes one, so the row below
+        // is always written non-canonical and its UPDATE never touches `is_canonical`.
+        if (args.isCanonical) throw canonicalTemplateConflict(args.key);
+        // Refused before any write (a typed 409, whatever the carrier's grants); `setWhere` below holds the same rule under a race.
+        const [existing] = await tx
+          .select({ isCanonical: T.isCanonical })
+          .from(T)
+          .where(eq(T.key, args.key))
+          .limit(1);
+        if (existing?.isCanonical) throw canonicalTemplateConflict(args.key);
         const [row] = await tx
           .insert(T)
           .values({
@@ -989,7 +1069,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             // (preserved on update: the onConflictDoUpdate set below intentionally omits them).
             requiredRole: "platform_ops",
             defaultDueDaysAfterProvisioning: 0,
-            isCanonical: args.isCanonical,
+            isCanonical: false,
           })
           .onConflictDoUpdate({
             target: T.key,
@@ -997,12 +1077,29 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
               displayLabel: args.title,
               description: args.description ?? "",
               canonicalOrder: args.canonicalOrder,
-              isCanonical: args.isCanonical,
             },
+            // A canonical template is migration-owned: the route never overwrites it (nor flips it non-canonical).
+            setWhere: eq(T.isCanonical, false),
           })
           .returning();
-        if (!row) throw new Error("onboarding_task_template upsert returned no row");
-        void actorUserId;
+        if (!row) throw canonicalTemplateConflict(args.key);
+        // The audit row that says WHO changed the step every tenant's wizard shows, and why. Platform-wide (no tenant), so it goes through
+        // the platform writer; the title and order are the catalog's own words, never a patient's.
+        await auditPlatformEvent(tx, {
+          eventType: ONBOARDING_TEMPLATE_UPSERTED_EVENT,
+          resourceKind: "onboarding_task_template",
+          outcome: "success",
+          severity: "warn",
+          correlationId: `m34-onboarding-template:${args.key}:${randomUUID()}`,
+          context: {
+            operatorUserId: actorUserId,
+            operatorMembershipId: args.operatorMembershipId,
+            reason: args.reason,
+            templateKey: row.key,
+            title: row.displayLabel,
+            canonicalOrder: row.canonicalOrder,
+          },
+        });
         return {
           id: row.key,
           key: row.key,
@@ -1016,6 +1113,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
 
     // ── support sessions (§7.4; F01/D8/D16) ──
     async listSessions(filter, cursor, limit): Promise<CursorPage<SupportSessionView>> {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list support sessions", async (tx) => {
         const rows = await tx
           .select({ s: SS, grant: SCG })
@@ -1030,7 +1129,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           .map((r) => sessionView(r.s, r.grant, now))
           .filter((v) => (filter.status ? v.status === filter.status : true));
         const withCursor = views.map((v) => ({ ...v, createdAt: v.startedAt }));
-        const p = paginate(withCursor, cursor, limit);
+        const p = paginate(PLATFORM_CURSOR_SCOPE, withCursor, cursor, limit);
         return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
       });
     },
@@ -1040,6 +1139,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       cursor,
       limit,
     ): Promise<CursorPage<SupportSessionEventView>> {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list support session events", async (tx) => {
         const session = await new SupportRepository(tx).findSessionById(sessionId);
         if (!session) throw new NotFoundError("support session");
@@ -1054,7 +1155,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           actorIp: e.actorIp ?? null,
           createdAt: isoReq(e.occurredAt),
         }));
-        const p = paginate(views, cursor, limit);
+        const p = paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
         return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
       });
     },
@@ -1105,6 +1206,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
 
     // ── signup intents (§4.1; F02 / ADR-0010 — org-less, withPlatformContext) ──
     async listSignupIntents(filter, cursor, limit): Promise<CursorPage<SignupIntentView>> {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list signup intents", async (tx) => {
         const rows = await new SignupIntentRepository(tx).listIntents();
         const views = rows
@@ -1123,7 +1226,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             tenantAccountId: i.tenantAccountId ?? null,
             createdAt: isoReq(i.receivedAt),
           }));
-        const p = paginate(views, cursor, limit);
+        const p = paginate(PLATFORM_CURSOR_SCOPE, views, cursor, limit);
         return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
       });
     },
@@ -1217,21 +1320,23 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     },
 
     // ── platform-tenant BAA register (§3.8 / D11) ──
-    async listBaaRecords(filter, cursor, limit): Promise<CursorPage<BaaRecordView>> {
+    async listBaaRecords(filter, cursor, limit): Promise<CursorPage<BaaRegisterListItem>> {
+      // judged before the platform context is entered: a bad cursor opens no platform transaction and writes no bypass audit row
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list BAA records", async (tx) => {
         const rows = await tx.select().from(BAA).orderBy(desc(BAA.executedOn), desc(BAA.id));
-        const views: BaaRecordView[] = rows
-          .filter((b) =>
-            filter.tenantAccountId ? b.tenantAccountId === filter.tenantAccountId : true,
-          )
+        const tenantRows = rows.filter((b) =>
+          filter.tenantAccountId ? b.tenantAccountId === filter.tenantAccountId : true,
+        );
+        // What go-live picks, over each tenant's whole register in register order (before the status filter); documents judged per page.
+        const governingIds = governingBaaIds(tenantRows.map(baaView));
+        const withCursor = tenantRows
           .filter((b) => (filter.status ? b.baaStatus === filter.status : true))
-          .map(baaView);
-        const withCursor = views.map((v) => ({
-          ...v,
-          createdAt: v.executedOn ?? v.effectiveOn ?? "0000-00-00",
-        }));
-        const p = paginate(withCursor, cursor, limit);
-        return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
+          .map(baaView)
+          .map((v) => ({ ...v, createdAt: v.executedOn ?? v.effectiveOn ?? "0000-00-00" }));
+        const p = paginate(PLATFORM_CURSOR_SCOPE, withCursor, cursor, limit);
+        const items = p.items.map(({ createdAt: _c, ...v }) => v);
+        return { ...p, items: await withGoverningFacts(items, governingIds, boundTo(tx)) };
       });
     },
 
@@ -1251,6 +1356,10 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         // organizationId is resolved from the tenant_account spine.
         const account = await new TenantAccountRepository(tx).findById(args.tenantAccountId);
         if (!account) throw new NotFoundError("tenant account");
+        await assertBaaDocumentFiled(boundTo(tx), {
+          organizationId: account.organizationId,
+          documentId: args.documentId,
+        });
         const row = await repo.create({
           organizationId: account.organizationId,
           tenantAccountId: args.tenantAccountId,
@@ -1282,11 +1391,18 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const repo = new BaaRegisterRepository(tx);
         const existing = await repo.findById(baaId);
         if (!existing) throw new NotFoundError("platform-tenant BAA record");
-        // The row as it will be after this write must still satisfy `executed => document`.
-        assertExecutedBaaHasDocument({
-          baaStatus: args.baaStatus ?? existing.baaStatus,
-          documentId: args.documentId ?? existing.documentId,
-        });
+        // Judged only when the link changes or the record becomes executed (see baaLinkNeedsJudging), on the row as it will be.
+        if (baaLinkNeedsJudging(existing, args)) {
+          const documentId = args.documentId ?? existing.documentId;
+          assertExecutedBaaHasDocument({
+            baaStatus: args.baaStatus ?? existing.baaStatus,
+            documentId,
+          });
+          await assertBaaDocumentFiled(boundTo(tx), {
+            organizationId: existing.organizationId,
+            documentId,
+          });
+        }
         const row = await repo.update(baaId, {
           baaStatus: args.baaStatus as schema.PlatformTenantBaaRecord["baaStatus"] | undefined,
           executedOn: args.executedOn,
@@ -1318,16 +1434,19 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     // surface where the in-memory-paginate shortcut would actually hurt. The cursor CODEC is the shared
     // one, so the wire shape matches every other platform list.
     async listTenantExportJobs(filter, cursor, limit): Promise<CursorPage<TenantExportJobView>> {
+      // The cursor goes into SQL as a timestamp and a uuid: checked strictly BEFORE the platform context is entered, so a value that is
+      // neither is a clean 422 INVALID_CURSOR that leaves no platform bypass audit row.
+      const keyset = decodeKeyset(PLATFORM_CURSOR_SCOPE, cursor);
       return inPlatformCtx("platform-ops list tenant export jobs", async (tx) => {
         const repo = new TenantExportRepository(tx);
         const size = pageSizeOf(limit);
-        const keyset = cursor ? decodeCursor(cursor) : undefined;
         // limit + 1 so `hasMore` is answered by the read itself, never by a second count query.
         const rows = await repo.listPlatformPage({
           organizationId: filter.organizationId,
           status: filter.status as schema.TenantExportJob["status"] | undefined,
           heldOnly: filter.held === true,
-          cursor: keyset ? { requestedAt: new Date(keyset.createdAt), id: keyset.id } : undefined,
+          // Microseconds on both sides of the comparison: the ORDER BY is (requested_at, id) and so is the cursor.
+          cursor: keyset ? { requestedAt: keyset.createdAt, id: keyset.id } : undefined,
           limit: size + 1,
         });
         const hasMore = rows.length > size;
@@ -1365,7 +1484,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           items,
           nextCursor:
             hasMore && last
-              ? encodeCursor({ createdAt: last.requestedAt.toISOString(), id: last.id })
+              ? encodeKeyset(PLATFORM_CURSOR_SCOPE, { createdAt: last.cursorTs, id: last.id })
               : null,
           hasMore,
         };
@@ -1442,12 +1561,14 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
 
     // ── feature-flag admin (§4.7 / D13 — delegates to M1's FeatureFlagAdmin seam) ──
     async listFeatureFlags(filter, cursor, limit): Promise<CursorPage<FeatureFlagView>> {
+      // judged before the platform-pool read: a bad cursor reaches no pool
+      assertPageCursor(PLATFORM_CURSOR_SCOPE, cursor);
       const rows = await deps.featureFlags.list(filter.organizationId ?? null, filter.flagKind);
       const withCursor = rows.map((f) => ({ ...f, id: f.id, createdAt: f.updatedAt }));
       const sorted = [...withCursor].sort((a, b) =>
         a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
       );
-      const p = paginate(sorted, cursor, limit);
+      const p = paginate(PLATFORM_CURSOR_SCOPE, sorted, cursor, limit);
       return { ...p, items: p.items.map(({ createdAt: _c, ...v }) => v) };
     },
 

@@ -206,12 +206,18 @@ const M34_CASES: readonly Case[] = [
   {
     field: "onboarding template description",
     url: "/api/v1/platform/onboarding-templates",
-    body: (text) => ({ key: "t.k", title: "Title", description: text, canonicalOrder: 5 }),
+    body: (text) => ({
+      key: "t.k",
+      title: "Title",
+      description: text,
+      canonicalOrder: 5,
+      reason: CLEAN,
+    }),
   },
   {
     field: "onboarding template title",
     url: "/api/v1/platform/onboarding-templates",
-    body: (text) => ({ key: "t.k", title: text, canonicalOrder: 5 }),
+    body: (text) => ({ key: "t.k", title: text, canonicalOrder: 5, reason: CLEAN }),
   },
   {
     field: "provision legal business name",
@@ -254,6 +260,7 @@ const DISCARDED_CASES: readonly Case[] = [
 
 describe("M34 operator free-text fields refuse a patient identifier through the real routes", () => {
   let app: FastifyInstance;
+  let requestNumber = 0;
   beforeEach(() => {
     resetAuthorizationContract();
     resetRbacEngine();
@@ -271,7 +278,7 @@ describe("M34 operator free-text fields refuse a patient identifier through the 
     app.inject({
       method: c.method ?? "POST",
       url: c.url,
-      headers: { ...ACTOR, ...FRESH },
+      headers: { ...ACTOR, ...FRESH, "idempotency-key": `phi-screen-${++requestNumber}` },
       payload: c.body(text),
     });
 

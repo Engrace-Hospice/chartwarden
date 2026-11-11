@@ -61,9 +61,10 @@ import {
   runStatementSweep,
   runStatementsForOrg,
 } from "../src/modules/35-subscription/pricing/statement-service";
-import type { M35WriteActor } from "../src/modules/35-subscription/routes/actor";
 import type { PlatformRunner, WriteOutboxPort } from "../src/modules/35-subscription/routes/index";
+import type { M35WriteActor } from "../src/modules/35-subscription/routes/service";
 import { buildDrizzleM35RouteService } from "../src/modules/35-subscription/routes/service-drizzle";
+import { modeInForce } from "./_billing-mode";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -84,10 +85,13 @@ const ORG_K = "ab000000-0000-4000-8000-0000000000ab"; // a plan minimum, prorate
 const ORG_L = "ac000000-0000-4000-8000-0000000000ac"; // canceled mid-month, inside the grace window
 const ORG_M = "ad000000-0000-4000-8000-0000000000ad"; // suspended (paused) mid-month: its last month must still finalize
 const ORG_N = "ae000000-0000-4000-8000-0000000000ae"; // re-signed: two contracts, the first canceled
-const ORG_O = "af000000-0000-4000-8000-0000000000af"; // an operator's dated pause that the hourly sweep resumes: the statement must not move
-const ORG_P = "b0000000-0000-4000-8000-0000000000b0"; // an operator's dated pause still running when the platform suspends the org
-const ORG_Q = "b1000000-0000-4000-8000-0000000000b1"; // an older live subscription beside the newest, paused one: the operator's resume is refused
-const ORG_R = "b2000000-0000-4000-8000-0000000000b2"; // two paused subscriptions: the superseded older one cannot be resurrected
+const ORG_O = "af000000-0000-4000-8000-0000000000af"; // slice 5: onboarding, signed on billing software, then it bills outside
+const ORG_P = "b0000000-0000-4000-8000-0000000000b0"; // slice 5: live (went live after signing), then it bills outside
+const ORG_Q = "b1000000-0000-4000-8000-0000000000b1"; // slice 5: no contract at all
+const PAUSE_ORG_O = "d8100000-0000-4000-8000-000000000081"; // an operator's dated pause that the hourly sweep resumes: the statement must not move
+const PAUSE_ORG_P = "d8200000-0000-4000-8000-000000000082"; // an operator's dated pause still running when the platform suspends the org
+const PAUSE_ORG_Q = "d8300000-0000-4000-8000-000000000083"; // an older live subscription beside the newest, paused one: the operator's resume is refused
+const PAUSE_ORG_R = "d8400000-0000-4000-8000-000000000084"; // two paused subscriptions: the superseded older one cannot be resurrected
 const OPERATOR_USER = "0a000000-0000-4000-8000-000000000001";
 const OPERATOR_MEMBERSHIP = "0b000000-0000-4000-8000-000000000001";
 const KEY = {
@@ -137,6 +141,8 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
   let platformRunner: PlatformRunner;
   let outbox: WriteOutboxPort;
   let plans: PricingPlanService;
+  /** The `updatedAt` pin a write on an existing version carries (what an operator read). */
+  const pinOf = async (id: string): Promise<string> => (await plans.get(id)).updatedAt;
   let wizardCalls: {
     attests: Array<Record<string, unknown>>;
     failAttest: boolean;
@@ -412,6 +418,9 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       [ORG_N, "pricing-n"],
       [ORG_O, "pricing-o"],
       [ORG_P, "pricing-p"],
+      [ORG_Q, "pricing-q"],
+      [PAUSE_ORG_O, "pause-o"],
+      [PAUSE_ORG_P, "pause-p"],
     ] as const) {
       await seedOrg(org, slug, "onboarding");
     }
@@ -435,6 +444,9 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       ["pricing-n", ORG_N],
       ["pricing-o", ORG_O],
       ["pricing-p", ORG_P],
+      ["pricing-q", ORG_Q],
+      ["pause-o", PAUSE_ORG_O],
+      ["pause-p", PAUSE_ORG_P],
     ]);
     const stepStatus = new Map<string, "pending" | "done">();
     const wizard = {
@@ -518,11 +530,17 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         planV1,
         plan({ perUserPriceCents: 12_000 }),
         "price list correction",
+        await pinOf(planV1),
       );
       expect(edited.perUserPriceCents).toBe(12_000);
       expect((await plans.listOffered()).map((p) => p.id)).not.toContain(planV1); // a draft is never offered
 
-      const published = await plans.publish(operator, planV1, "approved by the owner");
+      const published = await plans.publish(
+        operator,
+        planV1,
+        "approved by the owner",
+        await pinOf(planV1),
+      );
       expect(published).toMatchObject({ status: "published", offered: true });
       expect(published.publishedAt).not.toBeNull();
 
@@ -548,7 +566,13 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         ),
       ).rejects.toThrow(/published/);
       await expect(
-        plans.replaceDraft(operator, planV1, plan(), "try to edit a published plan"),
+        plans.replaceDraft(
+          operator,
+          planV1,
+          plan(),
+          "try to edit a published plan",
+          await pinOf(planV1),
+        ),
       ).rejects.toThrow(/draft/);
       // ... while its name and offered state can still move (archive does)
       await expect(
@@ -592,7 +616,12 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
     });
 
     it("a price change is a NEW VERSION that supersedes the old one; archiving stops offering the old one", async () => {
-      const v2 = await plans.newVersion(operator, planV1, "2028 price increase");
+      const v2 = await plans.newVersion(
+        operator,
+        planV1,
+        "2028 price increase",
+        await pinOf(planV1),
+      );
       planV2Id = v2.id;
       planV2Slug = v2.slug;
       expect(v2).toMatchObject({
@@ -603,16 +632,39 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       });
       expect(v2.bands).toHaveLength(5);
       await expect(
-        plans.newVersion(operator, planV1, "a second draft of the same family"),
+        plans.newVersion(
+          operator,
+          planV1,
+          "a second draft of the same family",
+          await pinOf(planV1),
+        ),
       ).rejects.toThrow(/draft/);
       await plans.replaceDraft(
         operator,
         planV2Id,
         plan({ perUserPriceCents: 15_000 }),
         "2028 prices",
+        await pinOf(planV2Id),
       );
-      await plans.publish(operator, planV2Id, "approved by the owner");
-      await plans.archive(operator, planV1, "superseded by v2");
+      // a pin from before the edit (another operator changed the draft since): refused, nothing published
+      const stale = "2020-01-01T00:00:00.000Z";
+      // read the current pin first: an await inside the matcher leaves the rejection unhandled until it resolves
+      const currentPin = await pinOf(planV2Id);
+      await expect(
+        plans.publish(operator, planV2Id, "approved by the owner", stale),
+      ).rejects.toMatchObject({
+        code: "PRICING_PLAN_CHANGED",
+        statusCode: 409,
+        details: [{ field: "currentUpdatedAt", message: currentPin }],
+      });
+      expect((await plans.get(planV2Id)).status).toBe("draft");
+      await expect(
+        plans.archive(operator, planV1, "superseded by v2", stale),
+      ).rejects.toMatchObject({
+        code: "PRICING_PLAN_CHANGED",
+      });
+      await plans.publish(operator, planV2Id, "approved by the owner", await pinOf(planV2Id));
+      await plans.archive(operator, planV1, "superseded by v2", await pinOf(planV1));
       const offered = await plans.listOffered();
       expect(offered.map((p) => p.slug)).toEqual([planV2Slug]);
       const all = await plans.list();
@@ -622,7 +674,9 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       ]);
       // v1 is archived but its prices are untouched: a subscription that signed it keeps them
       expect((await plans.get(planV1)).perUserPriceCents).toBe(12_000);
-      await expect(plans.archive(operator, planV1, "archive twice")).rejects.toThrow(/published/);
+      await expect(
+        plans.archive(operator, planV1, "archive twice", await pinOf(planV1)),
+      ).rejects.toThrow(/published/);
     });
 
     it("writes one structured audit row per change, naming the operator and the reason", async () => {
@@ -858,7 +912,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         "a plan the freeze probes attack",
       );
       frozenId = probe.id;
-      await plans.publish(operator, frozenId, "publish the freeze probe");
+      await plans.publish(operator, frozenId, "publish the freeze probe", await pinOf(frozenId));
       // Step 1: ONE statement leaves census_banded, nulls every contracted column and un-publishes the row; the old
       // guard checked only OLD.tier = census_banded rows, so this passed and the row was an editable flat plan.
       const leave = `UPDATE plan SET tier='starter', family_slug=NULL, per_user_price_cents=NULL, billing_software_bps=NULL,
@@ -949,6 +1003,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
           draftId,
           plan({ familySlug: "freeze-probe-draft" }),
           "edit the draft",
+          await pinOf(draftId),
         ),
       ).resolves.toBeDefined();
     });
@@ -1001,6 +1056,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         operator,
         planV2Id,
         "a v3 draft that is never published",
+        await pinOf(planV2Id),
       );
       await expect(
         contracts.createForTenant(operator, "pricing-a", body(draft.slug)),
@@ -1337,7 +1393,6 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       expect(await readBillingServiceMode(app.db, ORG_B, onNov5)).toBe("none");
       expect(await readBillingServiceMode(app.db, ORG_C, onNov5)).toBeNull(); // no contract: never read as `none`
     });
-
     it("a tenant that is still onboarding with NO statement yet changes mode immediately (D6): nothing was billed, so there is no month to protect", async () => {
       const day = "2026-10-21T09:00:00Z";
       const changed = await contractsAt(day).setBillingServiceMode(
@@ -1351,7 +1406,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         billingBps: 100,
         pendingBillingServiceMode: null,
       });
-      expect(await readBillingServiceMode(app.db, ORG_B, new Date(day))).toBe("billing_software");
+      expect(await modeInForce(app.db, ORG_B, new Date(day))).toBe("billing_software");
       // back to `none`, also immediate: later stories read B as a tenant that bills outside
       await contractsAt(day).setBillingServiceMode(
         operator,
@@ -1359,7 +1414,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         "none",
         "the tenant keeps its own billing after all",
       );
-      expect(await readBillingServiceMode(app.db, ORG_B, new Date(day))).toBe("none");
+      expect(await modeInForce(app.db, ORG_B, new Date(day))).toBe("none");
     });
 
     it("a tenant cannot cancel a contracted subscription (403 PLAN_ASSIGNED_BY_OPERATIONS); the subscription is untouched", async () => {
@@ -2161,7 +2216,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         plan({ familySlug: "per-user-heavy", perUserPriceCents: 100_000 }),
         "a plan priced per seat",
       );
-      await plans.publish(operator, p.id, "approved by the owner");
+      await plans.publish(operator, p.id, "approved by the owner", await pinOf(p.id));
       perUserPlanSlug = p.slug;
       await contracts.createForTenant(operator, "pricing-c", {
         planSlug: perUserPlanSlug,
@@ -2443,7 +2498,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         plan({ familySlug: "min-floor", minimumMonthlyCents: 150_000 }),
         "a plan with a monthly minimum",
       );
-      await plans.publish(operator, minPlan.id, "approved by the owner");
+      await plans.publish(operator, minPlan.id, "approved by the owner", await pinOf(minPlan.id));
       minPlanSlug = minPlan.slug;
       await sign("pricing-j", minPlanSlug, "billing_software");
       await goLive(ORG_J, "2026-11-01T00:00:00Z");
@@ -2499,10 +2554,10 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         effectiveOn: "2026-12-01",
       });
       // the seam answers by date
-      expect(await readBillingServiceMode(app.db, ORG_H, new Date("2026-11-30T23:59:59Z"))).toBe(
+      expect(await modeInForce(app.db, ORG_H, new Date("2026-11-30T23:59:59Z"))).toBe(
         "billing_software",
       );
-      expect(await readBillingServiceMode(app.db, ORG_H, new Date("2026-12-01T00:00:00Z"))).toBe(
+      expect(await modeInForce(app.db, ORG_H, new Date("2026-12-01T00:00:00Z"))).toBe(
         "managed_billing",
       );
 
@@ -2720,7 +2775,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       // the ONE selector: the newest LIVE contract is the second; the canceled first is not "the contract"
       const newest = await platformRunner((tx) => selectNewestContract(tx, "live", nov20, ORG_N));
       expect(newest?.sub.status).toBe("active");
-      expect(await readBillingServiceMode(app.db, ORG_N, nov20)).toBe("billing_software");
+      expect(await modeInForce(app.db, ORG_N, nov20)).toBe("billing_software");
       // and the views show the NEWEST contract, not whichever row the table returns first
       const [activeSub] = await q<{ id: string }>(
         "SELECT id FROM subscription WHERE organization_id=$1 AND status='active'",
@@ -2996,7 +3051,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       });
 
     it("PRC-3: the hourly sweep resumes a lapsed pause and the statement is BYTE-IDENTICAL before and after: the ledger is dated at the pause's own end date, not at the sweep's instant", async () => {
-      const subId = await contractedOrg(ORG_O, "pricing-o");
+      const subId = await contractedOrg(PAUSE_ORG_O, "pause-o");
       // paused Nov 12 06:00 until Nov 14 00:00: Nov 13 is the one fully paused day
       await operatorRoute("2026-11-12T06:00:00Z").adminPauseSubscription(
         operator,
@@ -3004,8 +3059,8 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         "2026-11-14T00:00:00Z",
       );
       // the date has long passed and the sweep has not run: billing counts the pause as over at its date
-      await runStatementsForOrg(deps("2026-11-20T12:00:00Z"), ORG_O);
-      const before = await statementRows(ORG_O);
+      await runStatementsForOrg(deps("2026-11-20T12:00:00Z"), PAUSE_ORG_O);
+      const before = await statementRows(PAUSE_ORG_O);
       expect(before).toHaveLength(1);
       expect(before[0]).toMatchObject({ period_year_month: "2026-11", days_live: 29 });
       expect(
@@ -3019,10 +3074,10 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
             db: app.db,
             platformRunner,
             outbox,
-            listOrgs: async () => [{ organizationId: ORG_O }],
+            listOrgs: async () => [{ organizationId: PAUSE_ORG_O }],
             now: at("2026-11-20T13:05:00Z"),
           },
-          ORG_O,
+          PAUSE_ORG_O,
         ),
       ).toBe(1);
       expect(
@@ -3051,31 +3106,31 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       expect(
         await q(
           "SELECT payload FROM outbox_event WHERE organization_id=$1 AND event_type='m35.subscription.resumed'",
-          [ORG_O],
+          [PAUSE_ORG_O],
         ),
       ).toHaveLength(1);
 
       // the statement, re-run after the sweep: the SAME rows (a rerun that changes nothing writes nothing, so even updated_at is unmoved)
-      await runStatementsForOrg(deps("2026-11-20T14:00:00Z"), ORG_O);
-      expect(await statementRows(ORG_O)).toEqual(before);
+      await runStatementsForOrg(deps("2026-11-20T14:00:00Z"), PAUSE_ORG_O);
+      expect(await statementRows(PAUSE_ORG_O)).toEqual(before);
       // ... and the live scope never wavered: the contract is billable before and after
       const live = async () =>
         (await platformRunner((tx) =>
-          selectNewestContract(tx, "live", new Date("2026-11-20T14:00:00Z"), ORG_O),
+          selectNewestContract(tx, "live", new Date("2026-11-20T14:00:00Z"), PAUSE_ORG_O),
         )) !== null;
       expect(await live()).toBe(true);
     });
 
     it("PRC-4: a suspension while an operator's DATED pause is still running makes it open-ended, and the statement does not move at the conversion; past the old date the suspended org stays unbilled", async () => {
-      const subId = await contractedOrg(ORG_P, "pricing-p");
+      const subId = await contractedOrg(PAUSE_ORG_P, "pause-p");
       // paused Nov 12 06:00 until Nov 25 00:00: still running on Nov 20
       await operatorRoute("2026-11-12T06:00:00Z").adminPauseSubscription(
         operator,
         subId,
         "2026-11-25T00:00:00Z",
       );
-      await runStatementsForOrg(deps("2026-11-20T12:00:00Z"), ORG_P);
-      const before = await statementRows(ORG_P);
+      await runStatementsForOrg(deps("2026-11-20T12:00:00Z"), PAUSE_ORG_P);
+      const before = await statementRows(PAUSE_ORG_P);
       expect(before).toHaveLength(1);
 
       // the platform suspends the org (M2) at Nov 20 13:00: the consumer converts the running pause
@@ -3085,8 +3140,8 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         now: at("2026-11-20T13:00:00Z"),
       }).handle({
         eventType: "m2.organization.suspended",
-        organizationId: ORG_P,
-        payload: { organizationId: ORG_P, reason: "compliance_hold" },
+        organizationId: PAUSE_ORG_P,
+        payload: { organizationId: PAUSE_ORG_P, reason: "compliance_hold" },
       });
       expect(
         (
@@ -3098,30 +3153,30 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       ).toEqual({ status: "paused", paused_until: null });
 
       // before the old date: the statement is the same row
-      await runStatementsForOrg(deps("2026-11-20T14:00:00Z"), ORG_P);
-      expect(await statementRows(ORG_P)).toEqual(before);
+      await runStatementsForOrg(deps("2026-11-20T14:00:00Z"), PAUSE_ORG_P);
+      expect(await statementRows(PAUSE_ORG_P)).toEqual(before);
       // after the old date (Nov 25): a legacy dated pause would count as over and bill Nov 25..30; the converted one does not
-      await runStatementsForOrg(deps("2026-11-28T12:00:00Z"), ORG_P);
-      expect(await statementRows(ORG_P)).toEqual(before);
+      await runStatementsForOrg(deps("2026-11-28T12:00:00Z"), PAUSE_ORG_P);
+      expect(await statementRows(PAUSE_ORG_P)).toEqual(before);
       const live = await platformRunner((tx) =>
-        selectNewestContract(tx, "live", new Date("2026-11-28T12:00:00Z"), ORG_P),
+        selectNewestContract(tx, "live", new Date("2026-11-28T12:00:00Z"), PAUSE_ORG_P),
       );
       expect(live).toBeNull(); // not billable: the suspended org stays exempt
     });
 
     it("PRC-5: the operator's resume of a paused subscription while an OLDER subscription of the organization is live is a typed 409 (not the unique index's raw failure); after the operator cancels the older one the sweep resumes it", async () => {
-      await seedOrg(ORG_Q, "pricing-q", "onboarding");
+      await seedOrg(PAUSE_ORG_Q, "pause-q", "onboarding");
       const older = "c1000000-0000-4000-8000-000000000001";
       const newest = "c1000000-0000-4000-8000-000000000002";
       await admin.query(
         `INSERT INTO subscription (id, organization_id, plan_id, status, started_at)
          VALUES ($1,$2,$3,'active','2026-09-01T00:00:00Z')`,
-        [older, ORG_Q, planV2Id],
+        [older, PAUSE_ORG_Q, planV2Id],
       );
       await admin.query(
         `INSERT INTO subscription (id, organization_id, plan_id, status, started_at, paused_at, paused_until)
          VALUES ($1,$2,$3,'paused','2026-11-01T00:00:00Z','2026-11-10T00:00:00Z','2026-12-15T00:00:00Z')`,
-        [newest, ORG_Q, planV2Id],
+        [newest, PAUSE_ORG_Q, planV2Id],
       );
       // what the refusal replaces: the database itself refuses a second live subscription, with a raw failure
       await expect(
@@ -3149,7 +3204,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       expect(
         await q(
           "SELECT 1 FROM outbox_event WHERE organization_id=$1 AND event_type='m35.subscription.resumed'",
-          [ORG_Q],
+          [PAUSE_ORG_Q],
         ),
       ).toHaveLength(0);
 
@@ -3159,24 +3214,24 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         db: app.db,
         platformRunner,
         outbox,
-        listOrgs: async () => [{ organizationId: ORG_Q }],
+        listOrgs: async () => [{ organizationId: PAUSE_ORG_Q }],
         now: at("2026-12-20T03:05:00Z"),
       };
-      expect(await runPauseResumeForOrg(sweepDeps, ORG_Q)).toBe(1);
+      expect(await runPauseResumeForOrg(sweepDeps, PAUSE_ORG_Q)).toBe(1);
       expect(
         (await q<{ status: string }>("SELECT status FROM subscription WHERE id=$1", [newest]))[0],
       ).toEqual({ status: "active" });
     });
 
     it("PRC-5: the operator cannot resume a superseded older paused subscription while the newest subscription is paused", async () => {
-      await seedOrg(ORG_R, "pricing-r", "onboarding");
+      await seedOrg(PAUSE_ORG_R, "pause-r", "onboarding");
       const older = "c2000000-0000-4000-8000-000000000001";
       const newest = "c2000000-0000-4000-8000-000000000002";
       await admin.query(
         `INSERT INTO subscription (id, organization_id, plan_id, status, started_at, paused_at)
          VALUES ($1,$2,$3,'paused','2026-09-01T00:00:00Z','2026-09-10T00:00:00Z'),
                 ($4,$2,$3,'paused','2026-11-01T00:00:00Z','2026-11-10T00:00:00Z')`,
-        [older, ORG_R, planV2Id, newest],
+        [older, PAUSE_ORG_R, planV2Id, newest],
       );
       const route = operatorRoute("2026-12-20T00:00:00Z");
 
@@ -3187,7 +3242,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       expect(
         await q<{ id: string; status: string }>(
           "SELECT id, status FROM subscription WHERE organization_id=$1 ORDER BY started_at, id",
-          [ORG_R],
+          [PAUSE_ORG_R],
         ),
       ).toEqual([
         { id: older, status: "paused" },
@@ -3714,6 +3769,92 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
           "SELECT 1 FROM plan WHERE tier IN ('starter','professional','enterprise') AND is_active",
         ),
       ).toHaveLength(0);
+    });
+  });
+
+  // Slice 5 (owner decision): a tenant that bills outside ChartWarden pays no billing percentage. Choosing `outside` sets its billing
+  // service mode to `none` through the pricing side (the M34 wizard's post-commit clearinghouse sync calls it); choosing a vendor again
+  // does not touch the mode.
+  describe("a tenant that bills outside ChartWarden pays no billing percentage", () => {
+    const sign = (org: string, slug: string, day: string) =>
+      contractsAt(day).createForTenant(operator, slug, {
+        planSlug: planV2Slug,
+        billingServiceMode: "billing_software",
+        orderFormRef: "OF-OUTSIDE-1",
+        reason: "order form signed by the customer's administrator",
+      });
+    const modeRows = (org: string) =>
+      q<{ billing_service_mode: string; effective_from: string }>(
+        `SELECT billing_service_mode, effective_from::text FROM subscription_contract_mode WHERE organization_id=$1 ORDER BY created_at`,
+        [org],
+      );
+    const changedAudits = (org: string) =>
+      q<{ context: Record<string, string> }>(
+        `SELECT context FROM audit_event
+          WHERE event_type='m35.subscription.billing_service_mode_changed' AND context->>'organizationId'=$1 ORDER BY created_at`,
+        [org],
+      );
+
+    it("an onboarding tenant with nothing billed is set to none AT ONCE, audited as the system, and a repeat changes nothing", async () => {
+      const day = "2026-11-10T12:00:00Z";
+      await sign(ORG_O, "pricing-o", day);
+      expect(await modeInForce(app.db, ORG_O, new Date(day))).toBe("billing_software");
+
+      const first = await contractsAt(day).setModeNoneForOutsideBilling(ORG_O);
+      expect(first).toEqual({ changed: true });
+      expect(await modeInForce(app.db, ORG_O, new Date(day))).toBe("none");
+      const audits = await changedAudits(ORG_O);
+      expect(audits).toHaveLength(1);
+      expect(audits[0]?.context).toMatchObject({
+        from: "billing_software",
+        to: "none",
+        effectiveOn: "2026-11-10",
+        trigger: "clearinghouse_outside",
+        operatorUserId: "system",
+        // no request set it off (a sweep, or a caller that names no trigger): attributed to the system, no person
+        triggeredBy: "system",
+        triggeredByUserId: null,
+      });
+      expect(audits[0]?.context.reason).toMatch(/bills outside ChartWarden/);
+
+      const rowsBefore = await modeRows(ORG_O);
+      expect(await contractsAt(day).setModeNoneForOutsideBilling(ORG_O)).toEqual({
+        changed: false,
+      });
+      expect(await modeRows(ORG_O)).toEqual(rowsBefore);
+      expect(await changedAudits(ORG_O)).toHaveLength(1);
+    });
+
+    it("a live tenant keeps its current month: the change takes effect from the 1st of next month", async () => {
+      const day = "2026-11-12T09:00:00Z";
+      await sign(ORG_P, "pricing-p", "2026-11-03T09:00:00Z");
+      await admin.query(
+        "UPDATE tenant_account SET status='active', activated_at='2026-11-04T00:00:00Z' WHERE organization_id=$1",
+        [ORG_P],
+      );
+      expect(await contractsAt(day).setModeNoneForOutsideBilling(ORG_P)).toEqual({ changed: true });
+      expect(await modeInForce(app.db, ORG_P, new Date(day))).toBe("billing_software");
+      const view = await contractsAt(day).platformView(operator, "pricing-p");
+      expect(view.contract?.pendingBillingServiceMode).toEqual({
+        billingServiceMode: "none",
+        effectiveOn: "2026-12-01",
+      });
+      // already pending: a second call is a no-op, so the ledger holds one row for the change
+      expect(await contractsAt(day).setModeNoneForOutsideBilling(ORG_P)).toEqual({
+        changed: false,
+      });
+      expect((await modeRows(ORG_P)).filter((r) => r.billing_service_mode === "none")).toHaveLength(
+        1,
+      );
+    });
+
+    it("does nothing for a tenant with no contract (a mode is never invented), and refuses nothing it does not own", async () => {
+      expect(await contractsAt("2026-11-10T12:00:00Z").setModeNoneForOutsideBilling(ORG_Q)).toEqual(
+        {
+          changed: false,
+        },
+      );
+      expect(await modeRows(ORG_Q)).toEqual([]);
     });
   });
 });

@@ -1,0 +1,315 @@
+// apps/admin/src/modules/34-saas-platform/onboarding — step 14, Go-live: two people. The tenant's compliance officer attests readiness in
+// the tenant app; a DIFFERENT platform operator approves here (fresh step-up, a reason), and only then does the tenant go active and its
+// organisation open. Approval re-judges the activation guards at that instant and lists every one that fails. A pending attestation is
+// approvable for 14 days; an older one can only be revoked, so the officer attests again. The step itself is never attested or skipped.
+import {
+  Button,
+  type Fact,
+  FactList,
+  InlineAlert,
+  REASON_RULES,
+  UnstyledList,
+  stashStepUpMemoryDraft,
+  useApiClient,
+  useStepUpMemoryDraft,
+} from "@chartwarden/ui";
+import { useEffect, useRef, useState } from "react";
+import type { JSX } from "react";
+import { Link } from "react-router-dom";
+import { FailureNotice } from "./failure-notice";
+import type { PanelContext } from "./panel-types";
+import { ONBOARDING_KEYS, useCan } from "./permissions";
+import { RecordSaveDialog } from "./record-save-dialog";
+import { StepFrame } from "./step-frame";
+import { useOpsWrite } from "./use-ops-write";
+import { guardLabel, viewHasMoved } from "./wizard-errors";
+import { GO_LIVE_STEP_KEY, type WizardStep } from "./wizard-model";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** The refusal that lists what still fails: the dialog stays open on it (nothing moved, the operator reads the list). */
+const GUARDS_FAILED_CODE = "ACTIVATION_GUARDS_FAILED";
+
+const isSettled = (s: WizardStep): boolean => s.status === "done" || s.status === "skipped";
+const stepHref = (orgSlug: string, key: string): string =>
+  `/tenants/${encodeURIComponent(orgSlug)}/onboarding/${encodeURIComponent(key)}`;
+
+type Dialog = "approve" | "revoke" | null;
+
+/** What a Re-verify keeps of the approve / revoke prompt: which one was open and the reason typed in it (free text: memory only). */
+interface DecideDraft {
+  readonly dialog: "approve" | "revoke";
+  readonly reason: string;
+}
+const decideDraftKey = (orgSlug: string): string => `wizard:${orgSlug}:go-live:decide`;
+
+export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
+  const client = useApiClient();
+  const { orgSlug, view } = ctx;
+  const { goLive } = view;
+  // Back from Re-verify the prompt reopens with the reason that was typed (only while the attestation is still there to decide on).
+  const restored = useStepUpMemoryDraft<DecideDraft>(decideDraftKey(orgSlug));
+  const [dialog, setDialog] = useState<Dialog>(
+    restored && goLive.state === "awaiting_approval" ? restored.dialog : null,
+  );
+  const [seedReason, setSeedReason] = useState(restored?.reason ?? "");
+  // What is in the prompt's reason box right now (a Re-verify keeps an edit made after a refusal, not only the last submitted text).
+  const typedReason = useRef(restored?.reason ?? "");
+  // The outcome banner belongs to the state its action leads to (and the one it was written in, until the wizard reloads): any other
+  // state, e.g. the officer attesting again after a revoke, is a new situation and does not inherit it.
+  const [done, setDone] = useState<{
+    message: string;
+    from: string;
+    to: string;
+    /** The wizard has left the state the action was taken in (so that state, if it comes back, is a new situation). */
+    left: boolean;
+  } | null>(null);
+  useEffect(() => {
+    setDone((d) => (d && !d.left && goLive.state !== d.from ? { ...d, left: true } : d));
+  }, [goLive.state]);
+  // Approving or revoking moves the wizard to another state, and the buttons that opened the prompt go with the old one (focus would fall
+  // to the page): the outcome takes focus instead.
+  const outcome = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (done) outcome.current?.focus();
+  }, [done]);
+  const write = useOpsWrite();
+  const mayDecide = useCan(ONBOARDING_KEYS.goLiveApprove);
+
+  const open = view.steps.filter(
+    (s) => s.isCanonical && !s.optional && s.key !== GO_LIVE_STEP_KEY && !isSettled(s),
+  );
+  const attestation = goLive.attestation;
+  const expiresAt = attestation?.expiresAt ? new Date(attestation.expiresAt).getTime() : null;
+  const expired =
+    goLive.state === "awaiting_approval" && expiresAt !== null && expiresAt <= Date.now();
+  const daysLeft =
+    expiresAt === null ? null : Math.max(Math.ceil((expiresAt - Date.now()) / DAY_MS), 0);
+  const failing = goLive.failedGuards;
+
+  /** The props an approve / revoke prompt shares: the typed reason survives a Re-verify, and is dropped with the prompt. */
+  const reasonKeeping = (kind: "approve" | "revoke") => ({
+    ...(restored?.dialog === kind && seedReason !== "" ? { initialReason: seedReason } : {}),
+    onReasonChange: (reason: string) => {
+      typedReason.current = reason;
+    },
+    onReverify: () =>
+      stashStepUpMemoryDraft<DecideDraft>(decideDraftKey(orgSlug), {
+        dialog: kind,
+        reason: typedReason.current,
+      }),
+  });
+  const closePrompt = (): void => {
+    typedReason.current = "";
+    setSeedReason("");
+    setDialog(null);
+  };
+  const cancelPrompt = (): void => {
+    write.clear();
+    closePrompt();
+  };
+
+  async function decide(kind: "approve" | "revoke", reason: string): Promise<void> {
+    const body = { reason };
+    const outcome = await write.run(`${kind}:${reason}`, (key) =>
+      kind === "approve"
+        ? client.POST("/api/v1/platform/tenants/{orgSlug}/go-live/approve", {
+            params: { path: { orgSlug } },
+            body,
+            headers: { "Idempotency-Key": key },
+          })
+        : client.POST("/api/v1/platform/tenants/{orgSlug}/go-live/revoke", {
+            params: { path: { orgSlug } },
+            body,
+            headers: { "Idempotency-Key": key },
+          }),
+    );
+    if (outcome.ok) {
+      closePrompt();
+      setDone(
+        kind === "approve"
+          ? {
+              message: "Approved. The tenant is live.",
+              from: goLive.state,
+              to: "live",
+              left: false,
+            }
+          : {
+              message: "Attestation revoked. The compliance officer can attest again.",
+              from: goLive.state,
+              to: "awaiting_attestation",
+              left: false,
+            },
+      );
+      await ctx.refresh();
+    } else if (viewHasMoved(outcome.failure)) {
+      // The state the operator decided in has changed (the attestation is gone, stale or expired, the tenant moved on): the view is read
+      // again. The prompt closes, except on a guard list, which is read where it was shown; the refusal is read on the page.
+      if (outcome.failure.code !== GUARDS_FAILED_CODE) closePrompt();
+      await ctx.refresh();
+    }
+  }
+
+  const facts: Fact[] = [
+    {
+      key: "steps",
+      label: "Every earlier required step is settled",
+      state: open.length === 0 ? "ok" : "pending",
+    },
+    {
+      key: "officer",
+      label: "A compliance officer is assigned",
+      state: goLive.complianceOfficerMembershipId ? "ok" : "pending",
+    },
+    {
+      key: "attested",
+      label: "The compliance officer has attested readiness",
+      state: goLive.state === "awaiting_approval" || goLive.state === "live" ? "ok" : "pending",
+    },
+    ...failing.map((g) => ({
+      key: g,
+      label: guardLabel(g),
+      state: "blocked" as const,
+    })),
+  ];
+
+  return (
+    <StepFrame ctx={ctx}>
+      <section className="wx-drawer-card" aria-label="Go-live">
+        <div className="wx-drawer-card-head">
+          <h3>Go-live</h3>
+        </div>
+        <FactList facts={facts} ariaLabel="What settles this step" />
+
+        {goLive.state === "not_ready" ? (
+          <>
+            <p>Go-live opens once every earlier step is settled.</p>
+            {open.length > 0 ? (
+              <UnstyledList>
+                {open.map((s) => (
+                  <li key={s.key}>
+                    <Link to={stepHref(orgSlug, s.key)}>{s.title}</Link>
+                  </li>
+                ))}
+              </UnstyledList>
+            ) : null}
+          </>
+        ) : null}
+
+        {goLive.state === "awaiting_attestation" ? (
+          <>
+            <p>Waiting for the compliance officer to attest readiness in the tenant app.</p>
+            {goLive.complianceOfficerMembershipId === null ? (
+              <Link to={stepHref(orgSlug, "compliance_officer_assigned")}>
+                Assign a compliance officer
+              </Link>
+            ) : null}
+          </>
+        ) : null}
+
+        {goLive.state === "awaiting_approval" && attestation ? (
+          <>
+            <dl className="wx-kv">
+              <dt>Attested</dt>
+              <dd className="wx-nums">{new Date(attestation.attestedAt).toLocaleString()}</dd>
+              {attestation.attestationNote ? (
+                <>
+                  <dt>Their note</dt>
+                  <dd>{attestation.attestationNote}</dd>
+                </>
+              ) : null}
+              <dt>Approvable for</dt>
+              <dd>{expired ? "Expired" : `${daysLeft} days left to approve`}</dd>
+            </dl>
+            {expired ? (
+              <InlineAlert tone="warning">
+                This attestation is more than 14 days old. Revoke it so the compliance officer can
+                attest again.
+              </InlineAlert>
+            ) : null}
+            <InlineAlert tone="info">
+              A different operator approves than the one who recorded or uploaded the BAA. Approving
+              re-checks every activation guard and opens the tenant's organization.
+            </InlineAlert>
+            {mayDecide ? (
+              <div className="wx-drawer-actions">
+                <Button
+                  disabled={expired}
+                  onClick={() => {
+                    write.clear();
+                    setDialog("approve");
+                  }}
+                >
+                  Approve go-live
+                </Button>
+                <Button
+                  tone="secondary"
+                  onClick={() => {
+                    write.clear();
+                    setDialog("revoke");
+                  }}
+                >
+                  Revoke attestation
+                </Button>
+              </div>
+            ) : (
+              <p className="wx-row-sub">Your role cannot approve or revoke a go-live.</p>
+            )}
+          </>
+        ) : null}
+
+        {goLive.state === "live" ? (
+          <>
+            {attestation?.approvedAt ? (
+              <dl className="wx-kv">
+                <dt>Approved</dt>
+                <dd className="wx-nums">{new Date(attestation.approvedAt).toLocaleString()}</dd>
+                {attestation.approvalReason ? (
+                  <>
+                    <dt>Reason</dt>
+                    <dd>{attestation.approvalReason}</dd>
+                  </>
+                ) : null}
+              </dl>
+            ) : null}
+          </>
+        ) : null}
+
+        {write.failure && dialog === null ? (
+          <FailureNotice failure={write.failure} orgSlug={orgSlug} />
+        ) : null}
+
+        {done && (goLive.state === done.to || (goLive.state === done.from && !done.left)) ? (
+          <div ref={outcome} tabIndex={-1}>
+            <InlineAlert tone="success">{done.message}</InlineAlert>
+          </div>
+        ) : null}
+      </section>
+
+      <RecordSaveDialog
+        open={dialog === "approve"}
+        title="Approve go-live"
+        description="The tenant goes active and its organization opens. This is the second of the two people go-live takes."
+        rule={REASON_RULES.decision}
+        confirmLabel="Approve"
+        write={write}
+        orgSlug={orgSlug}
+        {...reasonKeeping("approve")}
+        onConfirm={(reason) => void decide("approve", reason)}
+        onCancel={cancelPrompt}
+      />
+      <RecordSaveDialog
+        open={dialog === "revoke"}
+        title="Revoke the go-live attestation"
+        description="The compliance officer will have to attest again."
+        rule={REASON_RULES.decision}
+        tone="danger"
+        confirmLabel="Revoke"
+        write={write}
+        orgSlug={orgSlug}
+        {...reasonKeeping("revoke")}
+        onConfirm={(reason) => void decide("revoke", reason)}
+        onCancel={cancelPrompt}
+      />
+    </StepFrame>
+  );
+}

@@ -366,9 +366,88 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // --- the tenant's clearinghouse choice (ADR-0053 amendment 2026-11-06): vendor, mode and sealed credential ---
+  // platform-ops only, step-up, reason-recorded, accepted only while the tenant is provisioning / onboarding.
+  "tenant_clearinghouse.read_platform": {
+    resource: "tenant_clearinghouse",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant_clearinghouse.write_platform": {
+    resource: "tenant_clearinghouse",
+    action: "write_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // Owner decision D2: verifying the vendor BAA a tenant recorded for its own account is its own permission key (held by the same
+  // platform_ops role as the writes: separate keys, not separate roles; and, unlike the writes above, not limited to a tenant that is still onboarding: a live tenant that changes vendor needs it too).
+  "tenant_clearinghouse.verify_baa_platform": {
+    resource: "tenant_clearinghouse",
+    action: "verify_baa_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // Owner decision "build it" (2026-11-09, migration 1468): revoking the vendor BAA a tenant recorded (the vendor ended it) is its own
+  // permission key, held by platform_ops like the verification's. The revoke voids the verification and takes a live config out of
+  // service; the route also needs a fresh step-up, a human actor, a recorded reason and the BAA record's recordedAt as If-Match. Not
+  // limited to an onboarding tenant: a live tenant is the point.
+  "tenant_clearinghouse.revoke_baa_platform": {
+    resource: "tenant_clearinghouse",
+    action: "revoke_baa_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // Owner decision 2026-11-08 (migration 1435): a credential a tenant sealed stays reserved to it, through a switch to `outside` and a
+  // rotation, until a platform operator releases it (an account moved to another organization). Its own key, bound to platform_ops;
+  // the route also needs a fresh step-up, a human actor and a recorded reason. Not limited to an onboarding tenant.
+  "tenant_clearinghouse.release_credential_platform": {
+    resource: "tenant_clearinghouse",
+    action: "release_credential_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // A platform operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record (a mistaken or false one: the tenant
+  // itself cannot, and a cancel refuses). Its own permission key (separate from the BAA verification's, but held by the same
+  // platform_ops role: the separation is of keys, not of roles); the route also needs the platform_ops role, a fresh step-up, a
+  // recorded reason and the record's recordedAt as If-Match. Not limited to an onboarding tenant. The platform_ops role row holds
+  // the key: migration 1422 binds it and the template grant (packages/auth `PLATFORM_ONBOARDING_DATA_KEYS`) keeps it; a
+  // platform_ops role row created later gets it from `db:platform-role grant`.
+  "tenant_notice_filing.withdraw_platform": {
+    resource: "tenant_notice_filing",
+    action: "withdraw_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // A platform operator uploads the signed BAA for a tenant that is still onboarding (onboarding step 3). The NARROWEST grant that does
+  // it, in place of `documents.upload` (which would let a platform role file any document kind into any tenant): the one route behind this
+  // key files one document kind (`tenant_baa`) for the tenant in the path, on that tenant's own RLS scope; it lists and reads no document.
+  // The route also needs the platform_ops role (`tenant_lifecycle_platform_ops`), a fresh step-up, a human actor, an Idempotency-Key and a
+  // recorded reason. Bound to `platform_ops` alone (migration 1424): a role the predicate always denies gains nothing from the key.
+  "tenant_baa_document.upload_platform": {
+    resource: "tenant_baa_document",
+    action: "upload_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // --- the tenant's DoseSpot clinic registration (tenant onboarding slice 4, ADR-0111): environment, clinic, sealed key ---
+  // platform-ops only, step-up, reason-recorded, accepted only while the tenant is provisioning / onboarding (a deactivation is
+  // the one write a live tenant also needs, so it is not status-gated).
+  "tenant_dosespot.read_platform": {
+    resource: "tenant_dosespot",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant_dosespot.write_platform": {
+    resource: "tenant_dosespot",
+    action: "write_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
-/** Union of the M34 contributed permission keys (forty-six). */
+/** Union of the M34 contributed permission keys. */
 export type M34ContributedPermissionKey = keyof typeof M34_CONTRIBUTED_PERMISSIONS;
 
 /**

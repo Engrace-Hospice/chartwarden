@@ -14,16 +14,33 @@ import type {
   TenantRef,
   WizardMember,
 } from "./model";
-import { GO_LIVE_DATA_CHANGED_REVOKE_REASON, GO_LIVE_TEMPLATE_KEY } from "./model";
+import {
+  GO_LIVE_DATA_CHANGED_REVOKE_REASON,
+  GO_LIVE_TEMPLATE_KEY,
+  SYSTEM_MEMBERSHIP_ID,
+} from "./model";
 import type { OrgProfile, OrgProfilePatch, OrgProfilePort } from "./org-profile";
 import type { PlatformAuditEntry, TaskPatch, WizardRunner, WizardStore } from "./wizard-store";
 
 /** An attestation row with the organisation the real table scopes it by. */
 export type MemoryGoLive = GoLiveAttestation & { organizationId: string };
 
-/** A BAA as the memory store keeps it: the writer and document fields are optional (absent = a legacy row). */
+/**
+ * A BAA as the memory store keeps it: the writer and document fields are optional (absent = a legacy row). The memory store has no
+ * document check, so a row is a filed one unless a test says `documentFiled: false`.
+ */
 export type MemoryBaa = Pick<GoverningBaa, "baaStatus" | "expiresOn"> &
-  Partial<Pick<GoverningBaa, "documentId" | "recordedByUserId" | "updatedByUserId">>;
+  Partial<
+    Pick<
+      GoverningBaa,
+      | "documentId"
+      | "documentFiled"
+      | "documentUploadedByMembershipId"
+      | "documentUploadedByUserId"
+      | "recordedByUserId"
+      | "updatedByUserId"
+    >
+  >;
 
 export interface MemoryWizardState {
   tenants: TenantRef[];
@@ -102,8 +119,16 @@ export function memoryTask(
 
 function publicTask(row: MemoryWizardState["tasks"][number]): StepTask {
   const { tenantAccountId: _t, completionEvidence, ...task } = row;
-  const skip = (completionEvidence.skip as { rationale?: string } | undefined)?.rationale ?? null;
-  return { ...task, skipRationale: row.status === "skipped" ? skip : null };
+  const skipRecord = completionEvidence.skip as
+    | { rationale?: string; skippedByMembershipId?: string }
+    | undefined;
+  const skip = skipRecord?.rationale ?? null;
+  return {
+    ...task,
+    skipRationale: row.status === "skipped" ? skip : null,
+    skippedBySystem:
+      row.status === "skipped" && skipRecord?.skippedByMembershipId === SYSTEM_MEMBERSHIP_ID,
+  };
 }
 
 export function createMemoryWizardStore(
@@ -204,6 +229,9 @@ export function createMemoryWizardStore(
       return baa
         ? {
             documentId: null,
+            documentFiled: true,
+            documentUploadedByMembershipId: null,
+            documentUploadedByUserId: null,
             recordedByUserId: null,
             updatedByUserId: null,
             ...baa,

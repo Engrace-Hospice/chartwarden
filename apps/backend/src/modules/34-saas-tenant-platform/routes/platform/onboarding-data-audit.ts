@@ -32,6 +32,34 @@ export const ONBOARDING_DATA_AUDIT_EVENTS = {
   locationUpdated: "m34.tenant_onboarding.location_updated",
   macCredentialUpserted: "m34.tenant_onboarding.mac_credential_upserted",
   medicaidCredentialUpserted: "m34.tenant_onboarding.medicaid_credential_upserted",
+  /** ADR-0053 amendment 2026-11-06: the tenant's clearinghouse choice (vendor, mode, sealed credential). */
+  clearinghouseSet: "m34.tenant_onboarding.clearinghouse_set",
+  clearinghouseVerified: "m34.tenant_onboarding.clearinghouse_verified",
+  /** Tenant onboarding slice 4 (ADR-0111): the tenant's DoseSpot clinic registration (environment, clinic, sealed key). */
+  dosespotSet: "m34.tenant_onboarding.dosespot_set",
+  dosespotVerified: "m34.tenant_onboarding.dosespot_verified",
+  /** A deactivation is the one DoseSpot write a LIVE tenant also needs, so it is not status-gated. */
+  dosespotDeactivated: "m34.tenant_onboarding.dosespot_deactivated",
+  dosespotPrescriberEnrolled: "m34.tenant_onboarding.dosespot_prescriber_enrolled",
+  /** A platform operator verified the BAA the tenant recorded for its own vendor account (a live tenant too: not status-gated). */
+  clearinghouseBaaVerified: "m34.tenant_onboarding.clearinghouse_baa_verified",
+  /**
+   * A platform operator revoked the BAA the tenant recorded (the vendor ended it; not status-gated). The row names the operator, the
+   * tenant, the reason as given, the vendor, the record's document reference and `recordedAt`, and whether a live config was stopped.
+   */
+  clearinghouseBaaRevoked: "m34.tenant_onboarding.clearinghouse_baa_revoked",
+  /** A platform operator released the clearinghouse credentials a tenant still held, except its current one (not status-gated). */
+  clearinghouseCredentialsReleased: "m34.tenant_onboarding.clearinghouse_credentials_released",
+  /**
+   * A platform operator withdrew a tenant's "filed outside ChartWarden" NOE / NOTR record (not status-gated). The row names the
+   * operator, the tenant, the reason, the notice kind and id, the filed date withdrawn and the record's `recordedAt`.
+   */
+  noticeExternalFilingWithdrawn: "m34.tenant_onboarding.notice_external_filing_withdrawn",
+  /**
+   * A platform operator filed the signed BAA for the tenant (onboarding step 3). The row names the operator, the tenant, the reason, the
+   * document id and what the server verified of the bytes (type, size, sha256): never the bytes.
+   */
+  baaDocumentUploaded: "m34.tenant_onboarding.baa_document_uploaded",
   dataRead: "m34.tenant_onboarding.data_read",
   /** The tenant is not provisioning/onboarding: the write was refused before it ran. */
   writeRefused: "m34.tenant_onboarding.write_refused",

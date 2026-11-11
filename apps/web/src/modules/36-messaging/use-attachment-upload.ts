@@ -1,4 +1,4 @@
-import { useApiClient } from "@chartwarden/ui";
+import { useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   MAX_ATTACHMENT_BYTES,
@@ -13,9 +13,9 @@ import type { AttachmentChip } from "./messaging-types";
 /**
  * WP 1.5 composer-side upload pipeline: hash -> authorize -> PUT -> complete -> (poll while scanning).
  *
- * Idempotency follows the send composer's rule (see sendAttemptFor): every request that needs a key has its
- * OWN key per item, reused when no reply arrived (lost-reply retry) and rotated after any answered error,
- * because the server caches answered failures under the key.
+ * Idempotency is the shared useAttemptKey: every request that needs a key has its OWN key per item and stage, held while no
+ * answer settled it (a lost reply, a gateway page, the in-flight 409: a retry replays) and renewed by any other answer, because the
+ * server caches answered failures under the key. A restart from authorize forgets the item's keys.
  *
  * Bounded work: at most MAX_CONCURRENT_UPLOADS items hash/upload at once (the rest queue); every item has an
  * AbortController (remove, channel switch and unmount abort it); the PUT has a stall deadline; a status poll ends
@@ -37,8 +37,6 @@ interface Tracked extends AttachmentChip {
   /** `file` is already the metadata-stripped re-encode: a retry must not strip (and re-encode) it again. */
   readonly stripped: boolean;
   readonly ticket: UploadTicket | null;
-  readonly authorizeKey: string;
-  readonly completeKey: string;
 }
 
 const POLL_START_MS = 3_000;
@@ -92,9 +90,10 @@ function verdictOf(result: {
   return status === 404 || status === 410 ? "gone" : "pending";
 }
 
-function answered(result: { error?: unknown; response?: Response }): boolean {
-  return Boolean(result.error) || (result.response?.status ?? 0) >= 400;
-}
+/** The intents the shared attempt keys hold a key for, per item: the authorization, and the completion of one authorized upload. */
+const authorizeIntent = (localId: string): string => `authorize|${localId}`;
+const completeIntent = (localId: string, attachmentId: string | null): string =>
+  `complete|${localId}|${attachmentId ?? ""}`;
 
 export interface AttachmentUploads {
   readonly chips: readonly AttachmentChip[];
@@ -113,6 +112,7 @@ export interface AttachmentUploads {
 
 export function useAttachmentUploads(channelId: string): AttachmentUploads {
   const client = useApiClient();
+  const attempts = useAttemptKey();
   const [tracked, setTracked] = useState<readonly Tracked[]>([]);
   const [notices, setNotices] = useState<readonly string[]>([]);
   const itemsRef = useRef<readonly Tracked[]>([]);
@@ -268,14 +268,16 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
             patch(localId, { sha256Hex: digest });
           }
           patch(localId, { status: "uploading" });
-          const { authorizeKey, fileName, contentType, byteSize } = item;
+          const { fileName, contentType, byteSize } = item;
           const authorizeDeadline = withRequestDeadline(signal);
           const authorize = () =>
-            client.POST("/api/v1/messaging/attachments/uploads", {
-              params: { header: { "Idempotency-Key": authorizeKey } },
-              body: { channelId, fileName, contentType, byteSize, sha256Hex: digest },
-              signal: authorizeDeadline.signal,
-            });
+            attempts.run(authorizeIntent(localId), (authorizeKey) =>
+              client.POST("/api/v1/messaging/attachments/uploads", {
+                params: { header: { "Idempotency-Key": authorizeKey } },
+                body: { channelId, fileName, contentType, byteSize, sha256Hex: digest },
+                signal: authorizeDeadline.signal,
+              }),
+            );
           let result: Awaited<ReturnType<typeof authorize>>;
           try {
             result = await authorize();
@@ -289,7 +291,7 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
             const message =
               AUTHORIZE_MESSAGES[apiErrorCode(result.error) ?? ""] ??
               "The upload could not be started.";
-            fail(message, answered(result) ? { authorizeKey: crypto.randomUUID() } : {});
+            fail(message);
             return;
           }
           const { attachmentId: authorizedId, upload } = result.data;
@@ -310,11 +312,8 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
           const ticket = item.ticket;
           if (!ticket || ticket.expiresAtMs <= Date.now()) {
             // The presigned URL lapsed while the user waited: a fresh authorization needs a fresh key.
-            fail(NETWORK_MESSAGE, {
-              stage: "authorize",
-              ticket: null,
-              authorizeKey: crypto.randomUUID(),
-            });
+            attempts.forget(authorizeIntent(localId));
+            fail(NETWORK_MESSAGE, { stage: "authorize", ticket: null });
             return;
           }
           patch(localId, { status: "uploading", message: null });
@@ -339,10 +338,10 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
           }
           if (!live()) return;
           if (!response.ok) {
+            attempts.forget(authorizeIntent(localId));
             fail("The file could not be uploaded. Retry to start again.", {
               stage: "authorize",
               ticket: null,
-              authorizeKey: crypto.randomUUID(),
             });
             return;
           }
@@ -352,16 +351,18 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
         }
 
         patch(localId, { status: "uploading", message: null });
-        const { attachmentId, completeKey } = item;
+        const { attachmentId } = item;
         const completeDeadline = withRequestDeadline(signal);
         const complete = () =>
-          client.POST("/api/v1/messaging/attachments/{id}/complete", {
-            params: {
-              path: { id: attachmentId ?? "" },
-              header: { "Idempotency-Key": completeKey },
-            },
-            signal: completeDeadline.signal,
-          });
+          attempts.run(completeIntent(localId, attachmentId), (completeKey) =>
+            client.POST("/api/v1/messaging/attachments/{id}/complete", {
+              params: {
+                path: { id: attachmentId ?? "" },
+                header: { "Idempotency-Key": completeKey },
+              },
+              signal: completeDeadline.signal,
+            }),
+          );
         let completion: Awaited<ReturnType<typeof complete>>;
         try {
           completion = await complete();
@@ -372,21 +373,17 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
         if (!live()) return;
         if (!completion.data) {
           const code = apiErrorCode(completion.error);
-          const rotated = answered(completion) ? { completeKey: crypto.randomUUID() } : {};
           if (code === "ATTACHMENT_NOT_UPLOADED") {
-            fail("The upload did not finish. Retry to send the file again.", {
-              ...rotated,
-              stage: "put",
-            });
+            fail("The upload did not finish. Retry to send the file again.", { stage: "put" });
           } else if (code === "ATTACHMENT_UPLOAD_MISMATCH") {
+            attempts.forget(authorizeIntent(localId));
+            attempts.forget(completeIntent(localId, attachmentId));
             fail("The file changed while uploading. Retry to start again.", {
               stage: "authorize",
               ticket: null,
-              authorizeKey: crypto.randomUUID(),
-              completeKey: crypto.randomUUID(),
             });
           } else {
-            fail("The upload could not be finished. Retry.", rotated);
+            fail("The upload could not be finished. Retry.");
           }
           return;
         }
@@ -409,7 +406,7 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
         }
       }
     },
-    [channelId, client, patch, poll],
+    [attempts, channelId, client, patch, poll],
   );
 
   // Start queued items until MAX_CONCURRENT_UPLOADS are running; a finishing run calls this again.
@@ -454,8 +451,6 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
         sha256Hex: null,
         stripped: false,
         ticket: null,
-        authorizeKey: crypto.randomUUID(),
-        completeKey: crypto.randomUUID(),
       }));
       commit([...itemsRef.current, ...created]);
       enqueue(created.map((item) => item.localId));

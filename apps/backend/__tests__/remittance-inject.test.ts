@@ -279,6 +279,15 @@ function createM25Backend(): {
   });
 
   const readService: M25ReadService = {
+    async claimMdTenantOperationalHealth() {
+      throw new Error("not used by this route test");
+    },
+    async revenueCycleSummary() {
+      throw new Error("not used by this route test");
+    },
+    async commercialClaimPaymentFacts() {
+      throw new Error("not used by this route test");
+    },
     async listAdvices(_actor, _filters, _cursor, _limit) {
       return { items: [...advices.values()], nextCursor: null };
     },

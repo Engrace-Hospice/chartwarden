@@ -121,10 +121,14 @@ function Harness({ initial = "2" }: { initial?: string }): JSX.Element {
   );
 }
 
-function mountField(get: (path: string) => unknown, perms: string[] = [], post?: () => unknown) {
+function mountField(
+  get: (path: string) => unknown,
+  perms: string[] = [],
+  post?: (...args: unknown[]) => unknown,
+) {
   const client = {
     GET: vi.fn(async (path: string) => get(path)),
-    POST: vi.fn(async () => (post ? post() : ok({ jobId: "j" }, 202))),
+    POST: vi.fn(async (...args: unknown[]) => (post ? post(...args) : ok({ jobId: "j" }, 202))),
   };
   render(
     <ApiClientProvider client={client as unknown as ApiClient}>
@@ -231,6 +235,33 @@ describe("Benefit-period field — HETS states", () => {
       headers: { "Idempotency-Key": expect.any(String) },
       body: { patientId: PATIENT, providerEntityId: PROVIDER, asOfServiceDate: TODAY },
     });
+  });
+
+  it("replays an unanswered HETS check under the same Idempotency-Key", async () => {
+    const keys: string[] = [];
+    let postCount = 0;
+    const client = mountField(
+      () => ok(NO_CHECK),
+      ["billing.eligibility.check"],
+      (_path, init) => {
+        const request = init as { headers: { "Idempotency-Key": string } };
+        keys.push(request.headers["Idempotency-Key"]);
+        postCount += 1;
+        if (postCount === 1) throw new TypeError("Failed to fetch");
+        return fail(422);
+      },
+    );
+    fireEvent.change(await screen.findByLabelText(/Provider entity for the HETS check/), {
+      target: { value: PROVIDER },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Run HETS check" }));
+    await screen.findByText(/could not be started/);
+    fireEvent.click(screen.getByRole("button", { name: "Run HETS check" }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(2));
+
+    expect(keys[0]).toBeTruthy();
+    expect(keys[1]).toBe(keys[0]);
   });
 
   it("available + computed + fresh: 'Use period N' sets the number and hets_confirmed; a different number warns", async () => {

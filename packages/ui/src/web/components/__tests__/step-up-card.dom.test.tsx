@@ -7,11 +7,12 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiClient } from "../../../core/api/client";
 import { ApiClientProvider } from "../../../core/api/provider";
-import { StepUpCard, safeReturnTo } from "../step-up-card";
+import { STEP_UP_RETURN_STATE, StepUpCard, isStepUpReturn, safeReturnTo } from "../step-up-card";
 import { ReverifyLink, isStepUpRequired, stepUpPath } from "../step-up-link";
 
 let verifyStatus = 200;
 let initiateNotEnrolled = false;
+let initiateWebauthn = false;
 let paths: string[] = [];
 
 async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -24,6 +25,12 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     return json(400, {
       error: { code: "TOTP_NOT_ENROLLED", message: "totp is not enrolled", correlationId: "c" },
     });
+  if (path === "/api/v1/sessions/step-up/initiate" && initiateWebauthn)
+    return json(200, {
+      challengeId: "11111111-1111-4111-8111-111111111111",
+      factor: "webauthn",
+      webauthnChallenge: { challenge: "AAEC", rpId: "localhost" },
+    });
   if (path === "/api/v1/sessions/step-up/initiate")
     return json(200, { challengeId: "11111111-1111-4111-8111-111111111111", factor: "totp" });
   if (verifyStatus !== 200)
@@ -33,7 +40,12 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
 
 function Where(): JSX.Element {
   const loc = useLocation();
-  return <div data-testid="where">{`${loc.pathname}${loc.search}`}</div>;
+  return (
+    <>
+      <div data-testid="where">{`${loc.pathname}${loc.search}`}</div>
+      <div data-testid="from-step-up">{String(isStepUpReturn(loc.state))}</div>
+    </>
+  );
 }
 
 function mount(
@@ -73,6 +85,7 @@ async function verifyWithCode(): Promise<void> {
 beforeEach(() => {
   verifyStatus = 200;
   initiateNotEnrolled = false;
+  initiateWebauthn = false;
   paths = [];
 });
 afterEach(() => cleanup());
@@ -97,7 +110,53 @@ describe("safeReturnTo", () => {
   });
 });
 
+describe("isStepUpReturn", () => {
+  it.each([
+    ["null", null, false],
+    ["an empty object", {}, false],
+    ["a non-true marker", { fromStepUp: "yes" }, false],
+    ["the marker", STEP_UP_RETURN_STATE, true],
+  ])("answers %s with %s", (_label, state, expected) => {
+    expect(isStepUpReturn(state)).toBe(expected);
+  });
+});
+
 describe("StepUpCard", () => {
+  it("returns with the step-up marker in the history state after a verified code", async () => {
+    mount("/step-up?returnTo=%2Fplans%2Fp1");
+    await verifyWithCode();
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/plans/p1"));
+    expect(screen.getByTestId("from-step-up").textContent).toBe("true");
+  });
+
+  it("returns with the step-up marker in the history state after a verified passkey", async () => {
+    initiateWebauthn = true;
+    const buf = (n: number) => new Uint8Array([n]).buffer;
+    vi.stubGlobal("PublicKeyCredential", class {});
+    const get = vi.fn(async () => ({
+      id: "cred",
+      rawId: buf(1),
+      type: "public-key",
+      response: {
+        authenticatorData: buf(2),
+        clientDataJSON: buf(3),
+        signature: buf(4),
+        userHandle: null,
+      },
+    }));
+    Object.defineProperty(navigator, "credentials", { value: { get }, configurable: true });
+    try {
+      mount("/step-up?returnTo=%2Fplans%2Fp1");
+      fireEvent.click(await screen.findByRole("button", { name: "Verify with a passkey" }));
+      await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/plans/p1"));
+      expect(screen.getByTestId("from-step-up").textContent).toBe("true");
+      expect(get).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(navigator, "credentials");
+    }
+  });
+
   it("renders the brand and returns to an app-relative returnTo after a verified code", async () => {
     mount(`/step-up?returnTo=${encodeURIComponent("/billing/wage-index?fy=2026")}`);
     expect(screen.getByText("Brand")).toBeTruthy();

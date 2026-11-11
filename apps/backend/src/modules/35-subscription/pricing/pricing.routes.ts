@@ -6,6 +6,7 @@
 //     POST /api/admin/pricing/plans                          create a draft (version 1 of a new family)
 //     PUT  /api/admin/pricing/plans/:id                      replace a draft's prices and bands
 //     POST /api/admin/pricing/plans/:id/publish|new-version|archive
+//     (each write on an existing version pins `If-Match: <updatedAt read>`: 428 without, 409 PRICING_PLAN_CHANGED when stale)
 //   onboarding (platform ops; `subscription.pricing_read_platform` / `subscription.onboard_platform`)
 //     GET  /api/v1/platform/pricing/plans                    the published, current versions an operator may sign
 //     POST /api/v1/platform/pricing/preview                  the price of a plan for entered inputs (no write)
@@ -18,10 +19,10 @@
 // EVERY WRITE: the permission, its ABAC predicate, a FRESH step-up, the AI-actor block (pricing is a person's decision), an
 // `Idempotency-Key` and a recorded reason. The operator is the session; the tenant is the PATH slug, never the body.
 import { requireAbac } from "@chartwarden/auth";
+import { actorOf, rejectAiActor, writeActorOf } from "@chartwarden/shared/route-kit";
 import { DEFAULT_CENSUS_BAND_THRESHOLDS } from "@chartwarden/subscription-billing";
-import type { FastifyInstance } from "fastify";
-import { rejectAiActor } from "../../../bootstrap/reject-ai-actor";
-import { actorOf, writeActorOf } from "../routes/actor";
+import { ChartWardenError, ValidationError } from "@chartwarden/types";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { IDEMPOTENT, P, PLATFORM_SCOPE, STEP_UP } from "../routes/guards";
 import type { ContractService } from "./contract-service";
 import type { PlanPricingInput, PricingPlanService } from "./plan-service";
@@ -95,6 +96,39 @@ const toInput = (body: {
   minimumMonthlyCents: body.minimumMonthlyCents,
 });
 
+const UPDATED_AT_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+/**
+ * The `If-Match` of a write on an existing version: the `updatedAt` the operator read (UTC ISO, quoted, weak-prefixed or bare).
+ * Required (428 IF_MATCH_REQUIRED); malformed is a 422. The service compares it under the row lock (409 PRICING_PLAN_CHANGED).
+ */
+export function requiredUpdatedAtPin(request: FastifyRequest): string {
+  const raw = request.headers["if-match"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== "string" || value.length === 0) {
+    throw new ChartWardenError(
+      "IF_MATCH_REQUIRED",
+      "an If-Match header naming the plan's updatedAt is required on this route",
+      428,
+    );
+  }
+  const pin = value
+    .trim()
+    .replace(/^W\//, "")
+    .replace(/^"(.*)"$/, "$1");
+  if (!UPDATED_AT_ISO.test(pin) || new Date(pin).toISOString() !== pin) {
+    throw new ValidationError("request validation failed", [
+      {
+        field: "If-Match",
+        code: "INVALID",
+        message:
+          "If-Match must be the plan's updatedAt, a UTC timestamp such as 2026-11-05T21:30:00.123Z",
+      },
+    ]);
+  }
+  return pin;
+}
+
 export function registerPricingRoutes(app: FastifyInstance, deps: PricingRouteDeps): void {
   const { plans, contracts } = deps;
 
@@ -124,7 +158,7 @@ export function registerPricingRoutes(app: FastifyInstance, deps: PricingRouteDe
     const actor = writeActorOf(request);
     const { id } = parse(PricingPlanParams, request.params);
     const body = parse(ReplacePricingDraftBody, request.body);
-    return plans.replaceDraft(actor, id, toInput(body), body.reason);
+    return plans.replaceDraft(actor, id, toInput(body), body.reason, requiredUpdatedAtPin(request));
   });
   app.post(
     "/api/admin/pricing/plans/:id/publish",
@@ -132,7 +166,8 @@ export function registerPricingRoutes(app: FastifyInstance, deps: PricingRouteDe
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(PricingPlanParams, request.params);
-      return plans.publish(actor, id, parse(PricingReasonBody, request.body).reason);
+      const { reason } = parse(PricingReasonBody, request.body);
+      return plans.publish(actor, id, reason, requiredUpdatedAtPin(request));
     },
   );
   app.post(
@@ -141,9 +176,10 @@ export function registerPricingRoutes(app: FastifyInstance, deps: PricingRouteDe
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { id } = parse(PricingPlanParams, request.params);
+      const { reason } = parse(PricingReasonBody, request.body);
       return reply
         .code(201)
-        .send(await plans.newVersion(actor, id, parse(PricingReasonBody, request.body).reason));
+        .send(await plans.newVersion(actor, id, reason, requiredUpdatedAtPin(request)));
     },
   );
   app.post(
@@ -152,7 +188,8 @@ export function registerPricingRoutes(app: FastifyInstance, deps: PricingRouteDe
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(PricingPlanParams, request.params);
-      return plans.archive(actor, id, parse(PricingReasonBody, request.body).reason);
+      const { reason } = parse(PricingReasonBody, request.body);
+      return plans.archive(actor, id, reason, requiredUpdatedAtPin(request));
     },
   );
 

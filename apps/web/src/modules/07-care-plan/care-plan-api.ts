@@ -26,6 +26,7 @@
 // row in `GET /patients/:patientId/care-plan` carries its own `version`. Nothing here invents one, and
 // nothing re-reads to "refresh" it before writing — that would defeat the check, since the point of
 // optimistic concurrency is to fail when the row moved under the caller.
+import { sharedAttemptKeys } from "@chartwarden/ui";
 import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── READ side (the Care Plan workspace screens: plan + readiness + review status + proposed changes) ──
@@ -187,14 +188,12 @@ export interface ClinicalSnapshot {
   interventions?: Intervention[];
 }
 
-export function idemKey(): string {
-  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `m7-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-}
-
+/**
+ * The mutation headers: `If-Match` whenever a row version was read. The Idempotency-Key is left to the API client, which holds one per write
+ * intent (method + URL + If-Match + body): kept across a lost reply (no answer, a gateway page, the in-flight 409), renewed by any other answer.
+ */
 export function writeHeaders(version?: number | null): Record<string, string> {
-  const header: Record<string, string> = { "Idempotency-Key": idemKey() };
+  const header: Record<string, string> = {};
   if (version != null) header["If-Match"] = String(version);
   return header;
 }
@@ -412,21 +411,6 @@ function failure<T>(status: number | undefined, body: unknown): WriteResult<T> {
 }
 
 /**
- * The §4.1.1 idempotency key a PATCH must carry.
- *
- * `randomUUID` is only present in a SECURE context, so a fallback is genuinely needed (plain http on a
- * LAN address is not hypothetical for a field laptop). The fallback is NOT a weaker key for the same
- * purpose — the key only has to be unique per logical attempt, and a retry of the same attempt reuses
- * whatever this returned, because the caller holds it for the duration of the request.
- */
-function idempotencyKey(): string {
-  return (
-    globalThis.crypto?.randomUUID?.() ??
-    `cp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-  );
-}
-
-/**
  * The two headers every M7 PATCH must carry (§7.7 + §4.1.1).
  *
  * They go in `params.header`, not a loose `headers` bag, because the contract DECLARES them as required
@@ -434,11 +418,21 @@ function idempotencyKey(): string {
  * compile. That is the difference between this and the four routes F-028 found gating authorization on
  * a header nothing declared: these are declared, required, and non-authorization by construction
  * (a forged `If-Match` earns a 409 STALE_VERSION, never access).
+ *
+ * The key is the intent's, from the shared attempt keys (`sharedAttemptKeys.run`, see patchOnce): the same key across a lost reply, a gateway
+ * page and the in-flight 409, a new one after any other answer.
  */
-const patchHeaders = (rowVersion: number): { "If-Match": string; "Idempotency-Key": string } => ({
+const patchHeaders = (
+  rowVersion: number,
+  idempotencyKey: string,
+): { "If-Match": string; "Idempotency-Key": string } => ({
   "If-Match": String(rowVersion),
-  "Idempotency-Key": idempotencyKey(),
+  "Idempotency-Key": idempotencyKey,
 });
+
+/** One PATCH under the attempt key of its intent (route + ids + version + body). A request that gets no answer rejects, keeping the key. */
+const patchIntent = (route: string, elementId: string, rowVersion: number, body: unknown): string =>
+  JSON.stringify([route, elementId, rowVersion, body]);
 
 // ── plan + version lifecycle ───────────────────────────────────────────────────────────────────────────
 
@@ -571,9 +565,13 @@ export async function patchProblem(
   rowVersion: number,
   body: PatchProblemBody,
 ): Promise<WriteResult<ProblemRecord>> {
-  const { data, error, response } = await client.PATCH(
-    "/api/v1/care-plans/{planId}/problems/{elementId}",
-    { params: { path: { planId, elementId }, header: patchHeaders(rowVersion) }, body },
+  const { data, error, response } = await sharedAttemptKeys.run(
+    patchIntent("problems", `${planId}/${elementId}`, rowVersion, body),
+    (idempotencyKey) =>
+      client.PATCH("/api/v1/care-plans/{planId}/problems/{elementId}", {
+        params: { path: { planId, elementId }, header: patchHeaders(rowVersion, idempotencyKey) },
+        body,
+      }),
   );
   if (error || !data) return failure(response?.status, error);
   return { ok: true, value: data as ProblemRecord };
@@ -622,9 +620,13 @@ export async function patchGoal(
   rowVersion: number,
   body: PatchGoalBody,
 ): Promise<WriteResult<GoalRecord>> {
-  const { data, error, response } = await client.PATCH(
-    "/api/v1/care-plans/{planId}/goals/{elementId}",
-    { params: { path: { planId, elementId }, header: patchHeaders(rowVersion) }, body },
+  const { data, error, response } = await sharedAttemptKeys.run(
+    patchIntent("goals", `${planId}/${elementId}`, rowVersion, body),
+    (idempotencyKey) =>
+      client.PATCH("/api/v1/care-plans/{planId}/goals/{elementId}", {
+        params: { path: { planId, elementId }, header: patchHeaders(rowVersion, idempotencyKey) },
+        body,
+      }),
   );
   if (error || !data) return failure(response?.status, error);
   return { ok: true, value: data as GoalRecord };
@@ -652,9 +654,13 @@ export async function patchIntervention(
   rowVersion: number,
   body: PatchInterventionBody,
 ): Promise<WriteResult<InterventionRecord>> {
-  const { data, error, response } = await client.PATCH(
-    "/api/v1/care-plans/{planId}/interventions/{elementId}",
-    { params: { path: { planId, elementId }, header: patchHeaders(rowVersion) }, body },
+  const { data, error, response } = await sharedAttemptKeys.run(
+    patchIntent("interventions", `${planId}/${elementId}`, rowVersion, body),
+    (idempotencyKey) =>
+      client.PATCH("/api/v1/care-plans/{planId}/interventions/{elementId}", {
+        params: { path: { planId, elementId }, header: patchHeaders(rowVersion, idempotencyKey) },
+        body,
+      }),
   );
   if (error || !data) return failure(response?.status, error);
   return { ok: true, value: data as InterventionRecord };

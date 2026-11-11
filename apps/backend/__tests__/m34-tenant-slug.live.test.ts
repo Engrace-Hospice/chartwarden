@@ -32,6 +32,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { m34PlatformBypassAuditor } from "../src/index";
 import { createTenantOrgCreationProvider } from "../src/modules/02-identity/tenant-org-creation-provider";
+import { isTenantBaaDocumentFiled } from "../src/modules/22-documents/onboarding-baa-document-port";
 import { M34_OUTBOX_EVENTS } from "../src/modules/34-saas-tenant-platform/events-by-m34";
 import {
   type DrizzleTenantPlatformDeps,
@@ -119,6 +120,7 @@ describe.skipIf(!DB_URL)("M34 tenant slug provisioning — LIVE Postgres, real p
       throw new Error("not used by this suite");
     };
     const deps: DrizzleTenantPlatformDeps = {
+      baaDocuments: { isFiled: isTenantBaaDocumentFiled },
       platformDb: platformDb.db,
       enqueue: { enqueue: async (queue, jobKey) => ({ jobId: `${queue}-${jobKey}` }) },
       legalHoldClear: async () => true,

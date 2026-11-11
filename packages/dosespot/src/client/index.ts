@@ -4,10 +4,16 @@
 // The live HTTP transport (`http.ts`) binds at boot with the per-tenant clinic credentials; until then the
 // deny-stub keeps the draft/queue path (D11) functional. Re-exports the whole client surface.
 export {
+  ConfigUnavailableError,
   DegradedError,
+  NotEnabledError,
   RetryableError,
+  UnconfirmedOutcomeError,
+  isConfigUnavailableError,
   isDegradedError,
+  isNotEnabledError,
   isRetryableError,
+  isUnconfirmedOutcomeError,
   type DoseSpotOperation,
 } from "./errors";
 export {
@@ -37,6 +43,8 @@ export type {
   DoseSpotMedHistoryResponse,
   DoseSpotNewRxPayload,
   DoseSpotNewRxResponse,
+  DoseSpotCallOptions,
+  DoseSpotNewRxResume,
   DoseSpotPatientPayload,
   DoseSpotPatientResponse,
   DoseSpotPrescriptionStatusResponse,
@@ -47,6 +55,7 @@ export type {
   DoseSpotRxBenefitResponse,
 } from "./contract";
 export { createUnboundDoseSpotClient } from "./unbound";
+export { createExpirySweeper, pruneExpired } from "./token-cache";
 export {
   DOSESPOT_ENDPOINTS,
   TOKEN_ENDPOINT,
@@ -57,15 +66,40 @@ export {
   type EndpointVerification,
 } from "./endpoints";
 export {
+  DOSESPOT_ENV_BOUND_TARGET,
   DOSESPOT_TENANT_CONFIGS_ENV,
+  targetOfConfig,
   createEnvTenantConfigResolver,
+  createLayeredTenantConfigResolver,
   createUnboundTenantConfigResolver,
   parseTenantConfig,
+  type DoseSpotConfigLookup,
+  type DoseSpotConfigPurpose,
   type DoseSpotTenantConfig,
   type DoseSpotTenantConfigResolver,
+  type DoseSpotTenantConfigSource,
 } from "./tenant-config";
+export {
+  DOSESPOT_PRODUCTION_ENABLED_ENV,
+  DOSESPOT_SANDBOX_DEFAULT_BASE_URL,
+  DOSESPOT_SANDBOX_ENABLED_ENV,
+  environmentAllowsLive,
+  isSandboxEnabled,
+  resolveDoseSpotEnvironment,
+  subscriptionKeyFallback,
+  type DoseSpotEnvironment,
+  type DoseSpotEnvironmentResolution,
+} from "./environments";
+export {
+  createHttpDoseSpotConnectionProbe,
+  type ConnectionProbeOutcome,
+  type DoseSpotConnectionProbe,
+  type HttpConnectionProbeDeps,
+} from "./probe";
 export { WIRE_FIELD_MAPPING_VERIFIED, phaseOfStatus, sigDirections } from "./mappers";
 export {
+  DOSESPOT_REQUEST_TIMEOUT_MS,
+  NEWRX_PROGRESS_MAX_ENTRIES,
   createHttpDoseSpotClient,
   type DoseSpotFetch,
   type HttpDoseSpotClientDeps,

@@ -1,0 +1,275 @@
+// apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/config-store.ts — `tenant_clearinghouse_config` over ONE
+// open org-scoped transaction (the caller's `withOrgContext`; RLS scopes every statement to that tenant). The service
+// takes a `ConfigStore` so its rules are tested without a database; this is the Drizzle implementation.
+import { type DbClient, schema } from "@chartwarden/db";
+import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
+import { and, eq, gte, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
+import type { CredentialCheckResult } from "./fingerprint-key-check";
+
+const C = schema.tenantClearinghouseConfig;
+const A = schema.clearinghouseSubmissionAttempts;
+const R = schema.tenantClearinghouseCredentialReservation;
+
+/**
+ * The transaction-local setting migration 1437's trigger requires before `released_at` may be set: only `releaseCredentials` (the
+ * platform-ops release) sets it, so no other code path on the app role can release a reservation.
+ */
+const RELEASE_GUC = "app.clearinghouse_release";
+
+/**
+ * The transaction-local setting migration 1468's guard trigger requires before any revocation column may change: only this store sets
+ * it, and only for a patch that touches one of {@link REVOCATION_COLUMNS}, so no other code path on the app role can revoke, clear or
+ * rewrite a revocation. Defence in depth, not a privilege boundary (a session running arbitrary SQL as the app role could set it).
+ */
+const REVOCATION_GUC = "app.clearinghouse_baa_revocation";
+/** The columns the guard trigger protects (a patch carrying any of them, even as null, is a revocation write). */
+export const REVOCATION_COLUMNS = [
+  "baaRevokedAt",
+  "baaRevokedByMembershipId",
+  "baaRevokedReasonCode",
+  "baaRevokedTicketRef",
+  "baaLastRevokedAt",
+  "baaLastRevokedDocumentRef",
+  "revokedVendorLeftAt",
+] as const;
+
+export type ConfigRow = schema.TenantClearinghouseConfigRow;
+
+/** A fingerprint to reserve, with the public id of its key (null: recorded before migration 1436). */
+export interface HeldFingerprint {
+  readonly keyId: string | null;
+  readonly fingerprint: string;
+}
+export type NewConfigRow = Omit<schema.NewTenantClearinghouseConfigRow, "id" | "createdAt">;
+/** Every column an update may touch (the migration's column-level UPDATE grant). */
+export type ConfigPatch = Partial<Omit<ConfigRow, "id" | "organizationId" | "createdAt">>;
+
+export interface ConfigStore {
+  /**
+   * The open org-scoped transaction this store reads and writes on; absent on the in-memory store. A rule that must read another
+   * table while the config row is locked reads it on THIS transaction, never on a second pooled connection (re-review L5: a pool
+   * drained by requests that each hold one connection and wait for another deadlocks the service).
+   */
+  readonly tx?: DbClient;
+  /** The org's row, locked for the rest of the transaction; null when it has none. */
+  findForUpdate(organizationId: string): Promise<ConfigRow | null>;
+  find(organizationId: string): Promise<ConfigRow | null>;
+  insert(row: NewConfigRow): Promise<ConfigRow>;
+  /** Compare-and-set on `version`; null when another writer moved it first. */
+  update(
+    organizationId: string,
+    expectedVersion: number,
+    patch: ConfigPatch,
+  ): Promise<ConfigRow | null>;
+  /**
+   * True when the org's vendor responses may still be arriving: a production submission still `reserved`, or one reserved at or
+   * after `since` (a `sent` attempt is final, so its reservation time is the only clock the attempt row carries). Behind both the
+   * vendor / mode lock and the credential release (credential-reservation.ts `hasRecentProductionTraffic`). `notBefore` (the vendor
+   * lock only) ignores every attempt reserved earlier, `reserved` ones included: the traffic of a revoked vendor the tenant has left.
+   */
+  hasRecentProductionAttempts(
+    organizationId: string,
+    since: Date,
+    notBefore?: Date,
+  ): Promise<boolean>;
+  /** The same set, counted: how many are still in flight (`reserved`) and how many were `sent` since `since`. */
+  countRecentProductionAttempts(
+    organizationId: string,
+    since: Date,
+  ): Promise<{ readonly inFlight: number; readonly sent: number }>;
+  /** True when THIS org already holds an unreleased reservation of the fingerprint (migration 1435). */
+  holdsCredential(organizationId: string, fingerprint: string): Promise<boolean>;
+  /** How many unreleased reservations the org holds (each credential has one per fingerprint key it was saved under). */
+  heldReservationCount(organizationId: string): Promise<number>;
+  /**
+   * Reserve the fingerprint to the org. False when an unreleased reservation of it already exists (another org's, which RLS hides,
+   * or this org's from a concurrent save): `ON CONFLICT DO NOTHING` on the cross-organization index, so the transaction stays
+   * usable for the caller to tell the two apart.
+   */
+  reserveCredential(
+    organizationId: string,
+    vendor: string,
+    fingerprint: HeldFingerprint,
+  ): Promise<boolean>;
+  /** Release every reservation the org holds EXCEPT the `keep` fingerprints (its current credential's); how many were released. */
+  releaseCredentials(
+    organizationId: string,
+    keep: readonly string[],
+    release: { readonly userId: string; readonly reason: string; readonly at: Date },
+  ): Promise<number>;
+}
+
+export const isUniqueViolation = (err: unknown): boolean => {
+  const e = err as { code?: string; cause?: { code?: string } } | null;
+  return e?.code === "23505" || e?.cause?.code === "23505";
+};
+
+/** The audited platform-context job the boot check runs as (registered at boot beside the other platform jobs). */
+export const M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID = "m23.clearinghouse.platform-credential-check";
+
+/**
+ * The boot check, on the platform carrier through the gated, audited `withPlatformContext` (migration 1436's column grant: id,
+ * fingerprint, key id, released_at), across every organization: see `CredentialCheckResult`. Every reservation under an unknown key
+ * id (a KEK change made without listing the old subkey as retired; security review MEDIUM-1) is caught by `keyIds`; one with a NULL
+ * key id cannot be checked, so it is counted on its own (`unverifiable`) rather than dropped.
+ */
+export async function checkHeldCredentials(
+  deps: {
+    readonly platformDb: DbClient;
+    readonly auditBypass: PlatformBypassAuditor<DbClient>;
+  },
+  fingerprints: readonly string[],
+): Promise<CredentialCheckResult> {
+  return withPlatformContext<DbClient, CredentialCheckResult>(
+    deps.platformDb,
+    {
+      jobId: M23_PLATFORM_CREDENTIAL_CHECK_JOB_ID,
+      reason:
+        "M23 boot check: no tenant holds the platform's own clearinghouse key, and every held fingerprint is under a configured key",
+      crossTenant: true,
+    },
+    deps.auditBypass,
+    async (tx) => {
+      const held =
+        fingerprints.length === 0
+          ? []
+          : await tx
+              .select({ id: R.id })
+              .from(R)
+              .where(
+                and(inArray(R.credentialFingerprint, [...fingerprints]), isNull(R.releasedAt)),
+              );
+      const keyIds = await tx
+        .selectDistinct({ keyId: R.credentialFingerprintKeyId })
+        .from(R)
+        .where(and(isNull(R.releasedAt), isNotNull(R.credentialFingerprintKeyId)));
+      const [nullKey] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(R)
+        .where(and(isNull(R.releasedAt), isNull(R.credentialFingerprintKeyId)));
+      return {
+        held: held.length,
+        keyIds: keyIds.flatMap((r) => (r.keyId === null ? [] : [r.keyId])),
+        unverifiable: Number(nullKey?.n ?? 0),
+      };
+    },
+  );
+}
+
+/** The Drizzle store over a transaction already scoped to the org (the tenant's own, or a platform operator's on its behalf). */
+export function createDrizzleConfigStore(tx: DbClient): ConfigStore {
+  return {
+    tx,
+    async findForUpdate(organizationId) {
+      const [row] = await tx
+        .select()
+        .from(C)
+        .where(eq(C.organizationId, organizationId))
+        .for("update");
+      return row ?? null;
+    },
+    async find(organizationId) {
+      const [row] = await tx.select().from(C).where(eq(C.organizationId, organizationId)).limit(1);
+      return row ?? null;
+    },
+    async insert(row) {
+      const [created] = await tx.insert(C).values(row).returning();
+      if (!created) throw new Error("tenant clearinghouse config insert returned no row");
+      return created;
+    },
+    async update(organizationId, expectedVersion, patch) {
+      // only a patch that touches a revocation column carries the guard trigger's setting, and only for that one statement
+      const revocationWrite = REVOCATION_COLUMNS.some((column) => column in patch);
+      if (revocationWrite)
+        await tx.execute(sql`SELECT set_config(${REVOCATION_GUC}, 'service', true)`);
+      const [row] = await tx
+        .update(C)
+        .set({ ...patch, version: expectedVersion + 1 })
+        .where(and(eq(C.organizationId, organizationId), eq(C.version, expectedVersion)))
+        .returning();
+      if (revocationWrite) await tx.execute(sql`SELECT set_config(${REVOCATION_GUC}, '', true)`);
+      return row ?? null;
+    },
+    async hasRecentProductionAttempts(organizationId, since, notBefore) {
+      const [hit] = await tx
+        .select({ id: A.id })
+        .from(A)
+        .where(
+          and(
+            eq(A.organizationId, organizationId),
+            eq(A.usage, "production"),
+            or(
+              and(eq(A.status, "reserved"), notBefore ? gte(A.reservedAt, notBefore) : undefined),
+              and(eq(A.status, "sent"), gte(A.reservedAt, since)),
+            ),
+          ),
+        )
+        .limit(1);
+      return hit !== undefined;
+    },
+    async countRecentProductionAttempts(organizationId, since) {
+      const [row] = await tx
+        .select({
+          inFlight: sql<number>`count(*) filter (where ${A.status} = 'reserved')::int`,
+          sent: sql<number>`count(*) filter (where ${A.status} = 'sent' and ${A.reservedAt} >= ${since})::int`,
+        })
+        .from(A)
+        .where(and(eq(A.organizationId, organizationId), eq(A.usage, "production")));
+      return { inFlight: Number(row?.inFlight ?? 0), sent: Number(row?.sent ?? 0) };
+    },
+    async holdsCredential(organizationId, fingerprint) {
+      const [hit] = await tx
+        .select({ id: R.id })
+        .from(R)
+        .where(
+          and(
+            eq(R.organizationId, organizationId),
+            eq(R.credentialFingerprint, fingerprint),
+            isNull(R.releasedAt),
+          ),
+        )
+        .limit(1);
+      return hit !== undefined;
+    },
+    async heldReservationCount(organizationId) {
+      const [row] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(R)
+        .where(and(eq(R.organizationId, organizationId), isNull(R.releasedAt)));
+      return Number(row?.n ?? 0);
+    },
+    async reserveCredential(organizationId, vendor, fingerprint) {
+      const inserted = await tx
+        .insert(R)
+        .values({
+          organizationId,
+          vendor,
+          credentialFingerprint: fingerprint.fingerprint,
+          credentialFingerprintKeyId: fingerprint.keyId,
+        })
+        .onConflictDoNothing({ target: R.credentialFingerprint, where: sql`released_at IS NULL` })
+        .returning({ id: R.id });
+      return inserted.length > 0;
+    },
+    async releaseCredentials(organizationId, keep, release) {
+      await tx.execute(sql`SELECT set_config(${RELEASE_GUC}, 'platform', true)`);
+      const rows = await tx
+        .update(R)
+        .set({
+          releasedAt: release.at,
+          releasedByUserId: release.userId,
+          releaseReason: release.reason,
+          updatedAt: release.at,
+        })
+        .where(
+          and(
+            eq(R.organizationId, organizationId),
+            isNull(R.releasedAt),
+            keep.length === 0 ? sql`true` : notInArray(R.credentialFingerprint, [...keep]),
+          ),
+        )
+        .returning({ id: R.id });
+      return rows.length;
+    },
+  };
+}

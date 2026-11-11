@@ -33,6 +33,11 @@ import {
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, desc, eq, inArray, isNull, lte } from "drizzle-orm";
 import { pickGoverningBaa } from "../routes/platform/activation-guards";
+import { governingBaaDocumentFiled } from "../routes/platform/baa-guards";
+import {
+  ONBOARDING_WRITABLE_STATUSES,
+  lockTenantOnboardingShared,
+} from "../routes/platform/tenant-onboarding-lock";
 import { M34_JOB_SCHEDULES, M34_QUEUES } from "./index";
 
 /**
@@ -157,7 +162,21 @@ export interface OnboardingFactReaders {
   readonly orgAdminCount?: (orgId: string) => Promise<number>;
   /** M29/M27/M12 attestation facts with no M34-reachable table; absent ⇒ false (the step stays blocked, honestly). */
   readonly macFeedConfigured?: (orgId: string) => Promise<boolean>;
+  /** M23 (ADR-0053 amendment 2026-11-06): the org's clearinghouse choice is settled (`outside`, or a vendor in `active` status). */
+  readonly clearinghouseSettled?: (orgId: string) => Promise<boolean>;
+  /**
+   * M22 (BAA documents): the governing BAA's `documentId` is a signed BAA filed for THIS organization (a `tenant_baa` document row in
+   * it), judged on the pass's own org-scoped transaction: an executed BAA whose link does not verify (another tenant's document,
+   * another kind, no document) leaves step 3 unsettled. Absent means the link does not hold, like every other reader here (the step stays
+   * blocked, honestly): an unwired reader can never settle step 3 on the status alone.
+   */
+  readonly baaDocumentFiled?: (
+    tx: DbClient,
+    ref: { readonly organizationId: string; readonly documentId: string },
+  ) => Promise<boolean>;
   readonly dosespotKickoffRecorded?: (orgId: string) => Promise<boolean>;
+  /** M12 (tenant onboarding slice 4, ADR-0111): the org's DoseSpot clinic registration is `active`. */
+  readonly dosespotSettled?: (orgId: string) => Promise<boolean>;
   readonly xeroConnected?: (orgId: string) => Promise<boolean>;
   readonly gustoConnected?: (orgId: string) => Promise<boolean>;
 }
@@ -190,6 +209,11 @@ async function gatherOnboardingContext(
     tasks.filter((t) => t.status === "done" || t.status === "skipped").map((t) => t.templateKey),
   );
   const read = (fn?: (o: string) => Promise<boolean>) => (fn ? fn(orgId) : Promise.resolve(false));
+  const filedCheck = readers.baaDocumentFiled;
+  const baaLinkHolds =
+    latestBaa !== undefined &&
+    filedCheck !== undefined &&
+    (await governingBaaDocumentFiled(latestBaa, (ref) => filedCheck(tx, ref)));
   return {
     providerEntityCount: seed.providerEntities.length,
     locationCount: seed.locationCount,
@@ -198,11 +222,13 @@ async function gatherOnboardingContext(
     primaryLocationExists: seed.locationCount > 0,
     orgAdminAcceptedMembershipCount: adminCount,
     macFeedConfigured: await read(readers.macFeedConfigured),
+    clearinghouseSettled: await read(readers.clearinghouseSettled),
     dosespotKickoffRecorded: await read(readers.dosespotKickoffRecorded),
+    dosespotSettled: await read(readers.dosespotSettled),
     xeroConnected: await read(readers.xeroConnected),
     gustoConnected: await read(readers.gustoConnected),
     complianceOfficerAssigned: Boolean(account?.officer),
-    baaExecuted: latestBaa?.baaStatus === "executed",
+    baaExecuted: latestBaa?.baaStatus === "executed" && baaLinkHolds,
     allCanonicalTasksDoneOrSkipped: canonical.every((t) => settled.has(t.key)),
   };
 }
@@ -440,41 +466,73 @@ export interface OnboardingAdvanceDeps {
 /**
  * One advance pass for a tenant, inside its own org transaction: settle `auto`/`either` steps whose fact now holds,
  * block an unmet `auto` step, raise overdue alerts. It never activates a tenant.
+ *
+ * Only for a tenant still provisioning or onboarding (`ONBOARDING_WRITABLE_STATUSES`, read in the same transaction under the shared
+ * onboarding lock, so a go-live approval cannot commit between the read and the pass's writes): every caller (the
+ * sweep, the wizard, the onboarding-data writes, the BAA register) routes through here, so a live tenant's write (a BAA renewal) settles
+ * no step and emits no onboarding event (m34.tenant.onboarding_overdue) whoever triggers the pass.
  */
 export function createOnboardingAdvancer(
   deps: OnboardingAdvanceDeps,
 ): (input: { tenantAccountId: string; orgId: string }) => Promise<OnboardingAdvanceReport> {
   const now = deps.now ?? (() => new Date());
   return (input) =>
-    withOrgContext(deps.db, { organizationId: input.orgId, userId: SYSTEM_USER_ID }, (rawTx) => {
-      const tx = rawTx as unknown as DbClient;
-      const repo = new OnboardingRepository(tx);
-      return runOnboardingAdvance(input, {
-        repo,
-        now,
-        gatherContext: (i) => gatherOnboardingContext(tx, i, deps.facts ?? {}, repo),
-        publishOutbox: async (payload) => {
-          const { event, ...rest } = payload;
-          await deps.outbox.publish(tx, {
-            eventName: event,
-            payload: rest,
-            organizationId: input.orgId,
-            aggregateKind: "tenant_account",
-            aggregateId: payload.tenantAccountId,
-          });
-        },
-        routeAlert: async (alert) => {
-          await deps.alerts.emit(input.orgId, {
-            eventType: alert.alertKey,
-            payload: { tenantAccountId: alert.tenantAccountId, templateKey: alert.templateKey },
-            severity: "warn",
-            correlationId: `m34-onboarding-${alert.alertKey}-${alert.tenantAccountId}-${alert.templateKey ?? "all"}-${now()
-              .toISOString()
-              .slice(0, 10)}`,
-          });
-        },
-      });
-    });
+    withOrgContext(
+      deps.db,
+      { organizationId: input.orgId, userId: SYSTEM_USER_ID },
+      async (rawTx) => {
+        const tx = rawTx as unknown as DbClient;
+        // The status read holds for the whole pass: a go-live approval (the EXCLUSIVE lock) waits for this pass to commit, and a pass
+        // that starts after it sees `active`. Taken before any read or row lock (every caller runs the pass after its own commit).
+        await lockTenantOnboardingShared(tx, input.orgId);
+        const [account] = await tx
+          .select({ status: schema.tenantAccount.status })
+          .from(schema.tenantAccount)
+          .where(eq(schema.tenantAccount.id, input.tenantAccountId))
+          .limit(1);
+        if (!account || !ONBOARDING_WRITABLE_STATUSES.has(account.status)) {
+          return notOnboarding(input.tenantAccountId);
+        }
+        const repo = new OnboardingRepository(tx);
+        return runOnboardingAdvance(input, {
+          repo,
+          now,
+          gatherContext: (i) => gatherOnboardingContext(tx, i, deps.facts ?? {}, repo),
+          publishOutbox: async (payload) => {
+            const { event, ...rest } = payload;
+            await deps.outbox.publish(tx, {
+              eventName: event,
+              payload: rest,
+              organizationId: input.orgId,
+              aggregateKind: "tenant_account",
+              aggregateId: payload.tenantAccountId,
+            });
+          },
+          routeAlert: async (alert) => {
+            await deps.alerts.emit(input.orgId, {
+              eventType: alert.alertKey,
+              payload: { tenantAccountId: alert.tenantAccountId, templateKey: alert.templateKey },
+              severity: "warn",
+              correlationId: `m34-onboarding-${alert.alertKey}-${alert.tenantAccountId}-${alert.templateKey ?? "all"}-${now()
+                .toISOString()
+                .slice(0, 10)}`,
+            });
+          },
+        });
+      },
+    );
+}
+
+/** The report of a pass that did nothing because the tenant is past (or not in) onboarding: no step, nothing settled or flagged. */
+function notOnboarding(tenantAccountId: string): OnboardingAdvanceReport {
+  return {
+    tenantAccountId,
+    currentStep: "",
+    nextStep: "",
+    completed: [],
+    blocked: [],
+    overdue: [],
+  };
 }
 
 /** Tenants that are `active` with an approved go-live whose organization is still `created` (platform credential, cross-tenant). */

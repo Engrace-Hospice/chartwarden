@@ -37,7 +37,16 @@ import type {
   DoseSpotRxBenefitResponse,
 } from "./contract";
 import { DOSESPOT_ENDPOINTS, type DoseSpotEndpoint, TOKEN_ENDPOINT, buildPath } from "./endpoints";
-import { DegradedError, type DoseSpotOperation, RetryableError, isRetryableError } from "./errors";
+import {
+  ConfigUnavailableError,
+  DegradedError,
+  type DoseSpotOperation,
+  NotEnabledError,
+  RetryableError,
+  UnconfirmedOutcomeError,
+  isRetryableError,
+  isUnconfirmedOutcomeError,
+} from "./errors";
 import {
   asString,
   findPrescription,
@@ -51,7 +60,19 @@ import {
   toPatientBody,
 } from "./mappers";
 import { DOSESPOT_RETRY_CONFIG, classifyRetryableStatus, computeBackoffDelays } from "./retry";
-import type { DoseSpotTenantConfig, DoseSpotTenantConfigResolver } from "./tenant-config";
+import {
+  type DoseSpotConfigPurpose,
+  type DoseSpotTenantConfig,
+  type DoseSpotTenantConfigResolver,
+  targetOfConfig,
+} from "./tenant-config";
+import {
+  createExpirySweeper,
+  evictOtherGenerations,
+  pruneExpired,
+  tokenCacheKey,
+} from "./token-cache";
+import { buildTokenRequest } from "./token-request";
 
 /** Minimal fetch surface (the global `fetch` satisfies it; tests inject a recorded fake). */
 export type DoseSpotFetch = (
@@ -61,6 +82,11 @@ export type DoseSpotFetch = (
     readonly headers: Readonly<Record<string, string>>;
     readonly body?: string;
     readonly signal?: AbortSignal;
+    /**
+     * Always `"error"`: a redirect is never followed. The token body holds the clinic key and the headers the Subscription-Key, and a
+     * 307/308 would re-send both to wherever it points (the standard strips only `Authorization` across origins).
+     */
+    readonly redirect?: "error";
   },
 ) => Promise<{
   readonly status: number;
@@ -82,8 +108,40 @@ export interface HttpDoseSpotClientDeps {
   }) => void;
 }
 
-const DEFAULT_TIMEOUT_MS = 15_000;
+/** The hard timeout of ONE DoseSpot request. The enrolment's claim window is sized from it. */
+export const DOSESPOT_REQUEST_TIMEOUT_MS = 15_000;
 const TOKEN_REFRESH_SKEW_MS = 60_000;
+/**
+ * Endpoints that are NEVER re-sent inside one call. `addClinician` creates a clinician and carries no idempotency key (DoseSpot's own
+ * dedupe by NPI is unverified), so a 5xx or a timeout, which may well mean the clinician WAS created, is ONE attempt and then a retryable
+ * degraded error; the enrolment's claim decides when a second attempt is allowed. Calls that carry an `Idempotency-Key` keep their retries.
+ */
+const NO_IN_CALL_RETRY: ReadonlySet<keyof typeof DOSESPOT_ENDPOINTS> = new Set([
+  "addClinician",
+  // the SEND transmits to the pharmacy and DoseSpot's dedupe of a repeated send is unverified: one attempt per call, and a timeout is held
+  "sendPrescriptions",
+]);
+/**
+ * Endpoints whose request, once it may have left, cannot be assumed unanswered: a timeout or a dropped connection (anything but a connection
+ * that was never made) is an {@link UnconfirmedOutcomeError}, so the caller holds the order instead of re-sending it.
+ */
+const AMBIGUOUS_ON_LOST_ANSWER: ReadonlySet<keyof typeof DOSESPOT_ENDPOINTS> = new Set([
+  "sendPrescriptions",
+]);
+/**
+ * For those same endpoints, every 5xx but a 503 is held like a lost answer: a 500 (failed mid-way), a 502/504 (a gateway lost the
+ * upstream's answer), a 501, a 505-511 or a proxy's 52x/599 may follow a send that reached the pharmacy. A 503 (and a 429) says the
+ * request was not taken and stays retryable.
+ */
+const isAmbiguousStatus = (status: number): boolean => status >= 500 && status !== 503;
+/** Socket errors that mean the connection was never made, so nothing reached DoseSpot (a connect TIMEOUT is an abort, not one of these: it is held). */
+const NOT_CONNECTED_CODES: ReadonlySet<string> = new Set([
+  // Bun 1.3.5 (production's runtime) reports a refused connection AND a failed DNS lookup as a plain Error with code "ConnectionRefused"
+  "ConnectionRefused",
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+]);
 const UNSUPPORTED_MESSAGE =
   "This operation is not available against the verified DoseSpot API surface; it requires DoseSpot sandbox verification before it can be enabled.";
 
@@ -92,8 +150,17 @@ interface CachedToken {
   readonly expiresAtMs: number;
 }
 
+/**
+ * How many created-but-unsent prescription ids one process remembers. The memory serves a retry on the SAME worker; the persisted id on the transmission
+ * row is the durable one, so an entry is only an optimisation. It is bounded because an entry is never removed when its order is rekeyed (a registration
+ * move gives the order a new key: the old key's entry is never served again) or abandoned: the oldest entry is dropped past the cap.
+ */
+export const NEWRX_PROGRESS_MAX_ENTRIES = 1000;
+
 interface NewRxProgress {
   readonly prescriptionId: string;
+  /** The clinic (host and clinic id) the prescription was CREATED under: an id is only ever sent under that same clinic. */
+  readonly target: string;
 }
 
 const defaultFetch: DoseSpotFetch = (url, init) =>
@@ -104,9 +171,13 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
   const now = deps.now ?? (() => new Date());
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const newCorrelationId = deps.newCorrelationId ?? randomUUID;
-  const timeoutMs = deps.requestTimeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = deps.requestTimeoutMs ?? DOSESPOT_REQUEST_TIMEOUT_MS;
 
   const tokens = new Map<string, CachedToken>();
+  const tokenExpired = (t: CachedToken): boolean => t.expiresAtMs <= now().getTime();
+  // a tenant that left the active set is never minted for again: an unref'd timer drops its expired bearer token (and every other
+  // expired one) instead of waiting for a process exit
+  const armTokenSweep = createExpirySweeper(tokens, tokenExpired);
   const breakers = new Map<string, BreakerSnapshot>();
   const newRxProgress = new Map<string, NewRxProgress>();
 
@@ -117,21 +188,64 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     correlationId: string,
   ) => new DegradedError("dosespot", op, retryable, message, correlationId);
 
-  function configOrDeny(
+  /** A resolver fault (database, key ring, KEK, credential): a retryable degraded error naming nothing of the cause, which rides on `cause`. */
+  const configUnavailable = (op: DoseSpotOperation, correlationId: string, cause: unknown) =>
+    new ConfigUnavailableError(
+      "dosespot",
+      op,
+      "E-prescribe is temporarily unavailable for this organization; the request will retry automatically.",
+      correlationId,
+      cause,
+    );
+
+  /**
+   * The tenant's config for `purpose`, or a non-retryable denial. The resolver is awaited on EVERY call (a database-backed one
+   * re-reads the row), so a deactivation or rotation takes effect on the very next call. A resolver that THROWS (a sealed
+   * credential that cannot be opened, a key ring or database fault) becomes a retryable {@link ConfigUnavailableError} with the
+   * original on `cause`: a fault, never "not configured". A WORKER holding queued orders does not meet it order by order: the
+   * transmit pass resolves the config once before claiming and skips the org, so only a caller without that preflight sees it here.
+   */
+  async function configOrDeny(
     op: DoseSpotOperation,
     orgId: string,
     correlationId: string,
-  ): DoseSpotTenantConfig {
-    const cfg = deps.resolver.configFor(orgId);
+    purpose: DoseSpotConfigPurpose = "operate",
+  ): Promise<DoseSpotTenantConfig> {
+    let cfg: DoseSpotTenantConfig | null;
+    try {
+      cfg = await deps.resolver.configFor(orgId, purpose);
+    } catch (cause) {
+      throw configUnavailable(op, correlationId, cause);
+    }
     if (cfg === null) {
-      throw degraded(
+      throw new NotEnabledError(
+        "dosespot",
         op,
-        false,
         "E-prescribe is not enabled for this organization; DoseSpot credentials are not configured.",
         correlationId,
       );
     }
     return cfg;
+  }
+
+  /**
+   * A caller that began under one registration (`expectedTarget`) must not be served another clinic's credentials: each resolution of the config is compared
+   * with it right after it is read, before anything is sent. A mismatch is a denial like a deactivated registration (the caller's worker waits and runs
+   * again under the new one). What this cannot stop is a move that lands after the config was read while that request is already on the wire.
+   */
+  function assertExpectedTarget(
+    op: DoseSpotOperation,
+    cfg: DoseSpotTenantConfig,
+    expectedTarget: string | undefined,
+    correlationId: string,
+  ): void {
+    if (expectedTarget === undefined || targetOfConfig(cfg) === expectedTarget) return;
+    throw new NotEnabledError(
+      "dosespot",
+      op,
+      "The DoseSpot registration moved to another clinic while this request was being prepared; it will run again under the new registration.",
+      correlationId,
+    );
   }
 
   /** One raw HTTP exchange → status + body text. Network failures and timeouts become RetryableError. */
@@ -150,11 +264,19 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         headers,
         ...(body !== undefined ? { body } : {}),
         signal: controller.signal,
+        redirect: "error",
       });
       return { status: res.status, text: await res.text() };
     } catch (err) {
       const aborted = err instanceof Error && err.name === "AbortError";
-      throw new RetryableError("network_timeout", aborted ? "timeout" : "network_error");
+      // Bun puts the code on the error itself (`code: "ConnectionRefused"`, no cause); undici puts the socket code on `cause`
+      const shaped = err as { code?: unknown; cause?: { code?: unknown } } | null;
+      const code = shaped?.code ?? shaped?.cause?.code;
+      const notConnected = typeof code === "string" && NOT_CONNECTED_CODES.has(code);
+      throw new RetryableError(
+        "network_timeout",
+        aborted ? "timeout" : notConnected ? "connect_failed" : "network_error",
+      );
     } finally {
       clearTimeout(timer);
     }
@@ -167,24 +289,13 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     clinicianId: string,
     correlationId: string,
   ): Promise<string> {
-    const basic = Buffer.from(`${cfg.clinicId}:${cfg.clinicKey}`, "utf8").toString("base64");
-    const form = new URLSearchParams({
-      grant_type: "password",
-      Username: clinicianId,
-      Password: cfg.clinicKey,
-      scope: "api",
-    }).toString();
+    const request = buildTokenRequest(cfg, clinicianId);
     const res = await exchange(
       cfg,
       TOKEN_ENDPOINT,
       TOKEN_ENDPOINT.path,
-      {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${basic}`,
-        "Subscription-Key": cfg.subscriptionKey,
-        Accept: "application/json",
-      },
-      form,
+      request.headers,
+      request.body,
     );
     const retryable = classifyRetryableStatus(res.status);
     if (retryable) throw retryable;
@@ -209,10 +320,14 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     }
     const expiresIn = Number(pick(parsed, "expires_in"));
     const ttlMs = (Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : 600) * 1000;
-    tokens.set(`${orgId}|${clinicianId}`, {
+    const key = tokenCacheKey(orgId, clinicianId, cfg.version);
+    evictOtherGenerations(tokens, orgId, clinicianId, key);
+    pruneExpired(tokens, tokenExpired); // any org's mint drops every org's expired token
+    tokens.set(key, {
       token: accessToken,
       expiresAtMs: now().getTime() + ttlMs,
     });
+    armTokenSweep();
     return accessToken;
   }
 
@@ -224,7 +339,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     correlationId: string,
     forceFresh: boolean,
   ): Promise<string> {
-    const cached = tokens.get(`${orgId}|${clinicianId}`);
+    const cached = tokens.get(tokenCacheKey(orgId, clinicianId, cfg.version));
     if (!forceFresh && cached && cached.expiresAtMs - TOKEN_REFRESH_SKEW_MS > now().getTime()) {
       return cached.token;
     }
@@ -242,28 +357,62 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     body: unknown,
     idempotencyKey: string | undefined,
     correlationId: string,
+    ambiguousOnLostAnswer: boolean,
   ): Promise<unknown> {
     let forceFresh = false;
     for (let auth = 0; auth < 2; auth += 1) {
       const token = await tokenFor(op, orgId, cfg, clinicianId, correlationId, forceFresh);
-      const res = await exchange(
-        cfg,
-        endpoint,
-        path,
-        {
-          Authorization: `Bearer ${token}`,
-          "Subscription-Key": cfg.subscriptionKey,
-          Accept: "application/json",
-          "X-Correlation-Id": correlationId,
-          ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-          ...(idempotencyKey !== undefined ? { "Idempotency-Key": idempotencyKey } : {}),
-        },
-        body === undefined ? undefined : JSON.stringify(body),
-      );
+      let res: { status: number; text: string };
+      try {
+        res = await exchange(
+          cfg,
+          endpoint,
+          path,
+          {
+            Authorization: `Bearer ${token}`,
+            "Subscription-Key": cfg.subscriptionKey,
+            Accept: "application/json",
+            "X-Correlation-Id": correlationId,
+            ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+            ...(idempotencyKey !== undefined ? { "Idempotency-Key": idempotencyKey } : {}),
+          },
+          body === undefined ? undefined : JSON.stringify(body),
+        );
+      } catch (err) {
+        // the request may have reached DoseSpot and been acted on before its answer was lost: AMBIGUOUS, not an outage (the token mint
+        // above is outside this: a failed mint sent nothing)
+        if (ambiguousOnLostAnswer && isRetryableError(err) && err.errorClass !== "connect_failed") {
+          // a timeout or a reset is an outage signal like any other call's: it counts against the breaker even though it is held
+          throw countedHold(
+            orgId,
+            err.errorClass,
+            new UnconfirmedOutcomeError(
+              "dosespot",
+              op,
+              "DoseSpot did not answer in time.",
+              correlationId,
+            ),
+          );
+        }
+        throw err;
+      }
       if (res.status === 401 && auth === 0) {
-        tokens.delete(`${orgId}|${clinicianId}`);
+        tokens.delete(tokenCacheKey(orgId, clinicianId, cfg.version));
         forceFresh = true;
         continue;
+      }
+      if (ambiguousOnLostAnswer && isAmbiguousStatus(res.status)) {
+        // an outage that hits only the send must still open the breaker
+        throw countedHold(
+          orgId,
+          `5xx_${res.status}`,
+          new UnconfirmedOutcomeError(
+            "dosespot",
+            op,
+            `DoseSpot failed without confirming the outcome (HTTP ${res.status}).`,
+            correlationId,
+          ),
+        );
       }
       const retryable = classifyRetryableStatus(res.status);
       if (retryable) throw retryable;
@@ -280,15 +429,31 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
       try {
         parsed = JSON.parse(res.text);
       } catch {
-        throw degraded(op, false, "DoseSpot returned an unreadable response.", correlationId);
+        // accepted (2xx) but unreadable: what was asked for may exist, so the outcome is AMBIGUOUS, not a refusal
+        throw new UnconfirmedOutcomeError(
+          "dosespot",
+          op,
+          "DoseSpot returned an unreadable response.",
+          correlationId,
+        );
       }
-      const err = resultError(parsed);
-      if (err !== null) {
-        throw degraded(op, false, `DoseSpot reported an error: ${err}`, correlationId);
+      // a refusal; the vendor's description is never carried (free text: it can echo a name or a drug, and the message reaches responses)
+      if (resultError(parsed) !== null) {
+        throw degraded(op, false, "DoseSpot reported an error.", correlationId);
       }
       return parsed;
     }
     throw degraded(op, false, "DoseSpot rejected the access token twice.", correlationId);
+  }
+
+  /** A hold that is also an outage signal (a lost send answer, a send 5xx): it counts against the breaker where it is raised. */
+  function countedHold(
+    orgId: string,
+    errorClass: string,
+    hold: UnconfirmedOutcomeError,
+  ): UnconfirmedOutcomeError {
+    noteBreaker(orgId, "failure", errorClass);
+    return hold;
   }
 
   function noteBreaker(orgId: string, outcome: "success" | "failure", errorClass: string): void {
@@ -309,12 +474,18 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     params: Record<string, string>,
     body?: unknown,
     idempotencyKey?: string,
+    purpose: DoseSpotConfigPurpose = "operate",
+    /** false for a step whose success is not yet the call's (a NewRx create: only the send's outcome says DoseSpot is healthy). */
+    countSuccess = true,
+    /** The registration target the caller began under (see {@link assertExpectedTarget}). */
+    expectedTarget?: string,
   ): Promise<unknown> {
     const correlationId = newCorrelationId();
     const endpoint: DoseSpotEndpoint = DOSESPOT_ENDPOINTS[name];
     if (endpoint.verification === "none")
       throw degraded(op, false, UNSUPPORTED_MESSAGE, correlationId);
-    const cfg = configOrDeny(op, orgId, correlationId);
+    const cfg = await configOrDeny(op, orgId, correlationId, purpose);
+    assertExpectedTarget(op, cfg, expectedTarget, correlationId);
     const gate = evaluateBreaker(
       breakers.get(orgId) ?? INITIAL_BREAKER_SNAPSHOT,
       now().toISOString(),
@@ -322,7 +493,8 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     if (!gate.allowed) throw openCircuitError(op, correlationId);
     const path = buildPath(endpoint.path, params);
     const delays = computeBackoffDelays();
-    for (let i = 0; i < DOSESPOT_RETRY_CONFIG.maxAttempts; i += 1) {
+    const maxAttempts = NO_IN_CALL_RETRY.has(name) ? 1 : DOSESPOT_RETRY_CONFIG.maxAttempts;
+    for (let i = 0; i < maxAttempts; i += 1) {
       try {
         const out = await attempt(
           op,
@@ -334,12 +506,24 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
           body,
           idempotencyKey,
           correlationId,
+          AMBIGUOUS_ON_LOST_ANSWER.has(name),
         );
-        noteBreaker(orgId, "success", "");
+        if (countSuccess) noteBreaker(orgId, "success", "");
         return out;
       } catch (err) {
-        if (!isRetryableError(err)) throw err; // permanent: does not count against the breaker
-        if (i < DOSESPOT_RETRY_CONFIG.maxAttempts - 1) {
+        // a half-open probe that ends in ANY hold (an unreadable 2xx included) is not a recovery: it re-opens the breaker rather than
+        // leaving it cooled, which would let every following call through as another probe. Only while the stored breaker is still open: a
+        // hold already counted where it was raised is then counted again, which only moves openedAt; if a concurrent success closed the
+        // breaker meanwhile, a second failure would count one hold twice on the closed snapshot
+        if (
+          isUnconfirmedOutcomeError(err) &&
+          gate.effectiveState === "half_open" &&
+          breakers.get(orgId)?.state === "open"
+        ) {
+          noteBreaker(orgId, "failure", "unconfirmed_outcome");
+        }
+        if (!isRetryableError(err)) throw err; // permanent (a hold's own counting aside): does not count against the breaker
+        if (i < maxAttempts - 1) {
           await sleep(delays[i] ?? DOSESPOT_RETRY_CONFIG.baseDelayMs);
           continue;
         }
@@ -355,21 +539,35 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     throw degraded(op, true, "E-prescribe retry budget exhausted.", correlationId);
   }
 
-  const unsupported = (op: DoseSpotOperation, orgId: string): Promise<never> =>
-    Promise.reject(
-      deps.resolver.configFor(orgId) === null
-        ? degraded(
-            op,
-            false,
-            "E-prescribe is not enabled for this organization; DoseSpot credentials are not configured.",
-            newCorrelationId(),
-          )
-        : degraded(op, false, UNSUPPORTED_MESSAGE, newCorrelationId()),
-    );
+  const unsupported = async (op: DoseSpotOperation, orgId: string): Promise<never> => {
+    const correlationId = newCorrelationId();
+    let cfg: DoseSpotTenantConfig | null;
+    try {
+      cfg = await deps.resolver.configFor(orgId);
+    } catch (cause) {
+      throw configUnavailable(op, correlationId, cause);
+    }
+    throw cfg === null
+      ? new NotEnabledError(
+          "dosespot",
+          op,
+          "E-prescribe is not enabled for this organization; DoseSpot credentials are not configured.",
+          newCorrelationId(),
+        )
+      : degraded(op, false, UNSUPPORTED_MESSAGE, newCorrelationId());
+  };
 
   return {
-    async upsertPatient(orgId, payload, idempotencyKey): Promise<DoseSpotPatientResponse> {
-      configOrDeny("upsertPatient", orgId, newCorrelationId()); // fail closed BEFORE touching the payload
+    async upsertPatient(orgId, payload, idempotencyKey, options): Promise<DoseSpotPatientResponse> {
+      const correlationId = newCorrelationId();
+      const expectedTarget = options?.expectedTarget;
+      // fail closed BEFORE touching the payload
+      assertExpectedTarget(
+        "upsertPatient",
+        await configOrDeny("upsertPatient", orgId, correlationId),
+        expectedTarget,
+        correlationId,
+      );
       const body = toPatientBody(payload);
       const existing = payload.existingDosespotPatientId;
       const out =
@@ -382,8 +580,22 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
               { patientId: existing },
               body,
               idempotencyKey,
+              "operate",
+              true,
+              expectedTarget,
             )
-          : await call("upsertPatient", orgId, undefined, "addPatient", {}, body, idempotencyKey);
+          : await call(
+              "upsertPatient",
+              orgId,
+              undefined,
+              "addPatient",
+              {},
+              body,
+              idempotencyKey,
+              "operate",
+              true,
+              expectedTarget,
+            );
       const id = existing ?? identifierOf(out);
       if (id === undefined) {
         throw degraded(
@@ -396,7 +608,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
       return { dosespotPatientId: id, upsertedAt: now().toISOString() };
     },
 
-    async enrollPrescriber(orgId, payload): Promise<DoseSpotPrescriberResponse> {
+    async enrollPrescriber(orgId, payload, options): Promise<DoseSpotPrescriberResponse> {
       const out = await call(
         "enrollPrescriber",
         orgId,
@@ -409,12 +621,17 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
           NPINumber: payload.npi,
           ...(payload.deaNumber ? { DEANumber: payload.deaNumber } : {}),
         },
+        undefined,
+        "setup", // a verified (not yet active) config may enrol its prescribers
+        true,
+        options?.expectedTarget,
       );
       const id = identifierOf(out);
       if (id === undefined) {
-        throw degraded(
+        // accepted (2xx) with no id: the clinician may exist at DoseSpot, so the outcome is AMBIGUOUS, not a refusal
+        throw new UnconfirmedOutcomeError(
+          "dosespot",
           "enrollPrescriber",
-          false,
           "DoseSpot returned no clinician id.",
           newCorrelationId(),
         );
@@ -425,9 +642,11 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
 
     revokePrescriber: (orgId) => unsupported("revokePrescriber", orgId),
 
-    async transmitNewRx(orgId, payload, idempotencyKey): Promise<DoseSpotNewRxResponse> {
+    async transmitNewRx(orgId, payload, idempotencyKey, resume): Promise<DoseSpotNewRxResponse> {
       const correlationId = newCorrelationId();
-      const cfg = configOrDeny("transmitNewRx", orgId, correlationId);
+      const cfg = await configOrDeny("transmitNewRx", orgId, correlationId);
+      const expectedTarget = resume?.expectedTarget;
+      assertExpectedTarget("transmitNewRx", cfg, expectedTarget, correlationId);
       if (payload.deaSchedule !== undefined && !cfg.epcsCertified) {
         // 21 CFR 1311: a controlled substance never leaves through a non-certified tenant (D18).
         throw degraded(
@@ -438,7 +657,15 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         );
       }
       const progressKey = `${orgId}|${idempotencyKey}`;
-      let prescriptionId = newRxProgress.get(progressKey)?.prescriptionId;
+      // A created-but-unsent id is scoped to the clinic that created it (host and clinic id): sent under another, DoseSpot refuses it for good.
+      // This process's memory therefore serves it only while the tenant's registration still names that clinic; after a move the entry is
+      // dropped and the create runs again under the new one (ADR-0111 D6). The persisted id is the caller's to clear (the registration change does).
+      const target = `${cfg.baseUrl}|${cfg.clinicId}`;
+      const progress = newRxProgress.get(progressKey);
+      const remembered = progress?.target === target ? progress.prescriptionId : undefined;
+      if (progress !== undefined && remembered === undefined) newRxProgress.delete(progressKey);
+      // a persisted id from an earlier attempt (any process) wins over this process's own memory
+      let prescriptionId = resume?.createdPrescriptionId ?? remembered;
       if (prescriptionId === undefined) {
         const created = await call(
           "transmitNewRx",
@@ -448,18 +675,32 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
           { patientId: payload.dosespotPatientId },
           toCodedPrescriptionBody(payload),
           idempotencyKey,
+          "operate",
+          // a create's success must not reset the breaker: an outage that fails only the send would otherwise never open it
+          false,
+          expectedTarget,
         );
         prescriptionId = identifierOf(created);
         if (prescriptionId === undefined) {
-          throw degraded(
+          // accepted (2xx) with no id: the prescription may exist at DoseSpot, so the outcome is AMBIGUOUS, not a refusal (a worker holds the
+          // order for a person instead of failing it, and never re-sends it)
+          throw new UnconfirmedOutcomeError(
+            "dosespot",
             "transmitNewRx",
-            false,
             "DoseSpot returned no prescription id.",
             correlationId,
           );
         }
-        newRxProgress.set(progressKey, { prescriptionId });
+        newRxProgress.set(progressKey, { prescriptionId, target });
+        for (const oldest of newRxProgress.keys()) {
+          if (newRxProgress.size <= NEWRX_PROGRESS_MAX_ENTRIES) break;
+          newRxProgress.delete(oldest);
+        }
+        // remember it OUTSIDE this process before the send: a retry elsewhere then re-runs only the send
+        await resume?.onCreated?.(prescriptionId);
       }
+      // the caller's last chance to refuse, on the create path AND the resumed one (a persisted id skips the create, and `onCreated` with it)
+      await resume?.beforeSend?.();
       const sent = await call(
         "transmitNewRx",
         orgId,
@@ -468,9 +709,13 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         { patientId: payload.dosespotPatientId },
         { prescriptionIds: [Number(prescriptionId)] },
         idempotencyKey,
+        "operate",
+        true,
+        expectedTarget,
       );
-      // The send response is an array of IdentifierResponse; our id must be among them. Anything else is NOT
-      // proof it left, so it is an error and the worker retries the SEND (the prescription is remembered above).
+      // The send response is an array of IdentifierResponse; our id must be among them. A 2xx that does not echo it (an empty body included)
+      // is NOT proof it left, but DoseSpot ACCEPTED the send, so it may have: an UNCONFIRMED outcome (the worker holds the order for a
+      // person), never a retry that could send the prescription to the pharmacy twice.
       const items = Array.isArray(sent)
         ? sent
         : isRecord(sent)
@@ -479,9 +724,9 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
       const confirmed =
         Array.isArray(items) && items.some((it) => identifierOf(it) === prescriptionId);
       if (!confirmed) {
-        throw degraded(
+        throw new UnconfirmedOutcomeError(
+          "dosespot",
           "transmitNewRx",
-          true,
           "DoseSpot did not confirm the prescription was sent.",
           correlationId,
         );

@@ -127,20 +127,18 @@ export function KeyRings(): JSX.Element {
           </div>
         </header>
 
-        <div className="wx-list-toolbar" ref={toolbarRef}>
-          <div className="flex w-full flex-wrap items-end gap-3">
-            <div className="min-w-0 flex-[1_1_18rem]">
-              <TextField
-                label="Tenant org slug"
-                placeholder="Tenant org slug"
-                value={orgSlug}
-                onChange={(e) => setOrgSlug(e.target.value)}
-                error={attempted && !orgSlug.trim() ? "Enter the tenant's org slug." : undefined}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void load();
-                }}
-              />
-            </div>
+        <div className="wx-list-toolbar wx-list-toolbar-fields is-bottom" ref={toolbarRef}>
+          <TextField
+            label="Tenant org slug"
+            placeholder="Tenant org slug"
+            value={orgSlug}
+            onChange={(e) => setOrgSlug(e.target.value)}
+            error={attempted && !orgSlug.trim() ? "Enter the tenant's org slug." : undefined}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void load();
+            }}
+          />
+          <div className="wx-list-toolbar-action">
             <Button tone="primary" onClick={() => void load()}>
               Load
             </Button>
@@ -154,7 +152,7 @@ export function KeyRings(): JSX.Element {
             <LoadingSpinner label="Loading key ring…" />
           </div>
         ) : error ? (
-          <div className="wx-list-state" role="alert">
+          <div className="wx-list-state">
             <InlineAlert tone="error">{error}</InlineAlert>
             <Button tone="secondary" onClick={() => void load()}>
               Try again
@@ -207,23 +205,23 @@ function KeyRingDashboard({
 }: { ring: KeyRingMetadataView; destroyed: boolean; onRotate: () => void }): JSX.Element {
   const status = deriveStatus(ring);
   return (
-    <div className="grid max-w-2xl gap-3">
+    <div className="wx-form-stack">
       <section className="wx-drawer-card">
         <div className="wx-drawer-card-head">
-          <h3>
+          <h2>
             <Glyph name="lock" size={16} label="Key ring" /> Data-encryption key
-          </h3>
+          </h2>
           <StatusPill label={cap(status)} tone={ringTone(status)} />
         </div>
         <dl className="wx-kv">
           <dt>Key-ring id</dt>
-          <dd className="wx-data-md break-words">{ring.id}</dd>
+          <dd className="wx-data-md">{ring.id}</dd>
           <dt>Tenant account</dt>
-          <dd className="wx-data-md break-words">{ring.tenantAccountId}</dd>
+          <dd className="wx-data-md">{ring.tenantAccountId}</dd>
           <dt>Current DEK version</dt>
-          <dd className="wx-data-md break-words">{ring.currentDekVersion}</dd>
+          <dd className="wx-data-md">{ring.currentDekVersion}</dd>
           <dt>KEK id</dt>
-          <dd className="wx-data-md break-words">{ring.currentDekKekId}</dd>
+          <dd className="wx-data-md">{ring.currentDekKekId}</dd>
           <dt>Prior DEK versions</dt>
           <dd className="wx-nums">{ring.priorDekVersionCount}</dd>
           <dt>DEK created</dt>
@@ -247,14 +245,16 @@ function KeyRingDashboard({
       </section>
       {destroyed ? (
         <section className="wx-drawer-card">
-          <h3>Destruction</h3>
+          <div className="wx-drawer-card-head">
+            <h2>Destruction</h2>
+          </div>
           <dl className="wx-kv">
             <dt>Destroyed at</dt>
             <dd className="wx-nums">
               {ring.destroyedAt ? new Date(ring.destroyedAt).toLocaleString() : "—"}
             </dd>
             <dt>Destruction certificate</dt>
-            <dd className={ring.destructionCertificateId ? "wx-data-md break-words" : undefined}>
+            <dd className={ring.destructionCertificateId ? "wx-data-md" : undefined}>
               {ring.destructionCertificateId ?? "—"}
             </dd>
           </dl>

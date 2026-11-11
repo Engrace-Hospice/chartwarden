@@ -5,6 +5,7 @@
 // refuses, listing every guard that failed. Nothing here touches IO; wizard-service.ts runs these against a store.
 import { ChartWardenError } from "@chartwarden/types";
 import {
+  type ActivationGuardInput,
   type ActivationGuards,
   evaluateActivationGuards,
 } from "../routes/platform/activation-guards";
@@ -50,7 +51,7 @@ export type GoLiveState =
 export function evaluateGoLiveGuards(input: {
   readonly templates: readonly StepTemplate[];
   readonly tasks: readonly StepTask[];
-  readonly latestBaa: { readonly baaStatus: string; readonly expiresOn: string | null } | undefined;
+  readonly latestBaa: ActivationGuardInput["latestBaa"];
   readonly today: Date;
 }): ActivationGuards {
   const overlaid = input.tasks.map((t) =>
@@ -66,7 +67,8 @@ export function evaluateGoLiveGuards(input: {
 
 const GUARD_MESSAGES: Readonly<Record<string, string>> = {
   canonicalTasksComplete: "every required onboarding step must be done or skipped",
-  baaExecuted: "the latest platform BAA must be executed",
+  baaExecuted:
+    "the latest platform BAA must be executed, with the signed agreement filed for this tenant",
   baaExpiryClearsNinetyDays: "the executed BAA must have more than 90 days left",
 };
 
@@ -116,7 +118,7 @@ const pendingOf = (attestations: readonly GoLiveAttestation[]): GoLiveAttestatio
 export function goLiveStateOf(input: {
   readonly tenantStatus: string;
   readonly templates: readonly StepTemplate[];
-  readonly tasks: readonly StepTask[];
+  readonly tasks: readonly Pick<StepTask, "templateKey" | "status">[];
   readonly attestations: readonly GoLiveAttestation[];
 }): GoLiveState {
   if (input.tenantStatus === "active") return "live";
@@ -253,17 +255,33 @@ export function assertAttesterStillValid(input: {
 
 /**
  * The BAA guard must not rest on one operator who both recorded the agreement and approved the go-live that depends on it:
- * refuses (409) an approver who filed or last changed the governing BAA row. A row written before the writer columns existed
- * carries no writer and cannot be judged.
+ * refuses (409) an approver who filed or last changed the governing BAA row, or who UPLOADED the signed agreement it links (the
+ * document's creator: by membership id AND by the user behind it, because a revoked membership is never revived (a returning operator
+ * gets a new membership id), so the membership id alone would stop matching the same person). A row written before the writer columns
+ * existed carries no writer and cannot be judged.
  */
 export function assertApproverDidNotWriteBaa(
-  baa: Pick<GoverningBaa, "recordedByUserId" | "updatedByUserId"> | undefined,
-  approverUserId: string,
+  baa:
+    | Pick<
+        GoverningBaa,
+        | "recordedByUserId"
+        | "updatedByUserId"
+        | "documentUploadedByMembershipId"
+        | "documentUploadedByUserId"
+      >
+    | undefined,
+  approver: { readonly userId: string; readonly membershipId: string },
 ): void {
-  if (baa && (baa.recordedByUserId === approverUserId || baa.updatedByUserId === approverUserId)) {
+  if (!baa) return;
+  const wroteTheRow =
+    baa.recordedByUserId === approver.userId || baa.updatedByUserId === approver.userId;
+  const uploadedTheFile =
+    baa.documentUploadedByMembershipId === approver.membershipId ||
+    baa.documentUploadedByUserId === approver.userId;
+  if (wroteTheRow || uploadedTheFile) {
     throw refuse(
       "GO_LIVE_APPROVER_WROTE_BAA",
-      "the operator who recorded or last changed the governing BAA cannot also approve the go-live; another platform operator must approve",
+      "the operator who recorded, last changed or uploaded the signed agreement of the governing BAA cannot also approve the go-live; another platform operator must approve",
       409,
     );
   }

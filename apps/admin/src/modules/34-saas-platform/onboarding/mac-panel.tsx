@@ -1,0 +1,397 @@
+// apps/admin/src/modules/34-saas-platform/onboarding — step 8, Billing: MAC credentials. The Medicare submitter credential the tenant's
+// claims go out under, entered on its behalf. The client secret is write-only: sealed under the tenant's own key, never returned,
+// never shown, never stashed through a re-verify (the operator types it again). An update is pinned to the version the operator read
+// (If-Match, an integer); a first create carries none, and a stale pin is a 409 STALE_VERSION that reloads the record.
+import {
+  Button,
+  type Fact,
+  FactList,
+  SelectField,
+  TextField,
+  stashStepUpDraft,
+  useApiClient,
+  useStepUpDraft,
+} from "@chartwarden/ui";
+import { useEffect, useState } from "react";
+import type { JSX } from "react";
+import { bodyFingerprint } from "./body-digest";
+import { FailureNotice } from "./failure-notice";
+import type { PanelContext } from "./panel-types";
+import { PendingAttestationWarning } from "./pending-attestation-warning";
+import { RecordSaveDialog } from "./record-save-dialog";
+import { StepFrame } from "./step-frame";
+import { refocusEditorReturn, useEditorFocus } from "./use-editor-focus";
+import { useLoad } from "./use-load";
+import { useOpsWrite } from "./use-ops-write";
+import { isAboutAnInput } from "./wizard-errors";
+
+interface Credential {
+  credentialId: string;
+  providerEntityId: string;
+  macJurisdiction: string;
+  submitterId: string;
+  tradingPartnerId: string;
+  clientId: string;
+  hasSecret: boolean;
+  baaRecordRef: string | null;
+  version: number;
+}
+interface Entity {
+  id: string;
+  ccn: string;
+  legalName: string;
+}
+interface Form {
+  providerEntityId: string;
+  macJurisdiction: string;
+  submitterId: string;
+  tradingPartnerId: string;
+  clientId: string;
+  baaRecordRef: string;
+}
+type Errors = Partial<Record<keyof Form | "clientSecret", string>>;
+
+/** The MAC jurisdictions M23 accepts (a 422 refuses any other). */
+const JURISDICTIONS: readonly { value: string; label: string }[] = [
+  { value: "ngs_j6", label: "NGS J6" },
+  { value: "ngs_jk", label: "NGS JK" },
+  { value: "cgs_j15", label: "CGS J15" },
+  { value: "palmetto_jj", label: "Palmetto JJ" },
+  { value: "palmetto_jm", label: "Palmetto JM" },
+  { value: "noridian_jf", label: "Noridian JF" },
+  { value: "noridian_je", label: "Noridian JE" },
+];
+const draftKey = (orgSlug: string): string => `wizard:${orgSlug}:mac_configured:credential`;
+
+const BLANK: Form = {
+  providerEntityId: "",
+  macJurisdiction: "noridian_jf",
+  submitterId: "",
+  tradingPartnerId: "",
+  clientId: "",
+  baaRecordRef: "",
+};
+
+function validate(form: Form, clientSecret: string): Errors {
+  const errors: Errors = {};
+  if (form.providerEntityId === "") errors.providerEntityId = "Pick the provider entity.";
+  if (form.submitterId.trim() === "") errors.submitterId = "Enter the submitter id.";
+  if (form.tradingPartnerId.trim() === "")
+    errors.tradingPartnerId = "Enter the trading partner id.";
+  if (form.clientId.trim() === "") errors.clientId = "Enter the client id.";
+  if (clientSecret === "") errors.clientSecret = "Enter the client secret.";
+  return errors;
+}
+
+export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
+  const client = useApiClient();
+  const { orgSlug, view, actions } = ctx;
+  const canWrite = actions.readOnlyReason === null;
+  const entities = useLoad<{ items: Entity[] }>(`mac-entities:${orgSlug}`, () =>
+    client.GET("/api/v1/platform/tenants/{orgSlug}/provider-entities", {
+      params: { path: { orgSlug } },
+    }),
+  );
+  const credentials = useLoad<{ items: Credential[] }>(
+    `mac:${orgSlug}`,
+    () =>
+      client.GET("/api/v1/platform/tenants/{orgSlug}/mac-credentials", {
+        params: { path: { orgSlug } },
+      }) as Promise<{
+        data?: { items: Credential[] };
+        error?: unknown;
+        response?: { status: number };
+      }>,
+  );
+  // Back from Re-verify the edit resumes PINNED to the version the operator first read (null: a create). It is never re-read, so a
+  // credential changed while they re-verified is a 409 STALE_VERSION that reloads it, not a replace the operator did not see.
+  const restored = useStepUpDraft<{ form: Form; pinnedVersion: number | null }>(draftKey(orgSlug));
+  const [editing, setEditing] = useState<{ pinnedVersion: number | null } | null>(
+    restored ? { pinnedVersion: restored.pinnedVersion ?? null } : null,
+  );
+  const [form, setForm] = useState<Form>(restored?.form ?? BLANK);
+  const [clientSecret, setClientSecret] = useState("");
+  const [errors, setErrors] = useState<Errors>({});
+  const [asking, setAsking] = useState(false);
+  // A save closed the editor: once the list has been read again, focus is put back (see the effect below).
+  const [returnFocus, setReturnFocus] = useState(false);
+  // The reason typed before a field refusal closed the prompt: the operator fixes the field and confirms again, not types it twice.
+  const [lastReason, setLastReason] = useState("");
+  const write = useOpsWrite();
+
+  const entityList = entities.data?.items ?? [];
+  const items = credentials.data?.items ?? [];
+  const entityName = (id: string): string => entityList.find((e) => e.id === id)?.legalName ?? id;
+  const set = (field: keyof Form) => (e: { target: { value: string } }) =>
+    setForm((f) => ({ ...f, [field]: e.target.value }));
+
+  function open(existing: Credential | null): void {
+    write.clear();
+    setErrors({});
+    setClientSecret("");
+    setForm(
+      existing
+        ? {
+            providerEntityId: existing.providerEntityId,
+            macJurisdiction: existing.macJurisdiction,
+            submitterId: existing.submitterId,
+            tradingPartnerId: existing.tradingPartnerId,
+            clientId: existing.clientId,
+            baaRecordRef: existing.baaRecordRef ?? "",
+          }
+        : { ...BLANK, providerEntityId: entityList[0]?.id ?? "" },
+    );
+    setEditing({ pinnedVersion: existing?.version ?? null });
+  }
+
+  function askForReason(): void {
+    write.clear(); // an earlier refusal has been read; this attempt starts clean
+    const found = validate(form, clientSecret);
+    setErrors(found);
+    if (Object.keys(found).length === 0) setAsking(true);
+  }
+
+  async function save(reason: string): Promise<void> {
+    if (!editing) return;
+    const body = {
+      providerEntityId: form.providerEntityId,
+      macJurisdiction: form.macJurisdiction,
+      submitterId: form.submitterId.trim(),
+      tradingPartnerId: form.tradingPartnerId.trim(),
+      clientId: form.clientId.trim(),
+      clientSecret,
+      ...(form.baaRecordRef.trim() ? { baaRecordRef: form.baaRecordRef.trim() } : {}),
+      reason,
+    };
+    const pinned = editing.pinnedVersion;
+    setLastReason(reason);
+    // a digest, not the body: the client secret is in it and is never held outside its input
+    const fingerprint = `${pinned ?? "new"}:${await bodyFingerprint(body)}`;
+    const outcome = await write.run(fingerprint, (key) =>
+      client.POST("/api/v1/platform/tenants/{orgSlug}/mac-credentials", {
+        params: {
+          path: { orgSlug },
+          header: {
+            "Idempotency-Key": key,
+            ...(pinned !== null ? { "If-Match": String(pinned) } : {}),
+          },
+        },
+        body,
+      }),
+    );
+    if (outcome.ok) {
+      setAsking(false);
+      setLastReason("");
+      setEditing(null);
+      setClientSecret("");
+      setReturnFocus(true);
+      await Promise.all([credentials.reload(true), ctx.refresh()]);
+    } else if (isAboutAnInput(outcome.failure)) {
+      // The form is still open with what was typed: the prompt gets out of the way so the error is read beside its input.
+      setAsking(false);
+    } else if (outcome.failure.kind === "conflict" || outcome.failure.kind === "precondition") {
+      // Someone changed it since it was read (409 STALE_VERSION), or no pin was sent (428): the form's pin is stale, so the prompt AND the form
+      // close, the record is read again, and the operator opens the form on what it says now and enters the secret again.
+      setAsking(false);
+      setLastReason("");
+      setEditing(null);
+      setClientSecret("");
+      await credentials.reload(true);
+    }
+  }
+
+  const facts: Fact[] = [
+    {
+      key: "one",
+      label: "A MAC credential is on file",
+      state: items.length > 0 ? "ok" : "pending",
+    },
+  ];
+  const fieldError = (field: keyof Errors): string | undefined =>
+    errors[field] ?? write.failure?.fieldErrors[field];
+  const creating = editing !== null && editing.pinnedVersion === null;
+  const editorHeading = useEditorFocus(editing !== null && canWrite, "mac");
+  // The "Add" button the editor opened from is gone once a credential exists: focus goes to that credential's Replace button.
+  useEffect(() => {
+    if (!returnFocus || editing !== null || items.length === 0) return;
+    refocusEditorReturn("mac");
+    setReturnFocus(false);
+  }, [returnFocus, editing, items.length]);
+
+  return (
+    <StepFrame ctx={ctx}>
+      <section className="wx-drawer-card" aria-label="MAC credentials">
+        <div className="wx-drawer-card-head">
+          <h3>MAC credentials</h3>
+          {canWrite && !editing && entityList.length > 0 && items.length === 0 ? (
+            <Button size="sm" tone="secondary" data-editor-return="mac" onClick={() => open(null)}>
+              Add MAC credential
+            </Button>
+          ) : null}
+        </div>
+        <FactList facts={facts} ariaLabel="What settles this step" />
+        {entities.data !== null && entityList.length === 0 ? (
+          <p>Add a provider entity first: a credential belongs to one.</p>
+        ) : null}
+        {credentials.failure ? <p role="alert">Could not load the credentials.</p> : null}
+        {credentials.data && items.length === 0 && entityList.length > 0 ? (
+          <p>No MAC credential yet.</p>
+        ) : null}
+        {items.length > 0 ? (
+          <table className="wx-list-table wx-list-table-static">
+            <caption className="wx-sr-only">MAC credentials</caption>
+            <thead>
+              <tr>
+                <th scope="col">Provider entity</th>
+                <th scope="col">Jurisdiction</th>
+                <th scope="col">Submitter id</th>
+                <th scope="col">Client id</th>
+                <th scope="col">Secret</th>
+                <th scope="col">
+                  <span className="wx-sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((c) => (
+                <tr key={c.credentialId}>
+                  <td>{entityName(c.providerEntityId)}</td>
+                  <td>{c.macJurisdiction}</td>
+                  <td className="wx-data-md">{c.submitterId}</td>
+                  <td className="wx-data-md">{c.clientId}</td>
+                  <td>{c.hasSecret ? "Secret on file" : "None"}</td>
+                  <td>
+                    {canWrite ? (
+                      <Button
+                        size="sm"
+                        tone="tertiary"
+                        aria-label={`Replace credential for ${entityName(c.providerEntityId)}`}
+                        data-editor-return="mac"
+                        onClick={() => open(c)}
+                      >
+                        Replace
+                      </Button>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : null}
+      </section>
+
+      {/* A refusal that closed the form (a stale pin) is still read: here, under the list, not in a form that is gone. */}
+      {write.failure && !editing && !asking ? (
+        <FailureNotice failure={write.failure} orgSlug={orgSlug} />
+      ) : null}
+
+      {editing && canWrite ? (
+        <form
+          className="wx-drawer-card"
+          aria-label="MAC credential form"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            askForReason();
+          }}
+        >
+          <div className="wx-drawer-card-head">
+            <h3 ref={editorHeading} tabIndex={-1}>
+              {creating ? "New MAC credential" : "Replace MAC credential"}
+            </h3>
+          </div>
+          <PendingAttestationWarning view={view} />
+          <div className="wx-form-grid">
+            <SelectField
+              label="Provider entity"
+              value={form.providerEntityId}
+              disabled={!creating}
+              onChange={set("providerEntityId")}
+              options={entityList.map((e) => ({ value: e.id, label: `${e.legalName} (${e.ccn})` }))}
+              error={fieldError("providerEntityId")}
+            />
+            <SelectField
+              label="MAC jurisdiction"
+              value={form.macJurisdiction}
+              onChange={set("macJurisdiction")}
+              options={JURISDICTIONS}
+              error={fieldError("macJurisdiction")}
+            />
+            <TextField
+              label="Submitter id"
+              value={form.submitterId}
+              onChange={set("submitterId")}
+              error={fieldError("submitterId")}
+            />
+            <TextField
+              label="Trading partner id"
+              value={form.tradingPartnerId}
+              onChange={set("tradingPartnerId")}
+              error={fieldError("tradingPartnerId")}
+            />
+            <TextField
+              label="Client id"
+              value={form.clientId}
+              onChange={set("clientId")}
+              error={fieldError("clientId")}
+            />
+            <TextField
+              label="Client secret"
+              hint="Write-only. Sealed under the tenant's key and never shown again."
+              type="password"
+              autoComplete="new-password"
+              value={clientSecret}
+              onChange={(e) => setClientSecret(e.target.value)}
+              error={fieldError("clientSecret")}
+            />
+            <TextField
+              label="BAA record reference (optional)"
+              value={form.baaRecordRef}
+              onChange={set("baaRecordRef")}
+              error={fieldError("baaRecordRef")}
+            />
+          </div>
+          <div className="wx-drawer-actions">
+            <Button
+              tone="secondary"
+              onClick={() => {
+                // the write-only secret never outlives the form it was typed into
+                setClientSecret("");
+                setLastReason("");
+                write.clear();
+                setEditing(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit">Save credential</Button>
+          </div>
+          {write.failure && !asking ? (
+            <FailureNotice failure={write.failure} orgSlug={orgSlug} />
+          ) : null}
+        </form>
+      ) : null}
+
+      <RecordSaveDialog
+        open={asking}
+        title={creating ? "Save the new MAC credential" : "Replace the MAC credential"}
+        confirmLabel="Save"
+        write={write}
+        orgSlug={orgSlug}
+        initialReason={lastReason}
+        onReverify={() =>
+          stashStepUpDraft(draftKey(orgSlug), {
+            form,
+            pinnedVersion: editing?.pinnedVersion ?? null,
+          })
+        }
+        onConfirm={(reason) => void save(reason)}
+        onCancel={() => {
+          write.clear();
+          setLastReason("");
+          setAsking(false);
+        }}
+      />
+    </StepFrame>
+  );
+}

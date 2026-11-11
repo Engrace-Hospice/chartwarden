@@ -17,19 +17,16 @@ import {
 } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { claimsBillingEnforcementMode } from "../../../bootstrap/claims-billing-gate";
+import { getSeam } from "../../../bootstrap/seams/registry";
 import {
   activePeriodKeyFor,
   countActivePatientsForPeriod,
   latestSubscriptionWindow,
 } from "../billing-runtime/census";
 import { usageWindowFor } from "../billing-runtime/jobs";
-import type { M35WriteActor } from "../routes/actor";
+import type { M35WriteActor } from "../routes/service";
 import type { PlatformRunner, WriteOutboxPort, WriteTx } from "../routes/service-drizzle";
-import {
-  addonIsLive,
-  decideClaimsBillingEntitlement,
-  latestClaimsBillingAddon,
-} from "./entitlement";
+import { addonIsLive, latestClaimsBillingAddon } from "./entitlement";
 
 export interface AddonView {
   readonly id: string;
@@ -356,7 +353,10 @@ export function buildDrizzleAddonService(db: DbClient, deps: AddonServiceDeps = 
           };
         },
       );
-      const decision = decideClaimsBillingEntitlement(latest, at);
+      // The decision is the gate's own (M23, from the org's clearinghouse choice): the notice must say what the gate does.
+      const decision = await getSeam("ClaimsBillingEntitlementReader").entitlementForOrg(
+        organizationId,
+      );
       return {
         entitled: decision.entitled,
         status: latest?.status ?? "none",

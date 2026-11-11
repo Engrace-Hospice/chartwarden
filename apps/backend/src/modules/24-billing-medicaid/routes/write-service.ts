@@ -9,7 +9,7 @@
 // adapter wire I/O; platform rate-schedule-load — M40) DEGRADE to a structured typed error / queued no-op
 // rather than crashing. Noted per method.
 import type { DbClient } from "@chartwarden/db";
-import type { M24WriteActor } from "./actor";
+import type { M24Actor } from "./actor";
 import type { ClaimView, RbArrangementView } from "./read-service";
 
 /** A §4.11 `m24.*` transactional-outbox emission. PHI-free payload by construction (D12/D13). */
@@ -43,7 +43,6 @@ export interface AssembleClaimInput {
 }
 export interface UpdateDraftClaimInput {
   expectedVersion: number | null;
-  mcoId?: string | null;
 }
 export interface SubmitClaimInput {
   expectedVersion: number | null;
@@ -134,82 +133,65 @@ export interface LoadRateScheduleInput {
 }
 
 export interface M24WriteService {
-  assembleClaim(actor: M24WriteActor, input: AssembleClaimInput): Promise<ClaimView>;
+  assembleClaim(actor: M24Actor, input: AssembleClaimInput): Promise<ClaimView>;
   updateDraftClaim(
-    actor: M24WriteActor,
+    actor: M24Actor,
     claimId: string,
     input: UpdateDraftClaimInput,
   ): Promise<ClaimView>;
-  deleteDraftClaim(
-    actor: M24WriteActor,
-    claimId: string,
-    expectedVersion: number | null,
-  ): Promise<void>;
-  validateClaim(actor: M24WriteActor, claimId: string): Promise<{ validationRunId: string }>;
-  submitClaim(actor: M24WriteActor, claimId: string, input: SubmitClaimInput): Promise<ClaimView>;
-  replaceClaim(actor: M24WriteActor, claimId: string, input: ReplaceClaimInput): Promise<ClaimView>;
-  voidClaim(actor: M24WriteActor, claimId: string, input: VoidClaimInput): Promise<ClaimView>;
+  deleteDraftClaim(actor: M24Actor, claimId: string, expectedVersion: number | null): Promise<void>;
+  validateClaim(actor: M24Actor, claimId: string): Promise<{ validationRunId: string }>;
+  submitClaim(actor: M24Actor, claimId: string, input: SubmitClaimInput): Promise<ClaimView>;
+  replaceClaim(actor: M24Actor, claimId: string, input: ReplaceClaimInput): Promise<ClaimView>;
+  voidClaim(actor: M24Actor, claimId: string, input: VoidClaimInput): Promise<ClaimView>;
   abandonClaim(
-    actor: M24WriteActor,
+    actor: M24Actor,
     claimId: string,
     expectedVersion: number | null,
   ): Promise<ClaimView>;
   applyOverride(
-    actor: M24WriteActor,
+    actor: M24Actor,
     resultId: string,
     input: ApplyOverrideInput,
   ): Promise<{ overrideId: string }>;
-  editRuleConfig(actor: M24WriteActor, ruleKey: string, input: EditRuleConfigInput): Promise<void>;
-  createCustomRule(
-    actor: M24WriteActor,
-    input: CreateCustomRuleInput,
-  ): Promise<{ ruleKey: string }>;
-  deleteCustomRule(
-    actor: M24WriteActor,
-    ruleKey: string,
-    expectedVersion: number | null,
-  ): Promise<void>;
+  editRuleConfig(actor: M24Actor, ruleKey: string, input: EditRuleConfigInput): Promise<void>;
+  createCustomRule(actor: M24Actor, input: CreateCustomRuleInput): Promise<{ ruleKey: string }>;
+  deleteCustomRule(actor: M24Actor, ruleKey: string, expectedVersion: number | null): Promise<void>;
   refreshEligibility(
-    actor: M24WriteActor,
+    actor: M24Actor,
     input: RefreshEligibilityInput,
   ): Promise<{ checkId: string; outcome: string }>;
-  createRbArrangement(
-    actor: M24WriteActor,
-    input: CreateRbArrangementInput,
-  ): Promise<RbArrangementView>;
+  createRbArrangement(actor: M24Actor, input: CreateRbArrangementInput): Promise<RbArrangementView>;
   editRbArrangement(
-    actor: M24WriteActor,
+    actor: M24Actor,
     arrangementId: string,
     input: EditRbArrangementInput,
   ): Promise<RbArrangementView>;
   activateRbArrangement(
-    actor: M24WriteActor,
+    actor: M24Actor,
     arrangementId: string,
     expectedVersion: number | null,
   ): Promise<RbArrangementView>;
   terminateRbArrangement(
-    actor: M24WriteActor,
+    actor: M24Actor,
     arrangementId: string,
     input: TerminateRbArrangementInput,
   ): Promise<RbArrangementView>;
-  overrideRbDay(actor: M24WriteActor, rbDayId: string, input: OverrideRbDayInput): Promise<void>;
-  upsertCredential(actor: M24WriteActor, input: UpsertCredentialInput): Promise<{ id: string }>;
+  overrideRbDay(actor: M24Actor, rbDayId: string, input: OverrideRbDayInput): Promise<void>;
+  upsertCredential(actor: M24Actor, input: UpsertCredentialInput): Promise<{ id: string }>;
   /**
    * The same upsert on the CALLER'S transaction (`tx` is already scoped to `actor.organizationId`). The platform
    * onboarding route (M34) uses it so the write, its tenant-status check and its audit row commit together.
    */
   upsertCredentialOnTx(
     tx: DbClient,
-    actor: M24WriteActor,
+    actor: M24Actor,
     input: UpsertCredentialInput,
   ): Promise<{ id: string }>;
   testCredential(
-    actor: M24WriteActor,
+    actor: M24Actor,
     credentialId: string,
   ): Promise<{ ok: boolean; errorMessage?: string }>;
-  registerPlatformRule(actor: M24WriteActor, input: RegisterPlatformRuleInput): Promise<void>;
-  loadRateSchedule(
-    actor: M24WriteActor,
-    input: LoadRateScheduleInput,
-  ): Promise<{ queued: boolean }>;
+  registerPlatformRule(actor: M24Actor, input: RegisterPlatformRuleInput): Promise<void>;
+  loadRateSchedule(actor: M24Actor, input: LoadRateScheduleInput): Promise<{ queued: boolean }>;
 }

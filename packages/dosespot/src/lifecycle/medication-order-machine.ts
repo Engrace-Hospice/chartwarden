@@ -10,6 +10,7 @@
 //     │                          │  └withdraw→ discontinued                (epcs_identity_pending
 //     └discardDraft→ discontinued└                                          ─secondFactorFailed→ pending_signature)
 //   queued_for_transmission ─transmissionSucceeded→ transmitted ─pharmacyAck→ ack_received ─activate→ active
+//     └ HELD (unconfirmed outcome) ─resolveHeldSent→ transmitted  /  ─resolveHeldNotSent→ transmission_failed   (an administrator's call)
 //   signed ─activate→ active                     (F-058: only when `dosespot_send_state = not_required`)
 //     └transmissionExhausted→ transmission_failed   transmitted ─pharmacyNack→ nack_received ─discontinue→ …
 //   active ─complete→ completed ;  active ─discontinue→ discontinued
@@ -145,6 +146,25 @@ export type MedicationOrderEvent =
       readonly isSystemActor: boolean;
     }
   | {
+      readonly type: "resolveHeldSent";
+      /**
+       * An order HELD in `queued_for_transmission` because DoseSpot did not confirm what became of the NewRx call (the
+       * transmit worker never fails or re-sends it): an organization administrator who has checked the prescriber's DoseSpot account says
+       * the prescription WAS sent, and names it. Not a system-actor transition; the worker would have recorded the same facts.
+       */
+      readonly actorIsAdministrator: boolean;
+      /** The DoseSpot prescription id the administrator found; the status poll then follows it as for any transmitted order. */
+      readonly dosespotPrescriptionId: string;
+    }
+  | {
+      readonly type: "resolveHeldNotSent";
+      /**
+       * The same administrator says the prescription was NOT sent. The order goes to `transmission_failed`, whose only way on is the
+       * existing retransmit (the prescriber re-signs a replacement): it is never put back on the queue, so it is never re-sent.
+       */
+      readonly actorIsAdministrator: boolean;
+    }
+  | {
       readonly type: "pharmacyAck";
       /** §2.2 — fired by the webhook handler on a `ScriptStatusUpdate` ack (not a human actor). */
       readonly isSystemActor: boolean;
@@ -214,7 +234,13 @@ export const MEDICATION_ORDER_GRAPH: Readonly<
   epcs_identity_pending: ["completeSecondFactor", "secondFactorFailed", "cascadeDiscontinue"],
   verbal_pending: ["sign", "signControlled", "expire", "cascadeDiscontinue"],
   signed: ["enqueueTransmission", "activate"],
-  queued_for_transmission: ["transmissionSucceeded", "transmissionExhausted", "cascadeDiscontinue"],
+  queued_for_transmission: [
+    "transmissionSucceeded",
+    "transmissionExhausted",
+    "resolveHeldSent",
+    "resolveHeldNotSent",
+    "cascadeDiscontinue",
+  ],
   transmitted: ["pharmacyAck", "pharmacyNack", "transmissionExhausted"],
   ack_received: ["activate"],
   nack_received: ["discontinue"],
@@ -528,6 +554,40 @@ export function transitionMedicationOrder(
         { kind: "audit" },
         { kind: "outbox", event: "m12.medication_order.transmission_failed" },
         { kind: "alert", alert: "medication_order.transmission_failed" },
+      ]);
+    }
+
+    case "resolveHeldSent": {
+      require_(
+        event.actorIsAdministrator,
+        "NOT_ADMINISTRATOR",
+        "only an organization administrator may resolve a held transmission",
+      );
+      require_(
+        event.dosespotPrescriptionId.trim() !== "",
+        "PRESCRIPTION_ID_REQUIRED",
+        "resolving a held order as sent needs the DoseSpot prescription id",
+      );
+      return result(from, event.type, "transmitted", [
+        { kind: "update_transmission", outcome: "succeeded" },
+        { kind: "set_send_state", state: "transmitted" },
+        { kind: "set_timestamp", field: "transmitted_at" },
+        { kind: "audit" },
+        { kind: "outbox", event: "m12.medication_order.transmitted" },
+      ]);
+    }
+
+    case "resolveHeldNotSent": {
+      require_(
+        event.actorIsAdministrator,
+        "NOT_ADMINISTRATOR",
+        "only an organization administrator may resolve a held transmission",
+      );
+      return result(from, event.type, "transmission_failed", [
+        { kind: "update_transmission", outcome: "failed" },
+        { kind: "set_send_state", state: "failed" },
+        { kind: "audit" },
+        { kind: "outbox", event: "m12.medication_order.transmission_failed" },
       ]);
     }
 

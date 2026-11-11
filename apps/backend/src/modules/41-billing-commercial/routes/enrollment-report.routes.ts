@@ -5,16 +5,16 @@
 //   POST /api/v1/billing/commercial/enrollment-reports/:id/resolve                (commercial_billing.manage_enrollment + provider scope)
 // Resolving changes no gate (it only closes the notice), so it needs no step-up and is idempotent without an Idempotency-Key.
 // Applying a report's status goes through the enrollments POST/PATCH, unchanged, with their step-up and Idempotency-Key.
+import { actorOf, parse, rejectAiActor } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import type { EnrollmentReportService } from "../services/enrollment-report-service";
-import { MANAGE_ENROLLMENT, PROVIDER_SCOPE, READ, REJECT_AI_ACTOR, actorOf } from "./guards";
+import { MANAGE_ENROLLMENT, PROVIDER_SCOPE, READ } from "./guards";
 import {
   EnrollmentReportListQuerySchema,
   EnrollmentReportListResponseSchema,
   EnrollmentReportResponseSchema,
   IdParamsSchema,
   ResolveEnrollmentReportBodySchema,
-  parse,
 } from "./typebox";
 
 const LIST_LIMIT = 200;
@@ -53,7 +53,7 @@ export function registerCommercialEnrollmentReportRoutes(
       preHandler: [
         MANAGE_ENROLLMENT,
         PROVIDER_SCOPE("commercial_billing.manage_enrollment", "body"),
-        REJECT_AI_ACTOR,
+        rejectAiActor(),
       ],
       schema: { response: { 200: EnrollmentReportResponseSchema } },
     },

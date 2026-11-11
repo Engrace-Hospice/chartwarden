@@ -1,12 +1,15 @@
-// @chartwarden/x12-837-client — which ClearinghouseTransport is bound (ADR-0053 D3).
+// @chartwarden/x12-837-client — which ClearinghouseTransport is bound (ADR-0053 D3, amended 2026-11-06).
 //
-// ChartWarden resells ONE clearinghouse, so the binding is platform configuration (the CLEARINGHOUSE_VENDOR env var),
-// not a tenant or ProviderEntity setting, and it needs no migration. Binding fails closed:
+// The vendor is chosen PER TENANT (stedi | claimmd | outside, `tenant_clearinghouse_config`, M23); the backend builds a
+// per-organization binding on top of this module (`ClearinghouseBinding.forOrg`, `bindingForOrg`). The platform-wide
+// `CLEARINGHOUSE_VENDOR` binding below remains for the organizations an operator names explicitly
+// (`CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS`); it needs no migration. Binding fails closed:
 //   - unset            -> a transport whose every call answers CH_NOT_WIRED (nothing is sent);
 //   - set, no adapter  -> throws at boot, so a misconfigured deployment refuses to start instead of silently
 //                         behaving as "unset";
 //   - in_memory in production is refused (it is a test double).
-// Credentials stay in the environment and are read by the adapter's factory, never stored per tenant.
+// Platform credentials stay in the environment and are read by the adapter's factory; a tenant's own credential is
+// sealed in its config row and handed to the adapter by the backend resolver.
 import { type X12WorkerResult, degraded } from "../types";
 import { CH, type ClearinghouseTransport, type ClearinghouseVendor } from "./types";
 
@@ -27,11 +30,57 @@ export type ClearinghouseTransportFactories = Partial<
   Record<ClearinghouseVendor, ClearinghouseTransportFactory>
 >;
 
+/**
+ * Why an organization has no usable clearinghouse (nothing is sent for it either way; the reason decides what a worker does):
+ * `not_chosen` (nothing chosen yet) and `not_active` (a draft / verified config) HOLD work until the tenant finishes setup;
+ * `baa_revoked` (a platform operator revoked the vendor BAA) holds work the same way, and its acknowledgment and remittance pulls
+ * skip with an alert when responses are still owed; `outside` (the tenant bills outside ChartWarden) never transmits at all.
+ */
+export type UnboundReason = "not_chosen" | "not_active" | "baa_revoked" | "outside";
+
 export interface ClearinghouseBinding {
   /** The configured vendor, or null when the platform has not bound one. */
   readonly vendor: ClearinghouseVendor | null;
   readonly transport: ClearinghouseTransport;
+  /** Set on an UNBOUND per-organization binding (`vendor` null): why it is unbound. Absent on a bound one. */
+  readonly unboundReason?: UnboundReason;
+  /**
+   * `tenant` on a binding built from the organization's OWN sealed credential (tenant clearinghouse). Absent on the platform's
+   * env binding (and on the orgs it serves through CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS): the platform account's Claim.MD
+   * response capture serves those, never a tenant's own account (owner decision 2026-11-08).
+   */
+  readonly account?: "tenant";
+  /**
+   * Per-organization binding (tenant clearinghouse, ADR-0053 amendment 2026-11-06). When present, `vendor` and
+   * `transport` above are the UNBOUND platform default and say nothing about any organization: a consumer that acts for
+   * an organization MUST resolve its own binding through {@link bindingForOrg}. The resolved binding is a plain one
+   * (no `forOrg`): `vendor` null = that organization has no usable clearinghouse (nothing is sent for it).
+   */
+  readonly forOrg?: (organizationId: string) => Promise<ClearinghouseBinding>;
 }
+
+/**
+ * The `vendor` part of a stored poll cursor's key: a tenant's OWN account (`account: "tenant"`) has its own position space, so an
+ * org that moves between the platform's account and its own never reuses the other's cursor. ponytail: a tenant swapping one of
+ * its own accounts for another of the same vendor still shares a key; replays are idempotent, add a credential fingerprint if
+ * that ever skips ids.
+ */
+export const cursorVendorKey = (binding: {
+  readonly vendor: string;
+  readonly account?: "tenant";
+}): string => (binding.account === "tenant" ? `${binding.vendor}@tenant` : binding.vendor);
+
+/** The binding to use for `organizationId`: its own when the platform binding is per-organization, else the one binding. */
+export async function bindingForOrg<B extends Pick<ClearinghouseBinding, "vendor">>(
+  binding: B & { readonly forOrg?: (organizationId: string) => Promise<B> },
+  organizationId: string,
+): Promise<B> {
+  return binding.forOrg ? binding.forOrg(organizationId) : binding;
+}
+
+/** True when {@link bindingForOrg} resolves a different binding per organization (the top-level vendor then means nothing). */
+export const isPerOrgBinding = (binding: { readonly forOrg?: unknown }): boolean =>
+  binding.forOrg !== undefined;
 
 /** Returns the configured vendor, null when unset/blank; throws on an unknown value or in_memory in production. */
 export function parseClearinghouseVendor(
@@ -68,6 +117,20 @@ export const NOT_WIRED_TRANSPORT: ClearinghouseTransport = {
   fetchClaimStatus: notWired,
   verifyAndParseEvent: notWired,
 };
+
+const unbound = (unboundReason: UnboundReason): ClearinghouseBinding =>
+  Object.freeze({ vendor: null, transport: NOT_WIRED_TRANSPORT, unboundReason });
+
+/** The binding of an organization that has chosen nothing: nothing is sent, every call answers CH_NOT_WIRED. */
+export const UNBOUND_NOT_CHOSEN: ClearinghouseBinding = unbound("not_chosen");
+/** The binding of an organization whose config is a draft or verified (not live yet). */
+export const UNBOUND_NOT_ACTIVE: ClearinghouseBinding = unbound("not_active");
+/** The binding of an organization whose vendor BAA a platform operator revoked (not live; held like `not_active`, but says why). */
+export const UNBOUND_BAA_REVOKED: ClearinghouseBinding = unbound("baa_revoked");
+/** The binding of an organization that bills outside ChartWarden. */
+export const UNBOUND_OUTSIDE: ClearinghouseBinding = unbound("outside");
+/** The generic unbound binding (= nothing chosen). */
+export const UNBOUND_BINDING: ClearinghouseBinding = UNBOUND_NOT_CHOSEN;
 
 export function bindClearinghouseTransport(
   env: EnvMap,

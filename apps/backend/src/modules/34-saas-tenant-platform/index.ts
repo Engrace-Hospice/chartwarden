@@ -296,6 +296,7 @@ import {
 } from "./onboarding/wizard-store-memory";
 import { registerOnboardingDataRoutes } from "./routes/platform/onboarding-data-routes";
 import type { OnboardingDataService } from "./routes/platform/onboarding-data-service";
+import { registerOnboardingDoseSpotRoutes } from "./routes/platform/onboarding-dosespot-routes";
 import { registerOnboardingWizardRoutes } from "./routes/platform/onboarding-wizard-routes";
 import { registerPlatformOpsRoutes } from "./routes/platform/ops-routes";
 import {
@@ -325,7 +326,19 @@ export function mountTenantPlatformRoutes(
     /** GAP-164 - tenant account + feature-flag read/write (absent => in-memory slice). */
     tenantAccountFlags?: { service: TenantAccountFlagsService };
     /** Operator-entered tenant onboarding data (provider entities, locations, MAC credential); absent => not mounted. */
-    onboardingData?: { service: OnboardingDataService };
+    onboardingData?: {
+      service: OnboardingDataService;
+      /** Per-user cap on the clearinghouse `verify` (a vendor call per request). */
+      clearinghouseVerifyRateLimit?: (request: never, reply: never) => Promise<void>;
+      /** Per-user cap on the signed-BAA upload (each one stores an object). */
+      baaUploadRateLimit?: (request: never, reply: never) => Promise<void>;
+      /** Per-target-tenant cap on the DoseSpot `verify` (a vendor call per request). */
+      dosespotVerifyRateLimit?: (request: never, reply: never) => Promise<void>;
+      /** Per-target-tenant cap on the clearinghouse `PUT` (its 409 is an account-in-use oracle); fail-closed in production. */
+      clearinghousePutRateLimit?: (request: never, reply: never) => Promise<void>;
+      /** Per-operator (across tenants) cap on the BAA revoke, a kill switch; fail-open in production (the audit row and alerts still fire). */
+      clearinghouseRevokeBaaRateLimit?: (request: never, reply: never) => Promise<void>;
+    };
     public?: {
       service?: _SignupIntentRouteService;
       /** AC-05 — §22.1's 5/IP/hour limiter. Absent ⇒ `createAllowAllRateLimiter()`, i.e. UNLIMITED,
@@ -376,7 +389,34 @@ export function mountTenantPlatformRoutes(
   // Operator-entered tenant onboarding data: it runs on the TENANT pool under the target org's RLS, so there is no
   // in-memory slice to fall back to — the routes mount only when the composition root binds the service.
   if (services?.onboardingData) {
-    registerOnboardingDataRoutes(app, { service: services.onboardingData.service });
+    registerOnboardingDataRoutes(app, {
+      service: services.onboardingData.service,
+      ...(services.onboardingData.clearinghouseVerifyRateLimit
+        ? {
+            clearinghouseVerifyRateLimit: services.onboardingData
+              .clearinghouseVerifyRateLimit as never,
+          }
+        : {}),
+      ...(services.onboardingData.baaUploadRateLimit
+        ? { baaUploadRateLimit: services.onboardingData.baaUploadRateLimit as never }
+        : {}),
+      ...(services.onboardingData.clearinghousePutRateLimit
+        ? { clearinghousePutRateLimit: services.onboardingData.clearinghousePutRateLimit as never }
+        : {}),
+      ...(services.onboardingData.clearinghouseRevokeBaaRateLimit
+        ? {
+            clearinghouseRevokeBaaRateLimit: services.onboardingData
+              .clearinghouseRevokeBaaRateLimit as never,
+          }
+        : {}),
+    });
+    // Tenant onboarding slice 4 (ADR-0111): the same service, the DoseSpot lane.
+    registerOnboardingDoseSpotRoutes(app, {
+      service: services.onboardingData.service,
+      ...(services.onboardingData.dosespotVerifyRateLimit
+        ? { verifyRateLimit: services.onboardingData.dosespotVerifyRateLimit as never }
+        : {}),
+    });
   }
 
   // ── tenant-scoped surface (withOrgContext; the tenant's own org) ──
@@ -463,4 +503,5 @@ export {
 export {
   type OnboardingDataRouteDeps,
   registerOnboardingDataRoutes,
+  targetTenantScopeOf,
 } from "./routes/platform/onboarding-data-routes";

@@ -45,6 +45,10 @@ import {
   createOrganizationStatusReader,
 } from "../src/modules/02-identity";
 import {
+  isTenantBaaDocumentFiled,
+  tenantBaaDocumentUploader,
+} from "../src/modules/22-documents/onboarding-baa-document-port";
+import {
   buildDrizzleOrgMacJurisdictionReader,
   buildMacFeedConfiguredReader,
 } from "../src/modules/23-billing-medicare/jobs/mac-jurisdictions";
@@ -55,6 +59,10 @@ import {
   recordOrganizationActivationReconciled,
   runOrganizationActivationReconcile,
 } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
+import {
+  assertApproverDidNotWriteBaa,
+  evaluateGoLiveGuards,
+} from "../src/modules/34-saas-tenant-platform/onboarding/go-live";
 import { voidPendingGoLiveForDataChange } from "../src/modules/34-saas-tenant-platform/onboarding/go-live-void";
 import type {
   PlatformActor,
@@ -87,6 +95,9 @@ const OPS_USER = "a0000000-0000-4000-8000-000000007701";
 const OPS_MEMBERSHIP = "b0000000-0000-4000-8000-000000007701";
 
 const OPS: PlatformActor = { kind: "platform", userId: OPS_USER, membershipId: OPS_MEMBERSHIP };
+/** What an operator's catalog write carries beyond the step: why, and which membership (the audit row names both). */
+const TEMPLATE_REASON = "Add a staff training step, ticket CHG-6001";
+const TEMPLATE_WRITE = { reason: TEMPLATE_REASON, operatorMembershipId: OPS_MEMBERSHIP };
 
 const EXPECTED_ORDER = [
   "account_created",
@@ -283,15 +294,24 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       return { alertId: `a-${alertCalls.length}`, resolvedRecipientCount: 0 };
     },
   };
+  /** The facts as the composition root wires them: step 3 also needs the governing BAA's document to verify (M22's check). */
   const facts = () => ({
     orgSeed: buildOrgSeedFactsReader(app.db),
     orgAdminCount: buildOrgAdminCountReader(app.db),
     macFeedConfigured: buildMacFeedConfiguredReader(buildDrizzleOrgMacJurisdictionReader(app.db)),
+    baaDocumentFiled: isTenantBaaDocumentFiled,
   });
-  const advancer = () => createOnboardingAdvancer({ db: app.db, outbox, alerts, facts: facts() });
-  const backend = (opts: Pick<DrizzleTenantPlatformDeps, "advanceOnboarding" | "warn"> = {}) =>
+  const advancer = (
+    readers:
+      | ReturnType<typeof facts>
+      | Omit<ReturnType<typeof facts>, "baaDocumentFiled"> = facts(),
+  ) => createOnboardingAdvancer({ db: app.db, outbox, alerts, facts: readers });
+  const backend = (
+    opts: Partial<Pick<DrizzleTenantPlatformDeps, "advanceOnboarding" | "warn">> = {},
+  ) =>
     createDrizzleTenantPlatformBackend({
       ...opts,
+      baaDocuments: { isFiled: isTenantBaaDocumentFiled },
       platformDb: platform.db,
       enqueue: { enqueue: async (q, k) => ({ jobId: `${q}-${k}` }) },
       legalHoldClear: async () => true,
@@ -332,6 +352,8 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         platformJobId: JOB_ID,
         activation: backend().activateApprovedTenant,
         orgProfileFor: (tx) => buildDrizzleOrgProfilePort(tx),
+        baaDocumentFiled: isTenantBaaDocumentFiled,
+        baaDocumentUploader: tenantBaaDocumentUploader,
       }),
       orgProfile: buildDrizzleOrgProfilePort(app.db),
       ...(withAdvance
@@ -348,6 +370,19 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       await admin.query(
         "SELECT id FROM onboarding_task WHERE tenant_account_id=$1 AND template_key=$2",
         [tenant, key],
+      )
+    ).rows[0].id;
+  /** A document row in `org` (the signed BAA kind unless another is named), as the upload route would have filed it. */
+  const fileDocument = async (
+    org: string,
+    kind = "tenant_baa",
+    createdBy = "e5000000-0000-4000-8000-0000000000e5",
+  ): Promise<string> =>
+    (
+      await admin.query(
+        `INSERT INTO document (organization_id, retention_class, source_kind, aggregate_type, title, created_by_membership_id)
+         VALUES ($1,'compliance','user_upload',$2::document_aggregate_type,'Signed agreement',$3) RETURNING id`,
+        [org, kind, createdBy],
       )
     ).rows[0].id;
   const statusOf = async (tenant: string, key: string): Promise<string> =>
@@ -586,9 +621,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
   // ── auto / either steps settle from real facts ──────────────────────────────────────────────────────────
   it("settles the BAA and provisioning steps from the real BAA register once the plan step is attested", async () => {
     await admin.query(
-      `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-       VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-      [ORG_A, T_A],
+      `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+       VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+      [ORG_A, T_A, await fileDocument(ORG_A)],
     );
     await attestPlatform(T_A, "wiz-a", "plan_contract", "order form countersigned");
     // The wizard's post-change advance ran the sweep for this tenant: both auto steps settled in one pass.
@@ -660,13 +695,36 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     expect(await statusOf(T_A, "mac_configured")).toBe("done");
   });
 
-  it("settles the first-admin and compliance-officer steps from the org's members; the officer must be an active member", async () => {
-    await attestPlatform(
-      T_A,
+  it("review fix (skip allowlist): the server refuses to skip the plan or the provider entity, and lets a listed step be skipped", async () => {
+    const planBefore = await statusOf(T_A, "plan_contract");
+    const ccnBefore = await statusOf(T_A, "ccn_registered");
+    for (const key of ["plan_contract", "ccn_registered"]) {
+      expect(
+        await refusal(
+          wizard().skipPlatform("wiz-a", await taskId(T_A, key), OPS, "does not apply here"),
+        ),
+      ).toMatchObject({ code: "ONBOARDING_STEP_NOT_SKIPPABLE", statusCode: 409 });
+    }
+    expect(await statusOf(T_A, "plan_contract")).toBe(planBefore);
+    expect(await statusOf(T_A, "ccn_registered")).toBe(ccnBefore);
+    const skipped = await wizard().skipPlatform(
       "wiz-a",
-      "payer_enrollment",
-      "enrolled with the MAC and two commercial payers",
+      await taskId(T_A, "payer_enrollment"),
+      OPS,
+      "enrollment handled by the tenant's billing company",
     );
+    expect(skipped.status).toBe("skipped");
+    const view = await wizard(false).getPlatform("wiz-a");
+    const flags = Object.fromEntries(view.steps.map((st) => [st.key, st.skippable]));
+    expect(flags).toMatchObject({
+      plan_contract: false,
+      ccn_registered: false,
+      payer_enrollment: true,
+      mac_configured: true,
+    });
+  });
+
+  it("settles the first-admin and compliance-officer steps from the org's members; the officer must be an active member", async () => {
     await attestPlatform(
       T_A,
       "wiz-a",
@@ -1013,9 +1071,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       memberships["officer-l"],
     ]);
     await admin.query(
-      `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-       VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-      [ORG_L, T_L],
+      `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+       VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+      [ORG_L, T_L, await fileDocument(ORG_L)],
     );
     expect(await statusOf(T_L, "xero_connected")).toBe("pending");
     expect(await statusOf(T_L, "org_seeded")).toBe("done");
@@ -1111,9 +1169,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         [org, tenant],
       );
       await admin.query(
-        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-        [org, tenant],
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+        [org, tenant, await fileDocument(org)],
       );
     }
     const assignOfficer = (tenant: string, membership: string) =>
@@ -1704,12 +1762,22 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     // A third for the review-fix tests, which leave executed BAA records behind.
     const ORG_S3 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb07";
     const T_S3 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb08";
+    // A fourth and a fifth for the document-link tests (the register's link check, and step 3's own judgement of the link).
+    const ORG_S4 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb09";
+    const T_S4 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb0a";
+    const ORG_S5 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb0b";
+    const T_S5 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb0c";
+    const ORG_S6 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb0d";
+    const T_S6 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb0e";
 
     beforeAll(async () => {
       for (const [org, tenant, slug] of [
         [ORG_S, T_S, "wiz-s"],
         [ORG_S2, T_S2, "wiz-s2"],
         [ORG_S3, T_S3, "wiz-s3"],
+        [ORG_S4, T_S4, "wiz-s4"],
+        [ORG_S5, T_S5, "wiz-s5"],
+        [ORG_S6, T_S6, "wiz-s6"],
       ] as const) {
         await admin.query(
           "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -1740,7 +1808,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         expiresOn: "2028-10-01",
         breachNotificationContactEmail: "privacy@wiz-s.test",
         breachNotificationContactPhone: null,
-        documentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+        documentId: await fileDocument(ORG_S),
       });
       expect(await baaRow(created.id)).toMatchObject({
         organization_id: ORG_S,
@@ -1868,15 +1936,246 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         updated_by_user_id: null,
       });
 
+      const document = await fileDocument(ORG_S3);
       await backend().service.updateBaaRecord(pending.id, OPS_USER, {
         baaStatus: "executed",
-        documentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+        documentId: document,
       });
       expect(await baaRow(pending.id)).toMatchObject({
         baa_status: "executed",
-        document_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0002",
+        document_id: document,
         recorded_by_user_id: OPS_USER,
         updated_by_user_id: OPS_USER,
+      });
+    });
+
+    describe("the link must be a signed BAA filed for THIS tenant", () => {
+      const record = (documentId: string | null, baaStatus = "executed") => ({
+        tenantAccountId: T_S4,
+        addendumVersion: "v-link",
+        baaStatus,
+        executedOn: "2026-10-01",
+        effectiveOn: "2026-10-01",
+        expiresOn: "2028-10-01",
+        breachNotificationContactEmail: null,
+        breachNotificationContactPhone: null,
+        documentId,
+      });
+      const recordsOf = async (tenant: string) =>
+        (
+          await admin.query(
+            "SELECT document_id, baa_status FROM platform_tenant_baa_record WHERE tenant_account_id=$1",
+            [tenant],
+          )
+        ).rows;
+
+      it("refuses another tenant's BAA document, a document of another kind and an unknown id (422 BAA_DOCUMENT_INVALID) on create and on update, writing nothing", async () => {
+        const othersBaa = await fileDocument(ORG_S2);
+        const notABaa = await fileDocument(ORG_S4, "other");
+        const unknown = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa00ff";
+        for (const [label, id] of [
+          ["another tenant's BAA", othersBaa],
+          ["a document of another kind", notABaa],
+          ["an unknown id", unknown],
+        ] as const) {
+          const refused = await refusal(backend().service.createBaaRecord(OPS_USER, record(id)));
+          expect(refused.code, label).toBe("BAA_DOCUMENT_INVALID");
+          expect(refused.statusCode, label).toBe(422);
+        }
+        expect(await recordsOf(T_S4)).toEqual([]);
+
+        const pending = await backend().service.createBaaRecord(OPS_USER, record(null, "pending"));
+        for (const [label, id] of [
+          ["another tenant's BAA", othersBaa],
+          ["a document of another kind", notABaa],
+        ] as const) {
+          const refused = await refusal(
+            backend().service.updateBaaRecord(pending.id, OPS_USER, {
+              baaStatus: "executed",
+              documentId: id,
+            }),
+          );
+          expect(refused.code, label).toBe("BAA_DOCUMENT_INVALID");
+        }
+        expect(await baaRow(pending.id)).toMatchObject({
+          baa_status: "pending",
+          document_id: null,
+          updated_by_user_id: null,
+        });
+
+        const own = await fileDocument(ORG_S4);
+        await backend().service.updateBaaRecord(pending.id, OPS_USER, {
+          baaStatus: "executed",
+          documentId: own,
+        });
+        expect(await baaRow(pending.id)).toMatchObject({
+          baa_status: "executed",
+          document_id: own,
+        });
+      });
+
+      it("review fix (register dead end): an unrelated edit of an executed row with a legacy link is accepted; a new link or a transition is judged", async () => {
+        // a legacy row from before the link check: executed, linked to a document that is not this tenant's BAA
+        const legacy = (
+          await admin.query(
+            `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+             VALUES ($1,$2,'v-legacy','executed','2025-10-01','2025-10-01','2026-12-01',$3) RETURNING id`,
+            [ORG_S4, T_S4, await fileDocument(ORG_S2)],
+          )
+        ).rows[0].id as string;
+        await backend().service.updateBaaRecord(legacy, OPS_USER, { expiresOn: "2027-12-01" });
+        expect(await baaRow(legacy)).toMatchObject({ updated_by_user_id: OPS_USER });
+        expect(
+          (
+            await admin.query(
+              "SELECT expires_on::text AS e FROM platform_tenant_baa_record WHERE id=$1",
+              [legacy],
+            )
+          ).rows[0].e,
+        ).toBe("2027-12-01");
+        // re-linking it is judged: another tenant's document is still refused, its own filed renewal is accepted
+        const refused = await refusal(
+          backend().service.updateBaaRecord(legacy, OPS_USER, {
+            documentId: await fileDocument(ORG_S2),
+          }),
+        );
+        expect(refused.code).toBe("BAA_DOCUMENT_INVALID");
+        const renewal = await fileDocument(ORG_S4);
+        await backend().service.updateBaaRecord(legacy, OPS_USER, { documentId: renewal });
+        expect(await baaRow(legacy)).toMatchObject({ document_id: renewal });
+        await admin.query(
+          "UPDATE platform_tenant_baa_record SET baa_status='terminated' WHERE id=$1",
+          [legacy],
+        );
+      });
+
+      it("go-live judges the governing BAA's document too: the wizard store says whether the link verifies, with the real adapter", async () => {
+        const governing = async () =>
+          createDrizzleWizardRunner({
+            db: app.db,
+            platformDb: platform.db,
+            auditBypass: m34PlatformBypassAuditor,
+            platformJobId: JOB_ID,
+            activation: backend().activateApprovedTenant,
+            orgProfileFor: (tx) => buildDrizzleOrgProfilePort(tx),
+            baaDocumentFiled: isTenantBaaDocumentFiled,
+            baaDocumentUploader: tenantBaaDocumentUploader,
+          }).inPlatform("review: the governing BAA of a tenant", (store) => store.latestBaa(T_S6));
+        const insert = async (documentId: string | null) =>
+          admin.query(
+            `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+             VALUES ($1,$2,'v-golive','executed','2026-10-01','2026-10-01','2028-10-01',$3)`,
+            [ORG_S6, T_S6, documentId],
+          );
+        // executed, but linked to ANOTHER tenant's document: the status rests on nothing
+        await insert(await fileDocument(ORG_S2));
+        expect(await governing()).toMatchObject({
+          baaStatus: "executed",
+          documentFiled: false,
+          // not a filed BAA, so there is no uploader to name
+          documentUploadedByMembershipId: null,
+        });
+        const guards = evaluateGoLiveGuards({
+          templates: [],
+          tasks: [],
+          latestBaa: (await governing()) ?? undefined,
+          today: new Date(),
+        });
+        expect(guards.baaExecuted).toBe(false);
+
+        const ownDocument = await fileDocument(ORG_S6);
+        await admin.query(
+          "UPDATE platform_tenant_baa_record SET document_id=$2 WHERE tenant_account_id=$1",
+          [T_S6, ownDocument],
+        );
+        // read on the real platform carrier: migration 1477 lets it read the document's creator (go-live approval refuses that operator)
+        expect(await governing()).toMatchObject({
+          documentFiled: true,
+          documentUploadedByMembershipId: "e5000000-0000-4000-8000-0000000000e5",
+        });
+
+        // The uploader is named by USER too, resolved on the carrier from the membership the document recorded. A revoked membership is
+        // terminal (a returning operator is re-invited as a new row), so an uploader whose membership was revoked and re-granted has a new
+        // membership id that never equals the recorded one: the user is what still matches the approver.
+        const [oldGrant] = (
+          await admin.query(
+            `INSERT INTO membership (user_id, organization_id, status, revoked_at) VALUES ($1,$2,'revoked', now()) RETURNING id`,
+            [OPS_USER, ORG_S6],
+          )
+        ).rows;
+        const revokedUpload = await fileDocument(ORG_S6, "tenant_baa", oldGrant.id);
+        await admin.query(
+          "UPDATE platform_tenant_baa_record SET document_id=$2 WHERE tenant_account_id=$1",
+          [T_S6, revokedUpload],
+        );
+        const named = await governing();
+        expect(named).toMatchObject({
+          documentFiled: true,
+          documentUploadedByMembershipId: oldGrant.id,
+          documentUploadedByUserId: OPS_USER,
+        });
+        // the approver's CURRENT membership is a different id, yet the approval is refused on the user
+        expect(OPS_MEMBERSHIP).not.toBe(oldGrant.id);
+        const refusalFor = (approver: { userId: string; membershipId: string }): string | null => {
+          try {
+            assertApproverDidNotWriteBaa(named ?? undefined, approver);
+            return null;
+          } catch (error) {
+            return (error as ChartWardenError).code;
+          }
+        };
+        expect(refusalFor({ userId: OPS_USER, membershipId: OPS_MEMBERSHIP })).toBe(
+          "GO_LIVE_APPROVER_WROTE_BAA",
+        );
+        // another operator (another user, another membership) is not refused
+        expect(
+          refusalFor({
+            userId: "a0000000-0000-4000-8000-000000007799",
+            membershipId: "b0000000-0000-4000-8000-000000007799",
+          }),
+        ).toBeNull();
+        await admin.query(
+          "UPDATE platform_tenant_baa_record SET document_id=$2 WHERE tenant_account_id=$1",
+          [T_S6, ownDocument],
+        );
+
+        // a document whose content was destroyed (a tombstone) is not a filed agreement: the status rests on nothing again
+        await admin.query("UPDATE document SET status = 'destroyed_tombstone' WHERE id = $1", [
+          ownDocument,
+        ]);
+        expect(await governing()).toMatchObject({
+          documentFiled: false,
+          documentUploadedByMembershipId: null,
+        });
+        // legal hold still holds the signed copy
+        await admin.query("UPDATE document SET status = 'legal_hold' WHERE id = $1", [ownDocument]);
+        expect(await governing()).toMatchObject({ documentFiled: true });
+      });
+
+      it("settles step 3 only when the governing BAA's document verifies", async () => {
+        await attestPlatform(T_S5, "wiz-s5", "account_created", "organisation confirmed");
+        await attestPlatform(T_S5, "wiz-s5", "plan_contract", "order form countersigned");
+        // An executed BAA written before the link was checked (a legacy row), linked to ANOTHER tenant's document.
+        const insert = async (documentId: string) =>
+          admin.query(
+            `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+             VALUES ($1,$2,'v-legacy','executed','2026-10-01','2026-10-01','2028-10-01',$3)`,
+            [ORG_S5, T_S5, documentId],
+          );
+        await insert(await fileDocument(ORG_S2));
+        await advancer()({ tenantAccountId: T_S5, orgId: ORG_S5 });
+        expect(await statusOf(T_S5, "baa_executed")).toBe("blocked");
+
+        await admin.query(
+          "UPDATE platform_tenant_baa_record SET document_id=$2 WHERE tenant_account_id=$1",
+          [T_S5, await fileDocument(ORG_S5)],
+        );
+        // A pass built WITHOUT the reader never settles step 3 on the status alone, even over a link that would verify.
+        const { baaDocumentFiled: _unwired, ...unwired } = facts();
+        await advancer(unwired)({ tenantAccountId: T_S5, orgId: ORG_S5 });
+        expect(await statusOf(T_S5, "baa_executed")).toBe("blocked");
+        await advancer()({ tenantAccountId: T_S5, orgId: ORG_S5 });
+        expect(await statusOf(T_S5, "baa_executed")).toBe("done");
       });
     });
 
@@ -1975,7 +2274,7 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
           .slice(0, 10),
         breachNotificationContactEmail: null,
         breachNotificationContactPhone: null,
-        documentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0003",
+        documentId: await fileDocument(ORG_W),
       });
       await wizard(false).attestGoLive(officer, ORG_W, "ready");
 
@@ -2029,13 +2328,85 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         expiresOn: "2028-10-01",
         breachNotificationContactEmail: null,
         breachNotificationContactPhone: null,
-        documentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa0001",
+        documentId: await fileDocument(ORG_S2),
       });
 
       expect(warned).toEqual([]);
       expect(advanced).toEqual([T_S2]);
       expect(await statusOf(T_S2, "baa_executed")).toBe("done");
       expect(await statusOf(T_S2, "provisioning_complete")).toBe("done");
+    });
+
+    it("a BAA register create and update on a LIVE tenant run no onboarding pass: its past-due tasks stay as they are and nothing is emitted", async () => {
+      const ORG_LIVE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb10";
+      const T_LIVE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb11";
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'wiz-live','wiz-live','wiz-live')",
+        [ORG_LIVE],
+      );
+      await admin.query(
+        "INSERT INTO tenant_account (id, organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,'active','wiz-live','b@x.test','p@x.test')",
+        [T_LIVE, ORG_LIVE],
+      );
+      // Every task past due: a pass over this tenant WOULD flag them overdue.
+      await admin.query(
+        `INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key, due_at)
+         SELECT $1, $2, key, now() - interval '30 days' FROM onboarding_task_template WHERE retired_at IS NULL`,
+        [ORG_LIVE, T_LIVE],
+      );
+      const tasks = async () =>
+        (
+          await admin.query(
+            "SELECT * FROM onboarding_task WHERE tenant_account_id=$1 ORDER BY template_key",
+            [T_LIVE],
+          )
+        ).rows;
+      const onboardingEvents = async () =>
+        (
+          await admin.query(
+            "SELECT event_type FROM outbox_event WHERE organization_id=$1 AND event_type LIKE 'm34.tenant.onboarding%'",
+            [ORG_LIVE],
+          )
+        ).rows;
+      const before = await tasks();
+      expect(before.length).toBeGreaterThan(0);
+      const alertsBefore = alertCalls.length;
+      const advanced: string[] = [];
+      const live = backend({
+        advanceOnboarding: async (tenant) => {
+          advanced.push(tenant.tenantAccountId);
+          await advancer()({
+            tenantAccountId: tenant.tenantAccountId,
+            orgId: tenant.organizationId,
+          });
+        },
+      }).service;
+
+      const created = await live.createBaaRecord(OPS_USER, {
+        tenantAccountId: T_LIVE,
+        addendumVersion: "v-renewal",
+        baaStatus: "executed",
+        executedOn: "2026-10-01",
+        effectiveOn: "2026-10-01",
+        expiresOn: "2028-10-01",
+        breachNotificationContactEmail: null,
+        breachNotificationContactPhone: null,
+        documentId: await fileDocument(ORG_LIVE),
+      });
+      await live.updateBaaRecord(created.id, OPS_USER, { expiresOn: "2029-10-01" });
+
+      expect(advanced).toEqual([T_LIVE, T_LIVE]); // the pass was asked for, and declined: the tenant is live
+      expect(await tasks()).toEqual(before);
+      expect(await onboardingEvents()).toEqual([]);
+      expect(alertCalls.length).toBe(alertsBefore);
+
+      // Control: the same pass over the same tasks, once the tenant is onboarding, does flag them.
+      await admin.query("UPDATE tenant_account SET status='onboarding' WHERE id=$1", [T_LIVE]);
+      await advancer()({ tenantAccountId: T_LIVE, orgId: ORG_LIVE });
+      expect((await onboardingEvents()).map((r) => r.event_type)).toContain(
+        "m34.tenant.onboarding_overdue",
+      );
+      await admin.query("UPDATE tenant_account SET status='active' WHERE id=$1", [T_LIVE]);
     });
 
     it("an advance failure after a BAA write is logged, never thrown: the write stays", async () => {
@@ -2442,9 +2813,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         [ORG_S, T_S],
       );
       await admin.query(
-        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-        [ORG_S, T_S],
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+        [ORG_S, T_S, await fileDocument(ORG_S)],
       );
       await admin.query(
         "UPDATE tenant_account SET compliance_officer_membership_id=$2 WHERE id=$1",
@@ -2513,9 +2884,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         [ORG_P, T_P],
       );
       await admin.query(
-        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-        [ORG_P, T_P],
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+        [ORG_P, T_P, await fileDocument(ORG_P)],
       );
       adminP = await person(ORG_P, "admin-p", ["org_admin"]);
       officerP = await person(ORG_P, "officer-p", ["compliance_officer"]);
@@ -2617,9 +2988,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         [org, tenant],
       );
       await admin.query(
-        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-        [org, tenant],
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+        [org, tenant, await fileDocument(org)],
       );
     };
     const pendingAttestation = async (org: string) =>
@@ -2864,9 +3235,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
           [org, tenant],
         );
         await admin.query(
-          `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-           VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-          [org, tenant],
+          `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+           VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+          [org, tenant, await fileDocument(org)],
         );
       }
       officerR = await person(ORG_R, "officer-r", ["compliance_officer"]);
@@ -3049,9 +3420,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         [ORG_G, T_G],
       );
       await admin.query(
-        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
-         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
-        [ORG_G, T_G],
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on, document_id)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date, $3)`,
+        [ORG_G, T_G, await fileDocument(ORG_G)],
       );
       adminG = await person(ORG_G, "admin-g", ["org_admin"]);
       officerG = await person(ORG_G, "officer-g", ["compliance_officer"]);
@@ -3171,6 +3542,194 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       await expect(hook(req("GET", "/api/v1/patients"))).rejects.toMatchObject({
         code: "ORGANIZATION_ONBOARDING",
       });
+    });
+  });
+
+  describe("the onboarding-template catalog cannot overwrite a canonical template", () => {
+    it("a POST naming a canonical key is 409 ONBOARDING_TEMPLATE_CANONICAL on the real platform carrier and the row is unchanged", async () => {
+      const row = async () =>
+        (
+          await admin.query(
+            "SELECT display_label, canonical_order, is_canonical FROM onboarding_task_template WHERE key='baa_executed'",
+          )
+        ).rows[0];
+      const before = await row();
+      expect(before.is_canonical).toBe(true);
+      await expect(
+        backend().service.upsertOnboardingTemplate(OPS_USER, {
+          key: "baa_executed",
+          title: "Hijacked",
+          description: null,
+          canonicalOrder: 99,
+          isCanonical: false,
+          ...TEMPLATE_WRITE,
+        }),
+      ).rejects.toMatchObject({ code: "ONBOARDING_TEMPLATE_CANONICAL", statusCode: 409 });
+      expect(await row()).toEqual(before);
+    });
+
+    it("never promotes a step to canonical, new or existing: the upsert is 409 and the row stays non-canonical (the code answers 409 first; migration 1476 makes the database refuse it too)", async () => {
+      const upsert = (key: string, isCanonical: boolean) =>
+        backend().service.upsertOnboardingTemplate(OPS_USER, {
+          key,
+          title: "Promotable",
+          description: null,
+          canonicalOrder: 152,
+          isCanonical,
+          ...TEMPLATE_WRITE,
+        });
+      await upsert("promote_guard_custom_step", false);
+      for (const key of ["promote_guard_custom_step", "promote_guard_new_step"]) {
+        await expect(upsert(key, true), key).rejects.toMatchObject({
+          code: "ONBOARDING_TEMPLATE_CANONICAL",
+          statusCode: 409,
+        });
+      }
+      const rows = await admin.query(
+        "SELECT key, is_canonical FROM onboarding_task_template WHERE key LIKE 'promote_guard_%' ORDER BY key",
+      );
+      expect(rows.rows).toEqual([{ key: "promote_guard_custom_step", is_canonical: false }]);
+    });
+
+    it("migration 1425: platform ops add and re-edit a non-canonical step on the real platform carrier (it was a 42501 before)", async () => {
+      const created = await backend().service.upsertOnboardingTemplate(OPS_USER, {
+        key: "grant_1425_custom_step",
+        title: "Custom training",
+        description: "Staff walkthrough",
+        canonicalOrder: 150,
+        isCanonical: false,
+        ...TEMPLATE_WRITE,
+      });
+      expect(created).toMatchObject({ key: "grant_1425_custom_step", isCanonical: false });
+      const edited = await backend().service.upsertOnboardingTemplate(OPS_USER, {
+        key: "grant_1425_custom_step",
+        title: "Custom training (renamed)",
+        description: null,
+        canonicalOrder: 151,
+        isCanonical: false,
+        ...TEMPLATE_WRITE,
+      });
+      expect(edited).toMatchObject({ title: "Custom training (renamed)", canonicalOrder: 151 });
+
+      // The UPDATE grant is column-level: a step's key, owner role and settings cannot be rewritten by the carrier.
+      const login = new Client({
+        connectionString: urlAs("chartwarden_platform_login", PLATFORM_PASSWORD),
+      });
+      await login.connect();
+      try {
+        for (const set of [
+          "key = 'grant_1369_renamed'",
+          "required_role = 'org_admin'",
+          "completion_mode = 'attestation'",
+          "retired_at = now()",
+        ]) {
+          await expect(
+            login.query(
+              `UPDATE onboarding_task_template SET ${set} WHERE key = 'grant_1425_custom_step'`,
+            ),
+            set,
+          ).rejects.toMatchObject({ code: "42501" });
+        }
+        await expect(
+          login.query("DELETE FROM onboarding_task_template WHERE key = 'grant_1425_custom_step'"),
+        ).rejects.toMatchObject({ code: "42501" });
+        // Migration 1476: "the narrowest grant" no longer includes the canonical flag (the route never writes it), so promoting a step
+        // is 42501 for the carrier ...
+        await expect(
+          login.query(
+            "UPDATE onboarding_task_template SET is_canonical = true WHERE key = 'grant_1425_custom_step'",
+          ),
+        ).rejects.toMatchObject({ code: "42501" });
+      } finally {
+        await login.end();
+      }
+      await admin.query(
+        "DELETE FROM onboarding_task_template WHERE key = 'grant_1425_custom_step'",
+      );
+    });
+
+    it("migration 1476: the database itself refuses the platform carrier a canonical row (a trigger), however the statement is shaped", async () => {
+      const login = new Client({
+        connectionString: urlAs("chartwarden_platform_login", PLATFORM_PASSWORD),
+      });
+      await login.connect();
+      try {
+        // INSERT is table-wide, so the column grant cannot stop a canonical INSERT: the trigger does
+        await expect(
+          login.query(
+            `INSERT INTO onboarding_task_template (key, display_label, description, canonical_order, required_role, default_due_days_after_provisioning, is_canonical)
+             VALUES ('grant_1476_promoted', 'Promoted', '', 160, 'platform_ops', 0, true)`,
+          ),
+        ).rejects.toMatchObject({
+          code: "23001",
+          message: expect.stringContaining("migration only"),
+        });
+        // a canonical row's title (a column the carrier may update on a custom step) is refused too: a canonical step changes by migration
+        await expect(
+          login.query(
+            "UPDATE onboarding_task_template SET display_label = 'Hijacked' WHERE key = 'baa_executed'",
+          ),
+        ).rejects.toMatchObject({ code: "23001" });
+        // a custom step is still editable by the carrier (the route's own write)
+        await login.query(
+          `INSERT INTO onboarding_task_template (key, display_label, description, canonical_order, required_role, default_due_days_after_provisioning, is_canonical)
+           VALUES ('grant_1476_custom_step', 'Custom', '', 161, 'platform_ops', 0, false)`,
+        );
+        await login.query(
+          "UPDATE onboarding_task_template SET display_label = 'Custom (renamed)' WHERE key = 'grant_1476_custom_step'",
+        );
+      } finally {
+        await login.end();
+      }
+      const baa = await admin.query(
+        "SELECT display_label, is_canonical FROM onboarding_task_template WHERE key = 'baa_executed'",
+      );
+      expect(baa.rows[0]).toMatchObject({ is_canonical: true });
+      expect(baa.rows[0].display_label).not.toBe("Hijacked");
+      expect(
+        (
+          await admin.query(
+            "SELECT 1 FROM onboarding_task_template WHERE key = 'grant_1476_promoted'",
+          )
+        ).rows,
+      ).toHaveLength(0);
+      // a superuser (a migration, which is how a canonical step is changed) is not refused
+      await admin.query(
+        "UPDATE onboarding_task_template SET description = description WHERE key = 'baa_executed'",
+      );
+      await admin.query(
+        "DELETE FROM onboarding_task_template WHERE key = 'grant_1476_custom_step'",
+      );
+    });
+
+    it("names its operator: the upsert leaves one m34.onboarding_template.upserted event with the operator, the reason and the step (the org-less row trigger records no actor, so this event is where the operator is named)", async () => {
+      await backend().service.upsertOnboardingTemplate(OPS_USER, {
+        key: "named_actor_step",
+        title: "Named actor step",
+        description: null,
+        canonicalOrder: 170,
+        isCanonical: false,
+        ...TEMPLATE_WRITE,
+      });
+      const events = await admin.query(
+        `SELECT actor_user_id, context FROM audit_event
+          WHERE event_type = 'm34.onboarding_template.upserted' AND context->>'templateKey' = 'named_actor_step'`,
+      );
+      expect(events.rows).toHaveLength(1);
+      expect(events.rows[0].context).toMatchObject({
+        operatorUserId: OPS_USER,
+        operatorMembershipId: OPS_MEMBERSHIP,
+        reason: TEMPLATE_REASON,
+        title: "Named actor step",
+        canonicalOrder: 170,
+      });
+      // the row's own trigger (the M1 org-less baseline) records the change but never an actor: without the event above it is nameless
+      const trail = await admin.query(
+        `SELECT actor_user_id FROM audit_event
+          WHERE event_type = 'onboarding_task_template.insert' AND after->>'key' = 'named_actor_step'`,
+      );
+      expect(trail.rows).toHaveLength(1);
+      await admin.query("DELETE FROM onboarding_task_template WHERE key = 'named_actor_step'");
     });
   });
 });

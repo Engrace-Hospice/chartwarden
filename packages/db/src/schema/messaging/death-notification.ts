@@ -1,4 +1,4 @@
-// M36 death-notification cascade (migration 1454): one row per (board, recipient_kind, recipient_ref). Ids, enums and instants only.
+// M36 death-notification cascade (migration 1478): one row per (board, recipient_kind, recipient_ref). Ids, enums and instants only.
 // Names match the migration. acked_at / updated_at are set by the database guard trigger, whatever the client sends.
 import { sql } from "drizzle-orm";
 import {
@@ -31,7 +31,7 @@ export const deathNotifications = pgTable(
     ackedAt: timestamp("acked_at", { withTimezone: true }),
     ackedBy: uuid("acked_by"),
     sentOutboxEventId: uuid("sent_outbox_event_id"),
-    /** External funeral-home notices (migration 1455): the MDM entity, the minted M2 link and a keyed digest of the recipient address (never the address). */
+    /** External funeral-home notices (migration 1479): the MDM entity, the minted M2 link and a keyed digest of the recipient address (never the address). */
     funeralHomeEntityId: uuid("funeral_home_entity_id"),
     linkId: uuid("link_id"),
     sendAttemptId: uuid("send_attempt_id"),

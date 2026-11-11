@@ -279,7 +279,16 @@ export {
   CLEARINGHOUSE_VENDOR_ENV,
   NOT_WIRED_TRANSPORT,
   PRODUCTION_CLEARINGHOUSE_VENDORS,
+  UNBOUND_BINDING,
+  UNBOUND_BAA_REVOKED,
+  UNBOUND_NOT_ACTIVE,
+  UNBOUND_NOT_CHOSEN,
+  UNBOUND_OUTSIDE,
+  type UnboundReason,
   bindClearinghouseTransport,
+  bindingForOrg,
+  cursorVendorKey,
+  isPerOrgBinding,
   parseClearinghouseVendor,
 } from "./clearinghouse/transport-registry";
 export {
@@ -345,6 +354,11 @@ export type {
   DdeConformanceScript,
   DdeHarness,
 } from "./dde/conformance";
+export {
+  CLAIMMD_PROBE_DAY,
+  probeClaimMdAccountKey,
+  type ConnectionProbeOutcome,
+} from "./clearinghouse/claimmd-probe";
 export { InMemoryAttemptStore, PlatformControlNumberTaken } from "./clearinghouse/attempt-store";
 export type {
   AttemptResolution,

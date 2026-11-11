@@ -6,6 +6,7 @@ import {
   Glyph,
   LoadingSpinner,
   ToastProvider,
+  UnstyledList,
 } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 // apps/admin — the Platform-Ops console SPA shell (M34 §5.1, ADR-0030). The ChartWarden-staff control-plane
@@ -49,7 +50,7 @@ function AdminHome({ sections }: { sections: readonly AdminNavSection[] }): JSX.
             aria-label={section.label ?? ""}
           >
             <h2>{section.label}</h2>
-            <ul>
+            <UnstyledList>
               {section.entries.map((entry) => (
                 <li key={entry.key}>
                   <Link to={entry.to}>
@@ -58,7 +59,7 @@ function AdminHome({ sections }: { sections: readonly AdminNavSection[] }): JSX.
                   </Link>
                 </li>
               ))}
-            </ul>
+            </UnstyledList>
           </section>
         ))}
       </div>

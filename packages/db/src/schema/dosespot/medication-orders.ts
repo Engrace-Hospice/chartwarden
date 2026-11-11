@@ -169,6 +169,11 @@ export const medicationOrders = pgTable(
       .on(t.organizationId, t.triggeringReconciliationDecisionId)
       .where(sql`triggering_reconciliation_decision_id IS NOT NULL`),
     byCreatedAt: index("medication_order_created_idx").on(t.createdAt),
+    // Migration 1431: the queued set the transmit age alert probes. Partial, so it holds only the orders
+    // still waiting to go out.
+    byQueued: index("medication_order_queued_idx")
+      .on(t.organizationId, t.id)
+      .where(sql`status = 'queued_for_transmission' AND dosespot_send_state = 'queued'`),
     // COP27 — the NonCoveredMedicationsReader seam read (per admission, not-covered rows only).
     byAdmissionNotCovered: index("medication_order_admission_not_covered_idx")
       .on(t.organizationId, t.admissionId)

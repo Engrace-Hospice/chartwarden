@@ -5,8 +5,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
+import { ChartWardenError } from "@chartwarden/types";
 import { type ClearinghouseContext, clearinghouseUsageFromEnv } from "@chartwarden/x12-837-client";
 import { and, eq } from "drizzle-orm";
+import { tenantClaimMdAccountReference } from "../claimmd-evidence/store";
 import type { ClearinghouseContextPort } from "./clearinghouse-submission";
 
 export const CLEARINGHOUSE_PAYER_ID_ENV = "CLEARINGHOUSE_PAYER_ID";
@@ -26,9 +28,31 @@ export type ClaimMdM23PayerRoute = {
 
 type EnvMap = Readonly<Record<string, string | undefined>>;
 
+/** What the context port needs of a clearinghouse binding: which vendor, and whether the account is the tenant's own. */
+export interface OrgBindingFacts {
+  readonly vendor: string | null;
+  readonly account?: "tenant";
+}
+
+/** The platform binding: one for everyone, or (tenant clearinghouses) `forOrg` hands each organization its own. */
+export interface ContextBinding extends OrgBindingFacts {
+  readonly forOrg?: (organizationId: string) => Promise<OrgBindingFacts>;
+}
+
 export interface ClearinghouseContextDeps {
   readonly db: DbClient;
   readonly env: EnvMap;
+  /**
+   * The clearinghouse binding. The Claim.MD payer route is decided by the ORGANIZATION'S resolved binding (its vendor and
+   * whose account it is), never by the platform env vendor: a tenant on Stedi needs no Claim.MD route, a tenant's own Claim.MD
+   * account resolves its route under its own account reference. Absent (slice boots, tests), the platform env vendor decides.
+   */
+  readonly binding?: ContextBinding;
+  /**
+   * The vendor mode of an organization's own live clearinghouse config (ADR-0053 amendment 2026-11-06), or null when it has
+   * none (the platform's env usage then applies). A value replaces the env usage for that organization only.
+   */
+  readonly usageFor?: (organizationId: string) => Promise<ClearinghouseContext["usage"] | null>;
   /** The provider entity's NPI (M1 owns the table), or null when unknown. */
   readonly providerNpi: (
     organizationId: string,
@@ -122,21 +146,62 @@ function readClaimMdM23PayerRoutes(env: EnvMap): readonly ClaimMdM23PayerRoute[]
   }
 }
 
+/**
+ * The Claim.MD account whose payer route an organization's claims need, or null when its clearinghouse is not Claim.MD (a Stedi
+ * org needs no route). A tenant's OWN account is filed under `tenant:<org>` (the reference its evidence already uses); the
+ * platform's account (and the orgs it serves) under CLAIMMD_ACCOUNT_REFERENCE.
+ */
+async function claimMdAccountOf(
+  deps: Pick<ClearinghouseContextDeps, "binding" | "env">,
+  organizationId: string,
+): Promise<{ readonly accountReference: string } | null> {
+  const resolved = deps.binding?.forOrg ? await deps.binding.forOrg(organizationId) : deps.binding;
+  const vendor = resolved ? resolved.vendor : deps.env[CLEARINGHOUSE_VENDOR_ENV]?.trim();
+  if (vendor !== "claimmd") return null;
+  if (resolved?.account === "tenant") {
+    return { accountReference: tenantClaimMdAccountReference(organizationId) };
+  }
+  const platformReference = deps.env[CLAIMMD_ACCOUNT_REFERENCE_ENV]?.trim();
+  if (!platformReference) {
+    throw new Error("CLAIMMD_ACCOUNT_REFERENCE is required for Claim.MD payer route resolution");
+  }
+  return { accountReference: platformReference };
+}
+
+/** What a claim fingerprint is bound to when no Claim.MD account reference is configured (the pre-tenant-account placeholder). */
+const LEGACY_CLAIM_ACCOUNT_REFERENCE = "legacy-mac";
+
+/**
+ * The account reference a claim's preview fingerprint and its submit-time fingerprint are both bound to, for one organization: a
+ * tenant's OWN Claim.MD account is `tenant:<org>` (the reference its evidence uses), otherwise the platform's
+ * CLAIMMD_ACCOUNT_REFERENCE, else a fixed placeholder. The preview route and the submit worker call this one function, so a
+ * preview confirmed for one account can never be sent under another and the two fingerprints keep matching.
+ */
+export async function claimAccountReferenceFor(
+  deps: Pick<ClearinghouseContextDeps, "binding" | "env">,
+  organizationId: string,
+): Promise<string> {
+  const resolved = deps.binding?.forOrg ? await deps.binding.forOrg(organizationId) : deps.binding;
+  if (resolved?.vendor === "claimmd" && resolved.account === "tenant") {
+    return tenantClaimMdAccountReference(organizationId);
+  }
+  return deps.env[CLAIMMD_ACCOUNT_REFERENCE_ENV]?.trim() || LEGACY_CLAIM_ACCOUNT_REFERENCE;
+}
+
 export function buildClearinghouseContextPort(
   deps: ClearinghouseContextDeps,
 ): ClearinghouseContextPort {
   const usage = clearinghouseUsageFromEnv(deps.env);
   const payerOverride = deps.env[CLEARINGHOUSE_PAYER_ID_ENV]?.trim();
-  const vendor = deps.env.CLEARINGHOUSE_VENDOR?.trim();
-  const claimMdAccountReference = deps.env[CLAIMMD_ACCOUNT_REFERENCE_ENV]?.trim() ?? "";
+  const platformVendor = deps.env.CLEARINGHOUSE_VENDOR?.trim();
   const claimMdRoutes = readClaimMdM23PayerRoutes(deps.env);
-  if (vendor === "claimmd" && payerOverride) {
+  if (platformVendor === "claimmd" && payerOverride) {
     throw new Error(
       `${CLEARINGHOUSE_PAYER_ID_ENV} cannot authorize Claim.MD payer routing; configure ${CLAIMMD_M23_PAYER_ROUTES_ENV}`,
     );
   }
   return {
-    async contextFor(organizationId, providerEntityId) {
+    async contextFor(organizationId, providerEntityId, options) {
       const credential = await withOrgContext(
         deps.db,
         { organizationId, userId: "" },
@@ -155,6 +220,7 @@ export function buildClearinghouseContextPort(
         },
       );
       const billingNpi = await deps.providerNpi(organizationId, providerEntityId);
+      const orgUsage = (await deps.usageFor?.(organizationId)) ?? usage;
       if (!credential || !billingNpi) {
         throw new Error(
           "clearinghouse context: provider entity has no MAC submitter credential or NPI on file",
@@ -162,18 +228,17 @@ export function buildClearinghouseContextPort(
       }
       let payerId = payerOverride || credential.macJurisdiction;
       let claimMdRouteFingerprint: string | undefined;
-      if (vendor === "claimmd") {
-        if (!claimMdAccountReference)
-          throw new Error(
-            "CLAIMMD_ACCOUNT_REFERENCE is required for Claim.MD payer route resolution",
-          );
+      const claimMdAccount =
+        options?.payerRoute === "skip" ? null : await claimMdAccountOf(deps, organizationId);
+      if (claimMdAccount) {
+        // Claim.MD never takes the global payer override: the route is scoped to this org's account and mode.
         const resolvedRoute = resolveClaimMdM23PayerRoute({
           routes: claimMdRoutes,
           organizationId,
           providerEntityId,
           macJurisdiction: credential.macJurisdiction,
-          accountReference: claimMdAccountReference,
-          usage,
+          accountReference: claimMdAccount.accountReference,
+          usage: orgUsage,
         });
         payerId = resolvedRoute.payerId;
         claimMdRouteFingerprint = resolvedRoute.routeFingerprint;
@@ -183,7 +248,7 @@ export function buildClearinghouseContextPort(
         providerEntityId,
         payerId,
         correlationId: randomUUID(),
-        usage,
+        usage: orgUsage,
         billingNpi,
         jurisdiction: credential.macJurisdiction,
         ...(claimMdRouteFingerprint ? { claimMdRouteFingerprint } : {}),
@@ -199,5 +264,54 @@ export function buildClearinghouseContextPort(
         return rows.map((r) => r.id);
       });
     },
+  };
+}
+
+export type ClaimPayerRouteStatus =
+  | { readonly status: "verified"; readonly routeFingerprint: string }
+  | { readonly status: "not_configured"; readonly reasonCode?: string }
+  | { readonly status: "not_applicable" };
+
+/**
+ * The claim routes' payer-route readiness (preparation and submit). `not_applicable` for an org whose clearinghouse is not Claim.MD;
+ * for a Claim.MD org it is the same resolution the submit worker repeats before upload, plus the active-M40-payer gate. Any failure
+ * (including an org whose binding cannot be resolved) is `not_configured` with a code, never silently applicable.
+ */
+export function buildClaimPayerRouteStatus(
+  deps: ClearinghouseContextDeps & {
+    /** True when the resolved payer id is an active X12 payer (M40 owns the directory). */
+    readonly payerIsActive: (payerId: string) => Promise<boolean>;
+    /** Structured logger for a readiness check that failed to resolve (ids and a code only, never the error's message). */
+    readonly log?: (fields: Record<string, unknown>, message: string) => void;
+  },
+): (organizationId: string, providerEntityId: string) => Promise<ClaimPayerRouteStatus> {
+  return async (organizationId, providerEntityId) => {
+    try {
+      if (!(await claimMdAccountOf(deps, organizationId))) return { status: "not_applicable" };
+      const context = await buildClearinghouseContextPort(deps).contextFor(
+        organizationId,
+        providerEntityId,
+      );
+      if (!context.claimMdRouteFingerprint) {
+        return { status: "not_configured", reasonCode: "PAYER_ROUTE_NOT_VERIFIED" };
+      }
+      if (!(await deps.payerIsActive(context.payerId))) {
+        return { status: "not_configured", reasonCode: "CLAIMMD_PAYER_ROUTE_PAYER_NOT_ACTIVE" };
+      }
+      return { status: "verified", routeFingerprint: context.claimMdRouteFingerprint };
+    } catch (error) {
+      // A typed refusal keeps its own code (an unreadable credential is not "not verified"); only an untyped throw is generic.
+      const code =
+        error instanceof ChartWardenError
+          ? error.code
+          : error instanceof Error && error.message.startsWith("CLAIMMD_PAYER_ROUTE_")
+            ? error.message
+            : "PAYER_ROUTE_NOT_VERIFIED";
+      deps.log?.(
+        { organizationId, providerEntityId, code },
+        "claim payer-route readiness could not be resolved",
+      );
+      return { status: "not_configured", reasonCode: code };
+    }
   };
 }

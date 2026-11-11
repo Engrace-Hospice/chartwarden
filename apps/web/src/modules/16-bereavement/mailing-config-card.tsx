@@ -6,7 +6,7 @@
 // discards the unsaved edits, so it is never done for the reader. While the write is in flight every control is inert and the
 // button shows it; an unsaved edit is flagged, can be discarded, and the browser warns before the tab is closed over it. The card reports
 // "unsaved" or "saving" to the settings page, which holds the one in-app navigation blocker (a router supports one blocker at a time).
-import { Button, StatusPill, t } from "@chartwarden/ui";
+import { Button, StatusPill, t, useAttemptKey } from "@chartwarden/ui";
 import { useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -25,7 +25,6 @@ import {
   Notice,
   TextField,
   mutedStyle,
-  useIdempotencyKey,
   visuallyHidden,
 } from "./bereavement-ui";
 import { buildBody, draftOf, sameDraft } from "./mailing-config-draft";
@@ -70,7 +69,7 @@ export function MailingConfigCard({
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const inFlight = useRef(false);
-  const idempotency = useIdempotencyKey();
+  const idempotency = useAttemptKey();
 
   const dirty = !sameDraft(draft, baseline);
   const built = buildBody(config.mailingKey, draft);
@@ -115,7 +114,7 @@ export function MailingConfigCard({
       built.body,
       idempotency.keyFor(`${config.version}:${JSON.stringify(built.body)}`),
     );
-    idempotency.settle(status);
+    idempotency.settle(status, err);
     inFlight.current = false;
     setBusy(false);
     if (err || !saved) {

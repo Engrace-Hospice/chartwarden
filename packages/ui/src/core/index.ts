@@ -10,6 +10,7 @@ export type { FeatureFlags, SystemStatusComponent, SystemStatusLevel } from "./t
 export {
   ApiClientProvider,
   BACKGROUND_REQUEST_HEADERS,
+  clearIdempotencyKeys,
   createApiClient,
   useApiClient,
 } from "./api";
@@ -61,6 +62,33 @@ export {
   setSearchTerm,
   useSearchTerm,
 } from "./hooks/use-search-term";
+
+// Platform-ops writes (2026-11 tenant onboarding): the reason an operator gives, what a refusal means, one Idempotency-Key per attempt
+export { REASON_RULES, checkReason, normalizeReason } from "./ops-write/reason";
+export type { ReasonRule } from "./ops-write/reason";
+export { describeOpsError } from "./ops-write/ops-error";
+export type {
+  OpsErrorCopy,
+  OpsErrorDetail,
+  OpsFailure,
+  OpsFailureKind,
+} from "./ops-write/ops-error";
+export { createIdempotencyKeeper, useIdempotencyKeeper } from "./ops-write/idempotency";
+export {
+  NO_ANSWER,
+  createAttemptKey,
+  sharedAttemptKeys,
+  useAttemptKey,
+} from "./ops-write/use-attempt-key";
+export type { AttemptKey } from "./ops-write/use-attempt-key";
+export { freshIdempotencyKeyHeaders, newIdempotencyKey } from "./ops-write/idempotency-key";
+export type { IdempotencyAttempt, IdempotencyKeeper } from "./ops-write/idempotency";
+export { AFTER_SUCCESS_TIMEOUT_MS, useOpsWrite } from "./ops-write/use-ops-write";
+export { reachedNoOne, sendWrite, settleWrite, writeRefused } from "./ops-write/send-write";
+export type { SettledWrite, WriteResponse } from "./ops-write/send-write";
+// Money and counts an operator types, parsed by string math (no float multiply, no "1e3" or "0x1f")
+export { hundredthsText, parseHundredths, parsePriceCents, parseWholeNumber } from "./money";
+export type { OpsWrite, OpsWriteOutcome } from "./ops-write/use-ops-write";
 
 // Theme tokens (plain data — no styling runtime)
 export { brandColors } from "./theme/colors";

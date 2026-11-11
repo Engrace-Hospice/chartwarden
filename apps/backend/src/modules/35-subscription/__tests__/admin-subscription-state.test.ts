@@ -8,7 +8,7 @@
 import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import type { PlatformAuditEntry, PlatformRunner, WriteTx } from "../pricing/ports";
-import type { M35WriteActor } from "../routes/actor";
+import type { M35WriteActor } from "../routes/service";
 import { buildDrizzleM35RouteService } from "../routes/service-drizzle";
 
 const SUBSCRIPTION_ID = "5b000000-0000-4000-8000-000000000001";

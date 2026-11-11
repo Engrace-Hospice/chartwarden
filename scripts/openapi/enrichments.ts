@@ -18,6 +18,11 @@ import {
   ReadyResponseSchema as M1ReadyResponseSchema,
   VersionResponseSchema as M1VersionResponseSchema,
 } from "../../apps/backend/src/bootstrap/routes/health";
+import { ClaimMdOperationalObservabilityResponseSchema as OpsClaimMdObservabilityResponseSchema } from "../../apps/backend/src/bootstrap/routes/ops-claimmd-observability";
+import {
+  ClaimMdRecoveryReadinessQuerySchema as OpsClaimMdRecoveryReadinessQuerySchema,
+  ClaimMdRecoveryReadinessResponseSchema as OpsClaimMdRecoveryReadinessResponseSchema,
+} from "../../apps/backend/src/bootstrap/routes/ops-claimmd-recovery-readiness";
 import {
   FeatureFlagsResponseSchema as M1FeatureFlagsResponseSchema,
   SystemStatusComponentBodySchema as M1SystemStatusComponentBodySchema,
@@ -259,19 +264,52 @@ import {
   VersionListQuerySchema as M15VersionListQuerySchema,
   VolunteerStatusQuerySchema as M15VolunteerStatusQuerySchema,
 } from "../../apps/backend/src/modules/15-discipline-care-plans/routes/m15-typebox";
+// ADR-0109 D10 (PR 3) — the M16 support groups (routes 53-66).
+import {
+  AddGroupSessionBody as M16AddGroupSessionBody,
+  AttendanceResultResponseSchema as M16AttendanceResultResponse,
+  CloseGroupBody as M16CloseGroupBody,
+  CreateGroupBody as M16CreateGroupBody,
+  EnrollContactBody as M16EnrollContactBody,
+  GroupDetailResponseSchema as M16GroupDetailResponse,
+  GroupEnrollmentListResponseSchema as M16GroupEnrollmentListResponse,
+  GroupEnrollmentResponseSchema as M16GroupEnrollmentResponse,
+  GroupListQuerySchema as M16GroupListQuerySchema,
+  GroupPageResponseSchema as M16GroupPageResponse,
+  GroupRosterResponseSchema as M16GroupRosterResponse,
+  GroupSessionListResponseSchema as M16GroupSessionListResponse,
+  GroupSessionResponseSchema as M16GroupSessionResponse,
+  RecordAttendanceBody as M16RecordAttendanceBody,
+  UpdateGroupBody as M16UpdateGroupBody,
+  WithdrawEnrollmentBody as M16WithdrawEnrollmentBody,
+} from "../../apps/backend/src/modules/16-bereavement/routes/group-typebox";
+// ADR-0109 D10 (PR 3) — the M16 grief library (routes 77-81).
+import {
+  CreateLibraryItemBody as M16CreateLibraryItemBody,
+  LibraryItemListResponseSchema as M16LibraryItemListResponse,
+  LibraryItemResponseSchema as M16LibraryItemResponse,
+  LibraryItemUrlResponseSchema as M16LibraryItemUrlResponse,
+  LibraryListQuerySchema as M16LibraryListQuerySchema,
+  LibraryUrlQuerySchema as M16LibraryUrlQuerySchema,
+  SetLibraryStatusBody as M16SetLibraryStatusBody,
+  UpdateLibraryItemBody as M16UpdateLibraryItemBody,
+} from "../../apps/backend/src/modules/16-bereavement/routes/library-typebox";
 // M16 Bereavement — the §4.2 request bodies + list queries the §4.1 route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M16-T07
 // web screens call the surface these type.
 import {
+  ApproveLetterBody as M16ApproveLetterBody,
   AssignCounselorBody as M16AssignCounselorBody,
   AssignVolunteerBody as M16AssignVolunteerBody,
   CancelOutreachBody as M16CancelOutreachBody,
+  CareGoalsBody as M16CareGoalsBody,
   CloseEarlyBody as M16CloseEarlyBody,
   CompleteOutreachBody as M16CompleteOutreachBody,
   ConfirmContactBody as M16ConfirmContactBody,
   CosignCloseBody as M16CosignCloseBody,
   CounselorDashboardQuerySchema as M16CounselorDashboardQuerySchema,
   CreateContactBody as M16CreateContactBody,
+  DeclineLetterBody as M16DeclineLetterBody,
   DismissUnreachableProposalBody as M16DismissUnreachableProposalBody,
   FlagComplicatedGriefBody as M16FlagComplicatedGriefBody,
   InitiateContactBody as M16InitiateContactBody,
@@ -283,7 +321,9 @@ import {
   OutreachListQuerySchema as M16OutreachListQuerySchema,
   OutreachOutcomeBody as M16OutreachOutcomeBody,
   PausePlanBody as M16PausePlanBody,
+  PhysicianLetterListQuerySchema as M16PhysicianLetterListQuerySchema,
   PlanListQuerySchema as M16PlanListQuerySchema,
+  PreDeathDraftBody as M16PreDeathDraftBody,
   RecomputeRiskBody as M16RecomputeRiskBody,
   ReferExternalBody as M16ReferExternalBody,
   RegenerateScheduleBody as M16RegenerateScheduleBody,
@@ -295,6 +335,35 @@ import {
   SupervisorDashboardQuerySchema as M16SupervisorDashboardQuerySchema,
   UpdateContactBody as M16UpdateContactBody,
 } from "../../apps/backend/src/modules/16-bereavement/routes/m16-typebox";
+// ADR-0109 D10 — the M16 mailing program (routes 42-51) and the contact timeline (route 52).
+import {
+  ContactTimelinePageResponseSchema as M16ContactTimelinePageResponse,
+  ContactTimelineQuerySchema as M16ContactTimelineQuerySchema,
+  MailingConfigListResponseSchema as M16MailingConfigListResponse,
+  MailingConfigViewResponseSchema as M16MailingConfigResponse,
+  MailingDownloadViewResponseSchema as M16MailingDownloadResponse,
+  MailingItemListQuerySchema as M16MailingItemListQuerySchema,
+  MailingItemPageResponseSchema as M16MailingItemPageResponse,
+  MailingRunListQuerySchema as M16MailingRunListQuerySchema,
+  MailingRunPageResponseSchema as M16MailingRunPageResponse,
+  MailingRunViewResponseSchema as M16MailingRunResponse,
+  PutMailingConfigBody as M16PutMailingConfigBody,
+  UpdateMailingRunContentBody as M16UpdateMailingRunContentBody,
+} from "../../apps/backend/src/modules/16-bereavement/routes/mailing-typebox";
+// ADR-0109 D10 (PR 3) — the M16 memorial services (routes 67-76).
+import {
+  CloseMemorialBody as M16CloseMemorialBody,
+  ContactMemorialInvitationListResponseSchema as M16ContactMemorialInvitationListResponse,
+  ContactMemorialInvitationResponseSchema as M16ContactMemorialInvitationResponse,
+  MemorialAttendanceBody as M16MemorialAttendanceBody,
+  MemorialDetailResponseSchema as M16MemorialDetailResponse,
+  MemorialFieldsBody as M16MemorialFieldsBody,
+  MemorialInvitationListResponseSchema as M16MemorialInvitationListResponse,
+  MemorialInvitationResponseSchema as M16MemorialInvitationResponse,
+  MemorialListQuerySchema as M16MemorialListQuerySchema,
+  MemorialPageResponseSchema as M16MemorialPageResponse,
+  MemorialRsvpBody as M16MemorialRsvpBody,
+} from "../../apps/backend/src/modules/16-bereavement/routes/memorial-typebox";
 // M19 On-Call Triage — the §4.2 request bodies + list queries the §4.1 route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M19-T08
 // web screens call the surface these type. Note what is deliberately ABSENT from every body and therefore
@@ -435,11 +504,14 @@ import {
   CreateRuleConfigBodySchema,
   HospicePeriodsQuerySchema as M23HospicePeriodsQuerySchema,
   HospicePeriodsResponseSchema as M23HospicePeriodsResponseSchema,
+  InDoubtSubmissionListQuerySchema as M23InDoubtSubmissionListQuerySchema,
+  InDoubtSubmissionListResponseSchema as M23InDoubtSubmissionListResponseSchema,
   RhcCarryOverSchema as M23RhcCarryOverSchema,
   MacCredentialListQuerySchema,
   NoeListQuerySchema,
   NotrListQuerySchema,
   OverrideValidationResultBodySchema,
+  RecordExternalFilingBodySchema,
   RuleConfigListQuerySchema,
   UpdateRuleConfigBodySchema,
   UpsertMacCredentialBodySchema,
@@ -622,8 +694,41 @@ import {
   BeneficiaryAppealViewSchema as M25BeneficiaryAppealViewSchema,
   ClaimBeneficiaryAppealsSchema as M25ClaimBeneficiaryAppealsSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/beneficiary-appeal.routes";
+import {
+  BillingOperationsInvestigationAssignmentSchema as M25BillingOperationsInvestigationAssignmentSchema,
+  BillingOperationsInvestigationDetailSchema as M25BillingOperationsInvestigationDetailSchema,
+  BillingOperationsInvestigationListQuerySchema as M25BillingOperationsInvestigationListQuerySchema,
+  BillingOperationsInvestigationListSchema as M25BillingOperationsInvestigationListSchema,
+  BillingOperationsInvestigationNoteResultSchema as M25BillingOperationsInvestigationNoteResultSchema,
+  BillingOperationsInvestigationNoteSchema as M25BillingOperationsInvestigationNoteSchema,
+  BillingOperationsInvestigationSchema as M25BillingOperationsInvestigationSchema,
+  BillingOperationsInvestigationSourceSchema as M25BillingOperationsInvestigationSourceSchema,
+  BillingOperationsInvestigationTransitionSchema as M25BillingOperationsInvestigationTransitionSchema,
+  BillingOperationsInvestigatorQuerySchema as M25BillingOperationsInvestigatorQuerySchema,
+  BillingOperationsInvestigatorsSchema as M25BillingOperationsInvestigatorsSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/billing-operations-investigations";
 import { CaseViewSchema as M25CaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import { DenialCaseViewSchema as M25DenialCaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
+import {
+  ClaimMdEraFinancialReviewDecisionRequestSchema as M25ClaimMdEraFinancialReviewDecisionRequestSchema,
+  ClaimMdEraFinancialReviewDecisionResultSchema as M25ClaimMdEraFinancialReviewDecisionResultSchema,
+  ClaimMdEraHistoricalCandidatesSchema as M25ClaimMdEraHistoricalCandidatesSchema,
+  ClaimMdEraMatchDecisionRequestSchema as M25ClaimMdEraMatchDecisionRequestSchema,
+  ClaimMdEraMatchDecisionResultSchema as M25ClaimMdEraMatchDecisionResultSchema,
+  ClaimMdEraMatchReviewSchema as M25ClaimMdEraMatchReviewSchema,
+  ClaimMdEraPostingActionRequestSchema as M25ClaimMdEraPostingActionRequestSchema,
+  ClaimMdEraPostingActionResultSchema as M25ClaimMdEraPostingActionResultSchema,
+  ClaimMdEraPostingApprovalResultSchema as M25ClaimMdEraPostingApprovalResultSchema,
+  ClaimMdEraPostingHistorySchema as M25ClaimMdEraPostingHistorySchema,
+  ClaimMdEraPostingPlanSchema as M25ClaimMdEraPostingPlanSchema,
+  ClaimMdEraReviewDetailSchema as M25ClaimMdEraReviewDetailSchema,
+  ClaimMdEraReviewPageSchema as M25ClaimMdEraReviewPageSchema,
+  ClaimMdEraReviewQuerySchema as M25ClaimMdEraReviewQuerySchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/claimmd-era-review.schemas";
+import {
+  ClaimMdTenantOperationalHealthQuerySchema as M25ClaimMdOperationalHealthQuerySchema,
+  ClaimMdTenantOperationalHealthResponseSchema as M25ClaimMdOperationalHealthResponseSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/claimmd-operational-health.schemas";
 import {
   LaterTierViewSchema as M25LaterTierViewSchema,
   RecordedDeadlinePageSchema as M25RecordedDeadlinePageSchema,
@@ -703,6 +808,10 @@ import {
   RepresentativeFormVersionRequestSchema as M25RepresentativeFormVersionRequestSchema,
   RepresentativeVersionedResultSchema as M25RepresentativeVersionedResultSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/representative.routes";
+import {
+  RevenueCycleSummaryQuerySchema as M25RevenueCycleSummaryQuerySchema,
+  RevenueCycleSummaryResponseSchema as M25RevenueCycleSummaryResponseSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/revenue-cycle-reporting.schemas";
 import {
   SubmissionCancelRequestSchema as M25SubmissionCancelRequestSchema,
   SubmissionReceiptRequestSchema as M25SubmissionReceiptRequestSchema,
@@ -890,6 +999,12 @@ import {
   ResponseAnalyticsResponseSchema as M36ResponseAnalyticsResponseSchema,
 } from "../../apps/backend/src/modules/33-reporting/routes/messaging-response-analytics-typebox";
 import {
+  DeathNotificationListResponseSchema as M36DeathNotificationListResponseSchema,
+  DeathNotificationResponseSchema as M36DeathNotificationResponseSchema,
+  FuneralHomeSendResponseSchema as M36FuneralHomeSendResponseSchema,
+  SendFuneralHomeBodySchema as M36SendFuneralHomeBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/death-notification-typebox";
+import {
   PresenceHeartbeatBodySchema as M36PresenceHeartbeatBodySchema,
   PresenceResponseSchema as M36PresenceResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/presence-typebox";
@@ -922,13 +1037,18 @@ import {
   ClaimListQuerySchema as M41ClaimListQuerySchema,
   ClaimListResponseSchema as M41ClaimListResponseSchema,
   CommercialClaimViewSchema as M41ClaimViewSchema,
+  InDoubtSubmissionListQuerySchema as M41InDoubtSubmissionListQuerySchema,
+  InDoubtSubmissionListResponseSchema as M41InDoubtSubmissionListResponseSchema,
   OverrideBodySchema as M41OverrideBodySchema,
   OverrideResponseSchema as M41OverrideResponseSchema,
   PayerPlanListResponseSchema as M41PayerPlanListResponseSchema,
+  CommercialPaymentReconciliationResponseSchema as M41PaymentReconciliationResponseSchema,
   PlanListQuerySchema as M41PlanListQuerySchema,
   ReadyResponseSchema as M41ReadyResponseSchema,
   ReconcileBodySchema as M41ReconcileBodySchema,
   RecordAuthorizationBodySchema as M41RecordAuthorizationBodySchema,
+  RejectedCorrectionBodySchema as M41RejectedCorrectionBodySchema,
+  RejectedCorrectionResponseSchema as M41RejectedCorrectionResponseSchema,
   SendGateViewSchema as M41SendGateViewSchema,
   SetAuthorizationStatusBodySchema as M41SetAuthorizationStatusBodySchema,
   SubmissionViewSchema as M41SubmissionViewSchema,
@@ -1052,6 +1172,8 @@ import {
   PatientPayersResponseSchema as M5EPatientPayersResponseSchema,
   PatientPrivacyFlagsResponseSchema as M5EPatientPrivacyFlagsResponseSchema,
   PatientSummarySchema as M5EPatientSummarySchema,
+  VoidPatientPayerBodySchema as M5EVoidPatientPayerBodySchema,
+  VoidPatientPayerResponseSchema as M5EVoidPatientPayerResponseSchema,
 } from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
 import {
   PatientPrivacyViewSchema as M5EPatientPrivacyViewSchema,
@@ -1098,6 +1220,7 @@ import {
 // same M16* aliases — dedupe on merge) + the new §4.1 RESPONSE DTOs. Every symbol M16-aliased.
 import {
   // ── request bodies + list queries (§4.2) ──
+  BereavementAssessmentTaskListResponseSchema as M16AssessmentTaskListResponse,
   BereavementClosureViewResponseSchema as M16ClosureResponse,
   BereavementContactLogViewResponseSchema as M16ContactLogResponse,
   // ── §4.1 response DTOs (F0 enrichment; pinned to the read/write service views by Conforms) ──
@@ -1105,9 +1228,12 @@ import {
   CounselorDashboardViewResponseSchema as M16CounselorDashboardResponse,
   BereavementOutreachPageResponseSchema as M16OutreachPageResponse,
   BereavementOutreachRowViewResponseSchema as M16OutreachRowResponse,
+  PhysicianLetterPageResponseSchema as M16PhysicianLetterPageResponse,
+  PhysicianLetterViewResponseSchema as M16PhysicianLetterResponse,
   PlanActivationViewResponseSchema as M16PlanActivationResponse,
   BereavementPlanDetailResponseSchema as M16PlanDetailResponse,
   BereavementPlanPageResponseSchema as M16PlanPageResponse,
+  PreDeathDraftViewResponseSchema as M16PreDeathDraftResponse,
   BereavementRiskScorePageResponseSchema as M16RiskScorePageResponse,
   BereavementRiskScoreViewResponseSchema as M16RiskScoreResponse,
   ScheduleRegenerationViewResponseSchema as M16ScheduleRegenResponse,
@@ -1239,6 +1365,7 @@ import {
 import {
   // response DTOs (service views)
   CapAccrualLinePageResponse as M26AccrualLinePageResponse,
+  AccrualLinesQuery as M26AccrualLinesQuery,
   // request bodies
   AcknowledgeEventRequest as M26AcknowledgeEventRequest,
   AmendConstantRequest as M26AmendConstantRequest,
@@ -2396,6 +2523,7 @@ import {
   AckResponse as M31AckResponse,
   AmendmentSubmitRequest as M31AmendmentSubmitRequest,
   AmendmentSubmitResponse as M31AmendmentSubmitResponse,
+  BereavementMailingPreferenceRequest as M31BereavementMailingPreferenceRequest,
   CarePlanSummaryResponse as M31CarePlanSummaryResponse,
   CareSummaryResponse as M31CareSummaryResponse,
   CaregiverAttestedAdministrationRequest as M31CaregiverAttestRequest,
@@ -2419,6 +2547,12 @@ import {
   PortalInvitationIssueRequest as M31PortalInvitationIssueRequest,
   PortalInvitationIssueResponse as M31PortalInvitationIssueResponse,
   PortalInvitationListResponse as M31PortalInvitationListResponse,
+  PortalLibraryListResponse as M31PortalLibraryListResponse,
+  PortalLibraryUrlQuery as M31PortalLibraryUrlQuery,
+  PortalLibraryUrlResponse as M31PortalLibraryUrlResponse,
+  PortalMemorialInvitationListResponse as M31PortalMemorialInvitationListResponse,
+  PortalMemorialInvitationResponse as M31PortalMemorialInvitationResponse,
+  PortalMemorialRsvpRequest as M31PortalMemorialRsvpRequest,
   PortalMessageHistoryQuery as M31PortalMessageHistoryQuery,
   PortalMessageHistoryResponse as M31PortalMessageHistoryResponse,
   PortalSessionCurrentResponse as M31PortalSessionCurrentResponse,
@@ -3076,12 +3210,21 @@ const IF_MATCH_HEADER: RouteEnrichment["headers"] = {
   "If-Match": {
     required: true,
     description:
-      "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+      "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
   },
 };
 const IDEMPOTENCY_AND_IF_MATCH_HEADERS: RouteEnrichment["headers"] = {
   ...IDEMPOTENCY_KEY_HEADER,
   ...IF_MATCH_HEADER,
+};
+/** M35 plan editor: a write on an existing plan version pins the `updatedAt` the operator read. */
+const PRICING_PLAN_PIN_HEADERS: RouteEnrichment["headers"] = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: true,
+    description:
+      'The plan\'s `updatedAt` (UTC ISO timestamp) as the operator read it; 428 IF_MATCH_REQUIRED without one, and a plan changed since is refused with 409 PRICING_PLAN_CHANGED carrying its current value in the error details as {field: "currentUpdatedAt", message: <timestamp>}.',
+  },
 };
 
 /** `METHOD /path` → enrichment. Keys MUST match a scanned route (openapi:check enforces). */
@@ -3231,26 +3374,26 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "PUT /api/admin/pricing/plans/:id": {
     body: M35ReplacePricingDraftBody,
     response: M35PricingPlanDto,
-    headers: IDEMPOTENCY_KEY_HEADER,
+    headers: PRICING_PLAN_PIN_HEADERS,
     summary: "Replace a draft plan's prices and bands",
   },
   "POST /api/admin/pricing/plans/:id/publish": {
     body: M35PricingReasonBody,
     response: M35PricingPlanDto,
-    headers: IDEMPOTENCY_KEY_HEADER,
+    headers: PRICING_PLAN_PIN_HEADERS,
     summary: "Publish a draft plan; its prices are frozen from then on",
   },
   "POST /api/admin/pricing/plans/:id/new-version": {
     body: M35PricingReasonBody,
     response: M35PricingPlanDto,
-    headers: IDEMPOTENCY_KEY_HEADER,
+    headers: PRICING_PLAN_PIN_HEADERS,
     status: 201,
     summary: "Copy a published or archived plan into a new draft version",
   },
   "POST /api/admin/pricing/plans/:id/archive": {
     body: M35PricingReasonBody,
     response: M35PricingPlanDto,
-    headers: IDEMPOTENCY_KEY_HEADER,
+    headers: PRICING_PLAN_PIN_HEADERS,
     summary: "Archive a published plan; subscriptions on it keep their price",
   },
   // Slice 2 — onboarding step 2 (platform operations).
@@ -3282,7 +3425,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     response: M35PlatformContractDto,
     headers: IDEMPOTENCY_KEY_HEADER,
     summary:
-      "Change a tenant's billing service mode (none, billing_software, managed_billing); it takes effect from the 1st of the next month, immediately only while onboarding with no statement yet",
+      "Change a tenant's billing service mode (none, billing_software, managed_billing); it takes effect from the 1st of the next month, immediately only while onboarding with no statement yet. A tenant that bills outside ChartWarden stays on none: any other mode for it is a 409 BILLING_MODE_REQUIRES_NONE_WHILE_OUTSIDE (the operator names the mode when switching it to a clearinghouse instead)",
   },
   "GET /api/v1/subscription/pricing": {
     response: M35TenantPricingDto,
@@ -3676,7 +3819,12 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   },
   "POST /api/v1/billing/claims/:id/submit": {
     summary:
-      "READY → SUBMITTED — emits m23.claim.submit_requested (PE scope + step-up + If-Match; 202, §4.1 #7)",
+      "Submit an M23 claim only with the current short-lived reviewed-preview confirmation (PE scope + step-up + If-Match; 202, §4.1 #7)",
+    body: Type.Object({
+      ifVersion: Type.Integer({ minimum: 0 }),
+      acknowledgeAllOverrides: Type.Optional(Type.Boolean()),
+      previewConfirmationToken: Type.String({ minLength: 20, maxLength: 4096 }),
+    }),
     headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
     status: 202,
   },
@@ -4036,7 +4184,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
         Type.String({ description: "Case-insensitive search over names, CCN, and NPI" }),
       ),
       cursor: Type.Optional(
-        Type.String({ description: "Offset cursor returned by the previous page" }),
+        Type.String({ description: "Opaque cursor returned by the previous page" }),
       ),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
     }),
@@ -4077,7 +4225,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
         Type.String({ description: "Case-insensitive search over name and address fields" }),
       ),
       cursor: Type.Optional(
-        Type.String({ description: "Offset cursor returned by the previous page" }),
+        Type.String({ description: "Opaque cursor returned by the previous page" }),
       ),
       limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
     }),
@@ -4494,6 +4642,34 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   },
   "POST /api/v1/portal/bereavement/opt-out": {
     summary: "Self opt-out of the bereavement program (M16)",
+    response: M31AckResponse,
+  },
+  "GET /api/v1/portal/bereavement/memorials": {
+    summary:
+      "The bereaved family's own memorial-service invitations (published services only; a virtual link once they said yes), window-gated (M16, ADR-0109 D10)",
+    response: M31PortalMemorialInvitationListResponse,
+  },
+  "POST /api/v1/portal/bereavement/memorials/:invitationId/rsvp": {
+    summary:
+      "The family's own RSVP (yes with a guest count, no, maybe); 404 for another family's invitation, 409 `MEMORIAL_RSVP_CLOSED` after the RSVP-by date or once the service started, 409 `MEMORIAL_FULL` over capacity; `Idempotency-Key` required (M16, ADR-0109 D10)",
+    body: M31PortalMemorialRsvpRequest,
+    response: M31PortalMemorialInvitationResponse,
+  },
+  "GET /api/v1/portal/bereavement/library": {
+    summary:
+      "The agency's PUBLISHED grief library (title, summary, category, kind), window-gated (M16, ADR-0109 D10)",
+    response: M31PortalLibraryListResponse,
+  },
+  "GET /api/v1/portal/bereavement/library/:itemId/url": {
+    summary:
+      "A short-lived URL for one published library file (`?part=transcript` for its transcript); M22's portal door serves the library type only and records the account and session first; never cached (M16, ADR-0109 D10)",
+    query: M31PortalLibraryUrlQuery,
+    response: M31PortalLibraryUrlResponse,
+  },
+  "POST /api/v1/portal/bereavement/mailing-preference": {
+    summary:
+      "Stop (allowMailings false) or resume (true) bereavement MAILINGS only — the contact stays in the program and calls continue (M16, ADR-0109 D10)",
+    body: M31BereavementMailingPreferenceRequest,
     response: M31AckResponse,
   },
   "GET /api/v1/portal/notification-preferences": {
@@ -5893,7 +6069,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12MedicationOrderListResponseSchema,
   },
   "POST /api/v1/medication-orders": {
-    summary: "Create a medication-order draft (prescriber_eligible ABAC)",
+    summary: "Create a medication-order draft (prescriber_eligible ABAC); Idempotency-Key required",
     body: M12CreateMedicationOrderRequest,
     // F-031 — the route replies 201 with the created order and published neither, so `client:gen` typed the
     // response `never` and a caller could create a draft without learning its id. M13's reconciliation
@@ -5908,58 +6084,62 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12MedicationOrderDetailResponseSchema,
   },
   "PATCH /api/v1/medication-orders/:id": {
-    summary: "Edit a medication-order draft",
+    summary: "Edit a medication-order draft; Idempotency-Key required",
     body: M12UpdateMedicationOrderRequest,
   },
   "POST /api/v1/medication-orders/:id/request-signature": {
-    summary: "Move a draft to pending_signature",
+    summary: "Move a draft to pending_signature; Idempotency-Key required",
     body: M12RequestSignatureRequest,
   },
   "POST /api/v1/medication-orders/:id/sign": {
-    summary: "Standard sign a medication order",
+    summary: "Standard sign a medication order; Idempotency-Key required",
     body: M12SignMedicationOrderRequest,
   },
   "POST /api/v1/medication-orders/:id/sign-controlled/initiate": {
-    summary: "Initiate an EPCS controlled-substance sign (2FA nonce; dea_schedule_authorized ABAC)",
+    summary:
+      "Initiate an EPCS controlled-substance sign (2FA nonce; dea_schedule_authorized ABAC); Idempotency-Key required",
     body: M12SignControlledInitiateRequest,
   },
   "POST /api/v1/medication-orders/:id/sign-controlled/complete": {
-    summary: "Complete an EPCS controlled-substance sign (second factor)",
+    summary: "Complete an EPCS controlled-substance sign (second factor); Idempotency-Key required",
     body: M12SignControlledCompleteRequest,
   },
   "POST /api/v1/medication-orders/:id/verbal": {
-    summary: "Record a medication order as verbal",
+    summary: "Record a medication order as verbal; Idempotency-Key required",
     body: M12RecordVerbalRequest,
   },
   "POST /api/v1/medication-orders/:id/cosign": {
-    summary: "Attach a cosignature (no self-cosign)",
+    summary: "Attach a cosignature (no self-cosign); Idempotency-Key required",
     body: M12CosignRequest,
   },
   "POST /api/v1/medication-orders/:id/discontinue": {
-    summary: "Discontinue a medication order",
+    summary: "Discontinue a medication order; Idempotency-Key required",
     body: M12DiscontinueRequest,
   },
   "POST /api/v1/medication-orders/:id/report-error": {
-    summary: "File a clinician-initiated medication-error report against an order (F-205, #248)",
+    summary:
+      "File a clinician-initiated medication-error report against an order (F-205, #248); Idempotency-Key required",
     body: M12ReportMedicationErrorRequest,
     response: M12MedicationErrorReportResponseSchema,
   },
   "PUT /api/v1/medication-orders/:id/coverage-determination": {
     summary:
-      "COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination (reason required when not covered; emits m12.medication_order.coverage_determination_changed)",
+      "COP27 (42 CFR 418.24(c)) — set/change the order's hospice coverage determination (reason required when not covered; emits m12.medication_order.coverage_determination_changed); Idempotency-Key required",
     body: M12SetCoverageDeterminationRequest,
     response: M12MedicationOrderResponseSchema,
   },
   "POST /api/v1/medication-orders/:id/complete": {
-    summary: "Complete a medication order (no-refills-no-renewal)",
+    summary: "Complete a medication order (no-refills-no-renewal); Idempotency-Key required",
     body: M12CompleteRequest,
   },
   "POST /api/v1/medication-orders/:id/correct": {
-    summary: "Issue a corrected replacement order (prescriber_eligible ABAC)",
+    summary:
+      "Issue a corrected replacement order (prescriber_eligible ABAC); Idempotency-Key required",
     body: M12CorrectMedicationOrderRequest,
   },
   "POST /api/v1/medication-orders/:id/retransmit": {
-    summary: "Retransmit a transmission_failed order (mints a corrected order)",
+    summary:
+      "Retransmit a transmission_failed order (mints a corrected order); Idempotency-Key required",
     response: M12NewOrderIdResponseSchema,
   },
   "GET /api/v1/medication-orders/:id/transmission": {
@@ -5976,12 +6156,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12MedicationHistoryResponseSchema,
   },
   "POST /api/v1/patients/:patientId/medications/history/refresh": {
-    summary: "Enqueue a DoseSpot MedHx refresh",
+    summary: "Enqueue a DoseSpot MedHx refresh; Idempotency-Key required",
     response: M12HistoryRefreshResponseSchema,
   },
   "POST /api/v1/medication-history-records/:id/reconcile": {
     summary:
-      "Record a reconciliation decision on a medication-history record (never mints a medication order; F-238)",
+      "Record a reconciliation decision on a medication-history record (never mints a medication order; F-238); Idempotency-Key required",
     body: M12ReconcileRequest,
     response: M12ReconcileResponseSchema,
   },
@@ -5995,12 +6175,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12RefillRequestResponseSchema,
   },
   "POST /api/v1/refills/:id/approve": {
-    summary: "Approve a refill (mints a new medication order)",
+    summary: "Approve a refill (mints a new medication order); Idempotency-Key required",
     body: M12ApproveRefillRequest,
   },
-  "POST /api/v1/refills/:id/deny": { summary: "Deny a refill request", body: M12DenyRefillRequest },
+  "POST /api/v1/refills/:id/deny": {
+    summary: "Deny a refill request; Idempotency-Key required",
+    body: M12DenyRefillRequest,
+  },
   "POST /api/v1/rx-benefit/lookup": {
-    summary: "Cached RxBenefit coverage lookup",
+    summary: "Cached RxBenefit coverage lookup; Idempotency-Key required",
     body: M12RxBenefitLookupRequest,
   },
   "GET /api/v1/admin/dosespot-prescribers": {
@@ -6014,19 +6197,23 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12NamedPrescriberListResponseSchema,
   },
   "POST /api/v1/admin/dosespot-prescribers/:membershipId/enroll": {
-    summary: "Enroll a prescriber into DoseSpot",
+    summary:
+      "Put a member on the prescriber roster and link them to a physician record (externalPhysicianMdmId). The acting administrator is recorded as the link's asserter: the linked member cannot confirm a link they made themself (409 DOSESPOT_LINK_SELF_CONFIRM on the confirmation); re-saving a link that has no recorded maker records the acting administrator as its maker. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused",
     body: M12EnrollPrescriberRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
   },
   "POST /api/v1/admin/dosespot-prescribers/:membershipId/revoke": {
-    summary: "Revoke a prescriber",
+    summary:
+      "Revoke a prescriber from the roster (their link confirmation goes with it). prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused",
     body: M12RevokePrescriberRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
   },
   "GET /api/v1/admin/refill-inbox-policy": {
     summary: "Refill-inbox SLA policy — warn/critical hours + platform floors (§4.1 / §2.7 D9)",
     response: M12RefillInboxPolicyResponseSchema,
   },
   "PATCH /api/v1/admin/refill-inbox-policy": {
-    summary: "Update the refill-inbox SLA policy (tighten-only)",
+    summary: "Update the refill-inbox SLA policy (tighten-only); Idempotency-Key required",
     body: M12RefillInboxPolicyRequest,
   },
   "GET /api/v1/admin/controlled-substance-policy": {
@@ -6035,7 +6222,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M12ControlledSubstancePolicyResponseSchema,
   },
   "PATCH /api/v1/admin/controlled-substance-policy": {
-    summary: "Update the controlled-substance refill policy (tighten-only, 21 CFR 1306.22)",
+    summary:
+      "Update the controlled-substance refill policy (tighten-only, 21 CFR 1306.22); Idempotency-Key required",
     body: M12ControlledSubstancePolicyRequest,
   },
 });
@@ -6054,7 +6242,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/administrations": {
     summary:
-      "Record a clinician administration (five-rights; administering_clinician_eligible ABAC)",
+      "Record a clinician administration (five-rights; administering_clinician_eligible ABAC); Idempotency-Key required",
     body: M13RecordAdministrationRequest,
     // The §2.6 D7 double-witness credential. Server-MINTED and single-use (never a self-assertion —
     // check-request-header-auth.ts classifies it `verified` for exactly that reason), so it is declared
@@ -6071,35 +6259,38 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/witness-attest": {
-    summary: "Mint a single-use controlled-substance witness-attestation token (D7)",
+    summary:
+      "Mint a single-use controlled-substance witness-attestation token (D7); Idempotency-Key required",
     body: M13WitnessAttestRequest,
     status: 201,
     response: M13WitnessTokenResponseSchema,
   },
   "POST /api/v1/administrations/caregiver-attested": {
-    summary: "Record a caregiver-attested administration via the M31 portal (D10)",
+    summary:
+      "Record a caregiver-attested administration via the M31 portal (D10); Idempotency-Key required",
     body: M13RecordCaregiverAttestedRequest,
     status: 201,
     response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/:id/acknowledge-caregiver": {
-    summary: "RN acknowledges a caregiver-attested row (caregiver_attested_review_required ABAC)",
+    summary:
+      "RN acknowledges a caregiver-attested row (caregiver_attested_review_required ABAC); Idempotency-Key required",
     body: M13AcknowledgeCaregiverRequest,
     response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/:id/dispute-caregiver": {
-    summary: "RN disputes a caregiver-attested row",
+    summary: "RN disputes a caregiver-attested row; Idempotency-Key required",
     body: M13DisputeCaregiverRequest,
     response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/:id/correct": {
-    summary: "Correct a committed administration (supersede)",
+    summary: "Correct a committed administration (supersede); Idempotency-Key required",
     body: M13CorrectAdministrationRequest,
     status: 201,
     response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/:id/void": {
-    summary: "Administrative hard-void (recorded in error)",
+    summary: "Administrative hard-void (recorded in error); Idempotency-Key required",
     body: M13VoidAdministrationRequest,
     response: M13AdministrationViewSchema,
   },
@@ -6119,13 +6310,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13IvSessionViewSchema,
   },
   "POST /api/v1/administrations/refuse": {
-    summary: "Record a refusal (administering_clinician_eligible ABAC)",
+    summary: "Record a refusal (administering_clinician_eligible ABAC); Idempotency-Key required",
     body: M13RecordRefusalRequest,
     status: 201,
     response: M13AdministrationViewSchema,
   },
   "POST /api/v1/administrations/offline-sync": {
-    summary: "Bulk offline-queue sync from device (D18)",
+    summary: "Bulk offline-queue sync from device (D18); Idempotency-Key required",
     body: M13OfflineSyncRequest,
     status: 201,
     response: M13OfflineSyncResponseSchema,
@@ -6136,7 +6327,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13ScheduledDoseListResponseSchema,
   },
   "POST /api/v1/scheduled-doses/:id/intentional-hold": {
-    summary: "Record an intentional hold before the grace window expires",
+    summary: "Record an intentional hold before the grace window expires; Idempotency-Key required",
     body: M13IntentionalHoldRequest,
     response: M13ScheduledDoseViewSchema,
   },
@@ -6146,7 +6337,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13MissedDoseListResponseSchema,
   },
   "POST /api/v1/missed-doses/:id/acknowledge": {
-    summary: "Case manager acknowledges a missed dose",
+    summary: "Case manager acknowledges a missed dose; Idempotency-Key required",
     response: M13MissedDoseViewSchema,
   },
   "GET /api/v1/reconciliation/worksheets": {
@@ -6160,29 +6351,31 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13WorksheetViewSchema,
   },
   "POST /api/v1/reconciliation/worksheets/:id/decisions": {
-    summary: "Record a per-line reconciliation decision (reconciliation_authoring_eligible ABAC)",
+    summary:
+      "Record a per-line reconciliation decision (reconciliation_authoring_eligible ABAC); Idempotency-Key required",
     body: M13RecordDecisionRequest,
     status: 201,
     response: M13WorksheetViewSchema,
   },
   "PATCH /api/v1/reconciliation/worksheets/:id/decisions/:lineId": {
-    summary: "Update a per-line decision before finalization",
+    summary: "Update a per-line decision before finalization; Idempotency-Key required",
     body: M13UpdateDecisionRequest,
     response: M13WorksheetViewSchema,
   },
   "POST /api/v1/reconciliation/worksheets/:id/add-caregiver-reported-line": {
-    summary: "Add a caregiver-reported home-med line",
+    summary: "Add a caregiver-reported home-med line; Idempotency-Key required",
     body: M13AddCaregiverReportedLineRequest,
     status: 201,
     response: M13WorksheetViewSchema,
   },
   "POST /api/v1/reconciliation/worksheets/:id/finalize": {
-    summary: "Finalize the worksheet (emits m13.reconciliation.completed)",
+    summary:
+      "Finalize the worksheet (emits m13.reconciliation.completed); Idempotency-Key required",
     body: M13FinalizeReconciliationRequest,
     response: M13WorksheetViewSchema,
   },
   "POST /api/v1/reconciliation/worksheets/:id/void": {
-    summary: "Void a reconciliation worksheet",
+    summary: "Void a reconciliation worksheet; Idempotency-Key required",
     body: M13VoidReconciliationRequest,
     response: M13WorksheetViewSchema,
   },
@@ -6196,7 +6389,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13DeploymentViewSchema,
   },
   "POST /api/v1/comfort-kits/deployments/:id/acknowledge-return": {
-    summary: "Manual return acknowledgment (Phase-1 fallback)",
+    summary: "Manual return acknowledgment (Phase-1 fallback); Idempotency-Key required",
     body: M13AcknowledgeReturnRequest,
     response: M13DeploymentViewSchema,
   },
@@ -6206,7 +6399,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M13AdministrationPolicyViewSchema,
   },
   "PUT /api/v1/admin/administration-policy": {
-    summary: "Update tenant administration policy",
+    summary: "Update tenant administration policy; Idempotency-Key required",
     body: M13AdministrationPolicyRequest,
     response: M13AdministrationPolicyViewSchema,
   },
@@ -6411,42 +6604,42 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visits": {
-    summary: "Manual visit create (runs the D8 pre-schedule gate)",
+    summary: "Manual visit create (runs the D8 pre-schedule gate); Idempotency-Key required",
     body: M17CreateVisitRequest,
     response: M17VisitViewSchema,
   },
   "PATCH /api/v1/visits/:visitId": {
-    summary: "Edit times / discipline / assignment (reruns D8 gate)",
+    summary: "Edit times / discipline / assignment (reruns D8 gate); Idempotency-Key required",
     body: M17EditVisitRequest,
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visits/:visitId/start": {
-    summary: "Self-attest start (EVV-missing path; step-up-fresh)",
+    summary: "Self-attest start (EVV-missing path; step-up-fresh); Idempotency-Key required",
     body: M17StartVisitRequest,
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visits/:visitId/arrive": {
-    summary: "Record arrival/check-in (EVV-missing path; step-up-fresh)",
+    summary: "Record arrival/check-in (EVV-missing path; step-up-fresh); Idempotency-Key required",
     body: M17StartVisitRequest,
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visits/:visitId/cancel": {
-    summary: "Cancel a visit (reason + reason code)",
+    summary: "Cancel a visit (reason + reason code); Idempotency-Key required",
     body: M17CancelVisitRequest,
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visits/:visitId/reschedule": {
-    summary: "Reschedule (returns the newly-created visit, 201)",
+    summary: "Reschedule (returns the newly-created visit, 201); Idempotency-Key required",
     body: M17RescheduleVisitRequest,
     response: M17RescheduleResponseSchema,
   },
   "POST /api/v1/visits/:visitId/no-show": {
-    summary: "Mark no-show (triggers reassign-or-followup)",
+    summary: "Mark no-show (triggers reassign-or-followup); Idempotency-Key required",
     body: M17NoShowVisitRequest,
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visits/:visitId/reassign": {
-    summary: "Reassign-only (reruns the D8 gate)",
+    summary: "Reassign-only (reruns the D8 gate); Idempotency-Key required",
     body: M17ReassignVisitRequest,
     response: M17VisitViewSchema,
   },
@@ -6457,11 +6650,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17ProposalListResponseSchema,
   },
   "POST /api/v1/visit-proposals/:proposalId/publish": {
-    summary: "Publish a proposal as a real visit (201)",
+    summary: "Publish a proposal as a real visit (201); Idempotency-Key required",
     response: M17VisitViewSchema,
   },
   "POST /api/v1/visit-proposals/:proposalId/dismiss": {
-    summary: "Dismiss a scheduler proposal",
+    summary: "Dismiss a scheduler proposal; Idempotency-Key required",
     body: M17DismissProposalRequest,
     response: M17ProposalViewSchema,
   },
@@ -6471,12 +6664,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17RecurringListResponseSchema,
   },
   "POST /api/v1/recurring-visits": {
-    summary: "Create a recurring policy (validates RRULE subset; 201)",
+    summary: "Create a recurring policy (validates RRULE subset; 201); Idempotency-Key required",
     body: M17CreateRecurringVisitRequest,
     response: M17RecurringViewSchema,
   },
   "POST /api/v1/recurring-visits/:id/discontinue": {
-    summary: "Discontinue a recurring policy (cascade-cancels future)",
+    summary: "Discontinue a recurring policy (cascade-cancels future); Idempotency-Key required",
     body: M17DiscontinueRecurringVisitRequest,
     response: M17RecurringViewSchema,
   },
@@ -6486,7 +6679,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17AvailabilityViewSchema,
   },
   "PUT /api/v1/availability/:membershipId": {
-    summary: "Upsert a membership's weekly availability",
+    summary: "Upsert a membership's weekly availability; Idempotency-Key required",
     body: M17UpsertAvailabilityRequest,
     response: M17AvailabilityViewSchema,
   },
@@ -6496,22 +6689,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17TimeOffListResponseSchema,
   },
   "POST /api/v1/time-off": {
-    summary: "Request PTO (201)",
+    summary: "Request PTO (201); Idempotency-Key required",
     body: M17RequestTimeOffRequest,
     response: M17TimeOffViewSchema,
   },
   "POST /api/v1/time-off/:id/approve": {
-    summary: "Approve PTO (triggers reassignment scan)",
+    summary: "Approve PTO (triggers reassignment scan); Idempotency-Key required",
     body: M17ApproveTimeOffRequest,
     response: M17TimeOffViewSchema,
   },
   "POST /api/v1/time-off/:id/deny": {
-    summary: "Deny PTO (reason)",
+    summary: "Deny PTO (reason); Idempotency-Key required",
     body: M17DenyTimeOffRequest,
     response: M17TimeOffViewSchema,
   },
   "POST /api/v1/time-off/:id/cancel": {
-    summary: "Cancel own pre-start PTO",
+    summary: "Cancel own pre-start PTO; Idempotency-Key required",
     body: M17CancelTimeOffRequest,
     response: M17TimeOffViewSchema,
   },
@@ -6531,7 +6724,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17MapViewResponseSchema,
   },
   "POST /api/v1/optimize-day": {
-    summary: "On-demand route optimisation (degraded when flag OFF)",
+    summary: "On-demand route optimisation (degraded when flag OFF); Idempotency-Key required",
     body: M17OptimizeDayRequest,
     response: M17OptimizeDayResponseSchema,
   },
@@ -6571,12 +6764,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17CredentialListResponseSchema,
   },
   "POST /api/v1/memberships/:membershipId/credentials": {
-    summary: "GAP-093: grant a clinical-license/certification credential (201)",
+    summary:
+      "GAP-093: grant a clinical-license/certification credential (201); Idempotency-Key required",
     body: M17GrantCredentialRequest,
     response: M17CredentialViewSchema,
   },
   "DELETE /api/v1/memberships/:membershipId/credentials/:credentialId": {
-    summary: "GAP-093: revoke a credential (204)",
+    summary: "GAP-093: revoke a credential (204); Idempotency-Key required",
     body: M17RevokeCredentialRequest,
   },
   "GET /api/v1/oncall-rotation": {
@@ -6585,24 +6779,24 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M17OnCallRotationListResponseSchema,
   },
   "POST /api/v1/oncall-rotation": {
-    summary: "GAP-029: add an on-call rotation entry (201)",
+    summary: "GAP-029: add an on-call rotation entry (201); Idempotency-Key required",
     body: M17CreateOnCallRotationRequest,
     response: M17OnCallRotationViewSchema,
   },
   "DELETE /api/v1/oncall-rotation/:id": {
-    summary: "GAP-029: cancel an on-call rotation entry (204)",
+    summary: "GAP-029: cancel an on-call rotation entry (204); Idempotency-Key required",
   },
 });
 
 // ── M18 EVV (25 routes) ───────────────────────────────────────────────────────────────────────────
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/evv/check-in": {
-    summary: "Record a check-in (§4.7 capture predicates gate)",
+    summary: "Record a check-in (§4.7 capture predicates gate); Idempotency-Key required",
     body: M18CheckInRequest,
     response: M18EvvCheckResultView,
   },
   "POST /api/v1/evv/check-out": {
-    summary: "Record a check-out",
+    summary: "Record a check-out; Idempotency-Key required",
     body: M18CheckOutRequest,
     response: M18EvvCheckResultView,
   },
@@ -6617,7 +6811,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvOfflineSyncV2Response,
   },
   "POST /api/v1/evv/events/:eventId/correct": {
-    summary: "Correction-of-record (Clinical Supervisor+, fresh step-up)",
+    summary: "Correction-of-record (Clinical Supervisor+, fresh step-up); Idempotency-Key required",
     body: M18CorrectEventRequest,
     response: M18EvvCheckResultView,
   },
@@ -6641,26 +6835,26 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvDeviceListResponse,
   },
   "POST /api/v1/evv/devices/self-register": {
-    summary: "Clinician self-registers a device (-> pending_approval)",
+    summary: "Clinician self-registers a device (-> pending_approval); Idempotency-Key required",
     body: M18SelfRegisterDeviceRequest,
     response: M18EvvDeviceView,
   },
   "POST /api/v1/evv/devices/:id/approve": {
-    summary: "Approve a pending device",
+    summary: "Approve a pending device; Idempotency-Key required",
     response: M18EvvDeviceView,
   },
   "POST /api/v1/evv/devices/:id/reject": {
-    summary: "Reject a pending device",
+    summary: "Reject a pending device; Idempotency-Key required",
     body: M18RejectDeviceRequest,
     response: M18EvvDeviceView,
   },
   "POST /api/v1/evv/devices/:id/suspend": {
-    summary: "Suspend a device",
+    summary: "Suspend a device; Idempotency-Key required",
     body: M18SuspendDeviceRequest,
     response: M18EvvDeviceView,
   },
   "POST /api/v1/evv/devices/:id/retire": {
-    summary: "Retire a device",
+    summary: "Retire a device; Idempotency-Key required",
     body: M18RetireDeviceRequest,
     response: M18EvvDeviceView,
   },
@@ -6670,12 +6864,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvGeofencePolicyView,
   },
   "PATCH /api/v1/evv/geofence-policy/tenant": {
-    summary: "Edit tenant tighten-only policy",
+    summary: "Edit tenant tighten-only policy; Idempotency-Key required",
     body: M18EditTenantPolicyRequest,
     response: M18EvvGeofencePolicyView,
   },
   "POST /api/v1/evv/geofence-policy/per-address": {
-    summary: "Create/replace a per-address override (reason >=30 chars)",
+    summary: "Create/replace a per-address override (reason >=30 chars); Idempotency-Key required",
     body: M18CreatePerAddressOverrideRequest,
     response: M18EvvGeofencePolicyView,
   },
@@ -6686,12 +6880,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvMissingResolutionListResponse,
   },
   "POST /api/v1/evv/missing-resolutions/:id/clinician-attest": {
-    summary: "Assigned clinician self-attests (reason >=40; D6 <=24h)",
+    summary: "Assigned clinician self-attests (reason >=40; D6 <=24h); Idempotency-Key required",
     body: M18ClinicianAttestResolutionRequest,
     response: M18EvvMissingResolutionView,
   },
   "POST /api/v1/evv/missing-resolutions/:id/supervisor-override": {
-    summary: "Supervisor override (step-up; reason >=60; D6 <=7d)",
+    summary: "Supervisor override (step-up; reason >=60; D6 <=7d); Idempotency-Key required",
     body: M18SupervisorOverrideResolutionRequest,
     response: M18EvvMissingResolutionView,
   },
@@ -6702,12 +6896,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvAggregatorSubmissionListResponse,
   },
   "POST /api/v1/evv/aggregator-submissions/:id/resubmit": {
-    summary: "Operator-initiated resubmit (from rejected/timeout)",
+    summary: "Operator-initiated resubmit (from rejected/timeout); Idempotency-Key required",
     body: M18ResubmitSubmissionRequest,
     response: M18EvvAggregatorSubmissionView,
   },
   "POST /api/v1/evv/aggregator-submissions/:id/cancel": {
-    summary: "Operator-initiated cancel (from a non-terminal status)",
+    summary: "Operator-initiated cancel (from a non-terminal status); Idempotency-Key required",
     body: M18CancelSubmissionRequest,
     response: M18EvvAggregatorSubmissionView,
   },
@@ -7721,6 +7915,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M5EAddPatientPayerResponseSchema,
     status: 201,
   },
+  "POST /api/v1/patients/:id/payers/:payerRowId/void": {
+    summary: "Void an unclaimed mistaken payer row as an audited empty window (step-up required)",
+    body: M5EVoidPatientPayerBodySchema,
+    response: M5EVoidPatientPayerResponseSchema,
+  },
   "POST /api/v1/patients/:id/merge": {
     summary:
       "Direct patient merge (§2.4/§4.3, step-up + caseload_or_scope on both source + target) — folds :id into targetPatientId, no destructive UPDATE on satellite tables (F-171, #248)",
@@ -7966,7 +8165,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/bereavement/plans/:planId/closure": {
     summary:
-      "The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it (§4.1 #10)",
+      "The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it; `dischargeSummaryDocumentId` (the internal discharge summary, once rendered) is shown to oversight only (§4.1 #10, ADR-0109 D9)",
     response: M16ClosureResponse,
   },
   "GET /api/v1/bereavement/plans/:planId/outreach": {
@@ -7998,11 +8197,285 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M16InitiateContactBody,
     response: M16OutreachRowResponse,
   },
+  "GET /api/v1/bereavement/plans/:planId/assessment-tasks": {
+    summary:
+      "The plan's two assessment checkpoints per survivor (initial d28, midpoint d180) with the human-appended score that completed each; empty when the reader's scope holds no clinical content (ADR-0109 D3, #37)",
+    response: M16AssessmentTaskListResponse,
+  },
+  "GET /api/v1/bereavement/pre-death-assessments/:admissionId": {
+    summary:
+      "The pre-death risk-assessment draft for an admission — eight tri-state factors, an empty all-unknown draft at version 0 when nothing is recorded; the care-team MSW / chaplain / bereavement counselor or oversight only (ADR-0109 D5, #35)",
+    response: M16PreDeathDraftResponse,
+  },
+  "PUT /api/v1/bereavement/pre-death-assessments/:admissionId": {
+    summary:
+      "Record the pre-death risk-assessment draft — replaces the whole eight-factor vector; `If-Match` (0 for the first write) and `Idempotency-Key` required; the substance-use slot is stored `unknown` unless the writer is cleared for 42 CFR Part 2; 409 `DRAFT_LOCKED` once a bereavement plan exists (ADR-0109 D5, #36)",
+    body: M16PreDeathDraftBody,
+    response: M16PreDeathDraftResponse,
+  },
+
+  // ── physician-letter.routes.ts (ADR-0109 D6) ──
+  "GET /api/v1/bereavement/physician-letters": {
+    summary:
+      "The physician condolence-letter review queue (`?status=`), oldest due first, cursor-paginated; bereavement oversight only (ADR-0109 D6, #38)",
+    query: M16PhysicianLetterListQuerySchema,
+    response: M16PhysicianLetterPageResponse,
+  },
+  "GET /api/v1/bereavement/plans/:planId/physician-letter": {
+    summary:
+      "The plan's physician condolence letter; 404 for a plan that has none; bereavement oversight only (ADR-0109 D6, #38)",
+    response: M16PhysicianLetterResponse,
+  },
+  "POST /api/v1/bereavement/physician-letters/:letterId/approve": {
+    summary:
+      "Approve a pending letter and request its render in the same transaction — an optional personal note (at most 1000 characters, sealed at rest) and, when the care team resolved no attending, the internal clinician who should receive it (an active member of the organization); `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #39)",
+    body: M16ApproveLetterBody,
+    response: M16PhysicianLetterResponse,
+  },
+  "POST /api/v1/bereavement/physician-letters/:letterId/decline": {
+    summary:
+      "Decline a pending letter with a documented reason of at least 20 characters; `If-Match` and `Idempotency-Key` required (ADR-0109 D6, #40)",
+    body: M16DeclineLetterBody,
+    response: M16PhysicianLetterResponse,
+  },
+
+  // ── mailing.routes.ts (ADR-0109 D10) ──
+  "GET /api/v1/bereavement/mailings/config": {
+    summary:
+      "The four configurable mailings (quarterly newsletter, December holiday, Mother's Day, Father's Day), each merged with its stored config or a disabled default at version 0; bereavement oversight only (ADR-0109 D10, #42)",
+    response: M16MailingConfigListResponse,
+  },
+  "PUT /api/v1/bereavement/mailings/config/:mailingKey": {
+    summary:
+      "Configure one mailing: enabled, lead days (3..60), the occurrence dates, the audience and the agency's own wording (no default wording ships); `If-Match` (0 for the first write) and `Idempotency-Key` required (ADR-0109 D10, #43)",
+    body: M16PutMailingConfigBody,
+    response: M16MailingConfigResponse,
+  },
+  "GET /api/v1/bereavement/mailings/runs": {
+    summary:
+      "Mailing runs, newest scheduled first (`?status=`), cursor-paginated, each with its item counts; bereavement oversight only (ADR-0109 D10, #44)",
+    query: M16MailingRunListQuerySchema,
+    response: M16MailingRunPageResponse,
+  },
+  "GET /api/v1/bereavement/mailings/runs/:runId": {
+    summary:
+      "One mailing run: status, wording snapshot, recipient / excluded counts and per-state item counts; the batch document itself is reached only through download (ADR-0109 D10, #45)",
+    response: M16MailingRunResponse,
+  },
+  "GET /api/v1/bereavement/mailings/runs/:runId/items": {
+    summary:
+      "A run's items in letter order: contact id, relationship, channel, status and exclusion reason; never a name or an address (ADR-0109 D10, #46)",
+    query: M16MailingItemListQuerySchema,
+    response: M16MailingItemPageResponse,
+  },
+  "PATCH /api/v1/bereavement/mailings/runs/:runId/content": {
+    summary:
+      "Replace a DRAFT run's wording; 409 once the run is generating or later; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #47)",
+    body: M16UpdateMailingRunContentBody,
+    response: M16MailingRunResponse,
+  },
+  "POST /api/v1/bereavement/mailings/runs/:runId/generate": {
+    summary:
+      "Generate the batch: compare-and-set draft, failed or ready to generating, select the recipients set-based through the eligibility rule, hand the render to the worker (which re-checks eligibility just before rendering). From `ready` it REGENERATES a batch that went stale (download answered 409 `MAILING_RUN_STALE`): the old PDF is detached and a fresh one rendered; 422 `MAILING_CONTENT_EMPTY` when no wording was written (no default ships); a run with no eligible recipient lands `failed` (`NO_RECIPIENTS`); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #48)",
+    response: M16MailingRunResponse,
+  },
+  "GET /api/v1/bereavement/mailings/runs/:runId/download": {
+    summary:
+      "A short-lived URL for the rendered batch PDF (every recipient's name and address, across the whole tenant: internal-only), minted through the M22 org-level document seam, which records the access; needs a fresh step-up; the URL is served as an attachment; 409 `MAILING_RUN_NOT_READY` unless the run is ready; 409 `MAILING_RUN_ALREADY_MAILED` once it was confirmed mailed (the batch went out; there is no reprint); eligibility is re-checked first and a batch naming anyone no longer eligible is refused with 409 `MAILING_RUN_STALE` (a count only): regenerate it (#48) and download again; never cached (ADR-0109 D10, #49)",
+    response: M16MailingDownloadResponse,
+  },
+  "POST /api/v1/bereavement/mailings/runs/:runId/confirm-mailed": {
+    summary:
+      "Confirm the batch was mailed (bookkeeping): re-check eligibility over the rendered contacts (an opt-out or closure since the download is flagged `excluded_after_render` and never logged as mailed; staff pull that letter by its printed Ref; nothing recalls a letter already posted), ready to mailed, `m16.bereavement.mailing_run_mailed`; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #50)",
+    response: M16MailingRunResponse,
+  },
+  "POST /api/v1/bereavement/mailings/runs/:runId/cancel": {
+    summary:
+      "Cancel a draft, ready or failed run; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #51)",
+    response: M16MailingRunResponse,
+  },
+  "GET /api/v1/bereavement/contacts/:contactId/timeline": {
+    summary:
+      "The contact's touchpoints and program activities (mailings, sessions), newest first, cursor-paginated; program activities satisfy no cadence item; a bereavement volunteer sees no touchpoint outcome (ADR-0109 D10, #52)",
+    query: M16ContactTimelineQuerySchema,
+    response: M16ContactTimelinePageResponse,
+  },
+
+  // ── group.routes.ts (ADR-0109 D10, PR 3) ──
+  "GET /api/v1/bereavement/groups": {
+    summary:
+      "Support groups, newest first (`?status=`), cursor-paginated, each with its enrolled count and next session; bereavement oversight or bereavement-capable staff; names no family (ADR-0109 D10, #53)",
+    query: M16GroupListQuerySchema,
+    response: M16GroupPageResponse,
+  },
+  "POST /api/v1/bereavement/groups": {
+    summary:
+      "Create a DRAFT support group (recurring with its schedule, or drop-in), in person or virtual, facilitated by bereavement-capable staff or a bereavement volunteer; oversight only; `Idempotency-Key` required (ADR-0109 D10, #54)",
+    body: M16CreateGroupBody,
+    response: M16GroupDetailResponse,
+  },
+  "GET /api/v1/bereavement/groups/:groupId": {
+    summary: "One support group with its meeting link (ADR-0109 D10, #55)",
+    response: M16GroupDetailResponse,
+  },
+  "PATCH /api/v1/bereavement/groups/:groupId": {
+    summary:
+      "Edit a draft or open group (a recurring group's schedule only while a draft); oversight or the group's staff facilitator; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #56)",
+    body: M16UpdateGroupBody,
+    response: M16GroupDetailResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/open": {
+    summary:
+      "Open a draft group: a recurring group's sessions are materialized (group-local wall time, kept across DST); a volunteer facilitator must pass the 418.78 gates now (422 `GROUP_FACILITATOR_INELIGIBLE`); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #57)",
+    response: M16GroupDetailResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/close": {
+    summary:
+      "Complete or cancel a group: live enrollments are withdrawn (`group_ended`) and future sessions cancelled; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #58)",
+    body: M16CloseGroupBody,
+    response: M16GroupDetailResponse,
+  },
+  "GET /api/v1/bereavement/groups/:groupId/sessions": {
+    summary: "A group's sessions by start, with attendee counts (ADR-0109 D10, #59)",
+    response: M16GroupSessionListResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/sessions": {
+    summary:
+      "Add one session (a drop-in meeting, or an extra meeting of a recurring group); `Idempotency-Key` required (ADR-0109 D10, #60)",
+    body: M16AddGroupSessionBody,
+    response: M16GroupSessionResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/sessions/:sessionId/cancel": {
+    summary:
+      "Cancel a scheduled session; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #61)",
+    response: M16GroupSessionResponse,
+  },
+  "GET /api/v1/bereavement/groups/:groupId/roster": {
+    summary:
+      "The roster of live program families (an opted-out or closed-plan contact drops off); oversight, the staff facilitator, or a volunteer facilitator passing the 418.78 gates, who gets the reduced projection (display name, enrollment status, attended) (ADR-0109 D10, #62)",
+    response: M16GroupRosterResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/enrollments": {
+    summary:
+      "Enroll a program family member (active plan and contact, no full / pause opt-out) into an open group under capacity; the contact's counselor or oversight; idempotent for a contact already enrolled; `Idempotency-Key` required (ADR-0109 D10, #63)",
+    body: M16EnrollContactBody,
+    response: M16GroupEnrollmentResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/enrollments/:contactId/withdraw": {
+    summary:
+      "Withdraw a contact's live enrollment (requested by the family, or removed by staff); `Idempotency-Key` required (ADR-0109 D10, #64)",
+    body: M16WithdrawEnrollmentBody,
+    response: M16GroupEnrollmentResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/sessions/:sessionId/attendance": {
+    summary:
+      "Record who attended a session that has started (idempotent per contact): each new attendee gets a contact-log activity row (`support_group_session`, outcome `attended`) that satisfies no cadence item; emits `m16.bereavement.support_group_attendance_recorded`; `Idempotency-Key` required (ADR-0109 D10, #65)",
+    body: M16RecordAttendanceBody,
+    response: M16AttendanceResultResponse,
+  },
+  "GET /api/v1/bereavement/contacts/:contactId/support-groups": {
+    summary: "One contact's support-group enrollments, live and past (ADR-0109 D10, #66)",
+    response: M16GroupEnrollmentListResponse,
+  },
+
+  // ── memorial.routes.ts (ADR-0109 D10, PR 3) ──
+  "GET /api/v1/bereavement/memorials": {
+    summary:
+      "Memorial services, newest start first (`?status=`), cursor-paginated, each with its RSVP counts; oversight or bereavement-capable staff; names no family (ADR-0109 D10, #67)",
+    query: M16MemorialListQuerySchema,
+    response: M16MemorialPageResponse,
+  },
+  "POST /api/v1/bereavement/memorials": {
+    summary:
+      "Create a DRAFT memorial service (title, time, place or meeting link, capacity, RSVP-by date, invitation window of 1..13 months, default 12); oversight only; `Idempotency-Key` required (ADR-0109 D10, #68)",
+    body: M16MemorialFieldsBody,
+    response: M16MemorialDetailResponse,
+  },
+  "GET /api/v1/bereavement/memorials/:serviceId": {
+    summary: "One memorial service with its meeting link and RSVP counts (ADR-0109 D10, #69)",
+    response: M16MemorialDetailResponse,
+  },
+  "PATCH /api/v1/bereavement/memorials/:serviceId": {
+    summary:
+      "Edit a draft or published service (the invitation window is fixed once published); oversight only; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #70)",
+    body: M16MemorialFieldsBody,
+    response: M16MemorialDetailResponse,
+  },
+  "POST /api/v1/bereavement/memorials/:serviceId/publish": {
+    summary:
+      "Publish: invite, set-based, every program family whose decedent died within the window before the service (`mailing` when the mailing rule lets them receive a letter, else `portal_only`) and draft ONE `memorial_invitation` mailing run for the mailing invitees (no default wording); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #71)",
+    response: M16MemorialDetailResponse,
+  },
+  "POST /api/v1/bereavement/memorials/:serviceId/close": {
+    summary:
+      "Mark a started service held, or cancel a draft or published one (its unmailed invitation run is cancelled too); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #72)",
+    body: M16CloseMemorialBody,
+    response: M16MemorialDetailResponse,
+  },
+  "GET /api/v1/bereavement/memorials/:serviceId/invitations": {
+    summary:
+      "Every invitation of a service by family name, with delivery, RSVP and attendance; oversight only (ADR-0109 D10, #73)",
+    response: M16MemorialInvitationListResponse,
+  },
+  "PUT /api/v1/bereavement/contacts/:contactId/memorial-invitations/:invitationId/rsvp": {
+    summary:
+      "Record a family's RSVP taken by phone (yes with a guest count, no, maybe) until the service starts; 409 `MEMORIAL_FULL` over capacity; emits `m16.bereavement.memorial_rsvp_recorded`; `Idempotency-Key` required (ADR-0109 D10, #74)",
+    body: M16MemorialRsvpBody,
+    response: M16ContactMemorialInvitationResponse,
+  },
+  "POST /api/v1/bereavement/memorials/:serviceId/invitations/:invitationId/attendance": {
+    summary:
+      "Mark an invitee attended (a contact-log activity row `memorial_service_attendance`, no cadence item; final) or a no-show, once the service has started; oversight only; `Idempotency-Key` required (ADR-0109 D10, #75)",
+    body: M16MemorialAttendanceBody,
+    response: M16MemorialInvitationResponse,
+  },
+  "GET /api/v1/bereavement/contacts/:contactId/memorial-invitations": {
+    summary: "One contact's memorial invitations, newest service first (ADR-0109 D10, #76)",
+    response: M16ContactMemorialInvitationListResponse,
+  },
+
+  // ── library.routes.ts (ADR-0109 D10, PR 3) ──
+  "GET /api/v1/bereavement/library": {
+    summary:
+      "Every grief-library item (`?status=`), portal order; bereavement oversight only; agency content, no person named (ADR-0109 D10, #77)",
+    query: M16LibraryListQuerySchema,
+    response: M16LibraryItemListResponse,
+  },
+  "POST /api/v1/bereavement/library": {
+    summary:
+      "Register an uploaded M22 `bereavement_library_item` document (active, org-level; checked through the M22 seam) as a DRAFT item; its kind and MIME type come from the document; a transcript must be a PDF; 409 when the file is already listed; `Idempotency-Key` required (ADR-0109 D10, #78)",
+    body: M16CreateLibraryItemBody,
+    response: M16LibraryItemResponse,
+  },
+  "PATCH /api/v1/bereavement/library/:itemId": {
+    summary:
+      "Edit an item's title, summary, category, transcript and order; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #79)",
+    body: M16UpdateLibraryItemBody,
+    response: M16LibraryItemResponse,
+  },
+  "POST /api/v1/bereavement/library/:itemId/status": {
+    summary:
+      "Publish an item to the bereaved portal, archive it, or return it to draft; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #80)",
+    body: M16SetLibraryStatusBody,
+    response: M16LibraryItemResponse,
+  },
+  "GET /api/v1/bereavement/library/:itemId/url": {
+    summary:
+      "A short-lived preview URL for the item's file (`?part=transcript` for its transcript), minted through M22's org-level seam, which records the access; never cached (ADR-0109 D10, #81)",
+    query: M16LibraryUrlQuerySchema,
+    response: M16LibraryItemUrlResponse,
+  },
 
   // ── contacts.routes.ts ──
   "POST /api/v1/bereavement/plans/:planId/contacts": {
     summary: "Add a bereaved contact to an open plan — lands `proposed` (§4.1 #11)",
     body: M16CreateContactBody,
+    response: M16ContactRowResponse,
+  },
+  "PUT /api/v1/bereavement/contacts/:contactId/care-plan": {
+    summary:
+      "Record the contact's care goals (ADR-0109, #41) — at most 3 goals of 1..280 characters, sealed with the tenant DEK; `If-Match` and `Idempotency-Key` required; an empty list clears them; a volunteer neither reads nor writes them",
+    body: M16CareGoalsBody,
     response: M16ContactRowResponse,
   },
   "PATCH /api/v1/bereavement/contacts/:contactId": {
@@ -8796,6 +9269,58 @@ Object.assign(ROUTE_ENRICHMENTS, {
 // M25 Remittance & Denials — FULL enrichment (all 31 routes). Later Object.assign wins, so this
 // supersedes the earlier partial M25 block and drives the module's unenriched deficit to 0.
 Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/remittance/claimmd-era": {
+    summary:
+      "Tenant- and provider-scoped aggregate list of Claim.MD ERA stages for nonposting review",
+    query: M25ClaimMdEraReviewQuerySchema,
+    response: M25ClaimMdEraReviewPageSchema,
+  },
+  "GET /api/v1/remittance/claimmd-era/:id": {
+    summary: "Authorized nonposting detail for one tenant-owned Claim.MD ERA stage",
+    response: M25ClaimMdEraReviewDetailSchema,
+  },
+  "GET /api/v1/remittance/claimmd-era/:id/matching": {
+    summary: "Nonposting matching review based only on verified original submission evidence",
+    response: M25ClaimMdEraMatchReviewSchema,
+  },
+  "GET /api/v1/remittance/claimmd-era/:id/matching/claims/:claimIndex/candidates": {
+    summary:
+      "Bounded tenant/provider-scoped historical submission candidates for nonposting reviewer matching",
+    response: M25ClaimMdEraHistoricalCandidatesSchema,
+  },
+  "POST /api/v1/remittance/claimmd-era/:id/matching/claims/:claimIndex/decision": {
+    summary:
+      "Append a reviewer confirmation for an already verified source claim identity; no financial effects",
+    body: M25ClaimMdEraMatchDecisionRequestSchema,
+    response: M25ClaimMdEraMatchDecisionResultSchema,
+  },
+  "POST /api/v1/remittance/claimmd-era/:id/financial-review/decision": {
+    summary:
+      "Append a nonposting financial-review decision; does not allocate, reconcile, or post funds",
+    body: M25ClaimMdEraFinancialReviewDecisionRequestSchema,
+    response: M25ClaimMdEraFinancialReviewDecisionResultSchema,
+  },
+  "GET /api/v1/remittance/claimmd-era/:id/posting-history": {
+    summary:
+      "Tenant- and provider-scoped immutable Claim.MD posting approval and execution history",
+    response: M25ClaimMdEraPostingHistorySchema,
+  },
+  "POST /api/v1/remittance/claimmd-era/:id/posting-plan": {
+    summary:
+      "Generate or retrieve the current server-calculated, nonposting Claim.MD financial plan",
+    response: M25ClaimMdEraPostingPlanSchema,
+  },
+  "POST /api/v1/remittance/claimmd-era/:id/posting-plans/:planId/approval": {
+    summary: "Record a separate approval for one exact eligible Claim.MD posting plan",
+    body: M25ClaimMdEraPostingActionRequestSchema,
+    response: M25ClaimMdEraPostingApprovalResultSchema,
+  },
+  "POST /api/v1/remittance/claimmd-era/:id/posting-plans/:planId/execution": {
+    summary:
+      "Execute one current approved Claim.MD plan through the controlled M25 transaction core",
+    body: M25ClaimMdEraPostingActionRequestSchema,
+    response: M25ClaimMdEraPostingActionResultSchema,
+  },
   // ── remittance.routes.ts (§4.1 routes 1-8) ────────────────────────────────────────────────────
   "GET /api/v1/remittance/advices": {
     summary: "Remittance advices (835 headers, cursor-paginated, §4.12)",
@@ -9697,6 +10222,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/cap/accruals/patient/:periodId/:patientId/lines": {
     summary:
       "Per-patient accrual source lines — cursor-paginated (source kind/id, amount cents, service span; §4.1)",
+    query: M26AccrualLinesQuery,
     response: M26AccrualLinePageResponse,
   },
   "GET /api/v1/cap/accruals/inpatient/:periodId": {
@@ -10397,7 +10923,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/platform/tenants": {
     summary:
-      "Provision a tenant from a signup_intent or raw input (enqueues tenant.provision; step-up)",
+      "Provision a tenant from a signup_intent or raw input (enqueues tenant.provision; step-up). planLabel is optional: omitted, the tenant is stored as 'unassigned' until a census-banded contract is signed at onboarding step 2",
     body: M34ProvisionTenantRequest,
     response: M34TenantJobAckSchema,
   },
@@ -10469,8 +10995,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34OnboardingTemplateListResponseSchema,
   },
   "POST /api/v1/platform/onboarding-templates": {
-    summary: "Add/edit a NON-canonical onboarding template (step-up; canonical is migration-only)",
+    summary:
+      "Add/edit a NON-canonical onboarding template (the step catalog every tenant's wizard shows): a key that names a canonical template is 409 ONBOARDING_TEMPLATE_CANONICAL and changes nothing, and canonical is migration-only (the database refuses the platform credential a canonical row too). onboarding_template.write + the tenant_lifecycle_platform_ops predicate + a fresh step-up; an Idempotency-Key and a `reason` (8-500 characters, screened for patient identifiers) are required, an AI actor is refused. The audit trail names the operator: the row-level trail by actor, and one m34.onboarding_template.upserted event with the operator, the reason and the step",
     body: M34UpsertOnboardingTemplateRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34OnboardingTemplateViewSchema,
   },
 
@@ -10493,7 +11021,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
 
   // ── platform-ops tenant invitations ──
   "GET /api/v1/platform/tenant-invitations": {
-    summary: "Platform → first-admin invitations across tenants (cursor-paginated)",
+    summary:
+      "Platform → first-admin invitations across tenants (cursor-paginated; ?tenantAccountId narrows the list to one tenant)",
     query: M34InvitationListQuerySchema,
     response: M34InvitationListResponseSchema,
   },
@@ -10729,7 +11258,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/messaging/channels/:id/mention-candidates": {
     summary:
-      "Search staff, the linked patient and (ADR-0107, PROPOSED; only while the tenant flag `messaging.group_tags` is on) the group tags `role`, `team` and `on_call` eligible for a structured reference. A group candidate is a label: who is behind it is never listed",
+      "Search staff, the linked patient and (ADR-0108, PROPOSED; only while the tenant flag `messaging.group_tags` is on) the group tags `role`, `team` and `on_call` eligible for a structured reference. A group candidate is a label: who is behind it is never listed",
     query: M36MentionCandidateQuerySchema,
     response: M36MentionCandidateResponseSchema,
   },
@@ -10741,7 +11270,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/messaging/channels/:id/messages": {
     summary:
-      "Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original). A reference of kind `role`, `team` or `on_call` is a group tag (ADR-0107, PROPOSED; tenant flag `messaging.group_tags`): the server resolves it to people who are active members of the channel, freezes them, and sends each one an ordinary mention notification. Typed 422: GROUP_TAGS_DISABLED, GROUP_TAG_INVALID, GROUP_TAG_EMPTY, GROUP_TAG_TOO_MANY (50 people per tag, 3 tags per message), GROUP_TAG_ON_CALL_UNRESOLVED (no confirmed on-call person; nothing is sent)",
+      "Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original). A reference of kind `role`, `team` or `on_call` is a group tag (ADR-0108, PROPOSED; tenant flag `messaging.group_tags`): the server resolves it to people who are active members of the channel, freezes them, and sends each one an ordinary mention notification. Typed 422: GROUP_TAGS_DISABLED, GROUP_TAG_INVALID, GROUP_TAG_EMPTY, GROUP_TAG_TOO_MANY (50 people per tag, 3 tags per message), GROUP_TAG_ON_CALL_UNRESOLVED (no confirmed on-call person; nothing is sent)",
     headers: IDEMPOTENCY_KEY_HEADER,
     body: M36SendMessageBodySchema,
     response: M36SendMessageResponseSchema,
@@ -10914,7 +11443,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/messaging/escalations/unacknowledged": {
     summary:
-      "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
+      "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 422 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
     query: M36UnacknowledgedQuerySchema,
     response: M36UnacknowledgedResponseSchema,
   },
@@ -12866,6 +13395,7 @@ const M23ClaimSubmissionOutcome = Type.Union([
   Type.Literal("submitted"),
   Type.Literal("failed_worker"),
   Type.Literal("failed_portal"),
+  Type.Literal("held_stale_source"),
 ]);
 const M23ClaimAcknowledgmentKind = Type.Union([
   Type.Literal("ack_999"),
@@ -13039,6 +13569,50 @@ const M23ClaimLineView = Type.Object({
   backingEncounterIds: Type.Array(Type.String()),
 });
 const M23ClaimLinesResponse = Type.Array(M23ClaimLineView);
+const M23ClaimPreparationResponse = Type.Object({
+  route: Type.Object({
+    status: Type.Union([
+      Type.Literal("verified"),
+      Type.Literal("not_configured"),
+      Type.Literal("not_applicable"),
+    ]),
+    reasonCode: Type.Optional(Type.String()),
+  }),
+  previewVersion: Type.Integer(),
+  previewGeneratedAt: Type.String({ format: "date-time" }),
+  previewExpiresAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  previewConfirmationToken: Type.Union([Type.String(), Type.Null()]),
+  rendererStatus: Type.Union([Type.Literal("rendered"), Type.Literal("blocked")]),
+  billingPreview: Type.Optional(
+    Type.Object({
+      tob: Type.String(),
+      serviceFrom: Type.String({ format: "date" }),
+      serviceTo: Type.String({ format: "date" }),
+      admissionDate: Type.String({ format: "date" }),
+      lines: Type.Array(
+        Type.Object({
+          lineNumber: Type.Integer(),
+          revenueCode: Type.String(),
+          hcpcs: Type.String(),
+          modifiers: Type.Array(Type.String()),
+          units: Type.Number(),
+          chargeCents: Type.Integer(),
+          serviceDateFrom: Type.String({ format: "date" }),
+          serviceDateTo: Type.String({ format: "date" }),
+        }),
+      ),
+      diagnosisCodes: Type.Array(Type.String()),
+      totalChargeCents: Type.Integer(),
+      nonCoveredChargeCents: Type.Integer(),
+    }),
+  ),
+  rendererGaps: Type.Optional(
+    Type.Array(Type.Object({ field: Type.String(), reason: Type.String() })),
+  ),
+  payloadDigest: Type.Null(),
+  payloadDigestStatus: Type.Literal("not_available_from_read_projection"),
+  submissionEligible: Type.Boolean(),
+});
 const M23ClaimStateHistoryView = Type.Object({
   historyId: Type.String(),
   claimId: Type.String(),
@@ -13069,6 +13643,13 @@ const M23ClaimSubmissionView = Type.Object({
   claimControlNumber: Type.String(),
   attemptIndex: Type.Integer(),
   outcome: M23ClaimSubmissionOutcome,
+  dispatchState: Type.Union([
+    Type.Literal("pending"),
+    Type.Literal("sending"),
+    Type.Literal("in_doubt"),
+    Type.Literal("finished"),
+  ]),
+  dispatchReasonCode: Type.Union([Type.String({ pattern: "^[A-Z0-9_]{1,64}$" }), Type.Null()]),
   outcomeReason: Type.Union([Type.String(), Type.Null()]),
   generatedFileUri: Type.Union([Type.String(), Type.Null()]),
   submittedAt: Type.Union([Type.String(), Type.Null()]),
@@ -13140,6 +13721,19 @@ const M23NoticeAckAndCorrection = {
   correctionReason: Type.Union([Type.String(), Type.Null()]),
   correctedBy: Type.Union([
     Type.Object({ noticeId: Type.String(), state: M23NoticeState }),
+    Type.Null(),
+  ]),
+  // A tenant that bills outside ChartWarden files the notice itself (owner decision D4): parked = "file with your biller",
+  // recorded = the date the tenant filed. Null on ChartWarden's own path.
+  externalFiling: Type.Union([
+    Type.Object({
+      status: Type.Union([
+        Type.Literal("filed_externally_pending"),
+        Type.Literal("filed_externally"),
+      ]),
+      filedOn: Type.Union([Type.String(), Type.Null()]),
+      recordedAt: Type.Union([Type.String(), Type.Null()]),
+    }),
     Type.Null(),
   ]),
 };
@@ -13331,6 +13925,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Single-claim detail - lines + per-diem class + SIA + latest run + submissions + acks (§4.1 #3)",
     response: M23ClaimDetailResponse,
+  },
+  "GET /api/v1/billing/claims/:id/preparation": {
+    summary: "Read-only claim preparation and verified payer-route readiness projection",
+    response: M23ClaimPreparationResponse,
   },
   "GET /api/v1/billing/claims/:id/acknowledgments": {
     summary: "All 999 / 277CA / 835 acknowledgments for a claim (§4.1 #13)",
@@ -13626,6 +14224,20 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: IDEMPOTENCY_KEY_HEADER,
     response: Type.Object({ created: Type.Boolean(), notice: M23NotrView }),
     status: 201,
+  },
+  "POST /api/v1/noe-records/:id/record-external-filing": {
+    summary:
+      "Record the date an organization that bills outside ChartWarden filed the NOE itself (step-up; 200, idempotent for the same date, 409 for another). Nothing is transmitted; the notice leaves the deadline tracker",
+    body: RecordExternalFilingBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23NoeView,
+  },
+  "POST /api/v1/notr-records/:id/record-external-filing": {
+    summary:
+      "Record the date an organization that bills outside ChartWarden filed the NOTR itself (step-up; 200, idempotent for the same date, 409 for another). Nothing is transmitted; the notice leaves the deadline tracker",
+    body: RecordExternalFilingBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23NotrView,
   },
 });
 
@@ -14942,7 +15554,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/platform/tenants/:orgSlug/onboarding/:taskId/skip": {
     summary:
-      "Skip an onboarding step with a recorded rationale (platform ops; step-up; strict sequence; go-live is not skippable)",
+      "Skip an onboarding step with a recorded rationale (platform ops; step-up; strict sequence). Only a non-canonical catalog step (added by platform ops) or a canonical step on the server's allowlist (MAC configuration, payer enrollment, DoseSpot kickoff, sample data) is skippable; any other, go-live included, is 409 ONBOARDING_STEP_NOT_SKIPPABLE",
     body: M34SkipOnboardingTaskRequest,
     response: M34WizardStepViewSchema,
   },
@@ -14972,7 +15584,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/platform/tenants/:orgSlug/go-live/approve": {
     summary:
-      "Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). The approver must be a different PERSON than the attester (409 GO_LIVE_SAME_PERSON), the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED",
+      "Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). The approver must be a different PERSON than the attester (409 GO_LIVE_SAME_PERSON) and must not have recorded, last changed or uploaded the signed agreement of the governing BAA (409 GO_LIVE_APPROVER_WROTE_BAA), the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED",
     body: M34PlatformReasonRequest,
     response: M34GoLiveResponseSchema,
   },
@@ -15140,6 +15752,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Assemble a hospice 837I claim for a COMMERCIAL primary payer from the shared claim facts, priced from the plan's contract rates (plan, route and rate periods intersected with the window); records COB when Medicare or Medicaid is secondary. 409 NON_COMMERCIAL_PRIMARY_PAYER when the primary payer is not a commercial plan (Medicare is Module 23, Medicaid Module 24); 422 COMMERCIAL_PLAN_NOT_FOUND",
     body: M41AssembleBodySchema,
     response: M41AssembleResponseSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/billing/commercial/claims/:id/corrections/clearinghouse-rejection": {
+    summary:
+      "Create a new original-frequency draft from current authoritative claim facts after a verified clearinghouse-stage rejection and before any payer response. The original claim and attempts remain unchanged. Payer-accepted replacements and payer-side voids remain blocked pending a verified plan contract.",
+    body: M41RejectedCorrectionBodySchema,
+    response: M41RejectedCorrectionResponseSchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
   },
@@ -15354,6 +15974,7 @@ import {
   OnboardingMedicaidCredentialIdSchema as M34OnboardingMedicaidCredentialIdSchema,
   OnboardingMedicaidCredentialListSchema as M34OnboardingMedicaidCredentialListSchema,
   OnboardingMedicaidCredentialUpsertRequest as M34OnboardingMedicaidCredentialUpsertRequest,
+  OnboardingMemberListSchema as M34OnboardingMemberListSchema,
   OnboardingProviderEntityCreateRequest as M34OnboardingProviderEntityCreateRequest,
   ProviderEntityDetailSchema as M34OnboardingProviderEntityDetailSchema,
   OnboardingProviderEntityListSchema as M34OnboardingProviderEntityListSchema,
@@ -15363,6 +15984,11 @@ import {
 const M34_ONBOARDING_WRITE_NOTE =
   "tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused";
 Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/platform/tenants/:orgSlug/members": {
+    summary:
+      "A tenant's ACTIVE staff, for assigning its compliance officer: membership id, display name, email and the role keys held (nothing else; read on the tenant's own RLS scope, audited; capped at 500). tenant_onboarding_data.read_platform + the platform_ops role",
+    response: M34OnboardingMemberListSchema,
+  },
   "GET /api/v1/platform/tenants/:orgSlug/provider-entities": {
     summary:
       "A tenant's provider entities, on the tenant's own RLS scope (platform ops; read is audited; the tax id is never returned)",
@@ -15429,5 +16055,400 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
     response: M34OnboardingMedicaidCredentialIdSchema,
+  },
+});
+
+// ── ADR-0053 amendment 2026-11-06: the tenant's clearinghouse choice (M23 tenant routes + the M34 platform copy) ──
+import {
+  ClearinghouseConfigViewSchema as M23ClearinghouseConfigViewSchema,
+  PutClearinghouseBodySchema as M23PutClearinghouseBodySchema,
+  RecordBaaBodySchema as M23RecordBaaBodySchema,
+  VerifyClearinghouseBodySchema as M23VerifyClearinghouseBodySchema,
+  VerifyClearinghouseResponseSchema as M23VerifyClearinghouseResponseSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/tenant-clearinghouse/typebox";
+import {
+  OnboardingBaaDocumentUploadRequest as M34OnboardingBaaDocumentUploadRequest,
+  OnboardingBaaDocumentViewSchema as M34OnboardingBaaDocumentViewSchema,
+  OnboardingBaaRevokeRequest as M34OnboardingBaaRevokeRequest,
+  OnboardingBaaVerifyRequest as M34OnboardingBaaVerifyRequest,
+  OnboardingClearinghousePutRequest as M34OnboardingClearinghousePutRequest,
+  OnboardingClearinghouseReadSchema as M34OnboardingClearinghouseReadSchema,
+  OnboardingClearinghouseReleaseResponseSchema as M34OnboardingClearinghouseReleaseResponseSchema,
+  OnboardingClearinghouseVerifyRequest as M34OnboardingClearinghouseVerifyRequest,
+  OnboardingClearinghouseVerifyResponseSchema as M34OnboardingClearinghouseVerifyResponseSchema,
+  OnboardingClearinghouseViewSchema as M34OnboardingClearinghouseViewSchema,
+  OnboardingClearinghouseWriteSchema as M34OnboardingClearinghouseWriteSchema,
+  OnboardingNoticeFilingListSchema as M34OnboardingNoticeFilingListSchema,
+  OnboardingNoticeWithdrawalViewSchema as M34OnboardingNoticeWithdrawalViewSchema,
+  OnboardingReasonSchema as M34OnboardingReasonSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-typebox";
+import { EXTERNAL_NOTICE_FILING_LIST_CAP } from "../../packages/types/src/notice-filing-list";
+
+const CLEARINGHOUSE_IF_MATCH_HEADERS = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: false,
+    description:
+      "The config's current integer version; required to change an existing config, absent on a first choice.",
+  },
+};
+const M34_CLEARINGHOUSE_WRITE_NOTE =
+  "tenant_clearinghouse.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused";
+const M34_CLEARINGHOUSE_PUT_NOTE = M34_CLEARINGHOUSE_WRITE_NOTE.replace(
+  "Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise)",
+  "Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise), except the switch out of outside that names a billing service mode (in the statuses named above)",
+);
+const M34_CLEARINGHOUSE_BAA_NOTE =
+  "tenant_clearinghouse.verify_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. NOT limited to an onboarding tenant (a live tenant that changed vendor needs it too); an AI actor is refused";
+const M34_CLEARINGHOUSE_REVOKE_NOTE =
+  "tenant_clearinghouse.revoke_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key, If-Match and a closed `reasonCode` plus a `ticketRef` (no free text exists on this route) are required. NOT limited to an onboarding tenant (a live tenant is the point); an AI actor is refused; 10 revokes per operator (across every tenant) and 20 in all per ten minutes, answering 429 beyond that (the limiter fails open)";
+const M34_CLEARINGHOUSE_RELEASE_NOTE =
+  "tenant_clearinghouse.release_credential_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and how many were released) are required. NOT limited to an onboarding tenant; an AI actor is refused";
+const M34_NOTICE_WITHDRAW_NOTE =
+  "tenant_notice_filing.withdraw_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the filed date withdrawn) are required. A tenant cannot do this, and a tenant's own cancel of a recorded notice is refused. NOT limited to an onboarding tenant; an AI actor is refused. The notice returns to its pre-record state (marker and filed date cleared, so it can be recorded or submitted again); a breach stamp the watchdog set is kept, the stamp a withdrawn LATE record wrote itself is cleared with it, and a NOTR's prior-election closure goes with the record";
+const M34_NOTICE_WITHDRAW_HEADERS = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: true,
+    description:
+      "The `externalFiling.recordedAt` (UTC ISO timestamp) of the filing record the operator read from the notice; a record withdrawn and re-recorded since is refused with 409 NOTICE_FILING_RECORD_CHANGED, and a request without it with 428 IF_MATCH_REQUIRED; both put the record's current recordedAt in the error details (field currentRecordedAt), so the operator can retry.",
+  },
+};
+const CLEARINGHOUSE_CHOICE_NOTE =
+  "stedi or claimmd (ChartWarden transmits with the tenant's own sealed credential) or outside (the tenant bills outside ChartWarden). draft -> verified -> active; only an active stedi / claimmd config allows claims and eligibility work";
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/tenant/clearinghouse": {
+    summary: `The organization's clearinghouse choice, masked (hasSecret; the credential is never returned; baa shows the tenant-held vendor BAA and whether an operator verified it) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.clearinghouse.read (org-level)`,
+    response: M23ClearinghouseConfigViewSchema,
+  },
+  "PUT /api/v1/tenant/clearinghouse": {
+    summary: `Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) while a production submission is in flight or was sent in the last 90 days, except while a platform operator has revoked the vendor BAA (then the tenant may change vendor or mode or switch to outside, and the vendor it left no longer locks the next one), and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); a tenant that bills outside ChartWarden cannot leave outside on its own while it has a pricing contract (409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR: the switch also sets its billing mode, which only a platform operator does); test mode is refused on a production deployment (422) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
+    body: M23PutClearinghouseBodySchema,
+    headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
+    status: 201,
+    response: M23ClearinghouseConfigViewSchema,
+  },
+  "POST /api/v1/tenant/clearinghouse/baa": {
+    summary:
+      "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. Recording a BAA also clears a revocation by a platform operator (it is a new agreement, so it starts again at unverified; re-recording the same document counts, but the operator must then acknowledge that the document was revoked before). Leaving the vendor (a vendor change, or outside) clears it too. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+    body: M23RecordBaaBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23ClearinghouseConfigViewSchema,
+  },
+  "POST /api/v1/tenant/clearinghouse/verify": {
+    summary:
+      "Verify the vendor connection: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note and the confirmation that it names no patient information where it has none (Stedi). The vendor probe runs with no transaction open (409 CLEARINGHOUSE_CHANGED_DURING_VERIFY if the config moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome and leaves the config at draft. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
+    body: M23VerifyClearinghouseBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23VerifyClearinghouseResponseSchema,
+  },
+  "POST /api/v1/tenant/clearinghouse/activate": {
+    summary:
+      "Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification, 409 CLEARINGHOUSE_BAA_NOT_VERIFIED until an operator verified the vendor BAA, 409 CLEARINGHOUSE_BAA_REVOKED while an operator's revocation of it stands; idempotent once active). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23ClearinghouseConfigViewSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/clearinghouse": {
+    summary:
+      "A tenant's clearinghouse choice, masked (hasSecret; the credential is never returned), and whether the tenant holds a pricing contract that is not canceled (hasContract: the server's answer to whether a switch out of outside also takes a billing mode) — platform ops; read is audited. 503 CLEARINGHOUSE_CONTRACT_UNAVAILABLE when the contract cannot be read",
+    response: M34OnboardingClearinghouseReadSchema,
+  },
+  "PUT /api/v1/platform/tenants/:orgSlug/clearinghouse": {
+    summary: `Choose a tenant's clearinghouse on its behalf: create (201) or version-checked change (200, If-Match); the credential is write-only and sealed under the tenant's key, and a credential another organization holds (until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the route allows 10 saves a minute per operator and tenant, and answers 503 when its limiter is unavailable) — ${CLEARINGHOUSE_CHOICE_NOTE}. Moving a tenant that has a contract OUT of outside to a vendor requires \`billingServiceMode\` (422 BILLING_SERVICE_MODE_REQUIRED): the mode is set first through the pricing path and put back if the vendor change fails; the field is refused (422 BILLING_SERVICE_MODE_NOT_APPLICABLE) on any other write. A body that names the mode also needs the pricing key subscription.onboard_platform (403 without it). That switch is the one write on this route accepted outside onboarding, and only while the tenant is provisioning, onboarding, active, at risk or suspended (409 TENANT_NOT_ONBOARDING for any other status: offboarding, final export pending, retained, being destroyed, destroyed, sign-up intent; the status is read before the billing mode is written, and a refusal that cannot be audited is 503 ONBOARDING_AUDIT_UNAVAILABLE); every other write on this route is onboarding-only. Every refusal that can be foreseen (the plan, the body's rules, the If-Match, the locks, the credential) is made BEFORE the mode is written; after the vendor commits the mode is asked for again (idempotent), and once more if that fails; if it still cannot be confirmed the answer carries billingModeConfirmed: false and the vendor change stands (read the contract and set the mode if it is not the one chosen). If the vendor's commit fails without a definite answer from the database the vendor is read again before the mode is undone: saved, the switch stands; not saved, the mode goes back to none; unreadable, the mode is left as set and the answer is 503 CLEARINGHOUSE_SWITCH_OUTCOME_UNKNOWN (and a commit the server gave up on can still land after the read-back saw outside, leaving a vendor with the mode put back to none: after any failed switch, read the tenant's clearinghouse and contract). ${M34_CLEARINGHOUSE_PUT_NOTE}`,
+    body: M34OnboardingClearinghousePutRequest,
+    headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
+    status: 201,
+    response: M34OnboardingClearinghouseWriteSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/verify": {
+    summary: `Verify a tenant's clearinghouse connection (a no-PHI connection test for Claim.MD, an attestation with evidence for Stedi). ${M34_CLEARINGHOUSE_WRITE_NOTE}`,
+    body: M34OnboardingClearinghouseVerifyRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingClearinghouseVerifyResponseSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/baa/verify": {
+    summary: `Verify the vendor BAA the tenant recorded for its own clearinghouse account (409 CLEARINGHOUSE_BAA_NOT_RECORDED if it has not; idempotent). A record whose document is the one a platform operator revoked before (the platform view's baa.previousRevocation.sameDocument) is refused with 409 CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED unless the request carries acknowledgePreviousRevocation: true; the audit row then records the supersession and the earlier revocation's time; a BAA that is currently revoked is refused with 409 CLEARINGHOUSE_BAA_REVOKED. Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; the audit row names the document reference and effective date verified. ${M34_CLEARINGHOUSE_BAA_NOTE}`,
+    body: M34OnboardingBaaVerifyRequest,
+    headers: {
+      ...IDEMPOTENCY_KEY_HEADER,
+      "If-Match": {
+        required: true,
+        description:
+          "The `baa.recordedAt` (UTC ISO timestamp) of the BAA record the operator read from the clearinghouse view; a changed record is refused with 409 CLEARINGHOUSE_BAA_CHANGED.",
+      },
+    },
+    response: M34OnboardingClearinghouseViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/baa/revoke": {
+    summary: `Revoke the vendor BAA the tenant recorded for its own clearinghouse account (the vendor ended it). In ONE transaction under the tenant's own scope the verification is voided, a live config leaves active (it becomes verified, as when a changed BAA is re-recorded), the audit row is written and the tenant is told (the outbox event m23.tenant_clearinghouse.baa_revoked becomes an alert to its billing, compliance and org administrators and a platform-ops notice, carrying ids, the closed code and counts of attempts still in flight or sent in the response window and of queued claims). Its claims, NOE, NOTR and transfer notices are then held and its acknowledgment (999/277CA) and 835 pulls skip, with a once-a-day alert while responses may still be owed, until the tenant records a new BAA, an operator verifies it and the tenant activates the config again; no new job or tick starts after the commit, and a job already past its pre-flight finishes (an M41 drain stops at the next row). While revoked, baa/verify and activate are refused with 409 CLEARINGHOUSE_BAA_REVOKED, the claims gate answers 402 clearinghouse_baa_revoked, and the tenant (never the operator) may change vendor or mode or switch to outside although production traffic is recent (it is not locked by 409 CLEARINGHOUSE_VENDOR_LOCKED); once it has left the revoked vendor, that vendor's attempts no longer lock the next one. The tenant clears the revocation by recording a new BAA or by leaving the vendor. NO free text: the body is a closed reasonCode (vendor_terminated, account_closed, baa_expired, other) and a ticketRef such as SEC-42; the audit row and the BAA record carry only those, and the tenant's own view shows the code and the time but never the ticket. Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; 409 CLEARINGHOUSE_BAA_NOT_RECORDED when none was recorded, 409 CLEARINGHOUSE_BAA_REVOKED when it is already revoked, 422 CLEARINGHOUSE_BAA_NOT_APPLICABLE for outside, 503 CLEARINGHOUSE_OUTBOX_UNBOUND when the outbox is not bound. The write touches only the BAA and status columns, so it works whatever the state of the credential or the encryption key (a row sealed before migration 1434 loses its credential with the BAA). A revoke is not an expiry: nothing ends a BAA by itself and no vendor signal reaches ChartWarden. ${M34_CLEARINGHOUSE_REVOKE_NOTE}`,
+    body: M34OnboardingBaaRevokeRequest,
+    headers: {
+      ...IDEMPOTENCY_KEY_HEADER,
+      "If-Match": {
+        required: true,
+        description:
+          "The `baa.recordedAt` (UTC ISO timestamp) of the BAA record the operator read from the clearinghouse view; a changed record is refused with 409 CLEARINGHOUSE_BAA_CHANGED.",
+      },
+    },
+    response: M34OnboardingClearinghouseViewSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/notice-filings": {
+    summary: `The NOEs and NOTRs a tenant recorded as filed outside ChartWarden, newest record first (capped at ${EXTERNAL_NOTICE_FILING_LIST_CAP}, \`truncated\` says so): notice kind and id, its state, deadline and breach dates, the date the tenant filed and the \`recordedAt\` a withdrawal must pin with If-Match; no patient, admission or control number. An audited read on the tenant's own RLS scope (the row names the operator and the count of NOEs and NOTRs shown, never which records), not gated on its onboarding status. A notice id with its dates identifies a patient's record, so this read takes the notice-filing key, not the generic onboarding read key: tenant_notice_filing.withdraw_platform + the platform_ops role`,
+    response: M34OnboardingNoticeFilingListSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/credentials/release": {
+    summary: `Release every clearinghouse credential the tenant still holds except its current one, so another organization may seal it (an account moved to a new organization, a key retired by a rotation). A credential stays reserved to the tenant through a switch to outside and a rotation until this runs; refused with 409 CLEARINGHOUSE_RESPONSES_PENDING while the tenant has a production submission in flight or sent one in the last 90 days, and 409 CLEARINGHOUSE_NOT_CONFIGURED when it never chose. The reason is recorded as given on the tenant's own audit trail, which the tenant can read: give a ticket reference only, never the name of the organization an account moved to. ${M34_CLEARINGHOUSE_RELEASE_NOTE}`,
+    body: M34OnboardingReasonSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingClearinghouseReleaseResponseSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/noe-records/:id/withdraw-external-filing": {
+    summary: `Withdraw the "filed outside ChartWarden" record of a tenant's NOE (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match, 428 IF_MATCH_REQUIRED for none; the last two carry the record's current recordedAt in the error details as {field: "currentRecordedAt", message: <timestamp>}, the value to retry with). ${M34_NOTICE_WITHDRAW_NOTE}`,
+    body: M34OnboardingReasonSchema,
+    headers: M34_NOTICE_WITHDRAW_HEADERS,
+    response: M34OnboardingNoticeWithdrawalViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/notr-records/:id/withdraw-external-filing": {
+    summary: `Withdraw the "filed outside ChartWarden" record of a tenant's NOTR, which reopens the prior election that record closed (409 NOTICE_NOT_FILED_EXTERNALLY when none is recorded, 409 NOTICE_FILING_RECORD_CHANGED for a stale If-Match, 428 IF_MATCH_REQUIRED for none; the last two carry the record's current recordedAt in the error details as {field: "currentRecordedAt", message: <timestamp>}, the value to retry with). ${M34_NOTICE_WITHDRAW_NOTE}`,
+    body: M34OnboardingReasonSchema,
+    headers: M34_NOTICE_WITHDRAW_HEADERS,
+    response: M34OnboardingNoticeWithdrawalViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/baa-document": {
+    summary:
+      "Upload the signed business associate agreement for a tenant that is onboarding (wizard step 3) or live (a renewal), through the documents module's own pipeline: size (10 MiB), type allowlist, magic bytes, the malware scan where one is bound, the tenant's bucket. The document is filed on the TENANT's RLS scope under the one kind this route files (tenant_baa); the body names no kind, patient or title, and nothing is read back or listed. The response carries the document id (what the BAA register row's `documentId` links) and the server-computed type, size and SHA-256. 409 TENANT_NOT_ONBOARDING unless the tenant is provisioning, onboarding, active, at risk or suspended (never once it is offboarding or later); 413 BAA_UPLOAD_TOO_LARGE past the size cap; 415 for a type or content mismatch, 422 for a size, bad base64 or a scanner verdict, 503 when no object store is configured. tenant_baa_document.upload_platform (its own key, not documents.upload) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and the document id and digest) are required; an AI actor is refused. A successful upload voids a pending go-live attestation like any other onboarding data write",
+    body: M34OnboardingBaaDocumentUploadRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    response: M34OnboardingBaaDocumentViewSchema,
+  },
+});
+
+// ── Claim.MD ERA recovery (platform ops) ──────────────────────────────────────────────────────────────────
+import { ClaimMdEraRecoveryBodySchema as M25ClaimMdEraRecoveryBodySchema } from "../../apps/backend/src/bootstrap/routes/ops-claimmd-era-recovery";
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "POST /api/v1/ops/claimmd/eras/:inboxId/recovery": {
+    summary:
+      "Requeue one stuck Claim.MD ERA at a named stage (platform operator role + billing.rule_config.platform_admin + platform scope + a fresh step-up). Optimistic on expectedState/expectedVersion: a stale action is a 409",
+    body: M25ClaimMdEraRecoveryBodySchema,
+  },
+});
+
+// ── tenant onboarding slice 4 (ADR-0111): the tenant's DoseSpot clinic registration (M12 tenant routes + the M34 platform copy) ──
+import {
+  ClinicConfigViewSchema as M12ClinicConfigViewSchema,
+  ConfirmPractitionerLinkBodySchema as M12ConfirmPractitionerLinkBodySchema,
+  EnrollPrescriberVendorBodySchema as M12EnrollPrescriberVendorBodySchema,
+  PractitionerLinkViewSchema as M12PractitionerLinkViewSchema,
+  PrescriberVendorEnrollmentViewSchema as M12PrescriberVendorEnrollmentViewSchema,
+  PutClinicBodySchema as M12PutClinicBodySchema,
+  ResolveHeldTransmissionBodySchema as M12ResolveHeldTransmissionBodySchema,
+  ResolveHeldTransmissionResponseSchema as M12ResolveHeldTransmissionResponseSchema,
+  VerifyClinicResponseSchema as M12VerifyClinicResponseSchema,
+} from "../../apps/backend/src/modules/12-dosespot/tenant-config/typebox";
+import {
+  OnboardingDoseSpotEnrollRequest as M34OnboardingDoseSpotEnrollRequest,
+  OnboardingDoseSpotEnrollViewSchema as M34OnboardingDoseSpotEnrollViewSchema,
+  OnboardingDoseSpotPrescriberListSchema as M34OnboardingDoseSpotPrescriberListSchema,
+  OnboardingDoseSpotPutRequest as M34OnboardingDoseSpotPutRequest,
+  OnboardingDoseSpotVerifyResponseSchema as M34OnboardingDoseSpotVerifyResponseSchema,
+  OnboardingDoseSpotViewSchema as M34OnboardingDoseSpotViewSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-dosespot-typebox";
+
+const DOSESPOT_IF_MATCH_HEADERS = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: false,
+    description:
+      "The registration's current integer version; required to change an existing registration, absent on a first save.",
+  },
+};
+const DOSESPOT_FLOW_NOTE =
+  "draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned";
+const M34_DOSESPOT_WRITE_NOTE =
+  "tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused";
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/tenant/dosespot": {
+    summary: `The organization's DoseSpot registration, masked (hasSecret; no credential is ever returned; prescribersEnrolled and queuedTransmissions are shown, neither gates anything) — ${DOSESPOT_FLOW_NOTE}. prescribing.clinic.read (org-level)`,
+    response: M12ClinicConfigViewSchema,
+  },
+  "PUT /api/v1/tenant/dosespot": {
+    summary: `Save the DoseSpot registration: create (201) or version-checked change (200, If-Match). Complete input is \`registered\`, incomplete stays \`draft\` (save and resume); ANY change to the environment, clinic, clinician or a key sends the row back and clears the test and activation (a change of environment or clinic also drops the stored key). The environment is a name, never a URL. A tenant administrator cannot introduce a Subscription-Key (422 DOSESPOT_SUBSCRIPTION_KEY_PLATFORM_ONLY) but may rotate one platform support set — ${DOSESPOT_FLOW_NOTE}. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
+    body: M12PutClinicBodySchema,
+    headers: DOSESPOT_IF_MATCH_HEADERS,
+    status: 201,
+    response: M12ClinicConfigViewSchema,
+  },
+  "POST /api/v1/tenant/dosespot/verify": {
+    summary:
+      "Test the DoseSpot connection: one service-clinician token mint with the stored credential, no patient data. The probe runs with no transaction open (409 DOSESPOT_CHANGED_DURING_VERIFY if the registration moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome (credential_rejected or unreachable) and leaves the status where it was; production is refused (409 DOSESPOT_PRODUCTION_NOT_ENABLED) until the platform enables it. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12VerifyClinicResponseSchema,
+  },
+  "POST /api/v1/tenant/dosespot/activate": {
+    summary:
+      "Activate a verified registration: e-prescribing then transmits for the organization (409 DOSESPOT_NOT_VERIFIED before a passed test; production only when the platform enabled it; idempotent once active). prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12ClinicConfigViewSchema,
+  },
+  "POST /api/v1/tenant/dosespot/deactivate": {
+    summary:
+      "Take an active registration out of service (back to verified; the credential is unchanged, so no new test is owed). Newly signed orders then activate locally and queued ones wait. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12ClinicConfigViewSchema,
+  },
+  "POST /api/v1/admin/dosespot-prescribers/:membershipId/dosespot-enrollment": {
+    summary:
+      "Register a roster prescriber with DoseSpot and record the vendor's id (the link transmission sends under). Needs a verified or active registration (409 DOSESPOT_NOT_READY) and a membership of this organization (404). The body is empty: the NPI and legal name are NEVER taken from the caller (a typed npi, firstName or lastName is a 422) but derived from the physician record the prescriber roster links the member to (409 DOSESPOT_PRACTITIONER_NOT_LINKED / _NOT_ACTIVE / _NPI_MISSING / _NAME_MISSING, 422 DOSESPOT_NPI_INVALID by its check digit), and cross-checked against NPPES (409 DOSESPOT_NPPES_MISMATCH when NPPES lists an organization, a deactivated provider or another surname; a production registration also needs NPPES to list the NPI, 409 DOSESPOT_NPPES_UNVERIFIED); idempotent for a prescriber already linked; never reinstates a revoked prescriber (409 DOSESPOT_PRESCRIBER_REVOKED); a second enrolment in flight is 409 DOSESPOT_ENROLLMENT_IN_PROGRESS; the prescriber must first have confirmed the linked record themself (409 DOSESPOT_PRACTITIONER_UNCONFIRMED); a roster re-link while it ran is 409 DOSESPOT_ROSTER_CHANGED; a registration move to another clinic while the vendor call ran is 409 DOSESPOT_REGISTRATION_MOVED (nothing is linked: enrol again under the new registration); a 2xx DoseSpot accepted but did not confirm is 502 DOSESPOT_ENROLLMENT_UNCONFIRMED (the claim is kept: the clinician may exist); the vendor call runs with no transaction open. Never starts EPCS or IAL2. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+    body: M12EnrollPrescriberVendorBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12PrescriberVendorEnrollmentViewSchema,
+  },
+  "GET /api/v1/me/dosespot-prescriber-link": {
+    summary:
+      "The signed-in prescriber's OWN link: the physician record the prescriber roster linked them to, shown with its name and NPI (public provider data), and whether they have confirmed it. prescribing.sign; the session's membership selects the roster row",
+    response: M12PractitionerLinkViewSchema,
+  },
+  "POST /api/v1/me/dosespot-prescriber-link/confirm": {
+    summary:
+      "The prescriber confirms, from their own account, that the physician record the roster linked them to is theirs. Pinned to the link and NPI they were shown (409 DOSESPOT_ROSTER_CHANGED if either moved); a link the member made themself cannot be confirmed by them (409 DOSESPOT_LINK_SELF_CONFIRM: another roster administrator must link them), nor can a link whose maker was never recorded (409 DOSESPOT_LINK_MAKER_UNKNOWN: a roster administrator must link them again), and the enrolment refuses a link whose linker is its confirmer; 409 DOSESPOT_PRACTITIONER_NOT_LINKED when they are not on the roster, _NOT_ACTIVE / _NPI_MISSING / DOSESPOT_NPPES_MISMATCH when the record cannot vouch. Never on behalf of another member and no platform route exists. The DoseSpot enrolment, on both lanes, is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until a confirmation matches the current link. prescribing.sign + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+    body: M12ConfirmPractitionerLinkBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12PractitionerLinkViewSchema,
+  },
+  "POST /api/v1/medication-orders/:id/resolve-held-transmission": {
+    summary:
+      "An organization administrator resolves a medication order HELD because DoseSpot may have acted on its NewRx call but did not confirm the outcome (an unreadable or id-less 2xx, a lost send answer, or a send answered with a 5xx other than 503; the order is in flight and its transmission is marked unconfirmed_outcome; while it is held no worker fails, retries or re-sends it, though the slow original call's own late answer can still end the hold). Check the prescriber's DoseSpot account, then say `sent` (with the DoseSpot prescription id: the order becomes transmitted and the status poll follows it as for any transmitted order) or `not_sent` (the order becomes transmission_failed and the prescriber retransmits it; it is never re-sent). Accepted only while the order is still held, under a row lock (409 DOSESPOT_TRANSMISSION_NOT_HELD otherwise, including a second resolution); `sent` without an id is 422 DOSESPOT_PRESCRIPTION_ID_REQUIRED, `not_sent` with one is 422 DOSESPOT_PRESCRIPTION_ID_UNEXPECTED, and an id another order of the organization already carries is 409 DOSESPOT_PRESCRIPTION_ID_IN_USE (webhooks bind by it); a reason that is under 10 characters once trimmed (it passed the request schema's length only because it was padded with whitespace) is 422 DOSESPOT_REASON_REQUIRED, while one under 10 characters as sent, or nothing but whitespace, is already a 400 from the request schema; an order of another organization is 404. The reason is kept on the transmission record, never in an event or an audit entry. prescribing.clinic.admin + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+    body: M12ResolveHeldTransmissionBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M12ResolveHeldTransmissionResponseSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/dosespot": {
+    summary:
+      "A tenant's DoseSpot registration, masked (hasSecret; no credential is ever returned) — platform ops; read is audited",
+    response: M34OnboardingDoseSpotViewSchema,
+  },
+  "PUT /api/v1/platform/tenants/:orgSlug/dosespot": {
+    summary: `Register a tenant's DoseSpot clinic on its behalf: create (201) or version-checked change (200, If-Match). Platform support may set the clinic's own Subscription-Key; ${DOSESPOT_FLOW_NOTE}. ${M34_DOSESPOT_WRITE_NOTE}`,
+    body: M34OnboardingDoseSpotPutRequest,
+    headers: DOSESPOT_IF_MATCH_HEADERS,
+    status: 201,
+    response: M34OnboardingDoseSpotViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/dosespot/verify": {
+    summary: `Test a tenant's DoseSpot connection (a no-PHI token mint; a failed test is a 200 with the outcome); 6 requests/min per target tenant. ${M34_DOSESPOT_WRITE_NOTE}`,
+    body: M34OnboardingReasonSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingDoseSpotVerifyResponseSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/dosespot/deactivate": {
+    summary: `Take a tenant's active DoseSpot registration out of service (back to verified). NOT limited to an onboarding tenant: a live tenant needs it too. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a \`reason\` are required; an AI actor is refused`,
+    body: M34OnboardingReasonSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingDoseSpotViewSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/dosespot/prescribers": {
+    summary:
+      "A tenant's prescriber roster and whether each prescriber is linked to DoseSpot (no NPI, no DEA number, no vendor id) — platform ops; read is audited",
+    response: M34OnboardingDoseSpotPrescriberListSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/dosespot/prescribers/:membershipId/enroll": {
+    summary: `Register a roster prescriber with DoseSpot on the tenant's behalf and record the vendor's id (409 DOSESPOT_NOT_READY until the registration is verified or active; the NPI and legal name are derived from the physician record the roster links the member to and cross-checked against NPPES, never typed, so the body is the reason alone, and the prescriber must have confirmed that link themself (the roster list shows linkConfirmed; the operator cannot confirm for them): see the tenant route for the 409/422 codes; idempotent for a linked prescriber; never starts EPCS). ${M34_DOSESPOT_WRITE_NOTE}`,
+    body: M34OnboardingDoseSpotEnrollRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingDoseSpotEnrollViewSchema,
+  },
+  "GET /api/v1/billing/claims/in-doubt-submissions": {
+    summary: "List Medicare submissions whose transport outcome requires investigation",
+    query: M23InDoubtSubmissionListQuerySchema,
+    response: M23InDoubtSubmissionListResponseSchema,
+  },
+  "GET /api/v1/billing/commercial/submissions/in-doubt": {
+    summary: "List commercial submissions whose transport outcome requires investigation",
+    query: M41InDoubtSubmissionListQuerySchema,
+    response: M41InDoubtSubmissionListResponseSchema,
+  },
+  "GET /api/v1/billing/operations/investigations": {
+    summary:
+      "List billing operations investigations within the caller's authorized provider-entity scope",
+    query: M25BillingOperationsInvestigationListQuerySchema,
+    response: M25BillingOperationsInvestigationListSchema,
+  },
+  "GET /api/v1/billing/operations/investigations/investigators": {
+    summary: "List eligible investigators for a billing submission",
+    query: M25BillingOperationsInvestigatorQuerySchema,
+    response: M25BillingOperationsInvestigatorsSchema,
+  },
+  "POST /api/v1/billing/operations/investigations": {
+    summary: "Open a billing operations investigation for a durable submission attempt",
+    body: M25BillingOperationsInvestigationSourceSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    response: M25BillingOperationsInvestigationSchema,
+  },
+  "GET /api/v1/billing/operations/investigations/:id": {
+    summary: "Read a billing operations investigation and its source evidence",
+    response: M25BillingOperationsInvestigationDetailSchema,
+  },
+  "POST /api/v1/billing/operations/investigations/:id/assignment": {
+    summary: "Assign or unassign a billing operations investigation",
+    body: M25BillingOperationsInvestigationAssignmentSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M25BillingOperationsInvestigationSchema,
+  },
+  "POST /api/v1/billing/operations/investigations/:id/notes": {
+    summary: "Add an operator note to a billing operations investigation",
+    body: M25BillingOperationsInvestigationNoteSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M25BillingOperationsInvestigationNoteResultSchema,
+  },
+  "POST /api/v1/billing/operations/investigations/:id/transitions": {
+    summary: "Transition a billing operations investigation",
+    body: M25BillingOperationsInvestigationTransitionSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M25BillingOperationsInvestigationSchema,
+  },
+  "GET /api/v1/billing/commercial/claims/:id/payment-reconciliation": {
+    summary:
+      "Read the commercial claim's remittance reconciliation within the caller's claim caseload",
+    response: M41PaymentReconciliationResponseSchema,
+  },
+  "GET /api/v1/messaging/death-boards/:boardId/notifications": {
+    summary: "List the death notifications for a visible coordination board",
+    response: M36DeathNotificationListResponseSchema,
+  },
+  "POST /api/v1/messaging/death-notifications/:notificationId/ack": {
+    summary: "Explicitly acknowledge receipt of a death notification",
+    response: M36DeathNotificationResponseSchema,
+  },
+  "POST /api/v1/messaging/death-boards/:boardId/funeral-home": {
+    summary: "Send the selected funeral home a BAA-gated death notification",
+    body: M36SendFuneralHomeBodySchema,
+    response: M36FuneralHomeSendResponseSchema,
+  },
+  "GET /api/v1/ops/claimmd/eras/:inboxId/recovery-preflight": {
+    summary: "Assess whether one Claim.MD ERA is eligible for a recovery simulation",
+    query: OpsClaimMdRecoveryReadinessQuerySchema,
+    response: OpsClaimMdRecoveryReadinessResponseSchema,
+  },
+  "POST /api/v1/ops/claimmd/eras/:inboxId/recovery-dry-run": {
+    summary: "Simulate Claim.MD ERA recovery readiness without mutating source state",
+    query: OpsClaimMdRecoveryReadinessQuerySchema,
+    response: OpsClaimMdRecoveryReadinessResponseSchema,
+  },
+  "GET /api/v1/ops/claimmd/observability": {
+    summary: "Read bounded central Claim.MD account operational evidence",
+    response: OpsClaimMdObservabilityResponseSchema,
+  },
+  "GET /api/v1/remittance/claimmd-operational-health": {
+    summary: "Read tenant-safe Claim.MD remittance staging health",
+    query: M25ClaimMdOperationalHealthQuerySchema,
+    response: M25ClaimMdOperationalHealthResponseSchema,
+  },
+  "GET /api/v1/remittance/revenue-cycle-summary": {
+    summary: "Read the M25 source-backed revenue-cycle summary",
+    query: M25RevenueCycleSummaryQuerySchema,
+    response: M25RevenueCycleSummaryResponseSchema,
   },
 });

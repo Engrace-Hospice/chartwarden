@@ -127,6 +127,7 @@ function queueRequest(event: DispatchableOutboxEvent): {
   if (event.eventType === "m23.noe.submit_requested") {
     const noeId = requiredString(event.payload.noeId, "noeId");
     const submissionId = requiredString(event.payload.submissionId, "submissionId");
+    // The job carries the attempt it owns: the worker terminalizes (or, parking, closes) THAT row, never "the latest".
     return { queue: "noe.submit", key: submissionId, payload: { noeId, submissionId } };
   }
   if (event.eventType === "m23.notr.submit_requested") {

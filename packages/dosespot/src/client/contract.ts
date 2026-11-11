@@ -72,6 +72,29 @@ export interface DoseSpotNewRxPayload {
 }
 
 /** §4.10 — the NewRx response (the DoseSpot-side prescription id recorded on the transmission row). */
+/**
+ * What a caller that can PERSIST remembers across processes (the adapter's own memory is per process): the prescription id of a NewRx that was
+ * created but not yet sent, so a retry on another replica re-runs only the send, never the create (a second prescription).
+ */
+export interface DoseSpotNewRxResume {
+  /**
+   * The registration target (`<environment>:<clinic id>`, or `env`) the caller began this call under. The adapter resolves the tenant's config at the top
+   * of the call and again for EACH request, and refuses (a `NotEnabledError`, nothing sent) any resolution that names another target, so a registration
+   * that moved to another clinic meanwhile is never served the caller's old clinic's ids under the new clinic's credentials. Absent: not checked.
+   */
+  readonly expectedTarget?: string;
+  /** A created-but-unsent prescription id from an earlier attempt: skip the create and send this one. */
+  readonly createdPrescriptionId?: string;
+  /** Called with the id as soon as the create answered, BEFORE the send. If it throws, the send is not attempted and the error propagates. */
+  readonly onCreated?: (dosespotPrescriptionId: string) => Promise<void>;
+  /**
+   * Called just before the send on EVERY path: after this call's own create (and its `onCreated`), and when a persisted `createdPrescriptionId` is
+   * handed back and the create is skipped (where `onCreated` never runs). It is the caller's last chance to refuse: if it throws, the send is not
+   * attempted and the error propagates. A caller that must not send for an order it no longer owns checks that here.
+   */
+  readonly beforeSend?: () => Promise<void>;
+}
+
 export interface DoseSpotNewRxResponse {
   readonly dosespotPrescriptionId: string;
   readonly transmittedAt: string;
@@ -155,21 +178,30 @@ export interface DoseSpotEpcsSessionResponse {
  * typed result or rejects with a {@link DegradedError} from `./errors` (never a raw `fetch` rejection,
  * INT-009). `orgId` selects the per-tenant clinic credentials + circuit breaker (§2.5).
  */
+/** What a caller may say about a call that is not a NewRx. */
+export interface DoseSpotCallOptions {
+  /** The registration target the caller began under: see {@link DoseSpotNewRxResume.expectedTarget}. */
+  readonly expectedTarget?: string;
+}
+
 export interface DoseSpotClient {
   upsertPatient(
     orgId: string,
     payload: DoseSpotPatientPayload,
     idempotencyKey: string,
+    options?: DoseSpotCallOptions,
   ): Promise<DoseSpotPatientResponse>;
   enrollPrescriber(
     orgId: string,
     payload: DoseSpotPrescriberPayload,
+    options?: DoseSpotCallOptions,
   ): Promise<DoseSpotPrescriberResponse>;
   revokePrescriber(orgId: string, dosespotPrescriberId: string): Promise<void>;
   transmitNewRx(
     orgId: string,
     payload: DoseSpotNewRxPayload,
     idempotencyKey: string,
+    resume?: DoseSpotNewRxResume,
   ): Promise<DoseSpotNewRxResponse>;
   lookupRxBenefit(
     orgId: string,

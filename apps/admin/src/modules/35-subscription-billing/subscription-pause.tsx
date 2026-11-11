@@ -1,11 +1,13 @@
 import {
   Button,
-  Panel,
   TextAreaField,
   TextField,
-  stashStepUpDraft,
+  sendWrite,
+  stashStepUpMemoryDraft,
   useApiClient,
-  useStepUpDraft,
+  useIdempotencyKeeper,
+  useRestoreFocus,
+  useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Pause subscription (`/admin/subscriptions/:id/pause`,
 // subscription.admin.write). A gated action: an optional until-date over POST /api/admin/subscriptions/:id/pause
@@ -13,9 +15,9 @@ import {
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { idempotencyKey } from "./status";
-import { type Outcome, OutcomeBanner, StateError, StateLoading, failureOutcome } from "./ui";
+import { type Outcome, OutcomeBanner, StateError, StateLoading, writeFailure } from "./ui";
 import { useSubscriptionGate } from "./use-subscription-gate";
+import { useSuccessRedirect } from "./use-success-redirect";
 
 export function SubscriptionPause(): JSX.Element {
   const client = useApiClient();
@@ -24,31 +26,39 @@ export function SubscriptionPause(): JSX.Element {
   const { gate, retry } = useSubscriptionGate(id);
   // A step-up refusal sends the operator to /step-up and back; what they typed is restored.
   const draftKey = `subscription-pause:${id ?? ""}`;
-  const restored = useStepUpDraft<{ until: string; reason: string }>(draftKey);
+  const restored = useStepUpMemoryDraft<{ until: string; reason: string }>(draftKey);
   const [until, setUntil] = useState(restored?.until ?? "");
   const [reason, setReason] = useState(restored?.reason ?? "");
   const [busy, setBusy] = useState(false);
+  // A refused submit re-enables the button the keyboard user pressed; it was disabled while in flight, which dropped focus.
+  const captureFocus = useRestoreFocus(busy);
+  const keeper = useIdempotencyKeeper();
+  const { done, finish } = useSuccessRedirect();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const submit = useCallback(async () => {
-    if (!id) return;
+    if (!id || busy || done) return;
+    captureFocus();
     setBusy(true);
     setOutcome(null);
     const body = until ? { pausedUntil: new Date(until).toISOString() } : {};
-    const res = await client.POST("/api/admin/subscriptions/{id}/pause", {
-      params: { path: { id } },
-      body,
-      headers: { "Idempotency-Key": idempotencyKey() },
-    });
-    if (res.error) {
-      setOutcome(failureOutcome(res.error, "Could not pause the subscription."));
+    // One key per pause: a retry of the same unchanged request after "could not reach the server" replays it.
+    const sent = await sendWrite(keeper, `${id}:${JSON.stringify(body)}`, (key) =>
+      client.POST("/api/admin/subscriptions/{id}/pause", {
+        params: { path: { id } },
+        body,
+        headers: { "Idempotency-Key": key },
+      }),
+    );
+    const failure = writeFailure(sent, "Could not pause the subscription.");
+    if (failure) {
+      setOutcome(failure);
       setBusy(false);
       return;
     }
-    setOutcome({ ok: true, message: "Subscription paused." });
     setBusy(false);
-    setTimeout(() => navigate(`/admin/subscriptions/${id}`), 800);
-  }, [client, id, until, navigate]);
+    finish(`/admin/subscriptions/${id}`, "Subscription paused.");
+  }, [busy, done, client, id, until, finish, captureFocus, keeper]);
 
   return (
     <div className="wx-list-drawer">
@@ -69,42 +79,50 @@ export function SubscriptionPause(): JSX.Element {
         ) : gate === "error" ? (
           <StateError message="Subscription unavailable." onRetry={retry} />
         ) : (
-          <div className="max-w-xl">
-            <Panel title="Pause" icon="clock">
-              <div className="grid gap-4">
-                <TextField
-                  id="paused-until"
-                  label="Paused until (optional)"
-                  type="date"
-                  value={until}
-                  onChange={(e) => setUntil(e.target.value)}
+          <form
+            className="wx-drawer-card"
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submit();
+            }}
+          >
+            <div className="wx-drawer-card-head">
+              <h2>Pause</h2>
+            </div>
+            <div className="wx-form-stack">
+              <TextField
+                id="paused-until"
+                label="Paused until (optional)"
+                type="date"
+                value={until}
+                onChange={(e) => setUntil(e.target.value)}
+              />
+              <TextAreaField
+                id="pause-reason"
+                label="Reason (for your ops record)"
+                hint="Do not include patient information."
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={3}
+                placeholder="Why is this subscription being paused?"
+              />
+              {outcome ? (
+                <OutcomeBanner
+                  {...outcome}
+                  onReverify={() => stashStepUpMemoryDraft(draftKey, { until, reason })}
                 />
-                <TextAreaField
-                  id="pause-reason"
-                  label="Reason (for your ops record)"
-                  hint="Do not include patient information."
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  rows={3}
-                  placeholder="Why is this subscription being paused?"
-                />
-                {outcome ? (
-                  <OutcomeBanner
-                    {...outcome}
-                    onReverify={() => stashStepUpDraft(draftKey, { until, reason })}
-                  />
-                ) : null}
-                <div className="wx-action-row is-end">
-                  <Button tone="tertiary" onClick={() => navigate(`/admin/subscriptions/${id}`)}>
-                    Cancel
-                  </Button>
-                  <Button loading={busy} onClick={() => void submit()}>
-                    Pause subscription
-                  </Button>
-                </div>
-              </div>
-            </Panel>
-          </div>
+              ) : null}
+            </div>
+            <div className="wx-drawer-actions">
+              <Button type="submit" loading={busy || done}>
+                Pause subscription
+              </Button>
+              <Button tone="tertiary" onClick={() => navigate(`/admin/subscriptions/${id}`)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
         )}
       </div>
     </div>

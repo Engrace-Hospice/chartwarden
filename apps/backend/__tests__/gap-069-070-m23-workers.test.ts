@@ -10,6 +10,8 @@ type Row = Record<string, unknown>;
 const fakes = vi.hoisted(() => ({
   noeCandidates: [] as Row[],
   notrCandidates: [] as Row[],
+  /** The `asOf` day each window-watch candidate query was asked about. */
+  asOf: [] as string[],
   stale: [] as Row[],
   latestByPatient: new Map<string, Row>(),
   claims: new Map<string, Row>(),
@@ -20,10 +22,16 @@ vi.mock("@chartwarden/billing", async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   const repos = original.repositories as Record<string, unknown>;
   class NoeRepository {
-    listWindowWatchCandidates = async () => fakes.noeCandidates;
+    listWindowWatchCandidates = async (_org: string, asOf: string) => {
+      fakes.asOf.push(asOf);
+      return fakes.noeCandidates;
+    };
   }
   class NotrRepository {
-    listWindowWatchCandidates = async () => fakes.notrCandidates;
+    listWindowWatchCandidates = async (_org: string, asOf: string) => {
+      fakes.asOf.push(asOf);
+      return fakes.notrCandidates;
+    };
   }
   class EligibilityCheckRepository {
     listStaleForOrg = async () => fakes.stale;
@@ -114,6 +122,7 @@ function harness(overrides: Partial<M23WorkerDeps> = {}) {
 beforeEach(() => {
   fakes.noeCandidates = [];
   fakes.notrCandidates = [];
+  fakes.asOf = [];
   fakes.stale = [];
   fakes.latestByPatient = new Map();
   fakes.claims = new Map();
@@ -153,6 +162,39 @@ describe("GAP-069 watchdog crons", () => {
     expect(breaches).toHaveLength(0);
     expect(published.map((p) => p.eventName)).toEqual(["m23.noe.window_warning"]);
     expect(published.every(catalogAccepts)).toBe(true);
+  });
+
+  // The CMS window is counted in Eastern calendar days (the record service and the DDE lookahead judge "today" the same way).
+  // 02:00 UTC on 10-06 is still 22:00 Eastern on 10-05: the target day itself, not a day past it.
+  it.each([
+    ["NOE", "noeCandidates", runNoeWindowWatch, "m23.noe.window_warning"],
+    ["NOTR", "notrCandidates", runNotrWindowWatch, "m23.notr.window_warning"],
+  ] as const)(
+    "%s: the evening Eastern of the target day is the target day (a warning, not a breach), and the candidate query is asked about the Eastern day",
+    async (_k, candidates, run, warning) => {
+      fakes[candidates] = [
+        { id: "n-1", admissionId: "adm-1", version: 1, windowTargetAt: "2026-10-05" },
+      ];
+      const eveningEastern = new Date("2026-10-06T02:00:00.000Z");
+      const { deps, published, breaches } = harness({ now: () => eveningEastern });
+
+      await run(deps);
+
+      expect(breaches).toHaveLength(0);
+      expect(published.map((p) => p.eventName)).toEqual([warning]);
+      expect(fakes.asOf).toEqual(["2026-10-05"]);
+    },
+  );
+
+  it("a notice is breached once the EASTERN day passes its target (the first Eastern minute of the next day)", async () => {
+    fakes.noeCandidates = [
+      { id: "noe-9", admissionId: "adm-9", version: 1, windowTargetAt: "2026-10-05" },
+    ];
+    const justAfterEasternMidnight = new Date("2026-10-06T04:30:00.000Z"); // 00:30 Eastern on 10-06
+    const { deps, breaches } = harness({ now: () => justAfterEasternMidnight });
+    await runNoeWindowWatch(deps);
+    expect(breaches).toHaveLength(1);
+    expect(fakes.asOf).toEqual(["2026-10-06"]);
   });
 
   it("covers NOTR the same way, with catalog-valid payloads", async () => {

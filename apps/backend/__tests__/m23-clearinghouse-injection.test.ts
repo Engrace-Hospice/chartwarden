@@ -247,6 +247,31 @@ describe("acknowledgments over the transport", () => {
     expect(ch.ackFileUri).toBe("clearinghouse:e1");
   });
 
+  // claim_ack_file_uq is (jurisdiction, ack_file_uri), not org-scoped. Two tenants with their OWN Claim.MD accounts number their
+  // response ids independently, so the same id must not collide: a tenant account's key carries its org. The platform key is
+  // unchanged, so rows already stored for it still dedupe.
+  it("keys a tenant account's ack by its org, and leaves the platform key unchanged", () => {
+    const event = {
+      eventId: "claimmd:production:42",
+      stage: "clearinghouse",
+      disposition: "accepted",
+      controlNumber: "CCN1",
+      reasonCodes: [],
+      occurredAt: "2026-10-11",
+    } as const;
+    const scope = { organizationId: ORG, providerEntityId: PE, macJurisdiction: "ngs_j6" };
+    const other = "22222222-2222-4222-8222-222222222222";
+    expect(ackFromEvent(event, scope).ackFileUri).toBe("clearinghouse:claimmd:production:42");
+    const a = ackFromEvent(event, { ...scope, account: "tenant" }).ackFileUri;
+    const b = ackFromEvent(event, {
+      ...scope,
+      organizationId: other,
+      account: "tenant",
+    }).ackFileUri;
+    expect(a).toBe(`clearinghouse:tenant:${ORG}:claimmd:production:42`);
+    expect(a).not.toBe(b);
+  });
+
   it("maps a first-class partial payer disposition, and no longer reads a PARTIAL marker", () => {
     const scope = { organizationId: ORG, providerEntityId: PE, macJurisdiction: "ngs_j6" };
     const event = {
@@ -325,7 +350,9 @@ describe("acknowledgments over the transport", () => {
     });
     const pulled = await pulledAcks(t, "ack_999");
     expect(pulled.acks).toHaveLength(1);
-    expect(pulled.failures).toEqual([expect.stringContaining("no NPI on file")]);
+    // the failing entity is named by id and by error class; the error's own message is never carried into the failure text
+    expect(pulled.failures).toEqual([expect.stringContaining(`provider ${bad}: Error`)]);
+    expect(JSON.stringify(pulled.failures)).not.toContain("no NPI on file");
   });
 });
 

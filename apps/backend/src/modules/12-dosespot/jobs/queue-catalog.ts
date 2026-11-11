@@ -13,6 +13,11 @@
 // names that no readable spec confirmed are flagged in `client/endpoints.ts` / `client/mappers.ts` and listed in
 // `docs/history/m12-dosespot-adapter.md` under "requires sandbox verification". `adapterCaveats` carries the one
 // per-queue fact an operator needs before enabling it.
+import {
+  DOSESPOT_PRODUCTION_ENABLED_ENV,
+  DOSESPOT_SANDBOX_ENABLED_ENV,
+  isSandboxEnabled,
+} from "@chartwarden/dosespot";
 import { M12_CRON_QUEUES } from "./queues";
 
 /** The ten §4.8 queue names, verbatim. */
@@ -129,13 +134,55 @@ export const M12_DEFERRED_QUEUES: readonly M12DeferredQueue[] = M12_QUEUE_CATALO
   (q): q is M12DeferredQueue => q.status === "deferred",
 );
 
-/** The boot-time line: honest about the adapter being unbound until credentials are configured. */
+/**
+ * The boot-time line: honest about the adapter being unbound until credentials are configured. `configuredOrganizationIds` names
+ * only the orgs known WITHOUT a lookup (the `DOSESPOT_TENANT_CONFIGS` fallback): a tenant's own registration
+ * (`dosespot_clinic_registration`, slice 4) is read from the database on demand and is not countable here.
+ */
 export function describeM12AdapterPosture(configuredOrganizationIds: readonly string[]): string {
   const built = M12_QUEUE_CATALOG.filter((q) => q.status === "built").length;
   if (configuredOrganizationIds.length === 0) {
-    return `M12 §4.8: ${built} of ${M12_QUEUE_CATALOG.length} queues built; the DoseSpot adapter is UNBOUND until per-tenant credentials are configured (DOSESPOT_TENANT_CONFIGS) — nothing is queued for transmission and orders keep activating locally; vendor endpoints/field names are unverified until a sandbox run`;
+    return `M12 §4.8: ${built} of ${M12_QUEUE_CATALOG.length} queues built; the DoseSpot adapter is UNBOUND until per-tenant credentials are configured (a tenant registers its clinic, stored in dosespot_clinic_registration and read per call; DOSESPOT_TENANT_CONFIGS is only a fallback) — a tenant with no live registration queues nothing for transmission and its orders keep activating locally; vendor endpoints/field names are unverified until a sandbox run`;
   }
-  return `M12 §4.8: ${built} of ${M12_QUEUE_CATALOG.length} queues built; DoseSpot adapter bound for ${configuredOrganizationIds.length} tenant(s); vendor endpoints/field names are unverified until a sandbox run (see docs/history/m12-dosespot-adapter.md)`;
+  return `M12 §4.8: ${built} of ${M12_QUEUE_CATALOG.length} queues built; DoseSpot adapter bound for ${configuredOrganizationIds.length} tenant(s) through the env fallback (other tenants through their own registration); vendor endpoints/field names are unverified until a sandbox run (see docs/history/m12-dosespot-adapter.md)`;
+}
+
+/**
+ * The boot WARNING naming each org an env entry serves: an org with no registration of its own keeps that entry as a fallback
+ * (the demo tenant); the day it registers, its row takes over and the env entry stops serving it. Null when there are none.
+ */
+export function describeM12EnvFallbackWarning(
+  envServedOrganizationIds: readonly string[],
+): string | null {
+  if (envServedOrganizationIds.length === 0) return null;
+  return `M12 DoseSpot: ${envServedOrganizationIds.length} organization(s) are served by the DOSESPOT_TENANT_CONFIGS fallback because each has no registration of its own: ${envServedOrganizationIds.join(", ")}. Register them (PUT /api/v1/tenant/dosespot) and remove their env entries.`;
+}
+
+/**
+ * The boot WARNINGS for the two platform flags that decide where a tenant's prescriptions go. Neither is a machine-checked fact about the
+ * deployment (CW-AC-21, CW-BA-01: operating policy), so each is said loudly once per boot instead of being refused: a demo deployment
+ * legitimately runs the sandbox on a production build.
+ *   DOSESPOT_SANDBOX_ENABLED on NODE_ENV=production   a sandbox registration can go LIVE here: its prescriptions reach DoseSpot's test
+ *                                                     environment, never a pharmacy, for patients who may be real.
+ *   DOSESPOT_PRODUCTION_ENABLED                       tenants may activate production registrations and send real prescriptions. That the
+ *                                                     ChartWarden / DoseSpot BAA is executed is NOT checked anywhere.
+ * Pure: the caller passes the environment (`process.env`). Names the variables, never a value of any secret.
+ */
+export function describeM12PlatformFlagWarnings(
+  env: Readonly<Record<string, string | undefined>>,
+): readonly string[] {
+  const warnings: string[] = [];
+  if (env.NODE_ENV === "production" && isSandboxEnabled(env)) {
+    warnings.push(
+      `M12 DoseSpot: ${DOSESPOT_SANDBOX_ENABLED_ENV} is true on a production deployment (NODE_ENV=production): a tenant's sandbox registration can go live here, and its prescriptions go to DoseSpot's TEST environment, not to a pharmacy. Operating policy, not a machine check (CW-AC-21): unset it unless this is a demo deployment.`,
+    );
+  }
+  if (env[DOSESPOT_PRODUCTION_ENABLED_ENV] === "true") {
+    warnings.push(
+      `M12 DoseSpot: ${DOSESPOT_PRODUCTION_ENABLED_ENV} is true: tenants can activate production registrations and send real prescriptions. That the ChartWarden / DoseSpot BAA is executed and a sandbox run has confirmed the wire shapes is NOT machine-checked; the platform operator is trusted to have set the flag only then (CW-AC-21, CW-BA-01).`,
+    );
+  }
+  return warnings;
 }
 
 /** Back-compat for the first pass's boot line (kept so an unexpected deferral is still reported). */

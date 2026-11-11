@@ -1819,6 +1819,22 @@ export const M12_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  // The tenant's own DoseSpot clinic registration (tenant onboarding slice 4, ADR-0111). ORG-LEVEL on purpose, unlike the
+  // roster key above: the registration decides where EVERY prescription of the organization goes (the clinic key, the
+  // environment, activation), so a roster admin must not hold it. Granted to the org-wide admin roles only (`org_admin`,
+  // `administrator`; migration 1429 + the full-catalog template). Writes need a fresh step-up.
+  "prescribing.clinic.read": {
+    resource: "dosespot_clinic",
+    action: "read",
+    category: "compliance",
+    abac: "none",
+  },
+  "prescribing.clinic.admin": {
+    resource: "dosespot_clinic",
+    action: "admin",
+    category: "compliance",
+    abac: "none",
+  },
   // Refill-inbox / controlled-substance policy admin (org-scoped, step-up, tighten-only).
   "prescribing.admin.policy": {
     resource: "prescribing_policy",
@@ -3009,6 +3025,72 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // --- the tenant's clearinghouse choice (ADR-0053 amendment 2026-11-06): vendor, mode and sealed credential ---
+  // platform-ops only, step-up, reason-recorded, accepted only while the tenant is provisioning / onboarding.
+  "tenant_clearinghouse.read_platform": {
+    resource: "tenant_clearinghouse",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant_clearinghouse.write_platform": {
+    resource: "tenant_clearinghouse",
+    action: "write_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // Owner decision D2: verifying the vendor BAA a tenant recorded for its own account is its own permission key (held by the same
+  // platform_ops role as the writes: separate keys, not separate roles; and, unlike the writes above, not limited to a tenant that is still onboarding: a live tenant that changes vendor needs it too).
+  "tenant_clearinghouse.verify_baa_platform": {
+    resource: "tenant_clearinghouse",
+    action: "verify_baa_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // Owner decision "build it" (2026-11-09): revoking the vendor BAA a tenant recorded (see the M34 module's permission-keys.ts).
+  "tenant_clearinghouse.revoke_baa_platform": {
+    resource: "tenant_clearinghouse",
+    action: "revoke_baa_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // Owner decision 2026-11-08: releasing the clearinghouse credentials a tenant still holds (see the M34 module's permission-keys.ts).
+  "tenant_clearinghouse.release_credential_platform": {
+    resource: "tenant_clearinghouse",
+    action: "release_credential_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // A platform operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record (see the M34 module's permission-keys.ts).
+  "tenant_notice_filing.withdraw_platform": {
+    resource: "tenant_notice_filing",
+    action: "withdraw_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // Onboarding step 3: a platform operator uploads the signed BAA for a tenant that is still onboarding. The narrowest grant that does it
+  // (see the M34 module's permission-keys.ts): one route, one document kind, the tenant in the path. NOT `documents.upload`.
+  "tenant_baa_document.upload_platform": {
+    resource: "tenant_baa_document",
+    action: "upload_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // --- the tenant's DoseSpot clinic registration (tenant onboarding slice 4, ADR-0111): environment, clinic, sealed key ---
+  // platform-ops only, step-up, reason-recorded, accepted only while the tenant is provisioning / onboarding (a deactivation
+  // is the one write a live tenant also needs, so it is not status-gated).
+  "tenant_dosespot.read_platform": {
+    resource: "tenant_dosespot",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant_dosespot.write_platform": {
+    resource: "tenant_dosespot",
+    action: "write_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M34 contributed permission keys. */
@@ -3423,6 +3505,22 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
     action: "admin",
     category: "billing",
     abac: "provider_entity_billing_scope",
+  },
+  // --- clearinghouse choice surface (ADR-0053 amendment 2026-11-06; owner decision D3) ---
+  // ORG-LEVEL on purpose, unlike the provider-entity-scoped `billing.mac_credential.*` above: choosing the clearinghouse
+  // re-routes EVERY provider entity's claims (PHI) to another vendor, so a billing manager scoped to one entity must not hold
+  // it. Granted to the org-wide admin roles only (`org_admin`, `administrator`; migration 1421 + the full-catalog template).
+  "billing.clearinghouse.read": {
+    resource: "billing_clearinghouse",
+    action: "read",
+    category: "billing",
+    abac: "none",
+  },
+  "billing.clearinghouse.admin": {
+    resource: "billing_clearinghouse",
+    action: "admin",
+    category: "billing",
+    abac: "none",
   },
   // --- hospice rate-table surface (F-210: tenant-entered CMS per-diem rates) ---
   "billing.rate_table.read": {

@@ -27,6 +27,7 @@ export {
 } from "./feature-flags-admin";
 export {
   type BaaRecordView,
+  type BaaRegisterListItem,
   type CreateBaaRecordArgs,
   type FeatureFlagView,
   type SignupIntentView,

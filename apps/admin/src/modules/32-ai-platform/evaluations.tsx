@@ -1,4 +1,4 @@
-import { StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import { StatusPill, TableScroll, useApiClient, useRequestGuard } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.7 evaluation runs (`/admin/ai-platform/evaluations`,
 // `ai.capability.read`). D10's evidence ledger: which run backs which lifecycle gate.
@@ -124,7 +124,7 @@ export function EvaluationRuns({ capabilityId }: EvaluationRunsProps = {}): JSX.
             description="No run has been recorded for these filters."
           />
         ) : (
-          <div className="wx-list-table-wrap">
+          <TableScroll>
             <table className="wx-list-table wx-list-table-static">
               <caption className="wx-sr-only">Evaluation runs</caption>
               <thead>
@@ -159,13 +159,15 @@ export function EvaluationRuns({ capabilityId }: EvaluationRunsProps = {}): JSX.
                       {duration(r.startedAt ?? null, r.completedAt ?? null)}
                     </td>
                     <td className="wx-data-md">{r.datasetVersionRef}</td>
-                    <td className="text-xs">{summarizeMetrics(r.summaryMetrics)}</td>
+                    <td>
+                      <span className="wx-row-sub">{summarizeMetrics(r.summaryMetrics)}</span>
+                    </td>
                     <td className="wx-data-md">{r.mlflowRunId}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
         )}
       </div>
     </div>

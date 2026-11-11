@@ -1,3 +1,21 @@
+import { createHash, randomUUID } from "node:crypto";
+import {
+  type ClaimDocument837i,
+  type ClaimState,
+  type ClaimTransitionEvent,
+  DDE_WATCHDOG_LOOKAHEAD_DAYS,
+  type EligibilityOutcome,
+  type NoticeState,
+  canTransition as canClaimTransition,
+  deriveControlNumber,
+  medicareReceiptDay,
+  noeMachine,
+  notrMachine,
+  parseControlNumber,
+  reduce as reduceClaim,
+  repositories,
+} from "@chartwarden/billing";
+import type { DbClient } from "@chartwarden/db";
 // apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts — M23 LIVE BullMQ wiring for the §4.8 jobs.
 //
 // The thin, infra-touching adapter that turns the @chartwarden/billing PURE domain (the claim/noe/notr lifecycle
@@ -30,23 +48,7 @@
 // The actor id a §4.8 worker's `withOrgContext` carries is the empty-string system sentinel (M4 NULLIFs it).
 //
 // AI-BLOCK (D13): no `@chartwarden/ai-platform` import anywhere here; a background job has no acting user.
-import { createHash, randomUUID } from "node:crypto";
-import {
-  type ClaimDocument837i,
-  type ClaimState,
-  type ClaimTransitionEvent,
-  DDE_WATCHDOG_LOOKAHEAD_DAYS,
-  type EligibilityOutcome,
-  type NoticeState,
-  canTransition as canClaimTransition,
-  deriveControlNumber,
-  medicareReceiptDay,
-  noeMachine,
-  notrMachine,
-  parseControlNumber,
-  reduce as reduceClaim,
-  repositories,
-} from "@chartwarden/billing";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
   CH,
@@ -62,10 +64,11 @@ import {
   type HoldableJob,
   holdUnlessClaimsBillingEntitled,
 } from "../../../bootstrap/claims-billing-gate";
-import { shouldRunLegacyClaimMdAckPoll } from "../claimmd-capture/config";
+import { isPlatformClaimMdAccount, shouldRunLegacyClaimMdAckPoll } from "../claimmd-capture/config";
 import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/claim-837i-submit";
 import { reviewedClaimSourceIsStale } from "../services/claim-preview-integrity";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
+import { reportRevokedResponsesPending } from "../tenant-clearinghouse/revoked-responses-alert";
 import { isVoidM23Claim } from "../void-claim";
 import { CLAIMMD_M23_PAYER_ROUTES_ENV, CLEARINGHOUSE_PAYER_ID_ENV } from "./clearinghouse-context";
 import {
@@ -73,12 +76,32 @@ import {
   type M23TransportDeps,
   type TransportAck,
   activeTransport,
+  assertOrgBound,
+  failureLabel,
+  hasPerOrgTransport,
   priorClaimAttempt,
   pullTransportAcks,
   submissionKeyFor,
+  transportForOrg,
   transportUpload,
+  transportUploadPerOrg,
 } from "./clearinghouse-submission";
+import {
+  type ClearinghouseState,
+  clearinghouseStateFor,
+  holdJobWhileUnbound,
+  isCredentialUnreadable,
+  reportClearinghouseUnresolved,
+} from "./clearinghouse-unbound-hold";
 import { type AckPayerDates, applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
+import {
+  M23_NOTICE_PARK_QUEUES,
+  assertNoticeMayTransmit,
+  noticeIdOfJob,
+  noticeSubmissionIdOfJob,
+  parkNoticeForExternalFiling,
+  settleNoticeJobAttempt,
+} from "./notice-external-filing";
 import {
   type M23CronQueueName,
   M23_CRON_QUEUES,
@@ -156,11 +179,13 @@ export interface ClaimSubmitRetryJob {
 export interface NoeSubmitJob {
   readonly organizationId: string;
   readonly noeId: string;
+  /** The `claim_submission` attempt this job was enqueued for (the submit route appended it QUEUED). Required. */
   readonly submissionId: string;
 }
 export interface NotrSubmitJob {
   readonly organizationId: string;
   readonly notrId: string;
+  /** See {@link NoeSubmitJob.submissionId}. */
   readonly submissionId: string;
 }
 export interface EligibilityRefreshJob {
@@ -300,6 +325,15 @@ export interface MacPortalPort {
     readonly locationId?: string | null;
     readonly noticeId?: string;
     readonly expectedRouteFingerprint?: string;
+    readonly submittedLines?: readonly {
+      readonly internalClaimLineId: string | null;
+      readonly revenueCode: string;
+      readonly procedureCode: string | null;
+      readonly serviceFrom: string;
+      readonly serviceTo: string;
+      readonly units: string;
+      readonly chargeCents: number;
+    }[];
   }): Promise<{
     readonly accepted: boolean;
     readonly generatedFileUri: string;
@@ -565,10 +599,12 @@ export interface M23WorkerDeps {
   readonly ddeWatchdog?: DdeWatchdogPort;
   /** Structured logger for failures that must not abort the cron (ids only, never PHI). */
   readonly logger?: { error(fields: Record<string, unknown>, message: string): void };
+  /**
+   * What the acknowledgment pull does for an organization whose vendor BAA a platform operator revoked (it is skipped): tell the
+   * tenant when responses may still be owed. Absent = the stock reporter over `db` and `alerts` (revoked-responses-alert.ts).
+   */
+  readonly reportRevokedResponses?: (organizationId: string) => Promise<void>;
 }
-
-/** The empty-string system sentinel `withOrgContext` carries — the M4 trigger NULLIFs it (no acting user). */
-const M23_WORKER_SYSTEM_USER_ID = "";
 
 // ── the bound port bundles (bind what we can; lazy throw-on-call for the genuinely-missing infra) ───────────
 
@@ -627,6 +663,8 @@ function macPortalOf(deps: M23WorkerDeps): MacPortalPort {
   };
   // #707: a configured vendor owns every upload; the legacy portal is never the fallback. (The pending-file pulls and
   // the health probe stay legacy: the ack crons branch on `activeTransport` before they reach the portal.)
+  // Tenant clearinghouses: every organization resolves its own transport and never falls back to the legacy portal.
+  if (hasPerOrgTransport(deps)) return { ...legacy, upload: transportUploadPerOrg(deps) };
   const transport = activeTransport(deps);
   return transport ? { ...legacy, upload: transportUpload(transport) } : legacy;
 }
@@ -779,10 +817,14 @@ export function deterministicUuid(seed: string): string {
 /** The NOE/NOTR filing window (days). `m23.{noe,notr}.window_warning` reports how far into it a notice is. */
 const NOTICE_WINDOW_DAYS = 5;
 
-/** Whole-day count from `now` to a `yyyy-mm-dd` window target (negative when past). */
+/**
+ * Whole-day count from `now` to a `yyyy-mm-dd` window target (negative when past). "Today" is the Eastern (CMS) calendar day, the
+ * same one the record service and the DDE lookahead judge by: UTC runs a day ahead in the Eastern evening and would call the
+ * target day itself a breach.
+ */
 function daysToTarget(targetDate: string, now: Date): number {
   const target = new Date(`${targetDate}T00:00:00.000Z`).getTime();
-  const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00.000Z`).getTime();
+  const today = new Date(`${medicareReceiptDay(now)}T00:00:00.000Z`).getTime();
   return Math.round((target - today) / (24 * 60 * 60 * 1000));
 }
 
@@ -868,13 +910,19 @@ async function generateClaim837i(
   organizationId: string,
   claim: Parameters<typeof claimDocumentFor>[0] & { readonly providerEntityId: string },
   claimControlNumber: string,
+  /**
+   * The org's transport, resolved by the CALLER (see {@link transportForOrg}): resolving it here, inside the caller's open
+   * transaction, took a second pooled connection while that transaction held one, which can starve the pool when every
+   * submit worker is mid-job.
+   */
+  transport: M23TransportDeps | null,
 ): Promise<{
   readonly x12: string;
   readonly stediJson?: StediClaimJson;
   readonly correlationId: string;
   readonly sourceFingerprint: string | null;
+  readonly submittedLines?: Awaited<ReturnType<typeof renderClaimForTransport>>["submittedLines"];
 }> {
-  const transport = activeTransport(deps);
   if (!transport) {
     const legacyContext = deps.transport?.contexts;
     const legacyAttempts = deps.transport?.attempts;
@@ -909,6 +957,8 @@ async function generateClaim837i(
     });
     return { ...legacy, sourceFingerprint: null };
   }
+  // An organization with no live clearinghouse is refused here, before the claim is rendered for a vendor it does not have.
+  assertOrgBound(transport, "claim_837i");
   if (!deps.claim837i && !deps.renderClaim) {
     return unboundWorkerPort(
       "claim837i",
@@ -973,8 +1023,12 @@ export async function runClaimSubmitWithinLegacyTransaction(
   ) {
     throw new Error("claim submission reservation does not match the worker job");
   }
+  // Tenant clearinghouses: the vendor is the ORG's own (per-organization binding), never the platform's.
+  // (This deprecated processor is handed an already-open transaction, so it cannot resolve before it; it resolves once.)
+  const orgTransport = await transportForOrg(deps, job.organizationId);
+  const claimMd = orgTransport?.binding.vendor === "claimmd";
   if (
-    activeTransport(deps)?.binding.vendor === "claimmd" &&
+    claimMd &&
     (!job.reviewedSourceFingerprint ||
       job.reviewedSourceFingerprint !== reservedSubmission.reviewedSourceFingerprint)
   ) {
@@ -1023,6 +1077,7 @@ export async function runClaimSubmitWithinLegacyTransaction(
     readonly stediJson?: StediClaimJson;
     readonly correlationId: string | null;
     readonly sourceFingerprint: string | null;
+    readonly submittedLines?: Awaited<ReturnType<typeof generateClaim837i>>["submittedLines"];
   } | null = null;
   let uploaded: {
     readonly accepted: boolean;
@@ -1035,12 +1090,13 @@ export async function runClaimSubmitWithinLegacyTransaction(
       job.organizationId,
       claim,
       job.claimControlNumber,
+      orgTransport,
     );
     if (
       reviewedClaimSourceIsStale(
         reservedSubmission.reviewedSourceFingerprint,
         generated.sourceFingerprint,
-        activeTransport(deps)?.binding.vendor === "claimmd",
+        claimMd,
       )
     ) {
       await submissions.terminalize(job.submissionId, {
@@ -1058,6 +1114,7 @@ export async function runClaimSubmitWithinLegacyTransaction(
       kind: "claim_837i",
       x12: generated.x12,
       stediJson: generated.stediJson,
+      submittedLines: generated.submittedLines,
       controlNumber: job.claimControlNumber,
       claimId: job.claimId,
       submissionId: job.submissionId,
@@ -1212,8 +1269,8 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
   // An operator's settlement (the clearinghouse-attempt resolve route) is the way out: "not filed" voids the key so a
   // fresh control number may be sent; "filed" means the claim is already at the MAC and must not be sent again.
   let filedAs: string | null = null;
-  const transport = activeTransport(deps);
-  if (transport && priorSubmission.outcomeReason?.includes(CH.IN_DOUBT)) {
+  const transport = await transportForOrg(deps, job.organizationId);
+  if (transport?.binding.vendor && priorSubmission.outcomeReason?.includes(CH.IN_DOUBT)) {
     const earlier = await priorClaimAttempt(
       transport,
       job.organizationId,
@@ -1294,6 +1351,7 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
     readonly stediJson?: StediClaimJson;
     readonly correlationId: string | null;
     readonly sourceFingerprint: string | null;
+    readonly submittedLines?: Awaited<ReturnType<typeof generateClaim837i>>["submittedLines"];
   } | null = null;
   let uploaded: {
     readonly accepted: boolean;
@@ -1304,7 +1362,14 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
     if (filedAs !== null) {
       uploaded = { accepted: true, generatedFileUri: filedAs };
     } else {
-      generated = await generateClaim837i(tx, deps, job.organizationId, claim, claimControlNumber);
+      generated = await generateClaim837i(
+        tx,
+        deps,
+        job.organizationId,
+        claim,
+        claimControlNumber,
+        transport,
+      );
       if (
         reviewedClaimSourceIsStale(
           priorSubmission.reviewedSourceFingerprint,
@@ -1334,6 +1399,7 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
         kind: "claim_837i",
         x12: generated.x12,
         stediJson: generated.stediJson,
+        submittedLines: generated.submittedLines,
         controlNumber: claimControlNumber,
         claimId: job.claimId,
         submissionId: job.submissionId,
@@ -1407,6 +1473,10 @@ export async function runClaimSubmit(
   job: ClaimSubmitJob,
 ): Promise<void> {
   const ctx = systemOrgContext(job.organizationId);
+  // Tenant clearinghouses: the vendor is the ORG's own (a per-organization binding; null = legacy ports or no live
+  // clearinghouse), resolved once, outside any transaction.
+  const orgTransport = await transportForOrg(deps, job.organizationId);
+  const claimMd = orgTransport?.binding.vendor === "claimmd";
   const prepared = await withOrgContext(deps.db, ctx, async (tx) => {
     const claims = new ClaimRepository(tx as unknown as BillingDb);
     const submissions = new ClaimSubmissionRepository(tx as unknown as BillingDb);
@@ -1430,7 +1500,7 @@ export async function runClaimSubmit(
     const jobFingerprint = job.reviewedSourceFingerprint ?? null;
     if (
       jobFingerprint !== submission.reviewedSourceFingerprint ||
-      (activeTransport(deps)?.binding.vendor === "claimmd" && jobFingerprint === null)
+      (claimMd && jobFingerprint === null)
     ) {
       await submissions.terminalize(job.submissionId, {
         outcome: "held_stale_source",
@@ -1475,6 +1545,7 @@ export async function runClaimSubmit(
         job.organizationId,
         claim,
         job.claimControlNumber,
+        orgTransport,
       );
     } catch {
       await submissions.terminalize(job.submissionId, {
@@ -1505,7 +1576,7 @@ export async function runClaimSubmit(
       reviewedClaimSourceIsStale(
         submission.reviewedSourceFingerprint,
         generated.sourceFingerprint,
-        activeTransport(deps)?.binding.vendor === "claimmd",
+        claimMd,
       )
     ) {
       await submissions.terminalize(job.submissionId, {
@@ -1532,7 +1603,7 @@ export async function runClaimSubmit(
   if (!prepared) return;
   if (prepared.kind === "already_started") {
     // Reconcile only from the durable clearinghouse attempt store. Never resend a committed dispatch.
-    const transport = activeTransport(deps);
+    const transport = orgTransport?.binding.vendor ? orgTransport : null;
     if (!transport) return;
     const currentRoute = await transport.contexts.contextFor(
       job.organizationId,
@@ -1601,6 +1672,7 @@ export async function runClaimSubmit(
       kind: "claim_837i",
       x12: prepared.generated.x12,
       stediJson: prepared.generated.stediJson,
+      submittedLines: prepared.generated.submittedLines,
       controlNumber: job.claimControlNumber,
       claimId: job.claimId,
       submissionId: job.submissionId,
@@ -1856,10 +1928,9 @@ export async function runClaimSubmitRetry(
 }
 
 /**
- * Record a NOE / NOTR transmission attempt. The submit route already appended the attempt as QUEUED (same
- * `(provider_entity, control_number, attempt 0)` key), so the idempotent append collapses onto that row and
- * returns it unchanged: terminalize it with this transmission's outcome (the transfer-notice precedent) instead of
- * leaving a transmitted notice's attempt QUEUED forever.
+ * Record a NOE / NOTR transmission attempt. The submit route already appended the job's attempt as QUEUED and the job carries
+ * its index (`settleNoticeJobAttempt` checked the row is the job's own): the idempotent append hands back THAT row, which is
+ * then terminalized with this transmission's outcome instead of being left QUEUED forever.
  */
 async function recordNoticeTransmission(
   submissions: InstanceType<typeof ClaimSubmissionRepository>,
@@ -1891,17 +1962,22 @@ export async function runNoeSubmit(
   const submissions = new ClaimSubmissionRepository(tx);
   const now = (deps.now ?? (() => new Date()))();
 
-  const noe = await noes.findById(job.noeId);
+  // Owner decision D4: never generate or upload for an org whose clearinghouse is not live (the worker pre-flight parks or holds).
+  await assertNoticeMayTransmit(deps, job.organizationId, "noe");
+  // Locked to the end of this transaction (past the upload): a concurrent record / park waits and loses its version check.
+  const noe = await noes.findByIdForUpdate(job.noeId);
   if (!noe) throw new Error(`noe_record ${job.noeId} not found`);
-  const attempt = await submissions.findById(job.submissionId);
-  if (
-    !attempt ||
-    attempt.organizationId !== job.organizationId ||
-    attempt.providerEntityId !== noe.providerEntityId ||
-    attempt.noeId !== noe.id ||
-    attempt.kind !== "noe"
-  )
-    throw new Error("NOE submission attempt does not match the notice");
+  const settled = await settleNoticeJobAttempt(tx, {
+    organizationId: job.organizationId,
+    submissionId: job.submissionId,
+    kind: "noe",
+    noticeId: noe.id,
+    providerEntityId: noe.providerEntityId,
+    controlNumber: noe.noeControlNumber,
+    externalFilingStatus: noe.externalFilingStatus,
+  });
+  if (!settled.proceed) return;
+  const attempt = settled.attempt;
 
   const generated = await x12Of(deps).generateNoe({
     organizationId: job.organizationId,
@@ -1964,17 +2040,20 @@ export async function runNotrSubmit(
   const submissions = new ClaimSubmissionRepository(tx);
   const now = (deps.now ?? (() => new Date()))();
 
-  const notr = await notrs.findById(job.notrId);
+  await assertNoticeMayTransmit(deps, job.organizationId, "notr");
+  const notr = await notrs.findByIdForUpdate(job.notrId);
   if (!notr) throw new Error(`notr_record ${job.notrId} not found`);
-  const attempt = await submissions.findById(job.submissionId);
-  if (
-    !attempt ||
-    attempt.organizationId !== job.organizationId ||
-    attempt.providerEntityId !== notr.providerEntityId ||
-    attempt.notrId !== notr.id ||
-    attempt.kind !== "notr"
-  )
-    throw new Error("NOTR submission attempt does not match the notice");
+  const settled = await settleNoticeJobAttempt(tx, {
+    organizationId: job.organizationId,
+    submissionId: job.submissionId,
+    kind: "notr",
+    noticeId: notr.id,
+    providerEntityId: notr.providerEntityId,
+    controlNumber: notr.notrControlNumber,
+    externalFilingStatus: notr.externalFilingStatus,
+  });
+  if (!settled.proceed) return;
+  const attempt = settled.attempt;
 
   const generated = await x12Of(deps).generateNotr({
     organizationId: job.organizationId,
@@ -2532,7 +2611,7 @@ async function applyAcks(
     try {
       await withOrgContext(
         deps.db,
-        { organizationId: ack.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+        { organizationId: ack.organizationId, userId: CONSUMER_USER_ID },
         (txAny) => routeAck(txAny as unknown as BillingDb, deps, submissionId, ack),
       );
     } catch (err) {
@@ -2551,17 +2630,58 @@ async function applyAcks(
  * transport's control number back to our submission row, and hand the result to the same router as the legacy path.
  * An acknowledgment for a control number we have no submission for is skipped (nothing to record it against).
  */
-async function runTransportAckPull(
+export async function runTransportAckPull(
   deps: M23WorkerDeps,
-  transport: M23TransportDeps,
   kind: "ack_999" | "ack_277ca",
 ): Promise<void> {
-  // Claim.MD /services/response/ is an account-wide normalized API feed, not literal 999/277CA.
-  // BIL-1.1 captures it centrally; only the separately gated BIL-1.3 dispatcher may interpret it.
-  if (transport.binding.vendor === "claimmd") return;
   const now = deps.now ?? (() => new Date());
   const failures: string[] = [];
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
+    // Tenant clearinghouses: each organization pulls from ITS OWN vendor; one with no live clearinghouse has nothing to
+    // pull (skipped, not a failure). A binding that cannot be resolved fails that organization only.
+    let orgTransport: M23TransportDeps | null;
+    try {
+      orgTransport = await transportForOrg(deps, organizationId);
+    } catch (err) {
+      // That tenant's problem (its credential cannot be opened, its config read failed), not the shared job's: reported for
+      // the organization (code or class only) and the tick carries on; failing it would retry the job into the DLQ for every tenant.
+      await reportClearinghouseUnresolved(
+        { alerts: deps.alerts, logger: deps.logger },
+        {
+          queue: kind === "ack_999" ? M23_CRON_QUEUES.ackPull999 : M23_CRON_QUEUES.ackPull277ca,
+          organizationId,
+          code: failureLabel(err),
+        },
+      );
+      continue;
+    }
+    if (!orgTransport || orgTransport.binding.vendor === null) {
+      // A revoked BAA is not a silent skip: acknowledgments for claims already sent may sit at the vendor (once-a-day alert per org).
+      if (orgTransport?.binding.unboundReason === "baa_revoked") {
+        try {
+          await (
+            deps.reportRevokedResponses ??
+            ((org: string) =>
+              reportRevokedResponsesPending(
+                {
+                  db: deps.db as unknown as DbClient,
+                  alerts: deps.alerts,
+                  log: (e) =>
+                    deps.logger?.error({ ...e }, "clearinghouse revoked responses pending"),
+                },
+                { organizationId: org },
+              ))
+          )(organizationId);
+        } catch {
+          // best effort: the report never fails the tick (the other tenants' pulls must still run)
+        }
+      }
+      continue;
+    }
+    // The platform's Claim.MD account: its /services/response/ feed is account-wide and normalized, not literal 999/277CA.
+    // BIL-1.1 captures it centrally and only the gated BIL-1.3 dispatcher interprets it. A tenant's OWN Claim.MD account is
+    // not in that capture and keeps this poll, capture on or off (owner decision 2026-11-08).
+    if (isPlatformClaimMdAccount(orgTransport.binding)) continue;
     // Each page is applied before its cursor advances (#749), so a failed apply throws out of the handler and the
     // page is read again next tick.
     const onPage = async (page: readonly TransportAck[]): Promise<void> => {
@@ -2569,7 +2689,7 @@ async function runTransportAckPull(
       for (const t of page) {
         const submission = await withOrgContext(
           deps.db,
-          { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+          { organizationId, userId: CONSUMER_USER_ID },
           (txAny) =>
             new ClaimSubmissionRepository(txAny as unknown as BillingDb).findLatestAttempt(
               t.providerEntityId,
@@ -2612,7 +2732,7 @@ async function runTransportAckPull(
       await applyAcks(deps, acks);
     };
     try {
-      const pulled = await pullTransportAcks(transport, organizationId, kind, onPage);
+      const pulled = await pullTransportAcks(orgTransport, organizationId, kind, onPage);
       failures.push(...pulled.failures);
       for (const q of pulled.quarantined) {
         // Skipped, not retried: the cursor moves past it (a retry would only re-read the same unroutable event).
@@ -2631,7 +2751,8 @@ async function runTransportAckPull(
         failures.push(`ack backlog (page cap) for ${pulled.backlog.join(", ")}`);
       }
     } catch (err) {
-      failures.push(`org ${organizationId}: ${err instanceof Error ? err.message : "failed"}`);
+      // A code or class, never the message: this string reaches job data and logs.
+      failures.push(`org ${organizationId}: ${failureLabel(err)}`);
     }
   }
   if (failures.length > 0) {
@@ -2643,6 +2764,7 @@ async function runTransportAckPull(
 
 /** `ack.pull-999` (§4.8 cron). Exported for the transfer-notice and NOE/NOTR live suites. */
 export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
+  if (hasPerOrgTransport(deps)) return runTransportAckPull(deps, "ack_999");
   const transport = activeTransport(deps);
   if (
     !shouldRunLegacyClaimMdAckPoll({
@@ -2652,7 +2774,7 @@ export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
     })
   )
     return;
-  if (transport) return runTransportAckPull(deps, transport, "ack_999");
+  if (transport) return runTransportAckPull(deps, "ack_999");
   const portal = macPortalOf(deps);
   const x12 = x12Of(deps);
   const now = deps.now ?? (() => new Date());
@@ -2686,6 +2808,7 @@ export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
 
 /** `ack.pull-277ca` (§4.8 cron): the 277CA twin of {@link runAckPull999} (accepted/rejected/partial outcomes). */
 export async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
+  if (hasPerOrgTransport(deps)) return runTransportAckPull(deps, "ack_277ca");
   const transport = activeTransport(deps);
   if (
     !shouldRunLegacyClaimMdAckPoll({
@@ -2695,7 +2818,7 @@ export async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
     })
   )
     return;
-  if (transport) return runTransportAckPull(deps, transport, "ack_277ca");
+  if (transport) return runTransportAckPull(deps, "ack_277ca");
   const portal = macPortalOf(deps);
   const x12 = x12Of(deps);
   const now = deps.now ?? (() => new Date());
@@ -2767,6 +2890,22 @@ async function queueDdeWork(
 }
 
 /**
+ * True when the org's clearinghouse choice is `outside`. A binding that cannot be resolved is NOT "outside": the item is filed
+ * as before (a silent skip would hide an at-risk notice from the queue behind a broken credential read).
+ */
+async function billsOutsideChartWarden(
+  deps: Pick<M23WorkerDeps, "transport">,
+  organizationId: string,
+): Promise<boolean> {
+  try {
+    const state = await clearinghouseStateFor(deps, organizationId);
+    return state.state === "unbound" && state.reason === "outside";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Run {@link queueDdeWork} for one org in its OWN transaction, AFTER the window warnings / breach stamps committed, so
  * a failure here can never roll back a window alert. Returns every failure (a whole-transaction error, or one per poison
  * notice) instead of throwing, so the other orgs still get their warnings and items; the cron throws one
@@ -2779,10 +2918,14 @@ async function queueDdeWorkIsolated(
   now: Date,
 ): Promise<unknown[]> {
   if (!deps.ddeWatchdog) return [];
+  // An org that bills outside ChartWarden files its notices through its own biller: the DDE queue is ChartWarden-side work
+  // (its routes are gated for that org), so an item would be a dead end. Decided HERE, before the transaction opens (the
+  // binding read is its own connection). The deadline watch above is untouched.
+  if (await billsOutsideChartWarden(deps, organizationId)) return [];
   try {
     return await withOrgContext(
       deps.db,
-      { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+      { organizationId, userId: CONSUMER_USER_ID },
       async (txAny) => queueDdeWork(deps, txAny as unknown as BillingDb, organizationId, kind, now),
     );
   } catch (err) {
@@ -2825,72 +2968,68 @@ function reportDdeFailures(
  */
 export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
-  const asOf = now.toISOString().slice(0, 10);
+  const asOf = medicareReceiptDay(now); // the Eastern (CMS) day, see daysToTarget
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
 
   const ddeFailures: { organizationId: string; failures: readonly unknown[] }[] = [];
   for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
-      async (txAny) => {
-        const tx = txAny as unknown as BillingDb;
-        const noes = new NoeRepository(tx);
-        const outbox = outboxOf(deps);
-        const candidates = await noes.listWindowWatchCandidates(organizationId, asOf);
-        for (const noe of candidates) {
-          const days = daysToTarget(noe.windowTargetAt, now);
-          if (days < 0) {
-            await noticeWindowOf(deps).recordBreach({
-              tx,
-              kind: "noe",
-              noticeId: noe.id,
-              expectedVersion: noe.version,
-              breachedAt: now,
-            });
-            await outbox.publish(tx, {
-              eventName: "m23.noe.window_breached",
-              organizationId,
-              aggregateKind: "noe",
-              aggregateId: noe.id,
-              payload: {
-                noeId: noe.id,
-                admissionId: noe.admissionId,
-                breachedAt: now.toISOString(),
-              },
-            });
-            await alertsOf(deps).dispatch({
-              alertCode: "m23.noe.window_breached",
-              severity: "critical",
-              organizationId,
-              payload: { noeId: noe.id, admissionId: noe.admissionId },
-            });
-          } else if (days <= 2) {
-            await outbox.publish(tx, {
-              eventName: "m23.noe.window_warning",
-              organizationId,
-              aggregateKind: "noe",
-              aggregateId: noe.id,
-              payload: {
-                noeId: noe.id,
-                admissionId: noe.admissionId,
-                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-              },
-            });
-            await alertsOf(deps).dispatch({
-              alertCode: "m23.noe.window_warning",
-              severity: "warn",
-              organizationId,
-              payload: {
-                noeId: noe.id,
-                admissionId: noe.admissionId,
-                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-              },
-            });
-          }
+    await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (txAny) => {
+      const tx = txAny as unknown as BillingDb;
+      const noes = new NoeRepository(tx);
+      const outbox = outboxOf(deps);
+      const candidates = await noes.listWindowWatchCandidates(organizationId, asOf);
+      for (const noe of candidates) {
+        const days = daysToTarget(noe.windowTargetAt, now);
+        if (days < 0) {
+          await noticeWindowOf(deps).recordBreach({
+            tx,
+            kind: "noe",
+            noticeId: noe.id,
+            expectedVersion: noe.version,
+            breachedAt: now,
+          });
+          await outbox.publish(tx, {
+            eventName: "m23.noe.window_breached",
+            organizationId,
+            aggregateKind: "noe",
+            aggregateId: noe.id,
+            payload: {
+              noeId: noe.id,
+              admissionId: noe.admissionId,
+              breachedAt: now.toISOString(),
+            },
+          });
+          await alertsOf(deps).dispatch({
+            alertCode: "m23.noe.window_breached",
+            severity: "critical",
+            organizationId,
+            payload: { noeId: noe.id, admissionId: noe.admissionId },
+          });
+        } else if (days <= 2) {
+          await outbox.publish(tx, {
+            eventName: "m23.noe.window_warning",
+            organizationId,
+            aggregateKind: "noe",
+            aggregateId: noe.id,
+            payload: {
+              noeId: noe.id,
+              admissionId: noe.admissionId,
+              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
+            },
+          });
+          await alertsOf(deps).dispatch({
+            alertCode: "m23.noe.window_warning",
+            severity: "warn",
+            organizationId,
+            payload: {
+              noeId: noe.id,
+              admissionId: noe.admissionId,
+              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
+            },
+          });
         }
-      },
-    );
+      }
+    });
     // ADR-0052: after (and apart from) the warnings / breach stamps above, so a failure here cannot undo them.
     ddeFailures.push({
       organizationId,
@@ -2903,72 +3042,68 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
 /** `notr.window-watch` (§4.8 cron): the NOTR twin of {@link runNoeWindowWatch}. */
 export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
-  const asOf = now.toISOString().slice(0, 10);
+  const asOf = medicareReceiptDay(now); // the Eastern (CMS) day, see daysToTarget
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
 
   const ddeFailures: { organizationId: string; failures: readonly unknown[] }[] = [];
   for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
-      async (txAny) => {
-        const tx = txAny as unknown as BillingDb;
-        const notrs = new NotrRepository(tx);
-        const outbox = outboxOf(deps);
-        const candidates = await notrs.listWindowWatchCandidates(organizationId, asOf);
-        for (const notr of candidates) {
-          const days = daysToTarget(notr.windowTargetAt, now);
-          if (days < 0) {
-            await noticeWindowOf(deps).recordBreach({
-              tx,
-              kind: "notr",
-              noticeId: notr.id,
-              expectedVersion: notr.version,
-              breachedAt: now,
-            });
-            await outbox.publish(tx, {
-              eventName: "m23.notr.window_breached",
-              organizationId,
-              aggregateKind: "notr",
-              aggregateId: notr.id,
-              payload: {
-                notrId: notr.id,
-                admissionId: notr.admissionId,
-                breachedAt: now.toISOString(),
-              },
-            });
-            await alertsOf(deps).dispatch({
-              alertCode: "m23.notr.window_breached",
-              severity: "critical",
-              organizationId,
-              payload: { notrId: notr.id },
-            });
-          } else if (days <= 2) {
-            await outbox.publish(tx, {
-              eventName: "m23.notr.window_warning",
-              organizationId,
-              aggregateKind: "notr",
-              aggregateId: notr.id,
-              payload: {
-                notrId: notr.id,
-                admissionId: notr.admissionId,
-                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-              },
-            });
-            await alertsOf(deps).dispatch({
-              alertCode: "m23.notr.window_warning",
-              severity: "warn",
-              organizationId,
-              payload: {
-                notrId: notr.id,
-                admissionId: notr.admissionId,
-                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-              },
-            });
-          }
+    await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (txAny) => {
+      const tx = txAny as unknown as BillingDb;
+      const notrs = new NotrRepository(tx);
+      const outbox = outboxOf(deps);
+      const candidates = await notrs.listWindowWatchCandidates(organizationId, asOf);
+      for (const notr of candidates) {
+        const days = daysToTarget(notr.windowTargetAt, now);
+        if (days < 0) {
+          await noticeWindowOf(deps).recordBreach({
+            tx,
+            kind: "notr",
+            noticeId: notr.id,
+            expectedVersion: notr.version,
+            breachedAt: now,
+          });
+          await outbox.publish(tx, {
+            eventName: "m23.notr.window_breached",
+            organizationId,
+            aggregateKind: "notr",
+            aggregateId: notr.id,
+            payload: {
+              notrId: notr.id,
+              admissionId: notr.admissionId,
+              breachedAt: now.toISOString(),
+            },
+          });
+          await alertsOf(deps).dispatch({
+            alertCode: "m23.notr.window_breached",
+            severity: "critical",
+            organizationId,
+            payload: { notrId: notr.id },
+          });
+        } else if (days <= 2) {
+          await outbox.publish(tx, {
+            eventName: "m23.notr.window_warning",
+            organizationId,
+            aggregateKind: "notr",
+            aggregateId: notr.id,
+            payload: {
+              notrId: notr.id,
+              admissionId: notr.admissionId,
+              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
+            },
+          });
+          await alertsOf(deps).dispatch({
+            alertCode: "m23.notr.window_warning",
+            severity: "warn",
+            organizationId,
+            payload: {
+              notrId: notr.id,
+              admissionId: notr.admissionId,
+              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
+            },
+          });
         }
-      },
-    );
+      }
+    });
     // ADR-0052: after (and apart from) the warnings / breach stamps above, so a failure here cannot undo them.
     ddeFailures.push({
       organizationId,
@@ -2988,39 +3123,35 @@ export async function runEligibilityStaleWatch(deps: M23WorkerDeps): Promise<voi
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
 
   for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
-      async (txAny) => {
-        const tx = txAny as unknown as BillingDb;
-        const checks = new EligibilityCheckRepository(tx);
-        const outbox = outboxOf(deps);
-        const stale = await checks.listStaleForOrg(organizationId, now);
-        for (const check of stale) {
-          // The table is append-only: an older stale row is superseded by a fresher check, and a patient
-          // whose LATEST check is current is not expired — only the latest row decides (and it is unique
-          // per patient, so no further de-duplication is needed).
-          const latest = await checks.findLatestForPatient(organizationId, check.patientId);
-          if (latest && latest.id !== check.id) continue;
-          await outbox.publish(tx, {
-            eventName: "m23.eligibility.expired",
-            organizationId,
-            aggregateKind: "patient",
-            aggregateId: check.patientId,
-            payload: {
-              patientId: check.patientId,
-              lastCheckedAt: check.checkedAt.toISOString(),
-            },
-          });
-          await alertsOf(deps).dispatch({
-            alertCode: "m23.eligibility.expired",
-            severity: "warn",
-            organizationId,
-            payload: { patientId: check.patientId },
-          });
-        }
-      },
-    );
+    await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (txAny) => {
+      const tx = txAny as unknown as BillingDb;
+      const checks = new EligibilityCheckRepository(tx);
+      const outbox = outboxOf(deps);
+      const stale = await checks.listStaleForOrg(organizationId, now);
+      for (const check of stale) {
+        // The table is append-only: an older stale row is superseded by a fresher check, and a patient
+        // whose LATEST check is current is not expired — only the latest row decides (and it is unique
+        // per patient, so no further de-duplication is needed).
+        const latest = await checks.findLatestForPatient(organizationId, check.patientId);
+        if (latest && latest.id !== check.id) continue;
+        await outbox.publish(tx, {
+          eventName: "m23.eligibility.expired",
+          organizationId,
+          aggregateKind: "patient",
+          aggregateId: check.patientId,
+          payload: {
+            patientId: check.patientId,
+            lastCheckedAt: check.checkedAt.toISOString(),
+          },
+        });
+        await alertsOf(deps).dispatch({
+          alertCode: "m23.eligibility.expired",
+          severity: "warn",
+          organizationId,
+          payload: { patientId: check.patientId },
+        });
+      }
+    });
   }
 }
 
@@ -3168,6 +3299,90 @@ async function holdNewClaimsWork(
 }
 
 /**
+ * The queues whose jobs send a claim (or a Medicare transfer notice, 8xC / 8xD) through the org's own clearinghouse. Such a job for
+ * an org whose clearinghouse is not live (nothing chosen yet, a draft / verified config, or `outside`) is HELD, not failed: the
+ * tenant has not finished setup (or files elsewhere), and the work is fine. The transfer notice has no "filed outside" marker of its
+ * own, so an `outside` org's stays held rather than parked. (`eligibility.refresh` is HETS, not the clearinghouse, so it is not
+ * here; the NOE / NOTR queues are `M23_NOTICE_PARK_QUEUES`: they are held too, except that `outside` PARKS the notice.)
+ */
+export const M23_CLAIM_TRANSPORT_QUEUES: ReadonlySet<string> = new Set([
+  M23_QUEUES.claimSubmit,
+  M23_QUEUES.claimSubmitRetry,
+  M23_QUEUES.transferNoticeSubmit,
+]);
+
+/** The queues whose held job may cost a CMS deadline: the NOE and NOTR queues and the transfer notice. Their hold alert is critical. */
+const M23_DEADLINE_NOTICE_QUEUES: ReadonlySet<string> = new Set([
+  ...M23_NOTICE_PARK_QUEUES.keys(),
+  M23_QUEUES.transferNoticeSubmit,
+]);
+
+/**
+ * Everything a worker asks BEFORE it opens the job's transaction: the claims-billing gate (ADR-0110 D7), then, for the claim,
+ * transfer-notice and NOE / NOTR queues, whether the org's clearinghouse is live. Either answer holds the job (moved back to
+ * delayed, no attempt spent, no DLQ) by throwing BullMQ's DelayedError. Returns undefined when the job may run, and `"parked"`
+ * when it is DONE without running: a NOE / NOTR job of an org that bills outside ChartWarden (owner decision D4) parks the notice
+ * for the tenant to file itself and transmits nothing; the caller completes the job.
+ */
+export async function holdBeforeRun(
+  deps: Pick<M23WorkerDeps, "db" | "transport" | "alerts" | "logger">,
+  job: HoldableJob,
+  token: string | undefined,
+  queue: string,
+  data: {
+    readonly organizationId: string;
+    readonly claimId?: unknown;
+    readonly noeId?: unknown;
+    readonly notrId?: unknown;
+    readonly submissionId?: unknown;
+  },
+): Promise<"parked" | undefined> {
+  await holdNewClaimsWork(deps, job, token, queue, data);
+  const noticeKind = M23_NOTICE_PARK_QUEUES.get(queue);
+  if (!noticeKind && !M23_CLAIM_TRANSPORT_QUEUES.has(queue)) return undefined;
+  // A held NOE / NOTR / transfer notice may cost a CMS deadline (and shadow mode does not shield it): its alert is critical.
+  const severity = M23_DEADLINE_NOTICE_QUEUES.has(queue) ? "critical" : "warn";
+  let state: ClearinghouseState;
+  try {
+    state = await clearinghouseStateFor(deps, data.organizationId);
+  } catch (err) {
+    // CH-7: a stored credential that cannot be opened is that tenant's to re-enter, like a draft config: HOLD the job and say so
+    // once (as a shared cron does for the org, reportClearinghouseUnresolved) instead of failing it into the retry / DLQ path.
+    // Anything else (a database fault reading the config) still fails the job, loudly, for a retry.
+    if (!isCredentialUnreadable(err)) throw err;
+    return holdJobWhileUnbound({
+      deps,
+      job,
+      token,
+      queue,
+      organizationId: data.organizationId,
+      reason: err.code,
+      severity,
+    });
+  }
+  if (state.state === "bound") return undefined;
+  if (noticeKind && state.reason === "outside") {
+    await parkNoticeForExternalFiling(deps, {
+      organizationId: data.organizationId,
+      kind: noticeKind,
+      noticeId: noticeIdOfJob(noticeKind, data),
+      // Main's contract: a notice job always carries its attempt; one without it is malformed and fails loudly.
+      submissionId: noticeSubmissionIdOfJob(noticeKind, data),
+    });
+    return "parked";
+  }
+  return holdJobWhileUnbound({
+    deps,
+    job,
+    token,
+    queue,
+    organizationId: data.organizationId,
+    reason: state.reason,
+    severity,
+  });
+}
+
+/**
  * The three §4.8 WORK queues that need no X12 / MAC-portal infrastructure: `eligibility.refresh`,
  * `validation-run` and `revalidate.consumer` (GAP-070). The composition root constructs them whenever a queue
  * connection exists — NOT behind the launch gateway, which only the submission workers need. Before this nothing
@@ -3185,10 +3400,11 @@ export function registerM23DomainWorkers(deps: M23WorkerDeps): Worker[] {
       async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
-        await holdNewClaimsWork(deps, job, token, queue, data);
+        // These three queues are never parked (only a NOE / NOTR queue is), but the verdict is honoured all the same.
+        if ((await holdBeforeRun(deps, job, token, queue, data)) === "parked") return;
         await withOrgContext(
           deps.db,
-          { organizationId: data.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+          { organizationId: data.organizationId, userId: CONSUMER_USER_ID },
           (tx) => run(tx as unknown as BillingDb, deps, data),
         );
       },
@@ -3265,6 +3481,9 @@ export function assertTransportInjected(
   env: Readonly<Record<string, string | undefined>>,
   deps: Pick<M23WorkerDeps, "transport">,
 ): void {
+  // Tenant clearinghouses: any organization may be bound at runtime, so there is no single vendor to compare. (The payer-id
+  // env var below still matters to every claim; its absence is a loud per-claim payer gap and a boot warning, not a refusal.)
+  if (hasPerOrgTransport(deps)) return;
   const vendor = parseClearinghouseVendor(
     env[CLEARINGHOUSE_VENDOR_ENV],
     env.NODE_ENV === "production",
@@ -3306,7 +3525,7 @@ export function registerM23LaunchWorkers(
     );
   }
   assertTransportInjected(env, deps);
-  if (activeTransport(deps) && !deps.claim837i) {
+  if ((activeTransport(deps) || hasPerOrgTransport(deps)) && !deps.claim837i) {
     throw new Error(
       "M23LaunchCapabilityIncomplete: a clearinghouse vendor is bound but the workers were built without the 837I loader ports (claim837i)",
     );
@@ -3321,12 +3540,12 @@ export function registerM23LaunchWorkers(
       async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
-        await holdNewClaimsWork(deps, job, token, queue, data);
+        if ((await holdBeforeRun(deps, job, token, queue, data)) === "parked") return;
         await withOrgContext(
           deps.db,
           {
             organizationId: data.organizationId,
-            userId: M23_WORKER_SYSTEM_USER_ID,
+            userId: CONSUMER_USER_ID,
           },
           (tx) => run(tx as unknown as BillingDb, deps, data),
         );
@@ -3343,8 +3562,8 @@ export function registerM23LaunchWorkers(
       async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
-        // ADR-0110 — hold claim submit / retry for an org without the add-on, before any transport.
-        await holdNewClaimsWork(deps, job, token, queue, data);
+        // Before any transport: the add-on gate (ADR-0110) and whether the org's clearinghouse is live hold the job here.
+        if ((await holdBeforeRun(deps, job, token, queue, data)) === "parked") return;
         return run(deps.db, deps, data);
       },
       { connection: deps.connection, concurrency },

@@ -27,6 +27,8 @@ export interface M23ReadActor {
   readonly organizationId: string;
   readonly userId: string;
   readonly roles: readonly string[];
+  /** Optional server-derived provider scope used by operator investigation reads. */
+  readonly providerEntityScope?: readonly string[];
 }
 
 /** Extract the org-scoped read actor from `request.context` (server-assembled), or 401. */

@@ -1,6 +1,6 @@
 import type { DbClient } from "@chartwarden/db";
+import type { FuneralLinkIssueError } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
-import type { FuneralLinkIssueError } from "../../modules/36-messaging/death-notification/death-notification-service";
 import { buildFuneralLinkPort } from "../death-notification-funeral-link";
 
 const ORG = "00000000-0000-4000-8000-0000000000a1";
@@ -52,7 +52,7 @@ function build(
   });
   const port = buildFuneralLinkPort({
     db: {} as DbClient,
-    collaborators: { create, revoke },
+    collaborators: { create, revoke, revokeForDisclosureAttempt: async () => 0 },
     delivery: { deliver },
     isDeceased: async () => o.deceased ?? true,
     isBaaActive: async () => o.baa ?? true,

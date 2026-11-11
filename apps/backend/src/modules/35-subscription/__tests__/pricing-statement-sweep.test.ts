@@ -129,6 +129,32 @@ describe("runStatementSweep: platform transactions are audited bypasses", () => 
     expect(h.log).not.toHaveBeenCalled();
   });
 
+  it("an org step (the outside-mode backstop) wraps every swept org's statement and costs the sweep no platform call", async () => {
+    const h = harness();
+    vi.mocked(loadContractFactsByOrg).mockResolvedValue(
+      byOrg(orgIds(3, "settled").map(canceledAndSettled)),
+    );
+    const calls: string[] = [];
+
+    await runStatementSweep(h.deps, async (organizationId, statement) => {
+      calls.push(`before:${organizationId}`);
+      await statement(organizationId);
+      calls.push(`after:${organizationId}`);
+    });
+
+    expect(calls).toEqual([
+      "before:settled-1",
+      "after:settled-1",
+      "before:settled-2",
+      "after:settled-2",
+      "before:settled-3",
+      "after:settled-3",
+    ]);
+    expect(h.netReads).toEqual(["settled-1", "settled-2", "settled-3"]); // each statement ran inside its step
+    expect(h.runnerCalls()).toBe(1); // still the one shared read
+    expect(vi.mocked(loadContractFacts)).not.toHaveBeenCalled();
+  });
+
   it("an org with an open month costs a write transaction; the others still cost none", async () => {
     const h = harness();
     vi.mocked(loadContractFactsByOrg).mockResolvedValue(

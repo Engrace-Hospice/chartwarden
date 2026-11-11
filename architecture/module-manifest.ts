@@ -34,7 +34,7 @@
  *   - Backend code for a module lives at  apps/backend/src/modules/<NN-slug>/
  *   - Shared domain-area logic lives in   packages/<area>/
  *   - LEAVES (importable by everyone, depend on nothing app-specific):
- *       packages/shared, packages/types, packages/domain, packages/ui
+ *       packages/shared, packages/types, packages/ui
  *   - FOUNDATION HELPERS (implicitly importable by every module — see ADR-0005 D4):
  *       packages/audit, packages/auth, packages/tenancy, packages/db/src/schema.
  *       A module may call audit()/requirePermission/withOrgContext and import its
@@ -71,12 +71,7 @@
  * proposals were reviewed and confirmed all no-edge — see audit/MANIFEST_DEPENDSON_REVIEW.md.
  */
 
-export const LEAF_PACKAGES = [
-  "packages/shared",
-  "packages/types",
-  "packages/domain",
-  "packages/ui",
-] as const;
+export const LEAF_PACKAGES = ["packages/shared", "packages/types", "packages/ui"] as const;
 
 /**
  * Foundation helper packages every module may import WITHOUT a dependsOn edge
@@ -317,6 +312,7 @@ export const MODULES: ModuleDef[] = [
       "death_board",
       "death_board_item",
       "death_board_item_event",
+      "death_notification",
       "alarm_source",
       "alarm_source_mapping",
       "alarm_ingest_event",
@@ -639,6 +635,8 @@ export const MODULES: ModuleDef[] = [
     dependsOn: [1, 5, 11, 38, 40], // +M1: the bootstrap seam registry (registerSeam/getSeam) M12's backend module wires its §2.10 D17 owned seams (MedicationOrderProvider/RefillInboxProvider) into (M12-T07; M6..M11 seam-task precedent)
     ownedTables: [
       "dosespot_prescriber",
+      // Tenant onboarding slice 4 (ADR-0111, migration 1426): the DoseSpot clinic each tenant registered, with its sealed credential.
+      "dosespot_clinic_registration",
       "dosespot_webhook_event",
       "epcs_signing_attempt",
       "medication_order",
@@ -749,6 +747,13 @@ export const MODULES: ModuleDef[] = [
       "bereavement_mailing_config",
       "bereavement_mailing_run",
       "bereavement_mailing_item",
+      "bereavement_support_group",
+      "bereavement_support_group_session",
+      "bereavement_support_group_enrollment",
+      "bereavement_support_group_attendance",
+      "bereavement_memorial_service",
+      "bereavement_memorial_invitation",
+      "bereavement_library_item",
       "tenant_bereavement_external_source_gate_override",
     ],
   },
@@ -941,6 +946,10 @@ export const MODULES: ModuleDef[] = [
       "claimmd_webhook_event",
       // ADR-0053 amendment precondition 2 (migration 1326): platform-verified NPI ownership the Claim.MD sweep routes on.
       "provider_npi_verification",
+      // ADR-0053 amendment 2026-11-06 (migration 1417): the clearinghouse each tenant chose, with its sealed credential.
+      "tenant_clearinghouse_config",
+      // Migration 1435: every credential a tenant sealed, held to it until a platform operator releases it.
+      "tenant_clearinghouse_credential_reservation",
       "claim",
       "claim_acknowledgment",
       "claim_line",
@@ -955,6 +964,7 @@ export const MODULES: ModuleDef[] = [
       "claimmd_ack_application",
       "claimmd_ack_delivery",
       "claimmd_submission_evidence",
+      "claimmd_submission_line_evidence",
       "claimmd_notice_submission_evidence",
       "claimmd_notice_receipt_observation",
       "claimmd_submission_receipt_observation",
@@ -1058,6 +1068,13 @@ export const MODULES: ModuleDef[] = [
       "claimmd_era_recovery_action",
       "claimmd_era_resolution",
       "claimmd_era_resolution_history",
+      "claimmd_era_match_decision",
+      "claimmd_era_financial_review_decision",
+      "claimmd_era_posting_plan",
+      "claimmd_era_posting_event",
+      "billing_operations_investigation",
+      "billing_operations_investigation_event",
+      "billing_operations_investigation_note",
       "appeal_tier_detail",
       "recorded_deadline",
       "payer_appeal_path",
@@ -1305,7 +1322,6 @@ export const MODULES: ModuleDef[] = [
     name: "SaaS Tenant Platform",
     codePaths: [
       "packages/saas-tenant-platform",
-      "packages/admin-ui-shell",
       "apps/admin/src/shell",
       "apps/backend/src/modules/34-saas-tenant-platform",
       "apps/web/src/modules/34-saas",
@@ -1359,9 +1375,11 @@ export const MODULES: ModuleDef[] = [
         "invoice",
         "invoice_line",
         "patient_active_period",
+        "patient_census_daily", // slice 2 tenant pricing: the daily active-patient count behind the average daily census
         "patient_pseudonym_key",
         "payment_method",
         "plan",
+        "plan_census_band", // slice 2 tenant pricing: the census bands of a plan (platform-shared)
         "plan_meter",
         "platform_retained_invoice",
         "platform_retained_invoice_line",
@@ -1373,7 +1391,11 @@ export const MODULES: ModuleDef[] = [
         "stripe_webhook_event",
         "subscription",
         "subscription_addon", // ADR-0110 (tenant read-only; platform-runner writes)
+        "subscription_contract", // slice 2 tenant pricing: the signed terms (tenant read-only; platform-runner writes)
+        "subscription_contract_mode", // slice 2 tenant pricing: the billing service mode history (tenant read-only; append-only)
         "subscription_state_history",
+        "subscription_statement", // slice 2 tenant pricing: the monthly statement (tenant read-only; platform-runner writes)
+        "subscription_statement_review", // slice 2 tenant pricing: a month the run could not bill, once per subscription-month (platform-only)
         "usage_event",
         "usage_period_aggregate",
         "user_active_period",

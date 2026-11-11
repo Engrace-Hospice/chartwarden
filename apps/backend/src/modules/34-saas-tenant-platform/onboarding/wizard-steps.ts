@@ -7,7 +7,13 @@ import {
   normalizeEvidence,
   normalizeReason,
 } from "./evidence";
-import { GO_LIVE_TEMPLATE_KEY, type PlatformActor, type StepTask, type WizardActor } from "./model";
+import {
+  GO_LIVE_TEMPLATE_KEY,
+  type PlatformActor,
+  type StepTask,
+  type WizardActor,
+  isSkippableStep,
+} from "./model";
 import { assertStepActionable, isSettled } from "./sequence";
 import {
   type Loaded,
@@ -92,6 +98,14 @@ export function createStepOperations(now: () => Date) {
       );
     }
     const why = normalizeReason(rationale, { max: SKIP_RATIONALE_MAX, field: "skipRationale" });
+    // The allowlist, before the sequence: a canonical step outside it is never skippable, so that answer is final whatever is still open.
+    if (!isSkippableStep(template)) {
+      throw refuse(
+        "ONBOARDING_STEP_NOT_SKIPPABLE",
+        "this step cannot be skipped: attest it or enter its data",
+        409,
+      );
+    }
     if (isSettled(task.status))
       throw refuse(
         "ONBOARDING_STEP_ALREADY_SETTLED",

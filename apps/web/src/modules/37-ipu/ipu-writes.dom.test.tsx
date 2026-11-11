@@ -114,6 +114,10 @@ const restriction = () => ({
 let calls: string[] = [];
 let bodies: Record<string, unknown>[] = [];
 let writeFailure: { status: number; body: unknown } | null = null;
+/** The Idempotency-Key each write carried, in order. */
+let keys: (string | null)[] = [];
+/** Set by a test to make the NEXT write get no answer at all (a lost reply: the request is read, then the network drops). */
+let dropNextWrite = false;
 
 function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string; method: string } {
   if (typeof input === "string")
@@ -169,6 +173,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   calls.push(`${method} ${path}`);
   if (method !== "GET") {
     const req = typeof input === "object" && "clone" in input ? (input as Request) : null;
+    keys.push(req ? req.headers.get("Idempotency-Key") : null);
     const raw = req ? await req.clone().text() : typeof init?.body === "string" ? init.body : "";
     if (raw) {
       try {
@@ -176,6 +181,10 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       } catch {
         // Every M37 write sends JSON; recording nothing is honest if one ever does not.
       }
+    }
+    if (dropNextWrite) {
+      dropNextWrite = false;
+      throw new TypeError("Failed to fetch");
     }
     if (writeFailure) {
       return new Response(JSON.stringify(writeFailure.body), {
@@ -238,6 +247,8 @@ const type = (el: HTMLElement, value: string) => fireEvent.change(el, { target: 
 beforeEach(() => {
   calls = [];
   bodies = [];
+  keys = [];
+  dropNextWrite = false;
   writeFailure = null;
   admissionState = "active";
   admissionKind = "gip";
@@ -369,6 +380,23 @@ describe("#91 — the bedside pane works the restraint clock", () => {
     // 10 minutes — this restraint's OWN tightened interval, not the 15-minute category default.
     const delta = new Date(body.nextDueAt).getTime() - Date.now();
     expect(Math.round(delta / 60_000)).toBe(10);
+  });
+
+  it("a retry of the reassessment after a lost reply replays: the same key and the same nextDueAt", async () => {
+    mountBedside();
+    fireEvent.click(await screen.findByRole("button", { name: "Reassess" }));
+    dropNextWrite = true;
+    fireEvent.click(await screen.findByRole("button", { name: "Record reassessment" }));
+    expect(await screen.findByText(/Could not reach the server/)).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 5)); // a clock read now would differ from the first attempt's
+
+    fireEvent.click(screen.getByRole("button", { name: "Record reassessment" }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+
+    expect(keys[1]).toBe(keys[0]);
+    expect((bodies[1] as { nextDueAt: string }).nextDueAt).toBe(
+      (bodies[0] as { nextDueAt: string }).nextDueAt,
+    );
   });
 
   it("shows an overdue restraint as overdue and STILL offers the reassessment", async () => {

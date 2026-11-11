@@ -1,6 +1,6 @@
 // apps/admin/src/modules/36-messaging/settings — shared state chrome for the three M36 settings screens:
 // page head and the success/error banner (loading / error / empty / no-access states live in ../ui). Shared `wx-*` classes
-// + Tailwind utilities only; no inline styles.
+// only; no Tailwind utilities, no inline styles.
 import { InlineAlert } from "@chartwarden/ui";
 import type { JSX } from "react";
 
@@ -20,17 +20,28 @@ export interface Banner {
   readonly message: string;
 }
 
-/** Both live regions stay mounted so a banner appearing or changing is announced (a region inserted with its text is not). */
+/** Both live regions stay mounted so a banner appearing or changing is announced (a region inserted with its text is not).
+ *  Deliberately kept over the no-nested-live-region rule: an inserted `<output>` is announced unreliably. The alert inside
+ *  is `live={false}`, so each banner has exactly one live region (the wrapper), not a nested second one. The two regions sit
+ *  in one `.wx-live-slot`, which keeps them out of the stack's gaps while they are empty. */
 export function BannerView({ banner }: { banner: Banner | null }): JSX.Element {
   return (
-    <>
+    <div className="wx-live-slot">
       {/* biome-ignore lint/a11y/useSemanticElements: <output> is the shared loading-spinner marker (screens-smoke settles on none) */}
       <div role="status">
-        {banner?.ok ? <InlineAlert tone="success">{banner.message}</InlineAlert> : null}
+        {banner?.ok ? (
+          <InlineAlert tone="success" live={false}>
+            {banner.message}
+          </InlineAlert>
+        ) : null}
       </div>
       <div role="alert">
-        {banner && !banner.ok ? <InlineAlert tone="error">{banner.message}</InlineAlert> : null}
+        {banner && !banner.ok ? (
+          <InlineAlert tone="error" live={false}>
+            {banner.message}
+          </InlineAlert>
+        ) : null}
       </div>
-    </>
+    </div>
   );
 }

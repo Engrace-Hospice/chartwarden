@@ -38,10 +38,10 @@ export function ClaimMdRecoveryReadiness(): JSX.Element {
 
   const loadHealth = useCallback(async () => {
     setError(undefined);
-    const result = await client.GET("/api/v1/ops/claimmd/observability");
+    const result = await recoveryClient.GET("/api/v1/ops/claimmd/observability", {});
     if (result.error || !result.data) setError("Central Claim.MD health is unavailable.");
-    else setHealth(result.data as { usage: "test" | "production" });
-  }, [client]);
+    else setHealth(result.data as unknown as { usage: "test" | "production" });
+  }, [recoveryClient]);
 
   useEffect(() => {
     void loadHealth();

@@ -75,9 +75,15 @@ export function OutboxEventDrawer({
       </header>
       <div className="wx-drawer-body">
         {loading ? (
-          <LoadingSpinner label="Loading event…" />
+          <div className="wx-list-state">
+            <LoadingSpinner label="Loading event…" />
+          </div>
         ) : error || !event ? (
-          <InlineAlert tone="error">{error ?? "This outbox event could not be found."}</InlineAlert>
+          <div className="wx-list-state">
+            <InlineAlert tone="error">
+              {error ?? "This outbox event could not be found."}
+            </InlineAlert>
+          </div>
         ) : (
           <>
             <section className="wx-drawer-card">

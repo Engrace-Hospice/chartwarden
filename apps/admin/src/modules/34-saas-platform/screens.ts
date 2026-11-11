@@ -32,8 +32,8 @@ const TenantExportQueue = lazy(() =>
 const TenantInventory = lazy(() =>
   import("./tenant-inventory").then((m) => ({ default: m.TenantInventory })),
 );
-const TenantOnboarding = lazy(() =>
-  import("./tenant-onboarding").then((m) => ({ default: m.TenantOnboarding })),
+const TenantOnboardingWizard = lazy(() =>
+  import("./onboarding/wizard-screen").then((m) => ({ default: m.TenantOnboardingWizard })),
 );
 const TenantOverview = lazy(() =>
   import("./tenant-overview").then((m) => ({ default: m.TenantOverview })),
@@ -60,12 +60,22 @@ export const saasPlatformAdminScreens: ScreenRegistryModule<ComponentType> = {
       screen: TenantOverview,
     },
     {
+      // The onboarding wizard (2026-11): one ordered list of steps beside the open step. The first route resumes at the
+      // first step that is not settled; the second is the same screen on a named step (a deep link, and where Re-verify returns).
       id: "saas.tenant-onboarding",
       path: "/tenants/:orgSlug/onboarding",
       title: "Tenant onboarding",
       navGroup: "Platform",
       requiredPermission: "onboarding.read_platform",
-      screen: TenantOnboarding,
+      screen: TenantOnboardingWizard,
+    },
+    {
+      id: "saas.tenant-onboarding-step",
+      path: "/tenants/:orgSlug/onboarding/:stepKey",
+      title: "Onboarding step",
+      navGroup: "Platform",
+      requiredPermission: "onboarding.read_platform",
+      screen: TenantOnboardingWizard,
     },
     {
       id: "saas.support-sessions",

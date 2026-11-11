@@ -44,6 +44,18 @@ export const DEATH_NOTIFICATION_STALL_MINUTES = 120;
 /** Minutes a funeral-home send may stay `sending` before the stall tick treats it as stranded (reconciles, revokes any orphan link, frees it for a re-send). */
 export const DEATH_NOTIFICATION_SENDING_TIMEOUT_MINUTES = 15;
 
+/** Adapter failure classification shared by the M36 service and its composition-root M2 link bridge. */
+export class FuneralLinkIssueError extends Error {
+  constructor(
+    message: string,
+    readonly revocationConfirmed: boolean,
+    readonly reason: "no_baa" | "other" = "other",
+  ) {
+    super(message);
+    this.name = "FuneralLinkIssueError";
+  }
+}
+
 /**
  * Why a funeral-home send answered 200 without sending anything now: `in_flight` (another send holds the row, or a delivered link awaits
  * recording) or `recipient_changed_not_sent` (the home was already notified at a different address; this one was NOT sent to).

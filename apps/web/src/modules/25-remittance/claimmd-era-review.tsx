@@ -218,11 +218,11 @@ export function ClaimMdEraReview(): JSX.Element {
     setPostingBusy(true);
     setPostingError(null);
     try {
+      // The Idempotency-Key is the API client's: one per intent (this plan digest and reason), so a retry after a lost reply replays.
       const response = await client.POST(
         "/api/v1/remittance/claimmd-era/{id}/posting-plans/{planId}/approval",
         {
           params: { path: { id: selected.id, planId: plan.planId } },
-          headers: { "Idempotency-Key": crypto.randomUUID() },
           body: { planDigest: plan.planDigest, reason },
         },
       );
@@ -245,11 +245,11 @@ export function ClaimMdEraReview(): JSX.Element {
     setPostingBusy(true);
     setPostingError(null);
     try {
+      // The Idempotency-Key is the API client's: one per intent (this plan digest and reason), so a retry after a lost reply replays.
       const response = await client.POST(
         "/api/v1/remittance/claimmd-era/{id}/posting-plans/{planId}/execution",
         {
           params: { path: { id: selected.id, planId: plan.planId } },
-          headers: { "Idempotency-Key": crypto.randomUUID() },
           body: { planDigest: plan.planDigest, reason },
         },
       );
@@ -1111,7 +1111,7 @@ function ReviewDetail({
                 label="Unresolved adjustment amount"
                 value={centsMoney(postingPlan.unresolvedCents)}
               />
-              <Summary label="Claims in batch" value={String(postingPlan.claims.length)} />
+              <Summary label="Claims in batch" value={String(postingPlan.claims?.length ?? 0)} />
               <Summary label="Approval" value={humanize(postingPlan.approval)} />
               <Summary
                 label="Execution capability"
@@ -1139,7 +1139,7 @@ function ReviewDetail({
                   </tr>
                 </thead>
                 <tbody>
-                  {postingPlan.claims.map((claim) => {
+                  {(postingPlan.claims ?? []).map((claim) => {
                     const href =
                       claim.claimId && claim.billingModule
                         ? claimHref(claim.billingModule, claim.claimId)
@@ -1338,7 +1338,7 @@ function ReviewDetail({
                 {new Date(event.occurredAt).toLocaleString("en-US", { timeZone: "UTC" })} UTC ·{" "}
                 {event.reason}
                 {event.eventType === "posted"
-                  ? ` · M25 committed ${event.remittanceLineIds.length} claim record${event.remittanceLineIds.length === 1 ? "" : "s"}; downstream processing may still be pending`
+                  ? ` · M25 committed ${(event.remittanceLineIds ?? []).length} claim record${(event.remittanceLineIds ?? []).length === 1 ? "" : "s"}; downstream processing may still be pending`
                   : ""}
               </li>
             ))}

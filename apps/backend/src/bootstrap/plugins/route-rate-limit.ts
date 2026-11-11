@@ -7,7 +7,8 @@
 //
 // Nothing is registered by default: a route that does not name this preHandler is untouched.
 //
-// Key hygiene: keys are `<prefix>:user:<orgId>:<userId>` and `<prefix>:org:<orgId>` — ids only, never
+// Key hygiene: keys are `<prefix>:user:<orgId>:<userId>` and `<prefix>:org:<orgId>` (the org is the caller's own, or the target
+// a route names through `scopeOf`) — ids only, never
 // PHI or query text. Expiry is the store's job (Valkey PEXPIRE on the first hit of a window, see
 // `rate-limit-store.ts`), so cardinality is bounded by active callers per window and no
 // application clock participates in the window (clock skew between replicas is irrelevant).
@@ -52,6 +53,48 @@ export const MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 12,
   perOrg: 60,
   windowMs: 60_000,
+  failMode: "open",
+};
+
+/** M23 `POST /tenant/clearinghouse/verify` (a vendor call per request): 6/min/user and 30/min/org. Fail-open: an availability control. */
+export const CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 6,
+  perOrg: 30,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
+/**
+ * M23 `PUT /tenant/clearinghouse`: 10/min/user and 30/min/org. Its 409 CLEARINGHOUSE_ACCOUNT_IN_USE tells a caller that a key is held
+ * elsewhere, so the cap bounds that as an oracle (security review of migration 1434, LOW-2). Fail-CLOSED (security review of cfd943e82,
+ * L5): with the limiter's store down the oracle would be unbounded, so the PUT answers a typed 503 (DEGRADED) instead.
+ */
+export const CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 10,
+  perOrg: 30,
+  windowMs: 60_000,
+  failMode: "closed",
+};
+
+/** M12 `POST /tenant/dosespot/verify` and the platform copy (a vendor token mint per request): 6/min/user and 30/min/org. Fail-open: an availability control. */
+export const DOSESPOT_VERIFY_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 6,
+  perOrg: 30,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
+/**
+ * M34 `POST /platform/tenants/:orgSlug/clearinghouse/baa/revoke`: a kill switch that takes one tenant's claims, notices and response pulls
+ * out of service. Counted per OPERATOR ACROSS tenants (the route names no `scopeOf`, so the bucket is the operator in the platform org:
+ * one session or one compromised operator cannot revoke every tenant) and per platform in total. 10 per operator and 20 in all per ten
+ * minutes: enough for a vendor ending many agreements at once, not for a sweep. Fail-OPEN: a stop that cannot fire while the limiter's
+ * store is down is the worse failure, and every revoke still writes its audit row and raises the tenant's alert and the ops notice.
+ */
+export const CLEARINGHOUSE_REVOKE_BAA_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 10,
+  perOrg: 20,
+  windowMs: 10 * 60_000,
   failMode: "open",
 };
 
@@ -115,7 +158,16 @@ export interface RouteRateLimitOptions {
   readonly keyPrefix: string;
   /** Called (with the error) when the store throws, in either fail mode. */
   readonly onStoreError?: (err: unknown) => void;
+  /**
+   * The id the org dimension is counted under; absent, or returning nothing, it is the caller's own organization. A platform
+   * operator acts ON a tenant, and every operator belongs to the one platform org, so counting under the caller's org would pool
+   * every tenant's budget (and every operator's) into a single bucket: such a route names the TARGET tenant here. Ids only.
+   */
+  readonly scopeOf?: (request: FastifyRequest) => string | undefined;
 }
+
+/** A scope taken from a URL: bounded and lower-cased so a probing caller cannot grow the key space without limit. */
+const MAX_SCOPE_LENGTH = 100;
 
 class StoreUnavailable extends Error {}
 
@@ -155,12 +207,13 @@ export function createRouteRateLimit(
     const userId = request.context?.userId;
     // Out of scope for unauthenticated callers: refuse rather than leave the route unlimited.
     if (!orgId || !userId) throw new UnauthorizedError();
+    const scope = opts.scopeOf?.(request)?.toLowerCase().slice(0, MAX_SCOPE_LENGTH) || orgId;
 
     try {
       // User first: a request refused for the user cap must not drain the shared org budget.
-      const userCount = await count(`${keyPrefix}:user:${orgId}:${userId}`);
+      const userCount = await count(`${keyPrefix}:user:${scope}:${userId}`);
       if (userCount > limit.perUser) return refuse(reply, retryAfter);
-      const orgCount = await count(`${keyPrefix}:org:${orgId}`);
+      const orgCount = await count(`${keyPrefix}:org:${scope}`);
       if (orgCount > limit.perOrg) return refuse(reply, retryAfter);
     } catch (err) {
       if (!(err instanceof StoreUnavailable)) throw err;

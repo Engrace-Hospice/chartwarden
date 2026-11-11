@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { createInMemoryHarness } from "./in-memory-transport";
 import {
   CLEARINGHOUSE_VENDOR_ENV,
+  type ClearinghouseBinding,
+  UNBOUND_BINDING,
   bindClearinghouseTransport,
+  bindingForOrg,
+  isPerOrgBinding,
   parseClearinghouseVendor,
 } from "./transport-registry";
 import { CH } from "./types";
@@ -90,5 +94,36 @@ describe("bindClearinghouseTransport", () => {
         { in_memory: inMemoryFactory },
       ),
     ).toThrow(/in_memory/);
+  });
+});
+
+describe("bindingForOrg", () => {
+  const stedi: ClearinghouseBinding = { vendor: "stedi", transport: inMemoryFactory() };
+
+  it("returns the one binding when the platform binding is not per-organization", async () => {
+    expect(await bindingForOrg(stedi, "org-1")).toBe(stedi);
+    expect(isPerOrgBinding(stedi)).toBe(false);
+  });
+
+  it("returns each organization's own binding when the platform binding is per-organization", async () => {
+    const claimmd: ClearinghouseBinding = { vendor: "claimmd", transport: inMemoryFactory() };
+    const perOrg: ClearinghouseBinding = {
+      ...UNBOUND_BINDING,
+      forOrg: async (orgId) =>
+        orgId === "org-1" ? stedi : orgId === "org-2" ? claimmd : UNBOUND_BINDING,
+    };
+    expect(isPerOrgBinding(perOrg)).toBe(true);
+    expect((await bindingForOrg(perOrg, "org-1")).vendor).toBe("stedi");
+    expect((await bindingForOrg(perOrg, "org-2")).vendor).toBe("claimmd");
+    const none = await bindingForOrg(perOrg, "org-3");
+    expect(none.vendor).toBeNull();
+    const refused = await none.transport.submitClaim(CTX, {
+      kind: "claim",
+      controlNumber: "c",
+      idempotencyKey: "k",
+      payload: { format: "x12", x12: "" },
+    });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.degraded.code).toBe(CH.NOT_WIRED);
   });
 });

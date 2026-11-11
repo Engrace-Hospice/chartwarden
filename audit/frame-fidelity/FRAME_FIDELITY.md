@@ -72,7 +72,7 @@
 | 📚 library | `node:T2caK` | `(design library)` | chartwarden-D5-variants.pen — Role dashboards · discipline care plans · assessments |
 | ⏸ deferred | `node:T6KHo` | `screens/clinical/CHARTWARDEN_UI_WOUND_CARE.md` | No wound-care screen; wound detail is a line item in the assessments suite. Spec promotes it to a longitudinal surface (M09/M08/M22 composed). |
 | ⏸ deferred | `node:TFdIR` | `screens/clinical/CHARTWARDEN_UI_ALLERGY_MANAGEMENT.md` | No allergy screen; allergies are shown on the patient chart only. |
-| ◻ unmatched | `node:U01CF` | `screens/admin/CHARTWARDEN_UI_ONBOARDING_WIZARD.md` | built · `web/34-saas` `admin/34-saas-platform` |
+| ◻ unmatched | `node:U01CF` | `screens/admin/CHARTWARDEN_UI_ONBOARDING_WIZARD.md` | partial · `web/34-saas` `admin/34-saas-platform` |
 | ◻ unmatched | `node:URHlL` | `screens/clinical/CHARTWARDEN_UI_CERTIFICATION_RECERT_LIFECYCLE.md` | built · `web/06-admission` |
 | 📚 library | `node:UyQt9` | `(design library)` | chartwarden-D7-breadth-depth.pen — Depth for the **breadth** screens (P12–P14) — the variant surface their specs declare |
 | ◻ unmatched | `node:V6ZmB` | `screens/clinical/CHARTWARDEN_UI_ONCALL_ROSTER_PROTOCOLS.md` | built · `web/19-oncall` |

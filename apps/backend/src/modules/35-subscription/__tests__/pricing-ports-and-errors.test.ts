@@ -109,7 +109,9 @@ describe("plan writes that return no row are a typed PERSIST_FAILED 500", () => 
     contractTermMonths: 12,
     implementationFeeCents: 0,
     minimumMonthlyCents: null,
+    updatedAt: new Date("2026-11-01T00:00:00.000Z"),
   };
+  const pin = "2026-11-01T00:00:00.000Z";
   const published = { ...draft, publishedAt: new Date("2026-11-01T00:00:00Z") };
   const input = {
     name: "Plan",
@@ -134,21 +136,43 @@ describe("plan writes that return no row are a typed PERSIST_FAILED 500", () => 
       service([[]]).create(actor, { familySlug: "fam", ...input }, reason),
     ));
   it("replaceDraft (the update)", () =>
-    expectPersistFailed(() => service([[draft]]).replaceDraft(actor, "p1", input, reason)));
+    expectPersistFailed(() => service([[draft]]).replaceDraft(actor, "p1", input, reason, pin)));
   it("publish (the update)", () =>
     expectPersistFailed(() =>
-      service([[draft], [{ minAdc: 0, monthlyFeeCents: 100 }]]).publish(actor, "p1", reason),
+      service([[draft], [{ minAdc: 0, monthlyFeeCents: 100 }]]).publish(actor, "p1", reason, pin),
     ));
   it("newVersion (the insert)", () =>
     expectPersistFailed(() =>
+      // newVersion reads the source's family, locks the family in id order, then re-reads the source under that lock
       service([
         [published],
         [{ id: "p1", version: 1, publishedAt: published.publishedAt }],
+        [published],
         [],
-      ]).newVersion(actor, "p1", reason),
+      ]).newVersion(actor, "p1", reason, pin),
     ));
   it("archive (the update)", () =>
-    expectPersistFailed(() => service([[published]]).archive(actor, "p1", reason)));
+    expectPersistFailed(() => service([[published]]).archive(actor, "p1", reason, pin)));
+  it("a stale pin is a 409 PRICING_PLAN_CHANGED carrying the current updatedAt, before any write", async () => {
+    for (const call of [
+      () => service([[draft]]).replaceDraft(actor, "p1", input, reason, "2026-10-01T00:00:00.000Z"),
+      () => service([[draft]]).publish(actor, "p1", reason, "2026-10-01T00:00:00.000Z"),
+      () =>
+        service([
+          [published],
+          [{ id: "p1", version: 1, publishedAt: published.publishedAt }],
+          [published],
+        ]).newVersion(actor, "p1", reason, "2026-10-01T00:00:00.000Z"),
+      () => service([[published]]).archive(actor, "p1", reason, "2026-10-01T00:00:00.000Z"),
+    ]) {
+      const error = await call().catch((e) => e);
+      expect(error).toMatchObject({
+        code: "PRICING_PLAN_CHANGED",
+        statusCode: 409,
+        details: [{ field: "currentUpdatedAt", message: pin }],
+      });
+    }
+  });
 });
 
 /** A Postgres unique violation as Drizzle surfaces it: the pg error, wrapped, with the constraint on it. */
@@ -201,7 +225,7 @@ describe("a select-then-insert race surfaces as a 409, not a raw unique violatio
 
   it("newVersion: two operators versioning the same family collide on plan_slug_uq -> ConflictError 409", async () => {
     const error = await plans("plan_slug_uq")
-      .newVersion(actor, "p1", reason)
+      .newVersion(actor, "p1", reason, "2026-10-01T00:00:00.000Z")
       .catch((e) => e);
     expect(error).toMatchObject({ statusCode: 409 });
     expect(error.message).toMatch(/another version/);
@@ -227,6 +251,7 @@ describe("a select-then-insert race surfaces as a 409, not a raw unique violatio
       outbox: { publish: async () => undefined } as never,
       onboarding: {
         enter: async () => null,
+        enterByOrg: async () => null,
         planContractStep: async () => ({ taskId: null, status: "pending", lockedBy: null }),
         attestPlanContract: async () => undefined,
       },
@@ -253,6 +278,8 @@ describe("a price change is auditable: the structured audit row names the operat
     stepUpRecent: true,
   };
   const reason = "a reason long enough";
+  /** The `updatedAt` the operator read (the pin a write on an existing version carries): `row`'s own. */
+  const READ_AT = "2026-11-01T00:00:00.000Z";
   const row = (perUserPriceCents: number) => ({
     id: "p1",
     tier: "census_banded",
@@ -305,7 +332,7 @@ describe("a price change is auditable: the structured audit row names the operat
     });
     const done =
       action === "published"
-        ? service.publish(actor, "p1", reason)
+        ? service.publish(actor, "p1", reason, READ_AT)
         : service.replaceDraft(
             actor,
             "p1",
@@ -320,6 +347,7 @@ describe("a price change is auditable: the structured audit row names the operat
               minimumMonthlyCents: null,
             },
             reason,
+            READ_AT,
           );
     return done.then(() => audited);
   }

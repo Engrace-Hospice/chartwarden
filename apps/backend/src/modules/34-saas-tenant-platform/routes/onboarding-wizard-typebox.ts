@@ -85,6 +85,14 @@ export const WizardStepViewSchema = Type.Object({
   completedAt: Nullable(Instant),
   blockerReason: Nullable(Type.String()),
   skipRationale: Nullable(Type.String()),
+  systemSkipped: Type.Boolean({
+    description:
+      "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+  }),
+  skippable: Type.Boolean({
+    description:
+      "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+  }),
   createdAt: Nullable(Instant),
   templateKey: Type.String(),
   isCanonical: Type.Boolean(),

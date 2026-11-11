@@ -653,3 +653,32 @@ describe("the rendered 837I against the Stedi transport", () => {
     expect(sent).toHaveLength(0);
   });
 });
+
+describe("the preview fingerprint is bound to the account the organization's claims go out under", () => {
+  const KEY = "k".repeat(32);
+  const ACTOR = "00000000-0000-4000-8000-0000000000bb";
+  const fingerprintWith = async (
+    extra: Pick<Claim837iLoaderDeps, "accountReference" | "accountReferenceFor">,
+  ): Promise<string | null> => {
+    const r = await renderClaim837iPreview(
+      { ...deps().value, previewIntegrityKey: KEY, ...extra },
+      { ...args, actorUserId: ACTOR },
+    );
+    return r.ok ? r.sourceFingerprint : null;
+  };
+
+  it("a per-organization account reference is the one fingerprinted: the tenant's own account is not the platform's", async () => {
+    const tenantAccount = "tenant:11111111-1111-4111-8111-111111111111";
+    const viaResolver = await fingerprintWith({
+      accountReferenceFor: async (organizationId) => {
+        expect(organizationId).toBe(ORG);
+        return tenantAccount;
+      },
+    });
+    expect(viaResolver).toMatch(/^[a-f0-9]{64}$/);
+    // the preview (a static reference) and the worker (the resolver) agree whenever they name the same account ...
+    expect(viaResolver).toBe(await fingerprintWith({ accountReference: tenantAccount }));
+    // ... and differ from the platform's account, so a preview confirmed for one account cannot send under another
+    expect(viaResolver).not.toBe(await fingerprintWith({ accountReference: "legacy-mac" }));
+  });
+});

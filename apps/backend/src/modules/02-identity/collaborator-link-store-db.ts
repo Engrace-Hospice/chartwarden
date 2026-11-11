@@ -319,6 +319,25 @@ export function createDbCollaboratorLinkStore(
       );
     },
 
+    async revokeForDisclosureAttempt({ organizationId, disclosureAttemptId, linkId }) {
+      const rows = await withOrgContext(db, { organizationId, userId: NO_USER }, (tx) =>
+        tx
+          .update(LINKS)
+          .set({ revokedAt: new Date() })
+          .where(
+            and(
+              eq(LINKS.organizationId, organizationId),
+              linkId
+                ? sql`(${LINKS.disclosureAttemptId} = ${disclosureAttemptId}::uuid OR ${LINKS.id} = ${linkId}::uuid)`
+                : eq(LINKS.disclosureAttemptId, disclosureAttemptId),
+              isNull(LINKS.revokedAt),
+            ),
+          )
+          .returning({ id: LINKS.id }),
+      );
+      return rows.length;
+    },
+
     async funeralLinkForPrincipal({ organizationId, principalUserId }) {
       const rows = await withOrgContext(db, { organizationId, userId: NO_USER }, (tx) =>
         tx

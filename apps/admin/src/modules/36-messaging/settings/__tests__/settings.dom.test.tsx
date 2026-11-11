@@ -2,13 +2,16 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/
 // M36 settings screens: loading/error/empty/403 states and the optimistic-with-rollback alert-rule toggle,
 // preferences save, and endpoint add/verify/remove — all against a recording fake fetch.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { JSX } from "react";
+import userEvent from "@testing-library/user-event";
+import { type JSX, useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { AlertRules } from "../alert-rules";
 import { DeliveryEndpoints } from "../delivery-endpoints";
 import { settingsScreens } from "../index";
 import { NotificationPreferences, toggleChannel } from "../notification-preferences";
+import { type QuietHours, QuietHoursEditor } from "../quiet-hours";
+import { BannerView } from "../ui";
 
 const ID = "11111111-1111-4111-8111-111111111111";
 const RULE = {
@@ -92,7 +95,21 @@ describe("AlertRules", () => {
   it("shows a loading skeleton, then the rules", async () => {
     mount(<AlertRules />, () => json({ rules: [RULE] }));
     expect(screen.getByRole("status", { name: "Loading alert rules…" })).toBeTruthy();
-    expect(await screen.findByLabelText("Sfv due enabled")).toBeTruthy();
+    expect(await screen.findByLabelText(/^Sfv due enabled/)).toBeTruthy();
+  });
+
+  it("is a static table: the rows open nothing, so they must not look clickable", async () => {
+    mount(<AlertRules />, () => json({ rules: [RULE] }));
+    await screen.findByLabelText(/^Sfv due enabled/);
+    expect(screen.getByRole("table").classList.contains("wx-list-table-static")).toBe(true);
+  });
+
+  it("names each toggle with its rule and visible state, so the accessible name contains the On/Off text", async () => {
+    mount(<AlertRules />, () => json({ rules: [RULE] }));
+    // The visible "On" is a separate span inside the label; the sr-only prefix completes the name (WCAG 2.5.3 Label in Name).
+    const box = await screen.findByRole("checkbox", { name: "Sfv due enabled: On" });
+    expect((box as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText("On")).toBeTruthy();
   });
 
   it("renders the empty state", async () => {
@@ -109,7 +126,7 @@ describe("AlertRules", () => {
     let attempts = 0;
     mount(<AlertRules />, () => (++attempts === 1 ? denied(500) : json({ rules: [RULE] })));
     fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
-    expect(await screen.findByLabelText("Sfv due enabled")).toBeTruthy();
+    expect(await screen.findByLabelText(/^Sfv due enabled/)).toBeTruthy();
   });
 
   it("toggles optimistically and keeps the server's row", async () => {
@@ -123,9 +140,9 @@ describe("AlertRules", () => {
             enabled: false,
           }),
     );
-    const box = (await screen.findByLabelText("Sfv due enabled")) as HTMLInputElement;
+    const box = (await screen.findByLabelText(/^Sfv due enabled/)) as HTMLInputElement;
     fireEvent.click(box);
-    expect((screen.getByLabelText("Sfv due enabled") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText(/^Sfv due enabled/) as HTMLInputElement).checked).toBe(false);
     await screen.findByText("Updated Sfv due.");
     const patch = calls.find((c) => c.method === "PATCH");
     expect(patch?.path).toBe(`/api/v1/alert-rules/${ID}`);
@@ -137,9 +154,10 @@ describe("AlertRules", () => {
     mount(<AlertRules />, (c) =>
       c.method === "GET" ? json({ rules: [RULE] }) : denied(403, "Rule is system locked"),
     );
-    fireEvent.click(await screen.findByLabelText("Sfv due enabled"));
-    expect(await screen.findByText(/Rule is system locked/)).toBeTruthy();
-    expect((screen.getByLabelText("Sfv due enabled") as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(await screen.findByLabelText(/^Sfv due enabled/));
+    // The server REFUSED it: "undone" is true here.
+    expect(await screen.findByText(/Rule is system locked.*The change was undone\./)).toBeTruthy();
+    expect((screen.getByLabelText(/^Sfv due enabled/) as HTMLInputElement).checked).toBe(true);
   });
 
   it("keeps other rows' optimistic edits across concurrent writes and rolls back only the failed row", async () => {
@@ -153,26 +171,28 @@ describe("AlertRules", () => {
       if (c.method === "GET") return json({ rules: [RULE, OTHER] });
       return new Promise<Response>((resolve) => pendingWrites.set(c.path, resolve));
     });
-    const a = (await screen.findByLabelText("Sfv due enabled")) as HTMLInputElement;
-    const b = screen.getByLabelText("Visit missed enabled") as HTMLInputElement;
+    const a = (await screen.findByLabelText(/^Sfv due enabled/)) as HTMLInputElement;
+    const b = screen.getByLabelText(/^Visit missed enabled/) as HTMLInputElement;
     fireEvent.click(a);
     fireEvent.click(b);
     await waitFor(() => expect(pendingWrites.size).toBe(2));
     pendingWrites.get(`/api/v1/alert-rules/${ID}`)?.(json({ ...RULE, enabled: false }));
     await screen.findByText("Updated Sfv due.");
     // A's late success must not revert B's still-pending optimistic edit.
-    expect((screen.getByLabelText("Visit missed enabled") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText(/^Visit missed enabled/) as HTMLInputElement).checked).toBe(
+      false,
+    );
     pendingWrites.get(`/api/v1/alert-rules/${OTHER.ruleId}`)?.(denied(409, "locked"));
     await screen.findByText(/locked/);
     // B rolls back; A's confirmed change survives.
-    expect((screen.getByLabelText("Visit missed enabled") as HTMLInputElement).checked).toBe(true);
-    expect((screen.getByLabelText("Sfv due enabled") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText(/^Visit missed enabled/) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText(/^Sfv due enabled/) as HTMLInputElement).checked).toBe(false);
   });
 
   it("disables controls for a system-locked rule", async () => {
     mount(<AlertRules />, () => json({ rules: [LOCKED] }));
     expect(
-      ((await screen.findByLabelText("Safety sos enabled")) as HTMLInputElement).disabled,
+      ((await screen.findByLabelText(/^Safety sos enabled/)) as HTMLInputElement).disabled,
     ).toBe(true);
     expect(screen.getByText("Locked")).toBeTruthy();
   });
@@ -214,6 +234,34 @@ describe("NotificationPreferences", () => {
   });
 });
 
+describe("QuietHoursEditor range removal", () => {
+  const range = { daysOfWeek: [1, 2, 3, 4, 5], start: "22:00", end: "06:00" };
+  function Harness(): JSX.Element {
+    const [value, setValue] = useState<QuietHours>({
+      tz: "UTC",
+      severityOverride: "critical",
+      ranges: [range, range, range],
+    });
+    return <QuietHoursEditor value={value} disabled={false} onChange={setValue} />;
+  }
+  const remove = (n: number): void => {
+    const button = screen.getByRole("button", { name: `Remove range ${n}` });
+    button.focus();
+    fireEvent.click(button);
+  };
+
+  it("keeps focus inside the editor: the removed position, then the one before it, then Add", () => {
+    render(<Harness />);
+    // Removing the last range unmounts the focused button; focus must not fall to the page.
+    remove(3);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Remove range 2" }));
+    remove(1);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Remove range 1" }));
+    remove(1);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Add quiet range" }));
+  });
+});
+
 describe("DeliveryEndpoints", () => {
   it("adds, verifies and removes an endpoint", async () => {
     const calls = mount(<DeliveryEndpoints />, (c) => {
@@ -227,7 +275,7 @@ describe("DeliveryEndpoints", () => {
       target: { value: "me@example.org" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
-    fireEvent.change(await screen.findByLabelText("Verification code for me@example.org"), {
+    fireEvent.change(await screen.findByLabelText(/^Verification code for me@example\.org/), {
       target: { value: "123456" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Verify me@example.org" }));
@@ -237,6 +285,66 @@ describe("DeliveryEndpoints", () => {
     await waitFor(() =>
       expect(screen.getByText(/No endpoints added in this session/)).toBeTruthy(),
     );
+  });
+
+  it("verifies on Enter in a row's code field, and only that row", async () => {
+    const OTHER = "99999999-9999-4999-8999-999999999999";
+    const calls = mount(<DeliveryEndpoints />, (c) => {
+      if (c.path.endsWith("/verify"))
+        return json({
+          endpointId: c.path.includes(OTHER) ? OTHER : ID,
+          channel: "email",
+          verificationStatus: "verified",
+        });
+      return json(
+        {
+          endpointId: c.body?.target === "b@b.b" ? OTHER : ID,
+          channel: "email",
+          verificationStatus: "pending",
+        },
+        201,
+      );
+    });
+    for (const address of ["a@a.a", "b@b.b"]) {
+      fireEvent.change(screen.getByLabelText(/Address or device token/), {
+        target: { value: address },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
+      await screen.findByLabelText(
+        new RegExp(`^Verification code for ${address.replace(/\./g, "\\.")}`),
+      );
+    }
+    const second = screen.getByLabelText(/^Verification code for b@b\.b/);
+    fireEvent.change(second, { target: { value: "654321" } });
+    await userEvent.setup().type(second, "{Enter}");
+    await screen.findByText("b@b.b is verified.");
+    const verifies = calls.filter((c) => c.path.endsWith("/verify"));
+    expect(verifies).toHaveLength(1);
+    expect(verifies[0]?.path).toContain(OTHER);
+    expect(verifies[0]?.body).toEqual({ token: "654321" });
+    // The first row is untouched: still pending, its field still there.
+    expect(screen.getByLabelText(/^Verification code for a@a\.a/)).toBeTruthy();
+  });
+
+  it("Enter in an empty code field says what is missing and sends nothing", async () => {
+    const calls = mount(<DeliveryEndpoints />, () =>
+      json({ endpointId: ID, channel: "email", verificationStatus: "pending" }, 201),
+    );
+    fireEvent.change(screen.getByLabelText(/Address or device token/), {
+      target: { value: "a@a.a" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
+    const code = await screen.findByLabelText(/^Verification code for a@a\.a/);
+    const user = userEvent.setup();
+    await user.type(code, "{Enter}");
+    expect(await screen.findByText("Enter the verification code that was sent.")).toBeTruthy();
+    expect(calls.filter((c) => c.path.endsWith("/verify"))).toHaveLength(0);
+    // Focus must be MOVED to the empty field, not merely still be there: leave it first, then press the row's Verify button.
+    code.blur();
+    expect(document.activeElement).not.toBe(code);
+    fireEvent.click(screen.getByRole("button", { name: "Verify a@a.a" }));
+    await waitFor(() => expect(document.activeElement).toBe(code));
+    expect(calls.filter((c) => c.path.endsWith("/verify"))).toHaveLength(0);
   });
 
   it("shows no-access when registering is forbidden", async () => {
@@ -260,10 +368,89 @@ describe("DeliveryEndpoints", () => {
       target: { value: "a@b.c" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
-    fireEvent.change(await screen.findByLabelText("Verification code for a@b.c"), {
+    fireEvent.change(await screen.findByLabelText(/^Verification code for a@b\.c/), {
       target: { value: "000000" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Verify a@b.c" }));
     expect(await screen.findByText(/code was not accepted/)).toBeTruthy();
+  });
+});
+
+/** An offline fetch: the request rejects with no response, which openapi-fetch rethrows. */
+const offline = (): never => {
+  throw new TypeError("Failed to fetch");
+};
+const UNREACHABLE = /Could not reach the server/;
+
+describe("a settings write whose request never gets an answer", () => {
+  it("delivery endpoints: releases the Add button and says the server was not reached", async () => {
+    mount(<DeliveryEndpoints />, offline);
+    fireEvent.change(screen.getByLabelText(/Address or device token/), {
+      target: { value: "me@example.org" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
+    expect(await screen.findByText(UNREACHABLE)).toBeTruthy();
+    const add = screen.getByRole("button", { name: "Add endpoint" }) as HTMLButtonElement;
+    expect(add.disabled).toBe(false);
+    expect(add.getAttribute("aria-busy")).toBeNull();
+    expect((screen.getByLabelText(/Address or device token/) as HTMLInputElement).disabled).toBe(
+      false,
+    );
+  });
+
+  it("notification preferences: releases the form and keeps the draft", async () => {
+    mount(<NotificationPreferences />, (c) => (c.method === "GET" ? json(PREFS) : offline()));
+    fireEvent.click(await screen.findByRole("button", { name: "Save preferences" }));
+    expect(await screen.findByText(UNREACHABLE)).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Save preferences" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("alert rules: with no answer it does not claim the change was undone, shows the rule as it was, and re-reads the rules", async () => {
+    const calls = mount(<AlertRules />, (c) =>
+      c.method === "GET" ? json({ rules: [RULE] }) : offline(),
+    );
+    const box = (await screen.findByLabelText(/^Sfv due enabled/)) as HTMLInputElement;
+    fireEvent.click(box);
+    const notice = await screen.findByText(/Could not reach the server/);
+    // The PATCH may already have applied: say it could not be confirmed, never that it was undone.
+    expect(notice.textContent).toMatch(/could not be confirmed/);
+    expect(notice.textContent).not.toMatch(/undone/);
+    const row = screen.getByLabelText(/^Sfv due enabled/).closest("tr");
+    expect(row?.getAttribute("aria-busy")).toBeNull();
+    expect((screen.getByLabelText(/^Sfv due enabled/) as HTMLInputElement).checked).toBe(true);
+    // And the page asks the server what it holds now.
+    await waitFor(() =>
+      expect(
+        calls.filter((c) => c.method === "GET" && c.path === "/api/v1/alert-rules"),
+      ).toHaveLength(2),
+    );
+  });
+});
+
+describe("BannerView", () => {
+  it("keeps both wrappers mounted and announces each banner through exactly one live region", () => {
+    const { rerender, container } = render(<BannerView banner={null} />);
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    // Both regions sit in one slot that CSS keeps out of the stack's gaps while they are empty (they are still mounted).
+    const slot = container.querySelector(".wx-live-slot") as HTMLElement;
+    expect(slot).not.toBeNull();
+    expect(Array.from(slot.children).map((el) => el.getAttribute("role"))).toEqual([
+      "status",
+      "alert",
+    ]);
+    expect(Array.from(slot.children).every((el) => el.childElementCount === 0)).toBe(true);
+
+    rerender(<BannerView banner={{ ok: true, message: "Saved." }} />);
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("status").textContent).toBe("Saved.");
+
+    rerender(<BannerView banner={{ ok: false, message: "Could not save." }} />);
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("alert").textContent).toBe("Could not save.");
   });
 });

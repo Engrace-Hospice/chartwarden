@@ -2,7 +2,14 @@
 // (messaging.template.manage) also authors the organization's shared templates and customizes the platform ones.
 // The management section appears when the administration read succeeds; a 403 simply leaves it out. The server decides
 // everything - this screen never infers a permission.
-import { ErrorState, InlineAlert, LoadingSpinner, PageHeader, useApiClient } from "@chartwarden/ui";
+import {
+  ErrorState,
+  InlineAlert,
+  LoadingSpinner,
+  PageHeader,
+  useApiClient,
+  useAttemptKey,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { HandoffPolicySection } from "./handoff-policy-section";
@@ -38,6 +45,9 @@ async function attempt(work: () => Promise<Failure>, fallback: string): Promise<
 
 export function SavedReplies(): JSX.Element {
   const client = useApiClient();
+  // One Idempotency-Key per create attempt: a retry of the same content after a lost reply carries the key again (the server dedupes it);
+  // a changed draft, or any answer the app gave, starts a new one.
+  const attemptKeys = useAttemptKey();
   const mine = useSavedReplies(true);
   const [admin, setAdmin] = useState<AdminView | null>(null);
   const [adminTick, setAdminTick] = useState(0);
@@ -69,13 +79,15 @@ export function SavedReplies(): JSX.Element {
 
   const personalWrites = useMemo<ReplyWrites>(
     () => ({
-      create: async (draft: ReplyDraft, idempotencyKey: string) => {
+      create: async (draft: ReplyDraft) => {
         const failure = await attempt(
           () =>
-            client.POST("/api/v1/messaging/templates/personal", {
-              params: { header: { "Idempotency-Key": idempotencyKey } },
-              body: draft,
-            }),
+            attemptKeys.run(`personal|${JSON.stringify(draft)}`, (idempotencyKey) =>
+              client.POST("/api/v1/messaging/templates/personal", {
+                params: { header: { "Idempotency-Key": idempotencyKey } },
+                body: draft,
+              }),
+            ),
           "Could not save this reply.",
         );
         if (!failure) refresh();
@@ -105,18 +117,20 @@ export function SavedReplies(): JSX.Element {
         return failure;
       },
     }),
-    [client, refresh],
+    [attemptKeys, client, refresh],
   );
 
   const sharedWrites = useMemo<ReplyWrites>(
     () => ({
-      create: async (draft: ReplyDraft, idempotencyKey: string) => {
+      create: async (draft: ReplyDraft) => {
         const failure = await attempt(
           () =>
-            client.POST("/api/v1/messaging/template-admin/shared", {
-              params: { header: { "Idempotency-Key": idempotencyKey } },
-              body: draft,
-            }),
+            attemptKeys.run(`shared|${JSON.stringify(draft)}`, (idempotencyKey) =>
+              client.POST("/api/v1/messaging/template-admin/shared", {
+                params: { header: { "Idempotency-Key": idempotencyKey } },
+                body: draft,
+              }),
+            ),
           "Could not save this template.",
         );
         if (!failure) refresh();
@@ -146,7 +160,7 @@ export function SavedReplies(): JSX.Element {
         return failure;
       },
     }),
-    [client, refresh],
+    [attemptKeys, client, refresh],
   );
 
   const overlayWrites = useMemo(

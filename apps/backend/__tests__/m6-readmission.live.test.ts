@@ -591,7 +591,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
       runNotrSubmit(tx as never, workerDeps, {
         organizationId: ORG,
         notrId: notr.id,
-        submissionId: queued.submissionId,
+        submissionId: queued.submissionId!,
       }),
     );
     const submission = await one<{ id: string }>(
@@ -688,7 +688,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
       runNotrSubmit(tx as never, workerDeps, {
         organizationId: ORG,
         notrId: corrected,
-        submissionId: queued2.submissionId,
+        submissionId: queued2.submissionId!,
       }),
     );
     const ctl = await one<{ notr_control_number: string }>(
@@ -700,7 +700,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
       {
         organizationId: ORG,
         claimId: "",
-        submissionId: queued2.submissionId,
+        submissionId: queued2.submissionId as string,
         claimControlNumber: ctl.notr_control_number,
         accepted: true,
         reasonCodes: [],
@@ -713,7 +713,7 @@ describe.skipIf(!DB_URL)("Readmission workflow — LIVE Postgres", () => {
       {
         organizationId: ORG,
         claimId: "",
-        submissionId: queued2.submissionId,
+        submissionId: queued2.submissionId as string,
         outcome: "accepted",
         payerClaimControlNumber: "ICN-NOTR-2",
         reasonCodes: [],
