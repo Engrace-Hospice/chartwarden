@@ -35,6 +35,7 @@ import {
 } from "./inline-code";
 import { type LongOption, optionValues } from "./option-values";
 import { relativeTo } from "./path-alias";
+import { environmentLeak, reachesLiveEnv, storedSecretVerdict } from "./secret-reads";
 import {
   BARE,
   COMMENT,
@@ -50,6 +51,7 @@ import {
   RUNS_COMMAND_STRING,
   WRAPPER_OPERANDS,
   WRAPPER_VALUE_FLAG,
+  containerExec,
   containerRun,
   shellStrings,
   sshHost,
@@ -96,6 +98,7 @@ const SECRET_PATH_RULES: ReadonlyArray<readonly [RegExp, string]> = [
   // `/i`: macOS and Windows resolve `.SSH/config` and `.AWS/credentials` to the same files.
   [/(^|\/)\.ssh\//i, "the SSH configuration directory"],
   [/(^|\/)\.aws\/credentials$/i, "cloud credentials"],
+  [/(^|\/)\.gnupg\//i, "the GnuPG key directory"],
   [/(^|\/)\.docker\/config\.json$/i, "registry credentials"],
   [
     /(^|\/)(\.codex\/auth\.json|\.claude\/\.credentials\.json|\.config\/gh\/hosts\.yml|\.git-credentials|\.kube\/config)$/i,
@@ -182,7 +185,7 @@ const DB_URL = /\bpostgres(?:ql)?:\/\/[^:\s/@]{1,64}:([^@\s]{1,256})@([^/:\s?#'"
 // Local means loopback, the Docker host alias, or a service this repo's docker-compose.yml names. A bare
 // single-label name or a `*.internal` suffix is NOT local: production hosts look exactly like that.
 const LOCAL_HOST_RE =
-  /^(localhost|127(\.\d{1,3}){3}|\[?::1\]?|0\.0\.0\.0|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
+  /^(localhost|127(\.\d{1,3}){3}|\[?::1\]?|0\.0\.0\.0|host\.docker\.internal|[a-z0-9-]+\.localhost|\/.*)$/i;
 /** Service names in docker-compose.yml (reachable only on the private compose network). */
 export const COMPOSE_SERVICES: ReadonlySet<string> = new Set([
   "postgres",
@@ -1167,6 +1170,8 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     for (const text of shellStrings(parsed.prog, parsed.args, isLocalHost)) {
       if (text.trim() !== "") verdicts.push(judge(text, ctx, depth + 1, here));
     }
+    const inContainer = containerExec(parsed.prog, parsed.args);
+    if (inContainer !== null) verdicts.push(judge(inContainer, ctx, depth + 1, here));
     const container = containerRun(parsed.prog, parsed.args);
     if (container) {
       const inside = container.workdir === undefined ? here : runIn(here, container.workdir, ctx);
@@ -1902,6 +1907,11 @@ function scriptTextVerdict(text: string): BashVerdict | null {
   }
   // Tested as written too: squashing puts the word before a path against it (`rm scripts/harness` reads
   // `rmscripts/harness`), and the fragment's lookbehind then takes that word for a parent directory.
+  if (environmentLeak(text) !== null) {
+    return deny(
+      "Inline code that reads the whole environment, or a secret variable by name, puts credentials into the transcript. Check presence, not the value.",
+    );
+  }
   if (PROTECTED_FRAGMENT.test(text) || PROTECTED_FRAGMENT.test(flat)) {
     return ask(
       "Script text the guard can only read as a string names the agent harness or the compliance record. Changing those through a script skips the edit prompt, so a human approves it here.",
@@ -2177,6 +2187,72 @@ function searchPaths(args: readonly string[], shortValue: string, longValue: Reg
   return patternFlag ? positional : positional.slice(1);
 }
 
+/** Does this repo-relative live env file exist here? Without a way to look (a unit test), none does. */
+const liveEnvExists =
+  (ctx: BashContext) =>
+  (file: string): boolean =>
+    ctx.exists?.(ctx.root ? `${trimSlashes(ctx.root)}/${file}` : file) ?? false;
+
+const COPY_OUT_REASON =
+  "Copying a directory that holds live env files puts them where the guard does not look (and `cp -r` ignores .gitignore). Copy the files you need.";
+
+/** `cp -r deploy/production /tmp/x`, `rsync -a …`, `ditto …`: a tree with live env files in it is copied out. */
+function copyOutVerdict(
+  prog: string,
+  args: readonly string[],
+  cwd: Cwd,
+  ctx: BashContext,
+): BashVerdict | null {
+  if (!/^(?:cp|rsync|ditto)$/.test(prog)) return null;
+  if (prog !== "ditto" && !args.some(isRecursive)) return null;
+  const { srcs } = splitDest(args, fileArgs(args), prog !== "rsync");
+  const reaches = srcs.some((src) => {
+    const rel = resolvePath(src, cwd, ctx);
+    return (
+      rel !== null &&
+      !rel.startsWith("/") &&
+      !rel.startsWith("~") &&
+      (rel === "" || reachesLiveEnv(rel, liveEnvExists(ctx)))
+    );
+  });
+  return reaches ? ask(COPY_OUT_REASON) : null;
+}
+
+/** `find . -type f -exec cat {} +`: every file under the start paths is read, live env files included. */
+function findReadVerdict(
+  prog: string,
+  args: readonly string[],
+  cwd: Cwd,
+  ctx: BashContext,
+): BashVerdict | null {
+  if (prog !== "find") return null;
+  const readers = findExecCommands(args).filter((run) => {
+    const p = parseSegment(run.command);
+    return FILE_READER.test(p.prog);
+  });
+  if (readers.length === 0) return null;
+  // A name test for a source-file type limits it, as `--include=*.ts` limits grep.
+  const named = args.some((a, k) => /^-i?name$/.test(a) && SAFE_INCLUDE.test(args[k + 1] ?? ""));
+  if (named) return null;
+  let k = 0;
+  while (/^-[HLP]$/.test(args[k] ?? "")) k++;
+  const starts: string[] = [];
+  for (; k < args.length && !/^(-|\\?\(|!)/.test(args[k] ?? ""); k++) starts.push(args[k] ?? "");
+  const reaches = (starts.length > 0 ? starts : ["."]).some((start) => {
+    const rel = resolvePath(start, cwd, ctx);
+    return (
+      rel === null ||
+      rel === "" ||
+      (!rel.startsWith("/") && !rel.startsWith("~") && reachesLiveEnv(rel, liveEnvExists(ctx)))
+    );
+  });
+  return reaches
+    ? ask(
+        "`find … -exec cat|grep {}` reads every file under it, live env files included. Name the files you need, or limit it with -name '*.ts'.",
+      )
+    : null;
+}
+
 function recursiveSearchVerdict(
   prog: string,
   args: readonly string[],
@@ -2187,7 +2263,12 @@ function recursiveSearchVerdict(
   if (!grep && prog !== "rg") return null;
   if (grep) {
     const recursive = args.some(
-      (a) => clusterHas(a, "rR") || a === "--recursive" || a === "--dereference-recursive",
+      (a, k) =>
+        clusterHas(a, "rR") ||
+        isLongOption(a, "recursive", 3) ||
+        isLongOption(a, "dereference-recursive", 3) ||
+        a === "--directories=recurse" ||
+        (a === "-d" && args[k + 1] === "recurse"),
     );
     const globs = args.flatMap((a, k) =>
       a.startsWith("--include=")
@@ -2208,10 +2289,13 @@ function recursiveSearchVerdict(
   const paths = grep
     ? searchPaths(args, GREP_VALUE_LETTERS, GREP_VALUE_LONG)
     : searchPaths(args, RG_VALUE_LETTERS, RG_VALUE_LONG);
+  // The root, a directory the guard cannot place, or one that holds a live env file (`deploy/production`, `apps`).
+  const sweepsSecrets = (rel: string | null): boolean =>
+    rel === null || rel === "" || reachesLiveEnv(rel, liveEnvExists(ctx));
   const atRoot =
     paths.length === 0
-      ? cwd === "" || cwd === null
-      : paths.some((p) => [null, ""].includes(resolvePath(p, cwd, ctx)));
+      ? sweepsSecrets(cwd)
+      : paths.some((p) => sweepsSecrets(resolvePath(p, cwd, ctx)));
   if (!atRoot) return null;
   return ask(
     grep
@@ -2248,11 +2332,17 @@ function archiveRootVerdict(
   const names = prog === "zip" ? operands.slice(1) : operands;
   const root = names.some((o) => {
     const rel = base === null ? (/^\.\/?$/.test(o) ? "" : undefined) : resolvePath(o, base, ctx);
-    return rel === "";
+    return (
+      rel === "" ||
+      (typeof rel === "string" &&
+        !rel.startsWith("/") &&
+        !rel.startsWith("~") &&
+        reachesLiveEnv(rel, liveEnvExists(ctx)))
+    );
   });
   if (!creating || !root) return null;
   return ask(
-    "Archiving the repo root packs every live .env file in it into one blob. Archive the directory you need.",
+    "Archiving the repo root, or a directory that holds live env files, packs them into one blob. Archive the files you need.",
   );
 }
 
@@ -2364,6 +2454,10 @@ function classifySegment(
   const nested = nestedAgentVerdict(prog, args, assigns, here);
   if (nested) return nested;
 
+  // --- The keychain, a CLI's stored token, `printenv SECRET`, `docker inspect`.
+  const stored = storedSecretVerdict(prog, args);
+  if (stored) return stored.decision === "deny" ? deny(stored.reason) : ask(stored.reason);
+
   // --- Environment dumps and secret variables echoed into the transcript.
   if (
     /^(printenv|env|set|export|declare)$/.test(prog) &&
@@ -2438,7 +2532,10 @@ function classifySegment(
   // command may be in, so a `cd` that may not have applied cannot move the sweep off the root.
   for (const dir of here) {
     const sweep =
-      recursiveSearchVerdict(prog, args, dir, ctx) ?? archiveRootVerdict(prog, args, dir, ctx);
+      recursiveSearchVerdict(prog, args, dir, ctx) ??
+      archiveRootVerdict(prog, args, dir, ctx) ??
+      copyOutVerdict(prog, args, dir, ctx) ??
+      findReadVerdict(prog, args, dir, ctx);
     if (sweep) return sweep;
   }
 

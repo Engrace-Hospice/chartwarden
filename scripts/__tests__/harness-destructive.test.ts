@@ -161,7 +161,7 @@ describe("a find action is narrowed only by a test that cannot match a protected
     "find . -regex '.*\\.tmp' -delete",
     "find apps -name '*.tmp' -delete",
     "find dist -delete",
-    "find . -exec grep -l x {} +",
+    "find . -name '*.ts' -exec grep -l x {} +",
     "find . -exec sh -c 'echo {}' \\;",
     "find . -name '*.ts' -exec grep -l x {} +",
     "find . -type f -name '*.ts' -print",

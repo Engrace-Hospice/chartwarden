@@ -249,3 +249,19 @@ export function containerRun(prog: string, args: readonly string[]): ContainerRu
     ? { command, workdir: mappedDir }
     : { command };
 }
+
+const EXEC_VALUE_FLAG = /^-[euw]$|^--(?:env|user|workdir|env-file|detach-keys|index)$/;
+
+/**
+ * `docker exec api env`, `docker compose exec api printenv X`: the command that runs in the container, as a command
+ * line (its environment is the container's, but a read of a secret or a dump of the environment is the same read).
+ * Null for anything that is not an `exec` with a command.
+ */
+export function containerExec(prog: string, args: readonly string[]): string | null {
+  if (!/^(?:docker|podman|nerdctl|docker-compose|podman-compose)$/.test(prog)) return null;
+  const at = args.indexOf("exec");
+  if (at < 0) return null;
+  const rest = afterOptions(args.slice(at + 1), EXEC_VALUE_FLAG);
+  const [, ...command] = rest;
+  return command.length > 0 ? command.map(shellQuote).join(" ") : null;
+}

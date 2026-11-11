@@ -261,7 +261,7 @@ describe("6 — a destructive command over the whole repo root", () => {
     "find node_modules -delete",
     "find apps/web/dist -mtime +7 -delete",
     "find . -type f",
-    "find . -type f -exec grep foo {} +",
+    "find . -type f -name '*.ts' -exec grep foo {} +", // was `find . -type f -exec …`: now asks (wave 3, ADV-M9)
     "find . -name '*.ts' -newer x",
     "rm -rf dist",
     "rm -rf node_modules",
