@@ -32,7 +32,7 @@ export interface DrizzleHelpRequestServiceDeps {
   readonly outbox: HelpOutboxPort;
   readonly alerts: HelpAlertPort;
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
-  /** Piece 7S's bundle (`createUnboundSupportGrantOperations()` until it is bound: approving then answers 501). */
+  /** Piece 7S's integrated support-grant operation bundle. */
   readonly grants: SupportGrantOperations;
   readonly now?: () => Date;
 }

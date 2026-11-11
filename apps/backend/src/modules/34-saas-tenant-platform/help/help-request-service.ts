@@ -287,7 +287,7 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
           "only an open help request can be approved",
         );
       }
-      // The consent: the grant is created (and its event and alert emitted) on THIS transaction, so a failure below undoes it.
+      // The consent grant and event are created on THIS transaction; its alert is returned and registered only after commit below.
       const grant = await grants.issueAssistGrant(grants.depsFor(store.tx), {
         organizationId: row.organizationId,
         tenantAccountId: row.tenantAccountId,
@@ -297,7 +297,6 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
         reason: `help request ${row.id}`,
         helpRequestId: row.id,
       });
-      if (grant.afterCommit) store.afterCommit(grant.afterCommit);
       const approvedAt = now();
       const approved = await store.markApproved(row.id, {
         grantId: grant.grantId,
