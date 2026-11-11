@@ -1,11 +1,17 @@
 // apps/admin/src/modules/36-messaging/settings — shared request plumbing for the three M36 settings screens.
 // openapi-fetch resolves (never throws) with { data, error, response }; this folds that into one result the
 // screens switch on, naming 403 (no access) separately from every other failure so it renders its own state.
-import type { ReadResult } from "../ui";
+import { type ReadResult, UNREACHABLE_MESSAGE } from "../ui";
 
 export type ApiResult<T> =
   | { readonly ok: true; readonly data: T }
-  | { readonly ok: false; readonly forbidden: boolean; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly forbidden: boolean;
+      readonly message: string;
+      /** The request got no answer at all: the change may or may not have landed (never set when the server refused it). */
+      readonly unreachable?: boolean;
+    };
 
 interface FetchLike<T> {
   data?: T;
@@ -28,6 +34,23 @@ export function toResult<T>(res: FetchLike<T>, fallback: string): ApiResult<T> {
     };
   }
   return { ok: true, data: res.data as T };
+}
+
+/**
+ * `toResult` for a request still in flight. openapi-fetch RETHROWS a network failure instead of resolving an error response, so a
+ * caller holding a busy/pending lock would never release it: this folds the throw into the same failed result.
+ */
+export async function settleResult<T>(
+  request: Promise<FetchLike<T>>,
+  fallback: string,
+): Promise<ApiResult<T>> {
+  let res: FetchLike<T>;
+  try {
+    res = await request;
+  } catch {
+    return { ok: false, forbidden: false, message: UNREACHABLE_MESSAGE, unreachable: true };
+  }
+  return toResult(res, fallback);
 }
 
 /** Fold a write/read ApiResult into the module-level ReadResult that `useLoad` consumes. */

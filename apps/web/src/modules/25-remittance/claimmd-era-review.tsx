@@ -201,11 +201,11 @@ export function ClaimMdEraReview(): JSX.Element {
     setPostingBusy(true);
     setPostingError(null);
     try {
+      // The Idempotency-Key is the API client's: one per intent (this plan digest and reason), so a retry after a lost reply replays.
       const response = await client.POST(
         "/api/v1/remittance/claimmd-era/{id}/posting-plans/{planId}/approval",
         {
           params: { path: { id: selected.id, planId: plan.planId } },
-          headers: { "Idempotency-Key": crypto.randomUUID() },
           body: { planDigest: plan.planDigest, reason },
         },
       );
@@ -228,11 +228,11 @@ export function ClaimMdEraReview(): JSX.Element {
     setPostingBusy(true);
     setPostingError(null);
     try {
+      // The Idempotency-Key is the API client's: one per intent (this plan digest and reason), so a retry after a lost reply replays.
       const response = await client.POST(
         "/api/v1/remittance/claimmd-era/{id}/posting-plans/{planId}/execution",
         {
           params: { path: { id: selected.id, planId: plan.planId } },
-          headers: { "Idempotency-Key": crypto.randomUUID() },
           body: { planDigest: plan.planDigest, reason },
         },
       );

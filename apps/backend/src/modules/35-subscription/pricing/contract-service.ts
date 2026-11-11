@@ -182,12 +182,7 @@ export async function readBillingServiceMode(
 ): Promise<BillingServiceMode | null> {
   refuseForeignAmbientOrg(organizationId, "BillingServiceModeReader");
   return withOrgContext(db, { organizationId, userId: "" }, async (scoped) => {
-    const loaded = await loadContract(
-      scoped as unknown as WriteTx,
-      "live",
-      at,
-      organizationId,
-    );
+    const loaded = await loadContract(scoped as unknown as WriteTx, "live", at, organizationId);
     return loaded ? modeInForceOn(loaded.history, utcDateOf(at)) : null;
   });
 }

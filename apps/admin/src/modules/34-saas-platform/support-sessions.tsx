@@ -5,12 +5,16 @@ import {
   Glyph,
   InlineAlert,
   LoadingSpinner,
+  SelectField,
   StatusPill,
   type StatusTone,
+  TableScroll,
+  UnstyledList,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — Support Sessions queue (M34 Phase-3, §4.1 platform-ops; F01/D8/D16).
@@ -23,7 +27,7 @@ import {
 // Foundation tone map. Every cross-tenant read is an audited platform-ops read on the server.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
+
 import { SUPPORT_SESSION_TONE, cap } from "./saas-status";
 
 // §3.6 wire vocab mirror — the route returns `open | expired | closed`. An OPEN session is the active
@@ -71,6 +75,10 @@ const STATUS_FILTERS: readonly (SupportSessionStatus | "all")[] = [
   "expired",
   "closed",
 ];
+const STATUS_OPTIONS = STATUS_FILTERS.map((s) => ({
+  value: s,
+  label: s === "all" ? "All statuses" : cap(s),
+}));
 
 interface Banner {
   tone: "success" | "error";
@@ -79,8 +87,8 @@ interface Banner {
 
 export function SupportSessions(): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("session");
+  // The open session lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId, select, close } = useSelectionParam("session");
   const [sessions, setSessions] = useState<SupportSessionView[]>([]);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -138,7 +146,12 @@ export function SupportSessions(): JSX.Element {
   const visible =
     statusFilter === "all" ? sessions : sessions.filter((s) => s.status === statusFilter);
   const selected = selectedId ? sessions.find((s) => s.id === selectedId) : undefined;
-  useStaleSelection({ param: "session", ready: loaded, found: selected !== undefined });
+  useStaleSelection({
+    param: "session",
+    ready: loaded,
+    found: selected !== undefined,
+    clear: close,
+  });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -166,20 +179,18 @@ export function SupportSessions(): JSX.Element {
             <p>Tenant-consented break-glass sessions, with every action on the surveyor ledger.</p>
           </div>
           <div className="wx-list-toolbar-end">
-            <select
-              aria-label="Session status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as SupportSessionStatus | "all")}
-            >
-              {STATUS_FILTERS.map((s) => (
-                <option key={s} value={s}>
-                  {s === "all" ? "All statuses" : cap(s)}
-                </option>
-              ))}
-            </select>
             <Button onClick={() => setCeremonyOpen(true)}>Start session</Button>
           </div>
         </header>
+
+        <div className="wx-list-toolbar wx-list-toolbar-fields">
+          <SelectField
+            label="Session status"
+            value={statusFilter}
+            options={STATUS_OPTIONS}
+            onChange={(e) => setStatusFilter(e.target.value as SupportSessionStatus | "all")}
+          />
+        </div>
 
         {banner ? <InlineAlert tone={banner.tone}>{banner.text}</InlineAlert> : null}
 
@@ -188,11 +199,11 @@ export function SupportSessions(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={(s) => setParams({ session: s.id })}
+          onSelect={(s) => select(s.id)}
           onRetry={() => void load()}
         />
       </div>
-      {selected ? <SessionDrawer session={selected} onClose={() => setParams({})} /> : null}
+      {selected ? <SessionDrawer key={selected.id} session={selected} onClose={close} /> : null}
     </div>
   );
 }
@@ -214,7 +225,7 @@ function SessionTable({
 }): JSX.Element {
   if (error)
     return (
-      <div className="wx-list-state" role="alert">
+      <div className="wx-list-state">
         <InlineAlert tone="error">{error}</InlineAlert>
         <Button tone="secondary" onClick={onRetry}>
           Try again
@@ -235,7 +246,7 @@ function SessionTable({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Support sessions</caption>
         <thead>
@@ -257,7 +268,7 @@ function SessionTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                {...interactiveRowProps(open, isSelected)}
+                {...interactiveRowProps(open, isSelected, false, s.id)}
               >
                 <td className="wx-data-md">{s.id}</td>
                 <td className="wx-data-md">
@@ -279,7 +290,7 @@ function SessionTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 
@@ -336,13 +347,13 @@ function SessionDrawer({
           </div>
           <dl className="wx-kv">
             <dt>Session id</dt>
-            <dd className="wx-data-md break-words">{session.id}</dd>
+            <dd className="wx-data-md">{session.id}</dd>
             <dt>Consent grant</dt>
-            <dd className="wx-data-md break-words">{session.supportConsentGrantId}</dd>
+            <dd className="wx-data-md">{session.supportConsentGrantId}</dd>
             <dt>Actor membership</dt>
-            <dd className="wx-data-md break-words">{session.actorMembershipId}</dd>
+            <dd className="wx-data-md">{session.actorMembershipId}</dd>
             <dt>Tenant</dt>
-            <dd className="wx-data-md break-words">{session.tenantAccountId ?? "—"}</dd>
+            <dd className="wx-data-md">{session.tenantAccountId ?? "—"}</dd>
             <dt>Window</dt>
             <dd className="wx-nums">
               {new Date(session.startedAt).toLocaleString()} →{" "}
@@ -361,7 +372,7 @@ function SessionDrawer({
           ) : events.length === 0 ? (
             <span className="wx-row-sub">No ledger entries recorded yet.</span>
           ) : (
-            <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            <UnstyledList className="wx-form-stack">
               {events.map((ev) => (
                 <li key={ev.id}>
                   <span className="wx-row-title">{cap(ev.eventKind)}</span>
@@ -383,7 +394,7 @@ function SessionDrawer({
                   </span>
                 </li>
               ))}
-            </ul>
+            </UnstyledList>
           )}
         </section>
       </div>

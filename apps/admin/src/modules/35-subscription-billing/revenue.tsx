@@ -1,4 +1,12 @@
-import { Button, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import {
+  Button,
+  StatGrid,
+  TableScroll,
+  sendWrite,
+  useApiClient,
+  useIdempotencyKeeper,
+  useRequestGuard,
+} from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Revenue (`/admin/revenue`, revenue.admin.read). The
 // MRR/ARR dashboard: the live current estimate (GET /api/admin/revenue/current) as KPI tiles, plus the
@@ -6,8 +14,15 @@ import type { operations } from "@chartwarden/ui";
 // churn MRR. Recompute (revenue.admin.write, step-up) refreshes the latest snapshot. Amounts are cents.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { formatCents, formatDate, idempotencyKey } from "./status";
-import { type Outcome, OutcomeBanner, StateError, StateLoading, failureOutcome } from "./ui";
+import { formatCents, formatDate } from "./status";
+import {
+  type Outcome,
+  OutcomeBanner,
+  StateEmpty,
+  StateError,
+  StateLoading,
+  writeFailure,
+} from "./ui";
 
 type Current =
   operations["getApiAdminRevenueCurrent"]["responses"][200]["content"]["application/json"];
@@ -17,6 +32,8 @@ type Snapshot = SnapshotPage["items"][number];
 
 export function Revenue(): JSX.Element {
   const client = useApiClient();
+  // One Idempotency-Key per write intent: a retry after "could not reach the server" replays it (the first request may have landed).
+  const keeper = useIdempotencyKeeper();
   const [current, setCurrent] = useState<Current | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,17 +67,25 @@ export function Revenue(): JSX.Element {
   const recompute = useCallback(async () => {
     setBusy(true);
     setOutcome(null);
-    const res = await client.POST("/api/admin/revenue/snapshots/compute", {
-      headers: { "Idempotency-Key": idempotencyKey() },
-    });
-    if (res.error) {
-      setOutcome(failureOutcome(res.error, "Could not recompute revenue."));
-    } else {
+    try {
+      const failure = writeFailure(
+        await sendWrite(keeper, "recompute", (key) =>
+          client.POST("/api/admin/revenue/snapshots/compute", {
+            headers: { "Idempotency-Key": key },
+          }),
+        ),
+        "Could not recompute revenue.",
+      );
+      if (failure) {
+        setOutcome(failure);
+        return;
+      }
       setOutcome({ ok: true, message: "Revenue snapshot recomputed." });
       await load();
+    } finally {
+      setBusy(false); // also when the reload after a landed write throws: the button never stays locked
     }
-    setBusy(false);
-  }, [client, load]);
+  }, [client, load, keeper]);
 
   const stats = current
     ? [
@@ -94,7 +119,7 @@ export function Revenue(): JSX.Element {
           <StateError message={error ?? "No revenue data."} onRetry={() => void load()} />
         ) : (
           <>
-            <div className="wx-stat-grid" aria-label="Revenue summary">
+            <StatGrid label="Revenue summary">
               {stats.map((s) => (
                 <div key={s.label} className="wx-stat-card">
                   <div>
@@ -103,10 +128,12 @@ export function Revenue(): JSX.Element {
                   </div>
                 </div>
               ))}
-            </div>
-            <h2 className="m-0 text-base font-semibold">Trailing snapshots</h2>
+            </StatGrid>
+            <h2 className="wx-action-title">Trailing snapshots</h2>
             {snapshots.length === 0 ? (
-              <p className="m-0 text-sm">No revenue snapshots recorded yet — run a recompute.</p>
+              <StateEmpty icon="bar-chart">
+                No revenue snapshots recorded yet — run a recompute.
+              </StateEmpty>
             ) : (
               <SnapshotsTable snapshots={snapshots} />
             )}
@@ -127,7 +154,7 @@ const MONEY_COLUMNS = [
 
 function SnapshotsTable({ snapshots }: { snapshots: readonly Snapshot[] }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">Trailing revenue snapshots</caption>
         <thead>
@@ -157,6 +184,6 @@ function SnapshotsTable({ snapshots }: { snapshots: readonly Snapshot[] }): JSX.
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

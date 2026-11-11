@@ -21,6 +21,7 @@ import {
   StatusPill,
   t,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -51,7 +52,6 @@ import {
   mutedStyle,
   pageTitleStyle,
   primaryButtonStyle,
-  useIdempotencyKey,
 } from "./bereavement-ui";
 
 const SUD_KEY = "active_substance_use";
@@ -92,7 +92,7 @@ function PredeathForAdmission({ admissionId }: { admissionId: string | undefined
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
-  const idempotency = useIdempotencyKey();
+  const idempotency = useAttemptKey();
   const latestRequest = useRef(0);
   const hasDraft = useRef(false);
 
@@ -195,7 +195,7 @@ function PredeathForAdmission({ admissionId }: { admissionId: string | undefined
       },
       idempotency.keyFor(`${draft.version}:${JSON.stringify(vector)}`),
     );
-    idempotency.settle(status);
+    idempotency.settle(status, error);
     setBusy(false);
     if (error || !next) {
       refuse(error, status);

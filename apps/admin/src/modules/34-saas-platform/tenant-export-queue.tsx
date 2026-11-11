@@ -5,10 +5,13 @@ import {
   LoadingSpinner,
   SelectField,
   StatusPill,
+  TableScroll,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
+  useStaleSelection,
 } from "@chartwarden/ui";
 import type { paths } from "@chartwarden/ui";
 // apps/web/src/modules/34-saas — tenant-export queue (M34 SaaS Tenant Platform, R2 Phase-3).
@@ -75,13 +78,15 @@ export function TenantExportQueue(): JSX.Element {
   const [loading, setLoading] = useState(false);
   const guard = useRequestGuard();
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<TenantExportJob | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  // The open job lives in the URL (`?export=<id>`), so Back closes the drawer and a link reopens it.
+  const { selectedId, select, close } = useSelectionParam("export");
 
   const load = useCallback(async () => {
     const isCurrent = guard();
     setLoading(true);
+    setLoaded(false);
     setError(null);
-    setSelected(null);
     const query: NonNullable<
       paths["/api/v1/tenant/tenant-export-jobs"]["get"]["parameters"]["query"]
     > = { limit: 50 };
@@ -92,10 +97,12 @@ export function TenantExportQueue(): JSX.Element {
     if (!isCurrent()) return;
     if (err) {
       setError("Could not load the tenant-export queue.");
+      setItems([]);
       setLoading(false);
       return;
     }
     setItems(((data as TenantExportListPage | undefined)?.items ?? []) as TenantExportJob[]);
+    setLoaded(true);
     setLoading(false);
   }, [client, guard, status]);
 
@@ -108,6 +115,15 @@ export function TenantExportQueue(): JSX.Element {
     () => (purpose ? items.filter((j) => j.requestedPurpose === purpose) : items),
     [items, purpose],
   );
+
+  // Looked up in the loaded list (not the purpose-filtered one). A failed load empties it, so no drawer shows a job last read before the failure.
+  const selected = selectedId ? items.find((j) => j.id === selectedId) : undefined;
+  useStaleSelection({
+    param: "export",
+    ready: loaded,
+    found: selected !== undefined,
+    clear: close,
+  });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -124,21 +140,19 @@ export function TenantExportQueue(): JSX.Element {
           </div>
         </header>
 
-        <div className="wx-list-toolbar">
-          <div className="grid w-full gap-3 md:grid-cols-2">
-            <SelectField
-              label="Status"
-              value={status}
-              options={STATUS_OPTIONS}
-              onChange={(e) => setStatus(e.target.value as Status | "")}
-            />
-            <SelectField
-              label="Purpose"
-              value={purpose}
-              options={PURPOSE_OPTIONS}
-              onChange={(e) => setPurpose(e.target.value as Purpose | "")}
-            />
-          </div>
+        <div className="wx-list-toolbar wx-list-toolbar-fields">
+          <SelectField
+            label="Status"
+            value={status}
+            options={STATUS_OPTIONS}
+            onChange={(e) => setStatus(e.target.value as Status | "")}
+          />
+          <SelectField
+            label="Purpose"
+            value={purpose}
+            options={PURPOSE_OPTIONS}
+            onChange={(e) => setPurpose(e.target.value as Purpose | "")}
+          />
         </div>
 
         <ExportTable
@@ -146,11 +160,11 @@ export function TenantExportQueue(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={setSelected}
+          onSelect={(j) => select(j.id)}
           onRetry={() => void load()}
         />
       </div>
-      {selected ? <ExportDrawer job={selected} onClose={() => setSelected(null)} /> : null}
+      {selected ? <ExportDrawer key={selected.id} job={selected} onClose={close} /> : null}
     </div>
   );
 }
@@ -172,7 +186,7 @@ function ExportTable({
 }): JSX.Element {
   if (error)
     return (
-      <div className="wx-list-state" role="alert">
+      <div className="wx-list-state">
         <InlineAlert tone="error">{error}</InlineAlert>
         <Button tone="secondary" onClick={onRetry}>
           Try again
@@ -193,7 +207,7 @@ function ExportTable({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Tenant export jobs</caption>
         <thead>
@@ -217,7 +231,7 @@ function ExportTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                {...interactiveRowProps(open, isSelected)}
+                {...interactiveRowProps(open, isSelected, false, j.id)}
               >
                 <td>
                   <span className="wx-row-title">{purposeLabel(j.requestedPurpose)}</span>
@@ -239,7 +253,7 @@ function ExportTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 
@@ -273,7 +287,7 @@ function ExportDrawer({
           </div>
           <dl className="wx-kv">
             <dt>Job id</dt>
-            <dd className="wx-data-md break-words">{job.id}</dd>
+            <dd className="wx-data-md">{job.id}</dd>
             <dt>Purpose</dt>
             <dd>{purposeLabel(job.requestedPurpose)}</dd>
             <dt>Requested at</dt>

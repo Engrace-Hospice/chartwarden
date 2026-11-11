@@ -184,3 +184,35 @@ describe("session guard", () => {
     expect(router.navigate).not.toHaveBeenCalled();
   });
 });
+
+describe("the held Idempotency-Keys and the guard's session decision", () => {
+  it("tells the app the session is dead on a 401 the guard acts on, even where it does not redirect", async () => {
+    const onSessionExpired = vi.fn();
+    const guard = createSessionGuard({ onSessionExpired });
+    guard.attach(fakeRouter("/signed-in")); // a chromeless route: no redirect, but the session is still dead
+
+    guard.onResponseStatus(401, "http://x/api/v1/portal/a", json(401, "UNAUTHENTICATED"));
+    await flush();
+
+    expect(onSessionExpired).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["a failed step-up factor", "http://x/api/v1/portal/sessions/step-up", "STEP_UP_FAILED"],
+    [
+      "a live session with no organization yet",
+      "http://x/api/v1/portal/a",
+      "ORGANIZATION_NOT_SELECTED",
+    ],
+    ["an auth route", "http://x/api/auth/sign-in/email", "INVALID_CREDENTIALS"],
+  ])("does not, for %s", async (_label, url, code) => {
+    const onSessionExpired = vi.fn();
+    const guard = createSessionGuard({ onSessionExpired });
+    guard.attach(fakeRouter("/account"));
+
+    guard.onResponseStatus(401, url, json(401, code));
+    await flush();
+
+    expect(onSessionExpired).not.toHaveBeenCalled();
+  });
+});

@@ -12,6 +12,7 @@ import {
   ghostBorder,
   t,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -28,7 +29,6 @@ import { statusLabel, validationSeverityTone } from "./billing-status";
 // notice — never a toast. Lantern: AdminSplitLayout, No-Line rail, §6.6 StatusPills via billing-status.ts,
 // CSS-var tokens only. openapi emits no schemas for billing, so reads are cast and the mutation paths are
 // driven through `as never` inits (the server stays the authoritative parser).
-import { useAttemptKey } from "./use-attempt-key";
 
 type Severity = "error" | "warn" | "info";
 const SEVERITIES: Severity[] = ["error", "warn", "info"];

@@ -8,6 +8,7 @@ import {
   FactList,
   InlineAlert,
   REASON_RULES,
+  UnstyledList,
   stashStepUpMemoryDraft,
   useApiClient,
   useStepUpMemoryDraft,
@@ -183,13 +184,13 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
           <>
             <p>Go-live opens once every earlier step is settled.</p>
             {open.length > 0 ? (
-              <ul>
+              <UnstyledList>
                 {open.map((s) => (
                   <li key={s.key}>
                     <Link to={stepHref(orgSlug, s.key)}>{s.title}</Link>
                   </li>
                 ))}
-              </ul>
+              </UnstyledList>
             ) : null}
           </>
         ) : null}

@@ -3,12 +3,15 @@ import {
   Glyph,
   InlineAlert,
   LoadingSpinner,
+  SelectField,
   StatusPill,
+  TableScroll,
   TextField,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
 } from "@chartwarden/ui";
 import type { paths } from "@chartwarden/ui";
@@ -21,7 +24,7 @@ import type { paths } from "@chartwarden/ui";
 // Status pills resolve through the shared §6.6 tone map (saas-status.ts).
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { GO_LIVE_STEP_KEY } from "./onboarding/wizard-model";
 import { lifecycleTone, statusLabel } from "./saas-status";
 import {
@@ -73,9 +76,9 @@ const PROVISIONING_POLL_MS = 5000;
 
 export function TenantInventory(): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const selectedSlug = params.get("tenant");
+  // The open tenant (or `new`) lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId: selectedSlug, select, close } = useSelectionParam("tenant");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   // The text the list was last searched with: typing alone must not refetch, only Enter / Search.
@@ -156,6 +159,7 @@ export function TenantInventory(): JSX.Element {
     ready: loaded,
     found: selected !== undefined,
     ignore: [NEW_TENANT],
+    clear: close,
   });
 
   return (
@@ -167,35 +171,32 @@ export function TenantInventory(): JSX.Element {
             <p>Every hospice tenant on the platform, by lifecycle status.</p>
           </div>
           <div className="wx-list-toolbar-end">
-            <Button onClick={() => setParams({ tenant: NEW_TENANT })}>New tenant</Button>
+            <Button onClick={() => select(NEW_TENANT)}>New tenant</Button>
           </div>
         </header>
 
-        <form className="wx-list-toolbar" onSubmit={onSearch}>
-          <select
-            aria-label="Lifecycle status"
+        <form className="wx-list-toolbar wx-list-toolbar-fields is-bottom" onSubmit={onSearch}>
+          <SelectField
+            label={<span className="wx-sr-only">Lifecycle status</span>}
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-          >
-            <option value="">All statuses</option>
-            {LIFECYCLE_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {statusLabel(s)}
-              </option>
-            ))}
-          </select>
-          <div className="min-w-60 flex-1">
-            <TextField
-              type="search"
-              label={<span className="wx-sr-only">Search legal business name</span>}
-              placeholder="Legal business name"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            options={[
+              { value: "", label: "All statuses" },
+              ...LIFECYCLE_STATUSES.map((s) => ({ value: s, label: statusLabel(s) })),
+            ]}
+          />
+          <TextField
+            type="search"
+            label={<span className="wx-sr-only">Search legal business name</span>}
+            placeholder="Legal business name"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div className="wx-list-toolbar-action is-unlabelled">
+            <Button type="submit" tone="secondary">
+              Search
+            </Button>
           </div>
-          <Button type="submit" tone="secondary">
-            Search
-          </Button>
         </form>
 
         {status === "" ? (
@@ -213,14 +214,14 @@ export function TenantInventory(): JSX.Element {
           loading={loading}
           error={error}
           selectedSlug={selectedSlug}
-          onSelect={(slug) => setParams({ tenant: slug })}
+          onSelect={(slug) => select(slug)}
           onRetry={() => void load()}
         />
       </div>
       {provisioning ? (
-        <TenantProvisionDrawer onClose={() => setParams({})} onAccepted={() => void load()} />
+        <TenantProvisionDrawer onClose={close} onAccepted={() => void load()} />
       ) : null}
-      {selected ? <TenantDrawer tenant={selected} onClose={() => setParams({})} /> : null}
+      {selected ? <TenantDrawer key={selected.orgSlug} tenant={selected} onClose={close} /> : null}
     </div>
   );
 }
@@ -242,7 +243,7 @@ function TenantTable({
 }): JSX.Element {
   if (error)
     return (
-      <div className="wx-list-state" role="alert">
+      <div className="wx-list-state">
         <InlineAlert tone="error">{error}</InlineAlert>
         <Button tone="secondary" onClick={onRetry}>
           Try again
@@ -263,7 +264,7 @@ function TenantTable({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Tenants</caption>
         <thead>
@@ -284,7 +285,7 @@ function TenantTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                {...interactiveRowProps(open, isSelected)}
+                {...interactiveRowProps(open, isSelected, false, tenant.orgSlug)}
               >
                 <td>
                   <span className="wx-row-title">{tenant.legalBusinessName}</span>
@@ -305,7 +306,7 @@ function TenantTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

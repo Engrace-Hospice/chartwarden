@@ -4,13 +4,16 @@ import {
   GuardChip,
   InlineAlert,
   LoadingSpinner,
+  SelectField,
   StatusPill,
+  TableScroll,
   TextField,
   focusFirstInvalid,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — onboarding-template catalog (M34 SaaS Tenant Platform, R2 Phase-3).
@@ -22,7 +25,6 @@ import {
 // server-side). requiredPermission: `onboarding_template.list`. Mirrors the M40/M36 R1 exemplars.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
 import { FailureNotice } from "./onboarding/failure-notice";
 import { RecordSaveDialog } from "./onboarding/record-save-dialog";
 import { useOpsWrite } from "./onboarding/use-ops-write";
@@ -43,6 +45,11 @@ interface TemplateListPage {
 }
 
 type OriginFilter = "" | "canonical" | "tenant";
+const ORIGIN_OPTIONS: readonly { value: OriginFilter; label: string }[] = [
+  { value: "", label: "All templates" },
+  { value: "canonical", label: "Canonical (platform)" },
+  { value: "tenant", label: "Tenant additions" },
+];
 
 const LIST_LIMIT = 100;
 const ORDER_MIN = 0;
@@ -51,8 +58,8 @@ const NEW_TEMPLATE = "new";
 
 export function OnboardingTemplates(): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const drawerParam = params.get("template");
+  // The open template (or `new`) lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId: drawerParam, select, close: closeDrawer } = useSelectionParam("template");
   const [items, setItems] = useState<OnboardingTemplate[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -98,8 +105,8 @@ export function OnboardingTemplates(): JSX.Element {
     ready: loaded,
     found: selected !== undefined,
     ignore: [NEW_TEMPLATE],
+    clear: closeDrawer,
   });
-  const closeDrawer = (): void => setParams({});
   const onSaved = () => {
     closeDrawer();
     void load();
@@ -114,25 +121,25 @@ export function OnboardingTemplates(): JSX.Element {
             <p>The onboarding step catalog: the canonical platform steps plus tenant additions.</p>
           </div>
           <div className="wx-list-toolbar-end">
-            <select
-              aria-label="Filter by origin"
-              value={origin}
-              onChange={(e) => setOrigin(e.target.value as OriginFilter)}
-            >
-              <option value="">All templates</option>
-              <option value="canonical">Canonical (platform)</option>
-              <option value="tenant">Tenant additions</option>
-            </select>
-            <Button onClick={() => setParams({ template: NEW_TEMPLATE })}>Add template</Button>
+            <Button onClick={() => select(NEW_TEMPLATE)}>Add template</Button>
           </div>
         </header>
+
+        <div className="wx-list-toolbar wx-list-toolbar-fields">
+          <SelectField
+            label="Filter by origin"
+            value={origin}
+            options={ORIGIN_OPTIONS}
+            onChange={(e) => setOrigin(e.target.value as OriginFilter)}
+          />
+        </div>
 
         <TemplateTable
           items={visible}
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={(t) => setParams({ template: t.id })}
+          onSelect={(t) => select(t.id)}
           onRetry={() => void load()}
         />
       </div>
@@ -168,7 +175,7 @@ function TemplateTable({
 }): JSX.Element {
   if (error)
     return (
-      <div className="wx-list-state" role="alert">
+      <div className="wx-list-state">
         <InlineAlert tone="error">{error}</InlineAlert>
         <Button tone="secondary" onClick={onRetry}>
           Try again
@@ -189,7 +196,7 @@ function TemplateTable({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Onboarding templates</caption>
         <thead>
@@ -211,7 +218,7 @@ function TemplateTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                {...interactiveRowProps(open, isSelected)}
+                {...interactiveRowProps(open, isSelected, false, t.id)}
               >
                 <td className="wx-num-col wx-nums">{t.canonicalOrder}</td>
                 <td>
@@ -230,7 +237,7 @@ function TemplateTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

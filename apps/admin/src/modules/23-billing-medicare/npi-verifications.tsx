@@ -1,15 +1,18 @@
 import {
   Button,
-  EmptyState,
+  Glyph,
   InlineAlert,
+  LoadingSpinner,
   Modal,
-  Panel,
   ReverifyLink,
   StatusPill,
   type StatusTone,
+  TableScroll,
   TextAreaField,
   isStepUpRequired,
+  sendWrite,
   useApiClient,
+  useIdempotencyKeeper,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/23-billing-medicare — PLATFORM NPI VERIFICATION (ADR-0053 amendment 2026-11-05, precondition 2).
@@ -51,11 +54,20 @@ const failure = (error: unknown, fallback: string): Outcome =>
         message: (error as { error?: { message?: string } })?.error?.message ?? fallback,
       };
 
+/** A write whose request got no answer at all: the change may or may not have landed. */
+const UNREACHABLE: Outcome = {
+  ok: false,
+  message:
+    "Could not reach the server. Check your connection, and confirm the current state before trying again.",
+};
+
 const formatDate = (iso: string | null): string =>
   iso ? new Date(iso).toLocaleDateString("en-US", { dateStyle: "medium" }) : "—";
 
 export function NpiVerifications(): JSX.Element {
   const client = useApiClient();
+  // One Idempotency-Key per write intent: a retry after "could not reach the server" replays it (the first request may have landed).
+  const keeper = useIdempotencyKeeper();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [verifying, setVerifying] = useState<Row | null>(null);
@@ -76,25 +88,32 @@ export function NpiVerifications(): JSX.Element {
     async (row: Row) => {
       setBusyId(row.providerEntityId);
       setOutcome(null);
-      const res = await client.POST(
-        "/api/v1/admin/billing/npi-verifications/{providerEntityId}/revoke",
-        {
-          params: { path: { providerEntityId: row.providerEntityId } },
-          headers: { "Idempotency-Key": crypto.randomUUID() },
-        },
-      );
-      setBusyId(null);
-      if (res.error) {
-        setOutcome(failure(res.error, "Could not revoke the verification."));
-        return;
+      try {
+        // Success is "no error AND response.ok", and a rejected request (offline) is a failure, never an exception.
+        const sent = await sendWrite(keeper, `revoke:${row.providerEntityId}:${row.npi}`, (key) =>
+          client.POST("/api/v1/admin/billing/npi-verifications/{providerEntityId}/revoke", {
+            params: { path: { providerEntityId: row.providerEntityId } },
+            headers: { "Idempotency-Key": key },
+          }),
+        );
+        if (sent.status !== "ok") {
+          setOutcome(
+            sent.status === "unreachable"
+              ? UNREACHABLE
+              : failure(sent.res.error, "Could not revoke the verification."),
+          );
+          return;
+        }
+        setOutcome({
+          ok: true,
+          message: `Revoked NPI ${row.npi}. Its enrollment reports are no longer routed.`,
+        });
+        await load();
+      } finally {
+        setBusyId(null); // also when the reload after a landed write throws: the row never stays locked
       }
-      setOutcome({
-        ok: true,
-        message: `Revoked NPI ${row.npi}. Its enrollment reports are no longer routed.`,
-      });
-      await load();
     },
-    [client, load],
+    [client, load, keeper],
   );
 
   return (
@@ -111,82 +130,21 @@ export function NpiVerifications(): JSX.Element {
           </div>
         </header>
         {outcome ? (
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="wx-drawer-title-row">
             <InlineAlert tone={outcome.ok ? "success" : "error"}>{outcome.message}</InlineAlert>
             {outcome.stepUp ? <ReverifyLink /> : null}
           </div>
         ) : null}
-        <Panel title="Provider entities" icon="shield" flush={Boolean(rows && rows.length > 0)}>
-          {rows === null ? (
-            <p className="m-0 text-sm">Loading provider entities…</p>
-          ) : loadFailed ? (
-            <InlineAlert tone="error">Could not load provider entities.</InlineAlert>
-          ) : rows.length === 0 ? (
-            <EmptyState
-              title="No provider entities"
-              description="No tenant has registered one yet."
-            />
-          ) : (
-            <div className="wx-list-table-wrap">
-              <table className="wx-list-table wx-list-table-static">
-                <caption className="wx-sr-only">Provider entities and NPI verification</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Organization</th>
-                    <th scope="col">Provider entity</th>
-                    <th scope="col">NPI</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Since</th>
-                    <th scope="col">
-                      <span className="wx-sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.providerEntityId}>
-                      <td>{r.organizationName}</td>
-                      <td>
-                        <span className="wx-row-title">{r.legalName}</span>
-                      </td>
-                      <td className="wx-nums">{r.npi}</td>
-                      <td>
-                        <StatusPill label={STATE[r.state].label} tone={STATE[r.state].tone} />
-                      </td>
-                      <td className="wx-nums">
-                        {formatDate(r.state === "revoked" ? r.revokedAt : r.verifiedAt)}
-                      </td>
-                      <td>
-                        {r.state === "verified" ? (
-                          <Button
-                            tone="secondary"
-                            size="sm"
-                            loading={busyId === r.providerEntityId}
-                            aria-label={`Revoke NPI ${r.npi} for ${r.legalName}`}
-                            onClick={() => void revoke(r)}
-                          >
-                            Revoke
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            aria-label={`Verify NPI ${r.npi} for ${r.legalName}`}
-                            onClick={() => {
-                              setOutcome(null);
-                              setVerifying(r);
-                            }}
-                          >
-                            Verify
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Panel>
+        <EntitiesBody
+          rows={rows}
+          loadFailed={loadFailed}
+          busyId={busyId}
+          onRevoke={(row) => void revoke(row)}
+          onVerify={(row) => {
+            setOutcome(null);
+            setVerifying(row);
+          }}
+        />
       </div>
       {verifying ? (
         <VerifyDialog
@@ -203,6 +161,98 @@ export function NpiVerifications(): JSX.Element {
   );
 }
 
+function EntitiesBody({
+  rows,
+  loadFailed,
+  busyId,
+  onRevoke,
+  onVerify,
+}: {
+  rows: readonly Row[] | null;
+  loadFailed: boolean;
+  busyId: string | null;
+  onRevoke: (row: Row) => void;
+  onVerify: (row: Row) => void;
+}): JSX.Element {
+  if (rows === null)
+    return (
+      <div className="wx-list-state">
+        <LoadingSpinner label="Loading provider entities…" />
+      </div>
+    );
+  if (loadFailed)
+    return (
+      <div className="wx-list-state">
+        <InlineAlert tone="error">Could not load provider entities.</InlineAlert>
+      </div>
+    );
+  if (rows.length === 0)
+    return (
+      <div className="wx-list-state">
+        <Glyph name="shield" size={24} />
+        <strong>No provider entities</strong>
+        <span className="wx-row-sub">No tenant has registered one yet.</span>
+      </div>
+    );
+  return (
+    <TableScroll>
+      <table className="wx-list-table wx-list-table-static">
+        <caption className="wx-sr-only">Provider entities and NPI verification</caption>
+        <thead>
+          <tr>
+            <th scope="col">Organization</th>
+            <th scope="col">Provider entity</th>
+            <th scope="col">NPI</th>
+            <th scope="col">Status</th>
+            <th scope="col">Since</th>
+            <th scope="col">
+              <span className="wx-sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.providerEntityId}>
+              <td>{r.organizationName}</td>
+              <td>
+                <span className="wx-row-title">{r.legalName}</span>
+              </td>
+              <td className="wx-nums">{r.npi}</td>
+              <td>
+                <StatusPill label={STATE[r.state].label} tone={STATE[r.state].tone} />
+              </td>
+              <td className="wx-nums">
+                {formatDate(r.state === "revoked" ? r.revokedAt : r.verifiedAt)}
+              </td>
+              <td>
+                {r.state === "verified" ? (
+                  <Button
+                    tone="secondary"
+                    size="sm"
+                    loading={busyId === r.providerEntityId}
+                    aria-label={`Revoke NPI ${r.npi} for ${r.legalName}`}
+                    onClick={() => onRevoke(r)}
+                  >
+                    Revoke
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    aria-label={`Verify NPI ${r.npi} for ${r.legalName}`}
+                    onClick={() => onVerify(r)}
+                  >
+                    Verify
+                  </Button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </TableScroll>
+  );
+}
+
 function VerifyDialog({
   row,
   onClose,
@@ -213,6 +263,7 @@ function VerifyDialog({
   onDone: (message: string) => Promise<void>;
 }): JSX.Element {
   const client = useApiClient();
+  const keeper = useIdempotencyKeeper();
   const [evidence, setEvidence] = useState("");
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -227,17 +278,22 @@ function VerifyDialog({
     if (evidence.trim().length < 3) return;
     setBusy(true);
     setError(null);
-    const res = await client.POST(
-      "/api/v1/admin/billing/npi-verifications/{providerEntityId}/verify",
-      {
+    const body = { npi: row.npi, evidence: evidence.trim() };
+    // One key per verification (entity + NPI + evidence): a retry after no answer replays it, a changed evidence text is a new one.
+    const sent = await sendWrite(keeper, `${row.providerEntityId}:${JSON.stringify(body)}`, (key) =>
+      client.POST("/api/v1/admin/billing/npi-verifications/{providerEntityId}/verify", {
         params: { path: { providerEntityId: row.providerEntityId } },
-        body: { npi: row.npi, evidence: evidence.trim() },
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-      },
+        body,
+        headers: { "Idempotency-Key": key },
+      }),
     );
     setBusy(false);
-    if (res.error) {
-      setError(failure(res.error, "Could not verify the NPI."));
+    if (sent.status !== "ok") {
+      setError(
+        sent.status === "unreachable"
+          ? UNREACHABLE
+          : failure(sent.res.error, "Could not verify the NPI."),
+      );
       return;
     }
     await onDone(`Verified NPI ${row.npi} for ${row.legalName}.`);
@@ -260,7 +316,11 @@ function VerifyDialog({
           rows={3}
         />
         {error ? <InlineAlert tone="error">{error.message}</InlineAlert> : null}
-        {error?.stepUp ? <ReverifyLink /> : null}
+        {error?.stepUp ? (
+          <div className="wx-drawer-actions">
+            <ReverifyLink />
+          </div>
+        ) : null}
         <div className="wx-modal-actions">
           <Button tone="tertiary" onClick={onClose} disabled={busy}>
             Cancel

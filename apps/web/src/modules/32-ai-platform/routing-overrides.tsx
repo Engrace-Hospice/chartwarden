@@ -294,7 +294,7 @@ function SetOverrideDialog({
         capabilityId,
         backendKeyPreference: backendKey,
         overrideReason: reason as never,
-        effectiveAt: new Date().toISOString(),
+        // No client clock: the server defaults `effectiveAt` to now, so a retry after a lost reply is the same request and replays.
         expiresAt: expiresAt === "" ? null : new Date(expiresAt).toISOString(),
       },
     });

@@ -1,6 +1,7 @@
 // apps/admin/src/modules/36-messaging/settings — quiet-hours editor for the notification preferences screen:
 // time zone, the severity that breaks through quiet hours, and any number of weekly ranges.
 import { Button, SelectField, TextField } from "@chartwarden/ui";
+import { useEffect, useRef } from "react";
 import type { JSX } from "react";
 
 export interface QuietRange {
@@ -32,10 +33,24 @@ export function QuietHoursEditor({
   /** Receives a functional update so rapid edits compose instead of overwriting each other. */
   onChange: (update: (current: QuietHours) => QuietHours) => void;
 }): JSX.Element {
+  const rootRef = useRef<HTMLFieldSetElement>(null);
+  const removedAt = useRef<number | null>(null);
+  const rangeCount = value.ranges.length;
+  // Ranges are keyed by position, so removing one unmounts the LAST range's controls, and focus on them falls to the page. After a
+  // removal focus goes to the Remove button now at that position, else the one before it, else the Add button.
+  useEffect(() => {
+    const at = removedAt.current;
+    if (at === null) return;
+    removedAt.current = null;
+    const next = rootRef.current?.querySelector<HTMLElement>(
+      `[data-quiet-remove="${Math.min(at, rangeCount - 1)}"]`,
+    );
+    (next ?? rootRef.current?.querySelector<HTMLElement>("[data-quiet-add]"))?.focus();
+  }, [rangeCount]);
   const setRange = (index: number, patch: (range: QuietRange) => QuietRange): void =>
     onChange((v) => ({ ...v, ranges: v.ranges.map((r, i) => (i === index ? patch(r) : r)) }));
   return (
-    <fieldset className="wx-drawer-card grid gap-3" disabled={disabled}>
+    <fieldset ref={rootRef} className="wx-drawer-card" disabled={disabled}>
       <legend>Quiet hours</legend>
       <div className="wx-form-stack">
         <TextField
@@ -59,14 +74,13 @@ export function QuietHoursEditor({
       </div>
       {value.ranges.map((range, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: ranges have no id; edited in place by position
-        <fieldset key={index} className="grid gap-2">
+        <fieldset key={index} className="wx-form-stack">
           <legend>Range {index + 1}</legend>
-          <div className="flex flex-wrap gap-2">
+          <div className="wx-drawer-title-row">
             {DAYS.map((day, d) => (
-              <label key={day} className="inline-flex min-h-11 min-w-11 items-center gap-1">
+              <label key={day} className="wx-action-check">
                 <input
                   type="checkbox"
-                  className="size-5"
                   checked={range.daysOfWeek.includes(d)}
                   aria-label={`Range ${index + 1} ${day}`}
                   onChange={(e) => {
@@ -83,7 +97,7 @@ export function QuietHoursEditor({
               </label>
             ))}
           </div>
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="wx-drawer-title-row is-bottom">
             <TextField
               type="time"
               label={`Range ${index + 1} start`}
@@ -106,9 +120,11 @@ export function QuietHoursEditor({
               tone="tertiary"
               size="lg"
               aria-label={`Remove range ${index + 1}`}
-              onClick={() =>
-                onChange((v) => ({ ...v, ranges: v.ranges.filter((_, i) => i !== index) }))
-              }
+              data-quiet-remove={index}
+              onClick={() => {
+                removedAt.current = index;
+                onChange((v) => ({ ...v, ranges: v.ranges.filter((_, i) => i !== index) }));
+              }}
             >
               Remove
             </Button>
@@ -119,6 +135,7 @@ export function QuietHoursEditor({
         <Button
           tone="secondary"
           size="lg"
+          data-quiet-add
           onClick={() => onChange((v) => ({ ...v, ranges: [...v.ranges, NEW_RANGE] }))}
         >
           Add quiet range

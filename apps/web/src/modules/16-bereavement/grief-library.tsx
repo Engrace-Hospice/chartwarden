@@ -13,6 +13,7 @@ import {
   linkLifetimeMs,
   safeMintedUrl,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -36,7 +37,6 @@ import {
   th,
   thNum,
   useActionStatus,
-  useIdempotencyKey,
 } from "./bereavement-ui";
 import { LibraryEditModal } from "./library-edit-modal";
 import { LibraryUploadModal } from "./library-upload-modal";
@@ -105,7 +105,7 @@ export function GriefLibrary(): JSX.Element | null {
   const reasonIdBase = useId();
   const previewRef = useRef<HTMLAnchorElement>(null);
   const inFlight = useRef(false);
-  const keys = useIdempotencyKey();
+  const keys = useAttemptKey();
   const { announce, region } = useActionStatus();
 
   useEffect(() => {
@@ -153,7 +153,7 @@ export function GriefLibrary(): JSX.Element | null {
         next,
         keys.keyFor(`${item.itemId}:${item.version}:${next}`),
       );
-      keys.settle(res.status);
+      keys.settle(res.status, res.error);
       if (res.error || !res.data) {
         const message = errorMessage(res.error, "The item's status could not be changed.");
         if (isStaleWrite(res.status)) {

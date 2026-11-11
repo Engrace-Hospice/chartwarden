@@ -67,6 +67,33 @@ describe("interactiveRowProps", () => {
     expect(row().getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("renders the record id as data-row-id only when one is given, with or without controls", () => {
+    const { rerender } = render(
+      <table>
+        <tbody>
+          <tr data-testid="row" {...interactiveRowProps(() => {}, false, false, "rec-1")} />
+        </tbody>
+      </table>,
+    );
+    expect(row().getAttribute("data-row-id")).toBe("rec-1");
+    rerender(
+      <table>
+        <tbody>
+          <tr data-testid="row" {...interactiveRowProps(() => {}, false, true, "rec-2")} />
+        </tbody>
+      </table>,
+    );
+    expect(row().getAttribute("data-row-id")).toBe("rec-2");
+    rerender(
+      <table>
+        <tbody>
+          <tr data-testid="row" {...interactiveRowProps(() => {})} />
+        </tbody>
+      </table>,
+    );
+    expect(row().hasAttribute("data-row-id")).toBe(false);
+  });
+
   it("drops the button role for a row that holds its own controls", () => {
     // A `button` may not contain focusable content — the nested control may not be exposed, and the
     // button's accessible name is computed from the entire row's text.

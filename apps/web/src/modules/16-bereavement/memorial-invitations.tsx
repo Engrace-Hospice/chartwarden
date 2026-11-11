@@ -1,7 +1,7 @@
 // apps/web/src/modules/16-bereavement — a memorial service's INVITATIONS (ADR-0109 D10, routes 73 / 75). The list names every invited family,
 // so it is oversight only: the parent mounts this card only for `bereavement.memorial.manage`, and a 403 still renders nothing. Once the
 // service has started (and was not cancelled), each row can be marked attended or not; the row takes the server's answer.
-import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
+import { Button, LoadingSpinner, StatusPill, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useCallback, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -18,7 +18,6 @@ import {
   tdNum,
   th,
   thNum,
-  useIdempotencyKey,
 } from "./bereavement-ui";
 import { useLoaded } from "./mailing-load";
 import { INVITATION_STATUS_TONE, invitationLabel } from "./program-status";
@@ -42,7 +41,7 @@ export function MemorialInvitations({
   now?: number;
 }): JSX.Element | null {
   const client = useApiClient();
-  const keys = useIdempotencyKey();
+  const keys = useAttemptKey();
   const inFlight = useRef(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +67,7 @@ export function MemorialInvitations({
       attended,
       keys.keyFor(`${row.invitationId}:${row.version}:${attended}`),
     );
-    keys.settle(res.status);
+    keys.settle(res.status, res.error);
     inFlight.current = false;
     setBusyId(null);
     if (res.error || !res.data) {

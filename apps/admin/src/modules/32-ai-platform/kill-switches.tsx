@@ -5,12 +5,15 @@ import {
   LoadingSpinner,
   Modal,
   SelectField,
+  StatGrid,
+  TableScroll,
   TextAreaField,
   focusFirstInvalid,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.3 kill-switch dashboard
@@ -35,7 +38,7 @@ import type { operations } from "@chartwarden/ui";
 // intent — this activates one capability at a time and says so.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   EmptyListState,
   ErrorState,
@@ -83,8 +86,8 @@ function since(iso: string | null, now: Date): string {
 
 export function KillSwitches(): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get(SELECTED_PARAM);
+  // The open kill switch lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId, select, close } = useSelectionParam(SELECTED_PARAM);
   const [rows, setRows] = useState<KillSwitch[]>([]);
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,7 +132,7 @@ export function KillSwitches(): JSX.Element {
 
   function renderTable(list: KillSwitch[], withOrg: boolean, caption: string): JSX.Element {
     return (
-      <div className="wx-list-table-wrap">
+      <TableScroll>
         <table className="wx-list-table">
           <caption className="wx-sr-only">{caption}</caption>
           <thead>
@@ -145,14 +148,14 @@ export function KillSwitches(): JSX.Element {
           <tbody>
             {list.map((k) => {
               const isSelected = k.id === selectedId;
-              const open = (): void => setParams({ [SELECTED_PARAM]: k.id });
+              const open = (): void => select(k.id);
               return (
                 <tr
                   key={k.id}
                   className={
                     isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                   }
-                  {...interactiveRowProps(open, isSelected)}
+                  {...interactiveRowProps(open, isSelected, false, k.id)}
                 >
                   <td>
                     <span className="wx-row-title wx-data-md">{keyOf(k.capabilityId)}</span>
@@ -167,7 +170,7 @@ export function KillSwitches(): JSX.Element {
             })}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
     );
   }
 
@@ -205,7 +208,7 @@ export function KillSwitches(): JSX.Element {
               </StandingNotice>
             )}
 
-            <div className="wx-stat-grid" aria-label="Kill-switch summary">
+            <StatGrid label="Kill-switch summary">
               <div className="wx-stat-card">
                 <div>
                   <span className="wx-stat-label">Platform-wide kills</span>
@@ -218,7 +221,7 @@ export function KillSwitches(): JSX.Element {
                   <span className="wx-stat-value wx-nums">{tenantKills.length}</span>
                 </div>
               </div>
-            </div>
+            </StatGrid>
 
             <SectionTitle>Active platform-wide kills</SectionTitle>
             {platformKills.length === 0 ? (
@@ -250,11 +253,11 @@ export function KillSwitches(): JSX.Element {
           killSwitch={selected}
           capabilityKey={selected ? keyOf(selected.capabilityId) : null}
           loading={loading}
-          onClose={() => setParams({})}
+          onClose={close}
           onDone={(message, ok) => {
             setOutcome({ ok, message });
             if (ok) {
-              setParams({});
+              close();
               void load();
             }
           }}
@@ -473,7 +476,7 @@ function KillSwitchDrawer({
                 {killSwitch.organizationId ? (
                   <>
                     <dt>Organization</dt>
-                    <dd className="wx-data-md break-all">{killSwitch.organizationId}</dd>
+                    <dd className="wx-data-md">{killSwitch.organizationId}</dd>
                   </>
                 ) : null}
                 <dt>Activated</dt>

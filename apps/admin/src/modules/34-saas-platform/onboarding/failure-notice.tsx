@@ -1,6 +1,6 @@
 // apps/admin/src/modules/34-saas-platform/onboarding — an `OpsFailure` as the operator reads it: the sentence, and the one next step
 // its kind calls for (Re-verify, go to the step to finish first, a reference to quote when it is not their doing).
-import { InlineAlert, type OpsFailure, ReverifyLink } from "@chartwarden/ui";
+import { InlineAlert, type OpsFailure, ReverifyLink, UnstyledList } from "@chartwarden/ui";
 import { createContext, useContext } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -29,23 +29,26 @@ export function FailureNotice({
     failure.correlationId !== null;
   return (
     <div className="wx-form-stack">
-      <InlineAlert tone="error">
-        {fieldsShown ? "Some details need attention." : failure.message}
-        {quoteReference ? ` Reference: ${failure.correlationId}.` : ""}
-      </InlineAlert>
-      {failure.code === GUARDS_FAILED_CODE && failure.details.length > 0 ? (
-        <ul>
-          {guardFailureLines(failure.details).map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-      ) : failure.kind === "conflict" && failure.details.length > 0 ? (
-        <ul>
-          {failure.details.map((d) => (
-            <li key={`${d.field}:${d.message}`}>{d.message}</li>
-          ))}
-        </ul>
-      ) : null}
+      {/* The alert text is a <p>, which cannot hold the detail list: one live region wraps both so the details are announced with it. */}
+      <div role="alert">
+        <InlineAlert tone="error" live={false}>
+          {fieldsShown ? "Some details need attention." : failure.message}
+          {quoteReference ? ` Reference: ${failure.correlationId}.` : ""}
+        </InlineAlert>
+        {failure.code === GUARDS_FAILED_CODE && failure.details.length > 0 ? (
+          <UnstyledList>
+            {guardFailureLines(failure.details).map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </UnstyledList>
+        ) : failure.kind === "conflict" && failure.details.length > 0 ? (
+          <UnstyledList>
+            {failure.details.map((d) => (
+              <li key={`${d.field}:${d.message}`}>{d.message}</li>
+            ))}
+          </UnstyledList>
+        ) : null}
+      </div>
       {failure.kind === "step-up" ? (
         <div>
           <ReverifyLink {...(onReverify ? { onNavigate: onReverify } : {})}>Re-verify</ReverifyLink>

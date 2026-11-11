@@ -5,11 +5,13 @@ import {
   ReasonDialog,
   StatusPill,
   type StatusTone,
+  TableScroll,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
   useOpsWrite,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
@@ -23,7 +25,7 @@ import type { operations } from "@chartwarden/ui";
 // who holds it (read from the actor context the shell reads too: this module may not import the shell, which M34 owns).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
+
 import { PlanEditor, WriteFailure } from "./pricing-plan-form";
 import {
   ACTION_COPY,
@@ -65,8 +67,8 @@ export function PricingPlans(): JSX.Element {
   const client = useApiClient();
   // Fail closed: until the actor context answers (or if it cannot), no write buttons.
   const [canWrite, setCanWrite] = useState(false);
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("plan");
+  // The open plan (or `new`) lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId, select, close } = useSelectionParam("plan");
   const creating = selectedId === "new";
   const [plans, setPlans] = useState<PricingPlan[]>([]);
   const [defaults, setDefaults] = useState<Defaults | null>(null);
@@ -123,11 +125,16 @@ export function PricingPlans(): JSX.Element {
   // While the list cannot be read no drawer is shown: the plan it would show is the last read, not what the server holds now.
   const selected =
     selectedId && !creating && !error ? (plans.find((p) => p.id === selectedId) ?? null) : null;
-  useStaleSelection({ param: "plan", ready: loaded, found: selected !== null, ignore: ["new"] });
-  const close = (): void => setParams({});
+  useStaleSelection({
+    param: "plan",
+    ready: loaded,
+    found: selected !== null,
+    ignore: ["new"],
+    clear: close,
+  });
   const done = async (planId: string, message: string): Promise<void> => {
     setOutcome({ planId, message });
-    setParams({ plan: planId });
+    select(planId);
     await load();
   };
   const showCreate = creating && defaults !== null && canWrite && !error;
@@ -142,7 +149,7 @@ export function PricingPlans(): JSX.Element {
           </div>
           {canWrite ? (
             <div className="wx-list-toolbar-end">
-              <Button disabled={!defaults} onClick={() => setParams({ plan: "new" })}>
+              <Button disabled={!defaults} onClick={() => select("new")}>
                 New plan
               </Button>
             </div>
@@ -159,7 +166,7 @@ export function PricingPlans(): JSX.Element {
           plans={plans}
           selectedId={selectedId}
           onRetry={() => void load()}
-          onOpen={(id) => setParams({ plan: id })}
+          onOpen={select}
         />
       </div>
       {showCreate ? (
@@ -222,7 +229,7 @@ function PlansTable({
   onOpen: (id: string) => void;
 }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Price plans</caption>
         <thead>
@@ -246,7 +253,7 @@ function PlansTable({
                   ? "is-selected wx-data-row-interactive"
                   : "wx-data-row-interactive"
               }
-              {...interactiveRowProps(() => onOpen(p.id), p.id === selectedId)}
+              {...interactiveRowProps(() => onOpen(p.id), p.id === selectedId, false, p.id)}
             >
               <td>
                 <span className="wx-row-title">{p.name}</span>
@@ -265,7 +272,7 @@ function PlansTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 

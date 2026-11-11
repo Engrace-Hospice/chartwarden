@@ -17,6 +17,7 @@ export type { ActorContextResponse, RouteGuardOutcome } from "./actor-session";
 export {
   handleObservedResponse,
   mayCarryTenantRefusal,
+  onSessionExpired,
   setGlobalResponseSignal,
   signalForStatus,
   tenantSignalFromResponse,

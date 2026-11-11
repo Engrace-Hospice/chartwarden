@@ -183,14 +183,14 @@ export function validateDetails(form: FormState): Errors {
   const def = form.reason ? REASON_BY_VALUE.get(form.reason) : undefined;
   if (!def) return {};
   const errors: Errors = {};
-  const len = form.narrative.trim().length;
-  if (len < def.minNarrative)
-    errors.narrative = `Enter at least ${def.minNarrative} characters (${len} so far).`;
+  // The error text is static (the field's hint carries the running count), so its alert is not re-announced per keystroke.
+  if (form.narrative.trim().length < def.minNarrative)
+    errors.narrative = `Enter at least ${def.minNarrative} characters.`;
   else if (form.narrative.length > NARRATIVE_MAX)
     errors.narrative = `Keep the narrative under ${NARRATIVE_MAX} characters.`;
   if (def.value === "for_cause") {
-    const n = form.forCauseReason.trim().length;
-    if (n < FOR_CAUSE_MIN) errors.forCauseReason = `Enter at least 20 characters (${n} so far).`;
+    if (form.forCauseReason.trim().length < FOR_CAUSE_MIN)
+      errors.forCauseReason = "Enter at least 20 characters.";
     else if (form.forCauseReason.length > FOR_CAUSE_MAX)
       errors.forCauseReason = "Keep the reason under 2000 characters.";
   }

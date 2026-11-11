@@ -18,8 +18,8 @@ import {
 import { useState } from "react";
 import type { JSX } from "react";
 import { bodyFingerprint } from "./body-digest";
-import { VerifyBaa } from "./clearinghouse-baa-verify";
 import { RevokeBaa } from "./clearinghouse-baa-revoke";
+import { VerifyBaa } from "./clearinghouse-baa-verify";
 import {
   BLANK_CHOICE,
   type ChoiceContext,
@@ -377,7 +377,9 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
                 <RevokeBaa
                   orgSlug={orgSlug}
                   view={current}
-                  reload={() => Promise.all([load.reload(true), ctx.refresh()]).then(() => undefined)}
+                  reload={() =>
+                    Promise.all([load.reload(true), ctx.refresh()]).then(() => undefined)
+                  }
                 />
               </>
             ) : null}

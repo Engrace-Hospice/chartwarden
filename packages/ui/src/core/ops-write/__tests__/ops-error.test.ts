@@ -247,3 +247,64 @@ describe("describeOpsError", () => {
     });
   });
 });
+
+describe("describeOpsError and the stuck-key 409", () => {
+  it("tells the operator to check the record, in its own words, not the server's header jargon", () => {
+    const failure = describeOpsError(
+      envelope(
+        "IDEMPOTENCY_KEY_STUCK",
+        "The first request with this Idempotency-Key did not finish and its outcome is unknown. Do not retry with this key: read the resource to see whether the change was applied, and use a new key only if it was not.",
+      ),
+      { status: 409 },
+    );
+
+    expect(failure.kind).toBe("refused"); // keep the form: nothing was stale
+    expect(failure.message).toBe(
+      "We could not confirm whether that change was saved. Check the record before trying again.",
+    );
+    expect(failure.message).not.toContain("Idempotency-Key");
+  });
+
+  it("lets a screen's own sentence for the code win", () => {
+    const failure = describeOpsError(
+      envelope("IDEMPOTENCY_KEY_STUCK", "m"),
+      { status: 409 },
+      { IDEMPOTENCY_KEY_STUCK: "Open the plan to see whether it saved." },
+    );
+
+    expect(failure.message).toBe("Open the plan to see whether it saved.");
+  });
+});
+
+describe("describeOpsError and the in-flight duplicate 409", () => {
+  const IN_FLIGHT_SENTENCE = "Idempotency-Key request is still being processed";
+
+  it.each([
+    ["the IDEMPOTENCY_IN_FLIGHT code", envelope("IDEMPOTENCY_IN_FLIGHT", IN_FLIGHT_SENTENCE)],
+    ["the plain CONFLICT an older server sends", envelope("CONFLICT", IN_FLIGHT_SENTENCE)],
+  ])("says it in the operator's words, not the server's header jargon (%s)", (_label, body) => {
+    const failure = describeOpsError(body, { status: 409 });
+
+    expect(failure.kind).toBe("refused"); // keep the form: nothing was stale
+    expect(failure.message).not.toContain("Idempotency-Key");
+    expect(failure.message).toMatch(/still being saved/);
+  });
+
+  it("leaves an ordinary 409 CONFLICT sentence alone", () => {
+    const failure = describeOpsError(envelope("CONFLICT", "That plan is already published"), {
+      status: 409,
+    });
+
+    expect(failure.message).toBe("That plan is already published");
+  });
+
+  it("lets a screen's own sentence for the code win", () => {
+    const failure = describeOpsError(
+      envelope("IDEMPOTENCY_IN_FLIGHT", IN_FLIGHT_SENTENCE),
+      { status: 409 },
+      { IDEMPOTENCY_IN_FLIGHT: "Saving this plan. Give it a moment." },
+    );
+
+    expect(failure.message).toBe("Saving this plan. Give it a moment.");
+  });
+});

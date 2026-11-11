@@ -3,11 +3,13 @@ import {
   Glyph,
   InlineAlert,
   StatusPill,
+  TableScroll,
   TextField,
   interactiveRowProps,
   useApiClient,
   useDrawerA11y,
   useRequestGuard,
+  useSelectionParam,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — §5.1.4 invocation search (`/admin/ai-platform/invocations`,
@@ -34,7 +36,7 @@ import type { operations } from "@chartwarden/ui";
 // tenant's patients), not something a console should fake with a fan-out.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
+
 import { invocationTone } from "./status";
 import {
   EmptyListState,
@@ -66,8 +68,8 @@ export function InvocationSearch({
   embedded = false,
 }: InvocationSearchProps): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get(SELECTED_PARAM);
+  // The open invocation lives in the URL, so Back closes the drawer and open/close keep any other query param (an embedding tab's).
+  const { selectedId, select, close } = useSelectionParam(SELECTED_PARAM);
   const [rows, setRows] = useState<Invocation[]>([]);
   const [status, setStatus] = useState("");
   const [from, setFrom] = useState("");
@@ -110,17 +112,6 @@ export function InvocationSearch({
     void load(null, false);
   }, [load]);
 
-  const select = (id: string | null): void =>
-    setParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (id) next.set(SELECTED_PARAM, id);
-        else next.delete(SELECTED_PARAM);
-        return next;
-      },
-      { replace: true },
-    );
-
   const filters = (
     <>
       <select
@@ -146,7 +137,7 @@ export function InvocationSearch({
   );
 
   const table = (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">AI invocations</caption>
         <thead>
@@ -177,7 +168,7 @@ export function InvocationSearch({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                {...interactiveRowProps(open, isSelected)}
+                {...interactiveRowProps(open, isSelected, false, r.invocationId)}
               >
                 <td className="wx-nums">{formatDate(r.invokedAt)}</td>
                 <td>
@@ -197,7 +188,7 @@ export function InvocationSearch({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 
   const body = (
@@ -227,7 +218,7 @@ export function InvocationSearch({
         <>
           {table}
           {cursor ? (
-            <div className="flex justify-center">
+            <div className="wx-action-row is-center">
               <Button
                 tone="secondary"
                 onClick={() => void load(cursor, true)}
@@ -243,7 +234,7 @@ export function InvocationSearch({
     </>
   );
 
-  const frame = `wx-list-drawer${embedded ? " p-0" : ""}${selectedId ? " has-drawer" : ""}`;
+  const frame = `wx-list-drawer${embedded ? " is-embedded" : ""}${selectedId ? " has-drawer" : ""}`;
   return (
     <div className={frame}>
       <div className="wx-list-drawer-main">
@@ -263,9 +254,10 @@ export function InvocationSearch({
       </div>
       {selectedId ? (
         <InvocationDrawer
+          key={selectedId}
           id={selectedId}
           invocation={rows.find((r) => r.invocationId === selectedId) ?? null}
-          onClose={() => select(null)}
+          onClose={close}
         />
       ) : null}
     </div>
@@ -317,7 +309,7 @@ function InvocationDrawer({
                 <dt>Backend</dt>
                 <dd className="wx-data-md">{invocation.backendKey}</dd>
                 <dt>Model pin</dt>
-                <dd className="wx-data-md break-all">{invocation.modelVersionPin}</dd>
+                <dd className="wx-data-md">{invocation.modelVersionPin}</dd>
                 <dt>Prompt version</dt>
                 <dd>{invocation.promptTemplateVersion ?? "—"}</dd>
                 <dt>Routing</dt>

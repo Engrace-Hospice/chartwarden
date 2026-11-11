@@ -32,8 +32,6 @@ export function SnoozeControl({ channelId }: { readonly channelId: string }): JS
   const inFlight = useRef(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const noteRef = useRef<HTMLSpanElement>(null);
-  // One idempotency key per (dialog open, chosen length): a retry of the same choice replays, another choice is a new request.
-  const keys = useRef(new Map<number, string>());
   // The trigger changes element when the snooze starts or ends (or turns into the note), so focus is handed back after the render.
   const refocus = useRef(false);
   useEffect(() => {
@@ -94,14 +92,6 @@ export function SnoozeControl({ channelId }: { readonly channelId: string }): JS
     if (result.code) reload();
   }
 
-  const keyFor = (minutes: number): string => {
-    const existing = keys.current.get(minutes);
-    if (existing) return existing;
-    const created = crypto.randomUUID();
-    keys.current.set(minutes, created);
-    return created;
-  };
-
   return (
     <span className="wx-snooze">
       {/* One stable tree: main control, error text, live region, dialog - the live region keeps its position across the branches. */}
@@ -134,7 +124,6 @@ export function SnoozeControl({ channelId }: { readonly channelId: string }): JS
           onClick={() => {
             setError(null);
             setAnnounce("");
-            keys.current = new Map();
             setOpen(true);
           }}
         >
@@ -162,12 +151,7 @@ export function SnoozeControl({ channelId }: { readonly channelId: string }): JS
                   type="button"
                   tone="secondary"
                   disabled={busy}
-                  onClick={() =>
-                    void run(
-                      () => snooze(preset.minutes, keyFor(preset.minutes)),
-                      SNOOZE_STARTED_TEXT,
-                    )
-                  }
+                  onClick={() => void run(() => snooze(preset.minutes), SNOOZE_STARTED_TEXT)}
                 >
                   {preset.label}
                 </Button>

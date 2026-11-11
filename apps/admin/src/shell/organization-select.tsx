@@ -5,13 +5,14 @@ import {
   Glyph,
   InlineAlert,
   LoadingSpinner,
+  UnstyledList,
   useApiClient,
 } from "@chartwarden/ui";
 // apps/admin/src/shell — Organization Select (M1/M34, ADR-0030). Ported from
 // apps/web/src/modules/02-identity/organization-select.tsx: a multi-org platform-ops user picks the
 // org that binds the session. Backed by the real M2 routes GET /api/v1/auth/memberships +
 // POST /api/v1/auth/select-organization via the generated client. Laid out like the console's sign-in and
-// step-up cards (brand lockup above the card); each organization is a row in the shared list-table chrome.
+// step-up cards (brand lockup above the card); each organization is a `wx-drawer-card` row (the list table's min-width does not fit the card).
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -84,19 +85,16 @@ export function OrganizationSelect(): JSX.Element {
       brand={<BrandLockup />}
       footer={<Link to="/login">Sign in as someone else</Link>}
     >
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="m-0 text-lg font-semibold">Select organization</h1>
-          <p className="m-0 text-sm text-[var(--color-muted)]">
-            Choose the organization this session works in.
-          </p>
+      <div className="wx-form-stack">
+        <div className="wx-auth-head">
+          <h1>Select organization</h1>
+          <p>Choose the organization this session works in.</p>
         </div>
         {state.kind === "loading" ? <LoadingSpinner label="Loading your organizations…" /> : null}
         {state.kind === "error" ? (
-          <div className="flex flex-col gap-1" role="alert">
-            <strong className="text-sm">Unavailable</strong>
-            <InlineAlert tone="error">{state.message}</InlineAlert>
-          </div>
+          <InlineAlert tone="error">
+            <strong>Unavailable</strong> {state.message}
+          </InlineAlert>
         ) : null}
         {state.kind === "ready" && state.memberships.length === 0 ? (
           <EmptyState
@@ -105,11 +103,11 @@ export function OrganizationSelect(): JSX.Element {
           />
         ) : null}
         {state.kind === "ready" && state.memberships.length > 0 ? (
-          <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Your organizations">
+          <UnstyledList className="wx-form-stack" aria-label="Your organizations">
             {state.memberships.map((m) => (
-              <li key={m.membershipId}>
-                <div className="flex items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--color-card-border)] px-4 py-3">
-                  <div className="min-w-0">
+              <li key={m.membershipId} className="wx-drawer-card">
+                <div className="wx-drawer-card-head">
+                  <div className="wx-card-head-main">
                     <span className="wx-row-title">{m.organizationName}</span>
                     {m.isAdmin ? <span className="wx-row-sub">Admin</span> : null}
                   </div>
@@ -127,7 +125,7 @@ export function OrganizationSelect(): JSX.Element {
                 </div>
               </li>
             ))}
-          </ul>
+          </UnstyledList>
         ) : null}
       </div>
     </CenteredCardLayout>

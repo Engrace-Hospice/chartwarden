@@ -10,6 +10,7 @@ import {
   REASON_RULES,
   SelectField,
   TextField,
+  freshIdempotencyKeyHeaders,
   parsePriceCents,
   parseWholeNumber,
   stashStepUpMemoryDraft,
@@ -318,8 +319,12 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
       billingServiceMode: mode,
     };
     const askedFor = inputsKey;
+    // A preview prices the plan as it is now, so it does not use the keeper's key: every click gets a fresh one (never a replay).
     const outcome = await previewWrite.run(JSON.stringify(body), () =>
-      client.POST("/api/v1/platform/pricing/preview", { body }),
+      client.POST("/api/v1/platform/pricing/preview", {
+        body,
+        headers: freshIdempotencyKeyHeaders(),
+      }),
     );
     if (outcome.ok) setPreview({ inputsKey: askedFor, value: outcome.data as unknown as Preview });
   }

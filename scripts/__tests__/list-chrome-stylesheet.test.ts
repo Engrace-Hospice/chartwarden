@@ -32,6 +32,49 @@ describe("shared list-chrome stylesheet (GAP-207)", () => {
     for (const selector of LIST_CHROME_SELECTORS) expect(shared).toContain(selector);
   });
 
+  const ruleBody = (selector: string): string =>
+    new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`).exec(
+      shared,
+    )?.[1] ?? "";
+
+  it("spaces a fieldset card's legend with the card's grid gap, not a margin or a clear that would double it", () => {
+    const legend = ruleBody("fieldset.wx-drawer-card > legend");
+    expect(legend).toContain("float: left"); // keeps it out of the fieldset's border-cutting "rendered legend" slot
+    expect(legend).not.toContain("margin-bottom");
+    expect(shared).not.toContain("fieldset.wx-drawer-card > legend + *");
+  });
+
+  it("only makes a row title look clickable when it acts (button, link, or an interactive row's title)", () => {
+    expect(ruleBody(".wx-row-title")).not.toContain("cursor");
+    expect(ruleBody("button.wx-row-title,\n  a.wx-row-title")).toContain("cursor: pointer");
+    expect(shared).toContain('tr[role="button"] .wx-row-title:hover');
+    expect(shared).not.toContain("\n  .wx-row-title:hover");
+  });
+
+  it("defines the kit control height once, and a touch select changes it without !important", () => {
+    expect(shared.match(/--wx-field-control-height:/g)).toHaveLength(2); // the default, and .wx-touch-select
+    expect(ruleBody(".wx-field,\n  .wx-list-toolbar-fields")).toContain(
+      "--wx-field-control-height: 2.5rem",
+    );
+    expect(ruleBody(".wx-list-toolbar-fields.is-bottom")).not.toContain(
+      "--wx-field-control-height",
+    );
+    const touch = ruleBody(".wx-touch-select");
+    expect(touch).toContain("--wx-field-control-height: 2.75rem");
+    expect(touch).not.toContain("!important");
+  });
+
+  it("carries the card heading and brand lockup the shared CenteredCardLayout screens use, not an app stylesheet", () => {
+    const shell = read("packages/ui/src/web/styles/app-shell.css");
+    expect(shared).toContain(".wx-auth-head h1 {");
+    expect(shell).toContain(".wx-brand-lockup {");
+    for (const app of ["web", "admin", "portal"]) {
+      const css = read(`apps/${app}/src/index.css`);
+      expect(css, `${app} copy of .wx-auth-head`).not.toContain(".wx-auth-head");
+      expect(css, `${app} copy of .wx-brand-lockup`).not.toContain(".wx-brand-lockup");
+    }
+  });
+
   it("defines no design tokens (arch:design-tokens reads them from each app)", () => {
     expect(shared).not.toMatch(/@theme|:root\s*\{|--color-[a-z-]+:\s*#/);
   });

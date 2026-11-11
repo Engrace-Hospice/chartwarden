@@ -1,4 +1,12 @@
-import { Button, StatusPill, useApiClient, useRequestGuard } from "@chartwarden/ui";
+import {
+  Button,
+  StatusPill,
+  TableScroll,
+  sendWrite,
+  useApiClient,
+  useIdempotencyKeeper,
+  useRequestGuard,
+} from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Dunning (`/admin/dunning`, dunning.admin.read +
 // dunning.admin.override). Subscriptions currently in an OPEN dunning stage over GET /api/admin/dunning
@@ -11,7 +19,6 @@ import {
   cap,
   dunningTone,
   formatDate,
-  idempotencyKey,
   isCriticalDunningStage,
   orgLabel,
 } from "./status";
@@ -22,7 +29,7 @@ import {
   StateEmpty,
   StateError,
   StateLoading,
-  failureOutcome,
+  writeFailure,
 } from "./ui";
 
 type DunningPage =
@@ -31,6 +38,8 @@ type DunningRow = DunningPage["items"][number];
 
 export function Dunning(): JSX.Element {
   const client = useApiClient();
+  // One Idempotency-Key per write intent: a retry after "could not reach the server" replays it (the first request may have landed).
+  const keeper = useIdempotencyKeeper();
   const [rows, setRows] = useState<DunningRow[]>([]);
   const [stage, setStage] = useState<string>("");
   const [cursor, setCursor] = useState<string | null>(null);
@@ -77,22 +86,30 @@ export function Dunning(): JSX.Element {
         action === "skip_stage"
           ? "/api/admin/dunning/{subscriptionId}/skip_stage"
           : "/api/admin/dunning/{subscriptionId}/reset";
-      const res = await client.POST(path, {
-        params: { path: { subscriptionId } },
-        headers: { "Idempotency-Key": idempotencyKey() },
-      });
-      if (res.error) {
-        setOutcome(failureOutcome(res.error, `Could not ${action.replace("_", " ")}.`));
-      } else {
+      try {
+        const failure = writeFailure(
+          await sendWrite(keeper, `${action}:${subscriptionId}`, (key) =>
+            client.POST(path, {
+              params: { path: { subscriptionId } },
+              headers: { "Idempotency-Key": key },
+            }),
+          ),
+          `Could not ${action.replace("_", " ")}.`,
+        );
+        if (failure) {
+          setOutcome(failure);
+          return;
+        }
         setOutcome({
           ok: true,
           message: action === "reset" ? "Dunning reset." : "Dunning stage skipped.",
         });
         await load(null, false);
+      } finally {
+        setBusyId(null); // also when the reload after a landed write throws: the row never stays locked
       }
-      setBusyId(null);
     },
-    [client, load],
+    [client, load, keeper],
   );
 
   return (
@@ -152,7 +169,7 @@ function DunningTable({
   onOverride: (subscriptionId: string, action: "skip_stage" | "reset") => void;
 }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">Subscriptions in dunning</caption>
         <thead>
@@ -184,7 +201,7 @@ function DunningTable({
               <td className="wx-nums">{formatDate(r.enteredAt)}</td>
               <td className="wx-nums">{formatDate(r.nextAttemptAt)}</td>
               <td>
-                <div className="flex justify-end gap-2">
+                <div className="wx-action-row is-end">
                   <Button
                     tone="secondary"
                     size="sm"
@@ -207,6 +224,6 @@ function DunningTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }

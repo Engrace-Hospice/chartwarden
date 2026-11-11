@@ -4,14 +4,23 @@ import {
   Glyph,
   InlineAlert,
   LoadingSpinner,
+  type OpsFailure,
+  ReverifyLink,
   SelectField,
+  StatGrid,
   StatusPill,
+  TableScroll,
   TextField,
+  describeOpsError,
   interactiveRowProps,
+  settleWrite,
   useApiClient,
   useDebouncedValue,
   useDrawerA11y,
   useRequestGuard,
+  useRestoreFocus,
+  useSelectionParam,
+  useStaleSelection,
 } from "@chartwarden/ui";
 import type { GlyphName, paths } from "@chartwarden/ui";
 // apps/web/src/modules/34-saas — Feature Flags admin (M34, §4.7 / D13, platform-ops surface).
@@ -55,6 +64,9 @@ const KIND_OPTIONS = [
   ...FLAG_KINDS.map((k) => ({ value: k, label: statusLabel(k) })),
 ];
 
+/** Refusals the server makes before it applies anything; for any other failure the flag's state is unknown. */
+const REFUSED_BEFORE_APPLY: ReadonlySet<OpsFailure["kind"]> = new Set(["step-up", "forbidden"]);
+
 const scopeLabel = (f: FeatureFlagView): string =>
   f.organizationId ? "Per-tenant" : "Platform-global";
 
@@ -76,19 +88,31 @@ export function FeatureFlags(): JSX.Element {
   const [flags, setFlags] = useState<FeatureFlagView[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<FeatureFlagView | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  // The open flag lives in the URL (`?flag=<id>`), so Back closes the drawer and a link reopens it.
+  const { selectedId, select, close } = useSelectionParam("flag");
   const [ceremony, setCeremony] = useState<FeatureFlagView | null>(null);
   const [committing, setCommitting] = useState(false);
+  // Why the last commit was refused, shown inside the ceremony, which stays open so the operator can re-verify or retry.
+  const [commitFailure, setCommitFailure] = useState<OpsFailure | null>(null);
 
   // The filter the list was last fetched with: Enter/Apply/Refresh load the typed text at once, and the debounced value then
   // catches up to the same text — without this the effect would fetch the identical query a second time.
   const loadedKey = useRef<string | null>(null);
+  // A kill-switch commit closes the drawer and reloads, which unmounts the row it opened from: focus the
+  // row again once the reload lands, instead of leaving keyboard focus on the page body.
+  const reopenedRowId = useRef<string | null>(null);
+  const captureFocus = useRestoreFocus(loading, () => {
+    const id = reopenedRowId.current;
+    return id ? document.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(id)}"]`) : null;
+  });
 
   const load = useCallback(
     async (org: string = debouncedOrg) => {
       const isCurrent = guard();
       loadedKey.current = filterKey(flagKind, org);
       setLoading(true);
+      setLoaded(false);
       setError(null);
       const query: NonNullable<
         paths["/api/v1/platform/feature-flags"]["get"]["parameters"]["query"]
@@ -101,11 +125,13 @@ export function FeatureFlags(): JSX.Element {
       if (!isCurrent()) return;
       if (err) {
         setError("Could not load feature flags.");
+        setFlags([]);
         setLoading(false);
         return;
       }
       const page = data as FeatureFlagPage | undefined;
       setFlags(page?.items ?? []);
+      setLoaded(true);
       setLoading(false);
     },
     [client, guard, flagKind, debouncedOrg],
@@ -121,27 +147,42 @@ export function FeatureFlags(): JSX.Element {
   const commitKillSwitch = useCallback(
     async (typed?: string): Promise<void> => {
       const flag = ceremony;
-      if (!flag || typed !== flag.flagKey) return;
+      if (!flag || committing || typed !== flag.flagKey) return;
       setCommitting(true);
-      const { error: err } = await client.POST(
-        "/api/v1/platform/feature-flags/{flagKey}/kill-switch",
-        {
+      setCommitFailure(null);
+      // Success is "no error AND response.ok" (an empty-body gateway 502 is not one), and a rejected request (offline) is a failure
+      // like an error response: neither may close the ceremony as a success or leave it stuck or silent.
+      const sent = await settleWrite(
+        client.POST("/api/v1/platform/feature-flags/{flagKey}/kill-switch", {
           params: { path: { flagKey: flag.flagKey } },
           body: {
             killSwitchActive: !flag.killSwitchActive,
             reason: `Kill switch toggled via platform feature-flags console for ${flag.flagKey}`,
           },
-        },
+        }),
       );
       setCommitting(false);
-      setCeremony(null);
-      if (!err) {
-        setSelected(null);
-        void load();
+      if (sent.status !== "ok") {
+        // Refused (a stale step-up, a 403, a 5xx) or unreachable: say so and keep the ceremony open.
+        setCommitFailure(
+          sent.status === "unreachable"
+            ? describeOpsError(undefined, null)
+            : describeOpsError(sent.res.error, sent.res.response ?? null),
+        );
+        return;
       }
+      setCeremony(null);
+      reopenedRowId.current = flag.id;
+      captureFocus();
+      close();
+      void load();
     },
-    [ceremony, client, load],
+    [ceremony, committing, client, load, close, captureFocus],
   );
+
+  // A failed load empties the list, so no drawer shows a flag that was last read before the failure (and a retry cannot re-mount it from stale data).
+  const selected = selectedId ? flags.find((f) => f.id === selectedId) : undefined;
+  useStaleSelection({ param: "flag", ready: loaded, found: selected !== undefined, clear: close });
 
   return (
     <div className={`wx-list-drawer${selected ? " has-drawer" : ""}`}>
@@ -160,24 +201,22 @@ export function FeatureFlags(): JSX.Element {
 
         <FlagKpis flags={flags} loadFailed={error !== null} />
 
-        <div className="wx-list-toolbar">
-          <div className="grid w-full gap-3 md:grid-cols-2">
-            <SelectField
-              label="Flag kind"
-              value={flagKind}
-              options={KIND_OPTIONS}
-              onChange={(e) => setFlagKind(e.target.value as FlagKind | "")}
-            />
-            <TextField
-              label="Tenant organization id"
-              placeholder="Optional"
-              value={orgFilter}
-              onChange={(e) => setOrgFilter(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void load(orgFilter);
-              }}
-            />
-          </div>
+        <div className="wx-list-toolbar wx-list-toolbar-fields">
+          <SelectField
+            label="Flag kind"
+            value={flagKind}
+            options={KIND_OPTIONS}
+            onChange={(e) => setFlagKind(e.target.value as FlagKind | "")}
+          />
+          <TextField
+            label="Tenant organization id"
+            placeholder="Optional"
+            value={orgFilter}
+            onChange={(e) => setOrgFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void load(orgFilter);
+            }}
+          />
         </div>
 
         <FlagsTable
@@ -185,15 +224,19 @@ export function FeatureFlags(): JSX.Element {
           loading={loading}
           error={error}
           selectedId={selected?.id ?? null}
-          onSelect={setSelected}
+          onSelect={(f) => select(f.id)}
           onRetry={() => void load()}
         />
       </div>
       {selected ? (
         <FlagDrawer
+          key={selected.id}
           flag={selected}
-          onClose={() => setSelected(null)}
-          onArmKillSwitch={() => setCeremony(selected)}
+          onClose={close}
+          onArmKillSwitch={() => {
+            setCommitFailure(null);
+            setCeremony(selected);
+          }}
         />
       ) : null}
       {ceremony ? (
@@ -202,16 +245,27 @@ export function FeatureFlags(): JSX.Element {
           epcs
           title={ceremony.killSwitchActive ? "Disarm kill switch" : "Arm kill switch"}
           attestation={
-            <div className="flex flex-col gap-2">
+            <div className="wx-form-stack">
               <div>
                 You are about to <strong>{ceremony.killSwitchActive ? "disarm" : "arm"}</strong> the
                 kill switch for <span className="wx-data-md">{ceremony.flagKey}</span> (
                 {scopeLabel(ceremony).toLowerCase()}).
               </div>
-              <div className="text-[0.8125rem] text-[var(--color-on-surface-variant)]">
+              <div className="wx-row-sub">
                 Arming the kill switch immediately disables this capability for every affected
                 tenant and emits a platform-emergency alert.
               </div>
+              {commitFailure ? (
+                <div className="wx-form-stack">
+                  <InlineAlert tone="error">
+                    {commitFailure.message}{" "}
+                    {REFUSED_BEFORE_APPLY.has(commitFailure.kind)
+                      ? "The kill switch was not changed."
+                      : "Check the flag's current state before trying again."}
+                  </InlineAlert>
+                  {commitFailure.kind === "step-up" ? <ReverifyLink>Re-verify</ReverifyLink> : null}
+                </div>
+              ) : null}
             </div>
           }
           legalText="I confirm this emergency change is authorized and understand it takes effect immediately."
@@ -223,7 +277,10 @@ export function FeatureFlags(): JSX.Element {
           }}
           commitLabel={committing ? "Working…" : "Confirm & toggle"}
           onCommit={(typed) => void commitKillSwitch(typed)}
-          onCancel={() => setCeremony(null)}
+          onCancel={() => {
+            setCeremony(null);
+            setCommitFailure(null);
+          }}
         />
       ) : null}
     </div>
@@ -250,7 +307,7 @@ function FlagKpis({
   const killed = loadFailed ? null : flags.filter((f) => f.killSwitchActive).length;
   const perTenant = loadFailed ? null : flags.filter((f) => f.organizationId !== null).length;
   return (
-    <div className="wx-stat-grid" aria-label="Feature flag summary">
+    <StatGrid label="Feature flag summary">
       <StatCard icon="layout-grid" label="Total flags" value={total} sub="loaded" />
       <StatCard icon="check-circle" label="Enabled" value={enabled} sub="boolean · on" />
       <StatCard
@@ -261,7 +318,7 @@ function FlagKpis({
         alert={Boolean(killed)}
       />
       <StatCard icon="building" label="Per-tenant" value={perTenant} sub="org-scoped" />
-    </div>
+    </StatGrid>
   );
 }
 
@@ -285,7 +342,7 @@ function StatCard({
       </span>
       <div>
         <span className="wx-stat-label">{label}</span>
-        <span className={`wx-stat-value wx-nums${alert ? " text-[var(--color-alert)]" : ""}`}>
+        <span className={`wx-stat-value wx-nums${alert ? " wx-text-alert" : ""}`}>
           {value ?? "—"}
         </span>
         <span className="wx-row-sub">{sub}</span>
@@ -311,7 +368,7 @@ function FlagsTable({
 }): JSX.Element {
   if (error)
     return (
-      <div className="wx-list-state" role="alert">
+      <div className="wx-list-state">
         <InlineAlert tone="error">{error}</InlineAlert>
         <Button tone="secondary" onClick={onRetry}>
           Try again
@@ -332,7 +389,7 @@ function FlagsTable({
       </div>
     );
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Feature flags</caption>
         <thead>
@@ -353,7 +410,7 @@ function FlagsTable({
                 className={
                   isSelected ? "is-selected wx-data-row-interactive" : "wx-data-row-interactive"
                 }
-                {...interactiveRowProps(open, isSelected)}
+                {...interactiveRowProps(open, isSelected, false, f.id)}
               >
                 <td>
                   <span className="wx-row-title wx-data-md">{f.flagKey}</span>
@@ -368,14 +425,12 @@ function FlagsTable({
                 <td className="wx-data-md">{renderValue(f)}</td>
                 <td>
                   {f.killSwitchActive ? (
-                    <span className="inline-flex items-center gap-1.5 text-[0.8125rem] font-semibold text-[var(--color-alert)]">
+                    <span className="wx-inline-flag wx-text-alert">
                       <Glyph name="alert" size={14} label="Kill switch armed" />
                       Armed
                     </span>
                   ) : (
-                    <span className="text-[0.8125rem] text-[var(--color-on-surface-variant)]">
-                      Inactive
-                    </span>
+                    <span className="wx-inline-flag wx-text-muted">Inactive</span>
                   )}
                 </td>
               </tr>
@@ -383,7 +438,7 @@ function FlagsTable({
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 
@@ -426,13 +481,13 @@ function FlagDrawer({
             {flag.organizationId ? (
               <>
                 <dt>Tenant organization</dt>
-                <dd className="wx-data-md break-words">{flag.organizationId}</dd>
+                <dd className="wx-data-md">{flag.organizationId}</dd>
               </>
             ) : null}
             <dt>Value type</dt>
             <dd>{statusLabel(flag.valueType)}</dd>
             <dt>Value</dt>
-            <dd className="wx-data-md break-words">{renderValue(flag)}</dd>
+            <dd className="wx-data-md">{renderValue(flag)}</dd>
             <dt>Rollout</dt>
             <dd className="wx-nums">
               {flag.rolloutPercent !== null ? `${flag.rolloutPercent}%` : "—"}

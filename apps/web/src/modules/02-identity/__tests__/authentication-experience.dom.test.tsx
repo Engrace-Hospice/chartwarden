@@ -1,4 +1,4 @@
-import { ApiClientProvider } from "@chartwarden/ui";
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -141,6 +141,54 @@ describe("mandatory password change", () => {
       body: { currentPassword: "Temporary#123", newPassword: "A-New-Password#456" },
     });
     expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops the held Idempotency-Keys when it signs out and navigates (no page reload follows)", async () => {
+    const keys: (string | null)[] = [];
+    const client = createApiClient({
+      baseUrl: "http://localhost",
+      fetch: async (request) => {
+        const path = new URL(request.url).pathname;
+        const ok = (body: unknown) =>
+          new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        if (path === "/api/v1/auth/credential-status") return ok({ passwordChangeRequired: true });
+        if (path === "/api/v1/auth/password/complete-required-change") return ok({});
+        keys.push(request.headers.get("Idempotency-Key"));
+        if (keys.length === 1) throw new TypeError("Failed to fetch"); // the first write's reply is lost
+        return ok({});
+      },
+    });
+    const write = () =>
+      client.POST("/api/v1/x" as never, { body: { a: 1 } } as never).catch(() => undefined);
+    await write();
+    render(
+      <MemoryRouter initialEntries={["/login/change-password"]}>
+        <ApiClientProvider client={client}>
+          <Routes>
+            <Route path="/login/change-password" element={<RequiredPasswordChange />} />
+            <Route path="/login" element={<p>login page</p>} />
+          </Routes>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByText("Change Your Password");
+    fireEvent.change(screen.getByLabelText("Temporary Password"), {
+      target: { value: "Temporary#123" },
+    });
+    fireEvent.change(screen.getByLabelText("New Password"), {
+      target: { value: "A-New-Password#456" },
+    });
+    fireEvent.change(screen.getByLabelText("Confirm New Password"), {
+      target: { value: "A-New-Password#456" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Change Password" }));
+    await screen.findByText("login page");
+    await write(); // the next person to sign in on this page
+
+    expect(keys[1]).not.toBe(keys[0]);
   });
 
   it("finishes a pending notification link when no change is required, and consumes it once", async () => {

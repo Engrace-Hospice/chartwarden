@@ -94,7 +94,7 @@ function WizardFor(): JSX.Element {
     const notFound = wizard.failure.kind === "not-found";
     return (
       <Frame>
-        <div className="wx-list-state" role="alert">
+        <div className="wx-list-state">
           <InlineAlert tone="error">
             {notFound ? "Tenant not found." : "Could not load this tenant's onboarding."}
           </InlineAlert>
@@ -140,7 +140,12 @@ function WizardFor(): JSX.Element {
         <StaleNotice stale={wizard.stale} onReload={() => void wizard.reload()} />
 
         {view.tenantStatus === "provisioning" ? (
-          <ProvisioningCard key={orgSlug} orgSlug={orgSlug} onChanged={() => void refresh()} />
+          <ProvisioningCard
+            key={orgSlug}
+            orgSlug={orgSlug}
+            headingLevel="h2"
+            onChanged={() => void refresh()}
+          />
         ) : null}
 
         <div className="wx-wizard">

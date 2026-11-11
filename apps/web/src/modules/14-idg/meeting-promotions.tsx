@@ -2,7 +2,7 @@
 // patient, who proposed it and when. "Add to agenda" puts an `other` item (a pointer) on the agenda; "Decline" records a
 // reason. Hidden while the tenant has proposals off (`enabled:false`) or there are none; every owner-route refusal reads
 // as one neutral "no longer available" line. (No "Open message" link: agenda items do not carry the channel id.)
-import { Button, Panel, SelectField, t, useApiClient } from "@chartwarden/ui";
+import { Button, Panel, SelectField, t, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import {
@@ -56,8 +56,9 @@ export function MeetingPromotions({
   const statusRef = useRef<HTMLOutputElement>(null);
   const restoreFocusTo = useRef<string | null>(null);
   const latestRead = useRef(0);
-  // One Idempotency-Key per proposal, kept only while no answer has arrived, so a retry after a dropped answer cannot add twice.
-  const addKeys = useRef(new Map<string, string>());
+  // One Idempotency-Key per proposal (the shared useAttemptKey), held while no answer has settled it, so a retry after a dropped answer
+  // cannot add twice.
+  const attempt = useAttemptKey();
 
   // The Decline button is unmounted while its form is open: focus it once the form has closed.
   useEffect(() => {
@@ -103,7 +104,6 @@ export function MeetingPromotions({
     setFailed(!res.ok);
     setMessage(res.ok ? success : gone ? NOT_AVAILABLE : GENERIC_FAILURE);
     if (res.ok || gone) {
-      addKeys.current.delete(id);
       setDecliningId(null);
       await read();
     }
@@ -188,16 +188,12 @@ export function MeetingPromotions({
                       void decide(
                         p.request_id,
                         async () => {
-                          const key = addKeys.current.get(p.request_id) ?? crypto.randomUUID();
-                          addKeys.current.set(p.request_id, key);
                           const res = await addAgendaItemFromPromotion(
                             client,
                             meetingId,
                             p.request_id,
-                            key,
+                            attempt,
                           );
-                          // The server caches every answered response (errors too) under its key: only a thrown fetch retries with it.
-                          if (res.ok || res.status !== null) addKeys.current.delete(p.request_id);
                           if (res.ok) onAgendaChanged();
                           return res;
                         },

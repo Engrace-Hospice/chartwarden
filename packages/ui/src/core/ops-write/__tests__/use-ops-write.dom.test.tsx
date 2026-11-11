@@ -68,6 +68,27 @@ describe("useOpsWrite", () => {
     expect(keys[2]).toBe(keys[1]); // the dropped request got no answer: the retry replays it
   });
 
+  it("an empty-body non-ok response is a failure, not a success, and a gateway page keeps the key for the retry", async () => {
+    const { result } = renderHook(() => useOpsWrite());
+    const keys: string[] = [];
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await result.current.run("same", async (key) => {
+        keys.push(key);
+        // What openapi-fetch returns for a 502 with Content-Length 0: `error` is undefined.
+        return { error: undefined, response: { ok: false, status: 502 } };
+      });
+    });
+    expect(outcome).toMatchObject({ ok: false, failure: { kind: "unavailable", status: 502 } });
+    await act(async () => {
+      await result.current.run("same", async (key) => {
+        keys.push(key);
+        return { data: {}, response: { ok: true, status: 200 } };
+      });
+    });
+    expect(keys[1]).toBe(keys[0]); // nothing was cached under the key: the retry replays it
+  });
+
   it("a second run while one is in flight is dropped", async () => {
     const { result } = renderHook(() => useOpsWrite());
     let calls = 0;

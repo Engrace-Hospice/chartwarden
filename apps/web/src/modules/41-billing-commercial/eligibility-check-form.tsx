@@ -8,9 +8,11 @@ import {
   Button,
   ClaimsBillingNotice,
   InlineAlert,
+  NO_ANSWER,
   SelectField,
   TextField,
   useApiClient,
+  useAttemptKey,
   useClaimsBilling,
 } from "@chartwarden/ui";
 import { useRef, useState } from "react";
@@ -60,14 +62,13 @@ export function EligibilityCheckForm({
   const [failure, setFailure] = useState<CheckFailure | null>(null);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
-  // One key per attempt: kept across a retry of the same body, dropped when a field changes and on any HTTP response; kept only after a thrown/no-response failure.
-  const attemptKey = useRef<string | null>(null);
-  const keyedPlanId = useRef(planId);
+  // One key per attempt, held by the shared useAttemptKey: kept across a retry of the same body while no answer settled the attempt (a
+  // thrown fetch, a gateway page, the in-flight 409), dropped when a field changes (the plan too) and on any other response.
+  const attempt = useAttemptKey();
 
   const edit =
     (name: keyof Fields) =>
     (value: string): void => {
-      attemptKey.current = null;
       setFields((prev) => ({ ...prev, [name]: value }));
     };
 
@@ -81,24 +82,16 @@ export function EligibilityCheckForm({
     if (Object.keys(errors).length > 0) return;
     inFlight.current = true;
     setBusy(true);
-    if (keyedPlanId.current !== planId) attemptKey.current = null; // the page's plan changed under us: a different body
-    keyedPlanId.current = planId;
-    attemptKey.current ??= crypto.randomUUID();
+    const body = { providerEntityId, patientId, planId, serviceDate: fields.serviceDate };
+    // The page's plan changing under us is a different body, so a different intent and key.
+    const key = attempt.keyFor(JSON.stringify(body));
     try {
       const { data, error, response } = await client.POST(
         "/api/v1/billing/commercial/eligibility/check",
-        {
-          params: { header: { "Idempotency-Key": attemptKey.current } },
-          body: {
-            providerEntityId,
-            patientId,
-            planId,
-            serviceDate: fields.serviceDate,
-          },
-        },
+        { params: { header: { "Idempotency-Key": key } }, body },
       );
+      attempt.settle(response.status, error);
       if (!error && data) {
-        attemptKey.current = null;
         onChecked({ planId, replayed: data.replayed });
         return;
       }
@@ -106,12 +99,12 @@ export function EligibilityCheckForm({
         navigate("/login");
         return;
       }
-      // The server caches EVERY answer (4xx/5xx too) under the key for 24h and replays it for the same body, so a key survives only
-      // when no HTTP response arrived (the catch below); any response, 503/500/403/404/422 included, retires it.
-      attemptKey.current = null;
+      // The server caches EVERY answer (4xx/5xx too) under the key for 24h and replays it for the same body, so `settle` above retires
+      // the key on any answer the app gave; only a throw (below), a gateway page and the in-flight 409 keep it.
       const code = (error as { error?: { code?: string } } | undefined)?.error?.code;
       setFailure(describeCheckFailure(response.status, code));
     } catch {
+      attempt.settle(NO_ANSWER);
       setFailure(describeCheckFailure(0, undefined));
     } finally {
       inFlight.current = false;

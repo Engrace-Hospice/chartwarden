@@ -1,12 +1,14 @@
 import {
   Button,
   InlineAlert,
-  Panel,
   StatusPill,
   TextAreaField,
   focusFirstInvalid,
+  sendWrite,
   useApiClient,
+  useIdempotencyKeeper,
   useRequestGuard,
+  useRestoreFocus,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Refund approval (`/admin/refunds/:id/approve`,
@@ -17,17 +19,20 @@ import type { operations } from "@chartwarden/ui";
 // Redesign frame: the decision in the main column, the refund summary in the right drawer.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { cap, formatCents, formatDate, orgLabel, refundTone } from "./status";
+import { useParams } from "react-router-dom";
+import { DECIDED_REFUND_ICON, cap, formatCents, formatDate, orgLabel, refundTone } from "./status";
 import {
   DrawerHead,
   type Outcome,
   OutcomeBanner,
+  StateEmpty,
   StateError,
   StateLoading,
+  UNREACHABLE_OUTCOME,
   failureOutcome,
   isNotFound,
 } from "./ui";
+import { useSuccessRedirect } from "./use-success-redirect";
 
 type Refund = operations["getApiAdminRefundsById"]["responses"][200]["content"]["application/json"];
 
@@ -50,16 +55,20 @@ function denial(error: unknown, fallback: string): Outcome {
 
 export function RefundApprove(): JSX.Element {
   const client = useApiClient();
-  const navigate = useNavigate();
+  const { done, finish } = useSuccessRedirect();
   const { id } = useParams<{ id: string }>();
   const [refund, setRefund] = useState<Refund | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [busy, setBusy] = useState(false);
+  // Which decision is in flight (and stays set once it succeeded): both buttons lock, only that one shows the spinner.
+  const [acting, setActing] = useState<"approve" | "deny" | null>(null);
   const [denyReason, setDenyReason] = useState("");
   const [denyAttempted, setDenyAttempted] = useState(false);
   const decisionRef = useRef<HTMLDivElement>(null);
+  // A refused decision re-enables the buttons: focus returns to the one that was pressed (it was disabled while in flight).
+  const captureFocus = useRestoreFocus(acting !== null);
+  const keeper = useIdempotencyKeeper();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const guard = useRequestGuard();
@@ -91,46 +100,58 @@ export function RefundApprove(): JSX.Element {
   }, [load]);
 
   const approve = useCallback(async () => {
-    if (!id) return;
-    setBusy(true);
+    if (!id || acting || done) return;
+    captureFocus();
+    setActing("approve");
     setOutcome(null);
-    const res = await client.POST("/api/admin/refunds/{id}/approve", {
-      params: { path: { id } },
-      headers: { "Idempotency-Key": crypto.randomUUID() },
-    });
-    if (res.error) {
-      setOutcome(denial(res.error, "Could not approve the refund."));
-      setBusy(false);
+    // One key per decision: a retry after "could not reach the server" replays it (the first request may have landed).
+    const sent = await sendWrite(keeper, `approve:${id}`, (key) =>
+      client.POST("/api/admin/refunds/{id}/approve", {
+        params: { path: { id } },
+        headers: { "Idempotency-Key": key },
+      }),
+    );
+    if (sent.status !== "ok") {
+      setOutcome(
+        sent.status === "refused"
+          ? denial(sent.res.error, "Could not approve the refund.")
+          : UNREACHABLE_OUTCOME,
+      );
+      setActing(null);
       return;
     }
-    setOutcome({ ok: true, message: "Refund approved — queued for execution." });
-    setBusy(false);
-    setTimeout(() => navigate("/admin/refunds"), 1000);
-  }, [client, id, navigate]);
+    finish("/admin/refunds", "Refund approved — queued for execution.");
+  }, [acting, done, client, id, finish, captureFocus, keeper]);
 
   const deny = useCallback(async () => {
-    if (!id) return;
+    if (!id || acting || done) return;
     setDenyAttempted(true);
     if (denyReason.trim().length === 0) {
       focusFirstInvalid(decisionRef.current);
       return;
     }
-    setBusy(true);
+    captureFocus();
+    setActing("deny");
     setOutcome(null);
-    const res = await client.POST("/api/admin/refunds/{id}/deny", {
-      params: { path: { id } },
-      body: { reason: denyReason.trim() },
-      headers: { "Idempotency-Key": crypto.randomUUID() },
-    });
-    if (res.error) {
-      setOutcome(denial(res.error, "Could not deny the refund."));
-      setBusy(false);
+    const reason = denyReason.trim();
+    const sent = await sendWrite(keeper, `deny:${id}:${reason}`, (key) =>
+      client.POST("/api/admin/refunds/{id}/deny", {
+        params: { path: { id } },
+        body: { reason },
+        headers: { "Idempotency-Key": key },
+      }),
+    );
+    if (sent.status !== "ok") {
+      setOutcome(
+        sent.status === "refused"
+          ? denial(sent.res.error, "Could not deny the refund.")
+          : UNREACHABLE_OUTCOME,
+      );
+      setActing(null);
       return;
     }
-    setOutcome({ ok: true, message: "Refund denied." });
-    setBusy(false);
-    setTimeout(() => navigate("/admin/refunds"), 1000);
-  }, [client, id, denyReason, navigate]);
+    finish("/admin/refunds", "Refund denied.");
+  }, [acting, done, client, id, denyReason, finish, captureFocus, keeper]);
 
   const pageHead = (
     <header className="wx-page-head">
@@ -164,46 +185,61 @@ export function RefundApprove(): JSX.Element {
     <div className="wx-list-drawer has-drawer">
       <div className="wx-list-drawer-main">
         {pageHead}
-        <div className="grid max-w-xl gap-4">
-          <InlineAlert tone="info">
-            Approval is step-up-gated and enforces four-eyes: you may not approve a refund you
-            requested. A denied step-up or a self-approval attempt is reported below.
-          </InlineAlert>
-          {outcome ? <OutcomeBanner {...outcome} /> : null}
-          {decided ? (
-            <p className="m-0 text-sm">
-              This refund is already {cap(refund.status)} — no action available.
-            </p>
-          ) : (
-            <Panel title="Decision" icon="scale">
-              <div className="grid gap-4" ref={decisionRef}>
-                <div className="wx-action-row">
-                  <Button loading={busy} onClick={() => void approve()}>
-                    Approve refund
-                  </Button>
-                </div>
-                <TextAreaField
-                  id="deny-reason"
-                  label="Deny reason"
-                  value={denyReason}
-                  onChange={(e) => setDenyReason(e.target.value)}
-                  error={
-                    denyAttempted && denyReason.trim().length === 0
-                      ? "Say why this refund is being denied."
-                      : undefined
-                  }
-                  rows={3}
-                  placeholder="Why is this refund being denied?"
-                />
-                <div className="wx-action-row">
-                  <Button tone="secondary" onClick={() => void deny()} disabled={busy}>
-                    Deny refund
-                  </Button>
-                </div>
+        <InlineAlert tone="info">
+          Approval is step-up-gated and enforces four-eyes: you may not approve a refund you
+          requested. A denied step-up or a self-approval attempt is reported below.
+        </InlineAlert>
+        {outcome ? <OutcomeBanner {...outcome} /> : null}
+        {decided ? (
+          <StateEmpty icon={DECIDED_REFUND_ICON[refund.status]}>
+            This refund is already {cap(refund.status)} — no action available.
+          </StateEmpty>
+        ) : (
+          <section className="wx-drawer-card">
+            <div className="wx-drawer-card-head">
+              <h2>Decision</h2>
+            </div>
+            <div className="wx-form-stack" ref={decisionRef}>
+              <div className="wx-drawer-actions">
+                <Button
+                  loading={acting === "approve"}
+                  disabled={acting !== null || done}
+                  onClick={() => void approve()}
+                >
+                  Approve refund
+                </Button>
               </div>
-            </Panel>
-          )}
-        </div>
+              <TextAreaField
+                id="deny-reason"
+                label="Deny reason"
+                hint="Required to deny a refund; leave it blank to approve."
+                // Not `required` (and no `*`): Approve does not need it. It becomes required once a deny is attempted.
+                aria-required={denyAttempted || undefined}
+                // The reason is what the decision sends: it must not change while a decision is in flight or after it landed.
+                readOnly={acting !== null || done}
+                value={denyReason}
+                onChange={(e) => setDenyReason(e.target.value)}
+                error={
+                  denyAttempted && denyReason.trim().length === 0
+                    ? "Say why this refund is being denied."
+                    : undefined
+                }
+                rows={3}
+                placeholder="Why is this refund being denied?"
+              />
+              <div className="wx-drawer-actions">
+                <Button
+                  tone="secondary"
+                  loading={acting === "deny"}
+                  disabled={acting !== null || done}
+                  onClick={() => void deny()}
+                >
+                  Deny refund
+                </Button>
+              </div>
+            </div>
+          </section>
+        )}
       </div>
       <RefundSummary refund={refund} />
     </div>
@@ -236,7 +272,7 @@ function RefundSummary({ refund }: { refund: Refund }): JSX.Element {
             <dt>Requested</dt>
             <dd className="wx-nums">{formatDate(refund.requestedAt)}</dd>
             <dt>Requested by</dt>
-            <dd className="wx-data-md break-all">{refund.requestedByMembershipId}</dd>
+            <dd className="wx-data-md">{refund.requestedByMembershipId}</dd>
           </dl>
         </section>
       </div>

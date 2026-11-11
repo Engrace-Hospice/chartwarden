@@ -27,9 +27,9 @@ import { TENANT_BAA_MAX_BYTES } from "../../../../bootstrap/onboarding-baa-docum
 import type { OnboardingDataService, OnboardingOperator } from "./onboarding-data-service";
 import {
   BAA_UPLOAD_BODY_LIMIT_BYTES,
-  OnboardingBaaDocumentUploadRequest,
   ONBOARDING_REASON_MAX,
   ONBOARDING_REASON_MIN,
+  OnboardingBaaDocumentUploadRequest,
   OnboardingBaaRevokeRequest,
   OnboardingBaaVerifyRequest,
   OnboardingClearinghousePutRequest,

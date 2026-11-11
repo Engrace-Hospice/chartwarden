@@ -19,6 +19,7 @@ import {
   LoadingSpinner,
   PageHeader,
   StatusPill,
+  freshIdempotencyKeyHeaders,
   t,
   useApiClient,
 } from "@chartwarden/ui";
@@ -161,6 +162,7 @@ export function PatientPrivacy(): JSX.Element {
     setResyncError(null);
     const r = await client.POST("/api/v1/patients/{id}/privacy-flags/resync", {
       params: { path: { id } },
+      headers: freshIdempotencyKeyHeaders(), // a re-sync reads the current flags: never replay an earlier answer
     });
     setResyncing(false);
     if (r.error || !r.data) {

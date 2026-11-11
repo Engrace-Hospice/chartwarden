@@ -3193,7 +3193,9 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         baa_verified_at: null,
         baa_revoked_ticket_ref: "SEC-42",
       });
-      expect((await revokeAudits(REV_ORG_K)).filter((a) => a.outcome === "success")).toHaveLength(1);
+      expect((await revokeAudits(REV_ORG_K)).filter((a) => a.outcome === "success")).toHaveLength(
+        1,
+      );
     });
 
     it("is refused to a tenant on every surface, and cannot be reached or read across tenants", async () => {
@@ -3566,8 +3568,12 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
            VALUES ($1,'claimmd','production','active',$2,1,'attested',now(),$3,now(),$3,$3,'claimmd','2026-01-01','Legacy BAA ref',now(),$3,now(),$3)`,
           [
             REV_ORG_P,
-            (await cipher.encrypt(REV_ORG_P, keyOf("rev-p"), { vendor: "claimmd", mode: "production" }))
-              .cipher,
+            (
+              await cipher.encrypt(REV_ORG_P, keyOf("rev-p"), {
+                vendor: "claimmd",
+                mode: "production",
+              })
+            ).cipher,
             MEMBERSHIP,
           ],
         );
@@ -3625,7 +3631,9 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       const res = await revoke("rev-q", pin);
       expect(res.statusCode, res.body).toBe(200);
       expect(res.json()).toMatchObject({ status: "verified", baa: { revoked: true } });
-      expect(await rowOf(REV_ORG_Q)).toMatchObject({ baa_revoked_reason_code: "vendor_terminated" });
+      expect(await rowOf(REV_ORG_Q)).toMatchObject({
+        baa_revoked_reason_code: "vendor_terminated",
+      });
     });
   });
 });

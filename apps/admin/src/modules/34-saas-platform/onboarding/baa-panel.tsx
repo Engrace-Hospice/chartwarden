@@ -382,7 +382,7 @@ export function BaaPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
                   ref={documentAlert}
                   tabIndex={-1}
                   aria-label="Signed agreement"
-                  className="wx-fieldset-plain"
+                  className="wx-fieldset-reset"
                 >
                   <InlineAlert>{fieldError("documentId")}</InlineAlert>
                 </fieldset>

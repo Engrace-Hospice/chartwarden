@@ -2,16 +2,20 @@ import {
   Button,
   SelectField,
   StatusPill,
+  TableScroll,
   TextField,
   focusFirstInvalid,
   interactiveRowProps,
   isValid,
   parsePriceCents,
   parseWholeNumber,
+  sendWrite,
   stashStepUpMemoryDraft,
   useApiClient,
   useDrawerA11y,
+  useIdempotencyKeeper,
   useRequestGuard,
+  useSelectionParam,
   useStaleSelection,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
@@ -23,9 +27,9 @@ import type { operations } from "@chartwarden/ui";
 // meter/pricing editor (`/admin/plans/:id/edit`); "New plan" opens the create form in the same drawer.
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { PLAN_EMPTY_FORM, type PlanForm, planFormErrors } from "./form-rules";
-import { cap, formatCents, idempotencyKey } from "./status";
+import { cap, formatCents } from "./status";
 import {
   DrawerHead,
   type Outcome,
@@ -33,7 +37,7 @@ import {
   StateEmpty,
   StateError,
   StateLoading,
-  failureOutcome,
+  writeFailure,
 } from "./ui";
 
 type PlanRow =
@@ -53,8 +57,10 @@ const CADENCE_OPTIONS = [
 
 export function PlansList(): JSX.Element {
   const client = useApiClient();
-  const [params, setParams] = useSearchParams();
-  const selectedId = params.get("plan");
+  // One Idempotency-Key per write intent: a retry after "could not reach the server" replays it (the first request may have landed).
+  const keeper = useIdempotencyKeeper();
+  // The open plan lives in the URL, so Back closes the drawer and open/close keep any other query param.
+  const { selectedId, select, close } = useSelectionParam("plan");
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -95,28 +101,35 @@ export function PlansList(): JSX.Element {
       return;
     setSaving(true);
     setOutcome(null);
-    const res = await client.POST("/api/admin/plans", {
-      body: {
-        slug: form.slug.trim(),
-        name: form.name.trim(),
-        tier: form.tier as "starter" | "professional" | "enterprise",
-        cadence: form.cadence as "monthly" | "annual",
-        basePriceCents,
-        currencyCode: "USD",
-        trialPeriodDays,
-      },
-      headers: { "Idempotency-Key": idempotencyKey() },
-    });
-    if (res.error) {
-      setOutcome(failureOutcome(res.error, "Could not create the plan (check the fields)."));
-    } else {
+    const body = {
+      slug: form.slug.trim(),
+      name: form.name.trim(),
+      tier: form.tier as "starter" | "professional" | "enterprise",
+      cadence: form.cadence as "monthly" | "annual",
+      basePriceCents,
+      currencyCode: "USD" as const,
+      trialPeriodDays,
+    };
+    try {
+      // One key per create request: a retry of the same unchanged plan replays it, so a lost reply cannot create a second draft.
+      const failure = writeFailure(
+        await sendWrite(keeper, JSON.stringify(body), (key) =>
+          client.POST("/api/admin/plans", { body, headers: { "Idempotency-Key": key } }),
+        ),
+        "Could not create the plan (check the fields).",
+      );
+      if (failure) {
+        setOutcome(failure);
+        return;
+      }
       setOutcome({ ok: true, message: `Draft plan "${form.name}" created.` });
       setShowCreate(false);
       setForm(PLAN_EMPTY_FORM);
       await load();
+    } finally {
+      setSaving(false); // also when the reload after a landed write throws: the form never stays locked
     }
-    setSaving(false);
-  }, [client, form, load]);
+  }, [client, form, load, keeper]);
 
   const selected = selectedId ? (plans.find((p) => p.id === selectedId) ?? null) : null;
   useStaleSelection({
@@ -124,6 +137,7 @@ export function PlansList(): JSX.Element {
     ready: loaded,
     found: selected !== null,
     ignore: ["new"],
+    clear: close,
   });
   const hasDrawer = showCreate || selected !== null;
 
@@ -138,7 +152,7 @@ export function PlansList(): JSX.Element {
           <div className="wx-list-toolbar-end">
             <Button
               onClick={() => {
-                setParams({});
+                if (selectedId !== null) close();
                 setShowCreate((s) => !s);
               }}
             >
@@ -164,7 +178,7 @@ export function PlansList(): JSX.Element {
             selectedId={selectedId}
             onOpen={(id) => {
               setShowCreate(false);
-              setParams({ plan: id });
+              select(id);
             }}
           />
         )}
@@ -178,7 +192,7 @@ export function PlansList(): JSX.Element {
           onClose={() => setShowCreate(false)}
         />
       ) : selected ? (
-        <PlanDrawer plan={selected} onClose={() => setParams({})} />
+        <PlanDrawer key={selected.id} plan={selected} onClose={close} />
       ) : null}
     </div>
   );
@@ -194,7 +208,7 @@ function PlansTable({
   onOpen: (id: string) => void;
 }): JSX.Element {
   return (
-    <div className="wx-list-table-wrap">
+    <TableScroll>
       <table className="wx-list-table">
         <caption className="wx-sr-only">Plans</caption>
         <thead>
@@ -220,7 +234,7 @@ function PlansTable({
                   ? "is-selected wx-data-row-interactive"
                   : "wx-data-row-interactive"
               }
-              {...interactiveRowProps(() => onOpen(p.id), p.id === selectedId)}
+              {...interactiveRowProps(() => onOpen(p.id), p.id === selectedId, false, p.id)}
             >
               <td>
                 <span className="wx-row-title">{p.name}</span>
@@ -242,7 +256,7 @@ function PlansTable({
           ))}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   );
 }
 
@@ -327,7 +341,7 @@ function CreatePlanDrawer({
             value={form.name}
             onChange={(e) => onChange({ ...form, name: e.target.value })}
           />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="wx-form-grid">
             <SelectField
               label="Tier"
               value={form.tier}

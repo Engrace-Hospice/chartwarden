@@ -1,12 +1,15 @@
 import {
   Button,
-  Panel,
   SelectField,
   StatusPill,
+  TableScroll,
   TextAreaField,
   TextField,
+  sendWrite,
   stashStepUpMemoryDraft,
   useApiClient,
+  useIdempotencyKeeper,
+  useRestoreFocus,
   useStepUpMemoryDraft,
 } from "@chartwarden/ui";
 import type { operations } from "@chartwarden/ui";
@@ -16,8 +19,8 @@ import type { operations } from "@chartwarden/ui";
 // active-patient count is the current period's census (shown, not billed: Stripe charging is deferred).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { cap, formatCents, formatDate, idempotencyKey } from "./status";
-import { type Outcome, OutcomeBanner, failureOutcome } from "./ui";
+import { cap, formatCents, formatDate } from "./status";
+import { type Outcome, OutcomeBanner, StateEmpty, StateLoading, writeFailure } from "./ui";
 
 type SubscriptionAddon =
   operations["getApiAdminSubscriptionsByIdAddons"]["responses"][200]["content"]["application/json"][number];
@@ -49,7 +52,13 @@ export function AddonsPanel({
   const [reason, setReason] = useState(restored?.reason ?? "");
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Which row's cancel is in flight: every action locks while busy, but only that row's button shows the spinner.
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  // A refused grant or cancel re-enables the button the keyboard user pressed; it was disabled while in flight, which dropped focus.
+  const captureFocus = useRestoreFocus(busy);
+  // One Idempotency-Key per grant / cancel: a retry of the same unchanged request after "could not reach the server" replays it.
+  const keeper = useIdempotencyKeeper();
 
   const load = useCallback(async () => {
     const res = await client.GET("/api/admin/subscriptions/{id}/addons", {
@@ -69,44 +78,57 @@ export function AddonsPanel({
     attempted && mode === "trial" && !trialEndsAt ? "Pick the day the trial ends." : undefined;
 
   const grant = useCallback(async () => {
+    if (busy) return;
     setAttempted(true);
     if (reason.trim().length < 3 || (mode === "trial" && !trialEndsAt)) return;
+    captureFocus();
     setBusy(true);
     setOutcome(null);
-    const res = await client.POST("/api/admin/subscriptions/{id}/addons", {
-      params: { path: { id: subscriptionId } },
-      body: {
-        addonSlug: CLAIMS_BILLING,
-        mode,
-        reason: reason.trim(),
-        ...(mode === "trial"
-          ? { trialEndsAt: new Date(`${trialEndsAt}T23:59:59Z`).toISOString() }
-          : {}),
-      },
-      headers: { "Idempotency-Key": idempotencyKey() },
-    });
+    const body = {
+      addonSlug: CLAIMS_BILLING,
+      mode,
+      reason: reason.trim(),
+      ...(mode === "trial"
+        ? { trialEndsAt: new Date(`${trialEndsAt}T23:59:59Z`).toISOString() }
+        : {}),
+    };
+    const sent = await sendWrite(keeper, `grant:${subscriptionId}:${JSON.stringify(body)}`, (key) =>
+      client.POST("/api/admin/subscriptions/{id}/addons", {
+        params: { path: { id: subscriptionId } },
+        body,
+        headers: { "Idempotency-Key": key },
+      }),
+    );
     setBusy(false);
-    if (res.error) {
-      setOutcome(failureOutcome(res.error, "Could not add the claims-billing add-on."));
+    const failure = writeFailure(sent, "Could not add the claims-billing add-on.");
+    if (failure) {
+      setOutcome(failure);
       return;
     }
     setOutcome({ ok: true, message: mode === "trial" ? "Trial started." : "Add-on granted." });
     setReason("");
     setAttempted(false);
     await load();
-  }, [client, subscriptionId, mode, trialEndsAt, reason, load]);
+  }, [busy, client, subscriptionId, mode, trialEndsAt, reason, load, captureFocus, keeper]);
 
   const cancel = useCallback(
     async (addonId: string) => {
+      if (busy) return;
+      captureFocus();
       setBusy(true);
+      setCancellingId(addonId);
       setOutcome(null);
-      const res = await client.POST("/api/admin/subscriptions/{id}/addons/{addonId}/cancel", {
-        params: { path: { id: subscriptionId, addonId } },
-        headers: { "Idempotency-Key": idempotencyKey() },
-      });
+      const sent = await sendWrite(keeper, `cancel:${subscriptionId}:${addonId}`, (key) =>
+        client.POST("/api/admin/subscriptions/{id}/addons/{addonId}/cancel", {
+          params: { path: { id: subscriptionId, addonId } },
+          headers: { "Idempotency-Key": key },
+        }),
+      );
       setBusy(false);
-      if (res.error) {
-        setOutcome(failureOutcome(res.error, "Could not cancel the add-on."));
+      setCancellingId(null);
+      const failure = writeFailure(sent, "Could not cancel the add-on.");
+      if (failure) {
+        setOutcome(failure);
         return;
       }
       setOutcome({
@@ -115,73 +137,84 @@ export function AddonsPanel({
       });
       await load();
     },
-    [client, subscriptionId, load],
+    [busy, client, subscriptionId, load, captureFocus, keeper],
   );
 
   return (
-    <Panel title="Add-ons" icon="receipt">
-      <div className="grid gap-4">
-        {rows === null ? (
-          <p className="m-0 text-sm">Loading add-ons…</p>
-        ) : rows.length === 0 ? (
-          <p className="m-0 text-sm">No add-ons on this subscription.</p>
-        ) : (
-          <div className="wx-list-table-wrap">
-            <table className="wx-list-table wx-list-table-static">
-              <caption className="wx-sr-only">Add-ons</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Add-on</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Started</th>
-                  <th scope="col">Trial ends</th>
-                  <th scope="col">Ended</th>
-                  <th scope="col">
-                    <span className="wx-sr-only">Actions</span>
-                  </th>
+    <section className="wx-drawer-card">
+      <div className="wx-drawer-card-head">
+        <h2>Add-ons</h2>
+      </div>
+      {rows === null ? (
+        <StateLoading label="Loading add-ons…" />
+      ) : rows.length === 0 ? (
+        <StateEmpty icon="receipt">No add-ons on this subscription.</StateEmpty>
+      ) : (
+        <TableScroll>
+          <table className="wx-list-table wx-list-table-static">
+            <caption className="wx-sr-only">Add-ons</caption>
+            <thead>
+              <tr>
+                <th scope="col">Add-on</th>
+                <th scope="col">Status</th>
+                <th scope="col">Started</th>
+                <th scope="col">Trial ends</th>
+                <th scope="col">Ended</th>
+                <th scope="col">
+                  <span className="wx-sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id}>
+                  <td>
+                    <span className="wx-row-title">{r.addonName}</span>
+                  </td>
+                  <td>
+                    <StatusPill label={r.live ? cap(r.status) : "Ended"} tone={addonTone(r)} />
+                  </td>
+                  <td className="wx-nums">{formatDate(r.startedAt)}</td>
+                  <td className="wx-nums">{formatDate(r.trialEndsAt)}</td>
+                  <td className="wx-nums">{formatDate(r.endsAt)}</td>
+                  <td>
+                    {r.live ? (
+                      <Button
+                        tone="secondary"
+                        size="sm"
+                        loading={cancellingId === r.addonId}
+                        disabled={busy}
+                        onClick={() => void cancel(r.addonId)}
+                      >
+                        Cancel add-on
+                      </Button>
+                    ) : null}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id}>
-                    <td>
-                      <span className="wx-row-title">{r.addonName}</span>
-                    </td>
-                    <td>
-                      <StatusPill label={r.live ? cap(r.status) : "Ended"} tone={addonTone(r)} />
-                    </td>
-                    <td className="wx-nums">{formatDate(r.startedAt)}</td>
-                    <td className="wx-nums">{formatDate(r.trialEndsAt)}</td>
-                    <td className="wx-nums">{formatDate(r.endsAt)}</td>
-                    <td>
-                      {r.live ? (
-                        <Button
-                          tone="secondary"
-                          size="sm"
-                          loading={busy}
-                          onClick={() => void cancel(r.addonId)}
-                        >
-                          Cancel add-on
-                        </Button>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {usage ? (
-          <p className="wx-source-line wx-nums">
-            Active patients this period: {usage.activePatientCount.toLocaleString()} ·{" "}
-            {usage.unitPriceCents === null
-              ? "price not set"
-              : `${formatCents(usage.unitPriceCents)} per active patient per month`}{" "}
-            · not billed yet
-          </p>
-        ) : null}
-        {live ? null : (
-          <div className="grid gap-3">
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
+      )}
+      {usage ? (
+        <p className="wx-source-line wx-nums">
+          Active patients this period: {usage.activePatientCount.toLocaleString()} ·{" "}
+          {usage.unitPriceCents === null
+            ? "price not set"
+            : `${formatCents(usage.unitPriceCents)} per active patient per month`}{" "}
+          · not billed yet
+        </p>
+      ) : null}
+      {live ? null : (
+        <form
+          className="wx-form-stack"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void grant();
+          }}
+        >
+          <div className="wx-form-grid">
             <SelectField
               label="Claims billing"
               value={mode}
@@ -200,28 +233,28 @@ export function AddonsPanel({
                 error={trialError}
               />
             ) : null}
-            <TextAreaField
-              label="Reason (for the audit record)"
-              hint="Do not include patient information."
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              error={reasonError}
-              rows={2}
-            />
-            <div className="wx-action-row is-end">
-              <Button loading={busy} onClick={() => void grant()}>
-                {mode === "trial" ? "Start trial" : "Grant add-on"}
-              </Button>
-            </div>
           </div>
-        )}
-        {outcome ? (
-          <OutcomeBanner
-            {...outcome}
-            onReverify={() => stashStepUpMemoryDraft(draftKey, { mode, trialEndsAt, reason })}
+          <TextAreaField
+            label="Reason (for the audit record)"
+            hint="Do not include patient information."
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            error={reasonError}
+            rows={2}
           />
-        ) : null}
-      </div>
-    </Panel>
+          <div className="wx-drawer-actions">
+            <Button type="submit" loading={busy && cancellingId === null}>
+              {mode === "trial" ? "Start trial" : "Grant add-on"}
+            </Button>
+          </div>
+        </form>
+      )}
+      {outcome ? (
+        <OutcomeBanner
+          {...outcome}
+          onReverify={() => stashStepUpMemoryDraft(draftKey, { mode, trialEndsAt, reason })}
+        />
+      ) : null}
+    </section>
   );
 }
