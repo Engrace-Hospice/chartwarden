@@ -42,16 +42,9 @@ function build(
             supportConsentGrantId: GRANT,
             actorMembershipId: OPERATOR,
             expiresAt: new Date(NOW.getTime() + HOUR),
+            closedAt: null,
           }
         : null,
-    listOpenSessions: async () => [
-      {
-        id: "s1",
-        supportConsentGrantId: GRANT,
-        actorMembershipId: OPERATOR,
-        expiresAt: new Date(NOW.getTime() + HOUR),
-      },
-    ],
     findOnboardingTask: async () => null,
     organizationHasTenantAccount: async () => false,
     ...overrides,
@@ -132,7 +125,19 @@ describe("M34 Drizzle ABAC resolver (GAP-098)", () => {
           id: SESSION,
           supportConsentGrantId: GRANT,
           actorMembershipId: OPERATOR,
+          expiresAt: new Date(NOW.getTime() + HOUR),
+          closedAt: NOW,
+        }),
+      }).predicates.tenant_consented_support_active!(ctx(["platform_ops"]), target),
+    ).toBe(false);
+    expect(
+      await build({
+        findSession: async () => ({
+          id: SESSION,
+          supportConsentGrantId: GRANT,
+          actorMembershipId: OPERATOR,
           expiresAt: new Date(NOW.getTime() - 1),
+          closedAt: null,
         }),
       }).predicates.tenant_consented_support_active!(ctx(["platform_ops"]), target),
     ).toBe(false);

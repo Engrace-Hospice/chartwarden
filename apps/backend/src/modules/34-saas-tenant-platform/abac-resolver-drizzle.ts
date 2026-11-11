@@ -52,6 +52,7 @@ export interface OpenSessionRow {
   readonly supportConsentGrantId: string;
   readonly actorMembershipId: string;
   readonly expiresAt: Date;
+  readonly closedAt: Date | null;
 }
 
 /** An onboarding task row, narrowed to the columns the predicates resolve. */
@@ -65,8 +66,6 @@ export interface OnboardingTaskRow {
 export interface PlatformFactsReader {
   findGrant(grantId: string): Promise<GrantRow | null>;
   findSession(sessionId: string): Promise<OpenSessionRow | null>;
-  /** Not-yet-closed sessions for the tenant (expiry is judged by the resolver against `now()`). */
-  listOpenSessions(tenantAccountId: string): Promise<readonly OpenSessionRow[]>;
   findOnboardingTask(taskId: string): Promise<OnboardingTaskRow | null>;
   /** Does `organizationId` belong to a provisioned tenant account? (scope validation for flag creation) */
   organizationHasTenantAccount(organizationId: string): Promise<boolean>;
@@ -97,15 +96,6 @@ function repositoryFactsReader(tx: Tx): PlatformFactsReader {
     },
     findGrant: (grantId) => support.findConsentGrantById(grantId),
     findSession: (sessionId) => support.findSessionById(sessionId),
-    async listOpenSessions(tenantAccountId) {
-      const rows = await support.listOpenSessions(tenantAccountId);
-      return rows.map((s) => ({
-        id: s.id,
-        supportConsentGrantId: s.supportConsentGrantId,
-        actorMembershipId: s.actorMembershipId,
-        expiresAt: s.expiresAt,
-      }));
-    },
     async findOnboardingTask(taskId) {
       const row = await onboarding.findTaskById(taskId);
       return row
@@ -136,6 +126,7 @@ export function createDrizzleTenantPlatformAbacResolver(
           const reader = readerOf(tx);
           const session = await reader.findSession(input.supportSessionId);
           if (!session || session.actorMembershipId !== input.actorMembershipId) return false;
+          if (session.closedAt !== null) return false;
           if (session.expiresAt.getTime() <= at.getTime()) return false;
           const grant = await reader.findGrant(session.supportConsentGrantId);
           return grant !== null && grantActive(grant, at);
