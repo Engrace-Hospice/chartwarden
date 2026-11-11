@@ -59,9 +59,22 @@ type SeedIds = {
   optOut: string;
   gateOverride: string;
   idgRiskFlag: string;
+  assessmentTask: string;
+  assessmentDraft: string;
+  physicianLetter: string;
+  mailingConfig: string;
+  mailingRun: string;
+  mailingItem: string;
+  group: string;
+  groupSession: string;
+  groupEnrollment: string;
+  groupAttendance: string;
+  memorialService: string;
+  memorialInvitation: string;
+  libraryItem: string;
 };
 
-/** The 9 manifest-owned M16 tables, each with the seeded row the isolation case looks for. */
+/** The manifest-owned M16 tables, each with the seeded row the isolation case looks for. */
 const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "bereavement_plan", key: "plan" },
   { table: "bereaved_contact", key: "contact" },
@@ -73,6 +86,22 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "bereavement_opt_out", key: "optOut" },
   { table: "tenant_bereavement_external_source_gate_override", key: "gateOverride" },
   { table: "bereavement_idg_risk_flag", key: "idgRiskFlag" },
+  { table: "bereavement_assessment_task", key: "assessmentTask" },
+  { table: "bereavement_risk_assessment_draft", key: "assessmentDraft" },
+  { table: "bereavement_physician_letter", key: "physicianLetter" },
+  // ADR-0109 D10 — the mailing program (config and run are org-level; the item names a plan and a contact).
+  { table: "bereavement_mailing_config", key: "mailingConfig" },
+  { table: "bereavement_mailing_run", key: "mailingRun" },
+  { table: "bereavement_mailing_item", key: "mailingItem" },
+  // ADR-0109 D10 (PR 3) — support groups, memorial services and the grief library (group, session, service and library item are org-level;
+  // enrollment, attendance and invitation name a plan and a contact).
+  { table: "bereavement_support_group", key: "group" },
+  { table: "bereavement_support_group_session", key: "groupSession" },
+  { table: "bereavement_support_group_enrollment", key: "groupEnrollment" },
+  { table: "bereavement_support_group_attendance", key: "groupAttendance" },
+  { table: "bereavement_memorial_service", key: "memorialService" },
+  { table: "bereavement_memorial_invitation", key: "memorialInvitation" },
+  { table: "bereavement_library_item", key: "libraryItem" },
 ];
 
 describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -229,7 +258,118 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
         ],
       )
     ).rows[0].id as string;
+    const assessmentTask = (
+      await db.query(
+        `INSERT INTO bereavement_assessment_task (organization_id, provider_entity_id, location_id, plan_id,
+           bereaved_contact_id, task_kind, status, due_at, late_grace_until)
+         VALUES ($1,$2,$3,$4,$5,'initial_assessment','scheduled', now() + interval '2 days',
+           now() + interval '9 days') RETURNING id`,
+        [org, pe, location, plan, contact],
+      )
+    ).rows[0].id as string;
+    // A pre-death draft keys on the ADMISSION and exists before any plan (no FK to one).
+    const assessmentDraft = (
+      await db.query(
+        `INSERT INTO bereavement_risk_assessment_draft (organization_id, provider_entity_id, location_id,
+           patient_id, admission_id, last_edited_by_membership_id, last_edited_discipline)
+         VALUES ($1,$2,$3,$4,$5,$6,'medical_social_worker') RETURNING id`,
+        [org, pe, location, patient, `6666666${n}-6666-4666-8666-666666666666`, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
+    // ADR-0109 D6 — the plan's physician condolence letter (one per plan).
+    const physicianLetter = (
+      await db.query(
+        `INSERT INTO bereavement_physician_letter (organization_id, provider_entity_id, location_id, plan_id,
+           patient_id, due_at)
+         VALUES ($1,$2,$3,$4,$5, now() + interval '2 days') RETURNING id`,
+        [org, pe, location, plan, patient],
+      )
+    ).rows[0].id as string;
+    // ADR-0109 D10 — one config, one run and one item of that run.
+    const mailingConfig = (
+      await db.query(
+        `INSERT INTO bereavement_mailing_config (organization_id, mailing_key, enabled, configured_by_membership_id)
+         VALUES ($1,'newsletter_quarterly',true,$2) RETURNING id`,
+        [org, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
+    const mailingRun = (
+      await db.query(
+        `INSERT INTO bereavement_mailing_run (organization_id, run_kind, mailing_key, occurrence_key, scheduled_for, content_jsonb)
+         VALUES ($1,'newsletter','newsletter_quarterly','newsletter_quarterly:2026-Q4','2026-10-15','{}'::jsonb) RETURNING id`,
+        [org],
+      )
+    ).rows[0].id as string;
+    const mailingItem = (
+      await db.query(
+        `INSERT INTO bereavement_mailing_item (organization_id, provider_entity_id, location_id, run_id, plan_id,
+           bereaved_contact_id, channel, status)
+         VALUES ($1,$2,$3,$4,$5,$6,'postal','included') RETURNING id`,
+        [org, pe, location, mailingRun, plan, contact],
+      )
+    ).rows[0].id as string;
+    // ADR-0109 D10 (PR 3) — one group with a session, the contact enrolled and attending; one memorial inviting the contact; one library item.
+    const group = (
+      await db.query(
+        `INSERT INTO bereavement_support_group (organization_id, name, format, modality, facilitator_kind, facilitator_user_id,
+           created_by_membership_id, status, opened_at)
+         VALUES ($1,'Group','drop_in','in_person','staff',$2,$2,'open',now()) RETURNING id`,
+        [org, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
+    const groupSession = (
+      await db.query(
+        `INSERT INTO bereavement_support_group_session (organization_id, group_id, session_no, starts_at, ends_at)
+         VALUES ($1,$2,1, now() - interval '1 hour', now()) RETURNING id`,
+        [org, group],
+      )
+    ).rows[0].id as string;
+    const groupEnrollment = (
+      await db.query(
+        `INSERT INTO bereavement_support_group_enrollment (organization_id, provider_entity_id, location_id, group_id, plan_id,
+           bereaved_contact_id, enrolled_by_membership_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [org, pe, location, group, plan, contact, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
+    const groupAttendance = (
+      await db.query(
+        `INSERT INTO bereavement_support_group_attendance (organization_id, provider_entity_id, location_id, session_id, group_id,
+           plan_id, bereaved_contact_id, recorded_by_membership_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+        [org, pe, location, groupSession, group, plan, contact, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
+    const memorialService = (
+      await db.query(
+        `INSERT INTO bereavement_memorial_service (organization_id, title, starts_at, ends_at, modality, created_by_membership_id)
+         VALUES ($1,'Memorial', now() + interval '30 days', now() + interval '30 days 2 hours','in_person',$2) RETURNING id`,
+        [org, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
+    const memorialInvitation = (
+      await db.query(
+        `INSERT INTO bereavement_memorial_invitation (organization_id, provider_entity_id, location_id, service_id, plan_id,
+           bereaved_contact_id, delivery)
+         VALUES ($1,$2,$3,$4,$5,$6,'portal_only') RETURNING id`,
+        [org, pe, location, memorialService, plan, contact],
+      )
+    ).rows[0].id as string;
+    const libraryItem = (
+      await db.query(
+        `INSERT INTO bereavement_library_item (organization_id, title, category, kind, document_id, mime_type, created_by_membership_id)
+         VALUES ($1,'Leaflet','coping','pdf',gen_random_uuid(),'application/pdf',$2) RETURNING id`,
+        [org, MEMBERSHIP],
+      )
+    ).rows[0].id as string;
     return {
+      group,
+      groupSession,
+      groupEnrollment,
+      groupAttendance,
+      memorialService,
+      memorialInvitation,
+      libraryItem,
       pe,
       location,
       plan,
@@ -242,6 +382,12 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       optOut,
       gateOverride,
       idgRiskFlag,
+      assessmentTask,
+      assessmentDraft,
+      physicianLetter,
+      mailingConfig,
+      mailingRun,
+      mailingItem,
     };
   }
 
@@ -274,11 +420,21 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
     const rls = [
       "0102_bereavement_m16_rls_audit_triggers.sql",
       "0168_idg_downstream_consumer_projections.sql",
+      "1342_m16_assessment_task.sql",
+      "1343_m16_risk_assessment_draft.sql",
+      "1345_m16_physician_letter.sql",
+      "1374_m16_mailings.sql",
+      "1390_m16_support_groups.sql",
+      "1391_m16_memorial_services.sql",
+      "1393_m16_grief_library.sql",
     ]
       .map((file) => readFileSync(join(MIGRATIONS_DIR, file), "utf8"))
       .join("\n");
     const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
-      (block) => COVERED.some(({ table }) => block.includes(`"${table}"`)),
+      // the tenant policies (the PR 3 files also carry their destruction-role policies, asserted separately below)
+      (block) =>
+        !block.includes("chartwarden_destruction") &&
+        COVERED.some(({ table }) => block.includes(`"${table}"`)),
     );
     expect(policyBlocks.length).toBe(COVERED.length);
     for (const block of policyBlocks) {
@@ -393,6 +549,296 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       a.risk,
     ]);
     expect(check.rows[0].rule_tier).toBe("moderate");
+  });
+
+  it("an assessment task is `completed` only with the human score and instant that completed it (CHECK)", async () => {
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query("UPDATE bereavement_assessment_task SET status = 'completed' WHERE id=$1", [
+          a.assessmentTask,
+        ]),
+      ),
+    ).rejects.toThrow(/berv_assessment_task_completion_chk/);
+    const done = await withOrg(ORG_A, () =>
+      db.query(
+        `UPDATE bereavement_assessment_task SET status = 'completed', completed_at = now(), risk_score_id = $2
+         WHERE id=$1`,
+        [a.assessmentTask, a.risk],
+      ),
+    );
+    expect(done.rowCount).toBe(1);
+  });
+
+  it("the assessment-task ledger holds one checkpoint of each kind per contact", async () => {
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO bereavement_assessment_task (organization_id, provider_entity_id, plan_id,
+             bereaved_contact_id, task_kind, due_at, late_grace_until)
+           VALUES ($1,$2,$3,$4,'initial_assessment', now(), now())`,
+          [ORG_A, a.pe, a.plan, a.contact],
+        ),
+      ),
+    ).rejects.toThrow(/berv_assessment_task_contact_kind_uniq/);
+  });
+
+  it("a pre-death draft defaults to eight unknowns, pins its key set and is one per admission", async () => {
+    const defaults = await db.query(
+      "SELECT factors_jsonb FROM bereavement_risk_assessment_draft WHERE id=$1",
+      [a.assessmentDraft],
+    );
+    expect(Object.keys(defaults.rows[0].factors_jsonb).sort()).toEqual(
+      [
+        "activeSubstanceUse",
+        "ambivalentRelationship",
+        "financialStrain",
+        "preExistingMentalHealth",
+        "priorUnresolvedLoss",
+        "primaryCaregiverRole",
+        "socialIsolation",
+        "suddenUnexpectedDeath",
+      ].sort(),
+    );
+    expect(Object.values(defaults.rows[0].factors_jsonb)).toEqual(Array(8).fill("unknown"));
+    // a vector that drops a key (or is not an object) is refused by the CHECK
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          "UPDATE bereavement_risk_assessment_draft SET factors_jsonb = '{\"financialStrain\": true}'::jsonb WHERE id=$1",
+          [a.assessmentDraft],
+        ),
+      ),
+    ).rejects.toThrow(/berv_assessment_draft_factors_chk/);
+    // a draft is carried with BOTH the score and the instant, or neither
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query("UPDATE bereavement_risk_assessment_draft SET carried_at = now() WHERE id=$1", [
+          a.assessmentDraft,
+        ]),
+      ),
+    ).rejects.toThrow(/berv_assessment_draft_carried_chk/);
+    // one draft per (organization, admission)
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO bereavement_risk_assessment_draft (organization_id, provider_entity_id, patient_id,
+             admission_id, last_edited_by_membership_id, last_edited_discipline)
+           VALUES ($1,$2,$3,'66666661-6666-4666-8666-666666666666',$4,'chaplain')`,
+          [ORG_A, a.pe, "44444441-4444-4444-4444-444444444444", MEMBERSHIP],
+        ),
+      ),
+    ).rejects.toThrow(/berv_assessment_draft_admission_uniq/);
+  });
+
+  it("a physician letter pins its lifecycle: one per plan, a reviewer on every decision, a recipient before approval", async () => {
+    // pending_review names no reviewer; any other status must
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query("UPDATE bereavement_physician_letter SET status='declined' WHERE id=$1", [
+          a.physicianLetter,
+        ]),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_review_chk/);
+    // an approved letter goes to an internal clinician and carries the render request instant
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `UPDATE bereavement_physician_letter SET status='approved', reviewed_at=now(),
+             reviewed_by_membership_id=$2, m22_render_requested_at=now() WHERE id=$1`,
+          [a.physicianLetter, MEMBERSHIP],
+        ),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_attending_chk/);
+    // a decline reason is prose of at least 20 characters, and only a declined letter carries one
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `UPDATE bereavement_physician_letter SET status='declined', reviewed_at=now(),
+             reviewed_by_membership_id=$2, decline_reason_redacted='too short' WHERE id=$1`,
+          [a.physicianLetter, MEMBERSHIP],
+        ),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_decline_chk/);
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query("UPDATE bereavement_physician_letter SET decline_reason_redacted=$2 WHERE id=$1", [
+          a.physicianLetter,
+          "x".repeat(25),
+        ]),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_decline_chk/);
+    // a sealed note rides only an approved or rendered letter
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          "UPDATE bereavement_physician_letter SET personal_note_cipher='v1.x' WHERE id=$1",
+          [a.physicianLetter],
+        ),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_note_chk/);
+    // the whole legal path: decline with a real reason, and the audit row scrubs it
+    await withOrg(ORG_A, () =>
+      db.query(
+        `UPDATE bereavement_physician_letter SET status='declined', reviewed_at=now(),
+           reviewed_by_membership_id=$2, decline_reason_redacted=$3, version=version+1 WHERE id=$1`,
+        [a.physicianLetter, MEMBERSHIP, "The attending retired last spring."],
+      ),
+    );
+    const audit = await db.query(
+      `SELECT after FROM audit_event WHERE resource_kind='bereavement_physician_letter' AND resource_id=$1
+       ORDER BY created_at DESC LIMIT 1`,
+      [a.physicianLetter],
+    );
+    expect(audit.rows[0].after.status).toBe("declined");
+    expect(JSON.stringify(audit.rows[0].after)).not.toContain("retired last spring");
+    // one letter per plan
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO bereavement_physician_letter (organization_id, provider_entity_id, plan_id, patient_id, due_at)
+           SELECT organization_id, provider_entity_id, plan_id, patient_id, due_at FROM bereavement_physician_letter WHERE id=$1`,
+          [a.physicianLetter],
+        ),
+      ),
+    ).rejects.toThrow(/berv_physician_letter_plan_uniq/);
+  });
+
+  it("a contact-log ACTIVITY row (no outreach, no kind) is tenant-scoped through the parent like any other log row (1373)", async () => {
+    await db.query(
+      `INSERT INTO bereavement_contact_log (organization_id, provider_entity_id, location_id, plan_id, bereaved_contact_id,
+         contact_at, outcome, activity_kind, activity_ref_id, logged_by_user_id)
+       VALUES ($1,$2,$3,$4,$5, now(), 'mailed', 'newsletter_mailing', $6, $7)`,
+      [ORG_A, a.pe, a.location, a.plan, a.contact, a.mailingRun, MEMBERSHIP],
+    );
+    const count = (org: string) =>
+      withOrg(org, () =>
+        db.query<{ n: number }>(
+          "SELECT count(*)::int AS n FROM bereavement_contact_log WHERE activity_kind IS NOT NULL AND outreach_id IS NULL AND kind IS NULL",
+        ),
+      );
+    expect((await count(ORG_A)).rows[0].n).toBe(1);
+    expect((await count(ORG_B)).rows[0].n).toBe(0);
+    await db.query("DELETE FROM bereavement_contact_log WHERE activity_kind IS NOT NULL");
+  });
+
+  it("a mailing run pins its lifecycle: one run per occurrence, a rendered batch before ready, a mailer before mailed, a reason on every excluded item (1374)", async () => {
+    const run = (status: string, over = "") =>
+      db.query(
+        `INSERT INTO bereavement_mailing_run (organization_id, run_kind, mailing_key, occurrence_key, scheduled_for, status, content_jsonb ${over ? ", rendered_document_id, mailed_at, mailed_by_membership_id, failure_code" : ""})
+         VALUES ($1,'newsletter','newsletter_quarterly',$2,'2026-10-15',$3,'{}'::jsonb ${over})`,
+        [ORG_A, `k-${status}-${Math.random()}`, status],
+      );
+    await expect(
+      db.query(
+        `INSERT INTO bereavement_mailing_run (organization_id, run_kind, mailing_key, occurrence_key, scheduled_for, content_jsonb)
+         VALUES ($1,'newsletter','newsletter_quarterly','newsletter_quarterly:2026-Q4','2026-10-15','{}'::jsonb)`,
+        [ORG_A],
+      ),
+    ).rejects.toThrow(/berv_mailing_run_occurrence_uniq/);
+    await expect(run("ready")).rejects.toThrow(/berv_mailing_run_ready_chk/);
+    await expect(run("mailed", ", gen_random_uuid(), NULL, NULL, NULL")).rejects.toThrow(
+      /berv_mailing_run_mailed_chk/,
+    );
+    await expect(run("failed")).rejects.toThrow(/berv_mailing_run_failed_chk/);
+    const item = (status: string, reason: string | null) =>
+      db.query(
+        `INSERT INTO bereavement_mailing_item (organization_id, provider_entity_id, run_id, plan_id, bereaved_contact_id, channel, status, exclusion_reason)
+         SELECT $1, i.provider_entity_id, i.run_id, i.plan_id, c.id, 'postal', $2, $3
+           FROM bereavement_mailing_item i, bereaved_contact c WHERE i.id=$4 AND c.id <> i.bereaved_contact_id LIMIT 1`,
+        [ORG_A, status, reason, a.mailingItem],
+      );
+    // a second contact is needed for the (run, contact) key: reuse the org's own contact via a fresh row
+    await db.query(
+      `INSERT INTO bereaved_contact (organization_id, provider_entity_id, location_id, plan_id, status, display_name, relationship_code)
+       VALUES ($1,$2,$3,$4,'active','Second','child')`,
+      [ORG_A, a.pe, a.location, a.plan],
+    );
+    await expect(item("excluded", null)).rejects.toThrow(/berv_mailing_item_excluded_chk/);
+    await expect(item("included", "no_mailings")).rejects.toThrow(/berv_mailing_item_excluded_chk/);
+    await expect(item("excluded", "because")).rejects.toThrow(/berv_mailing_item_reason_chk/);
+    await expect(
+      db.query(
+        `INSERT INTO bereavement_mailing_item (organization_id, provider_entity_id, run_id, plan_id, bereaved_contact_id, channel, status)
+         SELECT organization_id, provider_entity_id, run_id, plan_id, bereaved_contact_id, 'postal', 'included' FROM bereavement_mailing_item WHERE id=$1`,
+        [a.mailingItem],
+      ),
+    ).rejects.toThrow(/berv_mailing_item_run_contact_uniq/);
+    await expect(
+      db.query("UPDATE bereavement_mailing_config SET lead_days = 2 WHERE id=$1", [
+        a.mailingConfig,
+      ]),
+    ).rejects.toThrow(/berv_mailing_config_lead_chk/);
+  });
+
+  it("the destruction role holds DELETE on mailing items only (1376), and chartwarden_app holds no DELETE on any mailing table", async () => {
+    const { rows } = await db.query<{ table_name: string; privilege_type: string }>(
+      `SELECT table_name, privilege_type FROM information_schema.role_table_grants
+       WHERE grantee='chartwarden_destruction' AND table_name LIKE 'bereavement_mailing_%' ORDER BY table_name, privilege_type`,
+    );
+    expect(rows).toEqual([
+      { table_name: "bereavement_mailing_item", privilege_type: "DELETE" },
+      { table_name: "bereavement_mailing_item", privilege_type: "SELECT" },
+    ]);
+    const policy = await db.query<{ qual: string }>(
+      "SELECT qual FROM pg_policies WHERE tablename='bereavement_mailing_item' AND policyname='bereavement_mailing_item_destruction'",
+    );
+    expect(policy.rows[0]?.qual).toContain("app.org_id");
+  });
+
+  it("ADR-0109 D10 (PR 3) — the destruction role holds SELECT + DELETE on exactly the three program tables that name a contact (org-pinned)", async () => {
+    const { rows } = await db.query<{ table_name: string; privilege_type: string }>(
+      `SELECT table_name, privilege_type FROM information_schema.role_table_grants
+       WHERE grantee='chartwarden_destruction'
+         AND table_name IN ('bereavement_support_group','bereavement_support_group_session','bereavement_support_group_enrollment',
+                            'bereavement_support_group_attendance','bereavement_memorial_service','bereavement_memorial_invitation',
+                            'bereavement_library_item')
+       ORDER BY table_name, privilege_type`,
+    );
+    expect(rows).toEqual(
+      [
+        "bereavement_memorial_invitation",
+        "bereavement_support_group_attendance",
+        "bereavement_support_group_enrollment",
+      ].flatMap((table_name) => [
+        { table_name, privilege_type: "DELETE" },
+        { table_name, privilege_type: "SELECT" },
+      ]),
+    );
+    for (const table of [
+      "bereavement_memorial_invitation",
+      "bereavement_support_group_attendance",
+      "bereavement_support_group_enrollment",
+    ]) {
+      const policy = await db.query<{ qual: string }>(
+        "SELECT qual FROM pg_policies WHERE tablename=$1 AND policyname=$2",
+        [table, `${table}_destruction`],
+      );
+      expect(policy.rows[0]?.qual).toContain("app.org_id");
+    }
+  });
+
+  it("ADR-0109 D10 (PR 3) — the program CHECKs: one live enrollment per contact per group, a withdrawal names why, guests stay 0..10, a recurring group has a schedule", async () => {
+    await expect(
+      db.query(
+        `INSERT INTO bereavement_support_group_enrollment (organization_id, provider_entity_id, group_id, plan_id, bereaved_contact_id, enrolled_by_membership_id)
+         SELECT organization_id, provider_entity_id, group_id, plan_id, bereaved_contact_id, enrolled_by_membership_id
+           FROM bereavement_support_group_enrollment WHERE id=$1`,
+        [a.groupEnrollment],
+      ),
+    ).rejects.toThrow(/berv_group_enrollment_live_uniq/);
+    await expect(
+      db.query("UPDATE bereavement_support_group_enrollment SET status='withdrawn' WHERE id=$1", [
+        a.groupEnrollment,
+      ]),
+    ).rejects.toThrow(/berv_group_enrollment_withdrawn_chk/);
+    await expect(
+      db.query("UPDATE bereavement_memorial_invitation SET guests=11 WHERE id=$1", [
+        a.memorialInvitation,
+      ]),
+    ).rejects.toThrow(/berv_memorial_inv_guests_chk/);
+    await expect(
+      db.query("UPDATE bereavement_support_group SET format='recurring' WHERE id=$1", [a.group]),
+    ).rejects.toThrow(/berv_group_recurrence_chk/);
   });
 
   it("chartwarden_app holds no DELETE on the M16 tables — destruction runs through the eraser (§8.5)", async () => {

@@ -21,9 +21,9 @@
 // (`request.context` via `actorOf`/`writeActorOf`), NEVER the body. The service drives the pure
 // @chartwarden/quality mortality machine and emits the §4.10 `m30.mortality.*` events transactionally.
 import { requireAbac, requirePermission, resolveActorPermissions } from "@chartwarden/auth";
-import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { type PreHandler, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { actorOf, writeActorOf } from "./actor";
 import {
   CompleteMortalityReviewBodySchema,
   MortalityListQuerySchema,
@@ -103,7 +103,7 @@ const IDEMPOTENT = requireIdempotencyKey();
 /** Register the §4.1 mortality routes (R-70..R-73). */
 export function registerMortalityRoutes(app: FastifyInstance, deps: MortalityRouteDeps): void {
   const { readService, writeService, patientDisplay } = deps;
-  const mayViewPatient = async (request: Parameters<typeof actorOf>[0]): Promise<boolean> =>
+  const mayViewPatient = async (request: FastifyRequest): Promise<boolean> =>
     patientDisplay !== undefined &&
     (await resolveActorPermissions(request.context)).has("mortality.read_with_patient");
   const scopeOf = deps.resolveScope ?? defaultPatientScopeResolver;

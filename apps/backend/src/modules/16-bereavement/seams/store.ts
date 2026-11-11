@@ -129,6 +129,8 @@ export interface BereavementAugmentedScoreDraft {
 export interface BereavedPortalRow {
   readonly contact: BereavedContactView;
   readonly plan: BereavementPlanFacts;
+  /** ADR-0109 D10 — false while the contact holds an open `no_mailings` opt-out (it stays active; calls continue). */
+  readonly mailingsAllowed: boolean;
 }
 
 /** The outreach statuses that satisfy the CoP 418.64(d) numerator — a touchpoint that REACHED the family
@@ -378,7 +380,7 @@ export function createInMemoryBereavementSeamStore(seed: BereavementSeamSeed = {
           const contact = contacts.find((c) => c.contactId === id);
           const plan = planOf(id);
           if (contact === undefined || plan === undefined) continue;
-          rows.push({ contact, plan });
+          rows.push({ contact, plan, mailingsAllowed: true });
         }
         return rows;
       },

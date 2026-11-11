@@ -7,14 +7,12 @@
 // `cost_report.read_rules`; every mutation gates `cost_report.manage_rules` (the §4.6 `inOrg` default — the
 // library is org-scoped, not provider-scoped, so no provider ABAC predicate is layered). Mutations carry
 // `Idempotency-Key` (§4.1). M27 carries NO PHI (D18). Org/actor binding is ALWAYS server-side.
+import { actorOf, parse, requireIdempotencyKey, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import {
   CreateValidationRuleBodySchema,
   RuleIdParamsSchema,
   UpdateValidationRuleBodySchema,
-  parse,
 } from "./cost-report-typebox";
 import { P } from "./guards";
 import type { M27ReadRouteService } from "./read-service";

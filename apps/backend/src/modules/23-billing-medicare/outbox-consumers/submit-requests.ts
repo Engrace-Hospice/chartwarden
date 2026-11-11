@@ -71,10 +71,31 @@ function queueRequest(event: DispatchableOutboxEvent): {
     if (!Number.isInteger(attemptIndex) || (attemptIndex as number) < 0) {
       throw new Error("M23 submission request has invalid 'attemptIndex'");
     }
+    const expectedRouteFingerprint = event.payload.expectedRouteFingerprint;
+    if (
+      expectedRouteFingerprint !== undefined &&
+      (typeof expectedRouteFingerprint !== "string" ||
+        !/^[a-f0-9]{64}$/.test(expectedRouteFingerprint))
+    ) {
+      throw new Error("M23 submission request has invalid 'expectedRouteFingerprint'");
+    }
+    const reviewedSourceFingerprint = requiredString(
+      event.payload.reviewedSourceFingerprint,
+      "reviewedSourceFingerprint",
+    );
+    if (!/^[a-f0-9]{64}$/.test(reviewedSourceFingerprint))
+      throw new Error("M23 submission request has invalid 'reviewedSourceFingerprint'");
     return {
       queue: "claim.submit",
       key: submissionId,
-      payload: { claimId, submissionId, claimControlNumber, attemptIndex },
+      payload: {
+        claimId,
+        submissionId,
+        claimControlNumber,
+        attemptIndex,
+        reviewedSourceFingerprint,
+        ...(typeof expectedRouteFingerprint === "string" ? { expectedRouteFingerprint } : {}),
+      },
     };
   }
   if (event.eventType === "m23.claim.submission_failed") {
@@ -84,21 +105,34 @@ function queueRequest(event: DispatchableOutboxEvent): {
     if (!Number.isInteger(attemptIndex) || (attemptIndex as number) < 0) {
       throw new Error("M23 submission failure has invalid 'attemptIndex'");
     }
+    const expectedRouteFingerprint = event.payload.expectedRouteFingerprint;
+    if (
+      expectedRouteFingerprint !== undefined &&
+      (typeof expectedRouteFingerprint !== "string" ||
+        !/^[a-f0-9]{64}$/.test(expectedRouteFingerprint))
+    ) {
+      throw new Error("M23 submission failure has invalid 'expectedRouteFingerprint'");
+    }
     return {
       queue: "claim.submit.retry",
       key: `${submissionId}:${attemptIndex}`,
-      payload: { claimId, submissionId, attemptIndex },
+      payload: {
+        claimId,
+        submissionId,
+        attemptIndex,
+        ...(typeof expectedRouteFingerprint === "string" ? { expectedRouteFingerprint } : {}),
+      },
     };
   }
   if (event.eventType === "m23.noe.submit_requested") {
     const noeId = requiredString(event.payload.noeId, "noeId");
     const submissionId = requiredString(event.payload.submissionId, "submissionId");
-    return { queue: "noe.submit", key: submissionId, payload: { noeId } };
+    return { queue: "noe.submit", key: submissionId, payload: { noeId, submissionId } };
   }
   if (event.eventType === "m23.notr.submit_requested") {
     const notrId = requiredString(event.payload.notrId, "notrId");
     const submissionId = requiredString(event.payload.submissionId, "submissionId");
-    return { queue: "notr.submit", key: submissionId, payload: { notrId } };
+    return { queue: "notr.submit", key: submissionId, payload: { notrId, submissionId } };
   }
   if (event.eventType === "m23.transfer_notice.submit_requested") {
     const transferNoticeId = requiredString(event.payload.transferNoticeId, "transferNoticeId");

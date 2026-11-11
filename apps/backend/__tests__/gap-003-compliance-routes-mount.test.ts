@@ -1,4 +1,9 @@
-import { resetAuthorizationContract, resetRbacEngine } from "@chartwarden/auth";
+import {
+  createInMemoryEffectivePermissionStore,
+  registerEffectivePermissionResolver,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@chartwarden/auth";
 // apps/backend/__tests__/gap-003-compliance-routes-mount.test.ts — GAP-003 composition-root mount
 // glue, mirroring the GAP-002 `audit-routes-mount.test.ts` pattern (itself mirroring
 // `mdm-routes-mount.test.ts`): proves `mountAuditRoutes(app, db)` wires the FULL M4 compliance
@@ -7,6 +12,8 @@ import { resetAuthorizationContract, resetRbacEngine } from "@chartwarden/auth";
 // route BEHAVIOR (real matched-counts, the rate limit, the live GRANT read) is covered by
 // gap-003-compliance-routes.live.test.ts.
 import type { DbClient } from "@chartwarden/db";
+import { configureCursorSigningKey, encodeCursor } from "@chartwarden/shared/route-kit";
+import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { mountAuditRoutes } from "../src/modules/04-audit/index";
@@ -53,4 +60,45 @@ describe("GAP-003 mountAuditRoutes — full compliance surface (composition-root
     expect(res.statusCode).toBe(404);
     await app.close();
   });
+});
+
+describe("M4 list cursors — a validly signed cursor from another list is 422, not a cast 500", () => {
+  const ORG = "00000000-0000-4000-8000-0000000000a4";
+  const headerAuth = (request: FastifyRequest): void => {
+    request.context.userId = "officer_1";
+    request.context.organizationId = ORG;
+    request.context.roles = ["compliance_officer"];
+    request.context.locationIds = [];
+  };
+
+  it.each(["/api/v1/legal-holds", "/api/v1/destruction-certificates"])(
+    "GET %s refuses an integer-anchored cursor with 422 INVALID_CURSOR",
+    async (url) => {
+      configureCursorSigningKey("k".repeat(32));
+      registerEffectivePermissionResolver(
+        createInMemoryEffectivePermissionStore([
+          {
+            orgId: ORG,
+            userId: "officer_1",
+            grants: [
+              {
+                roleKey: "seed",
+                enabled: true,
+                expiresAt: null,
+                permissionKeys: ["legalhold.read", "destruction.read"],
+              },
+            ],
+          },
+        ]).store,
+      );
+      // an M16 mailing-items cursor (`a` is an int position), signed for the same org
+      const replayed = encodeCursor(ORG, { a: "5", id: ID });
+      const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+      mountAuditRoutes(app, STUB_DB); // the stub db throws if touched: the cursor is refused first
+      const res = await app.inject({ method: "GET", url: `${url}?cursor=${replayed}` });
+      expect(res.statusCode).toBe(422);
+      expect(res.json()).toMatchObject({ error: { code: "INVALID_CURSOR" } });
+      await app.close();
+    },
+  );
 });

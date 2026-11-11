@@ -3,7 +3,7 @@
 // dispatcher validates each `m26.cap.*` publish against the matching payload schema inside the mutation
 // transaction (transactional outbox). Names use the `m26.<resource=cap>.<verb>` form (no version suffix — the
 // M27/M30/M33 catalog convention supersedes the spec's `.v1` proposal). No PHI beyond patient-id pointers.
-import { type Static, Type } from "@sinclair/typebox";
+import { Type } from "@sinclair/typebox";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });
@@ -107,20 +107,3 @@ export const PsrVarianceRaisedPayload = Type.Object({
   totalVarianceCents: cents,
   lineCount: Type.Integer(),
 });
-
-/** Event name → payload schema (the backend dispatcher validates publishes against this). */
-export const M26_EVENT_PAYLOADS = {
-  "m26.cap.accrual_recorded": AccrualRecordedPayload,
-  "m26.cap.projection_updated": ProjectionUpdatedPayload,
-  "m26.cap.threshold_crossed": ThresholdCrossedPayload,
-  "m26.cap.year_opened": YearOpenedPayload,
-  "m26.cap.year_closing": YearClosingPayload,
-  "m26.cap.year_closed": YearClosedPayload,
-  "m26.cap.settlement_proposed": SettlementProposedPayload,
-  "m26.cap.settlement_finalized": SettlementFinalizedPayload,
-  "m26.cap.psr_variance_raised": PsrVarianceRaisedPayload,
-} as const satisfies Record<M26EventName, unknown>;
-
-export type AccrualRecorded = Static<typeof AccrualRecordedPayload>;
-export type ThresholdCrossed = Static<typeof ThresholdCrossedPayload>;
-export type SettlementFinalized = Static<typeof SettlementFinalizedPayload>;

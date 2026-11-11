@@ -1,3 +1,4 @@
+import { pageLimit, pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/16-bereavement/routes/m16-typebox.ts — M16 (§4.2) request schemas.
 //
@@ -12,19 +13,8 @@ import { ValidationError } from "@chartwarden/types";
 // server-side (`request.context`): no body or query carries an org id or an acting membership id, which is
 // the §6.1 spoofing control at the boundary.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("email")) {
-  FormatRegistry.Set("email", (v) => typeof v === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v));
-}
+import { CARE_GOALS_MAX, CARE_GOAL_MAX_CHARS } from "../care-goals";
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -177,11 +167,13 @@ export const EarlyCloseReason = Type.Union([
   Type.Literal("other_early"),
 ]);
 
-/** `bereavement_opt_out_kind` (§3.2 / §4.2). */
+/** `bereavement_opt_out_kind` (§3.2 / §4.2). `no_mailings` (ADR-0109 D10) stops MAILINGS only: the contact stays `active`,
+ *  its calls and visits continue, the mailed floor items become calls, and it names no channel. */
 export const OptOutKind = Type.Union([
   Type.Literal("full"),
   Type.Literal("channel_specific"),
   Type.Literal("pause_temporarily"),
+  Type.Literal("no_mailings"),
 ]);
 
 /** §4.2 `OptOutBody.sourceKind` — the counselor / portal / written-request provenance. The fourth enum
@@ -195,6 +187,22 @@ export const OptOutSourceKind = Type.Union([
 
 /** The tri-state a §4.2 `RiskFactorsInput` factor carries (D17 — `unknown` is a real answer). */
 const TriState = Type.Union([Type.Boolean(), Type.Literal("unknown")]);
+
+/**
+ * The eight D17 risk factors, tri-state, under the §4.2 wire keys. ONE schema for both request shapes that carry a
+ * human-stated factor vector — route 28's `factors` and the pre-death draft (ADR-0109 D5) — so they cannot drift. The
+ * keys are `RISK_FACTOR_WIRE_KEYS` in `@chartwarden/bereavement`; no free text lives here.
+ */
+export const RiskFactorsTriStateSchema = Type.Object({
+  ambivalent_relationship: TriState,
+  sudden_unexpected_death: TriState,
+  prior_unresolved_loss: TriState,
+  preexisting_mental_health: TriState,
+  social_isolation: TriState,
+  financial_strain: TriState,
+  primary_caregiver_role: TriState,
+  active_substance_use: TriState,
+});
 
 // ── path params ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -211,8 +219,7 @@ export const PlanListQuerySchema = Type.Object({
   status: Type.Optional(PlanStatus),
   counselorUserId: Type.Optional(Uuid),
   riskTier: Type.Optional(RiskTier),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
 });
 
 /** Route 19 — the §4.6 `OutreachFilters` set, as a query. */
@@ -222,21 +229,19 @@ export const OutreachListQuerySchema = Type.Object({
   kind: Type.Optional(OutreachKind),
   dueFrom: Type.Optional(Instant),
   dueTo: Type.Optional(Instant),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 /** Route 29 — per-contact + plan-level score history (the append-only ledger, newest first). */
 export const RiskScoreListQuerySchema = Type.Object({
   contactId: Type.Optional(Uuid),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
 });
 
 /** Route 30 — "own caseload + due in N days". */
 export const CounselorDashboardQuerySchema = Type.Object({
   dueWithinDays: Type.Optional(Type.Integer({ minimum: 0, maximum: 90 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  limit: pageLimit(),
 });
 
 /** Route 31 — full-tenant rollups, optionally narrowed to one CCN / location. */
@@ -314,6 +319,14 @@ export const UpdateContactBody = Type.Object({
     Type.Object({ allowedKinds: Type.Array(OutreachKind, { maxItems: 9 }) }),
   ),
   volunteerVisibleOnly: Type.Optional(Type.Boolean()),
+});
+
+/** Route 41 — a contact's care goals: at most 3, each 1..280 characters with something in it (ADR-0109). An empty list
+ *  clears them. Sealed with the tenant DEK; never returned to a volunteer or a portal session. */
+export const CareGoalsBody = Type.Object({
+  goals: Type.Array(Type.String({ minLength: 1, maxLength: CARE_GOAL_MAX_CHARS, pattern: "\\S" }), {
+    maxItems: CARE_GOALS_MAX,
+  }),
 });
 
 /** Route 13 — proposed → active. The M39 consent verdict is resolved server-side (D6 fail-CLOSED). */
@@ -410,23 +423,57 @@ export const RegenerateScheduleBody = Type.Object({
   fromAt: Type.Optional(Instant),
 });
 
-/** Route 28 — §4.2 `RiskFactorsInput` verbatim, plus the D8 override fields §7.3 requires. */
+/** Routes 35 / 36 — the pre-death draft is addressed by ADMISSION (it exists before any bereavement plan). */
+export const AdmissionParams = Type.Object({ admissionId: Uuid });
+
+/** Route 36 — the pre-death draft: the whole eight-factor vector, tri-state, NO free text (ADR-0109 D5). A PUT replaces
+ *  it; the substance-use slot is forced `unknown` server-side unless the writer is cleared for 42 CFR Part 2 content. */
+export const PreDeathDraftBody = Type.Object({ factors: RiskFactorsTriStateSchema });
+
+/** Routes 39 / 40 — a physician letter is addressed by its own id. */
+export const LetterParams = Type.Object({ letterId: Uuid });
+
+/** `bereavement_physician_letter.status` (migration 1345). */
+export const PhysicianLetterStatus = Type.Union([
+  Type.Literal("pending_review"),
+  Type.Literal("approved"),
+  Type.Literal("rendered"),
+  Type.Literal("declined"),
+]);
+
+/** Route 38 — the physician-letter review queue (cursor-paged; `offset` is refused by the preHandler). */
+export const PhysicianLetterListQuerySchema = Type.Object({
+  status: Type.Optional(PhysicianLetterStatus),
+  ...pageQuery({ max: 100 }),
+});
+
+/** Route 39 — approve a pending letter (ADR-0109 D6): an optional personal note (at most 1000 characters, sealed at rest) and,
+ *  when the care team resolved nobody, the INTERNAL clinician who should receive it. `If-Match` + `Idempotency-Key` ride the headers. */
+export const ApproveLetterBody = Type.Object({
+  personalNote: Type.Optional(Type.String({ maxLength: 1000 })),
+  attendingUserId: Type.Optional(Uuid),
+});
+
+/** Route 40 — decline a pending letter; the reason is documented (at least 20 characters). */
+export const DeclineLetterBody = Type.Object({
+  reason: Type.String({ minLength: 20, maxLength: 2000 }),
+});
+
+/** Route 28 — §4.2 `RiskFactorsInput` verbatim (the eight factors + the screen totals), plus the D8 override fields §7.3
+ *  requires and the ADR-0109 D3 assessment checkpoint this human-appended score completes. `factors` is honored: it merges
+ *  into the score with "true wins" (it never lowers a derived `true`). `notes` is accepted and not stored. */
 export const RecomputeRiskBody = Type.Object({
   bereavedContactId: Type.Optional(Uuid),
+  assessmentTaskId: Type.Optional(Uuid),
   factors: Type.Optional(
-    Type.Object({
-      ambivalent_relationship: TriState,
-      sudden_unexpected_death: TriState,
-      prior_unresolved_loss: TriState,
-      preexisting_mental_health: TriState,
-      social_isolation: TriState,
-      financial_strain: TriState,
-      primary_caregiver_role: TriState,
-      active_substance_use: TriState,
-      pg13_score: Type.Optional(Type.Number()),
-      ipgr_score: Type.Optional(Type.Number()),
-      notes: Type.Optional(Type.String({ maxLength: 8000 })),
-    }),
+    Type.Composite([
+      RiskFactorsTriStateSchema,
+      Type.Object({
+        pg13_score: Type.Optional(Type.Integer({ minimum: 0, maximum: 52 })),
+        ipgr_score: Type.Optional(Type.Integer({ minimum: 0, maximum: 200 })),
+        notes: Type.Optional(Type.String({ maxLength: 8000 })),
+      }),
+    ]),
   ),
   requestAugmentation: Type.Optional(Type.Boolean()),
   /** §7.3 — a counselor override needs BOTH the tier it lands on and a ≥40-char documented reason. */
@@ -451,6 +498,7 @@ export const InitiateContactBody = Type.Object({
 export type PlanListQuery = Static<typeof PlanListQuerySchema>;
 export type OutreachListQuery = Static<typeof OutreachListQuerySchema>;
 export type RiskScoreListQuery = Static<typeof RiskScoreListQuerySchema>;
+export type PhysicianLetterListQuery = Static<typeof PhysicianLetterListQuerySchema>;
 export type CounselorDashboardQuery = Static<typeof CounselorDashboardQuerySchema>;
 export type SupervisorDashboardQuery = Static<typeof SupervisorDashboardQuerySchema>;
 export type LocalDateString = Static<typeof LocalDate>;
@@ -597,7 +645,9 @@ export const BereavedContactRowViewResponseSchema = Type.Object({
   unreachableProposedAt: Nullable(Str),
   deceasedAt: Nullable(Str),
   mayRescindOptOut: Bool,
+  mailingsAllowed: Bool,
   currentRiskTier: Type.Optional(Nullable(RiskTier)),
+  careGoals: Type.Optional(Type.Array(Str)),
   version: Int,
 });
 
@@ -648,6 +698,8 @@ export const BereavementClosureViewResponseSchema = Type.Object({
   cosignedAt: Nullable(Str),
   stats: OutreachStatsSchema,
   bereavementSummaryDocumentId: Nullable(Str),
+  /** ADR-0109 D9 — the internal discharge summary's M22 document, for oversight readers once it has rendered. */
+  dischargeSummaryDocumentId: Nullable(Str),
 });
 
 /** Routes 19 / 20–25 / 33 — one scheduled or historical touchpoint. */
@@ -658,6 +710,7 @@ export const BereavementOutreachRowViewResponseSchema = Type.Object({
   kind: OutreachKind,
   status: OutreachStatus,
   anniversaryMark: Nullable(AnniversaryMark),
+  cadenceMark: Nullable(Str),
   dueAt: Str,
   lateGraceUntil: Str,
   startedAt: Nullable(Str),
@@ -686,6 +739,63 @@ export const BereavementRiskScoreViewResponseSchema = Type.Object({
   pg13Score: Nullable(Type.Number()),
   ipgrScore: Nullable(Type.Number()),
   evidenceDegraded: Bool,
+  redactedCategories: Type.Array(RedactedCategory),
+});
+
+/** Route 37 — one assessment checkpoint of one bereaved contact (ADR-0109 D3). */
+export const BereavementAssessmentTaskViewResponseSchema = Type.Object({
+  taskId: Str,
+  planId: Str,
+  contactId: Str,
+  taskKind: Type.Union([Type.Literal("initial_assessment"), Type.Literal("midpoint_reassessment")]),
+  status: Type.Union([
+    Type.Literal("scheduled"),
+    Type.Literal("completed"),
+    Type.Literal("missed"),
+    Type.Literal("cancelled"),
+  ]),
+  dueAt: Str,
+  lateGraceUntil: Str,
+  completedAt: Nullable(Str),
+  completedByMembershipId: Nullable(Str),
+  riskScoreId: Nullable(Str),
+  assigneeUserId: Nullable(Str),
+  version: Int,
+});
+
+/** Route 37 — the plan's checkpoints; empty (the category named) when D10 withheld clinical content. */
+export const BereavementAssessmentTaskListResponseSchema = Type.Object({
+  items: Type.Array(BereavementAssessmentTaskViewResponseSchema),
+  redactedCategories: Type.Array(RedactedCategory),
+});
+
+/** Routes 38 / 39 / 40 — one physician condolence letter (ADR-0109 D6). The sealed note is never returned. */
+export const PhysicianLetterViewResponseSchema = Type.Object({
+  letterId: Str,
+  planId: Str,
+  patientId: Str,
+  status: PhysicianLetterStatus,
+  dueAt: Str,
+  createdAt: Str,
+  attendingUserId: Nullable(Str),
+  hasPersonalNote: Bool,
+  declineReason: Nullable(Str),
+  reviewedAt: Nullable(Str),
+  renderedDocumentId: Nullable(Str),
+  version: Int,
+});
+
+/** Routes 35 / 36 — the pre-death draft as the web reads it (wire keys, the same shape the PUT body carries). */
+export const PreDeathDraftViewResponseSchema = Type.Object({
+  admissionId: Str,
+  exists: Bool,
+  factors: RiskFactorsTriStateSchema,
+  lastEditedDiscipline: Nullable(Str),
+  lastEditedAt: Nullable(Str),
+  carriedScoreId: Nullable(Str),
+  carriedAt: Nullable(Str),
+  locked: Bool,
+  version: Int,
   redactedCategories: Type.Array(RedactedCategory),
 });
 
@@ -767,7 +877,7 @@ export const SupervisorDashboardViewResponseSchema = Type.Object({
   externalSourceCosignPendingCount: Int,
 });
 
-/** The §2.5 cursor page envelope (`concurrency.ts` `CursorPage<T>`). */
+/** The §2.5 cursor page envelope (the route kit `CursorPage<T>`). */
 const pageOf = <T extends TSchema>(item: T) =>
   Type.Object({
     data: Type.Array(item),
@@ -786,3 +896,5 @@ export const BereavementOutreachPageResponseSchema = pageOf(
 export const BereavementRiskScorePageResponseSchema = pageOf(
   BereavementRiskScoreViewResponseSchema,
 );
+/** Route 38 — `CursorPage<PhysicianLetterView>`. */
+export const PhysicianLetterPageResponseSchema = pageOf(PhysicianLetterViewResponseSchema);

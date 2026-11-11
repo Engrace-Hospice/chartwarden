@@ -1,4 +1,5 @@
 // apps/backend/src/modules/36-messaging/routes/global-search-typebox.ts - WP 2.7b global search schemas (ADR-0058, Proposed).
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { Type } from "@sinclair/typebox";
 import { ResolvedMessageSchema } from "./messaging-typebox";
 
@@ -8,11 +9,10 @@ import { ResolvedMessageSchema } from "./messaging-typebox";
  */
 export const GlobalSearchQuerySchema = Type.Object({
   q: Type.String({ maxLength: 256 }),
-  cursor: Type.Optional(Type.String({ maxLength: 256 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+  ...pageQuery({ max: 50 }),
 });
 
-export const GlobalSearchHitSchema = Type.Intersect([
+const GlobalSearchHitSchema = Type.Intersect([
   ResolvedMessageSchema,
   Type.Object({ archived: Type.Boolean() }),
 ]);

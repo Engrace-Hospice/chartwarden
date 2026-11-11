@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1898,
-    "enriched": 1898,
+    "routes": 1973,
+    "enriched": 1973,
     "deficit": 0,
-    "mutating": 1083,
+    "mutating": 1125,
     "mutatingNoBody": 1,
-    "gets": 762,
+    "gets": 795,
     "getsNoResponse": 9
   },
   "modules": [
@@ -41,10 +41,10 @@
     },
     {
       "module": "05-patient",
-      "routes": 48,
-      "enriched": 48,
+      "routes": 49,
+      "enriched": 49,
       "deficit": 0,
-      "mutating": 27,
+      "mutating": 28,
       "mutatingNoBody": 0,
       "gets": 21,
       "getsNoResponse": 4
@@ -151,12 +151,12 @@
     },
     {
       "module": "16-bereavement",
-      "routes": 34,
-      "enriched": 34,
+      "routes": 82,
+      "enriched": 82,
       "deficit": 0,
-      "mutating": 27,
+      "mutating": 54,
       "mutatingNoBody": 0,
-      "gets": 7,
+      "gets": 28,
       "getsNoResponse": 0
     },
     {
@@ -221,12 +221,12 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 96,
-      "enriched": 96,
+      "routes": 97,
+      "enriched": 97,
       "deficit": 0,
       "mutating": 49,
       "mutatingNoBody": 0,
-      "gets": 45,
+      "gets": 46,
       "getsNoResponse": 0
     },
     {
@@ -241,12 +241,12 @@
     },
     {
       "module": "25-remittance",
-      "routes": 158,
-      "enriched": 158,
+      "routes": 168,
+      "enriched": 168,
       "deficit": 0,
-      "mutating": 104,
+      "mutating": 109,
       "mutatingNoBody": 0,
-      "gets": 51,
+      "gets": 56,
       "getsNoResponse": 0
     },
     {
@@ -301,12 +301,12 @@
     },
     {
       "module": "31-portal",
-      "routes": 59,
-      "enriched": 59,
+      "routes": 72,
+      "enriched": 72,
       "deficit": 0,
-      "mutating": 28,
+      "mutating": 35,
       "mutatingNoBody": 0,
-      "gets": 31,
+      "gets": 37,
       "getsNoResponse": 0
     },
     {
@@ -401,20 +401,20 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 26,
-      "enriched": 26,
+      "routes": 27,
+      "enriched": 27,
       "deficit": 0,
-      "mutating": 16,
+      "mutating": 17,
       "mutatingNoBody": 0,
       "gets": 10,
       "getsNoResponse": 0
     },
     {
       "module": "bootstrap",
-      "routes": 11,
-      "enriched": 11,
+      "routes": 12,
+      "enriched": 12,
       "deficit": 0,
-      "mutating": 1,
+      "mutating": 2,
       "mutatingNoBody": 0,
       "gets": 10,
       "getsNoResponse": 1

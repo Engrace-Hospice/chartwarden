@@ -13,6 +13,7 @@ import {
   M34_PROVISION_GATEWAY_ENABLED_ENV,
   assertProductionEnv,
   collectEnvProblems,
+  cursorSigningKeyFrom,
   hostnamesIn,
   integrationEnabled,
   isReservedPlaceholderHost,
@@ -147,6 +148,16 @@ describe("collectEnvProblems", () => {
     expect(problemFor("1")).toBe("must be 'true' or 'false'");
   });
 
+  it("ADR-0107: a production boot refuses the unreviewed-template bypass unless it is unset or false", () => {
+    const problemFor = (v: string | undefined) =>
+      collectEnvProblems({ ...GOOD, PORTAL_ALLOW_UNREVIEWED_TEMPLATES: v }).find(
+        (p) => p.key === "PORTAL_ALLOW_UNREVIEWED_TEMPLATES",
+      )?.problem;
+    expect(problemFor(undefined)).toBeUndefined();
+    expect(problemFor("false")).toBeUndefined();
+    expect(problemFor("true")).toMatch(/unset or 'false'/);
+  });
+
   it("GAP-009: the sign-up invite flag is optional, but a set value must be exactly true/false", () => {
     const problemFor = (v: string | undefined) =>
       collectEnvProblems({ ...GOOD, CHARTWARDEN_SIGNUP_REQUIRES_INVITE: v }).find(
@@ -262,6 +273,24 @@ describe("collectEnvProblems", () => {
     expect(problems).toEqual([
       { key: "CURSOR_SIGNING_KEY", problem: "must be at least 32 characters" },
     ]);
+  });
+
+  it("flags the unedited example cursor signing key", () => {
+    const problems = collectEnvProblems({
+      ...GOOD,
+      CURSOR_SIGNING_KEY: "REPLACE_WITH_AT_LEAST_32_CHARACTERS",
+    });
+    expect(problems).toEqual([
+      { key: "CURSOR_SIGNING_KEY", problem: "is still the .env.production.example placeholder" },
+    ]);
+  });
+
+  it("requires the cursor signing key in production and only there", () => {
+    expect(() => cursorSigningKeyFrom({ NODE_ENV: "production" })).toThrow(
+      /CURSOR_SIGNING_KEY is required/,
+    );
+    expect(cursorSigningKeyFrom({ NODE_ENV: "test" })).toBeUndefined();
+    expect(cursorSigningKeyFrom({ NODE_ENV: "production", CURSOR_SIGNING_KEY: " k " })).toBe("k");
   });
 
   it("flags a too-short internal service token", () => {
@@ -415,22 +444,22 @@ describe("F-181 — M29_ALLOW_MLLP_PLAIN is forbidden in production", () => {
   });
 });
 
-describe("GAP-146 — the M24 launch-gateway gate is an opt-out production switch", () => {
+describe("GAP-146 — the M24 launch-gateway gate is explicit opt-in", () => {
   it("rejects an ambiguous value", () => {
     expect(collectEnvProblems({ ...GOOD, M24_LAUNCH_GATEWAY_ENABLED: "yes" })).toEqual([
       { key: "M24_LAUNCH_GATEWAY_ENABLED", problem: "must be 'true' or 'false'" },
     ]);
   });
 
-  it("is enabled by default in production, and an explicit false still disables it", () => {
+  it("remains disabled when unset in production and respects explicit configuration", () => {
     expect(
       withM24LaunchGatewayDefault({ NODE_ENV: "production" })[M24_LAUNCH_GATEWAY_ENABLED_ENV],
-    ).toBe("true");
+    ).toBeUndefined();
     expect(
-      withM24LaunchGatewayDefault({ NODE_ENV: "production", M24_LAUNCH_GATEWAY_ENABLED: "false" })[
+      withM24LaunchGatewayDefault({ NODE_ENV: "production", M24_LAUNCH_GATEWAY_ENABLED: "true" })[
         M24_LAUNCH_GATEWAY_ENABLED_ENV
       ],
-    ).toBe("false");
+    ).toBe("true");
   });
 
   it("leaves dev/test untouched (unset = nothing calls out by accident)", () => {
@@ -483,6 +512,38 @@ describe("CLEARINGHOUSE_VENDOR (ADR-0053 D3)", () => {
   it("accepts a real vendor name", () => {
     expect(keysFor({ CLEARINGHOUSE_VENDOR: "stedi" })).toEqual([]);
     expect(keysFor({ CLEARINGHOUSE_VENDOR: "direct_mac" })).toEqual([]);
+  });
+  it("claimmd requires its scoped account and claim-integrity configuration", () => {
+    expect(keysFor({ CLEARINGHOUSE_VENDOR: "claimmd" })).toEqual([
+      "CLAIMMD_ACCOUNT_KEY",
+      "CLAIMMD_ACCOUNT_REFERENCE",
+      "CLAIM_PREVIEW_INTEGRITY_KEY",
+      "CLAIMMD_M23_PAYER_ROUTES",
+      "CLAIMMD_ACCOUNT_USAGE",
+    ]);
+    expect(
+      keysFor({
+        CLEARINGHOUSE_VENDOR: "claimmd",
+        CLAIMMD_ACCOUNT_KEY: "a-real-looking-key-0001",
+        CLAIMMD_ACCOUNT_USAGE: "live",
+      }),
+    ).toEqual([
+      "CLAIMMD_ACCOUNT_REFERENCE",
+      "CLAIM_PREVIEW_INTEGRITY_KEY",
+      "CLAIMMD_M23_PAYER_ROUTES",
+      "CLAIMMD_ACCOUNT_USAGE",
+    ]);
+    expect(
+      keysFor({
+        CLEARINGHOUSE_VENDOR: "claimmd",
+        CLAIMMD_ACCOUNT_KEY: "a-real-looking-key-0001",
+        CLAIMMD_ACCOUNT_USAGE: "production",
+      }),
+    ).toEqual([
+      "CLAIMMD_ACCOUNT_REFERENCE",
+      "CLAIM_PREVIEW_INTEGRITY_KEY",
+      "CLAIMMD_M23_PAYER_ROUTES",
+    ]);
   });
   it("refuses the in_memory test double and an unknown vendor in production", () => {
     expect(keysFor({ CLEARINGHOUSE_VENDOR: "in_memory" })).toEqual(["CLEARINGHOUSE_VENDOR"]);

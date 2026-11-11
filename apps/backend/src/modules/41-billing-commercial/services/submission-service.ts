@@ -106,6 +106,12 @@ export interface TimelineView {
   readonly patientId: string;
   readonly state: string;
   readonly items: readonly TimelineItem[];
+  readonly claimLineage: readonly {
+    readonly id: string;
+    readonly claimControlNumber: string;
+    readonly state: string;
+    readonly relation: "original" | "correction";
+  }[];
   /** True when older rows were cut by the bound. */
   readonly truncated: boolean;
 }
@@ -518,6 +524,25 @@ export function buildCommercialSubmissionService(
           .where(eq(schema.commercialAcknowledgments.claimId, claim.id))
           .orderBy(sql`${schema.commercialAcknowledgments.createdAt} DESC`)
           .limit(TIMELINE_ACK_LIMIT + 1);
+        const rootId = claim.correctionRootClaimId ?? claim.id;
+        const lineage = await tx
+          .select({
+            id: schema.commercialClaims.id,
+            claimControlNumber: schema.commercialClaims.claimControlNumber,
+            state: schema.commercialClaims.state,
+            correctionOfClaimId: schema.commercialClaims.correctionOfClaimId,
+          })
+          .from(schema.commercialClaims)
+          .where(
+            and(
+              eq(schema.commercialClaims.organizationId, actor.organizationId),
+              eq(schema.commercialClaims.providerEntityId, claim.providerEntityId),
+              eq(schema.commercialClaims.patientId, claim.patientId),
+              sql`(${schema.commercialClaims.id} = ${rootId} OR ${schema.commercialClaims.correctionRootClaimId} = ${rootId})`,
+            ),
+          )
+          .orderBy(sql`${schema.commercialClaims.createdAt} ASC`)
+          .limit(20);
         const truncated =
           history.length > TIMELINE_HISTORY_LIMIT ||
           submissions.length > TIMELINE_SUBMISSION_LIMIT ||
@@ -566,6 +591,13 @@ export function buildCommercialSubmissionService(
           claimId: claim.id,
           patientId: claim.patientId,
           state: claim.state,
+          claimLineage: lineage.map((row) => ({
+            id: row.id,
+            claimControlNumber: row.claimControlNumber,
+            state: row.state,
+            relation:
+              row.correctionOfClaimId === null ? ("original" as const) : ("correction" as const),
+          })),
           items,
           truncated,
         };

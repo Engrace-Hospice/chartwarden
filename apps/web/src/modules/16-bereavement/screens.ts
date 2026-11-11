@@ -1,6 +1,7 @@
 import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/web/src/modules/16-bereavement — M16 Bereavement screen registration (Track B / ADR-0030, §5.1).
-// The read + write surface over the live /api/v1/bereavement backend (33 routes, M16-T06).
+// The read + write surface over the live /api/v1/bereavement backend (33 routes, M16-T06, plus the ADR-0109
+// assessment-task, pre-death-draft and care-goal routes).
 //
 // Each `requiredPermission` is the REAL §4.7 M16 key the matching route gates on
 // (apps/backend/src/modules/16-bereavement/permission-keys.ts → `M16_CONTRIBUTED_PERMISSIONS` in
@@ -38,6 +39,28 @@ const BereavementGriefScreen = lazy(() =>
 const BereavementIntakeQueue = lazy(() =>
   import("./intake-queue").then((m) => ({ default: m.BereavementIntakeQueue })),
 );
+const MailingRunDetail = lazy(() =>
+  import("./mailing-run-detail").then((m) => ({ default: m.MailingRunDetail })),
+);
+const MailingRuns = lazy(() => import("./mailing-runs").then((m) => ({ default: m.MailingRuns })));
+const MailingSettings = lazy(() =>
+  import("./mailing-settings").then((m) => ({ default: m.MailingSettings })),
+);
+const GriefLibrary = lazy(() =>
+  import("./grief-library").then((m) => ({ default: m.GriefLibrary })),
+);
+const MemorialServiceDetail = lazy(() =>
+  import("./memorial-detail").then((m) => ({ default: m.MemorialServiceDetail })),
+);
+const MemorialServices = lazy(() =>
+  import("./memorial-list").then((m) => ({ default: m.MemorialServices })),
+);
+const SupportGroupDetail = lazy(() =>
+  import("./group-detail").then((m) => ({ default: m.SupportGroupDetail })),
+);
+const SupportGroups = lazy(() =>
+  import("./group-list").then((m) => ({ default: m.SupportGroups })),
+);
 const BereavementOutreachPlanner = lazy(() =>
   import("./outreach-planner").then((m) => ({ default: m.BereavementOutreachPlanner })),
 );
@@ -46,6 +69,9 @@ const BereavementPlanDetail = lazy(() =>
 );
 const BereavementPlanHistory = lazy(() =>
   import("./plan-history").then((m) => ({ default: m.BereavementPlanHistory })),
+);
+const PredeathAssessment = lazy(() =>
+  import("./predeath-assessment").then((m) => ({ default: m.PredeathAssessment })),
 );
 const BereavementRiskView = lazy(() =>
   import("./risk-view").then((m) => ({ default: m.BereavementRiskView })),
@@ -109,6 +135,68 @@ export const bereavementScreens: ScreenRegistryModule<ComponentType> = {
       requiredPermission: "bereavement.plan.read",
       screen: BereavementCloseoutView,
     },
+    // --- the mailing program (ADR-0109 D10, routes 42-51): bereavement oversight only; the server enforces every key ---
+    {
+      id: "bereavement.mailings",
+      path: "/bereavement/mailings",
+      title: "Bereavement Mailings",
+      navGroup: "Bereavement",
+      requiredPermission: "bereavement.mailing.read",
+      screen: MailingRuns,
+    },
+    {
+      id: "bereavement.mailings.settings",
+      path: "/bereavement/mailings/settings",
+      title: "Mailing Settings",
+      requiredPermission: "bereavement.mailing.manage",
+      screen: MailingSettings,
+    },
+    {
+      id: "bereavement.mailings.run",
+      path: "/bereavement/mailings/runs/:runId",
+      title: "Mailing Run",
+      requiredPermission: "bereavement.mailing.read",
+      screen: MailingRunDetail,
+    },
+    // --- the family programs (ADR-0109 D10 PR 3, routes 53-81): groups, memorial services, the grief library ---
+    {
+      id: "bereavement.groups",
+      path: "/bereavement/groups",
+      title: "Support Groups",
+      navGroup: "Bereavement",
+      requiredPermission: "bereavement.group.read",
+      screen: SupportGroups,
+    },
+    {
+      id: "bereavement.groups.detail",
+      path: "/bereavement/groups/:groupId",
+      title: "Support Group",
+      requiredPermission: "bereavement.group.read",
+      screen: SupportGroupDetail,
+    },
+    {
+      id: "bereavement.memorials",
+      path: "/bereavement/memorials",
+      title: "Memorial Services",
+      navGroup: "Bereavement",
+      requiredPermission: "bereavement.memorial.rsvp",
+      screen: MemorialServices,
+    },
+    {
+      id: "bereavement.memorials.detail",
+      path: "/bereavement/memorials/:serviceId",
+      title: "Memorial Service",
+      requiredPermission: "bereavement.memorial.rsvp",
+      screen: MemorialServiceDetail,
+    },
+    {
+      id: "bereavement.library",
+      path: "/bereavement/library",
+      title: "Grief Library",
+      navGroup: "Bereavement",
+      requiredPermission: "bereavement.library.read",
+      screen: GriefLibrary,
+    },
     // --- the touchpoint book (§5.1 #9, with the #10 / #11 modals) ---
     {
       id: "bereavement.plan.outreach",
@@ -124,6 +212,14 @@ export const bereavementScreens: ScreenRegistryModule<ComponentType> = {
       title: "Bereavement Risk",
       requiredPermission: "bereavement.risk.read",
       screen: BereavementRiskView,
+    },
+    // --- the pre-death risk-assessment draft (ADR-0109 D5): addressed by ADMISSION, before any plan exists ---
+    {
+      id: "bereavement.predeath",
+      path: "/bereavement/pre-death/:admissionId",
+      title: "Pre-death Risk Assessment",
+      requiredPermission: "bereavement.assessment_draft.read",
+      screen: PredeathAssessment,
     },
     // --- the survivor (§5.1 #7, with the #15 opt-out modal) and their screen (#13, with #14) ---
     {

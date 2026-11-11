@@ -1,12 +1,12 @@
 {
-  "documentedSpecs": 116,
+  "documentedSpecs": 117,
   "byCategory": {
     "admin": 16,
     "core": 11,
     "clinical": 39,
     "platform": 5,
     "portal": 11,
-    "revenue": 17,
+    "revenue": 18,
     "compliance": 11,
     "staffing": 3,
     "mobile": 1,
@@ -1016,6 +1016,70 @@
       "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
+      "id": "bereavement.mailings",
+      "path": "/bereavement/mailings",
+      "permission": "bereavement.mailing.read"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.mailings.settings",
+      "path": "/bereavement/mailings/settings",
+      "permission": "bereavement.mailing.manage"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.mailings.run",
+      "path": "/bereavement/mailings/runs/:runId",
+      "permission": "bereavement.mailing.read"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.groups",
+      "path": "/bereavement/groups",
+      "permission": "bereavement.group.read"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.groups.detail",
+      "path": "/bereavement/groups/:groupId",
+      "permission": "bereavement.group.read"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.memorials",
+      "path": "/bereavement/memorials",
+      "permission": "bereavement.memorial.rsvp"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.memorials.detail",
+      "path": "/bereavement/memorials/:serviceId",
+      "permission": "bereavement.memorial.rsvp"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.library",
+      "path": "/bereavement/library",
+      "permission": "bereavement.library.read"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
       "id": "bereavement.plan.outreach",
       "path": "/bereavement/plans/:planId/outreach",
       "permission": "bereavement.outreach.read"
@@ -1027,6 +1091,14 @@
       "id": "bereavement.plan.risk",
       "path": "/bereavement/plans/:planId/risk",
       "permission": "bereavement.risk.read"
+    },
+    {
+      "app": "web",
+      "module": "16-bereavement",
+      "moduleId": 16,
+      "id": "bereavement.predeath",
+      "path": "/bereavement/pre-death/:admissionId",
+      "permission": "bereavement.assessment_draft.read"
     },
     {
       "app": "web",
@@ -1912,6 +1984,14 @@
       "app": "web",
       "module": "25-remittance",
       "moduleId": 25,
+      "id": "remittance.claimmd-era-review",
+      "path": "/remittance/claimmd-era-review",
+      "permission": "remittance.read"
+    },
+    {
+      "app": "web",
+      "module": "25-remittance",
+      "moduleId": 25,
       "id": "remittance.denials",
       "path": "/remittance/denials",
       "permission": "denial.worklist.read"
@@ -2115,6 +2195,14 @@
       "id": "portal.admin",
       "path": "/admin/portal",
       "permission": "portal.account.read_list"
+    },
+    {
+      "app": "web",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.patient-signatures",
+      "path": "/patients/:patientId/signatures",
+      "permission": "portal.signature_request.read"
     },
     {
       "app": "web",
@@ -3067,6 +3155,14 @@
       "id": "portal.documents",
       "path": "/p/:patientId/documents",
       "permission": "portal.documents.read_list"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.signatures",
+      "path": "/p/:patientId/signatures",
+      "permission": "portal.signature.read"
     },
     {
       "app": "portal",

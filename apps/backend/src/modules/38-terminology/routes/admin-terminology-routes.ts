@@ -24,6 +24,7 @@ import { randomUUID } from "node:crypto";
 // `POST /uploads` presigns the platform-bucket PUT an operator needs to hand a release file to the loader;
 // `…/license-attestation` records the licence the gate checks and the attribution text served with the data.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import type { CodeSystemId } from "@chartwarden/terminology";
 import {
   type LoadableSystemId,
@@ -46,9 +47,6 @@ import {
   AdminVersionsQuerySchema,
   parse,
 } from "./terminology-typebox";
-
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The injection surface for M38's platform-ops routes. */
 export interface AdminTerminologyRouteDeps {

@@ -7,7 +7,7 @@ import {
 } from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 
-export const FAMILY_AGGREGATE_KIND = "message_family_contact";
+const FAMILY_AGGREGATE_KIND = "message_family_contact";
 
 export type FamilyEventFacts =
   | {

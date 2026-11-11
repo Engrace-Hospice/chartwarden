@@ -27,6 +27,7 @@ export type ChartSection =
   | "medications"
   | "documents"
   | "election"
+  | "signatures"
   | "idg"
   | "claims"
   | "communication";
@@ -42,6 +43,7 @@ type ChartTabKey =
   | "visits"
   | "idg"
   | "documents"
+  | "signatures"
   | "claims"
   | "communication";
 
@@ -67,6 +69,7 @@ const SECTION_TAB: Record<ChartSection, ChartTabKey> = {
   medications: "medications",
   idg: "idg",
   documents: "documents",
+  signatures: "signatures",
   claims: "claims",
   communication: "communication",
 };
@@ -113,6 +116,11 @@ const TABS: {
     key: "documents",
     label: "Documents",
     route: (id) => `/patients/${id}/documents`,
+  },
+  {
+    key: "signatures",
+    label: "Signatures",
+    route: (id) => `/patients/${id}/signatures`,
   },
   { key: "claims", label: "Claims", route: (id) => `/patients/${id}/claims` },
   // Rendered as PatientConversationLink (opens this patient's care-team conversation); route is the href fallback.

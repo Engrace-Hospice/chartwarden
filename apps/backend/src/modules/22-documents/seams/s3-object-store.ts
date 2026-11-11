@@ -320,7 +320,8 @@ function assertS3Credentials(config: S3ObjectStoreConfig, constructorName: strin
   }
 }
 
-function createS3SignedFetch(
+/** One header-signed SigV4 request; used by the adapter and by the object-store copy tool (scripts/object-store-copy.ts). */
+export function createS3SignedFetch(
   config: S3ObjectStoreConfig,
   deps: S3ObjectStoreDeps,
   constructorName: string,
@@ -513,7 +514,7 @@ export function createS3ObjectStore(
       };
     },
 
-    async getObject({ bucket, objectKey, maxBytes, signal }) {
+    async getObject({ bucket, objectKey, maxBytes, firstBytes, signal }) {
       const res = await signedFetch({
         method: "GET",
         bucket,
@@ -521,6 +522,9 @@ export function createS3ObjectStore(
         query: [],
         payload: null,
         ...(signal ? { signal } : {}),
+        ...(firstBytes === undefined
+          ? {}
+          : { extraHeaders: { range: `bytes=0-${firstBytes - 1}` } }),
       });
       if (res.status === 404) return null;
       if (!res.ok) throw opError("getObject", res.status, bucket, objectKey);

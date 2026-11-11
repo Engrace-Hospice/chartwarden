@@ -28,7 +28,7 @@ export type NoeSubmitResponse = Static<typeof NoeSubmitResponse>;
 // Errors (per §4.2):
 //   422 NOE_OUTSIDE_WINDOW — windowTargetAt < today (already breached); submission still proceeds (warning)
 //   409 NOE_NOT_READY      — state != READY
-//   412 STALE_VERSION      — If-Match / ifVersion mismatch
+//   409 STALE_VERSION      — If-Match / ifVersion mismatch
 //   403 STEP_UP_REQUIRED   — M2 billing-submit session profile not satisfied
 
 // ── route #27: cancel ───────────────────────────────────────────────────────────────────────────────────

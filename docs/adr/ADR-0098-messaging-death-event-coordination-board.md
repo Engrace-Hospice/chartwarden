@@ -51,7 +51,7 @@ Migration `1202_m36_ack_broadcast_withdraw_deadline_death_board_stall.sql` (shar
 
 ## Amendment (2026-11-01): the death-notification cascade and the first outbound disclosure to a funeral home
 
-Status of this amendment: **Proposed**, like the rest of this ADR. Migration `1305_m36_death_notification.sql`, flag `messaging.death_notifications`. Nothing below has been signed off (see Required sign-offs).
+Status of this amendment: **Proposed**, like the rest of this ADR. Migration `1454_m36_death_notification.sql`, flag `messaging.death_notifications`. Nothing below has been signed off (see Required sign-offs).
 
 - **A1. What is new.** Until now the board only coordinated people inside the tenant. The cascade adds (a) fixed-text in-app notices to internal recipients when a board opens (the attending, the medical director, the bereavement coordinator, the billing lead, pharmacy and DME), and (b) the first message that leaves the tenant: a notice to a funeral home that staff select. Everything else in this ADR still holds: coordination only, no clinical content, no order or medication or equipment instruction ever travels by message.
 - **A2. Minimum-necessary content, fixed text.** Internal notices carry one fixed sentence and a deep link; no patient name, cause, item wording or free text, and the correlation id is a hash, never a raw id (ADR-0073). The funeral-home notice is the existing M2 funeral-home magic link (the same store, 72 hour session class and fixed PHI-free email as `POST /api/v1/funeral/invite`); the email names no patient. The recipient address is used once to send and is never stored or echoed. What the funeral home can read after redeeming is M2's minimum decedent read, unchanged.

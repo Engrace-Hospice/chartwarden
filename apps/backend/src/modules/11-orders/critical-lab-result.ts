@@ -1,15 +1,15 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/11-orders/critical-lab-result.ts — #908/#910: the `critical_lab_result` ledger (migration
 // 1297). Every critical (HH/LL) observation the lab-results applier sees gets one row, written in the applier's own
 // transaction, so (a) a critical result bound to NO order is quarantined in a visible queue with a response clock rather
 // than dropped, (b) the M36 critical-lab alert reads one set of facts whichever event reaches it first, and (c) a later
 // non-critical observation of the same test marks the earlier critical row superseded (it is never deleted).
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 
 const CLR = schema.criticalLabResults;
 const ORDER = schema.orderRecords;
-const CONSUMER_USER_ID = "";
 
 /** How long a critical result with no order may sit unresolved before the medical director + attending are paged. */
 export const CRITICAL_LAB_NO_ORDER_RESPOND_WITHIN_MS = 60 * 60 * 1000;

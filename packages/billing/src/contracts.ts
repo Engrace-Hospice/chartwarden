@@ -17,16 +17,8 @@ export type MembershipId = string;
 export type ClaimId = string;
 export type ClaimLineId = string;
 export type ClaimSubmissionId = string;
-export type ClaimAcknowledgmentId = string;
-export type NoeId = string;
-export type NotrId = string;
-export type ValidationRunId = string;
 export type ValidationResultId = string;
-export type ValidationOverrideId = string;
-export type EligibilityCheckId = string;
 export type MacCredentialId = string;
-export type RemittanceAdviceId = string;
-export type AbnId = string;
 
 /** ISO-8601 calendar date (`YYYY-MM-DD`). */
 export type IsoDate = string;
@@ -93,7 +85,6 @@ export type SubmissionStatus =
   | "partial"
   | "rejected"
   | "failed";
-export type AdjudicationOutcome = "paid" | "partial_paid" | "denied";
 
 /** The override-role gate per rule (§4.5 / §4.7 `override_role_eligible`). */
 export type OverrideRole =

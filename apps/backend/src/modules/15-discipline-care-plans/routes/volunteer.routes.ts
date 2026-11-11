@@ -11,9 +11,14 @@
 // Route 17 composes `volunteer_compliance_active` only when NO documented override is supplied (§8.6): the
 // override path must reach the handler so the ≥40-char reason is enforced and the failing gates are
 // recorded rather than the request being refused by an opaque 403.
+import {
+  actorOf,
+  ifMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+  writeActorOf,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import {
   ABAC_COORDINATOR,
   ABAC_VOLUNTEER_ACTIVE_UNLESS_OVERRIDE,
@@ -90,7 +95,7 @@ export function registerVolunteerRoutes(app: FastifyInstance, deps: VolunteerRou
       const { planId, assignmentId } = parse(AssignmentParams, request.params);
       const body = parse(UpdateVolunteerAssignmentBody, request.body);
       return writeService.updateVolunteerAssignment(writeActorOf(request), planId, assignmentId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         ...body,
       });
     },
@@ -148,7 +153,7 @@ export function registerVolunteerRoutes(app: FastifyInstance, deps: VolunteerRou
       const { gateId } = parse(GateParams, request.params);
       const body = parse(UpdateVolunteerGateBody, request.body);
       return writeService.updateVolunteerGate(writeActorOf(request), gateId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         ...body,
       });
     },
@@ -162,7 +167,7 @@ export function registerVolunteerRoutes(app: FastifyInstance, deps: VolunteerRou
       const { gateId } = parse(GateParams, request.params);
       const body = parse(RevokeVolunteerGateBody, request.body);
       return writeService.revokeVolunteerGate(writeActorOf(request), gateId, {
-        expectedVersion: ifMatchVersion(request, true),
+        expectedVersion: ifMatchVersionOf(request),
         revokedReason: body.revokedReason,
       });
     },

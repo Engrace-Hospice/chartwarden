@@ -8,9 +8,15 @@
 // session carries NO workforce membership, and §3.3.8 says exactly that — the self-service opt-out row
 // records `recorded_by_user_id = NULL`. Requiring a membership here would have made the portal opt-out
 // button 403 for the only people it exists for.
+import {
+  ifMatchVersionOf,
+  optionalIfMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
-import { mutatingActorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
+import { actorOf, mutatingActorOf, writeActorOf } from "./actor";
 import {
   ABAC_ANY,
   ABAC_DISCIPLINE_SELF,
@@ -20,6 +26,7 @@ import {
   P,
 } from "./guards";
 import {
+  CareGoalsBody,
   ConfirmContactBody,
   ContactParams,
   CreateContactBody,
@@ -34,17 +41,48 @@ import {
   RescindOptOutBody,
   UpdateContactBody,
   parse,
+  parseQuery,
 } from "./m16-typebox";
+import { ContactTimelineQuerySchema } from "./mailing-typebox";
+import type { M16ReadService } from "./read-service";
 import type { M16WriteService } from "./write-service";
 
 export interface ContactRouteDeps {
   readonly writeService: M16WriteService;
+  /** Route 52 (the contact's program timeline) is a read. */
+  readonly readService: M16ReadService;
 }
 
 const IDEMPOTENT = requireIdempotencyKey();
+const NO_OFFSET = rejectOffsetPagination();
 
 export function registerBereavedContactRoutes(app: FastifyInstance, deps: ContactRouteDeps): void {
-  const { writeService } = deps;
+  const { writeService, readService } = deps;
+
+  // 52 — the contact's program timeline (ADR-0109 D10): touchpoints and program activities (mailings, sessions), newest first. Reach is the plan's;
+  //      a bereavement volunteer gets the entries without the outcome of a touchpoint (call outcomes are clinical content).
+  app.get(
+    "/api/v1/bereavement/contacts/:contactId/timeline",
+    {
+      preHandler: [
+        P("bereavement.plan.read"),
+        ABAC_WINDOW_CONTACT("bereavement.plan.read"),
+        NO_OFFSET,
+      ],
+      config: { auditRead: { resourceKind: "bereaved_contact", resourceIdParam: "contactId" } },
+    },
+    async (request) => {
+      const { contactId } = parse(ContactParams, request.params);
+      const page = await readService.listContactTimeline(
+        actorOf(request),
+        contactId,
+        parseQuery(ContactTimelineQuerySchema, request.query),
+      );
+      // Out of reach is indistinguishable from absent: the 404 never reveals that a patient died.
+      if (!page) throw new NotFoundError("bereaved contact not found");
+      return page;
+    },
+  );
 
   // 11 — add a bereaved contact to an open plan (lands `proposed`; route 13 confirms it).
   app.post(
@@ -79,8 +117,29 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(UpdateContactBody, request.body);
       return writeService.updateContact(writeActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request, true),
         ...body,
+        expectedVersion: ifMatchVersionOf(request),
+      });
+    },
+  );
+
+  // 41 — the contact's care goals (ADR-0109): at most 3, sealed with the tenant DEK. `If-Match` required (a blind
+  //      overwrite could erase goals another counselor just recorded with the family); a volunteer neither reads nor writes.
+  app.put(
+    "/api/v1/bereavement/contacts/:contactId/care-plan",
+    {
+      preHandler: [
+        P("bereavement.contact.update"),
+        ABAC_WINDOW_CONTACT("bereavement.contact.update"),
+        IDEMPOTENT,
+      ],
+    },
+    async (request) => {
+      const { contactId } = parse(ContactParams, request.params);
+      const body = parse(CareGoalsBody, request.body);
+      return writeService.setCareGoals(writeActorOf(request), contactId, {
+        expectedVersion: ifMatchVersionOf(request),
+        goals: body.goals,
       });
     },
   );
@@ -100,8 +159,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(ConfirmContactBody, request.body);
       return writeService.confirmContact(writeActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -123,8 +182,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(OptOutBody, request.body);
       return writeService.optOutContact(mutatingActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -148,8 +207,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(RescindOptOutBody, request.body);
       return writeService.rescindOptOut(mutatingActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -168,8 +227,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(MarkDeceasedBody, request.body);
       return writeService.markContactDeceased(writeActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -189,8 +248,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(MarkUnreachableBody, request.body);
       return writeService.markContactUnreachable(writeActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -210,8 +269,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(DismissUnreachableProposalBody, request.body);
       return writeService.dismissUnreachableProposal(writeActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );
@@ -232,8 +291,8 @@ export function registerBereavedContactRoutes(app: FastifyInstance, deps: Contac
       const { contactId } = parse(ContactParams, request.params);
       const body = parse(FlagComplicatedGriefBody, request.body);
       return writeService.flagComplicatedGrief(writeActorOf(request), contactId, {
-        expectedVersion: ifMatchVersion(request),
         ...body,
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );

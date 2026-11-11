@@ -11,7 +11,7 @@
 //
 // Two server contracts every write helper honours (§F08 / §2.5): a mutating route requires an
 // `Idempotency-Key`, and a state transition requires `If-Match` carrying the row `version` the caller READ
-// (a 412 means the row moved under you — reload, never retry blind). The server stays the only
+// (a 409 STALE_VERSION means the row moved under you — reload, never retry blind). The server stays the only
 // authorization point: nothing here decides what a caller may see.
 //
 // THE OPTIONAL-VS-NULL RULE the DTOs below preserve. `currentRiskTier?: string | null` is a three-valued
@@ -56,17 +56,6 @@ export type PlanDetail = Ok<operations["getApiV1BereavementPlansByPlanId"]>;
 /** The §2.6 outreach rollup both dashboards and the closure record carry (COUNTS, never a rate). */
 export type OutreachStats = PlanDetail["stats"];
 
-/**
- * D16 — the external-source provenance an HL7 ADT plan carries.
- *
- * NOTE (TASK-022 drift): the generated shape does NOT match the old hand-written interface field-for-field.
- * It is `sourceProposalId` / `sourceMessageId` / `sourceFacilityMdmId` / `sourceFacilityName` /
- * `ackReceivedAt` / `cosignStatus` / `cosignedAt?` / `medicalDirectorMembershipId?` — there is no
- * `sourceFacility`, `sourceSystem`, `ackAt`, or `cosignedByUserId`, and no index signature. Any screen
- * reading the old field names will now fail to compile; see the final report.
- */
-export type ExternalSourceMetadata = NonNullable<PlanDetail["externalSource"]>;
-
 /** Route 10 — the §3.3.7 closure record (§7.15 survey reconstruction). */
 export type ClosureView = Ok<operations["getApiV1BereavementPlansByPlanIdClosure"]>;
 
@@ -76,6 +65,19 @@ export type OutreachRow = Ok<operations["postApiV1BereavementOutreachByOutreachI
 
 /** Route 29 — one immutable row of the append-only score ledger. */
 export type RiskScoreRow = Ok<operations["postApiV1BereavementPlansByPlanIdRecomputerisk"]>;
+
+/** Route 37 — the plan's assessment checkpoints (ADR-0109 D3). */
+export type AssessmentTaskList = Ok<operations["getApiV1BereavementPlansByPlanIdAssessmenttasks"]>;
+export type AssessmentTaskRow = AssessmentTaskList["items"][number];
+
+/** Routes 35 / 36 — the pre-death risk-assessment draft for an admission (ADR-0109 D5). */
+export type PreDeathDraft = Ok<operations["getApiV1BereavementPredeathassessmentsByAdmissionId"]>;
+
+/** Routes 38 / 39 / 40 — one physician condolence letter (ADR-0109 D6); the sealed note is never on the wire. */
+export type PhysicianLetter = Ok<
+  operations["postApiV1BereavementPhysicianlettersByLetterIdApprove"]
+>;
+export type PhysicianLetterPage = Ok<operations["getApiV1BereavementPhysicianletters"]>;
 
 /** Route 30 — the counselor's own caseload plus what is coming due. */
 export type CounselorDashboard = Ok<operations["getApiV1BereavementDashboardCounselor"]>;
@@ -95,6 +97,28 @@ export type ScheduleRegeneration = Ok<
 
 /** Routes 21/26/32's answer: the `bereavement_contact_log` row the transition wrote. */
 export type ContactLogRow = Ok<operations["postApiV1BereavementContactsByContactIdLogdirect"]>;
+
+/** Routes 42-52 (ADR-0109 D10) — the mailing program. No wire shape here carries a recipient name or address. */
+export type MailingConfig = Ok<operations["getApiV1BereavementMailingsConfig"]>[number];
+export type MailingConfigBody = ReqBody<
+  operations["putApiV1BereavementMailingsConfigByMailingKey"]
+>;
+export type MailingContent = ReqBody<
+  operations["patchApiV1BereavementMailingsRunsByRunIdContent"]
+>["content"];
+export type MailingLocaleContent = NonNullable<MailingContent["en"]>;
+export type MailingRun = Ok<operations["getApiV1BereavementMailingsRunsByRunId"]>;
+export type MailingRunPage = Ok<operations["getApiV1BereavementMailingsRuns"]>;
+export type MailingRunStatus = MailingRun["status"];
+export type MailingItemPage = Ok<operations["getApiV1BereavementMailingsRunsByRunIdItems"]>;
+export type MailingItem = MailingItemPage["data"][number];
+export type MailingItemStatus = MailingItem["status"];
+export type MailingExclusionReason = NonNullable<MailingItem["exclusionReason"]>;
+export type MailingDownload = Ok<operations["getApiV1BereavementMailingsRunsByRunIdDownload"]>;
+export type MailingKey = MailingConfig["mailingKey"];
+/** Route 52 — the contact's program timeline (touchpoints and program activities, newest first). */
+export type ContactTimelinePage = Ok<operations["getApiV1BereavementContactsByContactIdTimeline"]>;
+export type TimelineEntry = ContactTimelinePage["data"][number];
 
 /** One roster addition (§4.2 `AdditionalContactBody`, shared by routes 5 and 11). */
 export type ContactDraft = ReqBody<operations["postApiV1BereavementPlansByPlanIdContacts"]>;
@@ -145,16 +169,64 @@ export function idemKey(): string {
     : `m16-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
 }
 
-/** §2.5 — the mutation headers: an idempotency key always, `If-Match` whenever a row version was read. */
-export function writeHeaders(version?: number | null): Record<string, string> {
-  const header: Record<string, string> = { "Idempotency-Key": idemKey() };
+/**
+ * §2.5 — the mutation headers: an idempotency key always, `If-Match` whenever a row version was read. A screen that may
+ * RETRY a write (a modal whose response was lost) passes the key of that attempt so the retry dedupes server-side.
+ */
+export function writeHeaders(
+  version?: number | null,
+  idempotencyKey?: string,
+): Record<string, string> {
+  const header: Record<string, string> = { "Idempotency-Key": idempotencyKey ?? idemKey() };
   if (version != null) header["If-Match"] = String(version);
   return header;
 }
 
+/** The error a write reports when its fetch rejected: the connection dropped and the answer, if any, never arrived. */
+const LOST_RESPONSE = { lost: true } as const;
+const LOST_RESPONSE_MESSAGE =
+  "The connection dropped before the server answered, so we can't tell whether it went through. Check your connection and try again.";
+
+/** HTTP status of a write whose response never arrived (see {@link LOST_RESPONSE}). */
+export const NO_RESPONSE = 0;
+
+/**
+ * Run one request and report `{ data, error, status }` without ever rejecting: a rejected fetch becomes
+ * `{ error: LOST_RESPONSE, status: NO_RESPONSE }`, so a screen can never be left on "busy" forever and can retry
+ * with the SAME idempotency key.
+ */
+export async function send<T>(
+  call: () => Promise<{ data?: T; error?: unknown; response: Response }>,
+): Promise<{ data: T | null; error: unknown; status: number }> {
+  try {
+    const res = await call();
+    return res.error
+      ? { data: null, error: res.error, status: res.response.status }
+      : { data: res.data ?? null, error: null, status: res.response.status };
+  } catch {
+    return { data: null, error: LOST_RESPONSE, status: NO_RESPONSE };
+  }
+}
+
+/** 409 (the row moved, or it was decided / locked elsewhere) or 404 (it is gone): what the screen read is stale. */
+export const isStaleWrite = (status: number): boolean => status === 409 || status === 404;
+
+/** The server's machine code of a failed response (`{ error: { code } }`), or null. */
+export function errorCode(error: unknown): string | null {
+  const code = (error as { error?: { code?: unknown } } | null | undefined)?.error?.code;
+  return typeof code === "string" ? code : null;
+}
+
+/** The optimistic-concurrency refusal: the version sent in `If-Match` is no longer the row's. */
+export const STALE_VERSION_CODE = "STALE_VERSION";
+
+/** 409 `STALE_VERSION` — the row moved under you (as opposed to a 409 that names a refused gate). */
+export const isStaleVersion = (status: number, error: unknown): boolean =>
+  status === 409 && errorCode(error) === STALE_VERSION_CODE;
+
 /**
  * Turn a failed response into the sentence a counselor can act on. The server's problem+json body is the
- * source of truth; the status-derived fallbacks name the contracts a screen can actually violate (412 =
+ * source of truth; the status-derived fallbacks name the contracts a screen can actually violate (409 STALE_VERSION =
  * the row moved, 428 = a blind write, 409 = a gate refused and SAID WHICH) rather than a generic failure.
  */
 /** GAP-047 — the server's machine code when the cosigner is the counselor who requested the close. */
@@ -163,18 +235,18 @@ export const EARLY_CLOSE_SELF_COSIGN_MESSAGE =
   "You requested this early close, so you cannot cosign it. A different clinical supervisor must cosign.";
 
 export function errorMessage(error: unknown, fallback: string): string {
+  if (error === LOST_RESPONSE) return LOST_RESPONSE_MESSAGE;
   const body = error as { title?: string; detail?: string; code?: string; status?: number } | null;
   if (body?.code === EARLY_CLOSE_SELF_COSIGN_CODE) return EARLY_CLOSE_SELF_COSIGN_MESSAGE;
   const serverMessage = envelopeErrorMessage(error);
   if (serverMessage) return serverMessage;
   if (body?.detail) return body.detail;
   if (body?.title) return body.title;
-  if (body?.status === 412)
+  if (errorCode(error) === STALE_VERSION_CODE)
     return "This record changed while you were working on it. Reload and re-apply your edit.";
   if (body?.status === 428)
     return "This edit is missing its version. Reload the record and try again.";
-  if (body?.status === 403)
-    return "You do not have access to this action for this bereavement plan.";
+  if (body?.status === 403) return "You don't have access to do this.";
   return fallback;
 }
 
@@ -195,11 +267,10 @@ export async function getPlan(
   client: ApiClient,
   planId: string,
 ): Promise<{ plan: PlanDetail | null; error: unknown }> {
-  const res = await client.GET("/api/v1/bereavement/plans/{planId}", {
-    params: { path: { planId } },
-  });
-  if (res.error) return { plan: null, error: res.error };
-  return { plan: res.data, error: null };
+  const { data, error } = await send(() =>
+    client.GET("/api/v1/bereavement/plans/{planId}", { params: { path: { planId } } }),
+  );
+  return { plan: data, error };
 }
 
 /** Route 10 — the closure record. A plan still open answers 404, which is an ordinary state, not an error. */
@@ -207,11 +278,10 @@ export async function getClosure(
   client: ApiClient,
   planId: string,
 ): Promise<{ closure: ClosureView | null; error: unknown }> {
-  const res = await client.GET("/api/v1/bereavement/plans/{planId}/closure", {
-    params: { path: { planId } },
-  });
-  if (res.error) return { closure: null, error: res.error };
-  return { closure: res.data, error: null };
+  const { data, error } = await send(() =>
+    client.GET("/api/v1/bereavement/plans/{planId}/closure", { params: { path: { planId } } }),
+  );
+  return { closure: data, error };
 }
 
 /** Route 19 — the plan's touchpoints (scheduled + historical), cursor-paginated. */
@@ -219,12 +289,13 @@ export async function listOutreach(
   client: ApiClient,
   planId: string,
   query: ReqQuery<operations["getApiV1BereavementPlansByPlanIdOutreach"]> = {},
-): Promise<{ page: CursorPage<OutreachRow> | null; error: unknown }> {
-  const res = await client.GET("/api/v1/bereavement/plans/{planId}/outreach", {
-    params: { path: { planId }, query },
-  });
-  if (res.error) return { page: null, error: res.error };
-  return { page: res.data, error: null };
+): Promise<{ page: CursorPage<OutreachRow> | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/plans/{planId}/outreach", {
+      params: { path: { planId }, query },
+    }),
+  );
+  return { page: data, error, status };
 }
 
 /** Route 29 — the append-only score ledger, newest first. */
@@ -233,11 +304,39 @@ export async function listRiskScores(
   planId: string,
   query: ReqQuery<operations["getApiV1BereavementPlansByPlanIdRiskscores"]> = {},
 ): Promise<{ page: CursorPage<RiskScoreRow> | null; error: unknown }> {
-  const res = await client.GET("/api/v1/bereavement/plans/{planId}/risk-scores", {
-    params: { path: { planId }, query },
-  });
-  if (res.error) return { page: null, error: res.error };
-  return { page: res.data, error: null };
+  const { data, error } = await send(() =>
+    client.GET("/api/v1/bereavement/plans/{planId}/risk-scores", {
+      params: { path: { planId }, query },
+    }),
+  );
+  return { page: data, error };
+}
+
+/** Route 37 — the plan's assessment checkpoints. Empty when the reader's scope holds no clinical content. */
+export async function listAssessmentTasks(
+  client: ApiClient,
+  planId: string,
+): Promise<{ list: AssessmentTaskList | null; error: unknown }> {
+  const { data, error } = await send(() =>
+    client.GET("/api/v1/bereavement/plans/{planId}/assessment-tasks", {
+      params: { path: { planId } },
+    }),
+  );
+  return { list: data, error };
+}
+
+/** Route 35 — the pre-death draft (an empty all-unknown draft at version 0 when nothing is recorded). A 404 is
+ *  "no such admission OR not yours to know about" — never a 403 (nothing about who is dying leaks). */
+export async function getPreDeathDraft(
+  client: ApiClient,
+  admissionId: string,
+): Promise<{ draft: PreDeathDraft | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/pre-death-assessments/{admissionId}", {
+      params: { path: { admissionId } },
+    }),
+  );
+  return { draft: data, error, status };
 }
 
 /** Route 30 — the caller's OWN caseload. The counselor id comes from the session, never from a param. */
@@ -468,6 +567,94 @@ export async function updateContact(
   return { contact: res.data, error: null };
 }
 
+/** Route 41 — replace the contact's care goals (ADR-0109): at most 3, each 1..280 characters; an empty list clears
+ *  them. `version` is the contact version the caller READ; a volunteer scope is refused (403). */
+export async function setCareGoals(
+  client: ApiClient,
+  contactId: string,
+  version: number,
+  goals: string[],
+  idempotencyKey?: string,
+): Promise<{ contact: ContactRow | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.PUT("/api/v1/bereavement/contacts/{contactId}/care-plan", {
+      params: { path: { contactId } },
+      headers: writeHeaders(version, idempotencyKey),
+      body: { goals },
+    }),
+  );
+  return { contact: data, error, status };
+}
+
+/**
+ * Route 38 — the physician-letter review queue (oversight only). `status` is the HTTP status so the screen can tell "you may not
+ * review letters" (403: show nothing) from a failure (anything else: say so).
+ */
+export async function listPhysicianLetters(
+  client: ApiClient,
+  query: ReqQuery<operations["getApiV1BereavementPhysicianletters"]>,
+): Promise<{ page: PhysicianLetterPage | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/physician-letters", { params: { query } }),
+  );
+  return { page: data, error, status };
+}
+
+/** Route 39 — approve a pending letter. `version` is the one the caller READ; a 409 STALE_VERSION means it moved. */
+export async function approvePhysicianLetter(
+  client: ApiClient,
+  letterId: string,
+  version: number,
+  body: ReqBody<operations["postApiV1BereavementPhysicianlettersByLetterIdApprove"]>,
+  idempotencyKey?: string,
+): Promise<{ letter: PhysicianLetter | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.POST("/api/v1/bereavement/physician-letters/{letterId}/approve", {
+      params: { path: { letterId } },
+      headers: writeHeaders(version, idempotencyKey),
+      body,
+    }),
+  );
+  return { letter: data, error, status };
+}
+
+/** Route 40 — decline a pending letter with a documented reason (at least 20 characters). */
+export async function declinePhysicianLetter(
+  client: ApiClient,
+  letterId: string,
+  version: number,
+  reason: string,
+  idempotencyKey?: string,
+): Promise<{ letter: PhysicianLetter | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.POST("/api/v1/bereavement/physician-letters/{letterId}/decline", {
+      params: { path: { letterId } },
+      headers: writeHeaders(version, idempotencyKey),
+      body: { reason },
+    }),
+  );
+  return { letter: data, error, status };
+}
+
+/** Route 36 — record the pre-death draft. `version` is the one the caller READ (0 for the first write); the server
+ *  answers 409 `DRAFT_LOCKED` once a plan exists and 409 `STALE_VERSION` when the draft moved. */
+export async function putPreDeathDraft(
+  client: ApiClient,
+  admissionId: string,
+  version: number,
+  body: ReqBody<operations["putApiV1BereavementPredeathassessmentsByAdmissionId"]>,
+  idempotencyKey?: string,
+): Promise<{ draft: PreDeathDraft | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.PUT("/api/v1/bereavement/pre-death-assessments/{admissionId}", {
+      params: { path: { admissionId } },
+      headers: writeHeaders(version, idempotencyKey),
+      body,
+    }),
+  );
+  return { draft: data, error, status };
+}
+
 /** Route 13 — proposed → active. The D6 consent verdict is resolved through M39 server-side, fail-CLOSED. */
 export async function confirmContact(
   client: ApiClient,
@@ -506,14 +693,16 @@ export async function rescindOptOut(
   contactId: string,
   version: number,
   body: ReqBody<operations["postApiV1BereavementContactsByContactIdRescindoptout"]>,
-): Promise<{ contact: ContactRow | null; error: unknown }> {
-  const res = await client.POST("/api/v1/bereavement/contacts/{contactId}/rescind-opt-out", {
-    params: { path: { contactId } },
-    headers: writeHeaders(version),
-    body,
-  });
-  if (res.error) return { contact: null, error: res.error };
-  return { contact: res.data, error: null };
+  idempotencyKey?: string,
+): Promise<{ contact: ContactRow | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.POST("/api/v1/bereavement/contacts/{contactId}/rescind-opt-out", {
+      params: { path: { contactId } },
+      headers: writeHeaders(version, idempotencyKey),
+      body,
+    }),
+  );
+  return { contact: data, error, status };
 }
 
 /** Route 16 — the survivor themselves died. §2.3's only terminal state, so the verification is mandatory. */
@@ -553,13 +742,16 @@ export async function dismissUnreachableProposal(
   client: ApiClient,
   contactId: string,
   version: number,
-): Promise<{ contact: ContactRow | null; error: unknown }> {
-  const res = await client.POST(
-    "/api/v1/bereavement/contacts/{contactId}/dismiss-unreachable-proposal",
-    { params: { path: { contactId } }, headers: writeHeaders(version), body: {} },
+  idempotencyKey?: string,
+): Promise<{ contact: ContactRow | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.POST("/api/v1/bereavement/contacts/{contactId}/dismiss-unreachable-proposal", {
+      params: { path: { contactId } },
+      headers: writeHeaders(version, idempotencyKey),
+      body: {},
+    }),
   );
-  if (res.error) return { contact: null, error: res.error };
-  return { contact: res.data, error: null };
+  return { contact: data, error, status };
 }
 
 /** Route 18 — §7.7 complicated grief. ENDS the M16 program for this survivor; the M40 resource is required. */
@@ -711,4 +903,169 @@ export async function lateAttemptOutreach(
   });
   if (res.error) return { outreach: null, error: res.error };
   return { outreach: res.data, error: null };
+}
+
+// ── the mailing program (routes 42-52, ADR-0109 D10) ───────────────────────────────────────────────────
+// Oversight only. Every write carries `Idempotency-Key` AND `If-Match` (the version the caller READ: the header decides, no body
+// field carries one); every read reports the HTTP `status`, so a screen can tell 403 (show nothing) from a failure (say so).
+
+/** Route 42 — the four configurable mailings, each merged with its stored config (version 0 = never configured). */
+export async function listMailingConfigs(
+  client: ApiClient,
+): Promise<{ configs: MailingConfig[] | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/mailings/config"),
+  );
+  return { configs: data, error, status };
+}
+
+/** Route 43 — upsert one mailing's config. `version` is the one the caller READ (0 for the first write); a 409 STALE_VERSION means it moved. */
+export async function putMailingConfig(
+  client: ApiClient,
+  mailingKey: string,
+  version: number,
+  body: MailingConfigBody,
+  idempotencyKey?: string,
+): Promise<{ config: MailingConfig | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.PUT("/api/v1/bereavement/mailings/config/{mailingKey}", {
+      params: { path: { mailingKey } },
+      headers: writeHeaders(version, idempotencyKey),
+      body,
+    }),
+  );
+  return { config: data, error, status };
+}
+
+/** Route 44 — the mailing runs, newest first, cursor-paginated. */
+export async function listMailingRuns(
+  client: ApiClient,
+  query: ReqQuery<operations["getApiV1BereavementMailingsRuns"]>,
+): Promise<{ page: MailingRunPage | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/mailings/runs", { params: { query } }),
+  );
+  return { page: data, error, status };
+}
+
+/** Route 45 — one run. */
+export async function getMailingRun(
+  client: ApiClient,
+  runId: string,
+): Promise<{ run: MailingRun | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/mailings/runs/{runId}", { params: { path: { runId } } }),
+  );
+  return { run: data, error, status };
+}
+
+/** Route 46 — the run's items (a contact, its channel and why it was included or left out: never a name or an address). */
+export async function listMailingItems(
+  client: ApiClient,
+  runId: string,
+  query: ReqQuery<operations["getApiV1BereavementMailingsRunsByRunIdItems"]>,
+): Promise<{ page: MailingItemPage | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/mailings/runs/{runId}/items", {
+      params: { path: { runId }, query },
+    }),
+  );
+  return { page: data, error, status };
+}
+
+/** Route 47 — replace a DRAFT run's wording (409 once it is no longer a draft). */
+export async function updateMailingRunContent(
+  client: ApiClient,
+  runId: string,
+  version: number,
+  content: MailingContent,
+  idempotencyKey?: string,
+): Promise<{ run: MailingRun | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.PATCH("/api/v1/bereavement/mailings/runs/{runId}/content", {
+      params: { path: { runId } },
+      headers: writeHeaders(version, idempotencyKey),
+      body: { content },
+    }),
+  );
+  return { run: data, error, status };
+}
+
+/** Route 48 — draft|failed → generating; the render runs in a worker. 422 `MAILING_CONTENT_EMPTY` when no wording was written. */
+export async function generateMailingRun(
+  client: ApiClient,
+  runId: string,
+  version: number,
+  idempotencyKey?: string,
+): Promise<{ run: MailingRun | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.POST("/api/v1/bereavement/mailings/runs/{runId}/generate", {
+      params: { path: { runId } },
+      headers: writeHeaders(version, idempotencyKey),
+    }),
+  );
+  return { run: data, error, status };
+}
+
+/**
+ * Route 49 — a short-lived URL of the rendered batch (409 unless ready|mailed). The URL is a credential to a document that holds
+ * every addressee: the caller opens it and drops it, and `no-store` keeps it out of any HTTP cache.
+ */
+export async function downloadMailingRun(
+  client: ApiClient,
+  runId: string,
+): Promise<{ download: MailingDownload | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/mailings/runs/{runId}/download", {
+      params: { path: { runId } },
+      cache: "no-store",
+    }),
+  );
+  return { download: data, error, status };
+}
+
+/** Route 50 — ready → mailed. Eligibility is re-checked: a family who became ineligible is flagged `excluded_after_render` and NOT logged as mailed. */
+export async function confirmMailingRunMailed(
+  client: ApiClient,
+  runId: string,
+  version: number,
+  idempotencyKey?: string,
+): Promise<{ run: MailingRun | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.POST("/api/v1/bereavement/mailings/runs/{runId}/confirm-mailed", {
+      params: { path: { runId } },
+      headers: writeHeaders(version, idempotencyKey),
+    }),
+  );
+  return { run: data, error, status };
+}
+
+/** Route 51 — cancel a draft, ready or failed run. */
+export async function cancelMailingRun(
+  client: ApiClient,
+  runId: string,
+  version: number,
+  idempotencyKey?: string,
+): Promise<{ run: MailingRun | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.POST("/api/v1/bereavement/mailings/runs/{runId}/cancel", {
+      params: { path: { runId } },
+      headers: writeHeaders(version, idempotencyKey),
+    }),
+  );
+  return { run: data, error, status };
+}
+
+/** Route 52 — the contact's touchpoints and program activities, newest first. A bereavement volunteer's entries carry no `outcome`. */
+export async function listContactTimeline(
+  client: ApiClient,
+  contactId: string,
+  query: ReqQuery<operations["getApiV1BereavementContactsByContactIdTimeline"]>,
+): Promise<{ page: ContactTimelinePage | null; error: unknown; status: number }> {
+  const { data, error, status } = await send(() =>
+    client.GET("/api/v1/bereavement/contacts/{contactId}/timeline", {
+      params: { path: { contactId }, query },
+    }),
+  );
+  return { page: data, error, status };
 }

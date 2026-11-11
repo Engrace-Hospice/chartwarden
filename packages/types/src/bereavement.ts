@@ -117,7 +117,24 @@ export type BereavementContactLogOutcome =
   | "requested_no_further_contact"
   | "crisis_referral"
   /** GAP-130 — system-only: the §4.5 M22 render callback's log row for an auto-completed card/letter. */
-  | "artifact_rendered";
+  | "artifact_rendered"
+  /** ADR-0109 D10 — PROGRAM ACTIVITY outcomes (an activity row only): a mailing sent, an email sent, a session or memorial attended. */
+  | "mailed"
+  | "emailed"
+  | "attended";
+
+/** ADR-0109 D10 — what a program-activity contact-log row was (`bereavement_contact_log.activity_kind`, a closed CHECK list). */
+export const BEREAVEMENT_ACTIVITY_KINDS = [
+  "newsletter_mailing",
+  "holiday_mailing",
+  "memorial_invitation_mailing",
+  "support_group_session",
+  "memorial_service_attendance",
+] as const;
+export type BereavementActivityKind = (typeof BEREAVEMENT_ACTIVITY_KINDS)[number];
+
+/** ADR-0109 D10 — the outcomes only an activity row may carry (write routes refuse them; the unreachable streak ignores them). */
+export const BEREAVEMENT_ACTIVITY_OUTCOMES = ["mailed", "emailed", "attended"] as const;
 
 /** The D3 risk tier driving the D4 cadence (mirrors `bereavement_risk_tier`). The deterministic rubric only
  *  reaches `high`; `complicated` is a D8 screen-driven promotion. */
@@ -138,8 +155,13 @@ export type BereavementPlanClosureReason =
   | "family_legal_action"
   | "other_early";
 
-/** D9 per-contact opt-out granularity (mirrors `bereavement_opt_out_kind`). */
-export type BereavementOptOutKind = "full" | "channel_specific" | "pause_temporarily";
+/** D9 per-contact opt-out granularity (mirrors `bereavement_opt_out_kind`). `no_mailings` (ADR-0109)
+ *  stops mailings only: the contact stays active and calls continue. */
+export type BereavementOptOutKind =
+  | "full"
+  | "channel_specific"
+  | "pause_temporarily"
+  | "no_mailings";
 
 /** The §2.2 pause taxonomy (mirrors `bereavement_plan_pause_kind`). */
 export type BereavementPlanPauseKind =
@@ -172,6 +194,118 @@ export type BereavementOptOutSourceKind =
 /** §3.3.7 — who drove the closure. `cascade` is the all-contacts-opted-out / patient-opt-out path. */
 export type BereavementCloseKind = "auto" | "manual" | "cascade";
 
+// ── ADR-0109 D10 — the mailing program (mirrors the `bereavement_mailing_*` text + CHECK value sets, migration 1374) ─────────────────────
+
+/** `bereavement_mailing_config.mailing_key`. `decedent_birthday` is DEFERRED (M16 holds no date of birth): kept in the CHECK, built by nothing. */
+export const BEREAVEMENT_MAILING_KEYS = [
+  "newsletter_quarterly",
+  "holiday_december",
+  "mothers_day",
+  "fathers_day",
+  "decedent_birthday",
+] as const;
+export type BereavementMailingKey = (typeof BEREAVEMENT_MAILING_KEYS)[number];
+/** The keys a tenant can configure and the sweep drafts runs for (everything but the deferred birthday mailing). */
+export const BEREAVEMENT_BUILT_MAILING_KEYS = [
+  "newsletter_quarterly",
+  "holiday_december",
+  "mothers_day",
+  "fathers_day",
+] as const satisfies readonly BereavementMailingKey[];
+
+export type BereavementMailingRunKind = "newsletter" | "holiday" | "memorial_invitation";
+export type BereavementMailingRunStatus =
+  | "draft"
+  | "generating"
+  | "ready"
+  | "mailed"
+  | "cancelled"
+  | "failed";
+export type BereavementMailingChannel = "postal" | "email";
+export type BereavementMailingItemStatus =
+  | "included"
+  | "excluded"
+  | "logged"
+  | "excluded_after_render"
+  | "email_sent"
+  | "email_failed";
+/** Why a contact was left out of a run (the item CHECK mirrors this list; the pure `decideMailingEligibility` returns exactly these). */
+export const BEREAVEMENT_MAILING_EXCLUSION_REASONS = [
+  "plan_not_active",
+  "contact_not_engageable",
+  "opted_out",
+  "no_mailings",
+  "channel_opted_out",
+  "channel_not_allowed",
+  "no_mailing_address",
+  "no_email_address",
+  "email_channel_unavailable",
+  "not_in_audience",
+] as const;
+export type BereavementMailingExclusionReason =
+  (typeof BEREAVEMENT_MAILING_EXCLUSION_REASONS)[number];
+
+// ── ADR-0109 D10 (PR 3) — support groups (mirrors the `bereavement_support_group*` text + CHECK value sets, migration 1390) ─────────────
+
+export type BereavementGroupFormat = "recurring" | "drop_in";
+/** In person or virtual (a support group or a memorial service). */
+export type BereavementProgramModality = "in_person" | "virtual";
+export type BereavementGroupFacilitatorKind = "staff" | "volunteer";
+export type BereavementGroupStatus = "draft" | "open" | "completed" | "cancelled";
+export type BereavementGroupSessionStatus = "scheduled" | "held" | "cancelled";
+export type BereavementGroupEnrollmentStatus = "enrolled" | "withdrawn";
+export const BEREAVEMENT_GROUP_WITHDRAWN_REASONS = [
+  "requested",
+  "staff_removed",
+  "opted_out",
+  "plan_closed",
+  "group_ended",
+] as const;
+export type BereavementGroupWithdrawnReason = (typeof BEREAVEMENT_GROUP_WITHDRAWN_REASONS)[number];
+
+/** A recurring group's schedule, in the group's IANA timezone: `count` sessions every `intervalWeeks` weeks from `firstDate` at `startTime`. */
+export interface BereavementGroupRecurrence {
+  /** `YYYY-MM-DD`, group-local. */
+  readonly firstDate: string;
+  /** `HH:MM`, group-local wall time (kept across DST changes). */
+  readonly startTime: string;
+  readonly durationMinutes: number;
+  readonly intervalWeeks: number;
+  readonly count: number;
+}
+
+// ── ADR-0109 D10 (PR 3) — memorial services (mirrors the `bereavement_memorial_*` text + CHECK value sets, migration 1391) ─────────────
+
+export type BereavementMemorialStatus = "draft" | "published" | "held" | "cancelled";
+/** `mailing` = in the service's invitation mailing run; `portal_only` = no letter (no-mailings, no address): the portal and a call still reach them. */
+export type BereavementMemorialDelivery = "mailing" | "portal_only";
+export type BereavementMemorialInvitationStatus =
+  | "invited"
+  | "rsvp_yes"
+  | "rsvp_no"
+  | "rsvp_maybe"
+  | "attended"
+  | "no_show"
+  | "withdrawn";
+export type BereavementMemorialRsvpSource = "staff_phone" | "portal";
+/** A family's answer to a memorial invitation. */
+export type BereavementMemorialRsvpResponse = "yes" | "no" | "maybe";
+
+// ── ADR-0109 D10 (PR 3) — the grief library (mirrors `bereavement_library_item`'s text + CHECK value sets, migration 1393) ─────────────
+
+export const BEREAVEMENT_LIBRARY_CATEGORIES = [
+  "understanding_grief",
+  "coping",
+  "children_and_teens",
+  "holidays_and_anniversaries",
+  "practical_matters",
+  "other",
+] as const;
+export type BereavementLibraryCategory = (typeof BEREAVEMENT_LIBRARY_CATEGORIES)[number];
+/** Derived from the document's MIME type: `application/pdf` -> pdf, `video/mp4` -> video, anything else M22 accepts -> other. */
+export type BereavementLibraryKind = "pdf" | "video" | "other";
+export type BereavementLibraryStatus = "draft" | "published" | "archived";
+
 // ── §3.3 owned tables + D11 audit denylists ───────────────────────────────────────────────────────────
 
 /** M16's owned tables (the manifest `ownedTables` set). */
@@ -185,6 +319,19 @@ export type M16TableName =
   | "bereavement_plan_closure"
   | "bereavement_opt_out"
   | "bereavement_idg_risk_flag"
+  | "bereavement_assessment_task"
+  | "bereavement_risk_assessment_draft"
+  | "bereavement_physician_letter"
+  | "bereavement_mailing_config"
+  | "bereavement_mailing_run"
+  | "bereavement_mailing_item"
+  | "bereavement_support_group"
+  | "bereavement_support_group_session"
+  | "bereavement_support_group_enrollment"
+  | "bereavement_support_group_attendance"
+  | "bereavement_memorial_service"
+  | "bereavement_memorial_invitation"
+  | "bereavement_library_item"
   | "tenant_bereavement_external_source_gate_override";
 
 /**
@@ -216,6 +363,23 @@ export const M16_AUDIT_DENYLIST: { readonly [K in M16TableName]: readonly string
   bereavement_plan_closure: ["reason_narrative_redacted"],
   bereavement_opt_out: ["reason_redacted"],
   bereavement_idg_risk_flag: ["rationale_text"],
+  bereavement_assessment_task: [],
+  bereavement_risk_assessment_draft: [],
+  bereavement_physician_letter: ["decline_reason_redacted"],
+  // ADR-0109 D10 — the agency-authored wording of a mailing is prose, so the audit row records `<changed>` instead of it.
+  bereavement_mailing_config: ["content_jsonb"],
+  bereavement_mailing_run: ["content_jsonb"],
+  bereavement_mailing_item: [],
+  // ADR-0109 D10 (PR 3) — a group's description is agency prose; the join link is ciphertext (kept, as every `*_cipher`, for change detection).
+  bereavement_support_group: ["description"],
+  bereavement_support_group_session: [],
+  bereavement_support_group_enrollment: [],
+  bereavement_support_group_attendance: [],
+  // ADR-0109 D10 (PR 3) — a memorial's description is agency prose.
+  bereavement_memorial_service: ["description"],
+  bereavement_memorial_invitation: [],
+  // ADR-0109 D10 (PR 3) — a library item's summary is agency prose.
+  bereavement_library_item: ["summary"],
   tenant_bereavement_external_source_gate_override: ["additional_rationale"],
 } as const;
 
@@ -257,6 +421,7 @@ export const M16_EVENT_NAMES = [
   "m16.bereavement.contact_active",
   "m16.bereavement.contact_opted_out",
   "m16.bereavement.contact_opt_out_rescinded",
+  "m16.bereavement.contact_mailing_preference_changed",
   "m16.bereavement.contact_deceased",
   "m16.bereavement.contact_unreachable",
   "m16.bereavement.contact_unreachable_proposed",
@@ -265,6 +430,10 @@ export const M16_EVENT_NAMES = [
   "m16.bereavement.outreach_completed",
   "m16.bereavement.outreach_missed",
   "m16.bereavement.outreach_artifact_requested",
+  "m16.bereavement.document_requested",
+  "m16.bereavement.mailing_run_mailed",
+  "m16.bereavement.support_group_attendance_recorded",
+  "m16.bereavement.memorial_rsvp_recorded",
   "m16.bereavement.risk_score_computed",
   "m16.bereavement.anniversary_due_in_14_days",
 ] as const;
@@ -447,6 +616,17 @@ export interface M16ContactOptOutRescindedPayload {
   readonly contactId: BereavedContactId;
 }
 
+/** `m16.bereavement.contact_mailing_preference_changed` — ADR-0109 D10. A bereaved contact stopped (or resumed) MAILINGS
+ *  only; the contact stays active and calls continue, which is why this is not `contact_opted_out` (M36 would drop the
+ *  family channel for that one). Ids and a flag, no PHI. Consumers: M33 (seam). */
+export interface M16ContactMailingPreferenceChangedPayload {
+  readonly planId: BereavementPlanId;
+  readonly contactId: BereavedContactId;
+  /** False = the family asked to stop mailings; true = mailings resumed. */
+  readonly mailingsAllowed: boolean;
+  readonly source: BereavementOptOutSourceKind;
+}
+
 /** `m16.bereavement.contact_deceased` — the bereaved contact themselves died. Consumers: M33, M36. */
 export interface M16ContactDeceasedPayload {
   readonly planId: BereavementPlanId;
@@ -516,6 +696,23 @@ export interface M16OutreachArtifactRequestedPayload {
   readonly payloadJsonb: unknown;
 }
 
+/** The plan-level documents M16 asks M22 to render through `m16.bereavement.document_requested` (ADR-0109 D6 / D9). */
+export type M16PlanDocumentKind = "physician_condolence_letter" | "discharge_summary";
+
+/** `m16.bereavement.document_requested` — the outbox-only handoff to M22 for the approved physician condolence letter (aggregate =
+ *  the letter) or the internal discharge summary (aggregate = the closure). M22 answers with `m22.document.rendered`. Consumer: M22. */
+export interface M16DocumentRequestedPayload {
+  readonly planId: BereavementPlanId;
+  /** The DECEDENT — the chart M22 files the rendered document against. */
+  readonly patientId: PatientId;
+  readonly documentKind: M16PlanDocumentKind;
+  /** The row the document is filed against and the back-ref stamps (letter id or closure id). */
+  readonly aggregateId: string;
+  readonly templateKey: string;
+  /** The typed render payload (`render-payloads/m16-bereavement`); typed `unknown` here because M22 owns the per-template shape. */
+  readonly payloadJsonb: unknown;
+}
+
 /** `m16.bereavement.risk_score_computed` — an immutable D3/D8 score row appended. M30's screening measure
  *  filters `dataCompleteness === 'minimal'` out of its denominator (D17). Consumers: M30, M32, M33. */
 export interface M16RiskScoreComputedPayload {
@@ -551,6 +748,7 @@ export interface M16EventPayloadMap {
   "m16.bereavement.contact_active": M16ContactActivePayload;
   "m16.bereavement.contact_opted_out": M16ContactOptedOutPayload;
   "m16.bereavement.contact_opt_out_rescinded": M16ContactOptOutRescindedPayload;
+  "m16.bereavement.contact_mailing_preference_changed": M16ContactMailingPreferenceChangedPayload;
   "m16.bereavement.contact_deceased": M16ContactDeceasedPayload;
   "m16.bereavement.contact_unreachable": M16ContactUnreachablePayload;
   "m16.bereavement.contact_unreachable_proposed": M16ContactUnreachableProposedPayload;
@@ -559,6 +757,7 @@ export interface M16EventPayloadMap {
   "m16.bereavement.outreach_completed": M16OutreachCompletedPayload;
   "m16.bereavement.outreach_missed": M16OutreachMissedPayload;
   "m16.bereavement.outreach_artifact_requested": M16OutreachArtifactRequestedPayload;
+  "m16.bereavement.document_requested": M16DocumentRequestedPayload;
   "m16.bereavement.risk_score_computed": M16RiskScoreComputedPayload;
   "m16.bereavement.anniversary_due_in_14_days": M16AnniversaryDueIn14DaysPayload;
 }
@@ -626,7 +825,31 @@ export interface BereavementCloseEarlyPendingCosignAlert {
   readonly reason: string;
 }
 
-/** The §4.10 discriminated union of every typed alert M16 emits to M36. */
+/** ADR-0109 D7 — a death opened a bereavement plan (`eligible`); oversight assigns a counselor. Ids and the
+ *  death date only: no name, no cause. */
+export interface BereavementDeathIntakeAlert {
+  readonly kind: "death_intake";
+  readonly planId: BereavementPlanId;
+  readonly deathDate: LocalDate;
+}
+
+/** ADR-0109 D6/D7 — the condolence letter to the attending clinician is waiting for a human review. */
+export interface BereavementPhysicianLetterPendingReviewAlert {
+  readonly kind: "physician_letter_pending_review";
+  readonly planId: BereavementPlanId;
+}
+
+/** ADR-0109 D3/D7 — an assessment checkpoint passed its late grace uncompleted (the task is now `missed`). */
+export interface BereavementRiskAssessmentOverdueAlert {
+  readonly kind: "risk_assessment_overdue";
+  readonly planId: BereavementPlanId;
+  readonly contactId: BereavedContactId;
+  readonly taskId: string;
+  readonly taskKind: "initial_assessment" | "midpoint_reassessment";
+  readonly dueAt: IsoInstant;
+}
+
+/** The §4.10 discriminated union of every typed alert M16 emits to M36 (+ the ADR-0109 D7 kinds). */
 export type BereavementAlertPayload =
   | BereavementAnniversaryDueAlert
   | BereavementOutreachMissedAlert
@@ -634,7 +857,10 @@ export type BereavementAlertPayload =
   | BereavementComplicatedGriefReferralAlert
   | BereavementConsentRevokedCascadeAlert
   | BereavementRiskTierEscalatedAlert
-  | BereavementCloseEarlyPendingCosignAlert;
+  | BereavementCloseEarlyPendingCosignAlert
+  | BereavementDeathIntakeAlert
+  | BereavementPhysicianLetterPendingReviewAlert
+  | BereavementRiskAssessmentOverdueAlert;
 
 // ── §4.6 read DTOs ────────────────────────────────────────────────────────────────────────────────────
 
@@ -815,6 +1041,8 @@ export interface BereavedPortalScope {
   readonly mayOptOut: boolean;
   /** D9 — true only inside the 90-day self-service rescind window. */
   readonly mayRescindOptOut: boolean;
+  /** ADR-0109 D10 — false while the contact holds an open `no_mailings` opt-out (calls continue). */
+  readonly mailingsAllowed: boolean;
 }
 
 // ── §4.6 / D13 seams this module publishes (impls injected at boot in M16-T05) ────────────────────────
@@ -887,6 +1115,82 @@ export interface BereavedPortalScopeProvider {
     orgId: string,
     portalAccountId: BereavedPortalAccountId,
   ): Promise<readonly BereavedPortalScope[]>;
+  /** M31's `bereaved_portal_window_open` predicate: does this account hold a contact on a plan for
+   *  `patientId` that is inside its D4 window at `asOf`? The contact's own status does not matter here
+   *  (an opted-out contact still reads the program and gets the idempotent opt-out answer); each route
+   *  decides what the contact may do from `scopeForPortalAccount`. */
+  isWindowOpen(args: {
+    readonly organizationId: string;
+    readonly portalAccountId: BereavedPortalAccountId;
+    readonly patientId: PatientId;
+    readonly asOf: IsoInstant;
+  }): Promise<boolean>;
+}
+
+/** ADR-0109 D10 (PR 3) — one memorial invitation as the bereaved family sees it in the portal (no other family, no contact id). */
+export interface BereavementPortalMemorialInvitation {
+  readonly invitationId: string;
+  readonly title: string;
+  readonly description: string | null;
+  readonly startsAt: IsoInstant;
+  readonly endsAt: IsoInstant;
+  readonly modality: BereavementProgramModality;
+  readonly venueText: string | null;
+  /** A virtual service's link, shown once the family said yes; null otherwise. */
+  readonly joinUrl: string | null;
+  /** `YYYY-MM-DD`; the portal stops taking answers after it. */
+  readonly rsvpBy: string | null;
+  readonly status: BereavementMemorialInvitationStatus;
+  readonly guests: number;
+  /** May the family still answer here (published, not started, not past the RSVP-by date, not closed)? */
+  readonly rsvpOpen: boolean;
+}
+
+/** ADR-0109 D10 (PR 3) — one PUBLISHED grief-library item as the portal lists it (agency content: no person named). */
+export interface BereavementPortalLibraryItem {
+  readonly itemId: string;
+  readonly title: string;
+  readonly summary: string | null;
+  readonly category: BereavementLibraryCategory;
+  readonly kind: BereavementLibraryKind;
+  readonly hasTranscript: boolean;
+}
+
+/**
+ * ADR-0109 D10 (PR 3) — what M16 shows a bereaved family in the M31 portal beyond the plan scope: their memorial invitations and RSVP, and the
+ * agency's published grief library. Every memorial call names the portal ACCOUNT; M16 resolves which contacts are its own
+ * (`bereaved_contact.portal_account_id`), so another family's invitation is "not found". A library URL is minted through M22's portal door, which
+ * records the account and session on `document_access_log` before the URL is returned.
+ */
+export interface BereavementPortalContentProvider {
+  memorialInvitationsForPortalAccount(args: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly portalAccountId: string;
+  }): Promise<readonly BereavementPortalMemorialInvitation[]>;
+  /** The family's own answer; refused after the RSVP-by date, once the service started, or over capacity. */
+  recordPortalRsvp(args: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly portalAccountId: string;
+    readonly invitationId: string;
+    readonly response: BereavementMemorialRsvpResponse;
+    readonly guests: number;
+  }): Promise<BereavementPortalMemorialInvitation>;
+  /** The PUBLISHED grief library, portal order. */
+  libraryForPortal(args: {
+    readonly organizationId: string;
+    readonly userId: string;
+  }): Promise<readonly BereavementPortalLibraryItem[]>;
+  /** A short-lived URL for a published item's file (or its transcript); null = no such published item / no transcript. */
+  mintLibraryUrlForPortal(args: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly portalAccountId: string;
+    readonly portalSessionId: string;
+    readonly itemId: string;
+    readonly part: "document" | "transcript";
+  }): Promise<{ readonly url: string; readonly expiresAt: IsoInstant } | null>;
 }
 
 /** §4.6 / D13 — the M30 HQRP + M33 rollups. Counts, never rates: a zero denominator must stay visible so

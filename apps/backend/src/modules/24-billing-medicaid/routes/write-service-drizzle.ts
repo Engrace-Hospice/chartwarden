@@ -2,7 +2,7 @@
 // service. Each command runs under withOrgContext (RLS), validates the §2.2 transition via the pure
 // @chartwarden/medicaid-adapters reducers, stamps the acting membership, writes an append-only
 // medicaid_claim_state_history row, and emits the §4.11 outbox event on the caller's tx (transactional
-// outbox). A bad transition → INVALID_TRANSITION (409); a stale If-Match → VERSION_CONFLICT (409); a missing
+// outbox). A bad transition → INVALID_TRANSITION (409); a stale If-Match → STALE_VERSION (409); a missing
 // row → NOT_FOUND. Money is INTEGER cents; no MBI/Recipient ID enters an outbox payload (D12 / D13 / §3.6).
 //
 // DEFERRAL (the M25/M26 posture): commands that need an unbound consumed reader DEGRADE to a structured typed
@@ -19,14 +19,17 @@ import {
   type PlaceOfServiceResidenceKind,
   buildHospiceLines,
   deriveMedicaidControlNumber,
+  deriveMedicaidTobFromAdmission,
   electronicSubmissionRefusal,
+  isMedicaidCadenceBearingClaim,
   medicaidClaimMachine,
+  medicaidClaimRouteReadiness,
+  medicaidCoverageAllowedForClaim,
   parseMedicaidControlNumber,
   rbArrangementMachine,
-  replacementTob,
   runMedicaidRules,
-  voidTob,
 } from "@chartwarden/medicaid-adapters";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
@@ -36,7 +39,7 @@ import {
 } from "@chartwarden/types";
 import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import type { CredentialCipherPort } from "../credential-crypto";
-import type { M24WriteActor } from "./actor";
+import type { M24Actor } from "./actor";
 import type { ClaimView, RbArrangementView } from "./read-service";
 import { resolveServiceState } from "./service-state";
 import type {
@@ -122,7 +125,16 @@ export interface CoverageResolverPort {
      * `onDate..throughDate` (M5's range-wide resolver), not merely in force on `onDate`; otherwise null.
      */
     throughDate?: string;
-  }): Promise<{ id: string; payerId: string; subscriberId: string } | null>;
+  }): Promise<{ id: string; payerId: string; subscriberId: string; rank: number } | null>;
+  activeMedicaidCoverageInTransaction(
+    transaction: unknown,
+    input: {
+      organizationId: string;
+      patientId: string;
+      onDate: string;
+      throughDate: string;
+    },
+  ): Promise<{ id: string; payerId: string; subscriberId: string; rank: number } | null>;
 }
 
 /**
@@ -131,7 +143,10 @@ export interface CoverageResolverPort {
  * Medicaid row on top on EVERY day of the window, else nothing; a single date (eligibility) stays a point read.
  */
 export function buildM24MedicaidCoverageResolver(
-  reader: () => Pick<PatientCoverageReader, "activeCoverageOfKind" | "coverageForRange">,
+  reader: () => Pick<
+    PatientCoverageReader,
+    "activeCoverageOfKind" | "coverageForRange" | "coverageSnapshotForRangeInTransaction"
+  >,
 ): CoverageResolverPort {
   return {
     async activeMedicaidCoverage(q) {
@@ -154,7 +169,30 @@ export function buildM24MedicaidCoverageResolver(
               })
               .then((res) => (res.status === "uniform" ? res.coverage : null));
       return found
-        ? { id: found.id, payerId: found.payerId, subscriberId: found.subscriberId }
+        ? {
+            id: found.id,
+            payerId: found.payerId,
+            subscriberId: found.subscriberId,
+            rank: found.rank,
+          }
+        : null;
+    },
+    async activeMedicaidCoverageInTransaction(transaction, q) {
+      const { resolution } = await reader().coverageSnapshotForRangeInTransaction(transaction, {
+        organizationId: q.organizationId,
+        patientId: q.patientId,
+        from: q.onDate,
+        to: q.throughDate,
+        coverageKind: "medicaid",
+      });
+      const found = resolution.status === "uniform" ? resolution.coverage : null;
+      return found
+        ? {
+            id: found.id,
+            payerId: found.payerId,
+            subscriberId: found.subscriberId,
+            rank: found.rank,
+          }
         : null;
     },
   };
@@ -168,6 +206,27 @@ export function buildM24MedicaidCoverageResolver(
  */
 export interface ProviderEntityCcnReader {
   ccnForProviderEntity(organizationId: string, providerEntityId: string): Promise<string | null>;
+}
+
+/** M6-owned transaction-bound snapshot and row lock used to serialize original-claim TOB cadence. */
+export interface AdmissionCadenceReaderPort {
+  cadenceSnapshotInTransaction(
+    transaction: unknown,
+    organizationId: string,
+    admissionId: string,
+  ): Promise<{
+    patientId: string;
+    providerEntityId: string | null;
+    dischargedAt: Date | null;
+  } | null>;
+}
+
+/** Resolve state-specific adjustment TOBs through the registered MedicaidAdapter. */
+export interface MedicaidAdjustmentAdapterResolverPort {
+  adapterForState(state: string): {
+    replacementTob(originalTob: string): string;
+    voidTob(originalTob: string): string;
+  } | null;
 }
 
 /** M6's `level_of_care_period` raw list (per-line assembly follow-up). `level_of_care_period` is M6-owned —
@@ -277,6 +336,8 @@ export function buildDrizzleM24WriteService(
   facilityNames?: FacilityNameResolverPort,
   /** S11: false when the state's gateway is not wired in this deployment (Oregon with no launch gateway). */
   isGatewayBound: (state: string) => boolean = () => true,
+  admissionCadenceReader?: AdmissionCadenceReaderPort,
+  adjustmentAdapters?: MedicaidAdjustmentAdapterResolverPort,
 ): M24WriteService {
   const C = schema.medicaidClaim;
   const SUB = schema.medicaidSubmission;
@@ -328,10 +389,7 @@ export function buildDrizzleM24WriteService(
   }
   function assertVersion(row: { version: number }, expected: number | null): void {
     if (expected !== null && row.version !== expected) {
-      throw new ConflictError(
-        "VERSION_CONFLICT",
-        "the If-Match version is stale; reload and retry",
-      );
+      throw new StaleVersionError("the If-Match version is stale; reload and retry");
     }
   }
   async function recordHistory(
@@ -374,8 +432,13 @@ export function buildDrizzleM24WriteService(
       validationRunIdLatest: r.validationRunIdLatest ?? null,
       eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
       electronicSubmissionRefusal:
-        electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState))?.message ??
-        null,
+        electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState), r.mcoId ?? null)
+          ?.message ?? null,
+      routeReadiness: medicaidClaimRouteReadiness(
+        r.serviceState,
+        r.mcoId ?? null,
+        isGatewayBound(r.serviceState),
+      ),
       createdAt: iso(r.createdAt),
       updatedAt: iso(r.updatedAt),
     };
@@ -402,12 +465,13 @@ export function buildDrizzleM24WriteService(
 
   return {
     // ── route 1 — assemble. The claim row needs three externally-owned values: `patient_payer_id` (M5),
-    // `service_state` (the state whose Medicaid program is billed) and `state_plan_code_id` (WX-PR-011:
+    // `service_state` (the state-level service/credential scope; it does not classify FFS vs MCO) and
+    // `state_plan_code_id` (WX-PR-011:
     // resolved from the M24-owned `medicaid_state_plan_code` platform catalog — see the schema file's
     // deviation note on why this is self-owned rather than routed through M40's entity-merge engine).
     // M5's §3.4 PatientCoverageReader gives the coverage; the service state is read from the provider
-    // entity's own active trading-partner credential (an M24-owned row: you cannot bill a state you hold
-    // no credential for, which makes it the authoritative source, not a guess).
+    // entity's own active trading-partner credential (an M24-owned row). This identifies the provider's
+    // configured state scope, not a verified coverage program or permission to transmit.
     //
     // PER-LINE ASSEMBLY (WX-PR-011 follow-up, closed): walks M6 LOC periods into hospice-LOC lines
     // (RHC/CHC/IRC/GIP, one line per contiguous same-LOC segment clipped to the claim window, rate from
@@ -417,7 +481,7 @@ export function buildDrizzleM24WriteService(
     // (`hospice_only`/`rb_only` skip the other). Backing M8 encounter evidence links via
     // `medicaid_claim_line_encounter` when the signed-encounters reader is bound (optional — supplementary
     // audit evidence, not a structural input).
-    async assembleClaim(actor: M24WriteActor, input: AssembleClaimInput): Promise<ClaimView> {
+    async assembleClaim(actor: M24Actor, input: AssembleClaimInput): Promise<ClaimView> {
       if (!coverage) {
         throw new DegradedError(
           "MEDICAID_COVERAGE_READER_UNBOUND",
@@ -436,7 +500,63 @@ export function buildDrizzleM24WriteService(
           "this patient holds no single Medicaid coverage in force on every day of the claim's service window (split the claim where the coverage changes)",
         );
       }
+      if (!medicaidCoverageAllowedForClaim(input.kind, resolved.rank)) {
+        throw new ConflictError(
+          "MEDICAID_PRIMARY_PAYER_REQUIRED",
+          input.kind === "rb_only"
+            ? "secondary Medicaid for an R&B-only claim is not authorized by the current billing policy; use the combined claim path or record Medicaid as primary"
+            : "a hospice-only Medicaid claim requires Medicaid to be the patient's primary coverage for the full service window",
+        );
+      }
+      if (!admissionCadenceReader) {
+        throw new DegradedError(
+          "MEDICAID_ADMISSION_CADENCE_READER_UNBOUND",
+          "claim assembly requires M6's admission status reader to derive the claim cadence (not bound in this environment)",
+        );
+      }
       return withOrgContext(db, actor, async (tx) => {
+        // #877 — re-resolve under a row lock in the claim-write transaction. Coverage replacement
+        // now waits until this claim commits, and a change already committed after the optimistic
+        // preflight is refused before anything is inserted.
+        const lockedCoverage = await coverage.activeMedicaidCoverageInTransaction(tx, {
+          organizationId: actor.organizationId,
+          patientId: input.patientId,
+          onDate: input.serviceFrom,
+          throughDate: input.serviceTo,
+        });
+        if (!lockedCoverage || lockedCoverage.id !== resolved.id) {
+          throw new ConflictError(
+            "MEDICAID_COVERAGE_CHANGED",
+            "Medicaid coverage changed while this claim was being assembled. Reload coverage and assemble again.",
+          );
+        }
+        if (!medicaidCoverageAllowedForClaim(input.kind, lockedCoverage.rank)) {
+          throw new ConflictError(
+            "MEDICAID_PRIMARY_PAYER_REQUIRED",
+            input.kind === "rb_only"
+              ? "secondary Medicaid for an R&B-only claim is not authorized by the current billing policy; use the combined claim path or record Medicaid as primary"
+              : "a hospice-only Medicaid claim requires Medicaid to be the patient's primary coverage for the full service window",
+          );
+        }
+        // The M6 admission row is the per-admission serialization point. FOR UPDATE makes concurrent
+        // assemblers derive cadence sequentially and also serializes against discharge writers.
+        const admission = await admissionCadenceReader.cadenceSnapshotInTransaction(
+          tx,
+          actor.organizationId,
+          input.admissionId,
+        );
+        if (!admission) {
+          throw new NotFoundError("admission not found");
+        }
+        if (
+          admission.patientId !== input.patientId ||
+          admission.providerEntityId !== input.providerEntityId
+        ) {
+          throw new ConflictError(
+            "MEDICAID_ADMISSION_IDENTITY_MISMATCH",
+            "the admission does not belong to the selected patient and provider entity",
+          );
+        }
         const creds = await tx
           .select({ serviceState: TP.serviceState, activeTo: TP.activeTo })
           .from(TP)
@@ -499,6 +619,18 @@ export function buildDrizzleM24WriteService(
           claimId,
           attemptIndex: 0,
         });
+        const priorClaims = await tx
+          .select({ state: C.state, tob: C.tob })
+          .from(C)
+          .where(
+            and(eq(C.organizationId, actor.organizationId), eq(C.admissionId, input.admissionId)),
+          );
+        const hasPriorClaimForAdmission = priorClaims.some(isMedicaidCadenceBearingClaim);
+        const tob = deriveMedicaidTobFromAdmission({
+          hasPriorClaimForAdmission,
+          dischargedAt: dayN(admission.dischargedAt),
+          serviceTo: day(input.serviceTo),
+        });
         const inserted = await tx
           .insert(C)
           .values({
@@ -506,11 +638,11 @@ export function buildDrizzleM24WriteService(
             organizationId: actor.organizationId,
             providerEntityId: input.providerEntityId,
             patientId: input.patientId,
-            patientPayerId: resolved.id,
+            patientPayerId: lockedCoverage.id,
             admissionId: input.admissionId,
             serviceState,
             kind: input.kind,
-            tob: "811", // the original-claim TOB (D13 §2.5) — replace/void derive 817/818 from this
+            tob,
             serviceFrom: new Date(input.serviceFrom),
             serviceTo: new Date(input.serviceTo),
             statePlanCodeId: plan.id,
@@ -733,7 +865,7 @@ export function buildDrizzleM24WriteService(
             admissionId: input.admissionId,
             state: "DRAFT",
             kind: input.kind,
-            tob: "811",
+            tob,
             serviceFrom: new Date(input.serviceFrom).toISOString(),
             serviceTo: new Date(input.serviceTo).toISOString(),
           },
@@ -751,7 +883,6 @@ export function buildDrizzleM24WriteService(
         const updated = await tx
           .update(C)
           .set({
-            mcoId: input.mcoId === undefined ? claim.mcoId : input.mcoId,
             version: claim.version + 1,
             updatedAt: new Date(),
             updatedByMembershipId: actor.userId,
@@ -968,11 +1099,14 @@ export function buildDrizzleM24WriteService(
         const refusal = electronicSubmissionRefusal(
           claim.serviceState,
           isGatewayBound(claim.serviceState),
+          claim.mcoId ?? null,
         );
         if (refusal) throw new ChartWardenError(refusal.code, refusal.message, 422);
         const submissionId = randomUUID();
         const submittedAt = new Date();
-        const channel = input.channelHint ?? "direct_mmis";
+        // Client hints cannot select or authorize a destination. This is reached only if the readiness
+        // gate can prove a sendable route; all routes in the current registry are blocked above.
+        const channel = claim.mcoId ? "cco_clearinghouse" : "direct_mmis";
         // Adapter wire I/O is DEFERRED — the submission row is created in `pending` and the per-state submit
         // worker drives the real envelope when the adapter binds (§4.5/§4.9). The state advances to SUBMITTED.
         await tx.insert(SUB).values({
@@ -1625,7 +1759,7 @@ export function buildDrizzleM24WriteService(
 
   /** Build a TOB 817 replacement / 818 void successor DRAFT claim by copying the original (D13 §2.5). */
   async function buildSuccessorClaim(
-    actor: M24WriteActor,
+    actor: M24Actor,
     originalClaimId: string,
     expectedVersion: number | null,
     tob: "817" | "818",
@@ -1642,15 +1776,28 @@ export function buildDrizzleM24WriteService(
       }
       const newId = randomUUID();
       const parsed = parseMedicaidControlNumber(original.medicaidClaimControlNumber);
-      const ccn = parsed?.ccn ?? "000000";
+      if (!parsed) {
+        throw new ConflictError(
+          "MEDICAID_CONTROL_NUMBER_INVALID",
+          "the original claim control number is malformed; replacement or void creation is blocked until it is corrected",
+        );
+      }
       const controlNumber = deriveMedicaidControlNumber({
-        ccn,
+        ccn: parsed.ccn,
         serviceState: original.serviceState,
         serviceFrom: day(original.serviceFrom),
         claimId: newId,
         attemptIndex: 0,
       });
-      const successorTob = tob === "817" ? replacementTob(original.tob) : voidTob(original.tob);
+      const adapter = adjustmentAdapters?.adapterForState(original.serviceState) ?? null;
+      if (!adapter) {
+        throw new DegradedError(
+          "MEDICAID_ADJUSTMENT_ADAPTER_UNAVAILABLE",
+          `no Medicaid adapter is available to derive the ${tob} adjustment TOB for ${original.serviceState}`,
+        );
+      }
+      const successorTob =
+        tob === "817" ? adapter.replacementTob(original.tob) : adapter.voidTob(original.tob);
       const inserted = await tx
         .insert(C)
         .values({

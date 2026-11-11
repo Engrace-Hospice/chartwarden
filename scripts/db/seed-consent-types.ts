@@ -172,6 +172,59 @@ export const TYPES = [
     bodyTextTemplateKey: "bereavement_outreach_consent_v1",
     m22TemplateVersion: "1.0.0",
   },
+  {
+    // ADR-0107: the HIPAA Notice of Privacy Practices acknowledgement (45 CFR 164.520), signed in the portal by the patient, a healthcare agent,
+    // a caregiver when the patient cannot, or a post-death personal representative. Acknowledging receipt is not an agreement and has no
+    // downstream effect to undo, so there is no cascade consumer: the revoked event carries the default `consent_revocation` label, which
+    // nothing consumes. Does not expire. The wording is the practice's own acknowledgement form.
+    typeKey: "hipaa_npp_acknowledgement",
+    displayNameEn: "HIPAA Notice of Privacy Practices Acknowledgement",
+    scopeDiscriminator: "categorical",
+    defaultExpirationSeconds: null,
+    maxTermSeconds: null,
+    captureMethodFloor: [
+      "electronic_portal_signature",
+      "typed_signature_in_app",
+      "uploaded_signed_pdf",
+      "witnessed_verbal_documented",
+    ],
+    reminderCadenceFloor: ["90_days"],
+    revocationCascadeKind: "consent_revocation",
+    isPerRecipient: false,
+    isPerNamedAgent: false,
+    isPostMortemEligible: true,
+    requiresJurisdictionCode: false,
+    cfr42Part2Compliant: false,
+    hipaa164508Compliant: false,
+    bodyTextTemplateKey: "hipaa_npp_acknowledgement_v1",
+    m22TemplateVersion: "1.0.0",
+  },
+  {
+    // ADR-0107: consent to treat, signed in the portal by the patient, a healthcare agent, or a caregiver when the patient cannot. NO approved
+    // wording exists yet, so the template version is the explicit pending marker; the sign path refuses a placeholder on a production tenant.
+    // Moot after death, so it is not post-mortem eligible. Same no-cascade reasoning as the NPP acknowledgement.
+    typeKey: "consent_to_treat",
+    displayNameEn: "Consent to Treat",
+    scopeDiscriminator: "categorical",
+    defaultExpirationSeconds: null,
+    maxTermSeconds: null,
+    captureMethodFloor: [
+      "electronic_portal_signature",
+      "typed_signature_in_app",
+      "uploaded_signed_pdf",
+      "witnessed_verbal_documented",
+    ],
+    reminderCadenceFloor: ["90_days"],
+    revocationCascadeKind: "consent_revocation",
+    isPerRecipient: false,
+    isPerNamedAgent: false,
+    isPostMortemEligible: false,
+    requiresJurisdictionCode: false,
+    cfr42Part2Compliant: false,
+    hipaa164508Compliant: false,
+    bodyTextTemplateKey: "consent_to_treat_v1",
+    m22TemplateVersion: "0.0.0-pending-legal-review",
+  },
 ] as const;
 
 async function main(): Promise<void> {

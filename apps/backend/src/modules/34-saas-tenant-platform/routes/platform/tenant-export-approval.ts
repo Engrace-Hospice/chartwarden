@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/tenant-export-approval.ts — M34
 // (§3.7 SEC-052; GAP-097). The platform-ops RELEASE side of the oversized-tenant-export-bundle hold:
 // `POST /api/v1/platform/tenant-export-jobs/:id/approve-oversized` — documented in typebox.ts since
@@ -15,9 +16,9 @@
 // own step-up on the tenant-scoped side). Org/actor binding is server-side (`request.context`, never the
 // body) — the target job's own `organizationId` (a DIFFERENT org than the platform-ops actor's own) is
 // resolved from the row itself under `withPlatformContext`, not from the caller's session.
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type PreHandler, writeActorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   ApproveOversizedExportRequest,
   TenantExportJobListQuerySchema,
@@ -26,19 +27,9 @@ import {
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface TenantExportApprovalRouteDeps {
   /** The §4.1 platform-ops route service (in-memory slice; Drizzle under `withPlatformContext` in prod). */
   service: TenantPlatformRouteService;
-}
-
-function actorOf(request: FastifyRequest): { membershipId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  const membershipId = ctx.attributes?.membershipId;
-  if (typeof membershipId !== "string") throw new UnauthorizedError();
-  return { membershipId };
 }
 
 const jobIdOf = (request: FastifyRequest): string =>
@@ -92,7 +83,7 @@ export function registerTenantExportApprovalRoutes(
     "/api/v1/platform/tenant-export-jobs/:id/approve-oversized",
     { preHandler: [APPROVE, ABAC_PLATFORM_OPS, STEP_UP_APPROVE] },
     async (request) => {
-      const { membershipId } = actorOf(request);
+      const { membershipId } = writeActorOf(request);
       const body = parse(ApproveOversizedExportRequest, request.body);
       return service.approveOversizedExport(jobIdOf(request), membershipId, {
         approvalReason: body.approvalReason,

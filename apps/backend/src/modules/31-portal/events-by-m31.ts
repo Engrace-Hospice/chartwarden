@@ -294,4 +294,88 @@ export const M31_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: [],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m31.signature_request.requested",
+    moduleOwner: "m31",
+    description:
+      "Staff sent a portal signature request (ADR-0107). Pushed to the people who can sign (m31 consumer, ADR-0107 D7); ids and structural facts, never the signer's text.",
+    payloadSchema: Type.Object({
+      requestId: str,
+      patientId: str,
+      docKind: str,
+      templateVersion: str,
+    }),
+    declaredConsumers: ["m31"],
+    isOutboxOnly: false,
+  },
+  {
+    eventName: "m31.signature_request.signed",
+    moduleOwner: "m31",
+    description:
+      "A portal signer signed an admission document (ADR-0107). Record-only; ids and structural facts, never the signer's text.",
+    payloadSchema: Type.Object({
+      requestId: str,
+      patientId: str,
+      docKind: str,
+      signerRole: str,
+      signerGrantKind: str,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m31.signature_request.voided",
+    moduleOwner: "m31",
+    description:
+      "Staff withdrew an open signature request (ADR-0107). Record-only; ids and structural facts, never the signer's text.",
+    payloadSchema: Type.Object({
+      requestId: str,
+      patientId: str,
+      docKind: str,
+      voidReason: str,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m31.signature_request.uploaded",
+    moduleOwner: "m31",
+    description:
+      "A signed paper copy was uploaded for review (ADR-0107). Record-only; ids and structural facts, never the signer's text.",
+    payloadSchema: Type.Object({
+      requestId: str,
+      patientId: str,
+      docKind: str,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m31.signature_request.reviewed",
+    moduleOwner: "m31",
+    description:
+      "Staff accepted or rejected an uploaded signed copy (ADR-0107). Record-only; ids and structural facts, never the signer's text.",
+    payloadSchema: Type.Object({
+      requestId: str,
+      patientId: str,
+      docKind: str,
+      decision: Type.Union([Type.Literal("accepted"), Type.Literal("rejected")]),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m31.signature_request.reminded",
+    moduleOwner: "m31",
+    description:
+      "A daily reminder fired for a still-open signature request (ADR-0107). Pushed to the people who can sign (m31 consumer, ADR-0107 D7); ids and structural facts, never the signer's text.",
+    payloadSchema: Type.Object({
+      requestId: str,
+      patientId: str,
+      docKind: str,
+      reminderCount: Type.Integer({ minimum: 1 }),
+    }),
+    declaredConsumers: ["m31"],
+    isOutboxOnly: false,
+  },
 ];

@@ -74,6 +74,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       submissionId: id,
       claimControlNumber: id,
       attemptIndex: Type.Integer(),
+      reviewedSourceFingerprint: Type.String({ pattern: "^[a-f0-9]{64}$" }),
+      expectedRouteFingerprint: Type.Optional(Type.String({ pattern: "^[a-f0-9]{64}$" })),
     }),
     declaredConsumers: [],
     isOutboxOnly: true,
@@ -475,6 +477,3 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
 ];
-
-/** The ordered `m23.*` event names this catalog declares (asserted in test; mirrored by events-by-m23.ts). */
-export const M23_OUTBOX_EVENT_NAMES: readonly string[] = M23_OUTBOX_EVENTS.map((e) => e.eventName);

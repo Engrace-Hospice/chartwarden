@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 211,
+  "totalStaticWebScreens": 217,
   "e2eReachedCount": 26,
-  "axeReachedCount": 199,
+  "axeReachedCount": 205,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -193,6 +193,46 @@
       "module": "16-bereavement",
       "path": "/bereavement/eligible",
       "permission": "bereavement.plan.assign_counselor",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "bereavement.groups",
+      "module": "16-bereavement",
+      "path": "/bereavement/groups",
+      "permission": "bereavement.group.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "bereavement.library",
+      "module": "16-bereavement",
+      "path": "/bereavement/library",
+      "permission": "bereavement.library.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "bereavement.mailings",
+      "module": "16-bereavement",
+      "path": "/bereavement/mailings",
+      "permission": "bereavement.mailing.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "bereavement.mailings.settings",
+      "module": "16-bereavement",
+      "path": "/bereavement/mailings/settings",
+      "permission": "bereavement.mailing.manage",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "bereavement.memorials",
+      "module": "16-bereavement",
+      "path": "/bereavement/memorials",
+      "permission": "bereavement.memorial.rsvp",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1061,6 +1101,14 @@
       "axeReached": true
     },
     {
+      "id": "remittance.claimmd-era-review",
+      "module": "25-remittance",
+      "path": "/remittance/claimmd-era-review",
+      "permission": "remittance.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "remittance.denials",
       "module": "25-remittance",
       "path": "/remittance/denials",
@@ -1583,8 +1631,8 @@
       "axeReached": false
     }
   ],
-  "dynamicWebScreens": 113,
-  "dynamicAxeReachedCount": 27,
+  "dynamicWebScreens": 118,
+  "dynamicAxeReachedCount": 28,
   "dynamicExcluded": [
     {
       "id": "medicaid.surveyor-read",
@@ -1642,6 +1690,21 @@
       "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
     },
     {
+      "id": "bereavement.groups.detail",
+      "path": "/bereavement/groups/:groupId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "bereavement.mailings.run",
+      "path": "/bereavement/mailings/runs/:runId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "bereavement.memorials.detail",
+      "path": "/bereavement/memorials/:serviceId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
       "id": "bereavement.plan",
       "path": "/bereavement/plans/:planId",
       "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
@@ -1679,6 +1742,11 @@
     {
       "id": "bereavement.plan.seed",
       "path": "/bereavement/plans/:planId/seed",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "bereavement.predeath",
+      "path": "/bereavement/pre-death/:admissionId",
       "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
     },
     {
@@ -2223,6 +2291,46 @@
       "module": "16-bereavement",
       "path": "/bereavement/eligible",
       "permission": "bereavement.plan.assign_counselor",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "bereavement.groups",
+      "module": "16-bereavement",
+      "path": "/bereavement/groups",
+      "permission": "bereavement.group.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "bereavement.library",
+      "module": "16-bereavement",
+      "path": "/bereavement/library",
+      "permission": "bereavement.library.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "bereavement.mailings",
+      "module": "16-bereavement",
+      "path": "/bereavement/mailings",
+      "permission": "bereavement.mailing.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "bereavement.mailings.settings",
+      "module": "16-bereavement",
+      "path": "/bereavement/mailings/settings",
+      "permission": "bereavement.mailing.manage",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "bereavement.memorials",
+      "module": "16-bereavement",
+      "path": "/bereavement/memorials",
+      "permission": "bereavement.memorial.rsvp",
       "e2eReached": false,
       "axeReached": true
     },
@@ -3247,6 +3355,14 @@
       "module": "25-remittance",
       "path": "/remittance/audits",
       "permission": "audit_request.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.claimmd-era-review",
+      "module": "25-remittance",
+      "path": "/remittance/claimmd-era-review",
+      "permission": "remittance.read",
       "e2eReached": false,
       "axeReached": true
     },

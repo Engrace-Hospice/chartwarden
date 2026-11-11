@@ -11,13 +11,13 @@
 // membership is required (it is stamped as the problem's `added_by` and the proposal's decider).
 // SUD-flagged proposals follow the §7.6 rule: omitted for a caller without disclosure, 404 on decide.
 import { requireAbac, requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { membershipIdOf } from "../abac-predicates";
 import type { ProblemProposalService } from "../problem-proposals-db";
 import type { CarePlanRouteDeps } from "./care-plan-routes";
 import { PlanParamsSchema, parse } from "./care-plan-typebox";
-import type { PreHandler } from "./concurrency";
 import {
   AcceptProblemProposalSchema,
   DismissProblemProposalSchema,
@@ -90,7 +90,8 @@ export function registerProblemProposalRoutes(
       const { planId, proposalId } = parse(ProblemProposalParamsSchema, request.params);
       const body = parse(AcceptProblemProposalSchema, request.body);
       const caller = await callerOf(request, planId);
-      if (!caller.membershipId) throw new UnauthorizedError();
+      if (!caller.membershipId)
+        throw new ForbiddenError("A session without an organization membership cannot act");
       return service.accept(
         caller.organizationId,
         planId,
@@ -116,7 +117,8 @@ export function registerProblemProposalRoutes(
       const { planId, proposalId } = parse(ProblemProposalParamsSchema, request.params);
       const body = parse(DismissProblemProposalSchema, request.body);
       const caller = await callerOf(request, planId);
-      if (!caller.membershipId) throw new UnauthorizedError();
+      if (!caller.membershipId)
+        throw new ForbiddenError("A session without an organization membership cannot act");
       return service.dismiss(
         caller.organizationId,
         planId,

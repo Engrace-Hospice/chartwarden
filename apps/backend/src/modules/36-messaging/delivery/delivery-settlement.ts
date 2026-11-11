@@ -59,7 +59,7 @@ export interface DeliveryPatch {
 }
 
 /** Re-settle the parent alert's `outcome` from its live delivery set (§2.4.3). No-change writes are skipped. */
-export async function rollUpAlert(tx: Tx, organizationId: string, alertId: string): Promise<void> {
+async function rollUpAlert(tx: Tx, organizationId: string, alertId: string): Promise<void> {
   const siblings = await tx
     .select({
       recipientUserId: ND.recipientUserId,

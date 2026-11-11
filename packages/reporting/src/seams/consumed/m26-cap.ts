@@ -3,7 +3,7 @@
 // M26 is not yet implemented → forward-seam DENY-STUB. M26 registers the real `CapAccrualReader` /
 // `CapProjectionProvider` / `InpatientCapProvider` / `CapSettlementProvider` / `CapMetricsProvider` over
 // this stub when it lands (P2C).
-import { FORWARD_SEAM_UNAVAILABLE, type ForwardSeamMetric } from "./forward-seam";
+import type { ForwardSeamMetric } from "./forward-seam";
 
 export interface ReportingCapConsumer {
   /** M26 `CapAccrualReader` — aggregate cap accrual to date (forward seam). */
@@ -17,21 +17,3 @@ export interface ReportingCapConsumer {
   /** M26 `CapMetricsProvider` — cap KPI rollup (forward seam). */
   capMetrics(organizationId: string): Promise<ForwardSeamMetric>;
 }
-
-export const denyStubReportingCapConsumer: ReportingCapConsumer = {
-  async capAccrual(): Promise<ForwardSeamMetric> {
-    return FORWARD_SEAM_UNAVAILABLE;
-  },
-  async capProjection(): Promise<ForwardSeamMetric> {
-    return FORWARD_SEAM_UNAVAILABLE;
-  },
-  async inpatientCap(): Promise<ForwardSeamMetric> {
-    return FORWARD_SEAM_UNAVAILABLE;
-  },
-  async capSettlement(): Promise<ForwardSeamMetric> {
-    return FORWARD_SEAM_UNAVAILABLE;
-  },
-  async capMetrics(): Promise<ForwardSeamMetric> {
-    return FORWARD_SEAM_UNAVAILABLE;
-  },
-};

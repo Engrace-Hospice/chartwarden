@@ -3485,6 +3485,30 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "claim_assigned_to_actor",
   },
+  "remittance.match_review": {
+    resource: "claimmd_era_match_decision",
+    action: "resolve",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "remittance.financial_review": {
+    resource: "claimmd_era_financial_review_decision",
+    action: "review",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "remittance.posting.approve": {
+    resource: "claimmd_era_posting_plan",
+    action: "approve",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "remittance.posting.execute": {
+    resource: "claimmd_era_posting_plan",
+    action: "execute",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
   "remittance.adjustment.override": {
     resource: "remittance_adjustment",
     action: "override",
@@ -4351,7 +4375,8 @@ export const M15_CONTRIBUTED_PERMISSIONS = {
 export type M15ContributedPermissionKey = keyof typeof M15_CONTRIBUTED_PERMISSIONS;
 
 /**
- * M16-T06 — the twenty-nine §4.7 Bereavement permission keys Module 16 registers into M3's catalog.
+ * M16-T06 — the §4.7 Bereavement permission keys Module 16 registers into M3's catalog (twenty-nine from the
+ * original spec, the two ADR-0109 D5 pre-death-draft keys, the two D6 physician-letter keys, the three D10 mailing keys and the PR 3 program keys).
  *
  * `abac` names the DEFAULT predicate the M3 catalog records for the key; the §4.1 route table is what
  * actually binds a guard, and it may bind a different (or no) predicate per route. Four of the five §4.8
@@ -4544,9 +4569,116 @@ export const M16_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "bereavement_window",
   },
+  // ADR-0109 D5 — the pre-death risk-assessment draft. An MSW, chaplain or bereavement counselor on the patient's care team
+  // (or bereavement oversight) reads and records the eight factors for an admission BEFORE the death; the predicate is the
+  // gate, these keys are the grant. Migration 1344 mirrors both into the permission catalog.
+  "bereavement.assessment_draft.read": {
+    resource: "bereavement_risk_assessment_draft",
+    action: "read",
+    category: "clinical",
+    abac: "bereavement_pre_death_assessor",
+  },
+  "bereavement.assessment_draft.write": {
+    resource: "bereavement_risk_assessment_draft",
+    action: "write",
+    category: "clinical",
+    abac: "bereavement_pre_death_assessor",
+  },
+  // ADR-0109 D6 — the physician condolence letter review queue. The letter goes to an internal hospice clinician only and a
+  // human approves it before anything is disclosed, so both keys are bereavement oversight only. Migration 1346 mirrors them.
+  "bereavement.letter.read": {
+    resource: "bereavement_physician_letter",
+    action: "read",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.letter.review": {
+    resource: "bereavement_physician_letter",
+    action: "review",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  // ADR-0109 D10 — the mailing program. The batch PDF holds EVERY recipient's name and address, so all three keys are bereavement oversight
+  // only: `read` the configs and runs, `manage` the configs and a draft's wording, `dispatch` (generate, download, confirm mailed) a run.
+  // Migration 1377 mirrors them into the permission catalog.
+  "bereavement.mailing.read": {
+    resource: "bereavement_mailing_run",
+    action: "read",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.mailing.manage": {
+    resource: "bereavement_mailing_run",
+    action: "manage",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.mailing.dispatch": {
+    resource: "bereavement_mailing_run",
+    action: "dispatch",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  // ADR-0109 D10 (PR 3) — support groups. `read` lists groups and sessions (no roster) to bereavement-capable staff and oversight; `manage`
+  // creates (oversight) and edits / opens / closes a group and its sessions (oversight or the group's STAFF facilitator); `enroll` signs a
+  // family up (the contact's own counselor or oversight: the window); `run` reads the roster and records attendance (oversight, the staff
+  // facilitator, or a VOLUNTEER facilitator who passes the 418.78 gates). Migration 1390 mirrors them into the permission catalog.
+  "bereavement.group.read": {
+    resource: "bereavement_support_group",
+    action: "read",
+    category: "clinical",
+    abac: "discipline_can_provide_bereavement",
+  },
+  "bereavement.group.manage": {
+    resource: "bereavement_support_group",
+    action: "manage",
+    category: "clinical",
+    abac: "bereavement_group_scope",
+  },
+  "bereavement.group.enroll": {
+    resource: "bereavement_support_group",
+    action: "enroll",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.group.run": {
+    resource: "bereavement_support_group",
+    action: "run",
+    category: "clinical",
+    abac: "bereavement_group_scope",
+  },
+  // ADR-0109 D10 (PR 3) — memorial services. `manage` creates, edits, publishes (the set-based invitations and the invitation mailing run),
+  // closes a service and records attendance: oversight only (an invitation list names every recently bereaved family). `rsvp` records a family's
+  // answer taken by phone, on the family's window (their counselor or oversight); the service list it also reads names no family. Migration 1391.
+  "bereavement.memorial.manage": {
+    resource: "bereavement_memorial_service",
+    action: "manage",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.memorial.rsvp": {
+    resource: "bereavement_memorial_service",
+    action: "rsvp",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  // ADR-0109 D10 (PR 3) — the grief library: oversight curates what the bereaved portal shows (`read` lists and previews, `manage` registers an
+  // uploaded M22 document, edits it, publishes / archives it). Families never hold these: they read published items through the portal. Migration 1393.
+  "bereavement.library.read": {
+    resource: "bereavement_library_item",
+    action: "read",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.library.manage": {
+    resource: "bereavement_library_item",
+    action: "manage",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
 } satisfies Record<string, PermissionDef>;
 
-/** Union of the M16 contributed permission keys (twenty-nine). */
+/** Union of the M16 contributed permission keys. */
 export type M16ContributedPermissionKey = keyof typeof M16_CONTRIBUTED_PERMISSIONS;
 
 /**
@@ -6034,6 +6166,13 @@ export const M31_CONTRIBUTED_PERMISSIONS = {
     category: "portal",
     abac: "bereaved_portal_window_open",
   },
+  // ADR-0109 D10 (PR 3) — the bereaved family's own memorial RSVP (M16 checks the invitation is the account's own contact's). Migration 1391.
+  "portal.bereavement.rsvp_own": {
+    resource: "portal_bereavement",
+    action: "rsvp_own",
+    category: "portal",
+    abac: "bereaved_portal_window_open",
+  },
   // ── notification preferences (§4.1) — the account's own settings ────────────────────────────────────
   "portal.preferences.read_own": {
     resource: "portal_preference",
@@ -6157,6 +6296,46 @@ export const M31_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "inOrg",
   },
+  // ADR-0107 (PROPOSED) - admission-document signing in the portal. Read lists and opens the patient's own signature requests;
+  // sign records the signature (TOTP step-up at the route; the per-grant authority matrix narrows who may sign which document).
+  "portal.signature.read": {
+    resource: "portal_signature_request",
+    action: "read",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.signature.sign": {
+    resource: "portal_signature_request",
+    action: "sign",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  // ADR-0107 (PROPOSED) - STAFF side of admission-document signing: send a patient a request, see its status, void an open one. Each route also
+  // composes the shared `caseload_or_scope` guard over the patient the request concerns. Staff also REVIEW an uploaded signed copy (accept or reject).
+  "portal.signature_request.create": {
+    resource: "portal_signature_request",
+    action: "create",
+    category: "admin",
+    abac: "caseload_membership",
+  },
+  "portal.signature_request.read": {
+    resource: "portal_signature_request",
+    action: "read",
+    category: "admin",
+    abac: "caseload_membership",
+  },
+  "portal.signature_request.void": {
+    resource: "portal_signature_request",
+    action: "void",
+    category: "admin",
+    abac: "caseload_membership",
+  },
+  "portal.signature_request.review": {
+    resource: "portal_signature_request",
+    action: "review",
+    category: "admin",
+    abac: "caseload_membership",
+  },
   // Engagement-scoped auditor surface (M3 engagement scope resolves the row set).
   "portal.engagement.read_auditor": {
     resource: "portal_engagement",
@@ -6166,7 +6345,7 @@ export const M31_CONTRIBUTED_PERMISSIONS = {
   },
 } satisfies Record<string, PermissionDef>;
 
-/** Union of the M31 contributed permission keys (forty-seven). */
+/** Union of the M31 contributed permission keys (fifty-three; ADR-0107 added portal.signature.read/.sign and the staff portal.signature_request.create/.read/.void/.review). */
 export type M31ContributedPermissionKey = keyof typeof M31_CONTRIBUTED_PERMISSIONS;
 
 /** Project the M31 contributed keys into `permission`-table mirror rows (M31 §4.6). */

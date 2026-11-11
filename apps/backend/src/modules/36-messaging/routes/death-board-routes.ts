@@ -1,3 +1,4 @@
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/36-messaging/routes/death-board-routes.ts - WP 6.9 (ADR-0098, PROPOSED): the death-event coordination board.
 //
 //   GET  /api/v1/messaging/death-boards?limit                             the boards the caller may see   (messaging.read + patient.read)
@@ -10,7 +11,7 @@
 // everything but the list, which answers `200 {enabled:false, boards:[]}` so the web can hide the screen. Org and actor are always the request
 // context. A missing, foreign, Part 2-restricted, not-your-patient or flag-off board is ONE 404. Nothing is deleted; no request header is read.
 // READ AUDIT: every read names the patients it discloses (one event per distinct patient), so the Section 164.528 accounting is complete.
-import { requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import {
   DEATH_BOARD_LIST_DEFAULT,
   ForbiddenError,
@@ -32,8 +33,6 @@ import {
 import { parse } from "./messaging-typebox";
 import { requireUuidParams } from "./uuid-params";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface DeathBoardRouteDeps {
   /** The tenant flag `messaging.death_board`. A throw reads as off (fail closed). */
   readonly isEnabled: (organizationId: string) => Promise<boolean>;
@@ -46,9 +45,11 @@ const READ = requirePermission("messaging.read") as PreHandler;
 const PATIENT_READ = requirePermission("patient.read") as PreHandler;
 const SUPERVISOR = requirePermission("messaging.review") as PreHandler;
 
-export async function actorOf(request: FastifyRequest, reply: FastifyReply): Promise<DeathBoardActor> {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
+async function deathBoardActorOf(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<DeathBoardActor> {
+  const { organizationId, userId } = actorOf(request);
   let supervisor = true;
   try {
     await SUPERVISOR(request, reply);
@@ -56,7 +57,7 @@ export async function actorOf(request: FastifyRequest, reply: FastifyReply): Pro
     if (!(err instanceof ForbiddenError)) throw err;
     supervisor = false;
   }
-  return { orgId: ctx.organizationId, userId: ctx.userId, supervisor };
+  return { orgId: organizationId, userId, supervisor };
 }
 
 export function registerDeathBoardRoutes(app: FastifyInstance, deps: DeathBoardRouteDeps): void {
@@ -88,7 +89,7 @@ export function registerDeathBoardRoutes(app: FastifyInstance, deps: DeathBoardR
     async (request, reply) => {
       if (!(await flagOn(request))) return { enabled: false, boards: [] };
       const q = parse(ListDeathBoardsQuerySchema, request.query);
-      const actor = await actorOf(request, reply);
+      const actor = await deathBoardActorOf(request, reply);
       return noStore(reply).send({
         enabled: true,
         boards: await service.list(actor, q.limit ?? DEATH_BOARD_LIST_DEFAULT),
@@ -112,7 +113,7 @@ export function registerDeathBoardRoutes(app: FastifyInstance, deps: DeathBoardR
     async (request, reply) => {
       const { boardId } = parse(DeathBoardParamsSchema, request.params);
       return noStore(reply).send({
-        board: await service.get(await actorOf(request, reply), boardId),
+        board: await service.get(await deathBoardActorOf(request, reply), boardId),
       });
     },
   );
@@ -131,7 +132,7 @@ export function registerDeathBoardRoutes(app: FastifyInstance, deps: DeathBoardR
     async (request, reply) => {
       const { itemId } = parse(DeathBoardItemParamsSchema, request.params);
       return noStore(reply).send({
-        events: await service.history(await actorOf(request, reply), itemId),
+        events: await service.history(await deathBoardActorOf(request, reply), itemId),
       });
     },
   );
@@ -145,7 +146,7 @@ export function registerDeathBoardRoutes(app: FastifyInstance, deps: DeathBoardR
     async (request, reply) => {
       const { itemId } = parse(DeathBoardItemParamsSchema, request.params);
       return noStore(reply).send({
-        item: await service.complete(await actorOf(request, reply), itemId),
+        item: await service.complete(await deathBoardActorOf(request, reply), itemId),
       });
     },
   );
@@ -160,7 +161,11 @@ export function registerDeathBoardRoutes(app: FastifyInstance, deps: DeathBoardR
       const { itemId } = parse(DeathBoardItemParamsSchema, request.params);
       const body = parse(ReassignDeathBoardItemBodySchema, request.body);
       return noStore(reply).send({
-        item: await service.reassign(await actorOf(request, reply), itemId, body.to_user_id),
+        item: await service.reassign(
+          await deathBoardActorOf(request, reply),
+          itemId,
+          body.to_user_id,
+        ),
       });
     },
   );

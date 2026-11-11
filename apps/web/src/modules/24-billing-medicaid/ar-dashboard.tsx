@@ -246,7 +246,7 @@ export function MedicaidArDashboard(): JSX.Element {
                   {metrics.byMco.map((m) => (
                     <tr key={m.mcoId ?? "fee-for-service"} style={enhancedRowLine}>
                       <td style={{ ...td, fontFamily: m.mcoId ? "var(--font-mono)" : undefined }}>
-                        {m.mcoId ? shortId(m.mcoId) : "Fee-for-service"}
+                        {m.mcoId ? `MCO ${shortId(m.mcoId)} (unverified)` : "Program unresolved"}
                       </td>
                       <td style={tdNum}>{m.count.toLocaleString()}</td>
                     </tr>

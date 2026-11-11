@@ -47,7 +47,9 @@ import {
   MINIO_IMAGE,
   MINIO_ROOT_PASSWORD,
   MINIO_ROOT_USER,
+  POSTGRES_IMAGE,
   docker,
+  ensurePostgresImage,
   freePort,
   listStoredObjects,
   removeRunContainers,
@@ -186,7 +188,20 @@ async function main(): Promise<number> {
   process.env.LOG_LEVEL ??= "warn";
   console.log(`coordinated backup drill ${runId}`);
   try {
-    if (!process.env.WX_BACKUP_IMAGE) sh("docker", ["build", "-q", "-t", image, BACKUP_DIR]);
+    if (!process.env.WX_BACKUP_IMAGE) {
+      // The backup image is the Postgres image plus pgBackRest: build it on the working tree's Postgres, not the
+      // published digest its Dockerfile defaults to (that one needs registry auth and is not what this branch changes).
+      ensurePostgresImage();
+      sh("docker", [
+        "build",
+        "-q",
+        "-t",
+        image,
+        "--build-arg",
+        `POSTGRES_IMAGE=${POSTGRES_IMAGE}`,
+        BACKUP_DIR,
+      ]);
+    }
     const tooling = {
       pgbackrest: sh("docker", [
         "run",
@@ -204,6 +219,7 @@ async function main(): Promise<number> {
         image,
         "--version",
       ]).out.trim(),
+      mc: sh("docker", ["run", "--rm", "--entrypoint", "mc", image, "--version"]).out.trim(),
       objectStore: `${MINIO_IMAGE} (source, restore target and off-site stand-in)`,
       offsite:
         "second private MinIO over TLS (throwaway self-signed cert), object lock COMPLIANCE + versioning, three scoped keys from deploy/production/backup/offsite-policies (WAL-only in the postgres container, backup in the sidecar, read-only for the restore), secrets passed as files, SSE-C",
@@ -468,6 +484,9 @@ async function main(): Promise<number> {
     sh("docker", [
       "run",
       "-d",
+      // compose.backup.yml's `init: true`: with the postmaster as PID 1, pgBackRest's async worker failing before the
+      // first snapshot creates the stanza would crash-restart Postgres mid-migration.
+      "--init",
       "--name",
       `${p}-srcpg`,
       "--label",

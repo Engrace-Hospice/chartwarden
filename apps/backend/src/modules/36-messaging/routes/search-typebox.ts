@@ -3,6 +3,7 @@ import {
   SEARCH_MAX_QUERY_LENGTH,
   SEARCH_MAX_SCAN_PER_REQUEST,
 } from "@chartwarden/messaging";
+import { pageQuery } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/36-messaging/routes/search-typebox.ts - WP 2.7a in-conversation search schemas.
 import { Type } from "@sinclair/typebox";
 import { ResolvedMessageSchema } from "./messaging-typebox";
@@ -14,8 +15,7 @@ export const SearchMessagesQuerySchema = Type.Object({
   from: Type.Optional(Type.String({ maxLength: 40 })),
   to: Type.Optional(Type.String({ maxLength: 40 })),
   hasAttachment: Type.Optional(Type.Boolean()),
-  cursor: Type.Optional(Type.String({ maxLength: 256 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: SEARCH_MAX_PAGE_SIZE })),
+  ...pageQuery({ max: SEARCH_MAX_PAGE_SIZE }),
 });
 
 export const SearchMessagesResponseSchema = Type.Object({

@@ -6,6 +6,7 @@
 // is exported for the appeal guard, which runs inside the appeal's own transaction. Every command runs under
 // `withOrgContext` (RLS) and inside the actor's provider-entity scope.
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError, isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, isNull, lte, sql } from "drizzle-orm";
@@ -18,7 +19,6 @@ import {
   resolveRoute,
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
-import { VersionConflictError } from "./concurrency";
 import { providerEntityScopeCondition } from "./scope";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -198,12 +198,6 @@ export async function resolveDenialRoute(
   };
 }
 
-/** A Postgres unique violation (23505), whether the driver or drizzle wrapped it. */
-export const isUniqueViolation = (e: unknown): boolean => {
-  const code = (x: unknown): unknown => (x as { code?: unknown } | null | undefined)?.code;
-  return code(e) === "23505" || code((e as { cause?: unknown } | null)?.cause) === "23505";
-};
-
 /** True when `day` is a real YYYY-MM-DD calendar date (the schema only checks the shape). */
 const isRealDay = (day: string): boolean => {
   const d = new Date(`${day}T00:00:00Z`);
@@ -255,7 +249,7 @@ export function buildDrizzleDenialRouteService(db: DbClient): DenialRouteService
           .set({ macReasonCode: normalized, version: sql`${DC.version} + 1` })
           .where(and(eq(DC.id, denialId), eq(DC.version, ifMatch)))
           .returning({ id: DC.id, version: DC.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         return updated[0];
       });
     },

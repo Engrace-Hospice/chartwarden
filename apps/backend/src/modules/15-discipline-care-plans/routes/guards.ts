@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/15-discipline-care-plans/routes/guards.ts — M15-T06 (§4.4 / §4.5) route-guard
 // builders.
 //
@@ -16,8 +17,8 @@
 // `../lifecycle/validation`; the signer-role binding (the claimed `signerRole` must be held by the
 // authenticated actor, one membership per slot) is enforced in the write service's `signVersion`
 // (GAP-045), NOT here — no route guard reads the body's `signerRole`; the M39 consent gates in `./disclosure.ts`. See `../abac-predicates.ts`.
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import { type M15ReadActor, type PreHandler, actorOf } from "./actor";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
+import type { M15ReadActor } from "./actor";
 
 type TargetRequest = {
   readonly params?: unknown;

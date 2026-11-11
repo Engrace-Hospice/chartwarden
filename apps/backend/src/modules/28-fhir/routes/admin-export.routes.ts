@@ -3,8 +3,8 @@
 import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
+import { actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { BulkExportEnqueuePort } from "../jobs/ports";
-import { actorOf, writeActorOf } from "./actor";
 import { ABAC_BULK_EXPORT_CANCEL, ABAC_IN_ORG, P } from "./guards";
 import {
   BulkExportListQuery,

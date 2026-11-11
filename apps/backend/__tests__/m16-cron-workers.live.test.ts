@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
+import { assertBereavementDischargeSummaryRenderPayload } from "@chartwarden/types";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import {
@@ -93,6 +94,28 @@ describe.skipIf(!DB_URL)("GAP-048 — M16 §4.9 cron workers, LIVE", () => {
          FROM bereavement_plan p WHERE p.id=$3
        RETURNING id`,
       [org, providerEntity[org], planId, contactId, dueDays],
+    );
+    return rows[0].id as string;
+  }
+
+  /** ADR-0109 D3 — an assessment checkpoint: `due = death + dueDays`, `grace = due + 7d`. */
+  async function seedTask(
+    org: string,
+    planId: string,
+    contactId: string,
+    dueDays: number,
+    taskKind = "initial_assessment",
+    status = "scheduled",
+  ): Promise<string> {
+    const { rows } = await admin.query(
+      `INSERT INTO bereavement_assessment_task
+         (organization_id, provider_entity_id, plan_id, bereaved_contact_id, task_kind, status, due_at, late_grace_until)
+       SELECT $1,$2,p.id,$4,$6,$7,
+              p.death_date::timestamptz + make_interval(days => $5),
+              p.death_date::timestamptz + make_interval(days => $5 + 7)
+         FROM bereavement_plan p WHERE p.id=$3
+       RETURNING id`,
+      [org, providerEntity[org], planId, contactId, dueDays, taskKind, status],
     );
     return rows[0].id as string;
   }
@@ -301,6 +324,171 @@ describe.skipIf(!DB_URL)("GAP-048 — M16 §4.9 cron workers, LIVE", () => {
     });
   });
 
+  // ADR-0109 D9 — every closure writer requests the internal discharge summary on the closure's own transaction.
+  describe("m16-close-13mo — nothing is left scheduled on a closed plan", () => {
+    it("settles every still-scheduled row before the counts freeze: due -> missed, future -> cancelled, tasks likewise", async () => {
+      // death 397 days ago: the d390 closeout letter is 7 days past due (grace ends about now) and the plan's window has elapsed.
+      const plan = await seedPlan(ORG, "CURRENT_DATE - 397");
+      const contact = await seedContact(ORG, plan);
+      const closeout = await seedOutreach(ORG, plan, contact, 390);
+      await admin.query(
+        "UPDATE bereavement_outreach SET cadence_mark='closeout_letter' WHERE id=$1",
+        [closeout],
+      );
+      const futureCall = await seedOutreach(ORG, plan, contact, 400);
+      await admin.query(
+        "UPDATE bereavement_outreach SET cadence_mark='anniversary_call' WHERE id=$1",
+        [futureCall],
+      );
+      const dueTask = await seedTask(ORG, plan, contact, 28, "initial_assessment");
+      const futureTask = await seedTask(ORG, plan, contact, 400, "midpoint_reassessment");
+      const status = async (table: string, id: string) =>
+        (await one<{ status: string }>(`SELECT status FROM ${table} WHERE id=$1`, [id])).status;
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+      await runClose13MonthsCron(deps);
+      logSpy.mockRestore();
+
+      expect(await status("bereavement_outreach", closeout)).toBe("missed");
+      expect(await status("bereavement_outreach", futureCall)).toBe("cancelled");
+      expect(await status("bereavement_assessment_task", dueTask)).toBe("missed");
+      expect(await status("bereavement_assessment_task", futureTask)).toBe("cancelled");
+      // nothing stays `scheduled` for M30 to count for ever, and the closure froze the counts AFTER the settlement
+      expect(
+        (
+          await one<{ n: number }>(
+            `SELECT ((SELECT count(*) FROM bereavement_outreach WHERE plan_id=$1 AND status='scheduled')
+                  + (SELECT count(*) FROM bereavement_assessment_task WHERE plan_id=$1 AND status='scheduled'))::int AS n`,
+            [plan],
+          )
+        ).n,
+      ).toEqual(0);
+      expect(
+        await one<{ outreach_missed_count: number }>(
+          "SELECT outreach_missed_count FROM bereavement_plan_closure WHERE plan_id=$1",
+          [plan],
+        ),
+      ).toEqual({ outreach_missed_count: 1 });
+      // the settlement is the closure's own: the discharge summary reports the settled statuses
+      const event = await one<{ payload: { payloadJsonb: unknown } }>(
+        "SELECT payload FROM outbox_event WHERE event_type='m16.bereavement.document_requested' AND payload->>'planId'=$1",
+        [plan],
+      );
+      const summary = assertBereavementDischargeSummaryRenderPayload(event.payload.payloadJsonb);
+      expect(summary.contacts[0]?.touchpoints.map((t) => [t.cadenceMark, t.status])).toEqual([
+        ["closeout_letter", "missed"],
+        ["anniversary_call", "cancelled"],
+      ]);
+      expect(summary.contacts[0]?.assessmentTasks.map((t) => [t.taskKind, t.status])).toEqual([
+        ["initial_assessment", "missed"],
+        ["midpoint_reassessment", "cancelled"],
+      ]);
+    });
+  });
+
+  describe("m16-close-13mo — the internal discharge summary request", () => {
+    it("emits one document_requested naming the CLOSURE, with the typed offered-versus-delivered payload and nothing sealed", async () => {
+      // death 397 days ago: the window (396 days) has elapsed while a closeout letter due at +400d is still ahead of now.
+      const plan = await seedPlan(ORG, "CURRENT_DATE - 397");
+      const pat = await seedContact(ORG, plan);
+      const sam = await seedContact(ORG, plan);
+      // sealed columns the summary must never read: a care goal, a counselor note, an opt-out reason
+      await admin.query(
+        "UPDATE bereaved_contact SET care_goals_cipher='SECRET-CARE-CIPHER' WHERE id=$1",
+        [pat],
+      );
+      await admin.query(
+        "UPDATE bereaved_contact SET status='unreachable', unreachable_at=now() WHERE id=$1",
+        [sam],
+      );
+      const done = await seedOutreach(ORG, plan, pat, 2);
+      await admin.query(
+        `UPDATE bereavement_outreach SET status='completed', completed_at=due_at + interval '1 hour',
+           cadence_mark='condolence_letter' WHERE id=$1`,
+        [done],
+      );
+      const missed = await seedOutreach(ORG, plan, pat, 90);
+      await admin.query(
+        "UPDATE bereavement_outreach SET status='missed', cadence_mark='three_month' WHERE id=$1",
+        [missed],
+      );
+      const future = await seedOutreach(ORG, plan, pat, 400); // still ahead at close: cancelled by it
+      await admin.query(
+        "UPDATE bereavement_outreach SET cadence_mark='closeout_letter' WHERE id=$1",
+        [future],
+      );
+      const attempt = await seedOutreach(ORG, plan, sam, 28);
+      await seedLog(ORG, plan, sam, attempt, "no_response", 50);
+      await seedLog(ORG, plan, sam, attempt, "voicemail_left", 10);
+      await admin.query(
+        "UPDATE bereavement_contact_log SET contact_notes_cipher='SECRET-NOTES-CIPHER' WHERE bereaved_contact_id=$1",
+        [sam],
+      );
+      await seedTask(ORG, plan, pat, 28, "initial_assessment", "missed");
+      await admin.query(
+        `INSERT INTO bereavement_opt_out (organization_id, provider_entity_id, bereaved_contact_id, plan_id, opt_out_kind,
+           reason_redacted, source_kind)
+         VALUES ($1,$2,$3,$4,'no_mailings','SECRET-OPT-OUT-REASON','counselor_recorded')`,
+        [ORG, providerEntity[ORG], pat, plan],
+      );
+
+      await runClose13MonthsCron(deps);
+      await runClose13MonthsCron(deps); // a second tick closes nothing and requests nothing more
+
+      const closure = await one<{ id: string }>(
+        "SELECT id FROM bereavement_plan_closure WHERE plan_id=$1",
+        [plan],
+      );
+      const rows = (
+        await admin.query(
+          "SELECT organization_id, aggregate_kind, aggregate_id, payload FROM outbox_event WHERE event_type='m16.bereavement.document_requested' AND payload->>'planId'=$1",
+          [plan],
+        )
+      ).rows as Array<{
+        organization_id: string;
+        aggregate_kind: string;
+        aggregate_id: string;
+        payload: Record<string, unknown>;
+      }>;
+      expect(rows).toHaveLength(1);
+      const [event] = rows;
+      expect(event).toMatchObject({
+        organization_id: ORG,
+        aggregate_kind: "bereavement_plan_closure",
+        aggregate_id: closure.id,
+      });
+      expect(event?.payload).toMatchObject({
+        documentKind: "discharge_summary",
+        aggregateId: closure.id,
+        templateKey: "bereavement_discharge_summary_internal",
+      });
+      const summary = assertBereavementDischargeSummaryRenderPayload(event?.payload.payloadJsonb);
+      expect(summary).toMatchObject({
+        closureReason: "thirteen_month_completion",
+        closeKind: "auto",
+      });
+      const patRow = summary.contacts.find((c) => c.status === "active");
+      expect(patRow?.touchpoints.map((t) => [t.cadenceMark, t.status])).toEqual([
+        ["condolence_letter", "completed"],
+        ["three_month", "missed"],
+        ["closeout_letter", "cancelled"], // cancelled by the close, before the summary was read
+      ]);
+      expect(patRow?.mailingsAllowed).toBe(false);
+      expect(patRow?.assessmentTasks).toMatchObject([
+        { taskKind: "initial_assessment", status: "missed" },
+      ]);
+      const samRow = summary.contacts.find((c) => c.status === "unreachable");
+      expect(samRow?.unreachable?.attemptCount).toBe(2);
+      expect(samRow?.unreachable?.lastAttemptAt).not.toBeNull();
+      expect(summary.totals).toMatchObject({ offered: 4, delivered: 1, cancelled: 1 });
+      // nothing sealed or free-text rides the event
+      const wire = JSON.stringify(event?.payload);
+      for (const secret of ["SECRET-CARE-CIPHER", "SECRET-NOTES-CIPHER", "SECRET-OPT-OUT-REASON"]) {
+        expect(wire).not.toContain(secret);
+      }
+    });
+  });
+
   describe("m16-miss-deadline", () => {
     it("marks only outreach past its late grace as missed, with the event", async () => {
       const plan = await seedPlan(ORG, "CURRENT_DATE - interval '60 days'");
@@ -419,6 +607,83 @@ describe.skipIf(!DB_URL)("GAP-048 — M16 §4.9 cron workers, LIVE", () => {
       } finally {
         deps.now = () => new Date();
       }
+    });
+  });
+
+  describe("m16-miss-deadline — assessment checkpoints (ADR-0109 D3)", () => {
+    const taskStatus = async (id: string) =>
+      (
+        await one<{ status: string }>(
+          "SELECT status FROM bereavement_assessment_task WHERE id=$1",
+          [id],
+        )
+      ).status;
+    let emitted: { organizationId: string; kind: string; payload: Record<string, unknown> }[] = [];
+    let baseDeps: M16WorkerDeps;
+    beforeEach(() => {
+      emitted = [];
+      baseDeps = deps;
+      deps = { ...baseDeps, alerts: { emit: async (alert) => void emitted.push(alert as never) } };
+    });
+    afterEach(() => {
+      deps = baseDeps;
+    });
+
+    it("marks a checkpoint past its late grace missed and raises risk_assessment_overdue once", async () => {
+      const plan = await seedPlan(ORG, "CURRENT_DATE - interval '60 days'");
+      const contact = await seedContact(ORG, plan);
+      const overdue = await seedTask(ORG, plan, contact, 30); // grace ended 23 days ago
+      const inGrace = await seedTask(ORG, plan, contact, 55, "midpoint_reassessment"); // grace still open
+
+      const first = await runMissDeadlineCron(deps);
+      expect(first.assessmentsMissed).toBeGreaterThanOrEqual(1);
+      expect(await taskStatus(overdue)).toBe("missed");
+      expect(await taskStatus(inGrace)).toBe("scheduled");
+
+      const mine = emitted.filter((a) => a.payload.taskId === overdue);
+      expect(mine).toHaveLength(1);
+      expect(mine[0]).toMatchObject({
+        organizationId: ORG,
+        kind: "risk_assessment_overdue",
+        payload: { planId: plan, contactId: contact, taskKind: "initial_assessment" },
+      });
+
+      // Idempotent: the task is no longer `scheduled`, so a second tick raises nothing new.
+      await runMissDeadlineCron(deps);
+      expect(emitted.filter((a) => a.payload.taskId === overdue)).toHaveLength(1);
+    });
+
+    it("does not miss a checkpoint of a paused plan, of an opted-out contact, or one already completed", async () => {
+      const paused = await seedPlan(ORG, "CURRENT_DATE - interval '60 days'", { status: "paused" });
+      const pausedTask = await seedTask(ORG, paused, await seedContact(ORG, paused), 30);
+
+      const plan = await seedPlan(ORG, "CURRENT_DATE - interval '60 days'");
+      const gone = await seedContact(ORG, plan);
+      await admin.query("UPDATE bereaved_contact SET status='opted_out' WHERE id=$1", [gone]);
+      const goneTask = await seedTask(ORG, plan, gone, 30);
+
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+      await runMissDeadlineCron(deps);
+      const skipped = logSpy.mock.calls.map((call) => JSON.stringify(call));
+      logSpy.mockRestore();
+      expect(await taskStatus(pausedTask)).toBe("scheduled");
+      expect(await taskStatus(goneTask)).toBe("scheduled");
+      expect(
+        emitted.filter((a) => [pausedTask, goneTask].includes(a.payload.taskId as string)),
+      ).toEqual([]);
+      // The list query itself leaves out a contact who is no longer in the program (and a paused plan), so those rows never
+      // enter the oldest-first batch of 500 to be skipped one by one: no "already handled" skip is logged for them.
+      expect(
+        skipped.filter((line) => line.includes(goneTask) || line.includes(pausedTask)),
+      ).toEqual([]);
+    });
+
+    it("tenant-scopes the pass: org B's overdue checkpoint is missed under org B", async () => {
+      const planB = await seedPlan(ORG_B, "CURRENT_DATE - interval '60 days'");
+      const taskB = await seedTask(ORG_B, planB, await seedContact(ORG_B, planB), 30);
+      await runMissDeadlineCron(deps);
+      expect(await taskStatus(taskB)).toBe("missed");
+      expect(emitted.find((a) => a.payload.taskId === taskB)?.organizationId).toBe(ORG_B);
     });
   });
 

@@ -10,7 +10,7 @@
  *                     and paging at any size reproduces the default list exactly - including requests that share a deadline.
  *   3. SCOPE          a request in a channel the supervisor is not a member of, or whose Part 2 gate denies them, is a restricted row
  *                     with no request, channel, message, patient or assignee id; it is still listed and counted.
- *   4. ACCESS         401 without a session, 403 for a clinician without messaging.review, a malformed cursor is a 400.
+ *   4. ACCESS         401 without a session, 403 for a clinician without messaging.review, a malformed cursor is a 422.
  *   5. NO BODY        no message text, no patient name; read-only (no row, event or outbox row changes); one read-audit row per patient.
  *   6. OPS NUMBERS    the per-org stats reader the gauges and the notice use, under RLS.
  *
@@ -391,15 +391,18 @@ describe.skipIf(!DB_URL)("M36 WP 4.9 unacknowledged queue - LIVE Postgres", () =
       await acknowledge(late);
     });
 
-    it("the cursor carries no request id, and a tampered or foreign-shaped cursor is a 400 and never a first page", async () => {
+    it("the cursor carries no request id, and a tampered or foreign-shaped cursor is a 422 and never a first page", async () => {
       const first = body(await list(supervisor, ORG_A, "?limit=2"));
-      const decoded = Buffer.from(first.next_cursor as string, "base64url").toString("utf8");
+      const decoded = Buffer.from(
+        (first.next_cursor as string).split(".")[0] ?? "",
+        "base64url",
+      ).toString("utf8");
       expect(decoded).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/);
       for (const bad of [
         "garbage",
         Buffer.from("x|y").toString("base64url"),
         Buffer.from(`2026-01-01 00:00:00+00|${ids.pending_visible}`).toString("base64url"),
-        // well-shaped but not a real instant: a 400, never a timestamptz cast error (500)
+        // well-shaped but not a real instant (unsigned): a 422, never a timestamptz cast error (500)
         Buffer.from(`2026-13-45 99:99:99+00|${"a".repeat(64)}`).toString("base64url"),
         Buffer.from(`2026-02-30 10:00:00+00|${"a".repeat(64)}`).toString("base64url"),
         Buffer.from(
@@ -407,7 +410,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.9 unacknowledged queue - LIVE Postgres", () =
         ).toString("base64url"),
       ]) {
         const res = await list(supervisor, ORG_A, `?cursor=${encodeURIComponent(bad)}`);
-        expect(res.statusCode, bad).toBe(400);
+        expect(res.statusCode, bad).toBe(422);
       }
       expect(
         await kit.count(

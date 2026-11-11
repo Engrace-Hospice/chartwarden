@@ -39,8 +39,8 @@ describe.skipIf(!DB_URL)("GAP-164 M34 ops service, LIVE Postgres on the real rol
   let admin: Client;
   let platform: ReturnType<typeof createDbClient>;
   let app: ReturnType<typeof createDbClient>;
-  let firstKey = "";
-  let secondKey = "";
+  const skippableKey = "mac_configured";
+  const protectedKey = "account_created";
   const urlAs = (role: string, password: string): string => {
     const u = new URL(DB_URL as string);
     u.username = role;
@@ -96,18 +96,18 @@ describe.skipIf(!DB_URL)("GAP-164 M34 ops service, LIVE Postgres on the real rol
         [id, org, name],
       );
     }
-    // The 11 canonical templates are seeded by migration; take the first two by order for this suite.
+    // Both templates are seeded by migration: one may be waived, tenant creation must be completed.
     const tpl = await admin.query(
-      "SELECT key FROM onboarding_task_template WHERE is_canonical ORDER BY canonical_order LIMIT 2",
+      "SELECT key FROM onboarding_task_template WHERE key = ANY($1::text[]) ORDER BY canonical_order",
+      [[protectedKey, skippableKey]],
     );
     const keys: string[] = tpl.rows.map((r) => r.key);
     expect(keys).toHaveLength(2);
-    [firstKey, secondKey] = keys as [string, string];
     for (const [tenant, org] of [
       [T_A, ORG_A],
       [T_B, ORG_B],
     ] as const) {
-      for (const key of [firstKey, secondKey]) {
+      for (const key of [protectedKey, skippableKey]) {
         await admin.query(
           "INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key, status) VALUES ($1,$2,$3,'pending')",
           [org, tenant, key],
@@ -184,13 +184,13 @@ describe.skipIf(!DB_URL)("GAP-164 M34 ops service, LIVE Postgres on the real rol
     const view = await ops().getOnboarding("ops64a");
     expect(view.tenantStatus).toBe("onboarding");
     expect(view.tasks).toHaveLength(2);
-    expect(view.currentStep).toBe(firstKey);
+    expect(view.currentStep).toBe(protectedKey);
     await expect(ops().getOnboarding("no-such-tenant")).rejects.toThrow(/not found/i);
   });
 
   it("skips a task with a recorded rationale on the platform credential, then refuses a settled or foreign task", async () => {
     const view = await ops().getOnboarding("ops64a");
-    const task = view.tasks.find((t) => t.templateKey === firstKey);
+    const task = view.tasks.find((t) => t.templateKey === skippableKey);
     const skipped = await ops().skipOnboardingTask(
       "ops64a",
       task?.id as string,
@@ -207,7 +207,21 @@ describe.skipIf(!DB_URL)("GAP-164 M34 ops service, LIVE Postgres on the real rol
     );
     expect(rows[0].status).toBe("skipped");
     expect(rows[0].completion_evidence.skip.skippedByMembershipId).toBe(MEMBERSHIP);
-    expect((await ops().getOnboarding("ops64a")).currentStep).toBe(secondKey);
+    expect((await ops().getOnboarding("ops64a")).currentStep).toBe(protectedKey);
+
+    const protectedTask = view.tasks.find((t) => t.templateKey === protectedKey);
+    await expect(
+      ops().skipOnboardingTask(
+        "ops64a",
+        protectedTask?.id as string,
+        { userId: USER, membershipId: MEMBERSHIP },
+        "attempted tenant-creation bypass",
+      ),
+    ).rejects.toThrow(/cannot be skipped/);
+    const protectedStatus = await admin.query("SELECT status FROM onboarding_task WHERE id = $1", [
+      protectedTask?.id,
+    ]);
+    expect(protectedStatus.rows[0].status).toBe("pending");
 
     // Settled: refused (409), never rewritten.
     await expect(

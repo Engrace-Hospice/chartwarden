@@ -649,7 +649,7 @@ describe("Discipline-plan validation guards (§2.3)", () => {
     );
   });
 
-  it("§7.10 optimistic concurrency: a stale If-Match is 412", () => {
+  it("§7.10 optimistic concurrency: a stale If-Match is 409", () => {
     expect(() => checkOptimisticConcurrency(3, 3)).not.toThrow();
     expectCode(() => checkOptimisticConcurrency(3, 4), "STALE_VERSION");
   });

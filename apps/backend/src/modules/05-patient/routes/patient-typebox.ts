@@ -1,27 +1,16 @@
+import { pageLimit, pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/05-patient/routes/patient-typebox.ts — M5-T09 TypeBox route schemas
 // (§4.2, §4.4). Named `patient-typebox` (NOT `*schema*`) so the table-ownership import heuristic
 // never mistakes a TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's
 // VALIDATION_FAILED envelope.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type {
   AdmitResult as ServiceAdmitResult,
   AmendmentView as ServiceAmendmentView,
 } from "./service";
-
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set(
-    "date",
-    (v) => typeof v === "string" && DATE_RE.test(v) && !Number.isNaN(Date.parse(v)),
-  );
-}
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
+import { PATIENT_PAYER_VOID_REASONS } from "./service";
 
 const ADDRESS_KINDS = ["home", "facility", "mailing", "temporary", "prior"] as const;
 const PAYER_COVERAGE_KINDS = [
@@ -47,6 +36,10 @@ export const IdParamsSchema = Type.Object({ id: Type.String({ format: "uuid" }) 
 // The slice service uses non-uuid synthetic ids (pat_1); routes accept a loose id param.
 export const LooseIdParamsSchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 64 }),
+});
+export const PatientPayerParamsSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  payerRowId: Type.String({ format: "uuid" }),
 });
 
 // POST /api/v1/patients (§4.2 capture contract)
@@ -137,8 +130,7 @@ export const PatientSummarySchema = Type.Object({
 export const PatientListQuerySchema = Type.Object({
   q: Type.Optional(Type.String({ maxLength: 120 })), // name or MRN substring
   status: Type.Optional(Type.String({ maxLength: 32 })),
-  cursor: Type.Optional(Type.String({ maxLength: 64 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 export const PatientListResponseSchema = Type.Object({
@@ -158,7 +150,7 @@ export const MessagingPatientSearchResponseSchema = Type.Object({
 });
 export const MessagingPatientSearchQuerySchema = Type.Object({
   q: Type.Optional(Type.String({ maxLength: 120 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 25 })),
+  limit: pageLimit({ max: 25 }),
 });
 
 // GET /api/v1/patients/census-metrics (§4.2 census KPI strip) — the true active census, org-scoped.
@@ -305,6 +297,12 @@ export const AddPatientPayerBodySchema = Type.Object({
 });
 
 export const AddPatientPayerResponseSchema = PatientPayerSchema;
+
+export const VoidPatientPayerBodySchema = Type.Object({
+  reason: Type.Union(PATIENT_PAYER_VOID_REASONS.map((reason) => Type.Literal(reason))),
+});
+
+export const VoidPatientPayerResponseSchema = PatientPayerSchema;
 
 // GET /api/v1/patients/:id/care-team (§3.4/§3.5) — assignment roster + caregivers + emergency contacts.
 // `clinicianUserId` names an M2 user; `displayName` is resolved server-side (in-org membership join); `current` rows render above closed ones.

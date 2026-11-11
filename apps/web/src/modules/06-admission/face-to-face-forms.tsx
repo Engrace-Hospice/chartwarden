@@ -60,7 +60,7 @@ const ERROR_MESSAGE: Record<string, string> = {
   F2F_INVALID_PERFORMER: "Only the clinician who performed the encounter can attest it.",
   F2F_OUTSIDE_WINDOW: "The encounter date is outside the 30-day window before the benefit period.",
   F2F_ENCOUNTER_DATE_INVALID: "The encounter date cannot be in the future or implausibly old.",
-  VERSION_CONFLICT: "This face-to-face changed since it was loaded. Close and reopen it.",
+  VERSION_MISMATCH: "This face-to-face changed since it was loaded. Close and reopen it.",
 };
 
 export function f2fErrorMessage(err: unknown, fallback: string): string {

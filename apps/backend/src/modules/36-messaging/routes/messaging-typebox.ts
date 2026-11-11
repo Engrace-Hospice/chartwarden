@@ -10,7 +10,8 @@ import type {
   NotificationPreferencesView as ServiceNotificationPreferencesView,
   ResolvedMessage as ServiceResolvedMessage,
 } from "@chartwarden/messaging";
-import { MESSAGE_REACTION_KEYS, ValidationError } from "@chartwarden/types";
+import { Uuid, pageQuery } from "@chartwarden/shared/route-kit";
+import { MENTION_KINDS, MESSAGE_REACTION_KEYS, ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/36-messaging/routes/messaging-typebox.ts — M36-T07 complete TypeBox
 // route schemas for the messaging / notification / alert-rule API surface (M36 spec §4.1–4.2).
 // Named `messaging-typebox` (not `*schema*`) so the table-ownership import heuristic never
@@ -31,9 +32,6 @@ import { ClinicalLinkViewSchema } from "./clinical-link-typebox";
 /** Free-form opaque id (channels/messages/endpoints/rules). minLength:1, not uuid-format, so the
  *  slice's deterministic ids and production uuids both route. */
 const Id = Type.String({ minLength: 1, maxLength: 64 });
-// A canonical uuid (no `format: "uuid"`: that format is not registered with TypeBox at runtime here).
-export const UUID_PATTERN =
-  "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 const ChannelKindSchema = Type.Union(CHANNEL_KINDS.map((k) => Type.Literal(k)));
 const SeveritySchema = Type.Union([
   Type.Literal("info"),
@@ -65,18 +63,20 @@ export const MemberParamsSchema = Type.Object({ id: Id, userId: Id });
 export const PatientConversationParamsSchema = Type.Object({ patientId: Id });
 
 export const ListMessagesQuerySchema = Type.Object({
-  cursor: Type.Optional(Type.String()),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
   direction: Type.Optional(Type.Union([Type.Literal("forward"), Type.Literal("backward")])),
   anchorMessageId: Type.Optional(Id),
 });
+
+/** ADR-0108: staff, patient and the three group tags (role, team, on_call). */
+export const MentionKindSchema = Type.Union(MENTION_KINDS.map((kind) => Type.Literal(kind)));
 
 export const MentionCandidateQuerySchema = Type.Object({
   q: Type.Optional(Type.String({ maxLength: 100 })),
 });
 
 const MessageReferenceInputSchema = Type.Object({
-  kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),
+  kind: MentionKindSchema,
   entityId: Id,
   start: Type.Integer({ minimum: 0, maximum: 8000 }),
   end: Type.Integer({ minimum: 1, maximum: 8001 }),
@@ -84,11 +84,10 @@ const MessageReferenceInputSchema = Type.Object({
 
 // WP 1.5: a send names uploads the caller already authorized + completed (POST /attachments/uploads); the server looks
 // up name/type/size itself. A canonical uuid, so a malformed id is a 422 and never reaches a uuid cast.
-const UuidId = Type.String({ pattern: UUID_PATTERN });
-const AttachmentSchema = Type.Object({ attachmentId: UuidId });
+const AttachmentSchema = Type.Object({ attachmentId: Uuid() });
 
-export const AttachmentParamsSchema = Type.Object({ id: UuidId });
-export const ClinicalLinkParamsSchema = Type.Object({ linkId: UuidId });
+export const AttachmentParamsSchema = Type.Object({ id: Uuid() });
+export const ClinicalLinkParamsSchema = Type.Object({ linkId: Uuid() });
 export const AttachmentStatusResponseSchema = Type.Object({
   attachmentId: Type.String(),
   channelId: Type.String(),
@@ -126,7 +125,7 @@ export const AttachmentAccessResponseSchema = Type.Object({
   byteSize: Type.Integer(),
 });
 export const AuthorizeAttachmentBodySchema = Type.Object({
-  channelId: UuidId,
+  channelId: Uuid(),
   fileName: Type.String({ minLength: 1, maxLength: 255 }),
   contentType: Type.String({ minLength: 1, maxLength: 127 }),
   byteSize: Type.Integer({ minimum: 1, maximum: 25_000_000 }),
@@ -157,7 +156,7 @@ export const SendMessageBodySchema = Type.Object({
   parentMessageId: Type.Optional(Id),
   quotedMessageId: Type.Optional(Id),
   // WP 1.2 DB backstop: a client-minted uuid, stable across retries of one composed message.
-  clientMessageId: Type.Optional(Type.String({ pattern: UUID_PATTERN })),
+  clientMessageId: Type.Optional(Uuid()),
   attachments: Type.Optional(Type.Array(AttachmentSchema, { maxItems: 10 })),
   references: Type.Optional(Type.Array(MessageReferenceInputSchema, { maxItems: 25 })),
 });
@@ -180,7 +179,7 @@ export const OpenDmBodySchema = Type.Object({
 
 export const CreateGroupBodySchema = Type.Object({
   title: Type.String({ minLength: 1, maxLength: 80 }),
-  userIds: Type.Array(UuidId, { minItems: 2, maxItems: 49, uniqueItems: true }),
+  userIds: Type.Array(Uuid(), { minItems: 2, maxItems: 49, uniqueItems: true }),
 });
 
 export const DmStaffSearchQuerySchema = Type.Object({
@@ -296,7 +295,7 @@ const DeliveryStatusSchema = Type.Union([
 ]);
 
 // ── channels & messages ──────────────────────────────────────────────────────────────────────
-export const ChannelSummaryResponseSchema = Type.Object({
+const ChannelSummaryResponseSchema = Type.Object({
   channelId: Type.String(),
   kind: ChannelKindSchema,
   title: NullableString(),
@@ -331,7 +330,7 @@ export const ChannelMembersResponseSchema = Type.Object({
   members: Type.Array(ChannelMemberViewSchema),
 });
 /** D18 (ADR-0096): present on the channel detail only while an ACTIVE external partner share exists and partner access is on. */
-export const ExternalShareIndicatorSchema = Type.Object({
+const ExternalShareIndicatorSchema = Type.Object({
   active: Type.Literal(true),
   partnerKind: Type.Union([Type.Literal("pharmacy"), Type.Literal("dme"), Type.Literal("other")]),
   expiresAt: Type.String({ format: "date-time" }),
@@ -419,7 +418,7 @@ export const ResolvedMessageSchema = Type.Object({
   clinicalLinks: Type.Optional(Type.Array(ClinicalLinkViewSchema)),
   references: Type.Array(
     Type.Object({
-      kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),
+      kind: MentionKindSchema,
       entityId: Type.String(),
       start: Type.Integer(),
       end: Type.Integer(),
@@ -439,8 +438,7 @@ export const MessageListResponseSchema = Type.Object({
   patientId: NullableString(),
 });
 export const ListThreadQuerySchema = Type.Object({
-  cursor: Type.Optional(Type.String()),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
 });
 export const ThreadResponseSchema = Type.Object({
   root: ResolvedMessageSchema,
@@ -487,7 +485,7 @@ export const MentionNonMemberResponseSchema = Type.Object({
 export const MentionCandidateResponseSchema = Type.Object({
   candidates: Type.Array(
     Type.Object({
-      kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),
+      kind: MentionKindSchema,
       entityId: Type.String(),
       displayName: Type.String(),
       detail: NullableString(),

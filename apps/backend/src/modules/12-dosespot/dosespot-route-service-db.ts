@@ -37,6 +37,7 @@ import {
   transitionRefillRequest,
   validateMedicationOrderData,
 } from "@chartwarden/dosespot";
+import { firstOrThrow } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { DeaSchedule, MedClass, PatientAllergyReader } from "@chartwarden/types";
 import {
@@ -169,13 +170,6 @@ export interface DoseSpotWriteOutboxPort {
   ): Promise<void>;
 }
 const NOOP_OUTBOX: DoseSpotWriteOutboxPort = { async publish() {} };
-
-/** First row of a RETURNING/SELECT, or a 500 (unreachable after a successful write). */
-function firstOrThrow<T>(rows: readonly T[], msg: string): T {
-  const r = rows[0];
-  if (!r) throw new NotFoundError(msg);
-  return r;
-}
 
 type MoRow = typeof MO.$inferSelect;
 const toOrderView = (r: MoRow): MedicationOrderView => ({

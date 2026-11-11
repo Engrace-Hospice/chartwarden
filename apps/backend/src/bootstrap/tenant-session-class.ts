@@ -26,6 +26,12 @@ const PORTAL_SESSION_ALLOWED_PREFIXES: readonly string[] = [
   "/health",
   "/ready",
 ];
+/**
+ * ADR-0107 D7: a signer registers their own phone for push. The M36 endpoint routes (register, list, verify, remove) are
+ * self-only and `notifications.endpoint.manage`-gated; the register route admits only fcm / apns tokens from a portal
+ * session. Exactly that collection and its `/:id` children - nothing else under `/api/v1/notifications/`.
+ */
+const PORTAL_PUSH_ENDPOINTS = "/api/v1/notifications/endpoints";
 
 export type SessionClassPathVerdict =
   | "allowed"
@@ -54,6 +60,8 @@ export function sessionClassPathVerdict(
   if (PORTAL_CLASSES.has(sessionClass)) {
     const ok =
       pathname === "/api/v1/portal" ||
+      pathname === PORTAL_PUSH_ENDPOINTS ||
+      pathname.startsWith(`${PORTAL_PUSH_ENDPOINTS}/`) ||
       PORTAL_SESSION_ALLOWED_PREFIXES.some((p) => pathname.startsWith(p));
     return ok ? "allowed" : "portal-session-on-staff-path";
   }

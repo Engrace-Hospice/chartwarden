@@ -1,313 +1,283 @@
 import { Glyph, type GlyphName, useApiClient } from "@chartwarden/ui";
-// @chartwarden/portal — task-first patient home. The PR1 shell owns persistent patient identity and
-// navigation; this screen independently resolves summary and upcoming-visit presentation states.
-import { useEffect, useMemo, useState } from "react";
-import type { JSX, ReactNode } from "react";
+// @chartwarden/portal — the Family Care Dashboard (patient home). The shell owns persistent patient identity and
+// navigation; this screen loads the next visit, a medication preview and the latest messages independently, so
+// each card resolves its own loading / error / empty state.
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { usePortalPatient } from "../patient-context";
-import { formatPortalInstant, humanize, readError } from "./portal-format";
+import { firstNameOf, greetingFor, isOwnRecord, patientNameOf } from "../portal-relationship";
+import { usePortalViewer } from "../viewer-context";
+import {
+  BereavementCard,
+  CardError,
+  type CardResource,
+  CardSkeleton,
+  CarePlanCard,
+  type DashboardMedication,
+  type DashboardMessage,
+  DocumentsCard,
+  FamilyIcon,
+  MedicationsCard,
+  NeedHelpCard,
+  RecentMessagesCard,
+} from "./dashboard-cards";
+import { humanize, readError } from "./portal-format";
 
 interface UpcomingVisit {
   visitId: string;
-  scheduledStartedAt: string;
-  scheduledEndedAt?: string;
-  visitPurposeLabel: string;
-  visitSetting: string;
-}
-
-interface PortalUpcomingItem {
-  visitId: string;
   scheduledStartedAt?: string;
-  scheduledEndedAt?: string;
   purposeLabel?: string;
   settingLabel?: string;
 }
 
-function toUpcomingVisit(item: PortalUpcomingItem): UpcomingVisit {
+interface ApiResult {
+  data?: unknown;
+  error?: unknown;
+  response?: { status?: number };
+}
+
+const RECENT_MESSAGES = 2;
+
+/** "Friday, Nov 7 at 10:00 AM" in browser-local time; null for date-only or invalid values. */
+function compactVisitTime(iso: string | undefined): string | null {
+  if (!iso || /^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const instant = new Date(iso);
+  if (!Number.isFinite(instant.getTime())) return null;
+  const date = instant.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+  const time = instant.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${date} at ${time}`;
+}
+
+/**
+ * One independently-retryable list read. `load` and `select` must be stable (module-level or useCallback):
+ * `load` returns the raw API result and `select` lifts the items out of the payload.
+ */
+function useDashboardList<T>(
+  load: () => Promise<ApiResult>,
+  select: (data: unknown) => readonly T[],
+  patientId: string | undefined,
+): { resource: CardResource<T>; retry: () => void } {
+  const [resource, setResource] = useState<CardResource<T>>({ status: "loading", items: [] });
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    void attempt;
+    void patientId; // the session is patient-bound: a patient switch refetches
+    let active = true;
+    setResource({ status: "loading", items: [] });
+    void (async () => {
+      try {
+        const result = await load();
+        if (!active) return;
+        setResource(
+          "error" in result
+            ? { status: "error", items: [], error: readError(result.response?.status) }
+            : { status: "ready", items: select(result.data) },
+        );
+      } catch {
+        if (active) setResource({ status: "error", items: [], error: readError(undefined) });
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [load, select, attempt, patientId]);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  return { resource, retry };
+}
+
+function selectItems<T>(data: unknown): readonly T[] {
+  return (data as { items?: T[] } | undefined)?.items ?? [];
+}
+
+function selectRecentMessages(data: unknown): readonly DashboardMessage[] {
+  return [...((data as { messages?: DashboardMessage[] } | undefined)?.messages ?? [])]
+    .sort((a, b) => Date.parse(b.sentAt) - Date.parse(a.sentAt))
+    .slice(0, RECENT_MESSAGES);
+}
+
+/** Relationships that reach the portal after the patient's death: no "what's happening today" copy. */
+const AFTER_DEATH = new Set(["personal_representative_post_death", "bereaved_family_member"]);
+
+interface HeroCopy {
+  greeting: string | null;
+  headline: string;
+  lead: string;
+}
+
+function heroCopy(
+  relationship: string | null,
+  viewerName: string | null,
+  patientFirst: string | null,
+): HeroCopy {
+  const greeting = `${greetingFor()},`;
+  if (relationship !== null && AFTER_DEATH.has(relationship)) {
+    return {
+      greeting: null,
+      headline: "Welcome",
+      lead: "Here you can find the documents, messages and support shared with your family.",
+    };
+  }
+  const viewerFirst = firstNameOf(viewerName);
+  if (isOwnRecord(relationship) && viewerFirst) {
+    return {
+      greeting,
+      headline: viewerFirst,
+      lead: "Here’s what’s happening with your care today and what’s next.",
+    };
+  }
+  if (relationship !== null && !isOwnRecord(relationship) && patientFirst) {
+    return {
+      greeting,
+      headline: `${patientFirst}’s family`,
+      lead: `You’re an important part of ${patientFirst}’s care. Here’s what’s happening today and what’s next.`,
+    };
+  }
   return {
-    visitId: item.visitId,
-    scheduledStartedAt: item.scheduledStartedAt ?? "",
-    ...(item.scheduledEndedAt ? { scheduledEndedAt: item.scheduledEndedAt } : {}),
-    visitPurposeLabel: item.purposeLabel ?? "",
-    visitSetting: item.settingLabel ?? "",
+    greeting: null,
+    headline: "Welcome back",
+    lead: "Here’s what’s happening with your care today and what’s next.",
   };
 }
 
-function DashboardSkeleton({
-  label,
-  compact = false,
-}: { label: string; compact?: boolean }): JSX.Element {
-  return (
-    <output
-      className={`wx-portal-dashboard-skeleton${compact ? " is-compact" : ""}`}
-      aria-label={label}
-    >
-      <span />
-      <span />
-      <span />
-    </output>
+function FamilyHero(): JSX.Element {
+  const { summary } = usePortalPatient();
+  const viewer = usePortalViewer();
+  const copy = heroCopy(
+    viewer.relationship,
+    viewer.name,
+    firstNameOf(patientNameOf(summary?.patient)),
   );
-}
-
-function SectionError({ message, onRetry }: { message: string; onRetry: () => void }): JSX.Element {
   return (
-    <div className="wx-portal-dashboard-error" role="alert">
-      <span aria-hidden="true">
-        <Glyph name="alert-circle" size={20} />
-      </span>
-      <div>
-        <strong>This information is unavailable</strong>
-        <p>{message}</p>
-      </div>
-      <button type="button" onClick={onRetry}>
-        Try again
-      </button>
-    </div>
-  );
-}
-
-function SectionHeading({
-  eyebrow,
-  title,
-  icon,
-}: { eyebrow: string; title: string; icon: GlyphName }): JSX.Element {
-  return (
-    <div className="wx-portal-dashboard-section-heading">
-      <span className="wx-portal-dashboard-section-icon" aria-hidden="true">
-        <Glyph name={icon} size={22} />
-      </span>
-      <div>
-        <span>{eyebrow}</span>
-        <h2>{title}</h2>
-      </div>
-    </div>
-  );
-}
-
-function DashboardWelcome(): JSX.Element {
-  return (
-    <header className="wx-portal-dashboard-welcome">
-      <span className="wx-portal-dashboard__eyebrow">Your care at a glance</span>
-      <h1>Welcome back</h1>
-      <p>Review the next visit, messages, and care information shared with you.</p>
+    <header className="wx-family-hero">
+      <h1>
+        {copy.greeting ? (
+          <>
+            <span className="wx-family-hero__greeting">{copy.greeting}</span>{" "}
+          </>
+        ) : null}
+        <span className="wx-family-hero__name">{copy.headline}</span>
+      </h1>
+      <p>{copy.lead}</p>
     </header>
   );
 }
 
-function DashboardAction({
-  to,
-  children,
-  secondary = false,
-}: { to: string; children: ReactNode; secondary?: boolean }): JSX.Element {
+const QUICK_ACTIONS: readonly {
+  path: string;
+  icon: GlyphName;
+  lead: string;
+  label: string;
+  short: string;
+}[] = [
+  {
+    path: "messages",
+    icon: "message-square",
+    lead: "Message",
+    label: "the care team",
+    short: "Message the care team",
+  },
+  { path: "visits", icon: "calendar", lead: "View", label: "upcoming visits", short: "Visits" },
+  { path: "medications", icon: "pill", lead: "View", label: "medications", short: "Medications" },
+  { path: "documents", icon: "file-text", lead: "View", label: "documents", short: "Documents" },
+];
+
+function QuickActions({ base }: { base: string }): JSX.Element {
   return (
-    <Link className={`wx-portal-dashboard-action${secondary ? " is-secondary" : ""}`} to={to}>
-      {children}
+    <nav className="wx-family-actions" aria-label="Quick actions">
+      {QUICK_ACTIONS.map((action, index) => (
+        <Link
+          key={action.path}
+          to={`${base}/${action.path}`}
+          className={`wx-family-action${index === 0 ? " is-primary" : ""}`}
+        >
+          <FamilyIcon name={action.icon} size={24} />
+          <span className="wx-family-action__label">
+            <small>{action.lead}</small> <strong>{action.label}</strong>
+          </span>
+          <span className="wx-family-action__short" aria-hidden="true">
+            {action.short}
+          </span>
+          <span className="wx-family-action__arrow" aria-hidden="true">
+            <Glyph name="arrow-right" size={19} />
+          </span>
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+function VisitLink({ to, label }: { to: string; label: string }): JSX.Element {
+  return (
+    <Link className="wx-family-button" to={to}>
+      {label}
       <Glyph name="arrow-right" size={17} />
     </Link>
   );
 }
 
 function NextVisitCard({
-  visit,
-  loading,
-  error,
+  resource,
   to,
   onRetry,
 }: {
-  visit: UpcomingVisit | null;
-  loading: boolean;
-  error: string | null;
+  resource: CardResource<UpcomingVisit>;
   to: string;
   onRetry: () => void;
 }): JSX.Element {
-  const formatted = formatPortalInstant(visit?.scheduledStartedAt);
+  const visit = useMemo(() => {
+    const now = Date.now();
+    return (
+      resource.items
+        .map((item) => ({ item, time: Date.parse(item.scheduledStartedAt ?? "") }))
+        .filter(({ time }) => Number.isFinite(time) && time >= now)
+        .sort((a, b) => a.time - b.time)[0]?.item ?? null
+    );
+  }, [resource.items]);
   return (
-    <section className="wx-portal-next-visit" aria-labelledby="next-visit-heading">
-      <div id="next-visit-heading">
-        <SectionHeading eyebrow="Coming up" title="Next scheduled visit" icon="calendar-check" />
-      </div>
-      {loading ? (
-        <DashboardSkeleton label="Loading next visit" />
-      ) : error ? (
-        <SectionError message={error} onRetry={onRetry} />
-      ) : visit ? (
-        <div className="wx-portal-next-visit__details">
-          <div>
-            <strong>{visit.visitPurposeLabel || "Scheduled visit"}</strong>
-            <p>{formatted ?? "Date and time unavailable"}</p>
-            {visit.visitSetting ? (
-              <span>
-                <Glyph name="home" size={16} />
-                {humanize(visit.visitSetting)}
-              </span>
-            ) : null}
-          </div>
-          <DashboardAction to={to}>View visits</DashboardAction>
+    <section
+      className="wx-family-card wx-family-card--leafy wx-family-visit"
+      aria-labelledby="family-visit-heading"
+    >
+      <header className="wx-family-card__header">
+        <FamilyIcon name="calendar" />
+        <div>
+          <h2 id="family-visit-heading" tabIndex={-1}>
+            Next care visit
+          </h2>
         </div>
-      ) : (
-        <div className="wx-portal-next-visit__empty">
-          <div>
-            <strong>No upcoming visits scheduled</strong>
-            <p>When your care team schedules a visit, it will appear here.</p>
-          </div>
-          <DashboardAction to={to}>View visits</DashboardAction>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function MessagesCard({
-  count,
-  loading,
-  unavailable,
-  to,
-}: { count: number | null; loading: boolean; unavailable: boolean; to: string }): JSX.Element {
-  return (
-    <section className="wx-portal-messages-card" aria-labelledby="messages-heading">
-      <div id="messages-heading">
-        <SectionHeading eyebrow="Care team" title="Messages" icon="message-square" />
-      </div>
-      {loading ? (
-        <DashboardSkeleton label="Loading message summary" compact />
-      ) : (
-        <div className="wx-portal-messages-card__body">
-          {unavailable ? (
-            <p>Message status is unavailable, but you can still open your secure messages.</p>
-          ) : count && count > 0 ? (
-            <p className="wx-portal-messages-card__unread">
-              <strong>{count}</strong>
-              <span>{count === 1 ? "unread message" : "unread messages"}</span>
+      </header>
+      <div className="wx-family-card__body">
+        {resource.status === "loading" ? (
+          <CardSkeleton label="Loading next visit" />
+        ) : resource.status === "error" ? (
+          <CardError message={resource.error} onRetry={onRetry} focusId="family-visit-heading" />
+        ) : visit ? (
+          <div className="wx-family-visit__details">
+            <p className="wx-family-visit__when">
+              {compactVisitTime(visit.scheduledStartedAt) ?? "Date and time unavailable"}
             </p>
-          ) : (
-            <p>No new message count is showing. Open messages anytime to contact your care team.</p>
-          )}
-          <DashboardAction to={to} secondary>
-            Open messages
-          </DashboardAction>
-        </div>
-      )}
-      <p className="wx-portal-messages-card__safety">
-        <Glyph name="info" size={15} />
-        Portal messages are not for emergencies.
-      </p>
-    </section>
-  );
-}
-
-function CareEssentialCard({
-  icon,
-  title,
-  description,
-  detail,
-  to,
-}: {
-  icon: GlyphName;
-  title: string;
-  description: string;
-  detail?: ReactNode;
-  to: string;
-}): JSX.Element {
-  return (
-    <Link className="wx-portal-essential-card" to={to}>
-      <span className="wx-portal-essential-card__icon" aria-hidden="true">
-        <Glyph name={icon} size={23} />
-      </span>
-      <span className="wx-portal-essential-card__copy">
-        <strong>{title}</strong>
-        <span>{description}</span>
-        {detail ? <small>{detail}</small> : null}
-      </span>
-      <Glyph name="chevron-right" size={19} />
-    </Link>
-  );
-}
-
-function CareEssentials({
-  base,
-  loading,
-  unavailable,
-  medications,
-  documentShares,
-}: {
-  base: string;
-  loading: boolean;
-  unavailable: boolean;
-  medications: number | null;
-  documentShares: number | null;
-}): JSX.Element {
-  return (
-    <section className="wx-portal-care-essentials" aria-labelledby="care-essentials-heading">
-      <div className="wx-portal-dashboard-heading-row">
-        <span className="wx-portal-dashboard__eyebrow">Care essentials</span>
-        <h2 id="care-essentials-heading">Find what you need</h2>
+            <p className="wx-family-visit__what">
+              <Glyph name="user" size={17} />
+              <span>{visit.purposeLabel || "Scheduled visit"}</span>
+              {visit.settingLabel ? <span>· {humanize(visit.settingLabel)}</span> : null}
+            </p>
+            <VisitLink to={to} label="View visit details" />
+          </div>
+        ) : (
+          <div className="wx-family-visit__details">
+            <p className="wx-family-visit__what">
+              <strong>No upcoming visits scheduled</strong>
+            </p>
+            <p>When your care team schedules a visit, it will appear here.</p>
+            <VisitLink to={to} label="View visits" />
+          </div>
+        )}
       </div>
-      {loading ? (
-        <div className="wx-portal-essential-grid">
-          <DashboardSkeleton label="Loading medications" compact />
-          <DashboardSkeleton label="Loading care plan" compact />
-          <DashboardSkeleton label="Loading documents" compact />
-        </div>
-      ) : (
-        <div className="wx-portal-essential-grid">
-          <CareEssentialCard
-            icon="pill"
-            title="Medications"
-            description="Review medication information shared with you."
-            to={`${base}/medications`}
-            detail={
-              !unavailable && medications !== null && medications > 0
-                ? `${medications} active ${medications === 1 ? "medication" : "medications"}`
-                : undefined
-            }
-          />
-          <CareEssentialCard
-            icon="clipboard-check"
-            title="Care plan"
-            description="See the care plan summary and goals available to you."
-            to={`${base}/care-plan`}
-          />
-          <CareEssentialCard
-            icon="file-text"
-            title="Documents"
-            description="Open documents securely shared by the hospice team."
-            to={`${base}/documents`}
-            detail={
-              !unavailable && documentShares !== null && documentShares > 0
-                ? `${documentShares} new document ${documentShares === 1 ? "share" : "shares"}`
-                : undefined
-            }
-          />
-        </div>
-      )}
-      {unavailable ? (
-        <p className="wx-portal-dashboard-inline-note">
-          <Glyph name="info" size={16} />
-          Counts are unavailable. These care sections remain accessible.
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
-function HelpfulLinks({ base }: { base: string }): JSX.Element {
-  return (
-    <section className="wx-portal-dashboard-helpful" aria-labelledby="helpful-heading">
-      <div>
-        <span className="wx-portal-dashboard__eyebrow">Also available</span>
-        <h2 id="helpful-heading">More support</h2>
-        <p>Manage notifications or find support resources available through the portal.</p>
-      </div>
-      <nav aria-label="More support">
-        <Link to={`${base}/preferences`}>
-          <Glyph name="bell" size={19} />
-          Notification preferences
-        </Link>
-        <Link to={`${base}/bereavement`}>
-          <Glyph name="heart" size={19} />
-          Bereavement support
-        </Link>
-      </nav>
     </section>
   );
 }
@@ -315,96 +285,65 @@ function HelpfulLinks({ base }: { base: string }): JSX.Element {
 export function PortalPatientDashboard(): JSX.Element {
   const client = useApiClient();
   const { patientId } = useParams<{ patientId: string }>();
-  const {
-    summary,
-    loading: summaryLoading,
-    error: summaryError,
-    retry: retrySummary,
-  } = usePortalPatient();
-  const [upcoming, setUpcoming] = useState<{
-    patientId: string | null;
-    items: UpcomingVisit[];
-    loading: boolean;
-    error: string | null;
-  }>({ patientId: patientId ?? null, items: [], loading: true, error: null });
-  const [attempt, setAttempt] = useState(0);
+  const { summary, error: summaryError, retry: retrySummary } = usePortalPatient();
 
-  useEffect(() => {
-    void attempt;
-    let active = true;
-    const requestedPatient = patientId ?? null;
-    setUpcoming({ patientId: requestedPatient, items: [], loading: true, error: null });
-    if (!requestedPatient) return () => undefined;
-    void (async () => {
-      // Same session-pinned M31 endpoint the Visits screen reads (the M17 `/portal/upcoming` route
-      // needed a caller-named patient and failed the whole card when its grant check refused).
-      const response = await client.GET("/api/v1/portal/visits/upcoming", {});
-      if (!active) return;
-      setUpcoming(
-        "error" in response
-          ? {
-              patientId: requestedPatient,
-              items: [],
-              loading: false,
-              error: readError(response.response?.status),
-            }
-          : {
-              patientId: requestedPatient,
-              items: ((response.data?.items ?? []) as unknown as PortalUpcomingItem[]).map(
-                toUpcomingVisit,
-              ),
-              loading: false,
-              error: null,
-            },
-      );
-    })();
-    return () => {
-      active = false;
-    };
-  }, [client, patientId, attempt]);
+  // Same session-pinned M31 endpoints the Visits / Medications / Messages screens read.
+  const loadVisits = useCallback(
+    () => client.GET("/api/v1/portal/visits/upcoming", {}) as Promise<ApiResult>,
+    [client],
+  );
+  const loadMedications = useCallback(
+    () => client.GET("/api/v1/portal/medications/active", {}) as Promise<ApiResult>,
+    [client],
+  );
+  const loadMessages = useCallback(
+    () =>
+      client.GET("/api/v1/portal/messages/history", {
+        // Minimum necessary: the history route returns newest first and the preview shows two.
+        params: { query: { limit: RECENT_MESSAGES } },
+      }) as Promise<ApiResult>,
+    [client],
+  );
+  const visits = useDashboardList<UpcomingVisit>(loadVisits, selectItems, patientId);
+  const medications = useDashboardList<DashboardMedication>(
+    loadMedications,
+    selectItems,
+    patientId,
+  );
+  const messages = useDashboardList<DashboardMessage>(
+    loadMessages,
+    selectRecentMessages,
+    patientId,
+  );
 
-  const current =
-    upcoming.patientId === patientId
-      ? upcoming
-      : { patientId, items: [], loading: true, error: null };
-  const nextVisit = useMemo(() => {
-    const now = Date.now();
-    return (
-      current.items
-        .map((visit) => ({ visit, time: Date.parse(visit.scheduledStartedAt) }))
-        .filter(({ time }) => Number.isFinite(time) && time >= now)
-        .sort((a, b) => a.time - b.time)[0]?.visit ?? null
-    );
-  }, [current.items]);
   const base = `/p/${encodeURIComponent(patientId ?? "")}`;
-
   return (
-    <div className="wx-portal-dashboard">
-      <DashboardWelcome />
-      <div className="wx-portal-dashboard-primary-grid">
-        <NextVisitCard
-          visit={nextVisit}
-          loading={current.loading}
-          error={current.error}
-          to={`${base}/visits`}
-          onRetry={() => setAttempt((value) => value + 1)}
+    <div className="wx-family-dashboard">
+      <FamilyHero />
+      <QuickActions base={base} />
+      {summaryError ? <CardError message={summaryError} onRetry={retrySummary} /> : null}
+      <div className="wx-family-grid">
+        <NextVisitCard resource={visits.resource} to={`${base}/visits`} onRetry={visits.retry} />
+        <CarePlanCard to={`${base}/care-plan`} />
+        <NeedHelpCard messagesTo={`${base}/messages`} />
+        <MedicationsCard
+          resource={medications.resource}
+          activeCount={summary?.activeMedicationsCount ?? null}
+          to={`${base}/medications`}
+          onRetry={medications.retry}
         />
-        <MessagesCard
-          count={summary?.unreadMessagesCount ?? null}
-          loading={summaryLoading}
-          unavailable={summaryError !== null}
+        <RecentMessagesCard
+          resource={messages.resource}
+          unreadCount={summary?.unreadMessagesCount ?? null}
           to={`${base}/messages`}
+          onRetry={messages.retry}
         />
+        <DocumentsCard
+          newCount={summary?.pendingDocumentSharesCount ?? null}
+          to={`${base}/documents`}
+        />
+        <BereavementCard to={`${base}/bereavement`} />
       </div>
-      {summaryError ? <SectionError message={summaryError} onRetry={retrySummary} /> : null}
-      <CareEssentials
-        base={base}
-        loading={summaryLoading}
-        unavailable={summaryError !== null}
-        medications={summary?.activeMedicationsCount ?? null}
-        documentShares={summary?.pendingDocumentSharesCount ?? null}
-      />
-      <HelpfulLinks base={base} />
     </div>
   );
 }

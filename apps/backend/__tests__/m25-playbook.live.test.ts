@@ -557,7 +557,7 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
       const stale = await fx.refused(
         svc().updateDraft(A(), second.id, content(), second.rowVersion),
       );
-      expect(stale).toMatchObject({ code: "VERSION_CONFLICT", statusCode: 409 });
+      expect(stale).toMatchObject({ code: "STALE_VERSION", statusCode: 409 });
 
       await svc().publishVersion(A2(), second.id, edited.rowVersion);
       const detail = await svc().getPlaybook(A(), p.id);
@@ -598,7 +598,7 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
       const detail = await svc().getPlaybook(A(), p.id);
       const rv = detail?.versions[0]?.rowVersion as number;
       const stale = await fx.refused(svc().retireVersion(A2(), p.versionId, rv - 1));
-      expect(stale).toMatchObject({ code: "VERSION_CONFLICT" });
+      expect(stale).toMatchObject({ code: "STALE_VERSION" });
       await svc().retireVersion(A2(), p.versionId, rv);
       const again = await fx.refused(svc().retireVersion(A2(), p.versionId, rv + 1));
       expect(again).toMatchObject({ code: "PLAYBOOK_NOT_PUBLISHED", statusCode: 409 });
@@ -897,7 +897,7 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
         headers: WRITE(),
         payload: content(),
       });
-      expect(noMatch.statusCode).toBe(400); // If-Match required
+      expect(noMatch.statusCode).toBe(428); // If-Match required
       const patched = await author.inject({
         method: "PATCH",
         url: `/api/v1/playbook-versions/${versionId}`,

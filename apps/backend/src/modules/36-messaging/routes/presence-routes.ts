@@ -13,6 +13,7 @@
 // OFF BY A TENANT FLAG (`messaging.presence_enabled`, default off): a member of the channel gets a typed 403
 // PRESENCE_DISABLED and nothing is written or read. A store outage never fails the caller: heartbeat answers 204 without
 // writing, the read answers empty lists, both log a warning (ids only).
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { ChartWardenError, DegradedError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -23,8 +24,6 @@ import {
 import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import { PresenceHeartbeatBodySchema } from "./presence-typebox";
 import { requireUuidParams } from "./uuid-params";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The tenant feature flag that gates the whole feature (default OFF: an absent row reads false). */
 export const PRESENCE_FLAG_KEY = "messaging.presence_enabled";
@@ -40,12 +39,6 @@ export interface PresenceRouteDeps {
 export interface PresenceGuards {
   readonly read: PreHandler;
   readonly viewChannel: PreHandler;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 async function requireEnabled(

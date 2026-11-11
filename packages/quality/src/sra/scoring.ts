@@ -8,12 +8,12 @@
 import { ChartWardenError } from "@chartwarden/types";
 
 /** The inclusive bounds of a single 5×5 factor (likelihood or impact). */
-export const RISK_FACTOR_MIN = 1;
-export const RISK_FACTOR_MAX = 5;
+const RISK_FACTOR_MIN = 1;
+const RISK_FACTOR_MAX = 5;
 
 /** The inclusive bounds of a 5×5 score (likelihood × impact). */
-export const RISK_SCORE_MIN = 1;
-export const RISK_SCORE_MAX = 25;
+const RISK_SCORE_MIN = 1;
+const RISK_SCORE_MAX = 25;
 
 /** The risk band a 5×5 score falls into (matches the `SecurityRiskAssessmentReader` seam breakdown). */
 export type RiskBand = "low" | "medium" | "high" | "critical";
@@ -22,7 +22,7 @@ export type RiskBand = "low" | "medium" | "high" | "critical";
  * The 5×5 score → band thresholds (inclusive upper bounds): 1–4 low, 5–9 medium, 10–15 high, 16–25
  * critical. The boundaries follow the conventional NIST-style 5×5 heat-map quartiling.
  */
-export const RISK_BAND_UPPER_BOUNDS: Readonly<Record<Exclude<RiskBand, "critical">, number>> = {
+const RISK_BAND_UPPER_BOUNDS: Readonly<Record<Exclude<RiskBand, "critical">, number>> = {
   low: 4,
   medium: 9,
   high: 15,
@@ -43,7 +43,7 @@ function assertFactor(factor: number, label: string): void {
  * Validate a 5×5 score (V-13): an integer in 1..25. Throws {@link ChartWardenError} `RISK_SCORE_OUT_OF_RANGE`
  * otherwise. Used to validate persisted `inherent_5x5_score` / `residual_5x5_score` values.
  */
-export function assertValid5x5Score(score: number): void {
+function assertValid5x5Score(score: number): void {
   if (!Number.isInteger(score) || score < RISK_SCORE_MIN || score > RISK_SCORE_MAX) {
     throw new ChartWardenError(
       "RISK_SCORE_OUT_OF_RANGE",
@@ -78,22 +78,4 @@ export function riskBandFromScore(score: number): RiskBand {
 /** Convenience: compute the score from factors and return its band in one call. */
 export function riskBand(likelihood: number, impact: number): RiskBand {
   return riskBandFromScore(riskScore(likelihood, impact));
-}
-
-/**
- * The risk reduction a remediation achieves: `inherent − residual`. Throws {@link ChartWardenError}
- * `RISK_SCORE_OUT_OF_RANGE` if either score is invalid, or `RESIDUAL_EXCEEDS_INHERENT` if the residual
- * risk is higher than the inherent risk (a remediation cannot increase risk). Returns a value in 0..24.
- */
-export function residualReduction(inherentScore: number, residualScore: number): number {
-  assertValid5x5Score(inherentScore);
-  assertValid5x5Score(residualScore);
-  if (residualScore > inherentScore) {
-    throw new ChartWardenError(
-      "RESIDUAL_EXCEEDS_INHERENT",
-      "the residual risk score may not exceed the inherent risk score",
-      422,
-    );
-  }
-  return inherentScore - residualScore;
 }

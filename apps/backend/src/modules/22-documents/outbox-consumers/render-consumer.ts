@@ -16,7 +16,12 @@
 // per-event adapter into it. An event whose payload does not normalize THROWS — the dispatcher retries then
 // dead-letters it (§7.2), which is the honest outcome for a malformed render request; it is never a silent
 // no-op that would leave a signed clinical artifact permanently un-rendered with a green outbox.
-import { RENDER_PAYLOAD_VERSION } from "@chartwarden/types";
+import {
+  BEREAVEMENT_CLOSEOUT_LETTER_TEMPLATE_KEY,
+  BEREAVEMENT_DISCHARGE_SUMMARY_TEMPLATE_KEY,
+  BEREAVEMENT_PHYSICIAN_CONDOLENCE_TEMPLATE_KEY,
+  RENDER_PAYLOAD_VERSION,
+} from "@chartwarden/types";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
@@ -52,6 +57,10 @@ interface RequestShape {
   readonly templateKey?: string;
   /** Payload field holding the source's own template name, used when {@link templateKey} is absent. */
   readonly templateKeyField?: string;
+  /** The ONLY keys a {@link templateKeyField} may name for this event. A payload-named key outside it is a malformed request (a throw):
+   *  without it a producer bug (or a forged row) could ask this event to render ANY published template, including a seam-only one
+   *  (M16's `bereavement_mailing_batch`) under an ordinary aggregate type. */
+  readonly allowedTemplateKeys?: readonly string[];
   /** One event carrying SEVERAL artifacts, discriminated by a payload field: `{field, map}` resolves the
    *  M22 template key from the discriminator's value. A value absent from the map is a malformed request
    *  (a throw), never a guess — rendering the wrong document under a real patient's chart is worse than
@@ -83,7 +92,7 @@ interface RequestShape {
   /**
    * GAP-033 - the event's content blob MUST be a typed `renderPayload` the producer built (the six M6 CoP
    * documents). An id-only event is a malformed request - retry then DLQ - never a generic dump of identifiers
-   * drawn as a legal document. {@link NormalizeInput.legacyUntypedFallback} is the explicit drain-window escape.
+   * drawn as a legal document.
    */
   readonly requiresRenderPayload?: boolean;
 }
@@ -94,6 +103,8 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   "m11.order.document_requested": {
     aggregateIdFields: ["orderId"],
     templateKeyField: "formTemplate",
+    // the one key both M11 emit sites (orders-route-service-db.ts, routes/service.ts) name: a payload-named key is never trusted further
+    allowedTemplateKeys: ["order_record"],
     contentField: "renderPayload",
     // GAP-033 Wave 2: `order_record` is a compiled form drawn from the producer's typed payload.
     requiresRenderPayload: true,
@@ -102,6 +113,8 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   "m12.medication_order.document_requested": {
     aggregateIdFields: ["orderId"],
     templateKeyField: "formTemplate",
+    // the one key the M12 emit site (dosespot-route-service-db.ts) names
+    allowedTemplateKeys: ["medication_order"],
     contentField: "renderPayload",
     requiresRenderPayload: true,
   },
@@ -171,6 +184,24 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   "m16.bereavement.outreach_artifact_requested": {
     aggregateIdFields: ["outreachId", "planId"],
     templateKeyField: "templateKey",
+    allowedTemplateKeys: [
+      "bereavement_welcome_packet",
+      "bereavement_letter",
+      BEREAVEMENT_CLOSEOUT_LETTER_TEMPLATE_KEY,
+    ],
+    contentField: "payloadJsonb",
+  },
+  // ADR-0109 D6 / D9 — M16's two plan-level documents behind ONE event. The aggregate is `aggregateId` (the letter, or the
+  // closure) — the body field the catalog pins, and the row M16's back-ref consumer stamps. The payload names its own template
+  // (`bereavement_physician_condolence_letter` | `bereavement_discharge_summary_internal`), and `payloadJsonb` is the typed render
+  // payload; both templates are internal-only, so their aggregate types are never patient-facing.
+  "m16.bereavement.document_requested": {
+    aggregateIdFields: ["aggregateId"],
+    templateKeyField: "templateKey",
+    allowedTemplateKeys: [
+      BEREAVEMENT_PHYSICIAN_CONDOLENCE_TEMPLATE_KEY,
+      BEREAVEMENT_DISCHARGE_SUMMARY_TEMPLATE_KEY,
+    ],
     contentField: "payloadJsonb",
   },
   // M20 §4.10 — "M22's renderer consumes it; M20 ships no PDF code". `renderTargetKind` is a literal
@@ -561,13 +592,6 @@ export interface NormalizeInput {
   /** The outbox row's own `aggregate_id` — the identity for shapes that carry it on the envelope. */
   readonly aggregateId?: string;
   readonly payload: unknown;
-  /**
-   * Drain-window escape for {@link RequestShape.requiresRenderPayload}: an id-only legacy event is passed through
-   * marked `legacyUntyped` and drawn by the generic builder (the pre-GAP-033 behaviour) instead of dead-lettering.
-   * Off by default - a legal document must be drawn from typed content. Enable only while the outbox drains rows
-   * queued before the producer deploy, then turn it off (see docs/history/gates-pdf-templates.md).
-   */
-  readonly legacyUntypedFallback?: boolean;
 }
 
 export function normalizeDocumentRequest(delivered: NormalizeInput): {
@@ -612,6 +636,12 @@ export function normalizeDocumentRequest(delivered: NormalizeInput): {
       `payload names no template (expected '${shape.templateKeyField ?? byField?.field}')`,
     );
   }
+  if (shape.allowedTemplateKeys !== undefined && !shape.allowedTemplateKeys.includes(templateKey)) {
+    throw new MalformedRenderRequestError(
+      eventType,
+      `template '${templateKey}' is not one this event may request`,
+    );
+  }
 
   const rawContent = shape.contentField ? p[shape.contentField] : p;
   // "Typed" = an object the producer stamped with the render-payload schema version. An object without the stamp is
@@ -621,7 +651,7 @@ export function normalizeDocumentRequest(delivered: NormalizeInput): {
     typeof rawContent === "object" &&
     (!shape.requiresRenderPayload ||
       (rawContent as Record<string, unknown>).schemaVersion === RENDER_PAYLOAD_VERSION);
-  if (shape.requiresRenderPayload && !typedContent && delivered.legacyUntypedFallback !== true) {
+  if (shape.requiresRenderPayload && !typedContent) {
     throw new MalformedRenderRequestError(
       eventType,
       `the event carries no typed '${shape.contentField}' (an id-only legacy event); the producer must build it`,
@@ -629,14 +659,7 @@ export function normalizeDocumentRequest(delivered: NormalizeInput): {
   }
   const content: Record<string, unknown> = typedContent
     ? (rawContent as Record<string, unknown>)
-    : shape.requiresRenderPayload
-      ? {
-          ...(rawContent !== null && typeof rawContent === "object"
-            ? (rawContent as Record<string, unknown>)
-            : p),
-          legacyUntyped: true,
-        }
-      : {};
+    : {};
 
   // The chart-target patient may live on the envelope (M21/M23 style) or inside the content blob (M11/M12
   // thread it through `renderPayload`, whose schema is `Type.Unknown()` — no catalog change needed).
@@ -696,6 +719,18 @@ export interface DocumentRequestConsumerDeps {
     readonly templateKey: string;
     readonly content: Record<string, unknown>;
   }) => Promise<{ readonly detail: string } | null>;
+  /**
+   * Late-bound content: runs right before the render (never on an idempotent re-delivery) and returns the content the renderer draws.
+   * It is how a producer keeps a SEALED field off the outbox (ADR-0109 D6: the physician letter's personal note): the request carries
+   * ids only and the composition root binds a port that opens the field with the producer's own cipher. M22 imports no producer, so the
+   * port is the whole contract. A throw is a delivery failure (retry-then-DLQ); the content is never stored by M22.
+   */
+  readonly resolveRenderContent?: (request: {
+    readonly organizationId: string;
+    readonly templateKey: string;
+    readonly aggregateId: string;
+    readonly content: Record<string, unknown>;
+  }) => Promise<Record<string, unknown>>;
   /** Template table override (tests); defaults to the T04 published table. */
   readonly templates?: Readonly<Record<string, TemplateDescriptor>>;
   /**
@@ -704,8 +739,6 @@ export interface DocumentRequestConsumerDeps {
    * through `document.(aggregate_type, aggregate_id)`; the source row's column simply stays NULL.
    */
   readonly emitRendered?: (event: DocumentRenderedEmit) => Promise<void>;
-  /** See {@link NormalizeInput.legacyUntypedFallback}. Defaults to the `M22_M6_LEGACY_UNTYPED_RENDER=1` env flag. */
-  readonly legacyUntypedFallback?: boolean;
 }
 
 /** The `m22.document.rendered` payload (see ../events-by-m22.ts) as the consumer hands it to the emitter. */
@@ -748,18 +781,13 @@ export function buildM22DocumentRequestConsumer(
 ): OutboxConsumerBinding {
   const templates = deps.templates ?? PLATFORM_TEMPLATE_TABLE;
   const renderer = deps.renderer ?? getDocumentRenderer;
-  const legacyUntyped =
-    deps.legacyUntypedFallback ?? process.env.M22_M6_LEGACY_UNTYPED_RENDER === "1";
 
   return {
     consumerName: M22_DOCUMENT_RENDER_CONSUMER,
     consumerModule: "m22",
     eventTypes: [...M22_DOCUMENT_REQUEST_EVENTS],
     async handle(event: DispatchableOutboxEvent): Promise<void> {
-      const { event: sourceEvent, payload } = normalizeDocumentRequest({
-        ...event,
-        legacyUntypedFallback: legacyUntyped,
-      });
+      const { event: sourceEvent, payload } = normalizeDocumentRequest(event);
       // F-168 (#248) — two-tier idempotency, per event shape. Most events are GENESIS-only (their real
       // source transition fires exactly once per real-world occurrence — an order is signed once), so
       // `alreadyRendered` stays keyed on `(aggregateType, aggregateId)`: this is what makes a PRODUCER-
@@ -902,8 +930,15 @@ export function buildM22DocumentRequestConsumer(
           // NOR rendered under its ADMISSION's id and `notice_of_rights_acknowledgment.document_id` could
           // never be stamped. The document existed, addressed to the wrong row, which is the one failure
           // mode a back-ref cannot recover from.
+          const content =
+            (await deps.resolveRenderContent?.({
+              organizationId: payload.organizationId,
+              templateKey: render.templateKey,
+              aggregateId: render.aggregateId,
+              content: render.content,
+            })) ?? render.content;
           await renderer().render({ orgId: payload.organizationId }, render.templateKey, {
-            ...render.content,
+            ...content,
             aggregateId: render.aggregateId,
             patientId: render.patientId,
             ...(render.title ? { title: render.title } : {}),

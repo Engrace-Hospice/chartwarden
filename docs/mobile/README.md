@@ -37,6 +37,7 @@ native. L’EVV offline, les notifications natives et les écrans métier resten
 - [Matrice Web → Mobile](./web-mobile-parity.csv)
 - [Parcours utilisateurs](./user-journeys.md)
 - [Préparation backend](./backend-mobile-readiness.md)
+- [Signature des documents d’admission par le portail (ADR-0107, brouillon)](./portal-signing-mobile-handoff.md)
 - [Baseline vérifiée de PR B](./PR-B-BASELINE.md)
 - [Contrat backend Expo/Better Auth pour PR C](./backend-expo-auth-contract.md)
 - [Checklist et résultats PR B](./PR-B-CHECKLIST.md)
@@ -82,7 +83,7 @@ Repères précis dans la révision auditée :
 | handshake Socket.IO | `apps/backend/src/bootstrap/realtime/server.ts:93` |
 | transport Web Push/VAPID | `apps/backend/src/modules/36-messaging/delivery/transport-binding.ts:130` |
 | endpoints de notification | `apps/backend/src/modules/36-messaging/routes/messaging-routes.ts:781` |
-| ports de capacités | `packages/ui/src/core/capabilities/ports.ts:77` |
+| ports de capacités | `packages/ui/src/core/capabilities/ports.ts` (only `NetworkStatusPort` today) |
 | token bleu clinique | `apps/web/src/index.css:44` |
 | décision historique remplacée à ratifier | `docs/adr/ADR-0072-separate-react-native-expo-mobile-app.md` |
 

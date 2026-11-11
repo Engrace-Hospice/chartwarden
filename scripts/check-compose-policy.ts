@@ -18,6 +18,12 @@
  *     `RUST_ROUTE_MODE`, ...) are set as literals in `api`'s `environment:` and nowhere else. `.env.production` is
  *     injected into seven containers, so none of them may find a RUST_* there, and a service that `extends` api must
  *     `!reset` what it inherits.
+ *  5. The backup image chain (`checkBackupImageChain`, `checkBackupOverlayImage`): backup-image.yml publishes
+ *     deploy/production/backup/Dockerfile and the production overlay requires that digest-pinned GHCR image for both
+ *     postgres and the sidecar (no host build). The Dockerfile's `POSTGRES_IMAGE` default must equal compose.yml's
+ *     postgres image, and its pgBackRest build stage must use the postgres Dockerfile's wolfi-base digest and
+ *     PG_VERSION (libpq and glibc must be the ones the cluster runs). Each is a hand-copied pin, so a bump of one that
+ *     forgets the other would ship a backup toolchain on a different base.
  *
  * Run:  bun run arch:compose-policy   (in `arch:fitness`)
  */
@@ -28,7 +34,10 @@ import yaml from "js-yaml";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const COMPOSE_PATH = "deploy/production/compose.yml";
+const BACKUP_COMPOSE_PATH = "deploy/production/compose.backup.yml";
 const ENV_EXAMPLE_PATH = "deploy/production/.env.production.example";
+const BACKUP_DOCKERFILE_PATH = "deploy/production/backup/Dockerfile";
+const POSTGRES_DOCKERFILE_PATH = "deploy/production/postgres/Dockerfile";
 /** `repo[:port]/name:tag@sha256:<digest>` - a tag is required beside the digest so a human can read the version. */
 const PINNED_IMAGE = /^[^\s@]+:[^\s@/]+@sha256:[0-9a-f]{64}$/;
 /** Services that must reserve memory (capacity guaranteed against the other services on the host). */
@@ -36,6 +45,7 @@ const MUST_RESERVE = ["postgres"] as const;
 
 interface ComposeService {
   readonly image?: unknown;
+  readonly build?: unknown;
   readonly ports?: unknown;
   readonly scale?: unknown;
   readonly deploy?: { readonly replicas?: unknown };
@@ -295,6 +305,67 @@ export function checkRustEnvExample(text: string): string[] {
     );
 }
 
+/** The wolfi-base digest and PG_VERSION the postgres Dockerfile and the backup build stage each carry a copy of. */
+const BACKUP_BASE_PINS: readonly (readonly [string, RegExp])[] = [
+  ["wolfi-base digest", /^FROM\s+\S*wolfi-base@(sha256:[0-9a-f]{64})/gm],
+  ["PG_VERSION", /^ARG PG_VERSION=(\S+)/gm],
+];
+
+/** The backup image must be built on the Postgres production runs, with the Postgres Dockerfile's libpq and glibc. */
+export function checkBackupImageChain(
+  doc: ComposeDoc,
+  backupDockerfile: string,
+  postgresDockerfile: string,
+): string[] {
+  const failures: string[] = [];
+  const composeImage = doc.services?.postgres?.image;
+  const defaultImage = /^ARG POSTGRES_IMAGE=(\S+)/m.exec(backupDockerfile)?.[1];
+  if (defaultImage === undefined) {
+    failures.push(`${BACKUP_DOCKERFILE_PATH}: no "ARG POSTGRES_IMAGE=<default>" line`);
+  } else if (defaultImage !== composeImage) {
+    failures.push(
+      `${BACKUP_DOCKERFILE_PATH}: POSTGRES_IMAGE default "${defaultImage}" must equal compose.yml's postgres image "${String(composeImage)}"`,
+    );
+  }
+  // Every copy in the backup Dockerfile (each build stage carries one) must equal the postgres Dockerfile's.
+  for (const [label, re] of BACKUP_BASE_PINS) {
+    const backups = [...backupDockerfile.matchAll(re)].map((m) => m[1]);
+    const postgres = [...postgresDockerfile.matchAll(re)][0]?.[1];
+    if (backups.length === 0 || postgres === undefined) {
+      failures.push(
+        `no ${label} found in ${backups.length === 0 ? BACKUP_DOCKERFILE_PATH : POSTGRES_DOCKERFILE_PATH}`,
+      );
+      continue;
+    }
+    for (const backup of backups.filter((b) => b !== postgres)) {
+      failures.push(
+        `${BACKUP_DOCKERFILE_PATH}: ${label} "${backup}" must equal ${POSTGRES_DOCKERFILE_PATH}'s "${postgres}"`,
+      );
+    }
+  }
+  return failures;
+}
+
+/** The production backup overlay consumes only the signed GHCR image, never a host-local build/tag. */
+export function checkBackupOverlayImage(doc: ComposeDoc): string[] {
+  const failures: string[] = [];
+  const required = "${CHARTWARDEN_BACKUP_IMAGE:?set-digest-pinned-GHCR-reference}";
+  for (const name of ["postgres", "backup"] as const) {
+    const service = doc.services?.[name];
+    if (service?.image !== required) {
+      failures.push(
+        `${BACKUP_COMPOSE_PATH}: ${name}.image must be the required CHARTWARDEN_BACKUP_IMAGE interpolation`,
+      );
+    }
+    if (service?.build !== undefined) {
+      failures.push(
+        `${BACKUP_COMPOSE_PATH}: ${name} must pull the published backup image, not build on the host`,
+      );
+    }
+  }
+  return failures;
+}
+
 export function loadCompose(path = join(REPO_ROOT, COMPOSE_PATH)): ComposeDoc {
   // `!reset` (compose-specific tag) is not in the default schema: treat it as a plain empty value.
   // `!reset` loads as the RESET marker so `extends` resolution (checkRustTopology) can honour it.
@@ -306,9 +377,13 @@ export function loadCompose(path = join(REPO_ROOT, COMPOSE_PATH)): ComposeDoc {
 }
 
 if (import.meta.main) {
+  const read = (path: string) => readFileSync(join(REPO_ROOT, path), "utf8");
+  const compose = loadCompose();
   const failures = [
-    ...checkCompose(loadCompose()),
-    ...checkRustEnvExample(readFileSync(join(REPO_ROOT, ENV_EXAMPLE_PATH), "utf8")),
+    ...checkCompose(compose),
+    ...checkRustEnvExample(read(ENV_EXAMPLE_PATH)),
+    ...checkBackupImageChain(compose, read(BACKUP_DOCKERFILE_PATH), read(POSTGRES_DOCKERFILE_PATH)),
+    ...checkBackupOverlayImage(loadCompose(join(REPO_ROOT, BACKUP_COMPOSE_PATH))),
   ];
   if (failures.length > 0) {
     console.error(`arch:compose-policy FAILED (${COMPOSE_PATH}):`);
@@ -316,6 +391,6 @@ if (import.meta.main) {
     process.exit(1);
   }
   console.log(
-    "arch:compose-policy OK: every literal image is digest-pinned, every service is resource-bounded, and the Rust topology holds.",
+    "arch:compose-policy OK: every literal image is digest-pinned, every service is resource-bounded, the Rust topology holds, and the published backup image builds on the pinned Postgres.",
   );
 }

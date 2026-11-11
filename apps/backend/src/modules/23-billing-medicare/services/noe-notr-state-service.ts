@@ -3,7 +3,7 @@
 //
 // The notice analogue of the claim-state-service: it drives the PURE NOE / NOTR lifecycle reducers from
 // `@chartwarden/billing` (`noeMachine.reduce` / `notrMachine.reduce`), persists each transition with the §2.5
-// If-Match version check (`NoeRepository` / `NotrRepository` `transitionToState` → VERSION_CONFLICT → 412),
+// If-Match version check (`NoeRepository` / `NotrRepository` `transitionToState` → 409 STALE_VERSION),
 // and emits the canonical §4.10 `m23.noe.*` / `m23.notr.*` outbox event(s) through the injected
 // {@link WriteOutboxPort} (`bindCallerModule("m23")`) — all inside ONE `withOrgContext` unit of work so
 // Postgres RLS scopes every statement to `app.org_id` (the D2 outbox-only / transactional-outbox posture).
@@ -16,6 +16,7 @@
 // ENUM-CASE BOUNDARY: this service speaks the lowercase domain `NoticeState`; the repo maps to the UPPERCASE
 // DB pgEnum at the boundary. NO PHI / NO MBI on any surface (D13). D13 AI-actor reject guard applies here too.
 import { type NoticeState, noeMachine, notrMachine, repositories } from "@chartwarden/billing";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import {
@@ -62,7 +63,7 @@ export interface NoticeEventExtra {
 export interface NoticeTransitionInput {
   readonly kind: NoticeKind;
   readonly noticeId: string;
-  /** The §2.5 If-Match version the transition is applied against (a stale value → 412). */
+  /** The §2.5 If-Match version the transition is applied against (a stale value → 409 STALE_VERSION). */
   readonly expectedVersion: number;
   readonly event: NoticeTransitionEvent;
   readonly patch?: NoticeTransitionPatch;
@@ -326,10 +327,8 @@ export function buildNoeNotrStateService(
         noePatch(input.patch),
       );
       if (!versioned.ok) {
-        throw new ChartWardenError(
-          "VERSION_CONFLICT",
+        throw new StaleVersionError(
           `the NOE was modified concurrently (current version ${versioned.currentVersion ?? "unknown"})`,
-          412,
         );
       }
       const updated = versioned.row;
@@ -367,10 +366,8 @@ export function buildNoeNotrStateService(
       notrPatch(input.patch),
     );
     if (!versioned.ok) {
-      throw new ChartWardenError(
-        "VERSION_CONFLICT",
+      throw new StaleVersionError(
         `the NOTR was modified concurrently (current version ${versioned.currentVersion ?? "unknown"})`,
-        412,
       );
     }
     const updated = versioned.row;
@@ -420,11 +417,7 @@ export function buildNoeNotrStateService(
             windowBreachedAt: breachedAt.slice(0, 10),
           });
           if (!versioned.ok) {
-            throw new ChartWardenError(
-              "VERSION_CONFLICT",
-              "the NOE was modified concurrently",
-              412,
-            );
+            throw new StaleVersionError("the NOE was modified concurrently");
           }
           await emit(tx, actor.organizationId, {
             eventName: `${n.prefix}.window_breached`,
@@ -449,7 +442,7 @@ export function buildNoeNotrStateService(
           windowBreachedAt: breachedAt.slice(0, 10),
         });
         if (!versioned.ok) {
-          throw new ChartWardenError("VERSION_CONFLICT", "the NOTR was modified concurrently", 412);
+          throw new StaleVersionError("the NOTR was modified concurrently");
         }
         await emit(tx, actor.organizationId, {
           eventName: `${n.prefix}.window_breached`,

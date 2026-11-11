@@ -30,19 +30,21 @@
       "Edit(/compliance/**)",
       "Edit(/.claude/settings.json)",
       "Edit(/.claude/rules/**)",
+      "Edit(/.agents/rules/**)",
+      "Edit(/.codex/hooks.json)",
+      "Edit(/bunfig.toml)",
       "Edit(/scripts/harness/**)",
       "Edit(/scripts/check-compliance-controls.ts)",
       "Edit(/.githooks/**)",
       "Edit(/.gitleaks.toml)",
       "Edit(/.trivyignore.yaml)",
+      "Edit(/AGENTS.md)",
+      "Edit(/CLAUDE.md)",
       "Edit(/.github/workflows/**)",
       "Edit(/deploy/production/**)",
       "Bash(git push *)",
       "Bash(gh pr merge *)",
-      "Bash(gh secret *)",
-      "Bash(ssh *)",
-      "Bash(scp *)",
-      "Bash(rsync *)"
+      "Bash(gh secret *)"
     ],
     "allow": [
       "Bash(bun run build)",
@@ -87,7 +89,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/harness/pre-tool-guard.ts",
+            "command": "bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null \"$CLAUDE_PROJECT_DIR\"/scripts/harness/pre-tool-guard.ts",
             "timeout": 10
           }
         ]
@@ -99,7 +101,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/harness/post-tool-ledger.ts",
+            "command": "bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null \"$CLAUDE_PROJECT_DIR\"/scripts/harness/post-tool-ledger.ts",
             "async": true,
             "timeout": 10
           }
@@ -111,7 +113,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/harness/stop-gate.ts",
+            "command": "bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null \"$CLAUDE_PROJECT_DIR\"/scripts/harness/stop-gate.ts",
             "timeout": 300
           }
         ]

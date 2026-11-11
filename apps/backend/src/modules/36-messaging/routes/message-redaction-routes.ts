@@ -1,16 +1,5 @@
-// apps/backend/src/modules/36-messaging/routes/message-redaction-routes.ts - WP 5.6 (ADR-0055 item 7, ADR-0086, PROPOSED): redact a message.
-//
-//   POST /api/v1/messaging/governance/redactions                 request (messaging.redact.request; message_id + reason >= 10)
-//   GET  /api/v1/messaging/governance/redactions                 list (either permission)
-//   POST /api/v1/messaging/governance/redactions/:id/approve     approve (messaging.redact.approve + fresh step-up; never the requester)
-//   POST /api/v1/messaging/governance/redactions/:id/self-approve   single-officer fallback (PROVISIONAL, off by default per tenant): the sole
-//                                                                 eligible officer approves their own request; masks nothing yet
-//   POST /api/v1/messaging/governance/redactions/:id/countersign   a SECOND role (messaging.redact.countersign + fresh step-up) makes it final within 72 h
-//
-// A redaction masks the message for every reader once approved and never destroys the cipher, so an active legal hold does not block it.
-// Org, officer and session are the server-side request context; an unknown or another tenant's message or redaction is the same 404. The
-// responses carry ids, staff names, instants and a hold flag: never the message body or the reason text.
 import { requirePermission, requireStepUp, resolveActorPermissions } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import {
   ForbiddenError,
   MESSAGE_REDACT_APPROVE_STEP_UP_KEY,
@@ -24,6 +13,19 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { MessageRedactionService } from "../governance/message-redaction-service";
 import type { GovernanceActor } from "../governance/retention-governance-service";
+// apps/backend/src/modules/36-messaging/routes/message-redaction-routes.ts - WP 5.6 (ADR-0055 item 7, ADR-0086, PROPOSED): redact a message.
+//
+//   POST /api/v1/messaging/governance/redactions                 request (messaging.redact.request; message_id + reason >= 10)
+//   GET  /api/v1/messaging/governance/redactions                 list (either permission)
+//   POST /api/v1/messaging/governance/redactions/:id/approve     approve (messaging.redact.approve + fresh step-up; never the requester)
+//   POST /api/v1/messaging/governance/redactions/:id/self-approve   single-officer fallback (PROVISIONAL, off by default per tenant): the sole
+//                                                                 eligible officer approves their own request; masks nothing yet
+//   POST /api/v1/messaging/governance/redactions/:id/countersign   a SECOND role (messaging.redact.countersign + fresh step-up) makes it final within 72 h
+//
+// A redaction masks the message for every reader once approved and never destroys the cipher, so an active legal hold does not block it.
+// Org, officer and session are the server-side request context; an unknown or another tenant's message or redaction is the same 404. The
+// responses carry ids, staff names, instants and a hold flag: never the message body or the reason text.
+import { governanceActorOf } from "./actor";
 import { parse } from "./messaging-typebox";
 import {
   RedactionListResponseSchema,
@@ -31,8 +33,6 @@ import {
   RedactionResponseSchema,
   RequestRedactionBodySchema,
 } from "./retention-governance-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const REQUEST = requirePermission(MESSAGING_REDACT_REQUEST_PERMISSION) as PreHandler;
 const APPROVE = requirePermission(MESSAGING_REDACT_APPROVE_PERMISSION) as PreHandler;
@@ -61,25 +61,6 @@ export interface MessageRedactionRouteDeps {
   readonly service: MessageRedactionService;
 }
 
-function actorOf(request: FastifyRequest): GovernanceActor {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return {
-    organizationId: ctx.organizationId,
-    userId: ctx.userId,
-    auditContext: {
-      organizationId: ctx.organizationId,
-      userId: ctx.userId,
-      actorKind: "user",
-      actorRole: ctx.roles[0],
-      correlationId: ctx.correlationId,
-      requestId: String(request.id),
-      sourceIp: ctx.ip,
-      userAgent: ctx.userAgent,
-    },
-  };
-}
-
 export function registerMessageRedactionRoutes(
   app: FastifyInstance,
   deps: MessageRedactionRouteDeps,
@@ -94,7 +75,7 @@ export function registerMessageRedactionRoutes(
       const body = parse(RequestRedactionBodySchema, request.body);
       return noStore(reply)
         .code(201)
-        .send(await service.request(actorOf(request), body));
+        .send(await service.request(governanceActorOf(request), body));
     },
   );
 
@@ -105,7 +86,7 @@ export function registerMessageRedactionRoutes(
       schema: { response: { 200: RedactionListResponseSchema } },
       config: { auditRead: { resourceKind: "message_redaction", list: true } },
     },
-    async (request, reply) => noStore(reply).send(await service.list(actorOf(request))),
+    async (request, reply) => noStore(reply).send(await service.list(governanceActorOf(request))),
   );
 
   app.post(
@@ -116,7 +97,7 @@ export function registerMessageRedactionRoutes(
     },
     async (request, reply) => {
       const { id } = parse(RedactionParamsSchema, request.params);
-      return noStore(reply).send(await service.approve(actorOf(request), id));
+      return noStore(reply).send(await service.approve(governanceActorOf(request), id));
     },
   );
 
@@ -128,7 +109,7 @@ export function registerMessageRedactionRoutes(
     },
     async (request, reply) => {
       const { id } = parse(RedactionParamsSchema, request.params);
-      return noStore(reply).send(await service.selfApprove(actorOf(request), id));
+      return noStore(reply).send(await service.selfApprove(governanceActorOf(request), id));
     },
   );
 
@@ -140,7 +121,7 @@ export function registerMessageRedactionRoutes(
     },
     async (request, reply) => {
       const { id } = parse(RedactionParamsSchema, request.params);
-      return noStore(reply).send(await service.countersign(actorOf(request), id));
+      return noStore(reply).send(await service.countersign(governanceActorOf(request), id));
     },
   );
 }

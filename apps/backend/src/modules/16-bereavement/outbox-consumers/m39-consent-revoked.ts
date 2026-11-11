@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/16-bereavement/outbox-consumers/m39-consent-revoked.ts — the §2.6 / D6
 // M39 consent-revocation cascade (F-151, #248).
 //
@@ -30,20 +31,18 @@
 // takes on its own unresolvable death-fact cases, not a bug in THIS consumer. Whether an unconfirmed
 // contact's consent revocation should instead be a no-op (matching `opted_out`/`deceased`) or drive some
 // other transition is a product decision this pass does not make.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { BereavedContactId, ConsentId, IsoInstant } from "@chartwarden/types";
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { decideConsentRevocationCascade } from "../lifecycle/cascades";
 import { transitionBereavedContact } from "../lifecycle/index";
 import type { WriteOutboxPort } from "../routes/write-service";
 
 const CONTACT = schema.bereavedContact;
 const OPT_OUT = schema.bereavementOptOut;
+const TASK = schema.bereavementAssessmentTask;
 const OUTREACH = schema.bereavementOutreach;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M16_CONSENT_REVOKED_CONSUMER = {
   eventName: "m39.consent.revoked",
@@ -148,15 +147,13 @@ export function buildM16ConsentRevokedConsumer(deps: ConsentRevocationDeps) {
             sourceKind: "m39_revocation_cascade",
           });
 
+          // A full opt-out stops EVERY never-attempted touchpoint, past due or not: one left `scheduled` would be marked
+          // `missed` by the hourly cron for a call the family had told us not to make (ADR-0109, stage-1 open issue).
           const scheduled = await tx
             .select({ id: OUTREACH.id })
             .from(OUTREACH)
             .where(
-              and(
-                eq(OUTREACH.bereavedContactId, contact.id),
-                eq(OUTREACH.status, "scheduled"),
-                gte(OUTREACH.dueAt, new Date(at)),
-              ),
+              and(eq(OUTREACH.bereavedContactId, contact.id), eq(OUTREACH.status, "scheduled")),
             );
           if (scheduled.length > 0) {
             await tx
@@ -175,6 +172,16 @@ export function buildM16ConsentRevokedConsumer(deps: ConsentRevocationDeps) {
                 ),
               );
           }
+
+          // ADR-0109 D3 — the contact's assessment checkpoints go with it.
+          await tx
+            .update(TASK)
+            .set({
+              status: "cancelled",
+              version: sql`${TASK.version} + 1`,
+              updatedAt: new Date(at),
+            })
+            .where(and(eq(TASK.bereavedContactId, contact.id), eq(TASK.status, "scheduled")));
 
           await tx
             .update(CONTACT)

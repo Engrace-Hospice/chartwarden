@@ -21,6 +21,22 @@ export type {
   operations,
   paths,
 } from "./api";
+// The M22 verified-upload ceremony (hash, reserve, PUT, commit, abort), shared by every module that files a document.
+export {
+  abortUpload,
+  completeUpload,
+  initiateUpload,
+  putUploadBytes,
+  sha256Hex,
+  writeFailure,
+} from "./api";
+export type {
+  CompleteUploadResult,
+  InitiateUploadBody,
+  InitiateUploadResult,
+  UploadMimeType,
+  WriteResult,
+} from "./api";
 
 // Providers (transport-agnostic React context — no DOM)
 export { FeatureFlagProvider, useFeatureFlagContext } from "./providers/feature-flag-provider";
@@ -28,8 +44,6 @@ export type {
   FeatureFlagContextValue,
   FeatureFlagProviderProps,
 } from "./providers/feature-flag-provider";
-export { SocketProvider, useSocket } from "./providers/socket-provider";
-export type { SocketLike, SocketProviderProps } from "./providers/socket-provider";
 export { SystemStatusProvider, useSystemStatus } from "./providers/system-status-provider";
 export type {
   SystemStatusContextValue,
@@ -49,7 +63,7 @@ export {
 } from "./hooks/use-search-term";
 
 // Theme tokens (plain data — no styling runtime)
-export { brandColors, colors, statusColors } from "./theme/colors";
+export { brandColors } from "./theme/colors";
 
 // Date-only helpers (PARAM-004 — local-calendar parsing, never a UTC-instant off-by-one)
 export {
@@ -64,6 +78,9 @@ export {
 
 // API error envelope -> the server's own message (#596)
 export { envelopeErrorMessage } from "./error-message";
+
+// Short-lived minted links (signed download/stream URLs): https only, dropped when they expire.
+export { LINK_FLOOR_MS, linkLifetimeMs, safeMintedUrl } from "./minted-link";
 
 // Display-only fallback for internal enum/event identifiers when no product label is available.
 export { humanizeIdentifier } from "./humanize-identifier";

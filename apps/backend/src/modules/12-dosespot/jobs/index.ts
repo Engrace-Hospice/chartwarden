@@ -19,12 +19,10 @@ export type {
 } from "@chartwarden/db/schema";
 export { type EnqueueInput, type EnqueueResult, DosespotSyncQueueRepository } from "./repository";
 export {
-  M12DosespotPatientIdUnbound,
   type DosespotPatientIdResolver,
   type DosespotSyncDemographicsForOrg,
   type PatientSyncSnapshotResolver,
   createDrizzlePatientSyncSnapshotResolver,
-  createUnboundDosespotPatientIdResolver,
 } from "./vendor-boundary";
 export {
   type ActiveOrgListPort,

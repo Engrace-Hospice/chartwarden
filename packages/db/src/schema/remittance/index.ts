@@ -1,8 +1,9 @@
-// @chartwarden/db — M25 Remittance & Denials schema barrel (§3.3, 11 owned tables). Re-exports the shared
+// @chartwarden/db — M25 Remittance & Denials schema barrel. Re-exports the shared
 // enums plus all table modules; the central ../index.ts re-exports this barrel.
 //
-// Tenancy (ADR-0010, canonical): EVERY M25 table carries organization_id NOT NULL → the canonical
-// app.org_id RLS predicate applies directly to all 11 tables (no NON_ORG_SCOPED entries). The two child
+// Tenancy (ADR-0010, canonical): M25 tenant-domain tables carry organization_id NOT NULL → the canonical
+// app.org_id RLS predicate applies. Account-wide Claim.MD capture/resolution tables are central protected
+// tables with audited platform execution and dedicated role grants, not tenant-visible rows. The two child
 // tables the spec §3.3 left org-less (denial_case_assignment, appeal_case_event) carry organization_id
 // here per the three-column posture. denial_taxonomy_overlay is strictly org-scoped (M25-F09) — NO
 // platform-default NULL-org rows; platform CARC/RARC defaults live in M38, resolved at read time.
@@ -38,3 +39,7 @@ export * from "./beneficiary-representative"; // representative_form_version, re
 export * from "./playbook"; // denial_playbook, denial_playbook_version, denial_playbook_case_step (milestone 9a-1)
 export * from "./pull-cursor"; // remittance_pull_cursor (#717)
 export * from "./pull-refusal"; // remittance_pull_refusal (#717 follow-up)
+export * from "./claimmd-era"; // Claim.MD central capture/resolution/delivery + tenant M25 staging (BIL-1.4)
+export * from "./claimmd-era-match"; // Append-only tenant match/review evidence (BIL-3.2; nonposting)
+export * from "./claimmd-era-financial-review"; // Append-only nonposting financial-review dispositions (BIL-3.3)
+export * from "./claimmd-era-posting"; // Immutable plans and append-only approval/execution history (BIL-3.4)

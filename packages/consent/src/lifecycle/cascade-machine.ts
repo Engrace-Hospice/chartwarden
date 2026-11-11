@@ -38,9 +38,6 @@ export function nextCascadeStatus(
   return ok<ConsentRevocationCascadeStatus>("in_progress");
 }
 
-/** The terminal status a budget-exhausted cascade lands in (the caller stamps it + fires the alert). */
-export const CASCADE_FAILED: ConsentRevocationCascadeStatus = "partial_failed";
-
 /** Whether a given consumer still needs a (re)dispatch this sweep (idempotent: ACKed consumers skip). */
 export function consumerNeedsDispatch(progress: CascadeProgress, consumer: string): boolean {
   return progress.consumers[consumer] !== true;

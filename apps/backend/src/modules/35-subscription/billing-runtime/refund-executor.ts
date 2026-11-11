@@ -53,7 +53,7 @@ export interface RefundSweepResult {
 }
 
 /** `stripe_api_call_audit` writes through the platform runner (the table has no tenant grant). */
-export function createDrizzleStripeAuditStore(
+function createDrizzleStripeAuditStore(
   platformRunner: PlatformRunner,
   options: { readonly bumpAttemptOnReuse?: boolean } = {},
 ): StripeApiCallAuditStore {

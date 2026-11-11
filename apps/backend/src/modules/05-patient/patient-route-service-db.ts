@@ -12,6 +12,7 @@
 // match-review rows.
 import { audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
+import { decodeCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { NotFoundError, ValidationError } from "@chartwarden/types";
 import { ChartWardenError } from "@chartwarden/types";
@@ -52,6 +53,7 @@ import type {
   DemographicsView,
   IdentifierView,
   PatientPayerView,
+  PatientPayerVoidReason,
   PatientRouteService,
   PatientView,
   PrivacyFlagsView,
@@ -113,21 +115,35 @@ function toView(r: {
   };
 }
 
-/** Opaque ascending cursor over (lastName, firstName, id). */
-function encode(v: PatientView): string {
-  return Buffer.from(JSON.stringify([v.lastName, v.firstName, v.id]), "utf8").toString("base64url");
+/**
+ * The signed keyset payload: only the id of the last row of the previous page. Its sort key (legal name) is
+ * re-read in SQL, so no patient name travels in a URL (proxy logs, history, Referer).
+ */
+interface PatientCursor {
+  readonly id: string;
 }
-function decode(cursor: string): [string, string, string] | null {
-  try {
-    const a = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
-    return Array.isArray(a) && a.length === 3 ? (a as [string, string, string]) : null;
-  } catch {
-    return null;
-  }
-}
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isPatientCursor = (value: unknown): value is PatientCursor =>
+  typeof (value as Partial<PatientCursor> | null)?.id === "string" &&
+  UUID_SHAPE.test((value as PatientCursor).id);
 
 /** Build the production PatientRouteService — reads + writes are real Drizzle over the patient tables. */
 const NOOP_OUTBOX: M5OutboxPort = { publish: async () => undefined };
+export interface PatientPayerClaimReferencePort {
+  hasNonVoidClaim(tx: DbClient, organizationId: string, payerRowId: string): Promise<boolean>;
+}
+
+const UNBOUND_PAYER_CLAIM_REFERENCES: PatientPayerClaimReferencePort = {
+  async hasNonVoidClaim() {
+    throw new ChartWardenError(
+      "PAYER_CLAIM_REFERENCE_CHECK_UNBOUND",
+      "Payer coverage cannot be voided until the claim-reference check is available.",
+      503,
+    );
+  },
+};
+
 export function createDbPatientRouteService(
   db: DbClient,
   outbox: M5OutboxPort = NOOP_OUTBOX,
@@ -135,16 +151,19 @@ export function createDbPatientRouteService(
     readonly admissionSummary?: AdmissionCensusSummaryPort;
     /** GAP-010: the per-tenant DEK envelope for ssn / state_id. Unbound by default: SSN capture then answers 503. */
     readonly identifierCipher?: PatientIdentifierCipher;
+    /** #874: cross-module logical claim references, resolved at the composition root on this transaction. */
+    readonly payerClaimReferences?: PatientPayerClaimReferencePort;
   } = {},
 ): PatientRouteService {
   const identifierCipher = ports.identifierCipher ?? UNBOUND_IDENTIFIER_CIPHER;
+  const payerClaimReferences = ports.payerClaimReferences ?? UNBOUND_PAYER_CLAIM_REFERENCES;
   const list = async (
     organizationId: string,
     query: ListQuery,
     scope: readonly string[] | null,
   ) => {
     const limit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(query.limit ?? DEFAULT_LIMIT)));
-    const c = query.cursor ? decode(query.cursor) : null;
+    const c = decodeCursor(organizationId, query.cursor, isPatientCursor);
     // §7.5 (F-096) — the caseload narrowing, IN THE SQL. `scope === null` is the org-wide reader; a
     // named set becomes `patient.id = ANY(:ids)`, which is the filter the spec asks for by name.
     //
@@ -169,9 +188,9 @@ export function createDbPatientRouteService(
             ilike(P.mrn, `%${query.q}%`),
           ) as SQL)
         : undefined,
-      // ascending (lastName, firstName, id) strictly after the cursor row
+      // ascending (lastName, firstName, id) strictly after the cursor row, its key read under the same RLS
       c
-        ? (sql`(${P.legalLastName}, ${P.legalFirstName}, ${P.id}) > (${c[0]}, ${c[1]}, ${c[2]}::uuid)` as SQL)
+        ? (sql`(${P.legalLastName}, ${P.legalFirstName}, ${P.id}) > (SELECT p2.legal_last_name, p2.legal_first_name, p2.id FROM ${P} p2 WHERE p2.id = ${c.id}::uuid)` as SQL)
         : undefined,
     );
     return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
@@ -184,7 +203,9 @@ export function createDbPatientRouteService(
       const views = rows.map(toView);
       if (views.length > limit) {
         const page = views.slice(0, limit);
-        return { items: page, nextCursor: encode(page[page.length - 1]!) };
+        const last = page[page.length - 1]!;
+        const anchor: PatientCursor = { id: last.id };
+        return { items: page, nextCursor: encodeCursor(organizationId, anchor) };
       }
       return { items: views, nextCursor: null };
     });
@@ -610,7 +631,12 @@ export function createDbPatientRouteService(
             })
             .from(P)
             .where(eq(P.id, patientId))
-            .limit(1);
+            .limit(1)
+            // #877 — this is the exclusive side of the per-patient coverage namespace lock.
+            // Claim assembly holds FOR SHARE on the same stable row while it snapshots coverage
+            // and writes the claim, preventing a previously absent higher-priority rank from being
+            // inserted as a phantom before the claim commits.
+            .for("update");
 
           if (!patient) {
             throw new Error(`patient ${patientId} not found`);
@@ -698,6 +724,110 @@ export function createDbPatientRouteService(
         },
       ),
     );
+
+  const voidPayer = async (
+    organizationId: string,
+    patientId: string,
+    payerRowId: string,
+    reason: PatientPayerVoidReason,
+    actorUserId: string,
+  ): Promise<PatientPayerView> =>
+    withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+      // Same namespace lock and order as #877: patient first, payer row second. Claim assembly's
+      // FOR SHARE lock therefore finishes before this correction checks references and changes history.
+      const [patient] = await tx
+        .select({ id: P.id })
+        .from(P)
+        .where(and(eq(P.id, patientId), eq(P.organizationId, organizationId)))
+        .limit(1)
+        .for("update");
+      if (!patient) throw new NotFoundError("patient payer");
+
+      const [row] = await tx
+        .select({
+          id: PAYER.id,
+          payerId: PAYER.payerId,
+          rank: PAYER.rank,
+          coverageKind: PAYER.coverageKind,
+          subscriberId: PAYER.subscriberId,
+          groupNumber: PAYER.groupNumber,
+          binPcn: PAYER.binPcn,
+          effectiveFrom: PAYER.effectiveFrom,
+          effectiveTo: PAYER.effectiveTo,
+        })
+        .from(PAYER)
+        .where(
+          and(
+            eq(PAYER.id, payerRowId),
+            eq(PAYER.patientId, patientId),
+            eq(PAYER.organizationId, organizationId),
+          ),
+        )
+        .limit(1)
+        .for("update");
+      if (!row) throw new NotFoundError("patient payer");
+      if (row.effectiveTo !== null && row.effectiveTo < row.effectiveFrom) {
+        throw new ChartWardenError(
+          "PAYER_ALREADY_VOIDED",
+          "This payer coverage row is already voided.",
+          409,
+        );
+      }
+      if (
+        await payerClaimReferences.hasNonVoidClaim(
+          tx as unknown as DbClient,
+          organizationId,
+          payerRowId,
+        )
+      ) {
+        throw new ChartWardenError(
+          "PAYER_ROW_IN_USE",
+          "This payer coverage is referenced by a non-void claim and cannot be voided.",
+          409,
+        );
+      }
+
+      const effectiveTo = addDaysIso(row.effectiveFrom, -1);
+      await tx
+        .update(PAYER)
+        .set({ effectiveTo })
+        .where(
+          and(
+            eq(PAYER.id, payerRowId),
+            eq(PAYER.patientId, patientId),
+            eq(PAYER.organizationId, organizationId),
+          ),
+        );
+      await audit(
+        tx,
+        {
+          organizationId,
+          userId: actorUserId,
+          correlationId: `patient-payer-void:${payerRowId}`,
+        },
+        {
+          eventType: "patient.payer_voided",
+          resourceKind: "patient_payer",
+          resourceId: payerRowId,
+          outcome: "success",
+          severity: "critical",
+          context: { patientId, payerRowId, reason },
+        },
+      );
+      await emitPatientEvent(tx, organizationId, patientId, "m5.patient.payer_changed");
+      return {
+        id: row.id,
+        payerId: row.payerId,
+        rank: row.rank,
+        coverageKind: row.coverageKind,
+        subscriberId: row.subscriberId,
+        groupNumber: row.groupNumber ?? null,
+        binPcn: row.binPcn ?? null,
+        current: false,
+        effectiveFrom: row.effectiveFrom,
+        effectiveTo,
+      };
+    });
 
   // §3.4/§3.5 Care Team & Assignments tab: the clinical assignment roster (`patient_assignment`) +
   // the caregiver involvements (`patient_caregiver` ⨝ `caregiver`) + the emergency contacts. Each is
@@ -1181,6 +1311,7 @@ export function createDbPatientRouteService(
     listAddresses,
     listPayers,
     addPayer,
+    voidPayer,
     getCareTeam,
     createAssignment,
     endAssignment,

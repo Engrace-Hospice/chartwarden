@@ -74,20 +74,6 @@ export const M34_QUEUES = {
 
 export type M34QueueName = (typeof M34_QUEUES)[keyof typeof M34_QUEUES];
 
-/** The §4.3 dead-letter queue names (OPS-035 document-before-clear; ops alerts off DLQ depth). One per queue. */
-export const M34_DLQ = {
-  provision: "tenant.provision.dlq",
-  dekRotate: "tenant.dek_rotate.dlq",
-  shred: "tenant.shred.dlq",
-  dsarExport: "tenant.dsar_export.dlq",
-  export: "tenant.export.dlq",
-  onboardingAdvance: "tenant.onboarding_advance.dlq",
-  bundleExpirySweep: "tenant.bundle_expiry_sweep.dlq",
-  baaExpirySweep: "tenant.baa_expiry_sweep.dlq",
-  supportSessionCloseSweep: "tenant.support_session_close_sweep.dlq",
-  dsarSlaEscalationSweep: "tenant.dsar_sla_escalation_sweep.dlq",
-} as const;
-
 /** The §4.3 cron cadences (the scheduler registers these repeatables; the six command queues have none —
  *  they are enqueued on demand by routes / outbox-subscriptions, never on a schedule). */
 export const M34_JOB_SCHEDULES = {
@@ -101,120 +87,11 @@ export const M34_JOB_SCHEDULES = {
   dsarSlaEscalationSweep: "0 8 * * *", // daily 08:00 platform-tz
 } as const;
 
-/**
- * The §4.3 BullMQ standard parameter set per queue (the §4.3 table's `Worker concurrency` column + the
- * SD-059 attempts/backoff floor), declared as pure data so the boot-time `Worker` construction consumes
- * one source of truth. `removeOnFail:false` keeps exhausted jobs for DLQ promotion (OPS-035). The command
- * queues carry the spec's concurrency exactly; the sweeps are concurrency 1 (idempotent per cron tick).
- */
-export const M34_QUEUE_PARAMS = {
-  provision: {
-    priority: 2,
-    attempts: 5,
-    backoff: { type: "exponential", delay: 30_000 },
-    concurrency: 1, // §4.3 — per tenant_account_id, single-flight (the provision idempotency oracle)
-    removeOnComplete: { count: 200 },
-    removeOnFail: false,
-    dlq: M34_DLQ.provision,
-  },
-  dekRotate: {
-    priority: 2,
-    attempts: 5,
-    backoff: { type: "exponential", delay: 30_000 },
-    concurrency: 2, // §4.3 — per (tenant, target_version)
-    removeOnComplete: { count: 200 },
-    removeOnFail: false,
-    dlq: M34_DLQ.dekRotate,
-  },
-  shred: {
-    priority: 1, // the irreversible terminal effect — highest priority, single-flight
-    attempts: 5,
-    backoff: { type: "exponential", delay: 60_000 },
-    concurrency: 1, // §4.3 — per (tenant, cert); the four-phase shred is resume-from-last-marker
-    removeOnComplete: { count: 500 },
-    removeOnFail: false,
-    dlq: M34_DLQ.shred,
-  },
-  dsarExport: {
-    priority: 3,
-    attempts: 3,
-    backoff: { type: "exponential", delay: 30_000 },
-    concurrency: 4, // §4.3 — per job_id
-    removeOnComplete: { count: 200 },
-    removeOnFail: false,
-    dlq: M34_DLQ.dsarExport,
-  },
-  export: {
-    priority: 4,
-    attempts: 3,
-    backoff: { type: "exponential", delay: 30_000 },
-    concurrency: 2, // §4.3 — per job_id
-    removeOnComplete: { count: 100 },
-    removeOnFail: false,
-    dlq: M34_DLQ.export,
-  },
-  onboardingAdvance: {
-    priority: 5,
-    attempts: 5,
-    backoff: { type: "exponential", delay: 10_000 },
-    concurrency: 4, // §4.3 — per (tenant, template)
-    removeOnComplete: { count: 500 },
-    removeOnFail: false,
-    dlq: M34_DLQ.onboardingAdvance,
-  },
-  bundleExpirySweep: {
-    priority: 6,
-    attempts: 3,
-    backoff: { type: "fixed", delay: 60_000 },
-    concurrency: 1, // §4.3 — per (kind, date)
-    removeOnComplete: { count: 50 },
-    removeOnFail: false,
-    dlq: M34_DLQ.bundleExpirySweep,
-  },
-  baaExpirySweep: {
-    priority: 6,
-    attempts: 3,
-    backoff: { type: "fixed", delay: 60_000 },
-    concurrency: 1, // §4.3 — per date
-    removeOnComplete: { count: 50 },
-    removeOnFail: false,
-    dlq: M34_DLQ.baaExpirySweep,
-  },
-  supportSessionCloseSweep: {
-    priority: 5,
-    attempts: 3,
-    backoff: { type: "fixed", delay: 30_000 },
-    concurrency: 1, // §4.3 — per tick
-    removeOnComplete: { count: 100 },
-    removeOnFail: false,
-    dlq: M34_DLQ.supportSessionCloseSweep,
-  },
-  dsarSlaEscalationSweep: {
-    priority: 5,
-    attempts: 3,
-    backoff: { type: "fixed", delay: 60_000 },
-    concurrency: 1, // per date (idempotent per tier-edge)
-    removeOnComplete: { count: 50 },
-    removeOnFail: false,
-    dlq: M34_DLQ.dsarSlaEscalationSweep,
-  },
-} as const;
-
 // ── §4.3 idempotency keys (the BullMQ jobId / Valkey SETNX keys the §4.3 table declares) ───────────────
 
 /** `tenant.provision` jobId — per `tenant_account_id` (the SELECT-then-INSERT-IF-NOT-EXISTS replay oracle). */
 export function provisionJobId(tenantAccountId: string): string {
   return `provision:${tenantAccountId}`;
-}
-
-/** `tenant.dek_rotate` jobId — per `(tenant_account_id, dek_version_target)` (the §4.3 dedup key). */
-export function dekRotateJobId(input: { tenantAccountId: string; targetVersion: string }): string {
-  return `dek_rotate:${input.tenantAccountId}:${input.targetVersion}`;
-}
-
-/** `tenant.shred` jobId — per `(tenant_account_id, destruction_cert_id)`. */
-export function shredJobId(input: { tenantAccountId: string; destructionCertId: string }): string {
-  return `shred:${input.tenantAccountId}:${input.destructionCertId}`;
 }
 
 /** `tenant.dsar_export` jobId — per `dsar_export_job_id`. */
@@ -225,35 +102,6 @@ export function dsarExportJobId(jobId: string): string {
 /** `tenant.export` jobId — per `tenant_export_job_id`. */
 export function tenantExportJobId(jobId: string): string {
   return `tenant_export:${jobId}`;
-}
-
-/** `tenant.onboarding_advance` jobId — per `(tenant_account_id, template_key)` (§4.3). When a pass is the
- *  whole-tenant advance (no single template) the caller passes `template_key='*'`. */
-export function onboardingAdvanceJobId(input: {
-  tenantAccountId: string;
-  templateKey: string;
-}): string {
-  return `onboarding_advance:${input.tenantAccountId}:${input.templateKey}`;
-}
-
-/** `tenant.bundle_expiry_sweep` jobId — per `(bundle_kind, date)`. */
-export function bundleExpirySweepJobId(input: { kind: string; date: string }): string {
-  return `bundle_expiry:${input.kind}:${input.date}`;
-}
-
-/** `tenant.baa_expiry_sweep` jobId — per `date`. */
-export function baaExpirySweepJobId(date: string): string {
-  return `baa_expiry:${date}`;
-}
-
-/** `tenant.support_session_close_sweep` jobId — per `tick_id`. */
-export function supportSessionCloseSweepJobId(tickId: string): string {
-  return `support_session_close:${tickId}`;
-}
-
-/** `tenant.dsar_sla_escalation_sweep` jobId — per `date`. */
-export function dsarSlaEscalationSweepJobId(date: string): string {
-  return `dsar_sla_escalation:${date}`;
 }
 
 // ── the per-org/platform scoping envelope the live wiring runs each processor inside ───────────────────

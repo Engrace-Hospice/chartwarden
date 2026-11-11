@@ -34,6 +34,7 @@ import {
   bereavementEncounterReaderDenyStub,
   bereavementOutreachProviderDenyStub,
   bereavementPlanProviderDenyStub,
+  bereavementPortalContentProviderDenyStub,
   bereavementRiskFactorsProviderDenyStub,
   bereavementRiskNarrativeProviderDenyStub,
   bereavementRiskTierProviderDenyStub,
@@ -130,6 +131,7 @@ import {
   onboardingStatusProviderDenyStub,
   orderProviderDenyStub,
   orderSignatureProviderDenyStub,
+  orgDocumentAccessProviderDenyStub,
   organizationReaderDenyStub,
   patientAddressReaderDenyStub,
   patientAdmissionClearanceReaderDenyStub,
@@ -378,6 +380,13 @@ export const REQUIRED_SEAMS = [
     ownerModule: 22,
     phi: true,
     denyStub: extractionProvenanceReaderDenyStub,
+  },
+  // ADR-0109 D10 — the org-level (patient-less) document download mint. PHI: the document it hands out is M16's mailing batch (every addressee).
+  {
+    key: "OrgDocumentAccessProvider",
+    ownerModule: 22,
+    phi: true,
+    denyStub: orgDocumentAccessProviderDenyStub,
   },
   { key: "ConsentEvaluator", ownerModule: 39, phi: true, denyStub: consentEvaluatorDenyStub },
   // M2 published seams (§4.7): authenticated request context + auditor session minter. Not PHI
@@ -1226,6 +1235,13 @@ export const REQUIRED_SEAMS = [
     ownerModule: 16,
     phi: true,
     denyStub: bereavedPortalScopeProviderDenyStub,
+  },
+  // ADR-0109 D10 (PR 3) — the family's memorial invitations / RSVP in the portal. PHI: an invitation says whose death the family is grieving.
+  {
+    key: "BereavementPortalContentProvider",
+    ownerModule: 16,
+    phi: true,
+    denyStub: bereavementPortalContentProviderDenyStub,
   },
   {
     key: "BereavementComplianceProvider",

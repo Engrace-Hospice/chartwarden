@@ -6,7 +6,7 @@
  *
  * On the production host (no bun there) run it from the release image, which carries this repo:
  *   docker run --rm --network host --env-file ./restore-<id>/restore.env -v "$PWD/restore-<id>:$PWD/restore-<id>:ro" \
- *     "$CHARTWARDEN_IMAGE" bun run backup:verify-restore
+ *     "$CHARTWARDEN_IMAGE" bun run scripts/backup/verify-restore.ts   (a file, not the package script: the image has no shell)
  *
  * Exit 0 = every check passed; 1 = a check failed; 2 = the verifier could not run.
  */

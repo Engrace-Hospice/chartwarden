@@ -118,7 +118,7 @@ export function anniversaryAlertSeverity(
 }
 
 /** §2.5 — `bereavement_plan` and `bereaved_contact` carry `version int`; PATCH requires `If-Match:
- *  <version>` and answers a mismatch with 412 + the current row (the M7 §7.7 / M15 pattern verbatim). */
+ *  <version>` and answers a mismatch with 409 STALE_VERSION + the current row (the M7 §7.7 / M15 pattern verbatim). */
 export const OPTIMISTIC_CONCURRENCY_HEADER = "If-Match" as const;
 
 /** §4.4 — the `payloadSchemaVersion` stamped on every M16 outbox envelope; a consumer refusing an unknown
@@ -135,6 +135,11 @@ function utcMidnight(localDate: string): number {
   const ms = Date.parse(`${localDate}T00:00:00.000Z`);
   if (Number.isNaN(ms)) throw new RangeError(`bereavement: malformed local date '${localDate}'`);
   return ms;
+}
+
+/** D4 — the ISO instant `offsetDays` after the UTC-midnight death date (the anchor every cadence offset counts from). */
+export function deathAnchoredInstant(deathDate: string, offsetDays: number): string {
+  return new Date(utcMidnight(deathDate) + offsetDays * MS_PER_DAY).toISOString();
 }
 
 /** D4 — the exclusive end of the bereavement window as an ISO instant (`death_date + 396 days`). M36

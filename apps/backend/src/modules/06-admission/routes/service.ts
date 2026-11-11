@@ -6,6 +6,11 @@
 // the injected `now()` so version/date math is deterministic in tests.
 
 import { localDateInTimeZone } from "@chartwarden/shared/dates";
+import {
+  decodeOffsetCursor,
+  encodeOffsetCursor,
+  offsetCursorScope,
+} from "@chartwarden/shared/route-kit";
 import type { AdmissionSourceCode, AdmissionTypeCode, LocalDate } from "@chartwarden/types";
 import { ChartWardenError } from "@chartwarden/types";
 import type { ActorSite } from "../actor-site";
@@ -483,7 +488,13 @@ export interface CtiDraftInput {
  * TASK-034 fixes the ones that do rather than widening this type to fields that would still be dropped.
  */
 export interface NorAcknowledgeInput {
-  readonly deliveryMethod: "wet_ink_scanned" | "electronic_witnessed" | "verbal_with_witness";
+  // `electronic_portal` (ADR-0107, migration 1305) is set only by the portal sign seam; the staff route's
+  // TypeBox schema (NOR_METHODS) does not list it, so a staff caller cannot claim it.
+  readonly deliveryMethod:
+    | "wet_ink_scanned"
+    | "electronic_witnessed"
+    | "verbal_with_witness"
+    | "electronic_portal";
   readonly acknowledgedByRole: "patient" | "legal_representative";
   readonly acknowledgedAt?: string;
   readonly acknowledgedByName?: string;
@@ -832,6 +843,9 @@ export const SIGNER_KIND_BY_ROLE = {
 export interface ElectionSignInput {
   readonly signingPatientName: string;
   readonly signingRole: "patient" | "legal_representative" | "caregiver";
+  /** ADR-0107: how the signature was captured. Omitted = `electronic_witnessed` (the staff path). Only the
+   *  portal sign seam passes `electronic_portal`; the staff route never forwards a caller-supplied value. */
+  readonly signatureMethod?: "electronic_witnessed" | "electronic_portal";
 }
 
 /**
@@ -1735,16 +1749,21 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     };
   };
   const page = <T extends SummaryRow>(
+    organizationId: string,
     rows: T[],
     query: { cursor?: string; limit?: number },
+    cursorScope: string,
   ): Page<T> => {
     const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
-    const offset = query.cursor ? Number.parseInt(query.cursor, 10) || 0 : 0;
+    const offset = decodeOffsetCursor(organizationId, query.cursor, cursorScope);
     const slice = rows.slice(offset, offset + limit);
     const nextOffset = offset + slice.length;
     return {
       items: slice,
-      nextCursor: nextOffset < rows.length ? String(nextOffset) : null,
+      nextCursor:
+        nextOffset < rows.length
+          ? encodeOffsetCursor(organizationId, nextOffset, cursorScope)
+          : null,
     };
   };
   const listOfKind = (organizationId: string, kind: string): Rec[] =>
@@ -1948,7 +1967,20 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
             .some((v) => String(v).toLowerCase().includes(q)),
         );
       }
-      return page(rows.map(referralView), query);
+      return page(
+        organizationId,
+        rows.map(referralView),
+        query,
+        offsetCursorScope("m6.referrals", {
+          assigned: query.assigned ?? null,
+          includeConverted: query.includeConverted ?? false,
+          patientResolutionStatus: query.patientResolutionStatus ?? null,
+          priority: query.priority ?? null,
+          q: query.q?.trim().toLowerCase() ?? null,
+          source: query.source ?? null,
+          status: query.status ?? query.state ?? null,
+        }),
+      );
     },
     async getReferral(organizationId, id) {
       const rec = get(organizationId, id, "referral");
@@ -2213,6 +2245,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       // never persist a timestamp (a lightweight state-transition double, not the D1 record); the real
       // values are proven against the Drizzle implementation's own live suite.
       return page(
+        organizationId,
         rows.map((r) => ({
           ...summary(r),
           patient: patientIdentity(organizationId, r.patientId),
@@ -2221,6 +2254,10 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
           releasedAt: null,
         })),
         query,
+        offsetCursorScope("m6.admissions", {
+          patientId: query.patientId ?? null,
+          state: query.state ?? null,
+        }),
       );
     },
     async getAdmission(organizationId, id) {
@@ -3276,7 +3313,12 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const ids = scope?.patientIds ?? null;
       if (ids !== null) rows = rows.filter((r) => !!r.patientId && ids.includes(r.patientId));
       if (query.state) rows = rows.filter((r) => r.state === query.state);
-      return page(rows.map(summary), query);
+      return page(
+        organizationId,
+        rows.map(summary),
+        query,
+        offsetCursorScope("m6.compliance-windows", { state: query.state ?? null }),
+      );
     },
     async closeComplianceWindow(organizationId, id, ifVersion) {
       const rec = get(organizationId, id, "compliance_window") ?? notFound(id);

@@ -1,20 +1,3 @@
-// apps/backend/src/modules/23-billing-medicare/services/transfer-notice-service.ts — the M23 service behind the
-// transfer-notice worklist: the RECEIVING hospice's Medicare Change of Provider / Transfer Notice (TOB 81C/82C),
-// its date correction (8xC + OC 56 + CC D0) and the 8xD void that removes a transfer submitted in error.
-// CMS Pub. 100-04 ch. 11 §20.1.3 / §20.1.4, Rev. 12847.
-//
-// Every write runs in ONE `withOrgContext` unit of work (RLS on `app.org_id`), drives the pure
-// `transferNoticeMachine`, is version-checked (§2.5 → 412), and emits its `m23.transfer_notice.*` event through
-// the injected catalog-validating outbox in the same transaction. The §20.1.3 rules are `evaluateTransferNotice`
-// (pure, `@chartwarden/billing`); this file only gathers the one cross-row fact they need (other transfers in the
-// benefit period) and the M6 refresh (our admission date and physicians, which M6 may learn after the draft).
-//
-// SUBMISSION follows the NOE/NOTR outbox-only posture (D2): `submit` appends the queued `claim_submission`
-// (kind `transfer_notice`), asks the job gate, and emits `m23.transfer_notice.submit_requested`; the
-// `transfer_notice.submit` worker generates + uploads and drives READY → SUBMITTED. The 999 / 277CA ack crons
-// route an acknowledgment to this notice by its submission's kind (`jobs/m23-jobs.ts`).
-//
-// No MBI / no PHI beyond ids, dates and provider identifiers (D13). AI principals are refused (D13).
 import { randomUUID } from "node:crypto";
 import {
   type NoticeState,
@@ -25,6 +8,24 @@ import {
   transferNoticeMachine,
   transferNoticeTob,
 } from "@chartwarden/billing";
+// apps/backend/src/modules/23-billing-medicare/services/transfer-notice-service.ts — the M23 service behind the
+// transfer-notice worklist: the RECEIVING hospice's Medicare Change of Provider / Transfer Notice (TOB 81C/82C),
+// its date correction (8xC + OC 56 + CC D0) and the 8xD void that removes a transfer submitted in error.
+// CMS Pub. 100-04 ch. 11 §20.1.3 / §20.1.4, Rev. 12847.
+//
+// Every write runs in ONE `withOrgContext` unit of work (RLS on `app.org_id`), drives the pure
+// `transferNoticeMachine`, is version-checked (§2.5 → 409 STALE_VERSION), and emits its `m23.transfer_notice.*` event through
+// the injected catalog-validating outbox in the same transaction. The §20.1.3 rules are `evaluateTransferNotice`
+// (pure, `@chartwarden/billing`); this file only gathers the one cross-row fact they need (other transfers in the
+// benefit period) and the M6 refresh (our admission date and physicians, which M6 may learn after the draft).
+//
+// SUBMISSION follows the NOE/NOTR outbox-only posture (D2): `submit` appends the queued `claim_submission`
+// (kind `transfer_notice`), asks the job gate, and emits `m23.transfer_notice.submit_requested`; the
+// `transfer_notice.submit` worker generates + uploads and drives READY → SUBMITTED. The 999 / 277CA ack crons
+// route an acknowledgment to this notice by its submission's kind (`jobs/m23-jobs.ts`).
+//
+// No MBI / no PHI beyond ids, dates and provider identifiers (D13). AI principals are refused (D13).
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import type { TransferInFactsResolver } from "../outbox-consumers/m6-transfer-in-notice";
@@ -170,11 +171,9 @@ export interface TransferNoticeService {
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 const LIVE: readonly NoticeState[] = ["draft", "ready", "submitted", "ack_pending"];
 
-function conflict412(current: number | null): ChartWardenError {
-  return new ChartWardenError(
-    "VERSION_CONFLICT",
+function staleVersion(current: number | null): ChartWardenError {
+  return new StaleVersionError(
     `the transfer notice was modified concurrently (current version ${current ?? "unknown"})`,
-    412,
   );
 }
 
@@ -368,7 +367,7 @@ export function buildTransferNoticeService(
       notice.state,
       patch,
     );
-    if (!res.ok) throw conflict412(res.currentVersion);
+    if (!res.ok) throw staleVersion(res.currentVersion);
     return res.row;
   };
 
@@ -462,7 +461,7 @@ export function buildTransferNoticeService(
       const facts = await freshFacts(actor.organizationId, transferNoticeId);
       return inOrg(actor, async (tx) => {
         let notice = await load(tx, actor.organizationId, transferNoticeId);
-        if (notice.version !== args.expectedVersion) throw conflict412(notice.version);
+        if (notice.version !== args.expectedVersion) throw staleVersion(notice.version);
         if (
           notice.action !== "original" ||
           (notice.state !== "draft" && notice.state !== "ready")
@@ -489,7 +488,7 @@ export function buildTransferNoticeService(
               : {}),
           },
         );
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
         return viewOf(tx, res.row);
       });
     },
@@ -508,7 +507,7 @@ export function buildTransferNoticeService(
       return inOrg(actor, async (tx) => {
         const repo = new repositories.TransferNoticeRepository(tx);
         let notice = await load(tx, actor.organizationId, transferNoticeId);
-        if (notice.version !== args.expectedVersion) throw conflict412(notice.version);
+        if (notice.version !== args.expectedVersion) throw staleVersion(notice.version);
         if (notice.state !== "draft" && notice.state !== "ready") {
           throw new ConflictError(
             `a transfer notice in state '${notice.state}' cannot be submitted`,
@@ -532,7 +531,7 @@ export function buildTransferNoticeService(
           });
           if (stepped.error) throw new ConflictError(`cannot assemble a '${notice.state}' notice`);
           const res = await repo.transitionToState(notice.id, notice.version, stepped.state);
-          if (!res.ok) throw conflict412(res.currentVersion);
+          if (!res.ok) throw staleVersion(res.currentVersion);
           notice = res.row;
         }
         const submissions = new repositories.ClaimSubmissionRepository(tx);
@@ -555,7 +554,7 @@ export function buildTransferNoticeService(
         const res = await repo.transitionToState(notice.id, notice.version, notice.state, {
           latestSubmissionId: submission.id,
         });
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
         const { jobId } = await jobs.enqueue(
           TRANSFER_NOTICE_SUBMIT_QUEUE,
           `${actor.organizationId}:${notice.id}:${submission.id}`,
@@ -579,7 +578,7 @@ export function buildTransferNoticeService(
       assertNotAiActor(actor);
       return inOrg(actor, async (tx) => {
         const notice = await load(tx, actor.organizationId, transferNoticeId);
-        if (notice.version !== args.expectedVersion) throw conflict412(notice.version);
+        if (notice.version !== args.expectedVersion) throw staleVersion(notice.version);
         const reason = args.reason.trim();
         const stepped = transferNoticeMachine.reduce(notice.state, "cancel", {
           cancelReasonProvided: reason.length > 0,
@@ -598,7 +597,7 @@ export function buildTransferNoticeService(
           stepped.state,
           { cancelReason: reason },
         );
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
         return viewOf(tx, res.row);
       });
     },

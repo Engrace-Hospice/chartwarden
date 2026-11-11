@@ -52,8 +52,6 @@ import {
   buildM35AbacPredicates,
   mountM35Routes,
 } from "../src/modules/35-subscription/index";
-import type { M35ReadActor, M35WriteActor } from "../src/modules/35-subscription/routes/actor";
-import type { CursorPage } from "../src/modules/35-subscription/routes/concurrency";
 import type {
   AckView,
   AddMeterArgs,
@@ -65,12 +63,15 @@ import type {
   CreatePromoArgs,
   CreateSubscriptionArgs,
   CurrentRevenueView,
+  CursorPage,
   DunningListFilters,
   DunningListItemView,
   DunningView,
   InvoiceDetailView,
   InvoiceListItemView,
+  M35ReadActor,
   M35RouteService,
+  M35WriteActor,
   MeterAdminView,
   PaymentMethodView,
   PlanAdminView,

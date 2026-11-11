@@ -37,6 +37,7 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 | `bun run arch:tenancy` | three-column rule, canonical `app.org_id`, no dangerous RLS shapes. RLS policy predicates are judged on the migrations' **net effect** (replayed in apply order), and the rule's audit/key-ring exemptions are scoped to a single statement — never a policy body. |
 | `bun run arch:ddl` | PostgreSQL DDL legality (partition keys, CHECK subqueries, duplicate enums). |
 | `bun run arch:gaps` | event-catalog `mN.` naming, seam-registry completeness, PHI RLS/audit presence. |
+| `bun run arch:offset-cursors` | rejects direct `offset`/`nextOffset` stringification (the #999 regression pattern); offset lists use signed, list/filter-bound route-kit cursors. |
 | `bun run docs:ui` | UI screen-spec corpus consistency. |
 | `bun run arch:ai-governance` | AI capability catalog ↔ per-capability docs parity (AI Governance §4.1/§4.4). |
 | `bun run arch:ai-messaging-readonly` | The M36 AI folder (`36-messaging/ai/`) imports no send/order/write path; the two messaging capabilities are high-risk HITL; the live proof exists (ADR-0095 §4). |
@@ -56,7 +57,7 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 
 ### Local demo data (`bun run db:reset`)
 
-`bun run db:reset` is `docker compose down -v` → `docker compose up -d postgres redis minio` →
+`bun run db:reset` is `docker compose down -v` → `docker compose up -d postgres redis rustfs` →
 `db:wait --expect-empty` → `db:migrate` → `db:seed:all`. **Compose is the only local provisioning
 path** (F-016 / #43): there used to be a second one, a standalone `wardenx-postgres` container on
 port 5440, and `db:reset` straddled both — it destroyed the 5440 volume and then migrated and seeded
@@ -65,12 +66,30 @@ really is empty before migrations replay, so that class of mismatch fails loudly
 seeding on top of existing data.
 
 **Existing dev volume after the database/dev-credential rename.** The local database is now named
-`chartwarden` (was `wardenx`) and the dev role passwords, MinIO credentials and compose volumes carry
-the `chartwarden-` prefix (`chartwarden-compose-pgdata|minio|clamav`). A stack created before that has a
+`chartwarden` (was `wardenx`) and the dev role passwords, object-store credentials and compose volumes carry
+the `chartwarden-` prefix (`chartwarden-compose-pgdata|rustfs|clamav`). A stack created before that has a
 `wardenx` database with the old role passwords, so it cannot be reused: run `docker compose down -v`
 (or `bun run db:reset`), optionally `docker volume rm wardenx-compose-pgdata wardenx-compose-minio
 wardenx-compose-clamav` for the orphaned old volumes, re-copy `.env.example` to `.env` (or edit the
 `DATABASE_*` URLs and `CHARTWARDEN_APP_PASSWORD` by hand), then `bun run db:migrate && bun run db:seed:all`.
+
+**Local object store: RustFS (was MinIO), and the `chartwarden` Compose project.** The dev stack and CI run
+RustFS (`rustfs/rustfs`, S3 on `:9000`, console on `:9001`, root key `chartwarden` /
+`chartwarden-object-store-dev-secret`). Production still runs MinIO until the SeaweedFS cutover (ADR-0050 D6).
+The backend keeps its `MINIO_*` variables: they are the S3 adapter's contract, not a MinIO dependency. If your
+`.env` still sets `MINIO_SECRET_KEY=chartwarden-minio-secret`, change it to the new dev secret.
+`docker-compose.yml` also sets `name: chartwarden`, so containers, images and volumes are `chartwarden-*` /
+`chartwarden_*` whatever the checkout directory is called. To move an existing stack (previously the
+directory-named `wardenx4` project) without losing data:
+
+1. `docker compose -p wardenx4 stop`.
+2. Copy each volume, e.g. `docker volume create chartwarden_chartwarden-compose-pgdata && docker run --rm -v
+   wardenx4_chartwarden-compose-pgdata:/from:ro -v chartwarden_chartwarden-compose-pgdata:/to alpine cp -a /from/. /to/`
+   (same for `-clamav`).
+3. `docker compose up -d rustfs`, then copy the old MinIO objects across: run the old MinIO image on another
+   port against the old volume and copy with `scripts/object-store-copy.ts`, which keeps each object's SHA-256.
+   A plain `rclone` / `mc mirror` copy drops it, and the app's verified reads then refuse those objects.
+4. `docker compose up -d`; remove the old `wardenx4-*` containers and, once checked, the old volumes.
 
 `cp .env.example .env` is sufficient; the full onboarding runbook is
 [`docs/START_PROJECT.md`](./START_PROJECT.md).

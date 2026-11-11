@@ -1,19 +1,18 @@
+// apps/backend/src/modules/23-billing-medicare/routes/index.ts — M23 route-service barrel.
+//
+// The split READ + WRITE route services the §4.1 M23 route plugins compose over (the M27 `M27RouteServices`
+// precedent) and the service-facing actor shapes (request plumbing is `@chartwarden/shared/route-kit`). This barrel
+// publishes the service CONTRACTS + the Drizzle-backed factories so the composition root binds them at boot.
+//
+// The read + write surfaces share no method name (the M27 combined-service precedent); the assembly service
+// is a THIRD dep (route #1 `POST /claims/assemble` resolves its M5/M6/M8/M18/M38/M40 reader seams + the
+// HIPPS/SIA/sequestration math through it, NOT the write service's low-level persistence path).
 import type { DdeProviderVendor } from "@chartwarden/x12-837-client";
 import type { ClaimAssemblyService } from "../services/claim-assembly";
 import type { ClearinghouseAttemptResolutionService } from "../services/clearinghouse-attempt-resolution-service";
 import type { DdeQueueService } from "../services/dde-queue-service";
 import type { TransferNoticeService } from "../services/transfer-notice-service";
 import type { PlatformAdminRouteService } from "./platform-admin-service";
-// apps/backend/src/modules/23-billing-medicare/routes/index.ts — M23 route-service barrel.
-//
-// The split READ + WRITE route services the §4.1 M23 route plugins compose over (the M27 `M27RouteServices`
-// precedent), the request-scoped actor resolvers, the cursor / idempotency / If-Match helpers, the §4.6/§4.7
-// guard builders, and the `parse(...)` request validator. The route plugins land in this slice; this barrel
-// publishes the service CONTRACTS + the Drizzle-backed factories so the composition root binds them at boot.
-//
-// The read + write surfaces share no method name (the M27 combined-service precedent); the assembly service
-// is a THIRD dep (route #1 `POST /claims/assemble` resolves its M5/M6/M8/M18/M38/M40 reader seams + the
-// HIPPS/SIA/sequestration math through it, NOT the write service's low-level persistence path).
 import type { RateTableRouteService } from "./rate-table-service";
 
 export {
@@ -28,42 +27,7 @@ import type { VisitChargeRouteService } from "./visit-charge-service";
 import type { WageIndexRouteService } from "./wage-index-service";
 import type { M23WriteRouteService } from "./write-service";
 
-export {
-  type M23ReadActor,
-  type M23WriteActor,
-  type PreHandler,
-  actorOf,
-  writeActorOf,
-  rejectAiActor,
-} from "./actor";
-
-export {
-  type CursorKeyset,
-  type CursorPage,
-  IdempotencyKeyRequiredError,
-  IfMatchRequiredError,
-  DEFAULT_PAGE_SIZE,
-  MAX_PAGE_SIZE,
-  decodeCursor,
-  encodeCursor,
-  pageSizeOf,
-  parseIfMatch,
-  requireIdempotencyKey,
-  requireIfMatch,
-} from "./concurrency";
-
-export { parse } from "./billing-typebox";
-
-export {
-  P,
-  PROVIDER_SCOPE,
-  CLAIM_CASELOAD,
-  OVERRIDE_ELIGIBLE,
-  RULE_PROTECTED,
-  CASELOAD_OR_SCOPE,
-  STEP_UP,
-  requireSystemPrincipal,
-} from "./guards";
+export type { M23ReadActor, M23WriteActor } from "./actor";
 
 export type { M23ReadRouteService } from "./read-service";
 export type { M23WriteRouteService } from "./write-service";
@@ -93,6 +57,16 @@ export interface M23RouteServices {
   readonly readService: M23ReadRouteService;
   readonly writeService: M23WriteRouteService;
   readonly assemblyService: ClaimAssemblyService;
+  readonly payerRouteStatus: (
+    organizationId: string,
+    providerEntityId: string,
+  ) => Promise<
+    | { readonly status: "verified"; readonly routeFingerprint: string }
+    | { readonly status: "not_configured"; readonly reasonCode?: string }
+    | { readonly status: "not_applicable" }
+  >;
+  readonly renderClaimPreview?: import("./claims.routes").ClaimsRouteDeps["renderPreview"];
+  readonly previewIntegrityKey?: string;
   /** F-210 — the tenant-entered hospice rate-table service (absent ⇒ the /billing/rate-tables routes are not mounted). */
   readonly rateTableService?: RateTableRouteService;
   /** Migration 1056 — the tenant-entered visit-charge schedule service (absent ⇒ /billing/visit-charge-schedules is not mounted). */

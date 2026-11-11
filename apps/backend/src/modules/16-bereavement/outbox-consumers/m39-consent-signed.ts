@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/16-bereavement/outbox-consumers/m39-consent-signed.ts — the §4.5 "post-death
 // grant handler" (the M16 spec's stale name for this event is `consent.created`; the real, catalogued name
 // is `m39.consent.signed`) — F-159, #248.
@@ -59,7 +60,7 @@
 // `confirmContact` only from `proposed`, and this handler pre-filters on `status = 'proposed'` before ever
 // calling the machine — a redelivery after the first delivery already confirmed the contact finds it
 // `active` and is a silent no-op, never a second confirm or a second score row.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import type {
   AdmissionId,
@@ -78,9 +79,6 @@ import type { WriteOutboxPort } from "../routes/write-service";
 const CONTACT = schema.bereavedContact;
 const PLAN = schema.bereavementPlan;
 const SCORE = schema.bereavementRiskScore;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 /** M39's own literal for the bereavement-outreach consent type (`consent-store-db.ts:1318`) — no shared
  *  constant exists anywhere in `@chartwarden/types` to import instead. */
@@ -339,9 +337,9 @@ async function appendContactScore(
         confidenceBand: row.confidenceBand,
       },
     },
-    // No `alerts` port bound here (matching the composition root's own `buildDrizzleM16WriteService`
-    // call, which supplies no `alerts` either) — `risk_tier_escalated` is best-effort per the runner's
-    // own rule 3 and is simply not emitted without a bound `AlertPort`, never a hard failure.
+    // No `alerts` port is passed here: `risk_tier_escalated` is best-effort per the runner's own rule 3 and is
+    // simply not emitted without a bound `AlertPort`, never a hard failure (it also has no M36 route yet,
+    // so the ADR-0109 D7 adapter would drop it).
   };
   await runEffects(tx, result.effects, effectCtx);
 }

@@ -13,6 +13,33 @@ import {
 
 const parse = (raw: string) => parseX12835(raw, "medicare");
 
+describe("claim-level partial-payment facts", () => {
+  it("preserves a fully balanced OA adjustment separately from CLP paid and patient responsibility", () => {
+    const body = [
+      "BPR*I*70.00*C*ACH*CCP*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615",
+      "TRN*1*EFT-PARTIAL-01*1512345678",
+      "REF*EV*RECV-PARTIAL-01",
+      "DTM*405*20260616",
+      "N1*PR*SYNTHETIC PAYER*XV*99999",
+      "N1*PE*SYNTHETIC HOSPICE*XX*1999999999",
+      "LX*1",
+      "CLP*PCN-PARTIAL-01*1*100.00*70.00*0.00*MC*ICN-PARTIAL-01",
+      "CAS*OA*45*30.00",
+    ];
+    const result = parse(wrap835(body));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.totalPaymentAmount).toBe(70);
+    expect(result.value.claims[0]).toMatchObject({
+      totalCharge: 100,
+      totalPayment: 70,
+      patientResponsibility: 0,
+      adjustments: [{ groupCode: "OA", reasonCode: "45", amount: 30 }],
+      serviceLines: [],
+    });
+  });
+});
+
 function expectDegraded(raw: string, code: string, reasonPart: string): void {
   const r = parse(raw);
   expect(r.ok).toBe(false);
@@ -38,6 +65,27 @@ describe("parseX12835 clean multi-claim 835", () => {
       productionDate: "2026-06-15T00:00:00Z",
     });
     expect(r.value.claims).toHaveLength(3);
+    expect(r.value.functionalGroupControlNumber).toBe("77");
+    expect(r.value.providerAdjustments).toEqual([
+      {
+        reason: "WO",
+        reference: "REF1",
+        amount: 25,
+        providerIdentifier: "1512345678",
+        fiscalPeriod: "2026-12-31",
+        segmentPosition: 31,
+        occurrence: 1,
+      },
+      {
+        reason: "L6",
+        reference: "REF2",
+        amount: -75,
+        providerIdentifier: "1512345678",
+        fiscalPeriod: "2026-12-31",
+        segmentPosition: 31,
+        occurrence: 2,
+      },
+    ]);
   });
 
   it("parses claim 1 with service lines, CAS, RARC, dates and member id", () => {
@@ -65,6 +113,7 @@ describe("parseX12835 clean multi-claim 835", () => {
           paidAmount: 500,
           paidUnits: 1,
           submittedUnits: 1,
+          references: [{ qualifier: "6R", value: "L1" }],
           adjustments: [{ groupCode: "CO", reasonCode: "45", amount: 100, quantity: 1 }],
           remarks: [{ kind: "LQ", code: "N30" }],
         },
@@ -110,6 +159,26 @@ describe("parseX12835 clean multi-claim 835", () => {
 });
 
 describe("parseX12835 other valid shapes", () => {
+  it("preserves unknown segments and identity references without treating them as posting instructions", () => {
+    const at = CLEAN_BODY.findIndex((segment) => segment.startsWith("SVC*"));
+    const body = [
+      ...CLEAN_BODY.slice(0, at + 1),
+      "ZZZ*VENDOR-REF*SAFE-SYNTHETIC",
+      ...CLEAN_BODY.slice(at + 1),
+    ];
+    const result = parse(wrap835(body));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.unknownSegments).toContainEqual({
+      segmentId: "ZZZ",
+      elements: ["VENDOR-REF", "SAFE-SYNTHETIC"],
+    });
+    expect(result.value.claims[0]?.serviceLines[0]?.references).toContainEqual({
+      qualifier: "6R",
+      value: "L1",
+    });
+  });
+
   it("parses a stand-alone denial with a non-payment BPR", () => {
     const r = parse(wrap835(DENIAL_BODY));
     expect(r.ok).toBe(true);

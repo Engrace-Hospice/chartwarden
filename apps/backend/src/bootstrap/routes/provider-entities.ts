@@ -1,4 +1,9 @@
 import { type DbClient, schema } from "@chartwarden/db";
+import {
+  decodeOffsetCursor,
+  encodeOffsetCursor,
+  offsetCursorScope,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { UnauthorizedError } from "@chartwarden/types";
 import { asc, ilike, or } from "drizzle-orm";
@@ -11,12 +16,6 @@ function limitOf(value: unknown): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return DEFAULT_LIMIT;
   return Math.min(MAX_LIMIT, Math.max(1, Math.floor(parsed)));
-}
-
-function cursorOf(value: unknown): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, Math.floor(parsed));
 }
 
 /**
@@ -38,8 +37,11 @@ export function registerProviderEntityLookupRoutes(app: FastifyInstance, db: DbC
       if (!request.context.userId || !organizationId) throw new UnauthorizedError();
       const query = (request.query ?? {}) as { q?: unknown; cursor?: unknown; limit?: unknown };
       const limit = limitOf(query.limit);
-      const offset = cursorOf(query.cursor);
       const q = typeof query.q === "string" ? query.q.trim() : "";
+      const cursorScope = offsetCursorScope("m1.provider-entities.lookup", {
+        q: q.toLowerCase(),
+      });
+      const offset = decodeOffsetCursor(organizationId, query.cursor, cursorScope);
       return withOrgContext(db, { organizationId, userId: request.context.userId }, async (tx) => {
         const rows = await tx
           .select({
@@ -67,7 +69,10 @@ export function registerProviderEntityLookupRoutes(app: FastifyInstance, db: DbC
         const page = rows.slice(0, limit);
         return {
           items: page,
-          nextCursor: rows.length > limit ? String(offset + limit) : null,
+          nextCursor:
+            rows.length > limit
+              ? encodeOffsetCursor(organizationId, offset + limit, cursorScope)
+              : null,
         };
       });
     },

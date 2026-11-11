@@ -63,7 +63,7 @@ export interface ExternalShareFlagReader {
   forOrg(organizationId: string): Promise<Record<string, boolean>>;
 }
 
-export const EXTERNAL_SHARE_LIMIT_CODE = "EXTERNAL_SHARE_LIMIT";
+const EXTERNAL_SHARE_LIMIT_CODE = "EXTERNAL_SHARE_LIMIT";
 export const EXTERNAL_SHARE_CODE_INVALID = "EXTERNAL_SHARE_CODE_INVALID";
 
 export interface ExternalShareServiceDeps {

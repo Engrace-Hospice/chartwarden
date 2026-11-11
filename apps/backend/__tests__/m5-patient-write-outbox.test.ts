@@ -141,8 +141,22 @@ describe("GAP-016 — M5 DB route service publishes m5.patient.* through the out
   it("addAddress propagates a publish failure (the write tx rolls back; no false cascadeEmitted)", async () => {
     const h = harness([[{ id: PATIENT }], [{ addressId: "addr-1" }]], true);
     await expect(
-      h.service.addAddress(ORG, PATIENT, { line1: "1", city: "A", postalCode: "1" } as never, USER),
+      h.service.addAddress(
+        ORG,
+        PATIENT,
+        { line1: "1", city: "A", state: "TX", postalCode: "1" } as never,
+        USER,
+      ),
     ).rejects.toThrow("publish failed");
+  });
+
+  it("addAddress rejects a US address without a state before opening a transaction", async () => {
+    const h = harness([]);
+    await expect(
+      h.service.addAddress(ORG, PATIENT, { line1: "1", city: "A", postalCode: "1" } as never, USER),
+    ).rejects.toThrow("state is required for a US address");
+    expect(h.txs).toEqual([]);
+    expect(h.published).toEqual([]);
   });
 
   it("addPayer publishes m5.patient.payer_changed", async () => {

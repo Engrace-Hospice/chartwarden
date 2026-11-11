@@ -35,3 +35,4 @@ export * from "./beneficiary-appeal";
 export * from "./playbook";
 export * from "./medical-review-report";
 export * from "./payer";
+export * from "./adjustment-policy";

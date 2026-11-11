@@ -23,7 +23,7 @@ import type {
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
 
-export const M36_CHANNEL_MEMBERSHIP_SYNC_CONSUMER = "m36.channel-membership-sync" as const;
+const M36_CHANNEL_MEMBERSHIP_SYNC_CONSUMER = "m36.channel-membership-sync" as const;
 
 export const M36_CHANNEL_MEMBERSHIP_SYNC_EVENT_TYPES = [
   "m5.patient.assignment_created",

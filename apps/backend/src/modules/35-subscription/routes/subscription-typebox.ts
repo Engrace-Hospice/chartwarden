@@ -1,3 +1,4 @@
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/35-subscription/routes/subscription-typebox.ts — M35 (§4.4) wire contracts.
 //
@@ -11,19 +12,8 @@ import { ValidationError } from "@chartwarden/types";
 // VOCAB NOTE: the string-literal unions MIRROR the FROZEN `@chartwarden/db` pgEnum value lists
 // (packages/db/src/schema/subscription-billing/*) and the leaf `@chartwarden/types` unions; schema wins on
 // conflict. M35 carries NO PHI (§8.5); every money field is INTEGER CENTS.
-import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
-}
 
 const uuid = () => Type.String({ format: "uuid" });
 const isoNull = () => Type.Union([Type.String({ format: "date-time" }), Type.Null()]);
@@ -78,18 +68,15 @@ export const OrgUsageParamsSchema = Type.Object({ organizationId: uuid() });
 export const StripeEventParamsSchema = Type.Object({ eventId: Type.String({ minLength: 1 }) });
 
 export const ListQuerySchema = Type.Object({
-  cursor: Type.Optional(Type.String()),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
 });
 export const AdminSubscriptionListQuerySchema = Type.Object({
-  cursor: Type.Optional(Type.String()),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
   status: Type.Optional(SubscriptionStatusLit),
   organizationId: Type.Optional(uuid()),
 });
 export const DunningListQuerySchema = Type.Object({
-  cursor: Type.Optional(Type.String()),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
   stage: Type.Optional(DunningStageLit),
 });
 
@@ -191,7 +178,7 @@ const MeterCatalogDto = Type.Object({
   overageUnitPriceCents: Type.Integer(),
   billingAggregation: Type.String(),
 });
-export const PlanCatalogResponseDto = Type.Object({
+const PlanCatalogResponseDto = Type.Object({
   slug: Type.String(),
   name: Type.String(),
   description: strNull(),
@@ -246,7 +233,7 @@ export const SetupIntentResponseDto = Type.Object({
   status: Type.Union([Type.Literal("pending"), Type.Literal("ready")]),
 });
 
-export const InvoiceListItemDto = Type.Object({
+const InvoiceListItemDto = Type.Object({
   id: uuid(),
   invoiceNumber: strNull(),
   status: InvoiceStatusLit,
@@ -258,7 +245,7 @@ export const InvoiceListItemDto = Type.Object({
   dueAt: isoNull(),
   paidAt: isoNull(),
 });
-export const InvoiceLineDto = Type.Object({
+const InvoiceLineDto = Type.Object({
   id: uuid(),
   kind: Type.String(),
   description: Type.String(),
@@ -300,7 +287,7 @@ export const UsageCurrentResponseDto = Type.Object({
   periodEnd: Type.String({ format: "date-time" }),
   meters: Type.Array(UsageMeterDto),
 });
-export const UsagePeriodDto = Type.Object({
+const UsagePeriodDto = Type.Object({
   periodStart: Type.String({ format: "date-time" }),
   periodEnd: Type.String({ format: "date-time" }),
   totalQuantity: Type.Integer(),
@@ -427,7 +414,7 @@ export const CurrentRevenueResponseDto = Type.Object({
   activeSubscriptions: Type.Integer(),
   asOf: Type.String({ format: "date-time" }),
 });
-export const WebhookReceiptDto = Type.Object({
+const WebhookReceiptDto = Type.Object({
   stripeEventId: Type.String(),
   eventType: Type.String(),
   receivedAt: Type.String({ format: "date-time" }),

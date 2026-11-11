@@ -56,9 +56,9 @@ function toRecord(r: typeof A.$inferSelect & { legalHold?: boolean }): AuditEven
 const heldByActiveLegalHold = rowHeldByActiveLegalHold() as SQL<boolean>;
 
 /** Newest-first "strictly older than the cursor" predicate: (createdAt, id) < (cAt, cId). */
-function afterCursor(cursor?: string): SQL | undefined {
+function afterCursor(orgId: string, cursor?: string): SQL | undefined {
   if (!cursor) return undefined;
-  const c = decodeCursor(cursor);
+  const c = decodeCursor(orgId, cursor);
   if (!c) return undefined;
   return or(
     sql`${A.createdAt} < ${c.createdAt}`,
@@ -124,10 +124,12 @@ function inScope(scope: AccountingScope): SQL {
 }
 
 /** Split an over-fetched (n+1) row set into a page + nextCursor. */
-function paginate<T>(rows: AuditEventRecord[], limit: number, project: (r: AuditEventRecord) => T): Page<T> {
+function paginate<T>(
+  orgId: string,
+  rows: AuditEventRecord[], limit: number, project: (r: AuditEventRecord) => T): Page<T> {
   if (rows.length > limit) {
     const page = rows.slice(0, limit);
-    return { items: page.map(project), nextCursor: encodeCursor(page[page.length - 1]!) };
+    return { items: page.map(project), nextCursor: encodeCursor(orgId, page[page.length - 1]!) };
   }
   return { items: rows.map(project), nextCursor: null };
 }
@@ -194,10 +196,10 @@ export function createDbAuditQuery(db: DbClient): AuditQuery {
         filter.from ? gte(A.createdAt, new Date(filter.from)) : undefined,
         filter.to ? lte(A.createdAt, new Date(filter.to)) : undefined,
         filter.patientId ? touchesPatient(filter.patientId) : undefined,
-        afterCursor(filter.cursor),
+        afterCursor(orgId, filter.cursor),
       );
       return run(orgId, async (tx) => {
-        const page = paginate(await fetch(tx, where, limit), limit, (r) => r);
+        const page = paginate(orgId, await fetch(tx, where, limit), limit, (r) => r);
         if (!filter.includeActorNames) return page;
         const names = await actorNames(tx, orgId, page.items.map((r) => r.actorUserId));
         return {
@@ -225,10 +227,10 @@ export function createDbAuditQuery(db: DbClient): AuditQuery {
         isAccess(),
         filter.from ? gte(A.createdAt, new Date(filter.from)) : undefined,
         filter.to ? lte(A.createdAt, new Date(filter.to)) : undefined,
-        afterCursor(filter.cursor),
+        afterCursor(orgId, filter.cursor),
       );
       return run(orgId, async (tx) =>
-        paginate(await fetch(tx, where, limit), limit, (r) => ({
+        paginate(orgId, await fetch(tx, where, limit), limit, (r) => ({
           eventId: r.id,
           at: r.createdAt,
           actorUserId: r.actorUserId,
@@ -253,7 +255,7 @@ export function createDbAuditQuery(db: DbClient): AuditQuery {
         inScope(filter.scope),
         gte(A.createdAt, new Date(filter.from)),
         lte(A.createdAt, new Date(filter.to)),
-        afterCursor(filter.cursor),
+        afterCursor(orgId, filter.cursor),
       );
       const project = (r: AuditEventRecord): DisclosureEntry => {
         const disc = r.context.disclosure as { to?: unknown; purpose?: unknown } | undefined;
@@ -273,7 +275,7 @@ export function createDbAuditQuery(db: DbClient): AuditQuery {
         };
       };
       return run(orgId, async (tx) => {
-        const page = paginate(await fetch(tx, where, limit), limit, project);
+        const page = paginate(orgId, await fetch(tx, where, limit), limit, project);
         return {
           patientId,
           period: { from: filter.from, to: filter.to },

@@ -38,7 +38,7 @@ export const M7_ERROR_STATUS = {
   RESOLUTION_NOTE_REQUIRED: 422,
   DISCONTINUE_REASON_REQUIRED: 422,
   // Optimistic concurrency (§2.3 / §7.7)
-  STALE_VERSION: 412,
+  STALE_VERSION: 409,
   // Structural — an event dispatched from a state that does not accept it (§2.2 graph).
   ILLEGAL_TRANSITION: 409,
 } as const;

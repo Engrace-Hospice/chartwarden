@@ -151,6 +151,24 @@ export function createDrizzleAttemptStore(db: DbClient): SubmissionAttemptStore 
       });
     },
 
+    findByControlNumber(organizationId, scope, controlNumber) {
+      return inOrg(organizationId, async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(T)
+          .where(
+            and(
+              eq(T.organizationId, organizationId),
+              eq(T.scope, scope),
+              eq(T.controlNumber, controlNumber),
+              or(eq(T.status, "reserved"), eq(T.status, "sent")),
+            ),
+          )
+          .limit(1);
+        return row ? toAttempt(row) : null;
+      });
+    },
+
     allocateControlNumber(usage) {
       return nextControlNumber(db, usage);
     },

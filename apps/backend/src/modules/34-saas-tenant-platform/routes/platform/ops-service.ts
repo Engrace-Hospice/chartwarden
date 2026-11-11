@@ -13,14 +13,15 @@ import { OnboardingRepository } from "@chartwarden/saas-tenant-platform";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { ConflictError, NotFoundError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
-import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";
+import {
+  type CursorPage,
+  PLATFORM_CURSOR_SCOPE,
+  decodeKeyset,
+  encodeKeyset,
+  pageSizeOf,
+} from "../keyset-page";
 
-export const DSAR_OPEN_STATUSES = [
-  "requested",
-  "generating",
-  "review_pending",
-  "extended",
-] as const;
+const DSAR_OPEN_STATUSES = ["requested", "generating", "review_pending", "extended"] as const;
 
 export interface PlatformDsarJobView {
   readonly id: string;
@@ -87,7 +88,7 @@ export interface PlatformOpsService {
 }
 
 /** PURE - the first canonical step not yet settled (the machine's `currentStep`). */
-export function currentOnboardingStep(
+function currentOnboardingStep(
   tasks: readonly Pick<
     PlatformOnboardingTaskView,
     "templateKey" | "status" | "isCanonical" | "canonicalOrder"
@@ -99,18 +100,32 @@ export function currentOnboardingStep(
   return open[0]?.templateKey ?? null;
 }
 
-/** PURE - open and past the (extended) SLA. */
-export function isDsarSlaBreached(
-  job: { status: string; slaDueAt: Date; extendedUntil: Date | null },
-  now: Date,
-): boolean {
-  if (!(DSAR_OPEN_STATUSES as readonly string[]).includes(job.status)) return false;
-  const due = job.extendedUntil ?? job.slaDueAt;
-  return due.getTime() < now.getTime();
-}
-
 /** The statuses a platform-ops skip may act on (a settled task is refused, never silently rewritten). */
-export const SKIPPABLE_TASK_STATUSES = ["pending", "in_progress", "blocked"] as const;
+const SKIPPABLE_TASK_STATUSES = ["pending", "in_progress", "blocked"] as const;
+
+/**
+ * The only onboarding tasks platform ops may waive. Contract/tenant creation and go-live controls must
+ * be completed, not bypassed through the generic skip route. `payer_enrollment` belongs to the newer
+ * commercial onboarding checklist rather than the eleven-step canonical floor, but uses this same service.
+ */
+const SKIPPABLE_ONBOARDING_TASK_KEYS: ReadonlySet<string> = new Set([
+  "mac_configured",
+  "payer_enrollment",
+  "dosespot_kickoff_initiated",
+  "sample_data_loaded",
+]);
+
+function assertTaskMayBeSkipped(task: {
+  readonly templateKey: string;
+  readonly status: string;
+}): void {
+  if (!(SKIPPABLE_TASK_STATUSES as readonly string[]).includes(task.status)) {
+    throw new ConflictError(`a ${task.status} task cannot be skipped`);
+  }
+  if (!SKIPPABLE_ONBOARDING_TASK_KEYS.has(task.templateKey)) {
+    throw new ConflictError(`onboarding task ${task.templateKey} cannot be skipped`);
+  }
+}
 
 // ── in-memory twin ───────────────────────────────────────────────────────────────────────────────────
 
@@ -151,9 +166,7 @@ export function createInMemoryPlatformOpsService(
         const o = onboarding.get(orgSlug);
         const task = o?.tasks.find((t) => t.id === taskId);
         if (!o || !task) throw new NotFoundError("onboarding_task", taskId);
-        if (!(SKIPPABLE_TASK_STATUSES as readonly string[]).includes(task.status)) {
-          throw new ConflictError(`a ${task.status} task cannot be skipped`);
-        }
+        assertTaskMayBeSkipped(task);
         const skipped: PlatformOnboardingTaskView = {
           ...task,
           status: "skipped",
@@ -225,7 +238,7 @@ export function createDrizzlePlatformOpsService(deps: DrizzlePlatformOpsDeps): P
     async listDsarJobs(filter, cursor, limit) {
       return inPlatform("platform-ops cross-tenant DSAR list", async (tx) => {
         const size = pageSizeOf(limit);
-        const after = cursor ? decodeCursor(cursor) : null;
+        const after = decodeKeyset(PLATFORM_CURSOR_SCOPE, cursor);
         const open = sql.join(
           DSAR_OPEN_STATUSES.map((s) => sql`${s}`),
           sql`, `,
@@ -274,7 +287,9 @@ export function createDrizzlePlatformOpsService(deps: DrizzlePlatformOpsDeps): P
             }),
           ),
           nextCursor:
-            hasMore && last ? encodeCursor({ createdAt: last.cursorTs, id: last.id }) : null,
+            hasMore && last
+              ? encodeKeyset(PLATFORM_CURSOR_SCOPE, { createdAt: last.cursorTs, id: last.id })
+              : null,
           hasMore,
         };
       });
@@ -305,9 +320,7 @@ export function createDrizzlePlatformOpsService(deps: DrizzlePlatformOpsDeps): P
           .where(and(eq(T.id, taskId), eq(T.tenantAccountId, account.id)))
           .limit(1);
         if (!task) throw new NotFoundError("onboarding_task", taskId);
-        if (!(SKIPPABLE_TASK_STATUSES as readonly string[]).includes(task.status)) {
-          throw new ConflictError(`a ${task.status} task cannot be skipped`);
-        }
+        assertTaskMayBeSkipped(task);
         const evidence = {
           ...((task.completionEvidence as Record<string, unknown>) ?? {}),
           skip: {

@@ -1,3 +1,10 @@
+import {
+  type AbacTarget,
+  hasOrgWideScope,
+  requireAbac,
+  requirePermission,
+} from "@chartwarden/auth";
+import { assertAuthorBoundToActor } from "@chartwarden/hope";
 // apps/backend/src/modules/10-hope/routes/hope-routes.ts — M10-T06 the §4.1 route inventory (22 routes)
 // behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth, M3) on the
 // §4.6 keys M10 registers into M3's catalog (M10_CONTRIBUTED_PERMISSIONS). Org binding is server-side
@@ -20,13 +27,7 @@
 // predicates by name. `GET /hope/sfv` (pure org-wide worklist, no id/filter to scope by) and `POST
 // /hope/admin/regenerate-schedules` (§4.1 ABAC = `platform_admin`, a role check, not caseload/PE — out of
 // this GAP's scope) are deliberately left unwired, per the M6/M7/M8/M9 list-route precedent.
-import {
-  type AbacTarget,
-  hasOrgWideScope,
-  requireAbac,
-  requirePermission,
-} from "@chartwarden/auth";
-import { assertAuthorBoundToActor } from "@chartwarden/hope";
+import { type PreHandler, membershipActorOf } from "@chartwarden/shared/route-kit";
 import { type HopeRfaKind, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
@@ -66,9 +67,6 @@ import {
 } from "./hope-typebox";
 import type { HopeRouteService } from "./service";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface HopeRouteDeps {
   service: HopeRouteService;
   /**
@@ -103,25 +101,13 @@ async function listScopeOf(
   }
 }
 
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  // `userId` here is the codebase-wide convention of "the acting MEMBERSHIP id" (every
-  // `created_by_membership_id`/`signed_by_membership_id` column this module's service layer writes
-  // it into is a membership FK). This used to read `ctx.userId` (the raw Better Auth user id, a
-  // DIFFERENT id from the org membership) — every `POST /admissions/:id/hope/*` FK-violated on
-  // `created_by_membership_id` as a result. Same bug, same fix, as M8's `encounters-routes.ts`.
-  const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: membershipId };
-}
-
 /**
  * #850: the correct body accepts the SFV author union (RN/NP/MD/LPN/LVN) because the record's RFA kind is
  * only known server-side. The claimed attribution must clear the per-RFA floor AND be one of the ACTOR's own
  * role-derived disciplines, for every RFA kind and every claimed value (never the body's word). An
  * unresolvable id falls to the strict (non-SFV) floor.
  */
-async function assertCorrectionAttribution(
+async function assertAmendmentAttribution(
   service: HopeRouteService,
   request: FastifyRequest,
   organizationId: string,
@@ -281,7 +267,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       config: { auditRead: { resourceKind: "hope_workflow", resourceIdParam: "admissionId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { admissionId } = parse(AdmissionParamsSchema, request.params);
       const result = await service.getWorkflowState(organizationId, admissionId);
       return parse(HopeWorkflowStateResponseSchema, result);
@@ -296,7 +282,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       config: { auditRead: { resourceKind: "hope_schedule", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(ScheduleListQuerySchema, request.query);
       // A named `patientId` was verified against the caseload by `hope.scope`. An unfiltered list is
       // narrowed in the query (GAP-182, as for the SFV worklist): org-wide roles see all, everyone else
@@ -319,7 +305,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       config: { auditRead: { resourceKind: "hope_schedule", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(ScheduleParamsSchema, request.params);
       return service.getSchedule(organizationId, id);
     },
@@ -330,7 +316,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/hope/schedules/:id/skip",
     { preHandler: [SKIP, SCOPE_SCHEDULE("hope.schedule.skip")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(ScheduleParamsSchema, request.params);
       const body = parse(SkipScheduleSchema, request.body);
       return service.skipSchedule(organizationId, id, body.reasonCode);
@@ -342,10 +328,11 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/admissions/:admissionId/hope/timepoints",
     { preHandler: [WRITE, LATE_OVERRIDE_GATE, SCOPE("hope.timepoint.write"), ABAC_AUTHOR] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { admissionId } = parse(AdmissionParamsSchema, request.params);
       const body = parse(RecordTimepointSchema, request.body);
       requireOverrideJustification(body);
+      assertAuthorBoundToActor(body.rfaKind, body.authorDiscipline, request.context?.roles ?? []);
       const res = await service.recordTimepoint(organizationId, userId, admissionId, {
         rfaKind: body.rfaKind,
         targetDate: body.targetDate,
@@ -367,7 +354,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/admissions/:admissionId/hope/sfv",
     { preHandler: [WRITE, LATE_OVERRIDE_GATE, SCOPE("hope.timepoint.write"), ABAC_SFV] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { admissionId } = parse(AdmissionParamsSchema, request.params);
       const body = parse(RecordSfvSchema, request.body);
       requireOverrideJustification(body);
@@ -390,7 +377,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/hope/assessments/:id",
     { preHandler: [WRITE, SCOPE("hope.timepoint.write"), ABAC_AUTHOR_ON_ROW] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       const body = parse(UpdateDraftSchema, request.body);
       return service.updateDraft(organizationId, id, body.data);
@@ -402,7 +389,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/hope/assessments/:id/sign",
     { preHandler: [SIGN, SCOPE("hope.timepoint.sign"), ABAC_SIGN] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       const body = parse(SignTimepointSchema, request.body);
       return parse(
@@ -417,16 +404,10 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/hope/assessments/:id/correct",
     { preHandler: [CORRECT, SCOPE("hope.timepoint.correct"), ABAC_CORRECT] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       const body = parse(CorrectTimepointSchema, request.body);
-      await assertCorrectionAttribution(
-        service,
-        request,
-        organizationId,
-        id,
-        body.authorDiscipline,
-      );
+      await assertAmendmentAttribution(service, request, organizationId, id, body.authorDiscipline);
       const res = await service.correctTimepoint(organizationId, userId, id, {
         correctionReason: body.correctionReason,
         ifVersion: body.ifVersion,
@@ -442,9 +423,10 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/hope/assessments/:id/inactivations",
     { preHandler: [CORRECT, SCOPE("hope.timepoint.correct"), ABAC_CORRECT] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       const body = parse(InactivateTimepointSchema, request.body);
+      await assertAmendmentAttribution(service, request, organizationId, id, body.authorDiscipline);
       const res = await service.inactivateTimepoint(organizationId, userId, id, body);
       return reply.code(201).send(res);
     },
@@ -458,7 +440,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       config: { auditRead: { resourceKind: "hope_assessment", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       return service.getAssessment(organizationId, id);
     },
@@ -472,7 +454,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       config: { auditRead: { resourceKind: "hope_assessment", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       return service.listAssessmentSubmissions(organizationId, id);
     },
@@ -486,7 +468,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       config: { auditRead: { resourceKind: "hope_assessment_workspace", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       return parse(
         HopeAssessmentWorkspaceResponseSchema,
@@ -503,7 +485,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       config: { auditRead: { resourceKind: "hope_assessment_review", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       return parse(
         HopeAssessmentReviewResponseSchema,
@@ -517,7 +499,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/hope/assessments/:id/answers",
     { preHandler: [WRITE, SCOPE("hope.timepoint.write"), ABAC_AUTHOR_ON_ROW] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       const body = parse(PatchAnswersSchema, request.body);
       return parse(
@@ -531,9 +513,9 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // Z0350 out of the unrestricted public answer PATCH surface.
   app.patch(
     "/api/v1/hope/assessments/:id/huv/completion-date",
-    { preHandler: [WRITE, SCOPE("hope.timepoint.write")] },
+    { preHandler: [WRITE, SCOPE("hope.timepoint.write"), ABAC_AUTHOR_ON_ROW] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       const body = parse(SetHuvCompletionDateSchema, request.body);
       return parse(
@@ -551,7 +533,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       config: { auditRead: { resourceKind: "hope_assessment", patientIdParam: "patientId" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
       return service.listPatientAssessments(organizationId, patientId);
     },
@@ -562,7 +544,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/hope/assessments/:id/summary-pdf",
     { preHandler: [READ_TIMEPOINT, SCOPE("hope.timepoint.read")] },
     async (request, reply) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       parse(SummaryPdfSchema, request.body);
       const res = await service.requestSummaryPdf(organizationId, userId, id);
@@ -581,7 +563,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       config: { auditRead: { resourceKind: "hope_sfv", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(SfvWorklistQuerySchema, request.query);
       return service.listSfv(
         organizationId,
@@ -599,7 +581,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       config: { auditRead: { resourceKind: "hope_sfv", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(SfvParamsSchema, request.params);
       return service.getSfv(organizationId, id);
     },
@@ -615,7 +597,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       const query = parse(ValidationQuerySchema, request.query);
       return service.getValidation(organizationId, id, {
@@ -633,7 +615,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       config: { auditRead: { resourceKind: "hope_submission", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(SubmissionListQuerySchema, request.query);
       return service.listSubmissions(organizationId, q.providerEntityId);
     },
@@ -647,7 +629,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       config: { auditRead: { resourceKind: "hope_submission", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);
       return service.getSubmission(organizationId, id);
     },
@@ -668,7 +650,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/hope/submissions/:id/retry",
     { preHandler: [SUBMISSION_MANAGE, SCOPE_SUBMISSION("hope.submission.manage")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);
       parse(RetrySubmissionSchema, request.body);
       return service.retrySubmission(organizationId, id);
@@ -682,7 +664,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/hope/submissions/assemble",
     { preHandler: [SUBMISSION_MANAGE, SCOPE_BODY_PE("hope.submission.manage")] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const body = parse(AssembleSubmissionSchema, request.body);
       const res = await service.assembleSubmission(organizationId, body.providerEntityId);
       return reply.code(201).send(res);
@@ -696,7 +678,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       config: { auditRead: { resourceKind: "hope_submission", resourceIdParam: "id" } },
     },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);
       const pkg = await service.downloadSubmissionPackage(organizationId, id);
       return reply
@@ -710,7 +692,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/hope/submissions/:id/mark-uploaded",
     { preHandler: [SUBMISSION_MANAGE, SCOPE_SUBMISSION("hope.submission.manage")] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);
       const body = parse(MarkSubmissionUploadedSchema, request.body);
       return service.markSubmissionUploaded(organizationId, userId, id, body);
@@ -721,7 +703,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/hope/submissions/:id/results",
     { preHandler: [SUBMISSION_MANAGE, SCOPE_SUBMISSION("hope.submission.manage")] },
     async (request) => {
-      const { organizationId, userId } = actorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);
       const body = parse(ImportSubmissionResultSchema, request.body);
       return service.importSubmissionResult(organizationId, userId, id, body);
@@ -740,7 +722,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const q = parse(DashboardQuerySchema, request.query);
       return service.complianceDashboard(organizationId, q.providerEntityId);
     },
@@ -751,7 +733,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/hope/admin/regenerate-schedules",
     { preHandler: [ADMIN_REGEN, SCOPE_BODY_ADMISSION("hope.admin.regenerate_schedules")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = membershipActorOf(request);
       const body = parse(RegenerateSchedulesSchema, request.body);
       return service.regenerateSchedules(organizationId, body.admissionId);
     },

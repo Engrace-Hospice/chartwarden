@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # deploy/production/backup/cw-backup.sh — coordinated Postgres + object-store backup and restore (#857).
 #
-# Runs inside the image built from ./Dockerfile (pgvector/pgvector:pg18 + pgBackRest + mc). Subcommands:
-#   entrypoint <cmd...>        render /etc/pgbackrest/pgbackrest.conf from BACKUP_* env, then the stock entrypoint
+# Runs inside the image built from ./Dockerfile (ChartWarden's Wolfi Postgres image + pgBackRest + mc). Subcommands:
+#   entrypoint <cmd...>        render /etc/pgbackrest/pgbackrest.conf from BACKUP_* env, then the Postgres image's entrypoint
 #   snapshot [full|diff|incr|none]
 #                              one coordinated snapshot: optional pgBackRest base backup (local + off-site repo), then
 #                              capture the DB LSN, force + confirm WAL archiving up to it, list every MinIO object
@@ -10,7 +10,8 @@
 #                              and write snapshots/<id>/{manifest.ndjson.gz,marker.json} off-site (marker last)
 #   schedule                   the long-running loop the `backup` sidecar runs (snapshot every interval, daily base backup)
 #   healthcheck                exit 1 when the last successful snapshot is older than BACKUP_MAX_AGE_S
-#   provision-source-reader    create the read-only MinIO account the sidecar lists/reads with (needs MINIO_ROOT_*)
+#   provision-source-reader    MinIO source only (the drill): create the read-only account (needs MINIO_ROOT_*). Production's
+#                              SeaweedFS reader comes from compose.yml's object-store-provision (compose.backup.yml)
 #   marker [id|latest]         print a snapshot's marker (default: the newest complete one)
 #   restore-db <id|latest>     pgBackRest restore of a snapshot into the EMPTY $PGDATA (PITR to the marker's LSN)
 #   restore-objects <id>       copy the snapshot's objects into the RESTORE_MINIO_* store and verify every sha256
@@ -179,7 +180,7 @@ mc_setup() { # aliases: offsite (always), source / target when configured
   read -r host port <<<"$(offsite_host_port)"
   mc_host offsite "https://$host:$port" "$BACKUP_OFFSITE_S3_ACCESS_KEY" "$BACKUP_OFFSITE_S3_SECRET_KEY"
   if [ -n "${BACKUP_SOURCE_MINIO_ACCESS_KEY:-}" ]; then
-    mc_host source "${BACKUP_SOURCE_MINIO_URL:-http://minio:9000}" "$BACKUP_SOURCE_MINIO_ACCESS_KEY" \
+    mc_host source "${BACKUP_SOURCE_MINIO_URL:-http://seaweedfs:8333}" "$BACKUP_SOURCE_MINIO_ACCESS_KEY" \
       "${BACKUP_SOURCE_MINIO_SECRET_KEY:?}"
   fi
   if [ -n "${RESTORE_MINIO_ACCESS_KEY:-}" ]; then
@@ -403,11 +404,13 @@ cmd_healthcheck() {
   [ -f "$f" ] && [ $(($(date +%s) - $(stat -c %Y "$f"))) -le "$max_age" ]
 }
 
+# MinIO SOURCE ONLY (`mc admin`): the coordinated drill's MinIO stand-in. Production's source is SeaweedFS, whose
+# read-only key is rendered by compose.yml's object-store-provision from object-store/reader-policy.json.
 cmd_provision_source_reader() {
   need MINIO_ROOT_USER MINIO_ROOT_PASSWORD BACKUP_SOURCE_MINIO_ACCESS_KEY BACKUP_SOURCE_MINIO_SECRET_KEY
   local policy="${BACKUP_SOURCE_MINIO_POLICY:-chartwarden-backup-reader}"
   export MC_CONFIG_DIR="$STATE_DIR/mc"
-  mc_host root "${BACKUP_SOURCE_MINIO_URL:-http://minio:9000}" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
+  mc_host root "${BACKUP_SOURCE_MINIO_URL:?}" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
   local doc="$STATE_DIR/reader-policy.json"
   mkdir -p "$STATE_DIR"
   cat >"$doc" <<'POLICY'
@@ -500,7 +503,8 @@ cmd_restore_objects() {
       bad=$((bad + 1))
       continue
     fi
-    mcq cp --attr "Content-Type=$t" "$f" "target/$b/$k" </dev/null >/dev/null
+    # --checksum: the app's verified reads refuse an object stored without its SHA-256 (a plain cp drops it)
+    mcq cp --checksum SHA256 --attr "Content-Type=$t" "$f" "target/$b/$k" </dev/null >/dev/null
   done <"$work/expect.tsv"
   [ "$bad" = 0 ] || die "$bad object(s) failed the restore sha256 check"
   cat "$work/manifest.ndjson.gz" # stdout: restore.sh keeps it for the verifier
@@ -518,7 +522,8 @@ entrypoint)
   if [ "${1:-}" = postgres ]; then render_conf; fi
   if [ "$(id -u)" = 0 ]; then chown -R postgres:postgres /etc/pgbackrest /var/spool/pgbackrest; fi
   umask 022 # the stock entrypoint creates PGDATA's parents as root, then drops to postgres
-  exec docker-entrypoint.sh "$@"
+  # The Postgres image's wrapper (adds the /var/run/postgresql socket, then Wolfi's stock script); by full path, not PATH.
+  exec /usr/local/bin/docker-entrypoint.sh "$@"
   ;;
 render-conf) render_conf ;;
 snapshot) cmd_snapshot "$@" ;;

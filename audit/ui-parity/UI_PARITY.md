@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 116 documented screen specs · 45 module screen-sets registered · 381 screens wired across web/portal/admin.
+**Coverage:** 117 documented screen specs · 45 module screen-sets registered · 393 screens wired across web/portal/admin.
 - **admin**: 39 screen(s)
-- **portal**: 18 screen(s)
-- **web**: 324 screen(s)
+- **portal**: 19 screen(s)
+- **web**: 335 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -22,7 +22,7 @@
 - **mobile**: 1 spec(s)
 - **platform**: 5 spec(s)
 - **portal**: 11 spec(s)
-- **revenue**: 17 spec(s)
+- **revenue**: 18 spec(s)
 - **staffing**: 3 spec(s)
 
 ## Implemented surface (registered screens)
@@ -148,8 +148,17 @@
 | web | 16-bereavement | `bereavement.plan` | `/bereavement/plans/:planId` | `bereavement.plan.read` | ✅ |
 | web | 16-bereavement | `bereavement.plan.seed` | `/bereavement/plans/:planId/seed` | `bereavement.plan.activate` | ✅ |
 | web | 16-bereavement | `bereavement.plan.closeout` | `/bereavement/plans/:planId/closeout` | `bereavement.plan.read` | ✅ |
+| web | 16-bereavement | `bereavement.mailings` | `/bereavement/mailings` | `bereavement.mailing.read` | ✅ |
+| web | 16-bereavement | `bereavement.mailings.settings` | `/bereavement/mailings/settings` | `bereavement.mailing.manage` | ✅ |
+| web | 16-bereavement | `bereavement.mailings.run` | `/bereavement/mailings/runs/:runId` | `bereavement.mailing.read` | ✅ |
+| web | 16-bereavement | `bereavement.groups` | `/bereavement/groups` | `bereavement.group.read` | ✅ |
+| web | 16-bereavement | `bereavement.groups.detail` | `/bereavement/groups/:groupId` | `bereavement.group.read` | ✅ |
+| web | 16-bereavement | `bereavement.memorials` | `/bereavement/memorials` | `bereavement.memorial.rsvp` | ✅ |
+| web | 16-bereavement | `bereavement.memorials.detail` | `/bereavement/memorials/:serviceId` | `bereavement.memorial.rsvp` | ✅ |
+| web | 16-bereavement | `bereavement.library` | `/bereavement/library` | `bereavement.library.read` | ✅ |
 | web | 16-bereavement | `bereavement.plan.outreach` | `/bereavement/plans/:planId/outreach` | `bereavement.outreach.read` | ✅ |
 | web | 16-bereavement | `bereavement.plan.risk` | `/bereavement/plans/:planId/risk` | `bereavement.risk.read` | ✅ |
+| web | 16-bereavement | `bereavement.predeath` | `/bereavement/pre-death/:admissionId` | `bereavement.assessment_draft.read` | ✅ |
 | web | 16-bereavement | `bereavement.contact` | `/bereavement/plans/:planId/contacts/:contactId` | `bereavement.plan.read` | ✅ |
 | web | 16-bereavement | `bereavement.contact.screen` | `/bereavement/plans/:planId/contacts/:contactId/screen` | `bereavement.contact.flag_complicated_grief` | ✅ |
 | web | 16-bereavement | `bereavement.plan.history` | `/bereavement/plans/:planId/history` | `bereavement.plan.read` | ✅ |
@@ -260,6 +269,7 @@
 | web | 24-billing-medicaid | `medicaid.metrics` | `/medicaid/billing/metrics` | `medicaid.claim.read_metrics` | ✅ |
 | web | 24-billing-medicaid | `medicaid.surveyor-read` | `/admin/medicaid-billing-audit/:claimId` | `medicaid.claim.read` | ✅ |
 | web | 25-remittance | `remittance.worklist` | `/remittance` | `remittance.read` | ✅ |
+| web | 25-remittance | `remittance.claimmd-era-review` | `/remittance/claimmd-era-review` | `remittance.read` | ✅ |
 | web | 25-remittance | `remittance.denials` | `/remittance/denials` | `denial.worklist.read` | ✅ |
 | web | 25-remittance | `remittance.adrs` | `/remittance/adrs` | `adr.read` | ✅ |
 | web | 25-remittance | `remittance.audits` | `/remittance/audits` | `audit_request.read` | ✅ |
@@ -286,6 +296,7 @@
 | web | 30-quality | `quality.qapi-incidents` | `/quality/qapi` | `incident.read` | ✅ |
 | web | 30-quality | `quality.mortality` | `/quality/mortality` | `mortality.read` | ✅ |
 | web | 31-portal | `portal.admin` | `/admin/portal` | `portal.account.read_list` | ✅ |
+| web | 31-portal | `portal.patient-signatures` | `/patients/:patientId/signatures` | `portal.signature_request.read` | ✅ |
 | web | 31-portal | `portal.telehealth` | `/telehealth` | `telehealth.read_list` | ✅ |
 | web | 32-ai-platform | `ai.compliance` | `/compliance/ai` | `ai.invocation.read` | ✅ |
 | web | 32-ai-platform | `ai.opt-in` | `/organization/ai/opt-in` | `ai.tenant_opt_in` | ✅ |
@@ -405,6 +416,7 @@
 | portal | 31-portal | `portal.telehealth` | `/p/:patientId/visits/:visitId/telehealth` | `telehealth.join_patient_or_caregiver` | ✅ |
 | portal | 31-portal | `portal.medications` | `/p/:patientId/medications` | `portal.medications.read_summary` | ✅ |
 | portal | 31-portal | `portal.documents` | `/p/:patientId/documents` | `portal.documents.read_list` | ✅ |
+| portal | 31-portal | `portal.signatures` | `/p/:patientId/signatures` | `portal.signature.read` | ✅ |
 | portal | 31-portal | `portal.messages` | `/p/:patientId/messages` | `portal.messages.read_channel` | ✅ |
 | portal | 31-portal | `portal.amendments` | `/p/:patientId/amendments` | `portal.amendment.read_own` | ✅ |
 | portal | 31-portal | `portal.preferences` | `/p/:patientId/preferences` | `portal.preferences.read_own` | ✅ |

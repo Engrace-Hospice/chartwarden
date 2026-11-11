@@ -21,8 +21,10 @@ export {
 export {
   registerM31LateJoinWatchdogWorker,
   registerM31PostDischargeGraceWorker,
+  registerM31SignatureReminderWorker,
   scheduleM31LateJoinWatchdogJob,
   scheduleM31PostDischargeGraceJob,
+  scheduleM31SignatureReminderJob,
 } from "./cron-workers";
 export {
   M31_LATE_JOIN_WINDOW_MS,
@@ -30,3 +32,10 @@ export {
   runLateJoinWatchdogOnce,
 } from "./late-join-watchdog";
 export { M31_PLATFORM_JOB_ID, wireM31Tenancy } from "./wiring";
+export {
+  M31_SIGNATURE_REMINDER_INTERVAL_MS,
+  M31_SIGNATURE_REMINDER_MAX_PER_ORG_PER_RUN,
+  type SignatureReminderOrgResult,
+  type SignatureReminderSweepDeps,
+  runSignatureReminderSweepOnce,
+} from "./signature-reminder-sweep";

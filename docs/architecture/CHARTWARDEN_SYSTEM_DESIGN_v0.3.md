@@ -384,7 +384,7 @@ sequenceDiagram
 ### 2.1 Local Development (MacBook Pro)
 
 > **STATUS: TARGET — NOT BUILT.** There is no `infra/` directory and no compose file at the path
-> below. Local dev today is a bare `docker run` of Postgres (`pgvector/pgvector:pg18`) plus
+> below. Local dev today is a bare `docker run` of Postgres (production's image, built from `deploy/production/postgres`) plus
 > `bun run dev`; there is no local valkey, minio, mailpit or mlflow. `docs/DEVELOPMENT.md` is the
 > maintained runbook for it.
 
@@ -396,7 +396,7 @@ networks:
   chartwarden: { driver: bridge }
 services:
   postgres:
-    image: pgvector/pgvector:pg18
+    image: ghcr.io/engrace-hospice/chartwarden-postgres:18-sha-<commit>   # or build deploy/production/postgres
     ports: ["5432:5432"]
     volumes: [./data/pg:/var/lib/postgresql/data]
     networks: [chartwarden]
@@ -1584,7 +1584,7 @@ merge to main
 ### 12.2 Container Image Strategy
 
 - Multi-stage Dockerfile per service
-- Base image: `node:22-bookworm-slim` for TS services, `python:3.12-slim` for Python
+- Base image: `node:22-bookworm-slim` for TS services; Wolfi (`cgr.dev/chainguard/wolfi-base`, glibc, digest-pinned) for Python — the docling worker's torch/opencv wheels need glibc, so not Alpine
 - Distroless final image where feasible
 - Image tagged with: `<service>:<git-sha>`, `<service>:<branch>`, `<service>:latest` (latest only on main)
 - Image signing with cosign; verification in deploy
@@ -1630,8 +1630,9 @@ cd chartwarden
 bun install
 # STATUS: TARGET — NOT BUILT. `infra/` does not exist and there is no compose file at that path.
 # Real local dev: a bare `docker run` of Postgres, then migrate + seed. See docs/DEVELOPMENT.md.
+docker build -t chartwarden-postgres:dev deploy/production/postgres
 docker run -d --name chartwarden-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx \
-  -p 5440:5432 pgvector/pgvector:pg18
+  -p 5440:5432 chartwarden-postgres:dev
 bun db:migrate
 bun db:seed
 

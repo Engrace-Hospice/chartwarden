@@ -8,6 +8,7 @@
 // `admission_intake_scope` (an intake role, a patient of the caller's org, no active / on-hold admission) — passed in
 // by `registerAdmissionRoutes`, which owns them. The plan is a decision aid; creating the admission is still
 // `POST /api/v1/admissions` (`admission.create`, same OR'd scope).
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { DegradedError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { IdParamsSchema, PatientIdParamsSchema, parse } from "./admission-typebox";
@@ -15,20 +16,12 @@ import type { ReadmissionService } from "./readmission-service";
 import { BenefitPeriodPlanQuerySchema, BenefitPeriodPlanSchema } from "./readmission-typebox";
 import { ResourceNotFoundError } from "./service";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface ReadmissionRouteDeps {
   readonly service: ReadmissionService | undefined;
   /** `admission.read` + (`admission.scope` OR `admission_intake_scope`) over the `:id` admission. */
   readonly admissionGuards: readonly PreHandler[];
   /** `admission.read` + (`caseload_or_scope` OR `admission_intake_scope`) over `:patientId`. */
   readonly patientGuards: readonly PreHandler[];
-}
-
-function orgOf(request: FastifyRequest): string {
-  const organizationId = request.context?.organizationId;
-  if (!organizationId || !request.context.userId) throw new UnauthorizedError();
-  return organizationId;
 }
 
 function bound(service: ReadmissionService | undefined): ReadmissionService {
@@ -45,7 +38,7 @@ export function registerReadmissionRoutes(app: FastifyInstance, deps: Readmissio
       config: { auditRead: { resourceKind: "admission", resourceIdParam: "id" } },
     },
     async (request) => {
-      const organizationId = orgOf(request);
+      const organizationId = actorOf(request).organizationId;
       const { id } = parse(IdParamsSchema, request.params);
       const query = parse(BenefitPeriodPlanQuerySchema, request.query);
       const plan = await bound(deps.service).getReadmissionContext(organizationId, id, query);
@@ -62,7 +55,7 @@ export function registerReadmissionRoutes(app: FastifyInstance, deps: Readmissio
       config: { auditRead: { resourceKind: "admission", patientIdParam: "patientId", list: true } },
     },
     async (request) => {
-      const organizationId = orgOf(request);
+      const organizationId = actorOf(request).organizationId;
       const { patientId } = parse(PatientIdParamsSchema, request.params);
       const query = parse(BenefitPeriodPlanQuerySchema, request.query);
       return bound(deps.service).getPatientBenefitPeriodPlan(organizationId, patientId, query);

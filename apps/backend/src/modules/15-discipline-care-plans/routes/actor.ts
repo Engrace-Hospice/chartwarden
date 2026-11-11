@@ -1,78 +1,27 @@
-// apps/backend/src/modules/15-discipline-care-plans/routes/actor.ts — M15-T06 route actor binding.
+// apps/backend/src/modules/15-discipline-care-plans/routes/actor.ts — the M15 extras on the route-kit actor.
 //
-// The org/actor binding for every M15 route is ALWAYS server-side (the M2-assembled `request.context`,
-// NEVER the body/query) — the single home for that extraction (the M23/M24/M26 routes/actor.ts precedent).
-// No handler reads an org id, an acting membership id, a session class or a step-up flag off the wire.
-// Every authored row (a goal, an intervention, an assessment, a supervisory attestation, a volunteer
-// assignment, a compliance gate, an hour entry) is stamped with the server-assembled membership id — the
-// §8.6 (S) spoofing control: a caller cannot attest as another RN by putting their id in the body.
-import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
-import type { FastifyReply, FastifyRequest } from "fastify";
+// Request actors come from `@chartwarden/shared/route-kit` (`actorOf` / `writeActorOf`, server-assembled
+// `request.context`, never the body). Every authored row is stamped with the server-assembled membership id —
+// the §8.6 (S) spoofing control. This file only adds what M15 needs on top: the SYSTEM-actor marker the write
+// service's caseload gate reads, and the system-principal lock on the `/internal/...` seam routes.
+import type { PreHandler, RouteActor, WriteActor } from "@chartwarden/shared/route-kit";
+import { ForbiddenError } from "@chartwarden/types";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
-/** The READ-route actor: org + user + roles + the session facts the §7.8/§7.9 disclosure gates read. */
-export interface M15ReadActor {
-  readonly organizationId: string;
-  readonly userId: string;
-  /** The actor's ACTIVE M2 membership (null when the session carries none — write paths reject). */
-  readonly membershipId: string | null;
-  readonly roles: readonly string[];
-  /** M2 session class (`staff` unless a portal/collaborator/auditor session) — §7.9 gating input. */
-  readonly sessionClass: string;
-  readonly locationIds: readonly string[];
-  /**
-   * The SYSTEM-ACTOR marker — the one place it is defined. `"system"` exempts a caller from the write
-   * service's caseload gate (a worker / outbox consumer / seam acting for the platform has no caseload).
-   * It is NEVER derived from a request: {@link actorOf} / {@link writeActorOf} leave it unset, so only
-   * server-side code that calls {@link systemM15Actor} can mint one. Absent ⇒ a human actor, gated.
-   */
+/**
+ * The SYSTEM-ACTOR marker — the one place it is defined. `"system"` exempts a caller from the write service's
+ * caseload gate (a worker / outbox consumer / seam acting for the platform has no caseload). It is NEVER derived
+ * from a request: the kit actors leave it unset, so only server-side code that calls {@link systemM15Actor} can
+ * mint one. Absent ⇒ a human actor, gated.
+ */
+interface SystemMarker {
   readonly kind?: "system";
 }
 
-const str = (value: unknown): string | null =>
-  typeof value === "string" && value.length > 0 ? value : null;
+/** The READ-route actor (the kit {@link RouteActor}, plus the system marker). */
+export type M15ReadActor = RouteActor & SystemMarker;
 
-/** Extract the org-scoped read actor from `request.context` (server-assembled), or 401. */
-export function actorOf(request: FastifyRequest): M15ReadActor {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return {
-    organizationId: ctx.organizationId,
-    userId: ctx.userId,
-    membershipId: str(ctx.attributes?.membershipId),
-    roles: ctx.roles,
-    sessionClass: str(ctx.attributes?.sessionClass) ?? "staff",
-    locationIds: ctx.locationIds,
-  };
-}
-
-/**
- * The MUTATING-route actor: the read actor PLUS the server-verified recent step-up flag
- * (`context.attributes.stepUpRecent`, §4.1 "session (step-up)" on the sign/amend routes). An authored M15
- * row is always attributed to a real membership, so a session without one cannot write.
- */
-export interface M15WriteActor extends M15ReadActor {
-  readonly membershipId: string;
-  /** True iff the session carries a recent (server-verified) step-up auth. */
-  readonly stepUpRecent: boolean;
-}
-
-/** Extract the write actor (org + user + membership + roles + step-up) from `request.context`, or 401/403. */
-export function writeActorOf(request: FastifyRequest): M15WriteActor {
-  const actor = actorOf(request);
-  if (actor.membershipId === null) {
-    throw new ForbiddenError(
-      "an M15 write must be attributed to an active membership; this session carries none",
-    );
-  }
-  return {
-    ...actor,
-    membershipId: actor.membershipId,
-    stepUpRecent: request.context?.attributes?.stepUpRecent === true,
-  };
-}
+/** The MUTATING-route actor (the kit {@link WriteActor}, plus the system marker). */
+export type M15WriteActor = WriteActor & SystemMarker;
 
 /**
  * The §4.1 `/internal/...` seam routes (25–28) are SYSTEM-principal only. The permission keys are never
@@ -106,6 +55,7 @@ export function systemM15Actor(
     membershipId: attribution.membershipId,
     roles: [],
     sessionClass: "staff",
+    actorKind: "system",
     locationIds: [],
     stepUpRecent: false,
   };

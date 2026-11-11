@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/16-bereavement/routes/guards.ts — M16-T06 (§4.7 / §4.8) route-guard builders.
 //
 // The shared `requirePermission` / `requireAbac` / `requireStepUp` preHandler factories every M16 route
@@ -22,9 +23,8 @@
 //      §4.1's own ABAC column agrees for 3 and 4 (`org_scope_bereavement_oversight ∧ …`); route 5's
 //      `bereavement_window` cell is the spec contradicting its own §4.8 definition, and §4.8 (the
 //      predicate's definition) wins, so route 5 binds oversight.
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
-import type { PreHandler } from "./actor";
 
 type TargetRequest = {
   readonly params?: unknown;
@@ -107,6 +107,43 @@ export const ABAC_VOLUNTEER_GATES = (key: string): PreHandler =>
     notFoundOnDeny: false,
   }) as PreHandler;
 
+/**
+ * ADR-0109 D5 — `bereavement_pre_death_assessor` over the route's `:admissionId` (routes 35 / 36). The draft exists before
+ * any plan, so there is no plan to resolve: the predicate decides from the caller's discipline, their seat on the patient's
+ * care team and the oversight roles. `notFoundOnDeny` keeps an admission the caller may not touch indistinguishable from one
+ * that does not exist.
+ */
+export const ABAC_PRE_DEATH_ASSESSOR = (key: string): PreHandler =>
+  requireAbac(key, "bereavement_pre_death_assessor", {
+    getTarget: (r) => ({ admissionId: param(r, "admissionId") }),
+    notFoundOnDeny: true,
+  }) as PreHandler;
+
+/**
+ * ADR-0109 D10 (PR 3) — `bereavement_window` over a contact named in the BODY (`contactId`): enrolling a family into a support group is the
+ * family's own counselor's (or oversight's) call. The service re-reads the contact inside its transaction.
+ */
+export const ABAC_WINDOW_BODY_CONTACT = (key: string): PreHandler =>
+  requireAbac(key, "bereavement_window", {
+    getTarget: (r) => ({ contactId: bodyField(r, "contactId") }),
+    notFoundOnDeny: true,
+  }) as PreHandler;
+
+/**
+ * ADR-0109 D10 (PR 3) — `bereavement_group_scope` over the route's `:groupId` (and `:sessionId` when present). `manage` = oversight or the
+ * group's staff facilitator; `run` also admits a volunteer facilitator who passes the 418.78 gates. A route with no `:groupId` (create) admits
+ * oversight only. `notFoundOnDeny` keeps a group the caller does not facilitate indistinguishable from one that does not exist.
+ */
+export const ABAC_GROUP = (key: string, mode: "manage" | "run"): PreHandler =>
+  requireAbac(key, "bereavement_group_scope", {
+    getTarget: (r) => ({
+      groupId: param(r, "groupId"),
+      sessionId: param(r, "sessionId"),
+      mode,
+    }),
+    notFoundOnDeny: true,
+  }) as PreHandler;
+
 /** §4.8 `portal_self_service` over the route's `:contactId` (the bereaved person's own M31 session). */
 export const ABAC_PORTAL_SELF = (key: string): PreHandler =>
   requireAbac(key, "portal_self_service", {
@@ -135,6 +172,13 @@ export function ABAC_ANY(...guards: readonly PreHandler[]): PreHandler {
     throw lastDenial ?? new ForbiddenError("no authorization branch permitted this request");
   };
 }
+
+/**
+ * ADR-0109 D10 (PR 3) — the program-wide reads (the support-group list, the memorial list): bereavement oversight OR any bereavement-capable
+ * discipline (a counselor, MSW, chaplain, or a gated volunteer). Neither list names a family.
+ */
+export const ABAC_PROGRAM_STAFF = (key: string): PreHandler =>
+  ABAC_ANY(ABAC_OVERSIGHT(key), ABAC_DISCIPLINE_SELF(key));
 
 /** §4.1 "step_up_fresh" — `requireStepUp(operationKey)` over the M3 `step_up_recent` predicate. */
 export const STEP_UP = (operationKey: string): PreHandler =>

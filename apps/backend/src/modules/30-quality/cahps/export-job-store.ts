@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { type DbClient, schema } from "@chartwarden/db";
+import type { CahpsExportJob, CahpsExportJobPort } from "@chartwarden/quality";
 // apps/backend/src/modules/30-quality/cahps/export-job-store.ts — GAP-087. The `cahps_export_job` data access:
 // the R-14 create (idempotent on the live job), the worker's lifecycle port (`CahpsExportJobPort`), the R-15 view
 // mapping and the sealed-file read behind `GET .../export/:exportId/file`.
@@ -5,9 +8,7 @@
 // Every statement runs in `withOrgContext` on the job's own org (RLS scopes it to `app.org_id`), with an explicit
 // `organization_id` predicate as the belt. The rendered file is stored ONLY as a tenant-DEK envelope
 // (`file_cipher`); the plaintext exists in memory for the render/push and for a download response.
-import { createHash } from "node:crypto";
-import { type DbClient, schema } from "@chartwarden/db";
-import type { CahpsExportJob, CahpsExportJobPort } from "@chartwarden/quality";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
 import type { CahpsExportJobView } from "../routes/read-service";
@@ -17,11 +18,8 @@ const J = schema.cahpsExportJob;
 type JobRow = typeof J.$inferSelect;
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
-/** A worker / seam read names no acting human (the M4 audit trigger maps "" to NULL). */
-const SYSTEM_USER_ID = "";
-
 /** The route that serves a completed export's file (replaces a signed object-store URL). */
-export const cahpsExportFilePath = (exportId: string): string =>
+const cahpsExportFilePath = (exportId: string): string =>
   `/api/v1/quality/cahps/export/${exportId}/file`;
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
@@ -87,7 +85,7 @@ export async function getExportJob(
   organizationId: string,
   exportId: string,
 ): Promise<JobRow | null> {
-  return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+  return withOrgContext(db, { organizationId, userId: CONSUMER_USER_ID }, async (tx) => {
     const [row] = await (tx as Tx)
       .select()
       .from(J)
@@ -136,7 +134,7 @@ export function buildCahpsExportJobPort(deps: CahpsExportJobPortDeps): CahpsExpo
     const exportId = job.exportId;
     return withOrgContext(
       deps.db,
-      { organizationId: job.organizationId, userId: SYSTEM_USER_ID },
+      { organizationId: job.organizationId, userId: CONSUMER_USER_ID },
       (tx) => fn(tx as Tx, exportId),
     );
   };

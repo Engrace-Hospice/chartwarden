@@ -32,9 +32,10 @@
  * Run:   bun run scripts/check-route-reachability.ts
  * CI:    exits 1 on any unreached registrar that is not a registered deferral.
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import ts from "typescript";
+import { walkFiles } from "./lib/gate-scan";
 
 const REPO_ROOT = process.cwd();
 const BACKEND_SRC = "apps/backend/src";
@@ -56,18 +57,11 @@ const DEFERRED: readonly { file: string; registrar: string; reason: string }[] =
 ];
 
 // ---- file discovery -------------------------------------------------------
-const files: string[] = [];
-(function walk(dir: string): void {
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      if (entry === "dist" || entry === "__tests__" || entry === "node_modules") continue;
-      walk(full);
-      continue;
-    }
-    if (entry.endsWith(".ts") && !entry.includes(".test.")) files.push(full);
-  }
-})(BACKEND_SRC);
+const files = walkFiles(BACKEND_SRC, {
+  skipDirs: ["dist", "__tests__", "node_modules"],
+  include: (name) => name.endsWith(".ts") && !name.includes(".test."),
+  mustExist: true,
+});
 
 const sources = new Map<string, ts.SourceFile>();
 for (const f of files) {

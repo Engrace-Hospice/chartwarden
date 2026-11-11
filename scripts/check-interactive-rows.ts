@@ -26,8 +26,9 @@
  * truncates at the `>` inside `onClick={() => …}`, which silently reclassifies rows — that mistake
  * put the true count of keyboard-inoperable rows at 1 when it was 5.
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { walkFiles } from "./lib/gate-scan";
 
 const APP_ROOTS = ["apps/web/src", "apps/admin/src", "apps/portal/src"];
 const INTERACTIVE_CLASS = "wx-data-row-interactive";
@@ -37,26 +38,6 @@ export interface RowFinding {
   file: string;
   line: number;
   detail: string;
-}
-
-function walk(dir: string, out: string[]): void {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      if (entry === "node_modules" || entry === "dist") continue;
-      walk(full, out);
-      continue;
-    }
-    if (!entry.endsWith(".tsx")) continue;
-    if (entry.includes(".test.") || entry.includes(".stories.")) continue;
-    out.push(full);
-  }
 }
 
 /**
@@ -132,8 +113,13 @@ export function inspect(src: string, file: string): RowFinding[] {
 }
 
 export function run(repoRoot = process.cwd()): RowFinding[] {
-  const files: string[] = [];
-  for (const root of APP_ROOTS) walk(join(repoRoot, root), files);
+  const files = APP_ROOTS.flatMap((root) =>
+    walkFiles(join(repoRoot, root), {
+      skipDirs: ["node_modules", "dist"],
+      include: (name) =>
+        name.endsWith(".tsx") && !name.includes(".test.") && !name.includes(".stories."),
+    }),
+  );
   const findings: RowFinding[] = [];
   for (const file of files.sort()) {
     findings.push(...inspect(readFileSync(file, "utf8"), file.slice(repoRoot.length + 1)));

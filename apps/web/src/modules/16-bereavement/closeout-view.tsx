@@ -22,6 +22,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useSession } from "../../shell/session";
 import {
   type BereavementLogKind,
   type BereavementLogOutcome,
@@ -48,6 +49,7 @@ import {
 import {
   Card,
   CheckboxField,
+  ErrorText,
   Field,
   Modal,
   Notice,
@@ -55,13 +57,54 @@ import {
   SummaryGrid,
   TextAreaField,
   TextField,
-  alertStyle,
   columnStyle,
   ghostButtonStyle,
   mutedStyle,
   pageTitleStyle,
   primaryButtonStyle,
 } from "./bereavement-ui";
+
+/** M16's oversight roles (`BEREAVEMENT_OVERSIGHT_ROLES`): the readers the closure route sends the discharge summary's id to. */
+const OVERSIGHT_ROLES: readonly string[] = [
+  "clinical_supervisor",
+  "director_of_nursing",
+  "bereavement_coordinator",
+  "compliance_officer",
+];
+/** The permission the document-history screen this links to is registered under (22-documents/screens.ts). */
+const DOCUMENT_HISTORY_PERMISSION = "documents.read_history";
+
+/**
+ * ADR-0109 D9 — the internal discharge summary (offered versus delivered, for an auditor). Module 22 opens it to oversight and
+ * compliance only, so the closure route sends the document id to those readers and `null` to everyone else: no id means "not yet
+ * rendered" to an oversight reader and nothing at all to anyone else, so only an oversight reader is told one exists. The link opens
+ * the document's version history (where each rendered version can be opened), so it needs that screen's permission too.
+ */
+function DischargeSummaryLink({ documentId }: { documentId: string | null }): JSX.Element | null {
+  const session = useSession();
+  if (documentId === null) {
+    const oversight = session?.roles?.some((role) => OVERSIGHT_ROLES.includes(role)) ?? false;
+    return oversight ? (
+      <span style={mutedStyle}>
+        The internal discharge summary has not been rendered yet. Module 22 renders it after the
+        plan closes.
+      </span>
+    ) : null;
+  }
+  if (!session?.permissions?.includes(DOCUMENT_HISTORY_PERMISSION)) {
+    return (
+      <span style={mutedStyle}>
+        The internal discharge summary has been rendered, but your role cannot open the document
+        history it is read from.
+      </span>
+    );
+  }
+  return (
+    <Link to={`/documents/${encodeURIComponent(documentId)}/versions`} style={ghostButtonStyle}>
+      View discharge summary versions
+    </Link>
+  );
+}
 
 export function BereavementCloseoutView(): JSX.Element {
   const client = useApiClient();
@@ -176,6 +219,7 @@ export function BereavementCloseoutView(): JSX.Element {
               mono
             />
           </SummaryGrid>
+          <DischargeSummaryLink documentId={closure.dischargeSummaryDocumentId} />
           {closure.reason === "thirteen_month_completion" ? (
             <span style={mutedStyle}>
               The 13-month obligation was met in full. Every other closure reason ended the program
@@ -312,7 +356,7 @@ function FinalContactModal({
         onChange={setArtifactDocumentId}
       />
       <TextAreaField label="Counselor note" value={notes} onChange={setNotes} />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? <ErrorText>{error}</ErrorText> : null}
     </Modal>
   );
 }

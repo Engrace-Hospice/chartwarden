@@ -31,6 +31,14 @@ export const claimSubmission = pgTable(
 
     claimControlNumber: text("claim_control_number").notNull(),
     attemptIndex: integer("attempt_index").notNull(),
+    /** Keyed fingerprint of the reviewed 837I business inputs; null only for historical/non-interactive legacy attempts. */
+    reviewedSourceFingerprint: text("reviewed_source_fingerprint"),
+
+    /** Durable send guard. `sending` is committed before network I/O; redelivery never resends it blindly. */
+    dispatchState: text("dispatch_state").notNull().default("pending"),
+    dispatchToken: uuid("dispatch_token"),
+    dispatchStartedAt: timestamp("dispatch_started_at", { withTimezone: true }),
+    dispatchReasonCode: text("dispatch_reason_code"),
 
     outcome: m23ClaimSubmissionOutcome("outcome").notNull().default("queued"),
     outcomeReason: text("outcome_reason"), // populated for failed_* outcomes
@@ -55,6 +63,12 @@ export const claimSubmission = pgTable(
     (kind = 'notr' AND notr_id IS NOT NULL) OR
     (kind = 'transfer_notice' AND transfer_notice_id IS NOT NULL)
   )`,
+    dispatchStateValid: sql`CHECK (dispatch_state IN ('pending', 'sending', 'in_doubt', 'finished'))`,
+    dispatchIdentityValid: sql`CHECK (
+      (dispatch_state = 'pending' AND dispatch_token IS NULL AND dispatch_started_at IS NULL) OR
+      (dispatch_state IN ('sending', 'in_doubt') AND dispatch_token IS NOT NULL AND dispatch_started_at IS NOT NULL) OR
+      (dispatch_state = 'finished' AND ((dispatch_token IS NULL AND dispatch_started_at IS NULL) OR (dispatch_token IS NOT NULL AND dispatch_started_at IS NOT NULL)))
+    )`,
   }),
 );
 

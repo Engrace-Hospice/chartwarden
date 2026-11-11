@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/29-external-interfaces/outbox-consumers/m5-patient-deceased.ts — F-165 (#248):
 // binds `m5.patient.deceased`. M29's own spec text (dependsOn 5): "`m5.patient.deceased` consumed via
 // outbox to freeze inbound ADT processing for the decedent and to refuse any post-death A01/A04 events
@@ -40,7 +41,7 @@
 // task-11's own header names for the sibling `.accepted`/`.rejected` pair. Catalogued alongside this
 // consumer, record-only (no consumer anywhere reads a proposal's expiry — the row itself is the durable
 // record, the same posture the sibling `.rejected` entry already states).
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
@@ -48,10 +49,6 @@ import { expireProposal } from "../proposals/decision";
 import type { M29WriteOutboxPort } from "../routes/store-drizzle";
 
 const PROPOSAL = schema.hl7InboundProposal;
-
-/** A system-driven write (a death cascade, not a human reviewer) names no acting membership — the F-102
- *  `CONSUMER_USER_ID` convention this arc uses throughout. */
-const CONSUMER_USER_ID = "";
 
 /** The `decision_rationale` this freeze writes — distinguishable from the (also unbuilt) SLA sweep's own
  *  default reason, so an operator reading a proposal's history knows which mechanism closed it. */

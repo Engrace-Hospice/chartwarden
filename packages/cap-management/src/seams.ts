@@ -3,7 +3,6 @@
 // The backend registers the Drizzle-backed implementations into the M1 SeamRegistry in a later phase (the
 // M27 seam-registration precedent). Monetary fields cross the seam as numeric STRINGS (cents-as-string) so a
 // consumer never silently parses to a lossy JS float; day counts are plain numbers.
-import { M26_PERMISSIONS } from "./permissions";
 
 export type AggregateBandLabel = "safe" | "watch" | "warn" | "breach";
 export type InpatientBandLabel = "safe" | "watch" | "breach";
@@ -183,8 +182,6 @@ export const M26_PUBLISHED_SEAMS = [
   "cap.metrics-provider",
 ] as const;
 
-export type M26PublishedSeamKey = (typeof M26_PUBLISHED_SEAMS)[number];
-
 /** The DB alert-band enum → the coarse seam band label (aggregate family). */
 export function toAggregateBandLabel(
   band: "safe" | "watch_90" | "warn_95" | "breach_100" | string,
@@ -203,7 +200,3 @@ export function toInpatientBandLabel(
   if (band === "inpatient_watch_18") return "watch";
   return "safe";
 }
-
-// Re-export to anchor the permission catalog to the seam module's consumers (M36 subscriber default
-// population is "any user holding cap.event.read").
-export const CAP_EVENT_READ_PERMISSION = M26_PERMISSIONS[5]; // "cap.event.read"

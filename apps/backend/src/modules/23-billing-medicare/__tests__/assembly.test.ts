@@ -1,6 +1,3 @@
-import * as billing from "@chartwarden/billing";
-import { BillingRuleRegistry, pass } from "@chartwarden/billing";
-import type { Rule } from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/__tests__/assembly.test.ts — the §10 task-30 CLAIM ASSEMBLY
 // service tests (D10 / D15). The service constructs its repos internally (`new repositories.X(tx)`), so this
 // suite PARTIAL-mocks `@chartwarden/billing`: the data ports are swapped for the in-memory `_billing-repo-fakes`
@@ -13,9 +10,12 @@ import type { Rule } from "@chartwarden/billing";
 //   • server-authoritative — the response lines are HIPPS-derived; any client-supplied line data is ignored.
 //   • one logical unit — claim + claim_line[] + per_diem_rate_calculation (+ optional sia_calculation) + the initial
 //     validation_run + the creation history row + the `m23.claim.draft_created` outbox emit all land together.
+import * as billing from "@chartwarden/billing";
+import { BillingRuleRegistry, type ClaimAssemblySeams, pass } from "@chartwarden/billing";
+import type { Rule } from "@chartwarden/billing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildClaimAssemblyService } from "../services/claim-assembly";
-import type { ClaimAssemblyActor, ClaimAssemblySeams } from "../services/claim-assembly";
+import type { ClaimAssemblyActor } from "../services/claim-assembly";
 import { computeClaimSia } from "../services/claim-assembly-facts";
 import type { FakeStore } from "./_billing-repo-fakes";
 import { makeFakeDb } from "./_billing-repo-fakes";
@@ -100,6 +100,10 @@ function buildSeams(overrides: Partial<ClaimAssemblySeams> = {}): ClaimAssemblyS
   const seams: ClaimAssemblySeams = {
     patientPayer: {
       medicarePrimaryForRange: async () => ({ patientPayerId: "pp-1", medicarePrimary: true }),
+      medicarePrimaryForRangeInTransaction: async () => ({
+        patientPayerId: "pp-1",
+        medicarePrimary: true,
+      }),
     },
     admission: {
       resolveForRange: async () => ({
@@ -219,10 +223,33 @@ beforeEach(() => store.reset());
 afterEach(() => vi.clearAllMocks());
 
 describe("D15 — non-Medicare-primary window is rejected before any write", () => {
+  it("revalidates the payer through the claim transaction and refuses a changed row (#877)", async () => {
+    const seams = buildSeams({
+      patientPayer: {
+        medicarePrimaryForRange: async () => ({
+          patientPayerId: "pp-before",
+          medicarePrimary: true,
+        }),
+        medicarePrimaryForRangeInTransaction: async () => ({
+          patientPayerId: "pp-after",
+          medicarePrimary: true,
+        }),
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+
+    await expect(svc.assemble(ACTOR, REQUEST)).rejects.toMatchObject({
+      code: "NON_MEDICARE_PRIMARY_PAYER",
+      statusCode: 409,
+    });
+    expect(store.claims.size).toBe(0);
+  });
+
   it("rejects NON_MEDICARE_PRIMARY_PAYER and persists nothing", async () => {
     const seams = buildSeams({
       patientPayer: {
         medicarePrimaryForRange: async () => ({ patientPayerId: "pp-1", medicarePrimary: false }),
+        medicarePrimaryForRangeInTransaction: async () => null,
       },
     });
     const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
@@ -242,6 +269,7 @@ describe("D15 — non-Medicare-primary window is rejected before any write", () 
           medicarePrimary: false,
           medicareAdvantageEnrollee: true,
         }),
+        medicarePrimaryForRangeInTransaction: async () => null,
       },
     });
     const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
@@ -256,6 +284,7 @@ describe("D15 — non-Medicare-primary window is rejected before any write", () 
     const seams = buildSeams({
       patientPayer: {
         medicarePrimaryForRange: async () => ({ patientPayerId: "pp-1", medicarePrimary: false }),
+        medicarePrimaryForRangeInTransaction: async () => null,
       },
     });
     const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
@@ -264,7 +293,10 @@ describe("D15 — non-Medicare-primary window is rejected before any write", () 
 
   it("rejects when no payer resolution is returned at all (fail-closed)", async () => {
     const seams = buildSeams({
-      patientPayer: { medicarePrimaryForRange: async () => null },
+      patientPayer: {
+        medicarePrimaryForRange: async () => null,
+        medicarePrimaryForRangeInTransaction: async () => null,
+      },
     });
     const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
     await expect(svc.assemble(ACTOR, REQUEST)).rejects.toMatchObject({

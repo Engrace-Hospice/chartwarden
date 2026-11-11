@@ -12,7 +12,7 @@ export const M36_TASK_EVENTS = {
   statusChanged: "m36.task.status_changed",
 } as const;
 
-export const TASK_AGGREGATE_KIND = "communication_task";
+const TASK_AGGREGATE_KIND = "communication_task";
 
 export type TaskEventFacts =
   | {

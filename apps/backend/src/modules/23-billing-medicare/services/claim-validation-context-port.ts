@@ -11,12 +11,12 @@
 // facts the assembly deliberately leaves null are real here: the latest resolved HETS eligibility check and the
 // admission's NOE row.
 import {
+  type ClaimAssemblySeams,
   type IsoDate,
   type NoeStatusSnapshot,
   medicareReceiptDay,
   repositories,
 } from "@chartwarden/billing";
-import type { ClaimAssemblySeams } from "./claim-assembly";
 import {
   computeClaimPerDiemClass,
   computeClaimSia,

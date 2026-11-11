@@ -10,7 +10,9 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { Link } from "react-router-dom";
+import { fetchSignedInName } from "../auth-http";
 import { PORTAL_BASE_PATH } from "../base-path";
+import { isOwnRecord, relationshipLabel } from "../portal-relationship";
 import { humanize, readError, statusTone } from "./portal-format";
 import { PortalLoadState, PortalPage } from "./portal-page";
 
@@ -37,6 +39,7 @@ export function PortalAccount(): JSX.Element {
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [signedInName, setSignedInName] = useState<string | null>(null);
   const inFlightStep = useRef(false);
   const inFlightLogout = useRef(false);
   const active = useRef(true);
@@ -45,6 +48,15 @@ export function PortalAccount(): JSX.Element {
     active.current = true;
     return () => {
       active.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    let current = true;
+    void fetchSignedInName().then((name) => {
+      if (current) setSignedInName(name);
+    });
+    return () => {
+      current = false;
     };
   }, []);
   useEffect(() => {
@@ -165,7 +177,21 @@ export function PortalAccount(): JSX.Element {
               <dl className="wx-portal-settings-details">
                 <div>
                   <dt>Relationship</dt>
-                  <dd>{ctx ? humanize(ctx.relationship) : "—"}</dd>
+                  <dd>{ctx ? relationshipLabel(ctx.relationship) : "—"}</dd>
+                </div>
+                <div>
+                  <dt>
+                    {ctx && isOwnRecord(ctx.relationship) ? "Your own record" : "Signed in as"}
+                  </dt>
+                  <dd>
+                    {ctx
+                      ? isOwnRecord(ctx.relationship)
+                        ? "You're signed in as the patient"
+                        : [signedInName, relationshipLabel(ctx.relationship)]
+                            .filter(Boolean)
+                            .join(" · ")
+                      : "—"}
+                  </dd>
                 </div>
                 <div>
                   <dt>Access status</dt>

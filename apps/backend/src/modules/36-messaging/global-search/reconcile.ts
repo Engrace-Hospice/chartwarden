@@ -33,7 +33,7 @@ import { isEligibleForIndex, redactionMarkedOnRow } from "./ports";
 import { refreshIndexStats } from "./stats";
 import type { TenantSearchSettingStore } from "./tenant-setting-store";
 
-export const RECONCILE_BATCH_SIZE = 200;
+const RECONCILE_BATCH_SIZE = 200;
 export const RECONCILE_MAX_BATCHES_PER_RUN = 25;
 export const RECHECK_AFTER_MS = 24 * 60 * 60 * 1000;
 const VERIFY_PAGE_SIZE = 500;

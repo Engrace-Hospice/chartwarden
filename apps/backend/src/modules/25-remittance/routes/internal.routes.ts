@@ -6,13 +6,13 @@
 // verified `INTERNAL_SERVICE_TOKEN` branch of the authenticate hook can set, so a request-borne actor is
 // refused. It asserted a `systemPrincipal` attribute until F-030; nothing ever wrote that name, so these
 // three endpoints refused every caller including the seam consumers they exist for.
+import { type PreHandler, parse } from "@chartwarden/shared/route-kit";
 import { ForbiddenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { M25IngestService } from "../ingest/service";
 import { actorOf } from "./actor";
-import type { PreHandler } from "./actor";
 import { P } from "./guards";
-import { ReceiveAdviceRequestSchema, parse } from "./m25-typebox";
+import { ReceiveAdviceRequestSchema } from "./m25-typebox";
 import type { M25ReadService } from "./read-service";
 
 export interface InternalRouteDeps {
@@ -110,6 +110,11 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
           return reply
             .code(409)
             .send({ outcome: result.outcome, existingAdviceId: result.existingAdviceId });
+        }
+        if (result.outcome === "review_required") {
+          return reply
+            .code(409)
+            .send({ outcome: result.outcome, stageId: result.stageId, reason: result.reason });
         }
         return reply.code(202).send({ outcome: result.outcome, adviceId: result.adviceId });
       },

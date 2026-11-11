@@ -8,10 +8,12 @@ import {
   parseX12TransactionSetControlNumbers,
 } from "@chartwarden/x12-835-client";
 import type { ParsedClaim835, ParsedRemittanceAdvice } from "@chartwarden/x12-835-client";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { autoMatch, classifyPostingOutcome, effectiveCategory, routeAdjustment } from "../domain";
 import type { DenialCategory } from "../domain";
+import { decimalDollarsToCents } from "../domain/era-match-review";
 import type { WriteOutboxPort } from "../routes/write-service";
+import { claimMdEraM25SerializationKey } from "./claimmd-era-duplicate";
 import type {
   ClaimMatchCandidateProvider,
   ClaimMatchCandidateProviderByPayer,
@@ -27,6 +29,7 @@ import type {
 import { DENY_TERMINOLOGY, NO_CLAIM_MATCH_CANDIDATES } from "./service";
 
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
+const CLAIMMD_ERA_STAGE = schema.claimmdEraM25Stage;
 const DENIAL_CATEGORIES: ReadonlySet<string> = new Set([
   "denial",
   "reduction",
@@ -36,7 +39,134 @@ const DENIAL_CATEGORIES: ReadonlySet<string> = new Set([
 ]);
 
 /** The real Drizzle transaction handle (has .select/.update/.insert), inferred from the db client. */
-type M25Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+export type M25Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+
+/** Internal, source-owner-validated association for the transaction-scoped posting seam.
+ * This is deliberately not an HTTP contract and is not exported from the M25 module barrel.
+ */
+export interface M25ValidatedClaimAssociation {
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly claimId: string;
+  /** Non-empty identity of the caller's durable matching decision/evidence. */
+  readonly evidenceId: string;
+  readonly evidenceVersion: number;
+}
+
+export interface M25ValidatedPostingInput {
+  readonly adviceId: string;
+  readonly sourceFileSha256: string;
+  readonly parsed: ParsedRemittanceAdvice;
+  readonly association: M25ValidatedClaimAssociation;
+}
+
+export interface M25TransactionPostingPort {
+  /** M25-owned interpretation for the constrained Claim.MD controlled-posting contract. */
+  assessClaimMdFinancialFacts(claim: ParsedClaim835): Promise<M25ClaimMdFinancialAssessment>;
+  /**
+   * Apply the single supported, already-validated claim association inside the caller's transaction.
+   * No transaction is opened here; callers must own authorization and transaction lifecycle.
+   * This internal seam accepts only the established fully-paid case and the BIL-4.2 OA review-only partial case.
+   */
+  postValidatedClaimInTransaction(
+    tx: M25Tx,
+    actor: M25IngestActor,
+    input: M25ValidatedPostingInput,
+  ): Promise<{ readonly outcome: "posted" | "already_posted"; readonly remittanceLineId?: string }>;
+  /** Atomic all-claim variant. The association array is aligned with the immutable parsed CLP order. */
+  postValidatedClaimsInTransaction(
+    tx: M25Tx,
+    actor: M25IngestActor,
+    input: Omit<M25ValidatedPostingInput, "association"> & {
+      readonly associations: readonly M25ValidatedClaimAssociation[];
+    },
+  ): Promise<{
+    readonly outcome: "posted" | "already_posted";
+    readonly remittanceLineIds: readonly string[];
+  }>;
+}
+
+export type M25ClaimMdFinancialAssessment =
+  | {
+      readonly status: "fully_paid";
+      readonly chargeCents: number;
+      readonly paidCents: number;
+      readonly patientResponsibilityCents: 0;
+      readonly adjustments: readonly [];
+      readonly unresolvedCents: 0;
+    }
+  | {
+      readonly status: "partial_paid";
+      readonly chargeCents: number;
+      readonly paidCents: number;
+      readonly patientResponsibilityCents: 0;
+      readonly adjustments: readonly [
+        M25ClaimMdReportedAdjustment & {
+          readonly scope: "claim";
+          readonly groupCode: "OA";
+          readonly reasonCode: string;
+          readonly amountCents: number;
+          readonly classification: "other_adjustment_unresolved";
+          readonly m25Action: "flagged_review";
+        },
+      ];
+      readonly unresolvedCents: number;
+    }
+  | {
+      readonly status: "unsupported";
+      readonly blocker:
+        | "UNSUPPORTED_FINANCIAL_FACTS"
+        | "ADJUSTMENT_CLASSIFICATION_UNAVAILABLE"
+        | "CONTRACTUAL_ADJUSTMENT_POLICY_UNAVAILABLE"
+        | "PATIENT_RESPONSIBILITY_POLICY_UNAVAILABLE"
+        | "PAYER_REDUCTION_POLICY_UNAVAILABLE";
+      readonly chargeCents: number | null;
+      readonly paidCents: number | null;
+      readonly patientResponsibilityCents: number | null;
+      readonly adjustments: readonly M25ClaimMdReportedAdjustment[];
+      readonly unresolvedCents: number | null;
+    };
+
+export interface M25ClaimMdReportedAdjustment {
+  readonly scope: "claim";
+  readonly groupCode: "CO" | "PR" | "OA" | "PI" | "CR" | "unknown";
+  readonly reasonCode: string | null;
+  readonly amountCents: number | null;
+  readonly responsibility:
+    | "provider_reported"
+    | "patient_reported"
+    | "other_unallocated"
+    | "payer_initiated_reported"
+    | "correction_or_reversal_reported"
+    | "unsupported";
+  /** Classification of the reported source fact is not authorization to perform this action. */
+  readonly accountingDisposition: "unresolved_review" | "policy_required";
+  readonly policyVersion: null;
+  readonly m25Action: "flagged_review" | "not_authorized";
+  readonly classification:
+    | "contractual_obligation_reported"
+    | "patient_responsibility_reported"
+    | "other_adjustment_unresolved"
+    | "payer_initiated_reduction_reported"
+    | "correction_or_reversal_reported"
+    | "unsupported";
+}
+type M25ClaimMdFinancialBlocker =
+  | "UNSUPPORTED_FINANCIAL_FACTS"
+  | "ADJUSTMENT_CLASSIFICATION_UNAVAILABLE"
+  | "CONTRACTUAL_ADJUSTMENT_POLICY_UNAVAILABLE"
+  | "PATIENT_RESPONSIBILITY_POLICY_UNAVAILABLE"
+  | "PAYER_REDUCTION_POLICY_UNAVAILABLE";
+
+// Keep the privileged internal seam off the M25 ingest service object passed to route registrars.
+// The direct-file accessor is intentionally not re-exported by the M25 module barrel.
+const internalPostingPorts = new WeakMap<M25IngestService, M25TransactionPostingPort>();
+
+export function getM25TransactionPostingPort(service: M25IngestService): M25TransactionPostingPort {
+  const port = internalPostingPorts.get(service);
+  if (!port) throw new Error("M25_TRANSACTION_POSTING_PORT_UNAVAILABLE");
+  return port;
+}
 
 /** F-172 — widened to carry `payerKind` so `postClaim`/`postAdjustments` can route the candidate lookup. */
 type AdviceContext = {
@@ -45,6 +175,7 @@ type AdviceContext = {
   receivedAt: Date;
   payerKind: ReceiveAdviceInput["payerKind"];
   payerId: string;
+  totalPaymentAmount: string;
 };
 
 const TIN_DIGITS = 9;
@@ -135,13 +266,21 @@ function money(n: number): string {
   return n.toFixed(2);
 }
 
+function moneyCents(n: number): bigint {
+  const normalized = money(n);
+  const negative = normalized.startsWith("-");
+  const [whole = "0", fraction = "00"] = normalized.replace(/^-/, "").split(".");
+  const cents = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0").slice(0, 2));
+  return negative ? -cents : cents;
+}
+
 /**
  * The 835 production date is a calendar day printed on the remittance. Store it as that day at UTC midnight
  * (the appeal clock reads the UTC date back), ignoring any time or offset the clearinghouse appended; a
  * value that is not date-led is parsed as an instant.
  */
 /** Order-independent digest of a set's claim payments; two files with the same digest pay the same claims the same way. */
-function contentDigestOf(parsed: ParsedRemittanceAdvice): string {
+export function m25ContentDigestOf(parsed: ParsedRemittanceAdvice): string {
   const rows = parsed.claims
     .map((c) =>
       [
@@ -255,13 +394,179 @@ export function buildDrizzleM25IngestService(
     return null;
   }
 
+  async function assessClaimMdFinancialFacts(
+    claim: ParsedClaim835,
+  ): Promise<M25ClaimMdFinancialAssessment> {
+    const chargeCents = decimalDollarsToCents(claim.totalCharge);
+    const paidCents = decimalDollarsToCents(claim.totalPayment);
+    const patientResponsibilityCents = decimalDollarsToCents(claim.patientResponsibility);
+    const unsupported = (
+      blocker:
+        | M25ClaimMdFinancialBlocker
+        | "CONTRACTUAL_ADJUSTMENT_POLICY_UNAVAILABLE"
+        | "PATIENT_RESPONSIBILITY_POLICY_UNAVAILABLE"
+        | "PAYER_REDUCTION_POLICY_UNAVAILABLE",
+      adjustments: readonly M25ClaimMdReportedAdjustment[] = [],
+    ): M25ClaimMdFinancialAssessment => ({
+      status: "unsupported",
+      blocker,
+      chargeCents,
+      paidCents,
+      patientResponsibilityCents,
+      adjustments,
+      unresolvedCents: chargeCents !== null && paidCents !== null ? chargeCents - paidCents : null,
+    });
+
+    const reportedAdjustments = claim.adjustments.map(
+      (adjustment): M25ClaimMdReportedAdjustment => {
+        const groupCode = ["CO", "PR", "OA", "PI", "CR"].includes(adjustment.groupCode ?? "")
+          ? (adjustment.groupCode as M25ClaimMdReportedAdjustment["groupCode"])
+          : "unknown";
+        const responsibility: M25ClaimMdReportedAdjustment["responsibility"] =
+          groupCode === "CO"
+            ? "provider_reported"
+            : groupCode === "PR"
+              ? "patient_reported"
+              : groupCode === "OA"
+                ? "other_unallocated"
+                : groupCode === "PI"
+                  ? "payer_initiated_reported"
+                  : groupCode === "CR"
+                    ? "correction_or_reversal_reported"
+                    : "unsupported";
+        const classification: M25ClaimMdReportedAdjustment["classification"] =
+          groupCode === "CO"
+            ? "contractual_obligation_reported"
+            : groupCode === "PR"
+              ? "patient_responsibility_reported"
+              : groupCode === "OA"
+                ? "other_adjustment_unresolved"
+                : groupCode === "PI"
+                  ? "payer_initiated_reduction_reported"
+                  : groupCode === "CR"
+                    ? "correction_or_reversal_reported"
+                    : "unsupported";
+        return {
+          scope: "claim",
+          groupCode,
+          reasonCode: adjustment.reasonCode ?? null,
+          amountCents: decimalDollarsToCents(adjustment.amount),
+          responsibility,
+          accountingDisposition: groupCode === "OA" ? "unresolved_review" : "policy_required",
+          policyVersion: null,
+          m25Action: groupCode === "OA" ? "flagged_review" : "not_authorized",
+          classification,
+        };
+      },
+    );
+
+    if (
+      claim.statusCode !== 1 ||
+      chargeCents === null ||
+      chargeCents <= 0 ||
+      paidCents === null ||
+      paidCents <= 0 ||
+      claim.remarks.length > 0 ||
+      claim.serviceLines.length > 0
+    )
+      return unsupported("UNSUPPORTED_FINANCIAL_FACTS", reportedAdjustments);
+
+    if (
+      paidCents === chargeCents &&
+      claim.adjustments.length === 0 &&
+      patientResponsibilityCents === 0
+    ) {
+      return {
+        status: "fully_paid",
+        chargeCents,
+        paidCents,
+        patientResponsibilityCents: 0,
+        adjustments: [],
+        unresolvedCents: 0,
+      };
+    }
+
+    const adjustment = claim.adjustments[0];
+    if (
+      paidCents >= chargeCents ||
+      claim.adjustments.length !== 1 ||
+      !adjustment ||
+      !/^\d{1,5}$/.test(adjustment.reasonCode) ||
+      adjustment.quantity !== undefined ||
+      (claim.references?.length ?? 0) > 0
+    )
+      return unsupported("UNSUPPORTED_FINANCIAL_FACTS", reportedAdjustments);
+
+    const amountCents = decimalDollarsToCents(adjustment.amount);
+    const unresolvedCents = chargeCents - paidCents;
+    if (amountCents === null || amountCents <= 0 || amountCents !== unresolvedCents)
+      return unsupported("UNSUPPORTED_FINANCIAL_FACTS", reportedAdjustments);
+
+    const catalogCategory = await resolveCategory(adjustment.reasonCode);
+    if (
+      !catalogCategory ||
+      catalogCategory === "denial" ||
+      catalogCategory === "recoupment" ||
+      catalogCategory === "unmapped"
+    )
+      return unsupported("ADJUSTMENT_CLASSIFICATION_UNAVAILABLE", reportedAdjustments);
+
+    // A payer-reported group describes responsibility; it does not itself authorize a M25 effect.
+    // Retain the source facts and fail closed where the tenant/payer policy contract is absent.
+    if (adjustment.groupCode === "CO") {
+      if (patientResponsibilityCents !== 0)
+        return unsupported("UNSUPPORTED_FINANCIAL_FACTS", reportedAdjustments);
+      return unsupported("CONTRACTUAL_ADJUSTMENT_POLICY_UNAVAILABLE", reportedAdjustments);
+    }
+
+    if (adjustment.groupCode === "PR") {
+      if (patientResponsibilityCents !== amountCents)
+        return unsupported("UNSUPPORTED_FINANCIAL_FACTS", reportedAdjustments);
+      return unsupported("PATIENT_RESPONSIBILITY_POLICY_UNAVAILABLE", reportedAdjustments);
+    }
+    if (adjustment.groupCode === "PI") {
+      if (patientResponsibilityCents !== 0)
+        return unsupported("UNSUPPORTED_FINANCIAL_FACTS", reportedAdjustments);
+      return unsupported("PAYER_REDUCTION_POLICY_UNAVAILABLE", reportedAdjustments);
+    }
+
+    if (adjustment.groupCode !== "OA" || patientResponsibilityCents !== 0)
+      return unsupported("UNSUPPORTED_FINANCIAL_FACTS", reportedAdjustments);
+
+    const routed = routeAdjustment("OA", effectiveCategory(catalogCategory).category, "mapped");
+    if (routed.postAction !== "flagged_review" || routed.seedDenial || routed.seedPrLedger)
+      return unsupported("ADJUSTMENT_CLASSIFICATION_UNAVAILABLE", reportedAdjustments);
+
+    return {
+      status: "partial_paid",
+      chargeCents,
+      paidCents,
+      patientResponsibilityCents: 0,
+      adjustments: [
+        {
+          scope: "claim",
+          groupCode: "OA",
+          reasonCode: adjustment.reasonCode,
+          amountCents,
+          classification: "other_adjustment_unresolved",
+          responsibility: "other_unallocated",
+          accountingDisposition: "unresolved_review",
+          policyVersion: null,
+          m25Action: "flagged_review",
+        },
+      ],
+      unresolvedCents,
+    };
+  }
+
   /** Post one CLP claim's line + service lines + adjustments + remarks. Returns the match/posting facts. */
   async function postClaim(
     tx: M25Tx,
     actor: M25IngestActor,
     advice: AdviceContext,
     claim: ParsedClaim835,
-  ): Promise<{ matched: boolean }> {
+    explicitAssociation?: M25ValidatedClaimAssociation,
+  ): Promise<{ matched: boolean; remittanceLineId: string }> {
     const claimCandidates = claimCandidatesFor(advice.payerKind);
     const candidates = await claimCandidates.candidatesForLine({
       organizationId: actor.organizationId,
@@ -271,17 +576,53 @@ export function buildDrizzleM25IngestService(
       patientControlNumber: claim.patientControlNumber,
       patientMemberId: claim.patientMemberId,
     });
-    const match = autoMatch(
-      {
-        clp01PatientControlNumber: claim.patientControlNumber,
-        clp07PayerIcn: claim.payerIcn,
-        patientMemberId: claim.patientMemberId,
-        serviceFrom: claim.serviceFrom,
-        serviceTo: claim.serviceTo,
-        totalCharge: claim.totalCharge,
-      },
-      candidates,
-    );
+    const match = explicitAssociation
+      ? (() => {
+          if (
+            explicitAssociation.organizationId !== actor.organizationId ||
+            explicitAssociation.providerEntityId !== advice.providerEntityId ||
+            !explicitAssociation.evidenceId.trim() ||
+            !Number.isInteger(explicitAssociation.evidenceVersion) ||
+            explicitAssociation.evidenceVersion < 1
+          )
+            throw new Error("M25_EXPLICIT_ASSOCIATION_SCOPE_MISMATCH");
+          const selected = candidates.find(
+            (candidate) => candidate.claimId === explicitAssociation.claimId,
+          );
+          if (!selected) throw new Error("M25_EXPLICIT_ASSOCIATION_NOT_AUTHORIZED_BY_SOURCE_OWNER");
+          // The source-owned reader is scoped by tenant/provider/payer above. Require at least one
+          // exact immutable X12 identity and reject any contradictory exact identity it returned.
+          const hasExactIdentity =
+            (!!claim.payerIcn && selected.payerIcn === claim.payerIcn) ||
+            (!!claim.patientControlNumber &&
+              selected.claimControlNumber === claim.patientControlNumber);
+          if (
+            !hasExactIdentity ||
+            (!!claim.payerIcn && !!selected.payerIcn && selected.payerIcn !== claim.payerIcn) ||
+            (!!claim.patientControlNumber &&
+              !!selected.claimControlNumber &&
+              selected.claimControlNumber !== claim.patientControlNumber)
+          )
+            throw new Error("M25_EXPLICIT_ASSOCIATION_IDENTITY_CONFLICT");
+          return {
+            matched: true,
+            claimId: selected.claimId,
+            strategy: "manual" as const,
+            confidence: undefined,
+            requiresManual: false,
+          };
+        })()
+      : autoMatch(
+          {
+            clp01PatientControlNumber: claim.patientControlNumber,
+            clp07PayerIcn: claim.payerIcn,
+            patientMemberId: claim.patientMemberId,
+            serviceFrom: claim.serviceFrom,
+            serviceTo: claim.serviceTo,
+            totalCharge: claim.totalCharge,
+          },
+          candidates,
+        );
     // D3: only a confidence-100 exact strategy auto-binds. A heuristic proposal (requiresManual=true even
     // though matched=true) stays unmatched here — it surfaces on the manual-match worklist, never silently
     // auto-bound on a guess.
@@ -454,7 +795,83 @@ export function buildDrizzleM25IngestService(
       }
     }
 
-    return { matched: bound };
+    return { matched: bound, remittanceLineId: line.id };
+  }
+
+  /** The shared caller-transaction-scoped financial posting core used by legacy and explicit paths. */
+  async function postClaimsInTransaction(
+    tx: M25Tx,
+    actor: M25IngestActor,
+    advice: AdviceContext,
+    claims: readonly ParsedClaim835[],
+    associations?: readonly M25ValidatedClaimAssociation[],
+  ): Promise<{
+    readonly outcome: "posted" | "partial_posted";
+    readonly postedLineCount: number;
+    readonly unmatchedLineCount: number;
+    readonly remittanceLineIds: readonly string[];
+  }> {
+    if (associations && associations.length !== claims.length)
+      throw new Error("M25_EXPLICIT_ASSOCIATION_COUNT_MISMATCH");
+    let postedLineCount = 0;
+    let unmatchedLineCount = 0;
+    const remittanceLineIds: string[] = [];
+    for (let index = 0; index < claims.length; index += 1) {
+      const result = await postClaim(tx, actor, advice, claims[index]!, associations?.[index]);
+      remittanceLineIds.push(result.remittanceLineId);
+      if (result.matched) postedLineCount += 1;
+      else unmatchedLineCount += 1;
+    }
+    const finalStatus = unmatchedLineCount === 0 ? "posted" : "partial_posted";
+    const [currentAdvice] = await tx
+      .select({ parseSummary: RA.parseSummary })
+      .from(RA)
+      .where(eq(RA.id, advice.id))
+      .for("update")
+      .limit(1);
+    const sourceSummary = currentAdvice?.parseSummary;
+    const preservedSummary =
+      sourceSummary && typeof sourceSummary === "object" && !Array.isArray(sourceSummary)
+        ? (sourceSummary as Record<string, unknown>)
+        : {};
+    await tx
+      .update(RA)
+      .set({
+        parseStatus: finalStatus,
+        parseSummary: {
+          ...preservedSummary,
+          lineCount: claims.length,
+          postedLineCount,
+          unmatchedLineCount,
+          ...(associations
+            ? {
+                associationEvidence: associations.map(
+                  ({ claimId, evidenceId, evidenceVersion }) => ({
+                    claimId,
+                    evidenceId,
+                    evidenceVersion,
+                  }),
+                ),
+              }
+            : {}),
+        },
+      })
+      .where(eq(RA.id, advice.id));
+    await outbox.publish(tx, {
+      eventName: "m25.remittance.advice_posted",
+      organizationId: actor.organizationId,
+      aggregateKind: "remittance_advice",
+      aggregateId: advice.id,
+      payload: {
+        remittanceAdviceId: advice.id,
+        providerEntityId: advice.providerEntityId,
+        totalPaymentAmount: advice.totalPaymentAmount,
+        postedLineCount,
+        unmatchedLineCount,
+        postedAt: advice.receivedAt.toISOString(),
+      },
+    });
+    return { outcome: finalStatus, postedLineCount, unmatchedLineCount, remittanceLineIds };
   }
 
   /** Route + insert every CAS adjustment at one CLP/SVC granularity; seeds denial_case / PR-ledger rows. */
@@ -619,7 +1036,48 @@ export function buildDrizzleM25IngestService(
     // The payment itself is identified by TRN02 + payer + payee + amount: the same payment is never posted twice.
     // Same-file sets are excluded (their sha matches) - they are separate payments sharing a file.
     const trace = parsed.checkOrEftTraceNumber;
-    const digest = contentDigestOf(parsed);
+    const digest = m25ContentDigestOf(parsed);
+    const serializationKey = claimMdEraM25SerializationKey({
+      organizationId: actor.organizationId,
+      providerEntityId: input.providerEntityId,
+      paymentTrace: trace ?? null,
+      interchangeControlNumber: parsed.interchangeControlNumber,
+      transactionSetControlNumber: parsed.transactionSetControlNumber,
+    });
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${serializationKey}, 1))`);
+    // A verified Claim.MD ERA may already occupy the non-posting staging boundary. If it won
+    // the shared identity lock first, refuse legacy intake before creating an advice/event that
+    // could reach postAdvice. The new stage remains available for review and no posting occurs.
+    const stagedIdentity = await tx
+      .select({ id: CLAIMMD_ERA_STAGE.id })
+      .from(CLAIMMD_ERA_STAGE)
+      .where(
+        and(
+          eq(CLAIMMD_ERA_STAGE.organizationId, actor.organizationId),
+          eq(CLAIMMD_ERA_STAGE.providerEntityId, input.providerEntityId),
+          or(
+            and(
+              eq(CLAIMMD_ERA_STAGE.interchangeControlNumber, parsed.interchangeControlNumber),
+              eq(CLAIMMD_ERA_STAGE.transactionSetControlNumber, parsed.transactionSetControlNumber),
+            ),
+            ...(trace
+              ? [
+                  eq(
+                    CLAIMMD_ERA_STAGE.paymentTraceDigest,
+                    createHash("sha256").update(trace, "utf8").digest("hex"),
+                  ),
+                ]
+              : []),
+          ),
+        ),
+      )
+      .limit(1);
+    if (stagedIdentity[0])
+      return {
+        outcome: "review_required",
+        stageId: stagedIdentity[0].id,
+        reason: "CLAIMMD_ERA_STAGE_MATCH",
+      };
     if (trace) {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}|${input.providerEntityId}|${input.payerId}|${trace}`}, 0))`,
@@ -717,7 +1175,164 @@ export function buildDrizzleM25IngestService(
     });
   }
 
-  return {
+  const postValidatedClaimsInTransaction: M25TransactionPostingPort["postValidatedClaimsInTransaction"] =
+    async (tx, actor, input) => {
+      // This is an internal M25 domain seam, not a route. The caller owns authorization and `tx`;
+      // the function never opens/commits a transaction or performs network I/O.
+      const [advice] = await tx
+        .select({
+          id: RA.id,
+          organizationId: RA.organizationId,
+          providerEntityId: RA.providerEntityId,
+          payerKind: RA.payerKind,
+          payerId: RA.payerId,
+          checkOrEftTraceNumber: RA.checkOrEftTraceNumber,
+          contentDigest: RA.contentDigest,
+          fileSha256: RA.fileSha256,
+          totalPaymentAmount: RA.totalPaymentAmount,
+          receivedAt: RA.receivedAt,
+          parseStatus: RA.parseStatus,
+          parseSummary: RA.parseSummary,
+        })
+        .from(RA)
+        .where(eq(RA.id, input.adviceId))
+        .for("update")
+        .limit(1);
+      if (!advice || advice.organizationId !== actor.organizationId)
+        throw new Error("M25_ADVICE_NOT_FOUND");
+      if (input.associations.length < 1 || input.associations.length !== input.parsed.claims.length)
+        throw new Error("M25_EXPLICIT_ASSOCIATION_COUNT_MISMATCH");
+      const claimIds = new Set<string>();
+      for (const association of input.associations) {
+        if (
+          advice.providerEntityId !== association.providerEntityId ||
+          association.organizationId !== actor.organizationId
+        )
+          throw new Error("M25_EXPLICIT_ASSOCIATION_SCOPE_MISMATCH");
+        if (
+          !association.evidenceId.trim() ||
+          !Number.isInteger(association.evidenceVersion) ||
+          association.evidenceVersion < 1 ||
+          claimIds.has(association.claimId)
+        )
+          throw new Error("M25_EXPLICIT_ASSOCIATION_EVIDENCE_INVALID");
+        claimIds.add(association.claimId);
+      }
+      if (
+        advice.fileSha256.toLowerCase() !== input.sourceFileSha256.toLowerCase() ||
+        m25ContentDigestOf(input.parsed) !== advice.contentDigest ||
+        input.parsed.payerProgram !== advice.payerKind ||
+        money(input.parsed.totalPaymentAmount) !== money(Number(advice.totalPaymentAmount))
+      )
+        throw new Error("M25_POSTING_SOURCE_STALE");
+      if (advice.parseStatus === "posted" || advice.parseStatus === "partial_posted") {
+        const priorLines = await tx
+          .select({ id: RL.id, claimId: RL.claimId })
+          .from(RL)
+          .where(eq(RL.remittanceAdviceId, advice.id))
+          .orderBy(RL.receivedAt, RL.id);
+        const priorByClaim = new Map(priorLines.map((line) => [line.claimId, line.id]));
+        const remittanceLineIds = input.associations.map((association) =>
+          priorByClaim.get(association.claimId),
+        );
+        if (
+          priorLines.length !== input.associations.length ||
+          remittanceLineIds.some((lineId) => !lineId)
+        )
+          throw new Error("M25_POSTING_IDEMPOTENCY_CONFLICT");
+        return {
+          outcome: "already_posted" as const,
+          remittanceLineIds: remittanceLineIds as string[],
+        };
+      }
+      if (advice.parseStatus !== "queued" && advice.parseStatus !== "failed")
+        throw new Error("M25_ADVICE_NOT_POSTABLE");
+
+      const claims = input.parsed.claims;
+      const plb = input.parsed.providerAdjustments ?? [];
+      const assessments = await Promise.all(claims.map(assessClaimMdFinancialFacts));
+      if (
+        claims.length < 1 ||
+        plb.length !== 0 ||
+        (input.parsed.providerAdjustmentTotal ?? 0) !== 0 ||
+        (input.parsed.unknownSegments?.length ?? 0) !== 0 ||
+        assessments.some((assessment) => assessment.status === "unsupported") ||
+        (claims.length !== 1 &&
+          assessments.some((assessment) => assessment.status === "partial_paid")) ||
+        claims.reduce((sum, claim) => sum + moneyCents(claim.totalPayment), 0n) !==
+          moneyCents(input.parsed.totalPaymentAmount)
+      )
+        throw new Error("M25_POSTING_FACTS_UNSUPPORTED");
+      if (!advice.checkOrEftTraceNumber || !advice.contentDigest)
+        throw new Error("M25_FINANCIAL_IDENTITY_MISSING");
+
+      const trace = advice.checkOrEftTraceNumber;
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}|${advice.providerEntityId}|${advice.payerId}|${trace}`}, 0))`,
+      );
+      const [prior] = await tx
+        .select({ id: RA.id })
+        .from(RA)
+        .where(
+          and(
+            eq(RA.organizationId, actor.organizationId),
+            eq(RA.providerEntityId, advice.providerEntityId),
+            eq(RA.payerId, advice.payerId),
+            eq(RA.checkOrEftTraceNumber, trace),
+            eq(RA.totalPaymentAmount, advice.totalPaymentAmount),
+            sql`${RA.id} <> ${input.adviceId}`,
+            sql`${RA.parseStatus} IN ('posted','partial_posted')`,
+          ),
+        )
+        .limit(1);
+      // The staged-plan preflight treats a repeated payer/provider/trace/amount as a
+      // potential duplicate even when payload bytes differ. Repeat that conservative
+      // check under the same transaction lock so concurrent plans cannot both post
+      // merely because their parsed 835 content digests differ.
+      if (prior) throw new Error("M25_CROSS_SOURCE_DUPLICATE_EFFECT");
+
+      const result = await postClaimsInTransaction(
+        tx,
+        actor,
+        {
+          id: advice.id,
+          providerEntityId: advice.providerEntityId,
+          receivedAt: advice.receivedAt,
+          payerKind: advice.payerKind,
+          payerId: advice.payerId,
+          totalPaymentAmount: advice.totalPaymentAmount,
+        },
+        claims,
+        input.associations,
+      );
+      if (
+        result.outcome !== "posted" ||
+        result.unmatchedLineCount !== 0 ||
+        result.postedLineCount !== claims.length
+      )
+        throw new Error("M25_EXPLICIT_ASSOCIATION_NOT_POSTED");
+      return { outcome: "posted" as const, remittanceLineIds: result.remittanceLineIds };
+    };
+  const serviceWithInternalPort = {
+    assessClaimMdFinancialFacts,
+    postValidatedClaimsInTransaction,
+    async postValidatedClaimInTransaction(
+      tx: M25Tx,
+      actor: M25IngestActor,
+      input: M25ValidatedPostingInput,
+    ) {
+      const result = await postValidatedClaimsInTransaction(tx, actor, {
+        adviceId: input.adviceId,
+        sourceFileSha256: input.sourceFileSha256,
+        parsed: input.parsed,
+        associations: [input.association],
+      });
+      return {
+        outcome: result.outcome,
+        remittanceLineId: result.remittanceLineIds[0],
+      };
+    },
+
     async receiveAdvice(
       actor: M25IngestActor,
       input: ReceiveAdviceInput,
@@ -838,8 +1453,11 @@ export function buildDrizzleM25IngestService(
               transactionSetControlNumber: RA.transactionSetControlNumber,
               payerKind: RA.payerKind,
               payerId: RA.payerId,
+              checkOrEftTraceNumber: RA.checkOrEftTraceNumber,
+              contentDigest: RA.contentDigest,
               minioObjectKey: RA.minioObjectKey,
               parseStatus: RA.parseStatus,
+              parseSummary: RA.parseSummary,
               receivedAt: RA.receivedAt,
               totalPaymentAmount: RA.totalPaymentAmount,
             })
@@ -850,6 +1468,15 @@ export function buildDrizzleM25IngestService(
       const advice = current[0];
       if (!advice) return { outcome: "not_found", adviceId };
       if (advice.parseStatus !== "queued" && advice.parseStatus !== "failed") {
+        if ((advice.parseStatus as string) === "held_duplicate") {
+          const reason =
+            advice.parseSummary &&
+            typeof advice.parseSummary === "object" &&
+            (advice.parseSummary as { reason?: unknown }).reason === "MISSING_FINANCIAL_IDENTITY"
+              ? ("MISSING_FINANCIAL_IDENTITY" as const)
+              : ("CROSS_SOURCE_POSTED_IDENTITY" as const);
+          return { outcome: "held_duplicate", adviceId, reason };
+        }
         // A redelivery retries a delete that failed after the original post (delete is idempotent).
         if (advice.parseStatus === "posted" || advice.parseStatus === "partial_posted")
           await dropStagedRaw(actor.organizationId, adviceId);
@@ -912,70 +1539,105 @@ export function buildDrizzleM25IngestService(
           { organizationId: actor.organizationId, userId: "" },
           async (tx) => {
             const guard = await tx
-              .select({ parseStatus: RA.parseStatus })
+              .select({ parseStatus: RA.parseStatus, parseSummary: RA.parseSummary })
               .from(RA)
               .where(eq(RA.id, adviceId))
               .for("update")
               .limit(1);
-            if (guard[0]?.parseStatus !== "queued" && guard[0]?.parseStatus !== "failed") {
+            const currentGuard = guard[0];
+            if (!currentGuard) throw new Error("M25_ADVICE_DISAPPEARED_DURING_POST");
+            if (currentGuard.parseStatus !== "queued" && currentGuard.parseStatus !== "failed") {
+              if ((currentGuard.parseStatus as string) === "held_duplicate")
+                return {
+                  outcome: "held_duplicate" as const,
+                  reason:
+                    currentGuard.parseSummary &&
+                    typeof currentGuard.parseSummary === "object" &&
+                    (currentGuard.parseSummary as { reason?: unknown }).reason ===
+                      "MISSING_FINANCIAL_IDENTITY"
+                      ? ("MISSING_FINANCIAL_IDENTITY" as const)
+                      : ("CROSS_SOURCE_POSTED_IDENTITY" as const),
+                };
               return { outcome: "already_posted" as const };
             }
-            let postedLineCount = 0;
-            let unmatchedLineCount = 0;
-            for (const claim of parsed.value.claims) {
-              const { matched } = await postClaim(
-                tx,
-                actor,
-                {
-                  id: adviceId,
-                  providerEntityId: advice.providerEntityId,
-                  receivedAt: advice.receivedAt,
-                  payerKind: advice.payerKind,
-                  payerId: advice.payerId,
-                },
-                claim,
-              );
-              if (matched) postedLineCount += 1;
-              else unmatchedLineCount += 1;
+            // A missing TRN or the immutable parsed-content digest leaves no defensible
+            // cross-source posting identity. Keep the original advice for operator review;
+            // never let an absent key bypass the common financial-effects guard.
+            const trace = advice.checkOrEftTraceNumber;
+            if (!trace || !advice.contentDigest) {
+              await tx
+                .update(RA)
+                .set({
+                  parseStatus: "held_duplicate",
+                  parseSummary: { reason: "MISSING_FINANCIAL_IDENTITY" },
+                })
+                .where(eq(RA.id, adviceId));
+              return {
+                outcome: "held_duplicate" as const,
+                reason: "MISSING_FINANCIAL_IDENTITY" as const,
+              };
             }
-            const finalStatus: "posted" | "partial_posted" =
-              unmatchedLineCount === 0 ? "posted" : "partial_posted";
-            await tx
-              .update(RA)
-              .set({
-                parseStatus: finalStatus,
-                parseSummary: {
-                  lineCount: parsed.value.claims.length,
-                  postedLineCount,
-                  unmatchedLineCount,
-                },
-              })
-              .where(eq(RA.id, adviceId));
-            await outbox.publish(tx, {
-              eventName: "m25.remittance.advice_posted",
-              organizationId: actor.organizationId,
-              aggregateKind: "remittance_advice",
-              aggregateId: adviceId,
-              payload: {
-                remittanceAdviceId: adviceId,
+            // Serialize every supported source at the financial effect boundary. This exact identity
+            // (tenant/provider, payer, trace, amount, and parsed-content digest) avoids treating a
+            // legitimate partial/secondary payment as a duplicate based on amount/date alone.
+            {
+              await tx.execute(
+                sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}|${advice.providerEntityId}|${advice.payerId}|${trace}`}, 0))`,
+              );
+              const [prior] = await tx
+                .select({ id: RA.id })
+                .from(RA)
+                .where(
+                  and(
+                    eq(RA.organizationId, actor.organizationId),
+                    eq(RA.providerEntityId, advice.providerEntityId),
+                    eq(RA.payerId, advice.payerId),
+                    eq(RA.checkOrEftTraceNumber, trace),
+                    eq(RA.totalPaymentAmount, advice.totalPaymentAmount),
+                    eq(RA.contentDigest, advice.contentDigest),
+                    sql`${RA.id} <> ${adviceId}`,
+                    sql`${RA.parseStatus} IN ('posted','partial_posted')`,
+                  ),
+                )
+                .limit(1);
+              if (prior) {
+                await tx
+                  .update(RA)
+                  .set({
+                    parseStatus: "held_duplicate",
+                    parseSummary: {
+                      reason: "CROSS_SOURCE_POSTED_IDENTITY",
+                      existingAdviceId: prior.id,
+                    },
+                  })
+                  .where(eq(RA.id, adviceId));
+                return {
+                  outcome: "held_duplicate" as const,
+                  reason: "CROSS_SOURCE_POSTED_IDENTITY" as const,
+                };
+              }
+            }
+            return postClaimsInTransaction(
+              tx,
+              actor,
+              {
+                id: adviceId,
                 providerEntityId: advice.providerEntityId,
+                receivedAt: advice.receivedAt,
+                payerKind: advice.payerKind,
+                payerId: advice.payerId,
                 totalPaymentAmount: advice.totalPaymentAmount,
-                postedLineCount,
-                unmatchedLineCount,
-                postedAt: advice.receivedAt.toISOString(),
               },
-            });
-            return {
-              outcome: finalStatus,
-              postedLineCount,
-              unmatchedLineCount,
-            };
+              parsed.value.claims,
+            );
           },
         );
         if (result.outcome === "already_posted") {
           await dropStagedRaw(actor.organizationId, adviceId);
           return { outcome: "already_posted", adviceId };
         }
+        if (result.outcome === "held_duplicate")
+          return { outcome: "held_duplicate", adviceId, reason: result.reason };
         await dropStagedRaw(actor.organizationId, adviceId);
         return {
           outcome: result.outcome,
@@ -992,4 +1654,11 @@ export function buildDrizzleM25IngestService(
       }
     },
   };
+  const { postValidatedClaimInTransaction, ...service } = serviceWithInternalPort;
+  internalPostingPorts.set(service, {
+    assessClaimMdFinancialFacts: serviceWithInternalPort.assessClaimMdFinancialFacts,
+    postValidatedClaimInTransaction: serviceWithInternalPort.postValidatedClaimInTransaction,
+    postValidatedClaimsInTransaction: serviceWithInternalPort.postValidatedClaimsInTransaction,
+  });
+  return service;
 }

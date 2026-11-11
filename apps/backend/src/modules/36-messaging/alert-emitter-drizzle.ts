@@ -179,11 +179,24 @@ export function createDrizzleRoleSetMembersReader(
   return (orgId, roleKeys) => ports.roleSetMembers(orgId, roleKeys);
 }
 
+/** The alert types a portal person may be the audience of (ADR-0107 D7). Every other alert still reaches only members and portal-caregiver channel members. */
+const PORTAL_ADDRESSABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "m36.portal_signature.pending",
+]);
+
 /** Optional composition-root extensions to the Drizzle {@link AlertEmitterPorts} (GAP-057). */
 export interface DrizzleAlertEmitterOptions {
   readonly extendResolvers?: AlertEmitterPorts["extendResolvers"];
   /** WP 4.6 (ADR-0073): the M1 feature-flag reader. Absent = the notification policy is off (the seeded in-app-only rules apply). */
   readonly flags?: PolicyFlagReader;
+  /**
+   * ADR-0107 D7: of these user ids, the ones with an ACTIVE portal account in the org. A portal user holds no membership, so without this
+   * the final recipient check drops them. Injected because M31 owns the portal tables; absent = portal users are not reachable.
+   */
+  readonly activePortalRecipients?: (
+    organizationId: string,
+    userIds: readonly string[],
+  ) => Promise<readonly string[]>;
 }
 
 /** Build the real {@link AlertEmitterPorts} over `db` (GAP-096). */
@@ -259,10 +272,31 @@ export function createDrizzleAlertEmitterPorts(
           vacationUntil: r.vacation_until === null ? null : new Date(r.vacation_until),
         });
       }
+      // ADR-0107 D7: a portal person has no preferences row (they cannot edit one), and a recipient with none gets only the in-app floor.
+      // Give an ACTIVE portal account the neutral default - no quiet hours, no vacation - so a rule's own channels (push) apply to them.
+      const missing = userIds.filter((id) => !map.has(id));
+      if (missing.length > 0 && options.activePortalRecipients) {
+        for (const id of await options.activePortalRecipients(orgId, missing)) {
+          map.set(id, {
+            userId: id,
+            routingMap: {},
+            quietHours: { tz: "UTC", ranges: [], severityOverride: "info" },
+            vacationForwardToUserId: null,
+            vacationUntil: null,
+          });
+        }
+      }
       return map;
     },
 
     async persist(record: PersistedAlert): Promise<{ alertId: string; occurrences?: number }> {
+      const portalRecipientIds = new Set(
+        options.activePortalRecipients && PORTAL_ADDRESSABLE_EVENT_TYPES.has(record.eventType)
+          ? await options.activePortalRecipients(record.orgId, [
+              ...new Set(record.deliveries.map((delivery) => delivery.recipientUserId)),
+            ])
+          : [],
+      );
       return withOrgContext(db, { organizationId: record.orgId, userId: "" }, async (tx: Tx) => {
         // F-199 — count an absorbed repeat. ONE atomic `UPDATE … RETURNING`: concurrent repeats serialize on the
         // row lock and each RETURNS a distinct count, so exactly one caller ever sees any given value (the escalation
@@ -328,8 +362,10 @@ export function createDrizzleAlertEmitterPorts(
             activeRecipientIds.add(recipient.userId);
           }
         }
-        const deliveries = record.deliveries.filter((delivery) =>
-          activeRecipientIds.has(delivery.recipientUserId),
+        const deliveries = record.deliveries.filter(
+          (delivery) =>
+            activeRecipientIds.has(delivery.recipientUserId) ||
+            portalRecipientIds.has(delivery.recipientUserId),
         );
 
         // F-109 — the §2.4.3 outcome is WRITTEN, not defaulted. The column used to be

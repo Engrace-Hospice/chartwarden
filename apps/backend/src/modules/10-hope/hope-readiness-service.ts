@@ -1,7 +1,9 @@
 import { type DbClient, schema } from "@chartwarden/db";
+import { projectHopeSections } from "@chartwarden/hope";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ConflictError, ValidationError } from "@chartwarden/types";
 import { and, asc, eq, inArray } from "drizzle-orm";
+import { hopeAnswerMapByCode } from "./hope-answer-map";
 import {
   type HopeJ2051TriggerState,
   canonicalAnsweredString,
@@ -10,12 +12,12 @@ import {
 import type { HopeIsc } from "./hope-spec-registry";
 import type { HopeApplicabilityResult } from "./spec/applicability";
 import { createHopeApplicabilityEngine } from "./spec/applicability-registry";
+import { isRequiredHopeItemForRfa } from "./spec/required-items";
 import type { HopeRuleFinding } from "./spec/validation";
 import { createHopeValidationEngine } from "./spec/validation-registry";
 
 type AssessmentRow = typeof schema.hopeAssessments.$inferSelect;
 type SpecItemRow = typeof schema.hopeSpecItems.$inferSelect;
-type AnswerRow = typeof schema.hopeAssessmentAnswers.$inferSelect;
 type SfvRow = typeof schema.symptomFollowUpVisits.$inferSelect;
 type CanonicalReadinessAnswer = {
   readonly state: "answered" | "skipped";
@@ -170,27 +172,6 @@ export function isCompletedSfvRegulatoryState(answers: CanonicalReadinessAnswerM
   );
 }
 
-function answerMapByCode(input: {
-  readonly itemsById: ReadonlyMap<string, SpecItemRow>;
-  readonly answersByItem: ReadonlyMap<string, AnswerRow>;
-  readonly candidateAnswers?: ReadonlyMap<
-    string,
-    { state: "answered" | "skipped"; value: unknown | null }
-  >;
-}) {
-  const out = new Map<string, { state: "answered" | "skipped"; value: unknown | null }>();
-  for (const [itemId, answer] of input.answersByItem) {
-    const item = input.itemsById.get(itemId);
-    if (item)
-      out.set(item.itemCode, {
-        state: answer.state,
-        value: answer.value as unknown | null,
-      });
-  }
-  for (const [itemCode, answer] of input.candidateAnswers ?? []) out.set(itemCode, answer);
-  return out;
-}
-
 function workflowControlAnswers(
   assessment: AssessmentRow,
 ): ReadonlyMap<string, { state: "answered"; value: string }> {
@@ -276,6 +257,7 @@ export function createHopeAssessmentReadinessService(db: DbClient): HopeAssessme
         isc: input.isc,
         correctsAssessmentId: input.assessment.correctsAssessmentId ?? null,
       },
+      presentSections: projectHopeSections(input.assessment.data).presentSections,
       activeItems: input.items.map((item) => ({
         itemCode: item.itemCode,
         sectionLabel: item.sectionLabel,
@@ -288,6 +270,7 @@ export function createHopeAssessmentReadinessService(db: DbClient): HopeAssessme
   }
 
   function blockersFor(input: {
+    readonly assessment: AssessmentRow;
     readonly items: readonly SpecItemRow[];
     readonly answers: Map<string, { state: "answered" | "skipped"; value: unknown | null }>;
     readonly applicability: HopeApplicabilityResult;
@@ -297,14 +280,16 @@ export function createHopeAssessmentReadinessService(db: DbClient): HopeAssessme
     const blockers: HopeReadinessBlocker[] = [];
     const seen = new Set<string>();
     const push = (blocker: HopeReadinessBlocker) => {
-      const key = `${blocker.code}:${blocker.itemCode ?? ""}:${blocker.ruleId ?? ""}`;
+      const key = `${blocker.code}:${blocker.section ?? ""}:${blocker.itemCode ?? ""}:${blocker.ruleId ?? ""}`;
       if (seen.has(key)) return;
       seen.add(key);
       blockers.push(blocker);
     };
     const WORKFLOW_COMPLETION_ITEMS = new Set(["Z0500B"]);
 
-    for (const item of input.items.filter((row) => row.kind === "assessment")) {
+    for (const item of input.items.filter(
+      (row) => row.kind === "assessment" && isRequiredHopeItemForRfa(input.assessment.rfaKind, row),
+    )) {
       const app = input.applicability.items.get(item.itemCode)?.applicability ?? "applicable";
 
       const answer = input.answers.get(item.itemCode);
@@ -439,7 +424,7 @@ export function createHopeAssessmentReadinessService(db: DbClient): HopeAssessme
         value: input.candidateZ0500B,
       });
     }
-    const answerMap = answerMapByCode({
+    const answerMap = hopeAnswerMapByCode({
       itemsById,
       answersByItem: new Map(answers.map((answer) => [answer.specItemId, answer])),
       candidateAnswers,
@@ -490,7 +475,9 @@ export function createHopeAssessmentReadinessService(db: DbClient): HopeAssessme
       pending: 0,
       unanswered: 0,
     };
-    for (const item of items.filter((row) => row.kind === "assessment")) {
+    for (const item of items.filter(
+      (row) => row.kind === "assessment" && isRequiredHopeItemForRfa(input.assessment.rfaKind, row),
+    )) {
       const section = sectionOf(item);
       const app = applicability.items.get(item.itemCode)?.applicability ?? "applicable";
       const answer = answerMap.get(item.itemCode);
@@ -532,12 +519,23 @@ export function createHopeAssessmentReadinessService(db: DbClient): HopeAssessme
       bySection.set(section, current);
     }
     for (const finding of findings) {
-      const section = bySection.get(finding.section);
-      if (!section) continue;
+      const section = bySection.get(finding.section) ?? {
+        code: finding.section,
+        active: 0,
+        applicable: 0,
+        answered: 0,
+        skipped: 0,
+        pending: 0,
+        unanswered: 0,
+        errors: 0,
+        warnings: 0,
+      };
       if (finding.severity === "error") section.errors += 1;
       else section.warnings += 1;
+      bySection.set(finding.section, section);
     }
     const blockers = blockersFor({
+      assessment: input.assessment,
       items,
       answers: answerMap,
       applicability,

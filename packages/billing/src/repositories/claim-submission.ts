@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 // @chartwarden/billing · repositories — `claim_submission` (M23 Billing-Medicare §3.3; non-partitioned;
 // retention class `compliance`). APPEND-ONLY: one row per dispatch attempt of an 837I claim / NOE / NOTR
 // to the MAC (via the x12-837-client sidecar / portal) — the worker appends a row per attempt capturing
@@ -11,7 +12,7 @@
 // DB-native lowercase enums with no domain-alphabet divergence, so rows pass through UN-mapped (no codec;
 // contrast `claim.state`). No PHI / MBI is ever stored here (D13, §8.7).
 import * as schema from "@chartwarden/db/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import type { BillingDb } from "./db";
 
 const S = schema.claimSubmission;
@@ -49,20 +50,127 @@ export class ClaimSubmissionRepository {
     patch: Pick<
       schema.NewClaimSubmission,
       "outcome" | "outcomeReason" | "generatedFileUri" | "submittedAt" | "workerCorrelationId"
-    >,
+    > & { readonly dispatchToken?: string },
+  ): Promise<schema.ClaimSubmission> {
+    const existing = await this.findById(id);
+    if (!existing) throw new Error(`claim_submission ${id} not found`);
+    if (existing.outcome !== "queued" || existing.dispatchState === "finished") return existing;
+    if (
+      (existing.dispatchState === "sending" || existing.dispatchState === "in_doubt") &&
+      patch.dispatchToken !== existing.dispatchToken
+    ) {
+      throw new Error(`claim_submission ${id} dispatch fencing token mismatch`);
+    }
+    const [updated] = await this.db
+      .update(S)
+      .set({ ...patch, dispatchState: "finished" })
+      .where(
+        and(
+          eq(S.id, id),
+          eq(S.outcome, "queued"),
+          eq(S.dispatchState, existing.dispatchState),
+          existing.dispatchToken
+            ? eq(S.dispatchToken, existing.dispatchToken)
+            : isNull(S.dispatchToken),
+        ),
+      )
+      .returning();
+    if (updated) return updated;
+    const afterUpdate = await this.findById(id);
+    if (!afterUpdate) throw new Error(`claim_submission ${id} not found`);
+    if (afterUpdate.outcome === "queued") {
+      throw new Error(`claim_submission ${id} could not be terminalized`);
+    }
+    return afterUpdate;
+  }
+
+  /** Atomically claim a queued attempt for one external send. A committed `sending` row is never re-sent on redelivery. */
+  async beginDispatch(
+    id: string,
+    expectedFingerprint: string | null,
+    startedAt = new Date(),
+  ): Promise<
+    | { readonly kind: "claimed"; readonly row: schema.ClaimSubmission; readonly token: string }
+    | { readonly kind: "already_started"; readonly row: schema.ClaimSubmission }
+    | { readonly kind: "terminal"; readonly row: schema.ClaimSubmission }
+  > {
+    const token = randomUUID();
+    const [claimed] = await this.db
+      .update(S)
+      .set({
+        dispatchState: "sending",
+        dispatchToken: token,
+        dispatchStartedAt: startedAt,
+      })
+      .where(
+        and(
+          eq(S.id, id),
+          eq(S.outcome, "queued"),
+          eq(S.dispatchState, "pending"),
+          expectedFingerprint === null
+            ? isNull(S.reviewedSourceFingerprint)
+            : eq(S.reviewedSourceFingerprint, expectedFingerprint),
+        ),
+      )
+      .returning();
+    if (claimed) return { kind: "claimed", row: claimed, token };
+    const row = await this.findById(id);
+    if (!row) throw new Error(`claim_submission ${id} not found`);
+    if (row.outcome !== "queued" || row.dispatchState === "finished")
+      return { kind: "terminal", row };
+    if (row.dispatchState === "sending" || row.dispatchState === "in_doubt")
+      return { kind: "already_started", row };
+    throw new Error(`claim_submission ${id} could not be reserved for dispatch`);
+  }
+
+  /** Records an uncertain transport outcome without making the attempt eligible for automatic resend. */
+  async markDispatchInDoubt(
+    id: string,
+    token: string,
+    reasonCode: string,
   ): Promise<schema.ClaimSubmission> {
     const [updated] = await this.db
       .update(S)
-      .set(patch)
-      .where(and(eq(S.id, id), eq(S.outcome, "queued")))
+      .set({ dispatchState: "in_doubt", dispatchReasonCode: reasonCode })
+      .where(
+        and(
+          eq(S.id, id),
+          eq(S.outcome, "queued"),
+          eq(S.dispatchState, "sending"),
+          eq(S.dispatchToken, token),
+        ),
+      )
       .returning();
     if (updated) return updated;
-    const existing = await this.findById(id);
-    if (!existing) throw new Error(`claim_submission ${id} not found`);
-    if (existing.outcome === "queued") {
-      throw new Error(`claim_submission ${id} could not be terminalized`);
-    }
-    return existing;
+    const row = await this.findById(id);
+    if (!row) throw new Error(`claim_submission ${id} not found`);
+    if (row.dispatchState === "in_doubt" && row.dispatchToken === token) return row;
+    throw new Error(`claim_submission ${id} dispatch fencing token mismatch`);
+  }
+
+  /** Fenced one-winner terminal transition used after transport or receipt reconciliation. */
+  async finishDispatch(
+    id: string,
+    token: string,
+    expectedState: "sending" | "in_doubt",
+    patch: Pick<
+      schema.NewClaimSubmission,
+      "outcome" | "outcomeReason" | "generatedFileUri" | "submittedAt" | "workerCorrelationId"
+    >,
+  ): Promise<schema.ClaimSubmission | null> {
+    const [row] = await this.db
+      .update(S)
+      .set({ ...patch, dispatchState: "finished" })
+      .where(
+        and(
+          eq(S.id, id),
+          eq(S.outcome, "queued"),
+          eq(S.dispatchState, expectedState),
+          eq(S.dispatchToken, token),
+        ),
+      )
+      .returning();
+    return row ?? null;
   }
 
   /** Point read by id, or `null`. */

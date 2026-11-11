@@ -348,7 +348,7 @@ export interface UpsertMacCredentialArgs {
  * The M23 WRITE route-service contract — every mutating route in §4.1. Each method takes the server-
  * assembled {@link M23WriteActor}; the Drizzle backend opens one `withOrgContext` tx per call (RLS-scoped to
  * `app.org_id`), drives the pure @chartwarden/billing machines for the state transitions, enforces §2.5 version
- * checks (VERSION_CONFLICT → 412), and emits the matching `m23.*` outbox event in the same tx. The §6/§D14
+ * checks (409 STALE_VERSION), and emits the matching `m23.*` outbox event in the same tx. The §6/§D14
  * step-up gate (claim submit/replace/void, validation override, MAC-credential admin) is re-checked here at
  * dispatch in addition to the route guard. `claim_line` is INTERNAL-WRITE-ONLY — only `assembleClaim` /
  * `updateDraftClaim` (re-assembly) / `replaceClaim` / `voidClaim` write lines; there is no line route.
@@ -363,7 +363,15 @@ export interface M23WriteRouteService {
   ): Promise<ClaimDetailView>;
   deleteDraftClaim(actor: M23WriteActor, claimId: string): Promise<void>;
   validateClaim(actor: M23WriteActor, claimId: string): Promise<ValidationJobAcceptedView>;
-  submitClaim(actor: M23WriteActor, claimId: string): Promise<ClaimSubmissionAcceptedView>;
+  submitClaim(
+    actor: M23WriteActor,
+    claimId: string,
+    route: {
+      readonly expectedVersion: number;
+      readonly expectedRouteFingerprint?: string;
+      readonly reviewedSourceFingerprint: string;
+    },
+  ): Promise<ClaimSubmissionAcceptedView>;
   replaceClaim(
     actor: M23WriteActor,
     claimId: string,

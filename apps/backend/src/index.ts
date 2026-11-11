@@ -72,6 +72,7 @@ import {
   ACK_ESCALATION_REQUIRED_ROLE,
   ALARM_INGEST_IP_BUDGET_PER_MINUTE,
   ALARM_INGEST_SOURCE_BUDGET_PER_MINUTE,
+  BEREAVEMENT_PHYSICIAN_CONDOLENCE_TEMPLATE_KEY,
   ChartWardenError,
   DegradedError,
   type Npi,
@@ -110,6 +111,7 @@ import {
   reconcilePlatformStaff,
   setPlatformStaffFailureSink,
 } from "./bootstrap/bind-platform-staff";
+import { registerClaimMdOperationalMetrics } from "./bootstrap/claimmd-operational-metrics";
 import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
 import { buildF2fClinicianRoleReader } from "./bootstrap/f2f-clinician-roles";
 import {
@@ -226,6 +228,7 @@ import {
 } from "./bootstrap/provider-entity-resolver";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
+import { registerOpsClaimMdEraRecoveryRoute } from "./bootstrap/routes/ops-claimmd-era-recovery";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
 import {
   RUST_PARITY_SWEEP_JOB_ID,
@@ -264,6 +267,8 @@ import { buildDrizzleRemittanceCursorStore } from "./modules/25-remittance/inges
 import { partnerAccessAvailability } from "./modules/36-messaging/external-share/external-share-proxy";
 import { familyAccessAvailability } from "./modules/36-messaging/family/family-access-gate";
 
+/** ADR-0107: a "pending legal review" signing template (Consent to Treat today) is never sent, signed, accepted or reminded unless this is set on purpose (refused at a production boot by env.ts). Read once so the route, reminder and push re-check agree. */
+const PORTAL_ALLOW_UNREVIEWED_TEMPLATES = process.env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES === "true";
 /** The @chartwarden/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
 /** The platform-job id M34's tenant-shred identity-subject read runs under (same M36 D9 rule, own audit trail). */
@@ -334,7 +339,14 @@ import {
   embedderUnavailable,
   licensedSourceDenyStub,
 } from "@chartwarden/terminology-loader";
+import {
+  type ClaimMdEraUsage,
+  type ClaimMdUsage,
+  createClaimMdAccountEraReader,
+  createClaimMdAccountResponseReader,
+} from "@chartwarden/x12-837-client";
 import { buildActivePermissionHolderIds } from "./bootstrap/active-permission-holders";
+import { createClaimMdProtectedPayloadCipher } from "./bootstrap/claimmd-payload-cipher";
 import {
   ACK_PICKER_RATE_LIMIT_KEY_PREFIX,
   buildAckRateLimit,
@@ -524,11 +536,14 @@ import {
   claimStayEndFactsForOrg,
   composeNonCoveredItemsReaders,
   createAdmissionLocPeriodsReader,
+  createDbAdmissionAbacResolver,
   createDocumentReaderEvidenceValidator,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
   createElectionAddendumService,
   createNomncService,
+  createPortalAdmissionSigners,
+  createPortalSigningTargetCheck,
   electionAddendumComplianceForOrg,
   electionPeriodContextForOrg,
   idgActiveAdmissionsForOrg,
@@ -802,6 +817,12 @@ import {
   M16_OUTBOX_EVENTS,
   M16_PLATFORM_JOB_ID,
   buildDrizzleBereavementAbacResolver,
+  buildDrizzleM16DraftService,
+  buildDrizzleM16GroupService,
+  buildDrizzleM16LetterService,
+  buildDrizzleM16LibraryService,
+  buildDrizzleM16MailingService,
+  buildDrizzleM16MemorialService,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
   buildM16BereavementIntakeConsumer,
@@ -812,11 +833,14 @@ import {
   buildM16DocumentRenderedConsumer,
   buildM16EncounterSignedConsumer,
   buildM16IdgDecisionConsumer,
+  buildM16MailingEnqueuePort,
   buildM16PatientOptOutChangedConsumer,
   buildM16WorkerDeps,
   createBereavementCipher,
+  createBereavementPortalContentProvider,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
+  createM16AlertPort,
   denyStubBereavementAbacResolver,
   mountM16Routes,
   registerBereavementAbacPredicates,
@@ -827,6 +851,7 @@ import {
   wireM16Tenancy,
 } from "./modules/16-bereavement/index";
 import { bereavementCensusForOrg } from "./modules/16-bereavement/seams/bereavement-census-for-org";
+import { physicianLetterNoteForOrg } from "./modules/16-bereavement/seams/physician-letter-note-for-org";
 // F-161 (#248) — M16's org-explicit bereavement-plan-siting seam, injected as a port into M30's
 // plan-closure consumer (M30's manifest `dependsOn` excludes 16, the F-160 `CapConsumerStore` shape).
 import {
@@ -998,7 +1023,9 @@ import {
   createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
   createDrizzleDocumentSeamStore,
+  createDrizzleOrgDocumentAccessPort,
   createDrizzlePortalAccessLog,
+  createDrizzleStaffMintAccessLog,
   createHttpDoclingClient,
   createIdentityTargetPorts,
   createRefusingObjectStore,
@@ -1029,6 +1056,40 @@ import {
   validateDocumentsAIBlock,
 } from "./modules/22-documents/index";
 import { buildM22ConsentRevokedConsumer } from "./modules/22-documents/outbox-consumers/m39-consent-revoked";
+import { claimMdAckMode } from "./modules/23-billing-medicare/claimmd-ack/config";
+import { createClaimMdAckDispatcher } from "./modules/23-billing-medicare/claimmd-ack/service";
+import {
+  CLAIMMD_ACK_JOB_ID,
+  createClaimMdAckSource,
+} from "./modules/23-billing-medicare/claimmd-ack/store";
+import { startClaimMdAckWorker } from "./modules/23-billing-medicare/claimmd-ack/worker";
+import { createClaimMdInboxCipher } from "./modules/23-billing-medicare/claimmd-capture/cipher";
+import { claimMdResponseCaptureEnabled } from "./modules/23-billing-medicare/claimmd-capture/config";
+import { CLAIMMD_RESPONSE_METRICS_JOB_ID } from "./modules/23-billing-medicare/claimmd-capture/operational-reader";
+import { createClaimMdResponseCapture } from "./modules/23-billing-medicare/claimmd-capture/service";
+import {
+  CLAIMMD_CAPTURE_JOB_ID,
+  createClaimMdResponseStore,
+} from "./modules/23-billing-medicare/claimmd-capture/store";
+import { startClaimMdResponseCaptureWorker } from "./modules/23-billing-medicare/claimmd-capture/worker";
+import { createClaimMdEvidenceCipher } from "./modules/23-billing-medicare/claimmd-evidence/cipher";
+import { createClaimMdNoticeEvidenceStore } from "./modules/23-billing-medicare/claimmd-evidence/notice-store";
+import { createClaimMdSubmissionEvidenceStore } from "./modules/23-billing-medicare/claimmd-evidence/store";
+import { createClaimMdCandidateProvider } from "./modules/23-billing-medicare/claimmd-identity/candidate-provider";
+import {
+  claimMdIdentityResolutionEnabled,
+  claimMdInboxKeyRingFromEnv,
+} from "./modules/23-billing-medicare/claimmd-identity/config";
+import {
+  createClaimMdIdentityResolver,
+  createClaimMdIdentityWorker,
+} from "./modules/23-billing-medicare/claimmd-identity/service";
+import { createClaimMdIdentityStore } from "./modules/23-billing-medicare/claimmd-identity/store";
+import {
+  CLAIMMD_IDENTITY_JOB_ID,
+  type IdentityWorkerSummary,
+  startClaimMdIdentityWorker,
+} from "./modules/23-billing-medicare/claimmd-identity/worker";
 import { createDrizzleAckCursorStore } from "./modules/23-billing-medicare/clearinghouse-ack-cursor-store";
 import { createDrizzleAttemptStore } from "./modules/23-billing-medicare/clearinghouse-attempt-store";
 import {
@@ -1098,15 +1159,20 @@ import {
   buildNoticeWindowPort,
   buildSubmissionControlNumberReader,
   buildTransferNoticeService,
+  createClaimMdOperationalReader,
   createDrizzleBillingEraseStore,
   createDrizzleDdeAgingStore,
   createDrizzleDdeChangeStore,
   createM23HetsTransport,
   createM23LaunchGateway,
+  hasNonVoidMedicareClaimForPatientPayer,
   m23HetsConfigFromEnv,
   m23LaunchGatewayConfigFromEnv,
   mountM23Routes,
   priorElectionClosureForOrg,
+  readClaimMdEraCandidateEvidence,
+  readClaimMdEraSubmissionFacts,
+  readM23HistoricalEraCandidates,
   registerBillingErasers,
   registerDdeAgingAlertWorker,
   registerDdeDailyChangeWorker,
@@ -1124,6 +1190,10 @@ import {
   validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
+import {
+  buildClaim837iPersistencePort,
+  renderClaim837iPreview,
+} from "./modules/23-billing-medicare/services/claim-837i-loader";
 import {
   composeFacilitySpans,
   toFacilitySpans,
@@ -1160,6 +1230,7 @@ import {
   buildM24SubmissionWorkerDeps,
   buildStateChannelHealthProbe,
   createDrizzleMedicaidRedactStore,
+  hasNonVoidMedicaidClaimForPatientPayer,
   mountM24Routes,
   registerM24AbacPredicates,
   registerM24CronWorkers,
@@ -1223,6 +1294,36 @@ import {
   validateRemittanceAIBlock,
   wireM25Tenancy,
 } from "./modules/25-remittance/index";
+import { createClaimMdEraCapture } from "./modules/25-remittance/ingest/claimmd-era-capture";
+import {
+  claimMdEraRuntimeConfig,
+  shouldRunLegacyClaimMdEraPull,
+} from "./modules/25-remittance/ingest/claimmd-era-config";
+import { createClaimMdEraDeliveryService } from "./modules/25-remittance/ingest/claimmd-era-delivery";
+import { startClaimMdEraDeliveryWorker } from "./modules/25-remittance/ingest/claimmd-era-delivery-worker";
+import {
+  createClaimMdEraRecoveryService,
+  registerClaimMdEraRecoveryPlatformJob,
+} from "./modules/25-remittance/ingest/claimmd-era-recovery";
+import {
+  type ClaimMdEraEvidenceReader,
+  createClaimMdEraResolver,
+} from "./modules/25-remittance/ingest/claimmd-era-resolution";
+import {
+  CLAIMMD_ERA_RESOLUTION_JOB_ID,
+  createClaimMdEraResolutionWorker,
+  startClaimMdEraResolutionWorker,
+} from "./modules/25-remittance/ingest/claimmd-era-resolution-worker";
+import { buildDrizzleClaimMdEraReviewService } from "./modules/25-remittance/ingest/claimmd-era-review";
+import {
+  CLAIMMD_ERA_CAPTURE_JOB_ID,
+  CLAIMMD_ERA_DELIVERY_JOB_ID,
+  CLAIMMD_ERA_METRICS_JOB_ID,
+  CLAIMMD_ERA_REVIEW_HISTORY_JOB_ID,
+  createClaimMdEraStore,
+} from "./modules/25-remittance/ingest/claimmd-era-store";
+import { startClaimMdEraCaptureWorker } from "./modules/25-remittance/ingest/claimmd-era-worker";
+import { createM25FinancialOpsReader } from "./modules/25-remittance/ingest/financial-ops-reader";
 import { createDrizzleCapConsumerStore } from "./modules/26-cap/consumers/drizzle-store";
 import { buildM26UpstreamConsumer } from "./modules/26-cap/consumers/outbox-binding";
 // M26 (Cap Management) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers (cap_period_open /
@@ -1391,6 +1492,8 @@ import {
   buildDailyTelehealthAdapter,
   buildDrizzlePortalStore,
   buildPortalAbacResolverFromStore,
+  buildPortalSignatureStore,
+  buildStaffSignatureStore,
   createM31EventEmitter,
   createM31PublishedSeamImpls,
   createPortalConsentPort,
@@ -1410,13 +1513,13 @@ import {
   M31_PLATFORM_JOB_ID,
   registerM31LateJoinWatchdogWorker,
   registerM31PostDischargeGraceWorker,
+  registerM31SignatureReminderWorker,
   scheduleM31LateJoinWatchdogJob,
   scheduleM31PostDischargeGraceJob,
+  scheduleM31SignatureReminderJob,
   wireM31Tenancy,
 } from "./modules/31-portal/jobs/index";
 import { buildM31EncounterSignedTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m8-encounter-signed-telehealth";
-// F-167 (#248) — the per-contact-exact D6 lateral-flip trigger `plan_opened`'s own sibling names as "the
-// real primary trigger." Fed by M16's new single-contact seam read (`bereavedContactFlipCandidateForOrg`).
 import { buildM31BereavementContactActiveConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-contact-active";
 import { buildM31BereavementPlanClosedConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-plan-closed";
 import { buildM31BereavementPlanOpenedConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-plan-opened";
@@ -1425,6 +1528,14 @@ import { buildM31BereavementPlanOpenedConsumer } from "./modules/31-portal/outbo
 import { buildM31VisitCancelledTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m17-visit-cancelled-telehealth";
 import { buildM31VisitRescheduledTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m17-visit-rescheduled-telehealth";
 import { buildM31ConsentRevokedGrantCascadeConsumer } from "./modules/31-portal/outbox-consumers/m39-consent-revoked";
+// F-167 (#248) — the per-contact-exact D6 lateral-flip trigger `plan_opened`'s own sibling names as "the
+// real primary trigger." Fed by M16's new single-contact seam read (`bereavedContactFlipCandidateForOrg`).
+import { buildM31SignatureRequestPushConsumer } from "./modules/31-portal/outbox-consumers/signature-request-push";
+import {
+  activePortalUserIds,
+  signatureRecipientUserIds,
+  signatureRequestStillPending,
+} from "./modules/31-portal/seams/signature-push-recipients";
 // M32 (AI Platform) boot surface — M32-T02's §3.7 destruction contract, M32-T06's §4.4 seam registration
 // and M32-T07's HTTP surface: the §4.11 `m32.*` outbox catalog, the six §4.7 ABAC predicate resolvers and
 // the §4.1 route mount over the T03/T04/T05 command services + T07's read port. `ai.full` stays OFF.
@@ -1780,6 +1891,7 @@ import {
   createConsentInternalNotesCipher,
   createDbConsentStore,
   createDrizzleConsentEraseStore,
+  createPortalConsentSigner,
   getConsentEvaluator,
   getConsentPatientReader,
   mountConsentRoutes,
@@ -1824,6 +1936,7 @@ import {
   buildCommercialClaimLifecycleService,
   buildCommercialClaimReadService,
   buildM41RemittanceConsumer,
+  hasNonVoidCommercialClaimForPatientPayer,
   registerCommercialAckQuarantineRoutes,
   registerCommercialBillingRoutes,
   registerM41AbacPredicates,
@@ -1843,6 +1956,7 @@ import {
   createScheduleProbe,
   createSharedDrainReadiness,
   mountM41Routes,
+  readM41HistoricalEraCandidates,
   registerM41AckWorker,
   registerM41QuarantinePruneWorker,
   registerM41SubmissionWorker,
@@ -1852,6 +1966,16 @@ import {
   scheduleWithRetry,
   wireM41Tenancy,
 } from "./modules/41-billing-commercial/index";
+import { applyCommercialClaimMdReceipt } from "./modules/41-billing-commercial/services/claimmd-ack-adapter";
+import { readClaimMdCommercialSubmissionFacts } from "./modules/41-billing-commercial/services/claimmd-submission-reader";
+
+const PATIENT_PAYER_CLAIM_REFERENCES = {
+  async hasNonVoidClaim(tx: DbClient, organizationId: string, payerRowId: string) {
+    if (await hasNonVoidMedicareClaimForPatientPayer(tx, organizationId, payerRowId)) return true;
+    if (await hasNonVoidMedicaidClaimForPatientPayer(tx, organizationId, payerRowId)) return true;
+    return hasNonVoidCommercialClaimForPatientPayer(tx, organizationId, payerRowId);
+  },
+};
 
 export { buildServer };
 export * from "./bootstrap/index";
@@ -1953,6 +2077,9 @@ export function wireModuleSeams(
           emitter: createDrizzleAlertEmitter(deps.db, {
             // WP 4.6 (ADR-0073): the notification policy's flag gate (default off per tenant).
             flags: createDrizzleFeatureFlagReader(deps.db),
+            // ADR-0107 D7: a portal account holds no membership; M31 says which user ids have an ACTIVE portal account.
+            activePortalRecipients: (organizationId, userIds) =>
+              deps.db ? activePortalUserIds(deps.db, organizationId, userIds) : Promise.resolve([]),
             extendResolvers: m34ResolverExtension(
               createDrizzleM34AlertResolverPorts(deps.db, {
                 roleSetMembers: createDrizzleRoleSetMembersReader(deps.db),
@@ -2197,6 +2324,22 @@ export function wireModuleSeams(
   // methods incl. the ONE write: the append to the immutable risk-score ledger; contact channel
   // ciphers never cross the seam).
   registerBereavementSeams(deps.db ? { store: createDrizzleBereavementSeamStore(deps.db) } : {});
+  // ADR-0109 D10 (PR 3) — `BereavementPortalContentProvider`: the bereaved family's own memorial invitations and RSVP for M31's portal routes. The
+  // RSVP emits `m16.bereavement.memorial_rsvp_recorded` through the catalog-validating publisher (callerModule `m16`); a virtual service's link is
+  // opened with the tenant-DEK envelope (resolved per call). Without a db or a publisher the deny-stub stands (the portal routes answer 503).
+  if (deps.db && deps.outboxPublisher) {
+    registerSeam(
+      "BereavementPortalContentProvider",
+      createBereavementPortalContentProvider(deps.db, {
+        outbox: bindCallerModule(deps.outboxPublisher, "m16") as never,
+        cipher: createBereavementCipher({
+          dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+          dekForOrgVersion: (orgId, version) =>
+            getTenantKeyProvider().dekForOrgVersion(orgId, version),
+        }),
+      }),
+    );
+  }
   // M16-T06 — the four §4.8 ABAC predicates M16 OWNS (bereavement_window / discipline_can_provide_bereavement
   // / org_scope_bereavement_oversight / portal_self_service) into M3's named-predicate registry. §4.8 calls
   // the last two "reused / M3 §4.2 family", but nothing on the platform registers either name, and an
@@ -2211,6 +2354,25 @@ export function wireModuleSeams(
           roleGrants: createDbEffectivePermissionStore(deps.db),
         })
       : denyStubBereavementAbacResolver,
+    // ADR-0109 D5 — `bereavement_pre_death_assessor`: an admission resolves to its patient through M6's
+    // `AdmissionStatusReader`, and the caller's seat on that patient's care team through M5's `CareTeamProvider`
+    // (user-id space). Both are org-explicit seam reads resolved lazily per call; the predicate denies on any throw.
+    preDeathAssessor: {
+      async patientOfAdmission(organizationId, admissionId) {
+        const care = await getSeam("AdmissionStatusReader").getAdmissionPatientCare(
+          organizationId,
+          admissionId as never,
+        );
+        return care === null ? null : care.patientId;
+      },
+      async isOnCareTeam(organizationId, patientId, userId) {
+        const members = await getSeam("CareTeamProvider").careTeamMembers({
+          organizationId,
+          patientId,
+        });
+        return members.includes(userId);
+      },
+    },
     // §4.8's volunteer clause resolves through M15's published `VolunteerComplianceProvider` — the ONE
     // 42 CFR §418.78 gate implementation on the platform. Resolved lazily per call, fail-CLOSED on throw.
     volunteerGatesSatisfied: async ({ organizationId, volunteerMembershipId }) => {
@@ -2466,6 +2628,9 @@ export function wireModuleSeams(
           portalConsent: createSudConsentEvaluatorPortalConsentPort(),
           // F-225 (#248) — the portal mint's §164.528 `document_access_log` append.
           portalAccessLog: createDrizzlePortalAccessLog(deps.db),
+          // ADR-0109 D10 — the org-level (patient-less) document mint M16's mailing batch download goes through.
+          orgDocuments: createDrizzleOrgDocumentAccessPort(deps.db),
+          orgDocumentAccessLog: createDrizzleStaffMintAccessLog(deps.db),
         }
       : {},
   );
@@ -3042,8 +3207,9 @@ export function wireModuleErasers(
   // tombstones the plan root for FK integrity. The `bereavement_plan_closure` row SURVIVES with its
   // narrative shredded — §7.15 survey reconstruction — and the org-scoped external-source gate override is
   // tenant config that is never touched, §8.5). The Drizzle store binds when a DB client is present;
-  // without one the slice's in-memory store stands.
-  registerBereavementErasers(deps.db ? { store: createDrizzleBereavementEraseStore(deps.db) } : {});
+  // without one the slice's in-memory store stands. Bound over `eraseDb` (migration 1348 grants the destruction
+  // role what the shred and delete passes run; the app role has no DELETE and may not touch the immutable score ledger).
+  registerBereavementErasers(eraseDb ? { store: createDrizzleBereavementEraseStore(eraseDb) } : {});
   registerIdgErasers(eraseDb ? { store: createDrizzleIdgEraseStore(eraseDb) } : {}); // M14 — `idg_record` (patient-scoped rows; meetings/minutes survive, minutes hash-redacted)
   // M22 — `documents`. With the MINIO_* env contract the erase destroys real object versions via
   // the SigV4 adapter (task-15); without it, object destruction refuses via DegradedError BEFORE
@@ -3708,21 +3874,6 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // POST /billing/eligibility/check keeps answering 503: never a fabricated eligibility result. A present but
   // invalid configuration throws here, so a typo fails the boot instead of silently disabling eligibility.
   const m23HetsConfig = m23HetsConfigFromEnv(process.env);
-  // ADR-0053 D3 - the platform's clearinghouse binding. Unset keeps every transport call at CH_NOT_WIRED; a vendor
-  // named with no adapter in this build throws here, so a misconfigured deploy refuses to boot.
-  const clearinghouseBinding = bindPlatformClearinghouse(process.env, {
-    attempts: dbHandle ? createDrizzleAttemptStore(dbHandle.db) : null,
-    // #706 - direct_mac is the launch gateway re-expressed behind the port (it needs the gateway AND a database).
-    directMacGateway:
-      m23LaunchGateway && dbHandle
-        ? buildDirectMacGateway({
-            x12: m23LaunchGateway.x12,
-            macPortal: m23LaunchGateway.macPortal,
-            controlNumberOf: buildSubmissionControlNumberReader(dbHandle.db),
-          })
-        : null,
-    onAnomaly: (anomaly) => app.log.warn({ anomaly }, "Clearinghouse anomaly"),
-  });
   // ADR-0103 D2 - which DdeAccessProvider the DDE queue's send route uses. Unset / `manual` binds the fail-closed
   // provider (every call answers DDE_NOT_WIRED); a vendor with no adapter in this build throws here (no adapter exists
   // yet, so naming one refuses to boot rather than silently behaving as manual).
@@ -3733,12 +3884,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // gateway — only the Valkey connection the worker itself already requires to run. Built unconditionally
   // (queueConnection may still be undefined; the port fails closed per-call in that case, RULE 4).
   const m23RevalidateEnqueue = buildM23RevalidateEnqueuePort(queueConnection);
+  // ADR-0109 D10 — the `m16-mailing-generate` enqueue side: the mailing route service hands a claimed run to the worker through it
+  // (fails closed per call with no Valkey connection; the sweep re-sends a lost hand-off).
+  const m16MailingEnqueue = buildM16MailingEnqueuePort(queueConnection);
   // GAP-070 — the `validation-run` / `eligibility.refresh` producer (queue connection only; no launch gateway).
   const m23WorkQueues = queueConnection ? buildM23WorkQueueEnqueuePort(queueConnection) : null;
-  // M24 (WX-PR-011) — the Oregon launch-gateway, gated the same way as M23's (unset in dev/test/CI so
-  // nothing calls out by accident). The adapter registry always constructs (WA/ID/CA/NV deny-stubs register
-  // regardless); only Oregon's wire I/O gets a real gateway when one resolves.
-  // GAP-146 — in production an unset M24_LAUNCH_GATEWAY_ENABLED means enabled (opt-out, like M23's switch).
+  // M24 (WX-PR-011) — the Oregon reference gateway binds only when explicitly opted into in any environment.
+  // The adapter registry always constructs (WA/ID/CA/NV deny-stubs register regardless); a bound gateway
+  // remains non-certified and cannot authorize claim submissions.
+  // M24's gateway remains explicitly opt-in in every environment; binding a configured gateway is
+  // not sufficient for claim submission because state/program certification is independently required.
   const m24LaunchConfig = m24LaunchGatewayConfigFromEnv(
     withM24LaunchGatewayDefault(process.env) as NodeJS.ProcessEnv,
   );
@@ -3880,6 +4035,253 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const rateLimitStore = rateLimitRedisClient
     ? createRedisRateLimitStore(rateLimitRedisClient)
     : undefined;
+  // ADR-0053 D3 - the platform's clearinghouse binding. Unset keeps every transport call at CH_NOT_WIRED; a vendor
+  // named with no adapter in this build throws here, so a misconfigured deploy refuses to boot.
+  const clearinghouseBinding = bindPlatformClearinghouse(process.env, {
+    attempts: dbHandle ? createDrizzleAttemptStore(dbHandle.db) : null,
+    // #706 - direct_mac is the launch gateway re-expressed behind the port (it needs the gateway AND a database).
+    directMacGateway:
+      m23LaunchGateway && dbHandle
+        ? buildDirectMacGateway({
+            x12: m23LaunchGateway.x12,
+            macPortal: m23LaunchGateway.macPortal,
+            controlNumberOf: buildSubmissionControlNumberReader(dbHandle.db),
+          })
+        : null,
+    onAnomaly: (anomaly) => app.log.warn({ anomaly }, "Clearinghouse anomaly"),
+    // Claim.MD's 100-a-minute limit is per account, shared by every process: spend it from the cluster-wide store.
+    claimMdRequestCounter: rateLimitStore ?? null,
+  });
+  const claimMdSubmissionEvidence =
+    clearinghouseBinding.vendor === "claimmd" && dbHandle
+      ? createClaimMdSubmissionEvidenceStore({
+          db: dbHandle.db,
+          accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE!.trim(),
+          usage: process.env.CLAIMMD_ACCOUNT_USAGE as "test" | "production",
+          cipher: createClaimMdEvidenceCipher({
+            dekForOrg: (organizationId) => getTenantKeyProvider().dekForOrg(organizationId),
+            dekForOrgVersion: (organizationId, version) =>
+              getTenantKeyProvider().dekForOrgVersion(organizationId, version),
+          }),
+        })
+      : undefined;
+  const claimMdNoticeUploadsEnabled = process.env.M23_CLAIMMD_NOTICE_UPLOAD_ENABLED === "true";
+  const claimMdNoticeEvidence =
+    clearinghouseBinding.vendor === "claimmd" && dbHandle
+      ? createClaimMdNoticeEvidenceStore({
+          db: dbHandle.db,
+          accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE!.trim(),
+          usage: process.env.CLAIMMD_ACCOUNT_USAGE as "test" | "production",
+          cipher: createClaimMdEvidenceCipher({
+            dekForOrg: (organizationId) => getTenantKeyProvider().dekForOrg(organizationId),
+            dekForOrgVersion: (organizationId, version) =>
+              getTenantKeyProvider().dekForOrgVersion(organizationId, version),
+          }),
+        })
+      : undefined;
+  let claimMdResponseCapture: ReturnType<typeof createClaimMdResponseCapture> | undefined;
+  if (claimMdResponseCaptureEnabled(process.env)) {
+    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const accountKey = process.env.CLAIMMD_ACCOUNT_KEY?.trim();
+    const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
+    const inboxKeyRing = claimMdInboxKeyRingFromEnv(process.env);
+    if (
+      role === "api" ||
+      clearinghouseBinding.vendor !== "claimmd" ||
+      !dbHandle ||
+      !platformDbHandle ||
+      !rateLimitStore ||
+      !accountReference ||
+      !/^[A-Za-z0-9._:-]{1,128}$/.test(accountReference) ||
+      !accountKey ||
+      (usage !== "test" && usage !== "production") ||
+      !inboxKeyRing
+    )
+      throw new Error(
+        "Claim.MD response capture requires a worker role, account/environment, tenant/platform DB, keyring, and shared rate limiter",
+      );
+    registerPlatformJob(CLAIMMD_CAPTURE_JOB_ID);
+    const cipher = createClaimMdInboxCipher(inboxKeyRing);
+    const store = createClaimMdResponseStore({
+      platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      cipher,
+    });
+    const reader = createClaimMdAccountResponseReader({
+      accounts: { [accountReference]: { [usage as ClaimMdUsage]: accountKey } },
+      counter: rateLimitStore,
+    });
+    claimMdResponseCapture = createClaimMdResponseCapture({
+      store,
+      reader,
+      log: (event) => app.log.info(event, "Claim.MD account response capture tick"),
+    });
+    await withPlatformContext(
+      platformDbHandle.db,
+      {
+        jobId: CLAIMMD_CAPTURE_JOB_ID,
+        reason: "Claim.MD response capture schema, privilege, and operator-bootstrap preflight",
+        crossTenant: true,
+      },
+      m34PlatformBypassAuditor,
+      async (tx) => {
+        await tx
+          .select({ id: schema.claimmdResponseStreams.id })
+          .from(schema.claimmdResponseStreams)
+          .limit(0);
+        await tx
+          .select({ id: schema.claimmdResponseBatches.id })
+          .from(schema.claimmdResponseBatches)
+          .limit(0);
+        await tx
+          .select({ id: schema.claimmdResponseEvents.id })
+          .from(schema.claimmdResponseEvents)
+          .limit(0);
+        const [stream] = await tx
+          .select({ id: schema.claimmdResponseStreams.id })
+          .from(schema.claimmdResponseStreams)
+          .where(
+            and(
+              eq(schema.claimmdResponseStreams.accountReference, accountReference),
+              eq(schema.claimmdResponseStreams.usage, usage),
+              eq(schema.claimmdResponseStreams.streamType, "claim_responses"),
+            ),
+          )
+          .limit(1);
+        if (!stream)
+          throw new Error("Claim.MD response capture stream is not operator-bootstrapped");
+      },
+    );
+  }
+  const claimMdResolverEnabled = claimMdIdentityResolutionEnabled(process.env);
+  let claimMdIdentityWorker: ReturnType<typeof createClaimMdIdentityWorker> | undefined;
+  let claimMdIdentitySummary: (() => Promise<IdentityWorkerSummary>) | undefined;
+  if (claimMdResolverEnabled && role !== "api") {
+    if (
+      clearinghouseBinding.vendor !== "claimmd" ||
+      !dbHandle ||
+      !platformDbHandle ||
+      !claimMdSubmissionEvidence
+    )
+      throw new Error(
+        "Claim.MD identity resolver requires Claim.MD binding and both tenant/platform database clients",
+      );
+    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
+    if (
+      !accountReference ||
+      !/^[A-Za-z0-9._:-]{1,128}$/.test(accountReference) ||
+      (usage !== "test" && usage !== "production")
+    )
+      throw new Error("Claim.MD identity resolver account reference or usage is invalid");
+    const inboxKeyRing = claimMdInboxKeyRingFromEnv(process.env);
+    if (!inboxKeyRing)
+      throw new Error("Claim.MD identity resolver inbox key ring is unavailable or invalid");
+    // Resolve the existing M34 tenant keyring now; candidate decryption remains lazy and candidate-scoped.
+    const tenantKeys = getTenantKeyProvider();
+    const inboxCipher = createClaimMdInboxCipher(inboxKeyRing);
+    registerPlatformJob(CLAIMMD_IDENTITY_JOB_ID);
+    const claimMdCandidates = createClaimMdCandidateProvider({
+      readSnapshot: (fn) =>
+        withPlatformContext(
+          platformDbHandle.db,
+          {
+            jobId: CLAIMMD_IDENTITY_JOB_ID,
+            reason: "Claim.MD identity candidate lookup: immutable account-scoped evidence",
+            crossTenant: true,
+          },
+          m34PlatformBypassAuditor,
+          fn,
+          { isolation: "repeatable read" },
+        ),
+      siteReader: buildFoundationSiteReader(),
+      commercialSubmissionReader: readClaimMdCommercialSubmissionFacts,
+      cipher: createClaimMdEvidenceCipher({
+        dekForOrg: (organizationId) => tenantKeys.dekForOrg(organizationId),
+        dekForOrgVersion: (organizationId, version) =>
+          tenantKeys.dekForOrgVersion(organizationId, version),
+      }),
+      accountReference,
+      usage,
+    });
+    const identityStore = createClaimMdIdentityStore({
+      platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      cipher: inboxCipher,
+      accountReference,
+      usage,
+      candidates: (event) => claimMdCandidates.findClaimMdSubmissionCandidates(event),
+    });
+    claimMdIdentitySummary = () => identityStore.summary();
+    // Explicit schema/permission readiness probe. A missing migration/grant fails startup when the operator explicitly enables this worker.
+    await withPlatformContext(
+      platformDbHandle.db,
+      {
+        jobId: CLAIMMD_IDENTITY_JOB_ID,
+        reason: "Claim.MD identity resolver startup schema and privilege preflight",
+        crossTenant: true,
+      },
+      m34PlatformBypassAuditor,
+      async (tx) => {
+        await tx
+          .select({ id: schema.claimmdResponseEvents.id })
+          .from(schema.claimmdResponseEvents)
+          .limit(0);
+        const [stream] = await tx
+          .select({ id: schema.claimmdResponseStreams.id })
+          .from(schema.claimmdResponseStreams)
+          .where(
+            and(
+              eq(schema.claimmdResponseStreams.accountReference, accountReference),
+              eq(schema.claimmdResponseStreams.usage, usage),
+              eq(schema.claimmdResponseStreams.streamType, "claim_responses"),
+            ),
+          )
+          .limit(1);
+        if (!stream)
+          throw new Error("Claim.MD identity resolver response stream is not bootstrapped");
+        await tx
+          .select({ id: schema.claimmdResponseBatches.id })
+          .from(schema.claimmdResponseBatches)
+          .limit(0);
+        await tx
+          .select({ id: schema.claimmdResponseResolutions.id })
+          .from(schema.claimmdResponseResolutions)
+          .limit(0);
+        await tx
+          .select({ id: schema.claimmdResponseResolutionHistory.id })
+          .from(schema.claimmdResponseResolutionHistory)
+          .limit(0);
+        await tx
+          .select({ id: schema.claimmdSubmissionEvidence.id })
+          .from(schema.claimmdSubmissionEvidence)
+          .limit(0);
+        await tx
+          .select({ id: schema.claimmdSubmissionReceiptObservations.id })
+          .from(schema.claimmdSubmissionReceiptObservations)
+          .limit(0);
+        await tx.select({ id: schema.claimSubmission.id }).from(schema.claimSubmission).limit(0);
+        await tx
+          .select({ id: schema.commercialSubmissions.id })
+          .from(schema.commercialSubmissions)
+          .limit(0);
+        await tx
+          .select({ id: schema.clearinghouseSubmissionAttempts.organizationId })
+          .from(schema.clearinghouseSubmissionAttempts)
+          .limit(0);
+        await tx.select({ id: schema.providerEntities.id }).from(schema.providerEntities).limit(0);
+        await tx.select({ id: schema.locations.id }).from(schema.locations).limit(0);
+      },
+    );
+    const resolver = createClaimMdIdentityResolver(identityStore);
+    claimMdIdentityWorker = createClaimMdIdentityWorker({
+      enabled: true,
+      queue: identityStore,
+      resolver,
+      batchSize: 25,
+      leaseMs: 60_000,
+    });
+  }
   // M36 WP 4.1/4.2 - the urgent and acknowledgment-request limiters fall back to per-replica memory without a shared store: N
   // replicas then allow N times the budget. That is bounded but weaker, so say so loudly in production instead of silently.
   if (!rateLimitStore && process.env.NODE_ENV === "production") {
@@ -4181,6 +4583,385 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
   const m41OutboxPublisher = bindCallerModule(txOutboxPublisher, "m41");
+  const claimMdAckExecutionMode = claimMdAckMode(process.env);
+  const claimMdEraConfig = claimMdEraRuntimeConfig(process.env);
+  let claimMdEraCapture: ReturnType<typeof createClaimMdEraCapture> | undefined;
+  let claimMdEraStore: ReturnType<typeof createClaimMdEraStore> | undefined;
+  let claimMdEraRecoveryService: ReturnType<typeof createClaimMdEraRecoveryService> | undefined;
+  let claimMdEraResolutionWorker: ReturnType<typeof createClaimMdEraResolutionWorker> | undefined;
+  let claimMdEraDelivery: ReturnType<typeof createClaimMdEraDeliveryService> | undefined;
+  const claimMdRecoveryAccount = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+  const claimMdRecoveryUsage = process.env.CLAIMMD_ACCOUNT_USAGE;
+  const claimMdRecoveryKeyRing = claimMdInboxKeyRingFromEnv(process.env);
+  let claimMdEraResolver: ReturnType<typeof createClaimMdEraResolver> | undefined;
+  // Recovery is an internal operator capability, not a worker activation flag. Compose its read-only
+  // resolver on any role that has the protected storage prerequisites; no vendor credentials or API
+  // request are needed. If optional configuration is absent, unrelated startup remains unaffected.
+  if (
+    dbHandle &&
+    platformDbHandle &&
+    claimMdRecoveryKeyRing &&
+    claimMdRecoveryAccount &&
+    /^[A-Za-z0-9._:-]{1,128}$/.test(claimMdRecoveryAccount) &&
+    (claimMdRecoveryUsage === "test" || claimMdRecoveryUsage === "production")
+  ) {
+    registerClaimMdEraRecoveryPlatformJob();
+    registerPlatformJob(CLAIMMD_ERA_RESOLUTION_JOB_ID);
+    const store = createClaimMdEraStore({
+      platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      keyRing: claimMdRecoveryKeyRing,
+    });
+    claimMdEraStore = store;
+    const evidenceCipher = createClaimMdEvidenceCipher({
+      dekForOrg: (organizationId) => getTenantKeyProvider().dekForOrg(organizationId),
+      dekForOrgVersion: (organizationId, version) =>
+        getTenantKeyProvider().dekForOrgVersion(organizationId, version),
+    });
+    const evidenceReader: ClaimMdEraEvidenceReader = {
+      read: (query) =>
+        readClaimMdEraSubmissionFacts({
+          ...query,
+          openTin: (fact) =>
+            evidenceCipher.open({
+              evidenceId: fact.id,
+              organizationId: fact.organizationId,
+              providerEntityId: fact.providerEntityId,
+              attemptKey: fact.attemptKey,
+              sealed: fact.sealed,
+            }),
+        }),
+    };
+    claimMdEraResolver = createClaimMdEraResolver({
+      store,
+      accountReference: claimMdRecoveryAccount,
+      usage: claimMdRecoveryUsage,
+      evidenceReader,
+      siteReader: buildFoundationSiteReader(),
+      commercialSubmissionReader: readClaimMdCommercialSubmissionFacts,
+      readSnapshot: (fn) =>
+        withPlatformContext(
+          platformDbHandle.db,
+          {
+            jobId: CLAIMMD_ERA_RESOLUTION_JOB_ID,
+            reason: "Claim.MD ERA operator recovery: immutable submission and provider evidence",
+            crossTenant: true,
+          },
+          m34PlatformBypassAuditor,
+          fn,
+          { isolation: "repeatable read" },
+        ),
+    });
+    claimMdEraRecoveryService = createClaimMdEraRecoveryService({
+      store,
+      resolver: claimMdEraResolver,
+      authorize: async (actor) =>
+        actor.kind === "platform_operator" &&
+        actor.authorization === "billing.rule_config.platform_admin" &&
+        /^[0-9a-f-]{36}$/i.test(actor.id),
+    });
+  }
+  if (claimMdEraConfig.captureEnabled) {
+    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
+    const accountKey = process.env.CLAIMMD_ACCOUNT_KEY;
+    const keyRing = claimMdInboxKeyRingFromEnv(process.env);
+    if (
+      role === "api" ||
+      clearinghouseBinding.vendor !== "claimmd" ||
+      !dbHandle ||
+      !platformDbHandle ||
+      !rateLimitStore ||
+      !accountReference ||
+      !/^[A-Za-z0-9._:-]{1,128}$/.test(accountReference) ||
+      (usage !== "test" && usage !== "production") ||
+      !accountKey ||
+      !keyRing
+    )
+      throw new Error(
+        "Claim.MD ERA capture requires worker role, Claim.MD account configuration, platform/tenant DB, keyring, and shared rate limiter",
+      );
+    registerPlatformJob(CLAIMMD_ERA_CAPTURE_JOB_ID);
+    const store =
+      claimMdEraStore ??
+      createClaimMdEraStore({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        keyRing,
+      });
+    claimMdEraStore = store;
+    const reader = createClaimMdAccountEraReader({
+      accounts: { [accountReference]: { [usage as ClaimMdEraUsage]: accountKey } },
+      counter: rateLimitStore,
+    });
+    claimMdEraCapture = createClaimMdEraCapture({
+      store,
+      reader,
+      log: (summary) => app.log.info(summary, "Claim.MD ERA capture tick"),
+    });
+    await withPlatformContext(
+      platformDbHandle.db,
+      {
+        jobId: CLAIMMD_ERA_CAPTURE_JOB_ID,
+        reason: "Claim.MD ERA capture schema and operator-bootstrap preflight",
+        crossTenant: true,
+      },
+      m34PlatformBypassAuditor,
+      async (tx) => {
+        await tx
+          .select({ id: schema.claimmdEraStreams.id })
+          .from(schema.claimmdEraStreams)
+          .limit(0);
+        await tx.select({ id: schema.claimmdEraInbox.id }).from(schema.claimmdEraInbox).limit(0);
+        const [stream] = await tx
+          .select({ id: schema.claimmdEraStreams.id })
+          .from(schema.claimmdEraStreams)
+          .where(
+            and(
+              eq(schema.claimmdEraStreams.accountReference, accountReference),
+              eq(schema.claimmdEraStreams.usage, usage),
+              eq(schema.claimmdEraStreams.streamKind, "eras"),
+            ),
+          )
+          .limit(1);
+        if (!stream) throw new Error("Claim.MD ERA stream is not operator-bootstrapped");
+      },
+    );
+  }
+  if (claimMdEraConfig.ownershipResolutionEnabled) {
+    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
+    const keyRing = claimMdInboxKeyRingFromEnv(process.env);
+    if (
+      role === "api" ||
+      !dbHandle ||
+      !platformDbHandle ||
+      !accountReference ||
+      !/^[A-Za-z0-9._:-]{1,128}$/.test(accountReference) ||
+      (usage !== "test" && usage !== "production") ||
+      !keyRing
+    )
+      throw new Error(
+        "Claim.MD ERA ownership resolution requires worker role, account/environment, platform/tenant DB, and source keyring",
+      );
+    registerPlatformJob(CLAIMMD_ERA_RESOLUTION_JOB_ID);
+    const store =
+      claimMdEraStore ??
+      createClaimMdEraStore({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        keyRing,
+      });
+    claimMdEraStore = store;
+    const resolver =
+      claimMdEraResolver ??
+      (() => {
+        const tenantKeys = getTenantKeyProvider();
+        const evidenceCipher = createClaimMdEvidenceCipher({
+          dekForOrg: (organizationId) => tenantKeys.dekForOrg(organizationId),
+          dekForOrgVersion: (organizationId, version) =>
+            tenantKeys.dekForOrgVersion(organizationId, version),
+        });
+        const evidenceReader: ClaimMdEraEvidenceReader = {
+          read: (query) =>
+            readClaimMdEraSubmissionFacts({
+              ...query,
+              openTin: (fact) =>
+                evidenceCipher.open({
+                  evidenceId: fact.id,
+                  organizationId: fact.organizationId,
+                  providerEntityId: fact.providerEntityId,
+                  attemptKey: fact.attemptKey,
+                  sealed: fact.sealed,
+                }),
+            }),
+        };
+        return createClaimMdEraResolver({
+          store,
+          accountReference,
+          usage: usage as "test" | "production",
+          evidenceReader,
+          siteReader: buildFoundationSiteReader(),
+          commercialSubmissionReader: readClaimMdCommercialSubmissionFacts,
+          readSnapshot: (fn) =>
+            withPlatformContext(
+              platformDbHandle.db,
+              {
+                jobId: CLAIMMD_ERA_RESOLUTION_JOB_ID,
+                reason:
+                  "Claim.MD ERA ownership resolution: immutable submission and M1 provider evidence",
+                crossTenant: true,
+              },
+              m34PlatformBypassAuditor,
+              fn,
+              { isolation: "repeatable read" },
+            ),
+        });
+      })();
+    claimMdEraResolver = resolver;
+    claimMdEraResolutionWorker = createClaimMdEraResolutionWorker({
+      store,
+      resolver,
+      accountReference,
+      usage: usage as "test" | "production",
+      log: (summary) => app.log.info(summary, "Claim.MD ERA ownership resolution tick"),
+    });
+    await withPlatformContext(
+      platformDbHandle.db,
+      {
+        jobId: CLAIMMD_ERA_RESOLUTION_JOB_ID,
+        reason: "Claim.MD ERA ownership resolution schema and privilege preflight",
+        crossTenant: true,
+      },
+      m34PlatformBypassAuditor,
+      async (tx) => {
+        await tx
+          .select({ id: schema.claimmdEraResolution.id })
+          .from(schema.claimmdEraResolution)
+          .limit(0);
+        await tx
+          .select({ id: schema.claimmdEraResolutionHistory.id })
+          .from(schema.claimmdEraResolutionHistory)
+          .limit(0);
+      },
+    );
+  }
+  if (claimMdEraConfig.deliveryEnabled) {
+    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
+    const keyRing = claimMdInboxKeyRingFromEnv(process.env);
+    if (
+      role === "api" ||
+      !dbHandle ||
+      !platformDbHandle ||
+      !accountReference ||
+      !/^[A-Za-z0-9._:-]{1,128}$/.test(accountReference) ||
+      (usage !== "test" && usage !== "production") ||
+      !keyRing
+    )
+      throw new Error(
+        "Claim.MD ERA M25 delivery requires worker role, account/environment, tenant/platform DB, and source keyring",
+      );
+    registerPlatformJob(CLAIMMD_ERA_DELIVERY_JOB_ID);
+    const store =
+      claimMdEraStore ??
+      createClaimMdEraStore({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        keyRing,
+      });
+    claimMdEraStore = store;
+    claimMdEraDelivery = createClaimMdEraDeliveryService({
+      store,
+      tenantDb: dbHandle.db,
+      siteReader: buildFoundationSiteReader(),
+      keyRing,
+      accountReference,
+      usage,
+    });
+    await withPlatformContext(
+      platformDbHandle.db,
+      {
+        jobId: CLAIMMD_ERA_DELIVERY_JOB_ID,
+        reason: "Claim.MD ERA delivery central ledger privilege preflight",
+        crossTenant: true,
+      },
+      m34PlatformBypassAuditor,
+      async (tx) => {
+        await tx
+          .select({ id: schema.claimmdEraDelivery.id })
+          .from(schema.claimmdEraDelivery)
+          .limit(0);
+        await tx
+          .select({ id: schema.claimmdEraDeliveryHistory.id })
+          .from(schema.claimmdEraDeliveryHistory)
+          .limit(0);
+      },
+    );
+    await dbHandle.db
+      .select({ id: schema.claimmdEraM25Stage.id })
+      .from(schema.claimmdEraM25Stage)
+      .limit(0);
+  }
+  let claimMdAckDispatcher: ReturnType<typeof createClaimMdAckDispatcher> | undefined;
+  if (claimMdAckExecutionMode !== "off" && role !== "api") {
+    if (
+      clearinghouseBinding.vendor !== "claimmd" ||
+      !dbHandle ||
+      !platformDbHandle ||
+      !claimMdSubmissionEvidence
+    )
+      throw new Error(
+        "Claim.MD acknowledgment dispatcher requires Claim.MD and tenant/platform database clients",
+      );
+    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
+    if (
+      !accountReference ||
+      !/^[A-Za-z0-9._:-]{1,128}$/.test(accountReference) ||
+      (usage !== "test" && usage !== "production")
+    )
+      throw new Error("Claim.MD acknowledgment account reference or usage is invalid");
+    const inboxKeys = claimMdInboxKeyRingFromEnv(process.env);
+    if (!inboxKeys)
+      throw new Error("Claim.MD acknowledgment inbox key ring is unavailable or invalid");
+    registerPlatformJob(CLAIMMD_ACK_JOB_ID);
+    await withPlatformContext(
+      platformDbHandle.db,
+      {
+        jobId: CLAIMMD_ACK_JOB_ID,
+        reason: "Claim.MD acknowledgment dispatcher schema and stream preflight",
+        crossTenant: true,
+      },
+      m34PlatformBypassAuditor,
+      async (tx) => {
+        await tx
+          .select({ id: schema.claimmdAckApplications.id })
+          .from(schema.claimmdAckApplications)
+          .limit(0);
+        await tx
+          .select({ eventId: schema.claimmdAckDeliveries.eventId })
+          .from(schema.claimmdAckDeliveries)
+          .limit(0);
+        const [stream] = await tx
+          .select({ id: schema.claimmdResponseStreams.id })
+          .from(schema.claimmdResponseStreams)
+          .where(
+            and(
+              eq(schema.claimmdResponseStreams.accountReference, accountReference),
+              eq(schema.claimmdResponseStreams.usage, usage),
+              eq(schema.claimmdResponseStreams.streamType, "claim_responses"),
+            ),
+          )
+          .limit(1);
+        if (!stream) throw new Error("Claim.MD acknowledgment response stream is not bootstrapped");
+      },
+    );
+    const tenantKeys = getTenantKeyProvider();
+    claimMdAckDispatcher = createClaimMdAckDispatcher({
+      db: dbHandle.db,
+      source: createClaimMdAckSource({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        cipher: createClaimMdInboxCipher(inboxKeys),
+        accountReference,
+        usage,
+        mode: claimMdAckExecutionMode,
+      }),
+      mode: claimMdAckExecutionMode,
+      evidenceCipher: createClaimMdEvidenceCipher({
+        dekForOrg: (organizationId) => tenantKeys.dekForOrg(organizationId),
+        dekForOrgVersion: (organizationId, version) =>
+          tenantKeys.dekForOrgVersion(organizationId, version),
+      }),
+      applyCommercialReceipt: (tx, receipt) =>
+        applyCommercialClaimMdReceipt(
+          tx,
+          m41OutboxPublisher as unknown as CommercialOutboxPort,
+          receipt,
+        ),
+    });
+  }
   // Whether the M41 drain is scheduled. In the split deployment the API process (PROCESS_ROLE=api) never registers the repeatable jobs
   // (TASK-040A: an API replica must not re-register crons), so a per-process flag would stay false there and refuse every submit
   // forever. Readiness therefore reflects SHARED state: this process' own registration (worker / all roles) OR both repeatable
@@ -5017,6 +5798,44 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         m23AsyncWorkers: m23SubmissionQueues ? "ready" : "disabled",
         m24AsyncWorkers: m24SubmissionQueues ? "ready" : "disabled",
         m34AsyncWorkers: m34ProvisionQueue ? "ready" : "disabled",
+        claimmdResponseCapture:
+          role === "api" || !claimMdResponseCaptureEnabled(process.env)
+            ? "disabled"
+            : claimMdResponseCapture
+              ? "ready"
+              : "degraded",
+        claimmdIdentityResolution:
+          role === "api" || !claimMdIdentityResolutionEnabled(process.env)
+            ? "disabled"
+            : claimMdIdentityWorker
+              ? "ready"
+              : "degraded",
+        claimmdAcknowledgmentDispatch:
+          role === "api" || claimMdAckExecutionMode === "off"
+            ? "disabled"
+            : claimMdAckDispatcher
+              ? "ready"
+              : "degraded",
+        claimmdEraCapture:
+          role === "api" || !claimMdEraConfig.captureEnabled
+            ? "disabled"
+            : claimMdEraCapture
+              ? "ready"
+              : "degraded",
+        claimmdEraOwnershipResolution:
+          role === "api" || !claimMdEraConfig.ownershipResolutionEnabled
+            ? "disabled"
+            : claimMdEraResolutionWorker
+              ? "ready"
+              : "degraded",
+        claimmdEraM25Staging:
+          role === "api" || !claimMdEraConfig.deliveryEnabled
+            ? "disabled"
+            : claimMdEraDelivery
+              ? "ready"
+              : "degraded",
+        claimmdNoticeTransmission:
+          process.env.M23_CLAIMMD_NOTICE_UPLOAD_ENABLED === "true" ? "degraded" : "disabled",
         // The Socket.IO server runs in the api role only; "degraded" = Valkey fan-out is down (polling still works).
         realtime: realtimeRef ? realtimeRef.state() : "disabled",
       }),
@@ -5316,11 +6135,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               identifierCipher: createPatientIdentifierCipher(
                 lazyIdentifierKeys(getTenantKeyProvider),
               ),
+              payerClaimReferences: PATIENT_PAYER_CLAIM_REFERENCES,
             },
           );
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces
           registerLocationLookupRoutes(app, dbHandle.db); // M1 (#50) — location selector for the admission activation ceremony
-          mountAdmissionRoutes(
+          // ADR-0107: kept so the portal sign seam binds to the SAME M06 service instance the staff routes use.
+          const m6AdmissionService = mountAdmissionRoutes(
             app,
             dbHandle.db,
             m6OutboxPublisher,
@@ -5500,7 +6321,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           }
           // M38 (GAP-108: the load / refresh-embeddings routes now enqueue the §4.3 jobs; /uploads presigns the platform bucket) — terminology read surface + tenant value-set extensions (FB-T01), the §4.1 value-set catalog + §7.3 remediation report + the platform-ops admin surface (GAP-063); the reader is the §7.7 `ai.full` semantic-search gate (F-091)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
-          mountConsentRoutes(app, dbHandle.db, {
+          const m39ConsentService = mountConsentRoutes(app, dbHandle.db, {
             outbox: m39OutboxPublisher,
             cipher: createConsentInternalNotesCipher(getTenantKeyProvider()),
             patientReader: getConsentPatientReader(),
@@ -5600,6 +6421,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               };
             })(),
             // ── end WP 6.10 alarm ingest mount
+            // ADR-0108 (PROPOSED) - group tags (@role, @care-team, @on-call); off unless the tenant flag `messaging.group_tags` is on.
+            groupTags: { flags: featureFlagReader },
             // WP 5.8 (ADR-0087, PROPOSED) - break-glass read grants; honoured only while the tenant flag `messaging.break_glass` is on.
             breakGlass: {
               flags: featureFlagReader,
@@ -6128,7 +6951,118 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // instance here, rather than each module reading the schema directly.
           const { providerCcn: m23ProviderCcn, assemblyPorts: m23AssemblyPorts } =
             buildM23AssemblyPorts(dbHandle.db);
+          const m23PreviewSeams = buildM23BootAssemblySeams(dbHandle.db, {
+            outbox: m23OutboxPublisher,
+            providerCcn: m23ProviderCcn,
+            ...m23AssemblyPorts,
+          });
+          const m23PayerNameByX12Id = buildPayerNameByX12IdReader();
+          const m23ClaimPreviewParties = buildClaim837iPartiesPortFactory({
+            routeKey: clearinghouseBinding.vendor,
+            profile: buildDrizzleEdiProfileReader(),
+            provider: buildClaim837iProviderReader({
+              sealedFacts: (tx, organizationId, providerEntityId) =>
+                buildFoundationSiteReader().providerEntityBillingFacts(
+                  tx,
+                  organizationId,
+                  providerEntityId,
+                ),
+              decryptTaxId: (input) =>
+                createTaxIdCipher({
+                  dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+                  dekForOrgVersion: (orgId, version) =>
+                    getTenantKeyProvider().dekForOrgVersion(orgId, version),
+                }).decrypt(input),
+            }),
+            payerName: m23PayerNameByX12Id,
+          });
           mountM23Routes(app, {
+            previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
+            renderClaimPreview: async ({
+              organizationId,
+              actorUserId,
+              claimId,
+              providerEntityId,
+              routeFingerprint,
+            }) => {
+              const context = await buildClearinghouseContextPort({
+                db: dbHandle.db,
+                env: process.env,
+                providerNpi: m25PayeeNpi,
+              }).contextFor(organizationId, providerEntityId);
+              return withOrgContext(
+                dbHandle.db,
+                { organizationId, userId: actorUserId },
+                async (tx) => {
+                  const rendered = await renderClaim837iPreview(
+                    {
+                      persistence: buildClaim837iPersistencePort(tx as never),
+                      admission: m23PreviewSeams.admission,
+                      mbiUnlock: () => getSeam("MbiUnlockReader"),
+                      patients: lazyPatientReader(),
+                      addresses: lazyPatientAddressReader(),
+                      parties: m23ClaimPreviewParties(tx as DbClient),
+                      previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
+                      accountReference:
+                        process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac",
+                    },
+                    {
+                      claimId,
+                      context,
+                      // Preview-only values. The actual attempt reserves its own identifiers at submission time.
+                      interchangeControlNumber: 1,
+                      createdAt: new Date(),
+                      actorUserId,
+                      ...(routeFingerprint ? { routeFingerprint } : {}),
+                    },
+                  );
+                  return rendered.ok
+                    ? {
+                        status: "rendered" as const,
+                        document: rendered.document,
+                        sourceFingerprint: rendered.sourceFingerprint,
+                        accountReference:
+                          process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac",
+                        usage: context.usage,
+                      }
+                    : {
+                        status: "blocked" as const,
+                        gaps:
+                          rendered.kind === "gaps"
+                            ? rendered.gaps
+                            : [{ field: "claim", reason: "missing" }],
+                      };
+                },
+              );
+            },
+            payerRouteStatus: async (organizationId, providerEntityId) => {
+              if (process.env.CLEARINGHOUSE_VENDOR?.trim() !== "claimmd") {
+                return { status: "not_applicable" };
+              }
+              try {
+                const context = await buildClearinghouseContextPort({
+                  db: dbHandle.db,
+                  env: process.env,
+                  providerNpi: m25PayeeNpi,
+                }).contextFor(organizationId, providerEntityId);
+                if (!context.claimMdRouteFingerprint) {
+                  return { status: "not_configured", reasonCode: "PAYER_ROUTE_NOT_VERIFIED" };
+                }
+                if (!(await m23PayerNameByX12Id(dbHandle.db, context.payerId))) {
+                  return {
+                    status: "not_configured",
+                    reasonCode: "CLAIMMD_PAYER_ROUTE_PAYER_NOT_ACTIVE",
+                  };
+                }
+                return { status: "verified", routeFingerprint: context.claimMdRouteFingerprint };
+              } catch (error) {
+                const code =
+                  error instanceof Error && error.message.startsWith("CLAIMMD_PAYER_ROUTE_")
+                    ? error.message
+                    : "PAYER_ROUTE_NOT_VERIFIED";
+                return { status: "not_configured", reasonCode: code };
+              }
+            },
             // F-210 — the tenant-entered hospice rate table (`/billing/rate-tables`); the SAME table the
             // assembly service's `referenceData.perDiemRateTable`/`chcHourlyRateCents` read (M23-owned, so
             // the boot assembly reads it over `dbHandle.db` directly — no injected port).
@@ -6273,6 +7207,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   getSeam("PatientCoverageReader").coveragesForPatient(q),
                 coverageForRange: (q: Parameters<PatientCoverageReader["coverageForRange"]>[0]) =>
                   getSeam("PatientCoverageReader").coverageForRange(q),
+                coverageSnapshotForRangeInTransaction: (
+                  tx: unknown,
+                  q: Parameters<PatientCoverageReader["coverageForRange"]>[0],
+                ) => getSeam("PatientCoverageReader").coverageSnapshotForRangeInTransaction(tx, q),
               },
               admission: m23Seams.admission,
               electionPeriods: m23Seams.electionPeriods,
@@ -6390,8 +7328,35 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 providerEntityId,
               )) !== null,
           });
+          const claimMdEraReviewKeyRing = claimMdInboxKeyRingFromEnv(process.env);
           mountM25Routes(app, {
             readService: buildDrizzleM25ReadService(dbHandle.db, m25Terminology),
+            ...(claimMdEraReviewKeyRing
+              ? {
+                  claimMdEraReviewService: buildDrizzleClaimMdEraReviewService(
+                    dbHandle.db,
+                    createClaimMdProtectedPayloadCipher(
+                      claimMdEraReviewKeyRing,
+                      "claimmd-era-stage:v1",
+                    ),
+                    claimMdEraStore,
+                    [
+                      async (query) => {
+                        const evidenceRows = await readClaimMdEraCandidateEvidence(query);
+                        const [medicare, commercial] = await Promise.all([
+                          readM23HistoricalEraCandidates(query),
+                          readM41HistoricalEraCandidates({ ...query, evidenceRows }),
+                        ]);
+                        return [...medicare, ...commercial];
+                      },
+                    ],
+                    {
+                      ingestService: m25IngestService,
+                      enabled: claimMdEraConfig.controlledPostingEnabled,
+                    },
+                  ),
+                }
+              : {}),
             // GAP-036 - the appeal packet reads the claim copy (M23) and the enclosure facts (M22) through their
             // published seams, so a bad enclosure id is refused at submit.
             writeService: buildDrizzleM25WriteService(dbHandle.db, m25OutboxPublisher, {
@@ -6484,6 +7449,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               keyPrefix: "m25-medical-review-report",
             }),
           });
+          if (
+            claimMdEraRecoveryService &&
+            claimMdRecoveryAccount &&
+            (claimMdRecoveryUsage === "test" || claimMdRecoveryUsage === "production")
+          ) {
+            registerOpsClaimMdEraRecoveryRoute(app, {
+              service: claimMdEraRecoveryService,
+              accountReference: claimMdRecoveryAccount,
+              usage: claimMdRecoveryUsage,
+            });
+          }
           // M41 (Billing - Commercial, #724) - commercial eligibility (270/271) and payer enrollment. The ONLY path to a payer is
           // the platform clearinghouse binding (ADR-0100 D4): unbound answers CH_NOT_WIRED and nothing is sent. The member id
           // comes from M5's coverage seam for the one call and is never stored or logged.
@@ -6499,6 +7475,29 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               now: () => new Date(),
               newRequestId: randomUUID,
               log: (event) => app.log.info({ eligibility: event }, "M41 eligibility"),
+              // TRANSIENT search facts for a name-searching clearinghouse (Claim.MD): M5's identity read and the sealed EIN
+              // opened the way M25 opens it. Read per call, passed in the request object, never stored or logged. Only
+              // bound for Claim.MD: no other vendor uses them, so nothing is read or decrypted for them (minimum necessary).
+              ...(clearinghouseBinding.vendor === "claimmd"
+                ? {
+                    searchFacts: {
+                      subscriber: async (organizationId: string, patientId: string) => {
+                        const p = await getPatientReader().findById({
+                          organizationId,
+                          id: patientId,
+                        });
+                        return p
+                          ? {
+                              firstName: p.firstName,
+                              lastName: p.lastName,
+                              dateOfBirth: p.dateOfBirth,
+                            }
+                          : null;
+                      },
+                      billingTaxId: m25PayeeTinDeps.payeeTin,
+                    },
+                  }
+                : {}),
             }),
             admin: createCommercialAdminService(buildDrizzleEligibilityStore(dbHandle.db)),
           });
@@ -6558,6 +7557,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               m24ResidenceReader,
               m24FacilityNameResolver,
               (state) => state !== "OR" || m24OregonGateway !== null,
+              m24LocPeriodReader,
+              m24AdapterRegistry,
             ),
           });
           // M15 (Discipline Care Plans) — mount the §4.1 route plugins over the Drizzle READ + WRITE
@@ -6584,16 +7585,26 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // sympathy-letter render handshake (`m16.bereavement.outreach_artifact_requested`) reaches M22.
           // The write service takes the READ service so every plan-shaped mutation answers with the SAME
           // projection route 2 serves (one DTO, one disclosure gate, no drift).
-          const m16ReadService = buildDrizzleM16ReadService(dbHandle.db);
+          // GAP-129 / ADR-0109 — ONE tenant-DEK envelope (M34 key ring, resolved lazily like every other cipher below) for a
+          // contact's email / phone / mailing address / care goals and a counselor's notes: the write service seals with
+          // it and the read service opens the care goals with it.
+          const m16Cipher = createBereavementCipher({
+            dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+            dekForOrgVersion: (orgId, version) =>
+              getTenantKeyProvider().dekForOrgVersion(orgId, version),
+          });
+          const m16ReadService = buildDrizzleM16ReadService(dbHandle.db, { cipher: m16Cipher });
+          // ADR-0109 D10 (PR 3) — the discipline read the support-group service validates facilitators with (the ABAC resolver's own).
+          const m16DisciplineResolver = buildDrizzleBereavementAbacResolver(dbHandle.db, {
+            roleGrants: createDbEffectivePermissionStore(dbHandle.db),
+          });
+          const m16AlertPort = createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter);
           const m16WriteService = buildDrizzleM16WriteService(dbHandle.db, m16ReadService, {
             outbox: m16OutboxPublisher,
-            // GAP-129 — the tenant-DEK envelope (M34 key ring, resolved lazily like every other cipher below) for
-            // a contact's email / phone / mailing address and a counselor's notes.
-            cipher: createBereavementCipher({
-              dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
-              dekForOrgVersion: (orgId, version) =>
-                getTenantKeyProvider().dekForOrgVersion(orgId, version),
-            }),
+            // ADR-0109 D7 — M16 alerts ride the M36 AlertEmitter seam (routed kinds only; see alert-port.ts).
+            alerts: m16AlertPort,
+            // GAP-129 — the tenant-DEK envelope (shared with the read service above).
+            cipher: m16Cipher,
             // D6 — the confirm-contact consent gate. M39 answers over its published ConsentEvaluator seam
             // (the Drizzle store, read under withOrgContext for the caller's org): the contact's OWN
             // `bereavement_outreach_consent` record, pinned by id, and whether a survives-death
@@ -6604,6 +7615,47 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           mountM16Routes(app, {
             readService: m16ReadService,
             writeService: m16WriteService,
+            // ADR-0109 D5 — the pre-death draft reads M6's admission (patient + siting) and M39's Part 2 verdict
+            // through the seam registry, resolved per call.
+            draftService: buildDrizzleM16DraftService(dbHandle.db),
+            // ADR-0109 D6 — the physician condolence letter review queue; approval emits `m16.bereavement.document_requested`
+            // on its own transaction and seals the reviewer's note with the same tenant-DEK envelope.
+            letterService: buildDrizzleM16LetterService(dbHandle.db, {
+              outbox: m16OutboxPublisher,
+              cipher: m16Cipher,
+            }),
+            // ADR-0109 D10 — the mailing program (oversight only): configs, runs, the batch download (M22's org-level document seam) and
+            // confirm-mailed (emits `mailing_run_mailed` on its own transaction). The render itself runs in the `m16-mailing-generate` worker.
+            mailingService: buildDrizzleM16MailingService(dbHandle.db, {
+              outbox: m16OutboxPublisher,
+              enqueue: m16MailingEnqueue.port,
+              log: (message, context) => app.log.warn(context, message),
+            }),
+            // ADR-0109 D10 (PR 3) — support groups. The facilitator's discipline resolves through the same M3 role-grant read the ABAC resolver
+            // uses; a VOLUNTEER facilitator's 418.78 gates through M15's `VolunteerComplianceProvider` (fail closed on throw); the meeting link is
+            // sealed with the shared tenant-DEK envelope. Attendance emits `support_group_attendance_recorded` on its own transaction.
+            groupService: buildDrizzleM16GroupService(dbHandle.db, {
+              outbox: m16OutboxPublisher,
+              cipher: m16Cipher,
+              disciplineOf: (organizationId, membershipId) =>
+                m16DisciplineResolver.disciplineOf(organizationId, membershipId),
+              volunteerGatesSatisfied: async ({ organizationId, volunteerMembershipId }) => {
+                const status = await getSeam("VolunteerComplianceProvider").effectiveStatusFor(
+                  organizationId as never,
+                  volunteerMembershipId as never,
+                );
+                return status.isActive === true;
+              },
+            }),
+            // ADR-0109 D10 (PR 3) — memorial services. Publish selects the invitations set-based and drafts the invitation mailing run (worded,
+            // generated and confirmed on the mailing screens); an RSVP emits `memorial_rsvp_recorded` on its own transaction.
+            memorialService: buildDrizzleM16MemorialService(dbHandle.db, {
+              outbox: m16OutboxPublisher,
+              cipher: m16Cipher,
+            }),
+            // ADR-0109 D10 (PR 3) — the grief library: M16 metadata over M22 documents, checked and served through M22's
+            // `OrgDocumentAccessProvider` (resolved per call; families reach published items through the M31 portal routes).
+            libraryService: buildDrizzleM16LibraryService(dbHandle.db),
           });
           // M21 (Supplies, DME & Comfort Kits) — mount the §4.1 route plugins over the Drizzle READ +
           // WRITE services. Every read opens its own withOrgContext (RLS scopes each statement to
@@ -6796,7 +7848,69 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // GAP-092 — a bereaved family member's own opt-out is M16's D9 transition (it cancels the contact's future
           // outreach); the scope read names which contact(s) the portal account is.
           const portalAuditQuery = createDbAuditQuery(dbHandle.db);
+          // ADR-0107 - the portal admission-document signing ports, over the SAME M06 / M39 service instances the staff routes use.
+          const portalConsentSigner = createPortalConsentSigner(m39ConsentService, () =>
+            new Date().toISOString(),
+          );
+          const portalAdmissionSigners = createPortalAdmissionSigners({
+            service: m6AdmissionService,
+            readPatientName: async (organizationId, patientId) => {
+              const patient = await getSeam("PatientReader").findById({
+                organizationId,
+                id: patientId,
+              });
+              return patient ? `${patient.firstName} ${patient.lastName}`.trim() : null;
+            },
+            nowIso: () => new Date().toISOString(),
+          });
           mountM31Routes(app, {
+            signing: {
+              store: buildPortalSignatureStore(dbHandle.db, m31Events ?? undefined),
+              signers: {
+                election: (input) => portalAdmissionSigners.election(input),
+                noticeOfRights: (input) => portalAdmissionSigners.noticeOfRights(input),
+                consent: (input) => portalConsentSigner.sign(input),
+              },
+              consents: {
+                async read(organizationId, consentId) {
+                  const c = await m39ConsentService.getConsent(organizationId, consentId);
+                  return c
+                    ? { patientId: c.patientId, typeKey: c.typeKey, status: c.status }
+                    : null;
+                },
+              },
+              agencyName: async (organizationId) =>
+                (await siteDisplayForOrg(dbHandle.db, organizationId, [])).organizationName,
+              allowUnreviewedTemplates: PORTAL_ALLOW_UNREVIEWED_TEMPLATES,
+              staff: {
+                store: buildStaffSignatureStore(dbHandle.db, m31Events ?? undefined),
+                uploadedCopyConsent: (input) => portalConsentSigner.acceptUploadedCopy(input),
+                revokeUploadedCopyConsent: (input) => portalConsentSigner.revokeUploadedCopy(input),
+                revokeUploadedCopyOrphans: async (input) => {
+                  await portalConsentSigner.revokeUploadedCopyOrphans({
+                    ...input,
+                    keepDocumentId: null,
+                  });
+                },
+                patientSite: async (organizationId, patientId) => {
+                  const patient = await getSeam("PatientReader").findById({
+                    organizationId,
+                    id: patientId,
+                  });
+                  // A patient with no agency is refused (fail closed): the request's provider_entity_id is NOT NULL.
+                  return patient?.providerEntityId
+                    ? {
+                        providerEntityId: patient.providerEntityId,
+                        locationId: patient.locationId ?? null,
+                      }
+                    : null;
+                },
+                m06TargetIsSignable: createPortalSigningTargetCheck(
+                  m6AdmissionService,
+                  createDbAdmissionAbacResolver(dbHandle.db),
+                ),
+              },
+            },
             telehealth: buildDailyTelehealthAdapter(process.env),
             provisioning: portalProvisioning,
             bereavementOptOut: {
@@ -6841,6 +7955,60 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   );
                 }
                 return { contactsOptedOut, alreadyOptedOut };
+              },
+            },
+            // ADR-0109 D10 — the mailing preference: stop (or resume) MAILINGS for every contact of the account that is
+            // still in the program. M16's own `no_mailings` opt-out / its rescind — the contact stays active, its calls
+            // continue, and the already-scheduled mailed rows become calls.
+            bereavementMailingPreference: {
+              async setMailingPreference({
+                organizationId,
+                userId,
+                portalAccountId,
+                allowMailings,
+              }) {
+                const scopes = await getSeam("BereavedPortalScopeProvider").scopeForPortalAccount(
+                  organizationId,
+                  portalAccountId as never,
+                );
+                const portalActor = {
+                  organizationId,
+                  userId,
+                  membershipId: null,
+                  roles: [],
+                  sessionClass: "bereaved_portal",
+                  locationIds: [],
+                  portalAccountId,
+                  stepUpRecent: false,
+                };
+                let contactsUpdated = 0;
+                let alreadyInState = 0;
+                for (const scope of scopes) {
+                  // Only a contact still in the program and inside its window has a mailing preference to change.
+                  if (scope.status !== "active" || !scope.inBereavementWindow) continue;
+                  if (scope.mailingsAllowed === allowMailings) {
+                    alreadyInState += 1;
+                    continue;
+                  }
+                  if (allowMailings) {
+                    await m16WriteService.rescindOptOut(portalActor, scope.contactId, {});
+                  } else {
+                    await m16WriteService.optOutContact(portalActor, scope.contactId, {
+                      optOutKind: "no_mailings",
+                      sourceKind: "portal_self_service",
+                      reason: "stopped mailings by the bereaved family member in the portal",
+                    });
+                  }
+                  contactsUpdated += 1;
+                }
+                if (contactsUpdated === 0 && alreadyInState === 0) {
+                  throw new ChartWardenError(
+                    "BEREAVEMENT_MAILING_PREFERENCE_NOT_AVAILABLE",
+                    "there is no bereavement contact on this account whose mailing preference can change right now",
+                    409,
+                  );
+                }
+                return { contactsUpdated, alreadyInState };
               },
             },
             // GAP-092 — the admin audit-views list: the account user's own read / disclosure trail from M4's
@@ -7098,6 +8266,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   }
   app.addHook("onClose", async () => {
     await Promise.all(m23RevalidateEnqueue.queues.map((queue) => queue.close()));
+    await Promise.all(m16MailingEnqueue.queues.map((queue) => queue.close()));
     await Promise.all((m23WorkQueues?.queues ?? []).map((queue) => queue.close()));
   });
   if (m24SubmissionQueues) {
@@ -7121,6 +8290,310 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // correctly reads 0 since no dispatcher runs there); the BullMQ per-queue gauge only registers where
   // queues are actually constructed, further below, inside the worker-runner block.
   const metricsRegistry = buildMetricsRegistry();
+  if (
+    platformDbHandle &&
+    claimMdRecoveryAccount &&
+    (claimMdRecoveryUsage === "test" || claimMdRecoveryUsage === "production")
+  ) {
+    registerPlatformJob(CLAIMMD_RESPONSE_METRICS_JOB_ID);
+    if (claimMdEraStore) {
+      registerPlatformJob(CLAIMMD_ERA_METRICS_JOB_ID);
+      registerPlatformJob(CLAIMMD_ERA_REVIEW_HISTORY_JOB_ID);
+    }
+  }
+  const claimMdResponseOperationalReader =
+    platformDbHandle &&
+    claimMdRecoveryAccount &&
+    (claimMdRecoveryUsage === "test" || claimMdRecoveryUsage === "production")
+      ? createClaimMdOperationalReader({
+          platformDb: platformDbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+          accountReference: claimMdRecoveryAccount,
+          usage: claimMdRecoveryUsage,
+        })
+      : undefined;
+  const M25_CLAIMMD_FINANCIAL_METRICS_JOB_ID = "m25-claimmd-financial-metrics";
+  let claimMdFinancialMetricsSampler:
+    | (() => Promise<readonly { worker: "financial_safety"; measure: string; value: number }[]>)
+    | undefined;
+  if (dbHandle && platformDbHandle) {
+    registerPlatformJob(M25_CLAIMMD_FINANCIAL_METRICS_JOB_ID);
+    const financialReader = createM25FinancialOpsReader(dbHandle.db);
+    const activeOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M25_CLAIMMD_FINANCIAL_METRICS_JOB_ID,
+      reason: "M25 financial safety aggregate monitoring",
+      statementTimeoutMs: 5_000,
+    });
+    claimMdFinancialMetricsSampler = async () => {
+      const organizations = await activeOrgs.listActiveOrgs();
+      let heldDuplicate = 0;
+      let failed = 0;
+      let unmatchedLines = 0;
+      let oldestReviewAt: number | null = null;
+      for (let offset = 0; offset < organizations.length; offset += 8) {
+        const chunk = organizations.slice(offset, offset + 8);
+        const summaries = await Promise.all(
+          chunk.map(({ organizationId }) => financialReader.forOrganization(organizationId)),
+        );
+        for (const summary of summaries) {
+          heldDuplicate += summary.statuses.held_duplicate ?? 0;
+          failed += summary.statuses.failed ?? 0;
+          unmatchedLines += summary.unmatchedLines;
+          if (summary.oldestReviewAt !== null)
+            oldestReviewAt = Math.min(
+              oldestReviewAt ?? summary.oldestReviewAt,
+              summary.oldestReviewAt,
+            );
+        }
+      }
+      return [
+        {
+          worker: "financial_safety" as const,
+          measure: "financial_held_duplicate",
+          value: heldDuplicate,
+        },
+        { worker: "financial_safety" as const, measure: "financial_failed", value: failed },
+        {
+          worker: "financial_safety" as const,
+          measure: "manual_review_unmatched_lines",
+          value: unmatchedLines,
+        },
+        {
+          worker: "financial_safety" as const,
+          measure: "financial_oldest_review_age_seconds",
+          value: oldestReviewAt === null ? 0 : Math.max(0, (Date.now() - oldestReviewAt) / 1000),
+        },
+      ];
+    };
+  }
+  const claimMdMetrics = registerClaimMdOperationalMetrics(metricsRegistry, async () => {
+    const measures: {
+      worker: "response_capture" | "identity_resolution" | "ack_dispatch";
+      measure: string;
+      value: number;
+    }[] = [];
+    if (claimMdResponseOperationalReader) {
+      const response = await claimMdResponseOperationalReader.snapshot();
+      const age = (timestamp: number | null) =>
+        timestamp === null ? 0 : Math.max(0, (response.sampledAt - timestamp) / 1000);
+      measures.push(
+        {
+          worker: "response_capture",
+          measure: "cursor_present",
+          value: response.cursorPresent ? 1 : 0,
+        },
+        {
+          worker: "response_capture",
+          measure: "cursor_age_seconds",
+          value: age(response.lastSuccessAt),
+        },
+        {
+          worker: "response_capture",
+          measure: "last_success_timestamp_seconds",
+          value: response.lastSuccessAt === null ? 0 : response.lastSuccessAt / 1000,
+        },
+        {
+          worker: "response_capture",
+          measure: "stream_failure",
+          value: response.streamFailed ? 1 : 0,
+        },
+        {
+          worker: "response_capture",
+          measure: "lease_active",
+          value: response.leaseActive ? 1 : 0,
+        },
+        {
+          worker: "response_capture",
+          measure: "inbox_captured",
+          value: response.capture.captured ?? 0,
+        },
+        {
+          worker: "response_capture",
+          measure: "inbox_needs_review",
+          value: response.capture.needs_review ?? 0,
+        },
+        {
+          worker: "response_capture",
+          measure: "inbox_malformed",
+          value: response.capture.malformed ?? 0,
+        },
+        {
+          worker: "identity_resolution",
+          measure: "resolution_pending",
+          value: response.resolution.pending ?? 0,
+        },
+        {
+          worker: "identity_resolution",
+          measure: "resolution_resolved",
+          value: response.resolution.resolved ?? 0,
+        },
+        {
+          worker: "identity_resolution",
+          measure: "resolution_unmatched",
+          value: response.resolution.unmatched ?? 0,
+        },
+        {
+          worker: "identity_resolution",
+          measure: "resolution_ambiguous",
+          value: response.resolution.ambiguous ?? 0,
+        },
+        {
+          worker: "identity_resolution",
+          measure: "resolution_conflict",
+          value: response.resolution.conflict ?? 0,
+        },
+        {
+          worker: "identity_resolution",
+          measure: "resolution_needs_review",
+          value: response.resolution.needs_review ?? 0,
+        },
+        {
+          worker: "identity_resolution",
+          measure: "unresolved_events",
+          value: response.unresolvedCount,
+        },
+        {
+          worker: "identity_resolution",
+          measure: "oldest_pending_age_seconds",
+          value: age(response.oldestUnresolvedAt),
+        },
+        { worker: "ack_dispatch", measure: "ack_pending", value: response.delivery.pending ?? 0 },
+        { worker: "ack_dispatch", measure: "ack_complete", value: response.delivery.complete ?? 0 },
+        {
+          worker: "ack_dispatch",
+          measure: "ack_needs_review",
+          value: response.delivery.needs_review ?? 0,
+        },
+        {
+          worker: "ack_dispatch",
+          measure: "ack_applied",
+          value: response.applications.applied ?? 0,
+        },
+        {
+          worker: "ack_dispatch",
+          measure: "ack_informational",
+          value: response.applications.informational ?? 0,
+        },
+        { worker: "ack_dispatch", measure: "ack_held", value: response.applications.held ?? 0 },
+        {
+          worker: "ack_dispatch",
+          measure: "applied_events",
+          value: response.applications.applied ?? 0,
+        },
+        {
+          worker: "ack_dispatch",
+          measure: "oldest_pending_age_seconds",
+          value: age(response.oldestDispatchAt),
+        },
+      );
+    }
+    const financial = claimMdFinancialMetricsSampler ? await claimMdFinancialMetricsSampler() : [];
+    if (
+      !claimMdEraStore ||
+      !claimMdRecoveryAccount ||
+      (claimMdRecoveryUsage !== "test" && claimMdRecoveryUsage !== "production")
+    )
+      return [...measures, ...financial];
+    const sample = await claimMdEraStore.operationalSnapshot(
+      claimMdRecoveryAccount,
+      claimMdRecoveryUsage,
+    );
+    const age = (timestamp: number | null) =>
+      timestamp === null ? 0 : Math.max(0, (sample.sampledAt - timestamp) / 1000);
+    const rows: {
+      worker: "era_capture" | "era_resolution" | "era_delivery";
+      measure: string;
+      value: number;
+    }[] = [
+      { worker: "era_capture", measure: "cursor_present", value: sample.cursorPresent ? 1 : 0 },
+      { worker: "era_capture", measure: "cursor_age_seconds", value: age(sample.lastSuccessAt) },
+      {
+        worker: "era_capture",
+        measure: "last_success_timestamp_seconds",
+        value: sample.lastSuccessAt === null ? 0 : sample.lastSuccessAt / 1000,
+      },
+      { worker: "era_capture", measure: "stream_failure", value: sample.streamFailed ? 1 : 0 },
+      {
+        worker: "era_capture",
+        measure: "lease_active",
+        value: sample.leaseContendedOrHeld ? 1 : 0,
+      },
+      {
+        worker: "era_capture",
+        measure: "capture_discovered",
+        value: sample.capture.discovered ?? 0,
+      },
+      {
+        worker: "era_capture",
+        measure: "capture_retryable_failure",
+        value: sample.capture.retryable_failure ?? 0,
+      },
+      {
+        worker: "era_capture",
+        measure: "capture_retry_exhausted",
+        value: sample.captureRetryExhausted,
+      },
+      {
+        worker: "era_resolution",
+        measure: "resolution_verified",
+        value: sample.resolution.verified ?? 0,
+      },
+      {
+        worker: "era_resolution",
+        measure: "resolution_unmatched",
+        value: sample.resolution.unmatched ?? 0,
+      },
+      {
+        worker: "era_resolution",
+        measure: "resolution_ambiguous",
+        value: sample.resolution.ambiguous ?? 0,
+      },
+      {
+        worker: "era_resolution",
+        measure: "resolution_conflict",
+        value: sample.resolution.conflict ?? 0,
+      },
+      {
+        worker: "era_delivery",
+        measure: "delivery_prepared",
+        value: sample.delivery.prepared ?? 0,
+      },
+      { worker: "era_delivery", measure: "delivery_held", value: sample.delivery.held ?? 0 },
+      {
+        worker: "era_delivery",
+        measure: "delivery_delivered",
+        value: sample.delivery.delivered ?? 0,
+      },
+      {
+        worker: "era_delivery",
+        measure: "delivery_possible_duplicate",
+        value: sample.delivery.possible_duplicate ?? 0,
+      },
+      {
+        worker: "era_delivery",
+        measure: "delivery_exact_duplicate",
+        value: sample.delivery.exact_duplicate ?? 0,
+      },
+      {
+        worker: "era_capture",
+        measure: "oldest_pending_age_seconds",
+        value: age(sample.oldestCaptureAt),
+      },
+      {
+        worker: "era_resolution",
+        measure: "oldest_pending_age_seconds",
+        value: age(sample.oldestResolutionAt),
+      },
+      {
+        worker: "era_delivery",
+        measure: "oldest_pending_age_seconds",
+        value: age(sample.oldestDeliveryAt),
+      },
+    ];
+    return [...measures, ...rows, ...financial];
+  });
   registerHttpMetrics(app, metricsRegistry);
   const outboxMetrics = registerOutboxMetrics(metricsRegistry, {
     pendingDepth: outboxPendingDepth,
@@ -7456,6 +8929,111 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       .catch((err) => {
         app.log.error(err, "M34 alert_rule platform-default seed population failed");
       });
+  }
+
+  if (claimMdResponseCapture) {
+    const stop = startClaimMdResponseCaptureWorker({
+      capture: claimMdResponseCapture,
+      accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE!.trim(),
+      usage: process.env.CLAIMMD_ACCOUNT_USAGE as ClaimMdUsage,
+      log: (summary) => {
+        claimMdMetrics.record("response_capture", summary);
+        app.log.info(summary, "Claim.MD account response capture tick");
+      },
+    });
+    app.addHook("onClose", async () => stop());
+    app.log.info(
+      { enabled: true, intervalMs: 60_000, cursorBootstrapRequired: true },
+      "Claim.MD account response capture worker started",
+    );
+  }
+  if (claimMdIdentityWorker && claimMdIdentitySummary) {
+    const stop = startClaimMdIdentityWorker({
+      worker: claimMdIdentityWorker,
+      summarize: claimMdIdentitySummary,
+      log: (event) => {
+        claimMdMetrics.record("identity_resolution", event.summary);
+        app.log.info(event, "Claim.MD identity resolution tick");
+      },
+    });
+    app.addHook("onClose", async () => stop());
+    app.log.info(
+      { enabled: true, batchSize: 25, concurrency: 1 },
+      "Claim.MD identity resolver worker started",
+    );
+  }
+  if (claimMdAckDispatcher) {
+    const stop = startClaimMdAckWorker({
+      dispatcher: claimMdAckDispatcher,
+      log: (summary) => {
+        claimMdMetrics.record("ack_dispatch", summary);
+        app.log.info(
+          { mode: claimMdAckExecutionMode, ...summary },
+          "Claim.MD acknowledgment dispatch tick",
+        );
+      },
+    });
+    app.addHook("onClose", async () => stop());
+    app.log.info(
+      { mode: claimMdAckExecutionMode, batchSize: 25 },
+      "Claim.MD acknowledgment dispatcher started",
+    );
+  }
+  if (claimMdEraCapture) {
+    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE!.trim();
+    const usage = process.env.CLAIMMD_ACCOUNT_USAGE as ClaimMdEraUsage;
+    const stop = startClaimMdEraCaptureWorker({
+      runOnce: claimMdEraCapture.runOnce,
+      accountReference,
+      usage,
+      log: (summary) => {
+        claimMdMetrics.record("era_capture", summary);
+        app.log.info(summary, "Claim.MD ERA account capture tick");
+      },
+    });
+    app.addHook("onClose", async () => stop());
+    app.log.info(
+      { enabled: true, intervalMs: 60_000, automaticPosting: false },
+      "Claim.MD ERA capture worker started",
+    );
+  }
+  if (claimMdEraResolutionWorker) {
+    const stop = startClaimMdEraResolutionWorker({
+      runOnce: async () => {
+        const summary = await claimMdEraResolutionWorker!.runOnce();
+        claimMdMetrics.record("era_resolution", summary);
+        return summary;
+      },
+      logError: () =>
+        app.log.error(
+          { code: "CLAIMMD_ERA_RESOLUTION_TICK_FAILED" },
+          "Claim.MD ERA ownership resolution tick failed",
+        ),
+    });
+    app.addHook("onClose", async () => stop());
+    app.log.info(
+      { enabled: true, intervalMs: 60_000, posting: false },
+      "Claim.MD ERA ownership resolution worker started",
+    );
+  }
+  if (claimMdEraDelivery) {
+    const stop = startClaimMdEraDeliveryWorker({
+      runOnce: async () => {
+        const summary = await claimMdEraDelivery!.runOnce();
+        claimMdMetrics.record("era_delivery", summary);
+        return summary;
+      },
+      logError: () =>
+        app.log.error(
+          { code: "CLAIMMD_ERA_DELIVERY_TICK_FAILED" },
+          "Claim.MD ERA M25 delivery tick failed",
+        ),
+    });
+    app.addHook("onClose", async () => stop());
+    app.log.info(
+      { enabled: true, intervalMs: 60_000, posting: false },
+      "Claim.MD ERA M25 delivery worker started",
+    );
   }
 
   // ── worker-runner section (the M4-T11 BullMQ worker-construction precedent) ──────────────────────────
@@ -8518,6 +10096,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     const m23CoreWorkerDeps = buildM23WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
+      claimMdResponseCaptureActive: claimMdResponseCaptureEnabled(process.env),
+      claimMdAckDispatcherActive: claimMdAckExecutionMode !== "off",
       outbox: m23OutboxPublisher,
       // F-161 (#248) — the §4.9 window-watch/portal-health alert routing, over the live M36 AlertEmitter
       // seam (the M27 `WX-PR-013` pattern).
@@ -8533,6 +10113,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       // bound and fail the attempt on a gap). Seams resolve lazily per call, so registration order never matters. The
       // billing-provider EIN is opened with M2's tax-id cipher (the tenant's own DEK) and held in memory for one build.
       claim837i: {
+        previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
+        accountReference: process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim() || "legacy-mac",
         admission: m23AssemblySeams.admission,
         mbiUnlock: () => getSeam("MbiUnlockReader"),
         patients: lazyPatientReader(),
@@ -8563,6 +10145,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       transport: {
         binding: clearinghouseBinding,
         attempts: createDrizzleAttemptStore(dbHandle.db),
+        ...(claimMdSubmissionEvidence ? { claimMdEvidence: claimMdSubmissionEvidence } : {}),
+        ...(claimMdNoticeEvidence ? { claimMdNoticeEvidence } : {}),
+        claimMdNoticeUploadsEnabled,
         ackCursors: createDrizzleAckCursorStore(dbHandle.db),
         // #714 - a rejected clearinghouse credential raises one critical alert per scope and holds further calls.
         alerts: m23AlertPort,
@@ -8936,6 +10521,26 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       app.addHook("onClose", async () => {
         await m31LateJoinWatchdogWorker.close();
       });
+      // ADR-0107 D7 - the daily reminder for signature requests still waiting; stamps the cadence and emits the event a push consumer follows.
+      const m31SignatureReminderWorker = registerM31SignatureReminderWorker({
+        connection: queueConnection,
+        db: dbHandle.db,
+        events: m31Events,
+        activeOrgs: m31ActiveOrgs,
+        allowUnreviewedTemplates: PORTAL_ALLOW_UNREVIEWED_TEMPLATES,
+        warn: (message, context) => app.log.warn(context, message),
+      });
+      app.addHook("onClose", async () => {
+        await m31SignatureReminderWorker.close();
+      });
+      try {
+        const m31SignatureReminderQueue = await scheduleM31SignatureReminderJob(queueConnection);
+        app.addHook("onClose", async () => {
+          await m31SignatureReminderQueue.close();
+        });
+      } catch (err) {
+        app.log.error(err, "M31 signature-reminder cron schedule registration failed");
+      }
       try {
         const m31LateJoinWatchdogQueue = await scheduleM31LateJoinWatchdogJob(queueConnection);
         app.addHook("onClose", async () => {
@@ -8992,31 +10597,37 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     };
     // #717 - the bound clearinghouse feeds the 835 intake. With no vendor bound (CLEARINGHOUSE_VENDOR unset) neither the
     // `remittance-pull` worker nor its schedule exists, so nothing polls an unbound transport.
-    const m25RemittancePull = clearinghouseBinding.vendor
-      ? {
-          transport: clearinghouseBinding.transport,
-          vendor: clearinghouseBinding.vendor,
-          contexts: buildClearinghouseContextPort({
-            db: dbHandle.db,
-            env: process.env,
-            providerNpi: m25PayeeNpi,
-          }),
-          payers: buildSeamMedicarePayerPort(),
-          cursors: buildDrizzleRemittanceCursorStore(dbHandle.db),
-          ingest: buildDrizzleM25IngestService(dbHandle.db, {
-            client: createX12835Client(),
-            rawStore: buildM25RawAdviceStore(process.env, {}, (error) =>
-              app.log.warn(
-                { errorName: error instanceof Error ? error.name : "unknown" },
-                "M25 staged-835 expiry rule could not be applied",
+    const legacyM25ClaimMdPull = shouldRunLegacyClaimMdEraPull({
+      vendor: clearinghouseBinding.vendor,
+      captureEnabled: claimMdEraConfig.captureEnabled,
+      deliveryEnabled: claimMdEraConfig.deliveryEnabled,
+    });
+    const m25RemittancePull =
+      clearinghouseBinding.vendor && legacyM25ClaimMdPull
+        ? {
+            transport: clearinghouseBinding.transport,
+            vendor: clearinghouseBinding.vendor,
+            contexts: buildClearinghouseContextPort({
+              db: dbHandle.db,
+              env: process.env,
+              providerNpi: m25PayeeNpi,
+            }),
+            payers: buildSeamMedicarePayerPort(),
+            cursors: buildDrizzleRemittanceCursorStore(dbHandle.db),
+            ingest: buildDrizzleM25IngestService(dbHandle.db, {
+              client: createX12835Client(),
+              rawStore: buildM25RawAdviceStore(process.env, {}, (error) =>
+                app.log.warn(
+                  { errorName: error instanceof Error ? error.name : "unknown" },
+                  "M25 staged-835 expiry rule could not be applied",
+                ),
               ),
-            ),
-            payeeNpi: m25PayeeNpi,
-            ...m25PayeeTinDeps,
-            outbox: m25OutboxPublisher,
-          }),
-        }
-      : undefined;
+              payeeNpi: m25PayeeNpi,
+              ...m25PayeeTinDeps,
+              outbox: m25OutboxPublisher,
+            }),
+          }
+        : undefined;
     const m25WorkerDeps = buildM25WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
@@ -9057,6 +10668,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       db: dbHandle.db,
       binding: clearinghouseBinding,
       contexts: buildCommercialContextPort({ env: process.env, providerNpi: m25PayeeNpi }),
+      ...(claimMdSubmissionEvidence ? { claimMdEvidence: claimMdSubmissionEvidence } : {}),
       renderer: buildCommercial837iRenderer(
         dbHandle.db,
         buildCommercialRenderPorts({
@@ -9789,8 +11401,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // months, no outreach was ever marked `missed` (so M30's missed/overdue counts were permanently 0) and no
     // anniversary reminder was ever alerted. Three time-driven queues now produce them (`m16-close-13mo`,
     // `m16-miss-deadline`, `m16-anniversary-lookahead`); each writes its row change + the m16.* outbox event
-    // through the real catalog-validating tx publisher in ONE per-row org tx. `alerts` is left unbound like
-    // M16's routes: the M36 alerts ride the outbox events, and the workers' best-effort alert port is optional.
+    // through the real catalog-validating tx publisher in ONE per-row org tx. `alerts` is the ADR-0109 D7
+    // adapter over the M36 AlertEmitter seam (routed kinds only; an unrouted kind is a no-op).
     const m16ActiveOrgs = buildActiveOrgEnumerator({
       platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
@@ -9802,6 +11414,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       db: dbHandle.db,
       outbox: m16OutboxPublisher,
       activeOrgs: m16ActiveOrgs,
+      alerts: createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter),
+      // ADR-0109 D10 — the mailing generate worker opens each addressee's mailing address with the tenant-DEK envelope, in-process, and
+      // hands it to the registry's DocumentRenderer in memory; the sweep re-sends a lost render hand-off through the same enqueue port.
+      cipher: createBereavementCipher({
+        dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+        dekForOrgVersion: (orgId, version) =>
+          getTenantKeyProvider().dekForOrgVersion(orgId, version),
+      }),
+      mailingEnqueue: m16MailingEnqueue.port,
     });
     const m16Workers = registerM16CronWorkers(m16WorkerDeps);
     attachDlqAlertsToAll(m16Workers, "m16");
@@ -11696,6 +13317,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM16BereavementIntakeConsumer({
             db: dbHandle.db,
             outbox: m16OutboxPublisher,
+            // ADR-0109 D7 — `death_intake`: the oversight roles are told an `eligible` plan awaits a counselor.
+            alerts: createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter),
+            // ADR-0109 D6 — the plan-opening delivery also creates the physician condolence letter, addressed to the care team's
+            // attending when M5 resolves one (else the reviewer picks an internal clinician at approval).
+            resolveAttendingUserId: (organizationId, patientId) =>
+              getSeam("CareTeamProvider").attendingUserId({ organizationId, patientId }),
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),
@@ -11717,6 +13344,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM16DischargeDeathSecondaryConsumer({
             db: dbHandle.db,
             outbox: m16OutboxPublisher,
+            alerts: createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter),
+            // ADR-0109 D6 — the plan-opening delivery also creates the physician condolence letter, addressed to the care team's
+            // attending when M5 resolves one (else the reviewer picks an internal clinician at approval).
+            resolveAttendingUserId: (organizationId, patientId) =>
+              getSeam("CareTeamProvider").attendingUserId({ organizationId, patientId }),
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),
@@ -11837,6 +13469,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             db: dbHandle.db,
             events: m31Events,
             bereavedContactFlipCandidateForContact: bereavedContactFlipCandidateForOrg,
+          }),
+          // ADR-0107 D7: the push to the people who can sign. One fixed PHI-free alert per eligible person through M36's emitter.
+          buildM31SignatureRequestPushConsumer({
+            alerts: getSeam("AlertEmitter") as AlertEmitter,
+            stillPending: (organizationId, requestId) =>
+              signatureRequestStillPending(
+                dbHandle.db,
+                organizationId,
+                requestId,
+                PORTAL_ALLOW_UNREVIEWED_TEMPLATES,
+              ),
+            recipients: (organizationId, patientId, docKind) =>
+              signatureRecipientUserIds(dbHandle.db, organizationId, patientId, docKind),
           }),
           buildM8VisitPublishedConsumer({
             db: dbHandle.db,
@@ -12599,6 +14244,22 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // GAP-036 - the appeal packet re-verifies every enclosure it names (still visible, active, not Part 2)
             // at render time: a document can change class between submit and render.
             renderGuard: buildAppealPacketRenderGuard(() => getSeam("DocumentReader")),
+            // ADR-0109 D6 - the physician condolence letter's personal note is sealed in M16 and NEVER rides the outbox (a plaintext copy
+            // the eraser cannot reach): M22 pulls it here at render time and merges it into the content the template draws.
+            resolveRenderContent: async ({ organizationId, templateKey, aggregateId, content }) => {
+              if (templateKey !== BEREAVEMENT_PHYSICIAN_CONDOLENCE_TEMPLATE_KEY) return content;
+              const note = await physicianLetterNoteForOrg(
+                dbHandle.db,
+                createBereavementCipher({
+                  dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+                  dekForOrgVersion: (orgId, version) =>
+                    getTenantKeyProvider().dekForOrgVersion(orgId, version),
+                }),
+                organizationId,
+                aggregateId,
+              );
+              return { ...content, personalNote: note };
+            },
             // A gate refusal is a settled decision, not a delivery failure — the row completes, so without
             // this sink a refused SUD/BAA render would be silent. Not the DLQ path (that is a throw).
             onRefusal: (r) =>

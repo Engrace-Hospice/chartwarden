@@ -16,7 +16,7 @@ import {
 //   • `original_text` is IMMUTABLE (§2.3) — a goal's wording changes through a `revise` event that records
 //     the revised text alongside the original, never by overwriting it. The form reflects that split.
 //   • every edit is version-checked (§2.5): the row `version` read is sent as `If-Match`, so a concurrent
-//     editor loses with a 412 instead of silently clobbering (the §7.10 acceptance).
+//     editor loses with a 409 instead of silently clobbering (the §7.10 acceptance).
 //   • the AIDE ASSIGNMENT itself is not editable here. M15 publishes no route that re-points a plan's
 //     aide/supervising RN — that binding is set by the bootstrap worker and moved by an IDG decision — so
 //     it is shown read-only rather than faked with a control that cannot save.

@@ -705,6 +705,9 @@ export const consentTypeKey = pgEnum("consent_type_key", [
   "hipaa_release",
   "bereavement_outreach_consent",
   "custom",
+  // ADR-0107 (migration 1305): the two M39-backed admission documents a portal signer can be asked to sign.
+  "hipaa_npp_acknowledgement",
+  "consent_to_treat",
 ]);
 
 /** `consent_scope_discriminator` — the typed scope shape a consent type carries (§3.2). */
@@ -913,6 +916,7 @@ export const electionSignerKind = pgEnum("election_signer_kind", ["patient", "re
 export const electionSignatureMethod = pgEnum("election_signature_method", [
   "wet_ink_scanned",
   "electronic_witnessed",
+  "electronic_portal", // ADR-0107 (migration 1305): signed alone in the portal — not witnessed
 ]);
 
 /** `election_statement_status` — the §7.3 draft → signed → voided lifecycle (M6L-T03). */
@@ -1069,6 +1073,7 @@ export const norAcknowledgmentMethod = pgEnum("nor_acknowledgment_method", [
   "wet_ink_scanned",
   "electronic_witnessed",
   "verbal_with_witness",
+  "electronic_portal", // ADR-0107 (migration 1305): acknowledged alone in the portal — not witnessed
 ]);
 
 /** `compliance_window_kind` — every tracked compliance window (§3.2). The last three values back the
@@ -1463,6 +1468,15 @@ export const hopeAssessmentStatus = pgEnum("hope_assessment_status", [
   "draft",
   "signed",
   "superseded",
+]);
+
+/** `hope_author_discipline` — frozen attribution on each HOPE assessment row. */
+export const hopeAuthorDiscipline = pgEnum("hope_author_discipline", [
+  "RN",
+  "NP",
+  "MD",
+  "LPN",
+  "LVN",
 ]);
 
 /** `hope_schedule_status` — the §2.2.1 timepoint-window lifecycle (open → completed/expired/skipped). */
@@ -2226,6 +2240,12 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   "spiritual_plan",
   "volunteer_plan",
   "bereavement_letter",
+  // ADR-0109 D6 / D9 (mig 1347) — M16's two INTERNAL bereavement documents, each its own type so the read path can refuse them
+  // by aggregate type (the portal allowlist never lists them, and the §4.7 caseload rule never admits them).
+  "bereavement_physician_letter", // the approved condolence letter to the internal attending clinician
+  "bereavement_discharge_summary", // the internal discharge summary an auditor reads at closure
+  "bereavement_mailing_batch", // ADR-0109 D10 (mig 1375) — the internal mailing batch PDF (every recipient's name and address)
+  "bereavement_library_item", // ADR-0109 D10 (mig 1392) — an org-level, patient-facing grief library item (portal-only)
   "visit_confirmation",
   "evv_verification",
   "patient_amendment_statement_of_disagreement",
@@ -2693,6 +2713,10 @@ export const bereavementContactLogOutcome = pgEnum("bereavement_contact_log_outc
   "requested_no_further_contact",
   "crisis_referral",
   "artifact_rendered",
+  // ADR-0109 D10 (mig 1370-1372) — PROGRAM ACTIVITY outcomes: only an activity row (`activity_kind` set) carries one, the write routes never accept them.
+  "mailed",
+  "emailed",
+  "attended",
 ]);
 
 /** `bereavement_risk_tier` — the D3 deterministic tier that drives the D4 cadence. The rubric itself only
@@ -2729,11 +2753,13 @@ export const bereavementPlanClosureReason = pgEnum("bereavement_plan_closure_rea
 ]);
 
 /** `bereavement_opt_out_kind` — D9 per-contact opt-out granularity. Only `full` closes the contact;
- *  `channel_specific` restricts modalities and `pause_temporarily` suspends without closing. */
+ *  `channel_specific` restricts modalities, `pause_temporarily` suspends without closing, and
+ *  `no_mailings` (migration 1340, ADR-0109) stops mailings while calls and visits continue. */
 export const bereavementOptOutKind = pgEnum("bereavement_opt_out_kind", [
   "full",
   "channel_specific",
   "pause_temporarily",
+  "no_mailings",
 ]);
 
 /** `bereavement_plan_pause_kind` — the §2.2 pause taxonomy. A pause cancels future-scheduled outreach;

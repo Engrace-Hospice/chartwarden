@@ -20,6 +20,7 @@
 // emitted the plan's `m31.*` event; M31 has no outbox publisher, and the request was simply dropped.)
 // `portal.administration.attest` and `portal.amendment.submit` additionally carry TOTP step-up (M2),
 // composed in `./mount`.
+import { requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { MedicationOrderProvider } from "@chartwarden/types";
 import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
@@ -30,7 +31,6 @@ import { planCaregiverAttestation } from "../write-paths/caregiver-attestation";
 import { PORTAL_UPLOAD_MAX_BYTES } from "../write-paths/document-upload";
 import { requirePortalWrite } from "../write-paths/errors";
 import { actorOf, portalAccountIdOf, portalPatientIdOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import {
   ABAC_ACCOUNT,
   ABAC_BEREAVED,
@@ -42,11 +42,14 @@ import {
 import type { PortalRouteDeps } from "./index";
 import {
   AmendmentSubmitRequest,
+  BereavementMailingPreferenceRequest,
   CaregiverAttestedAdministrationRequest,
   MessageSendRequest,
   NotificationPreferenceUpdateRequest,
   PortalDocumentUploadInitRequest,
   PortalInvitationAcceptRequest,
+  PortalMemorialRsvpParams,
+  PortalMemorialRsvpRequest,
   parse,
 } from "./portal-typebox";
 
@@ -535,6 +538,76 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         portalAccountId,
       });
       return { ok: true, ...result };
+    },
+  );
+
+  // bereavement mailing preference (ADR-0109 D10 → M16). Window-gated, same key as the opt-out: it is the same family
+  // member exercising a narrower choice. The contact stays in the program; only MAILINGS stop (calls continue).
+  app.post(
+    "/api/v1/portal/bereavement/mailing-preference",
+    {
+      preHandler: [
+        P("portal.bereavement.opt_out_own"),
+        ABAC_BEREAVED("portal.bereavement.opt_out_own"),
+        IDEMPOTENT,
+      ],
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const body = parse(BereavementMailingPreferenceRequest, request.body);
+      // A family member told "mailings stopped" while the next letter is still scheduled has been lied to: the change is
+      // M16's own transition, or the call refuses.
+      if (!deps.bereavementMailingPreference) {
+        throw new ChartWardenError(
+          "BEREAVEMENT_MAILING_PREFERENCE_UNAVAILABLE",
+          "Changing your mailing preference is not available right now. Please contact your care team.",
+          503,
+        );
+      }
+      const result = await deps.bereavementMailingPreference.setMailingPreference({
+        organizationId: actor.organizationId,
+        userId: actor.userId,
+        portalAccountId: portalAccountIdOf(actor),
+        allowMailings: body.allowMailings,
+      });
+      return { ok: true, ...result };
+    },
+  );
+
+  // ADR-0109 D10 (PR 3) — the family's own memorial RSVP (→ M16), window-gated. M16 refuses another family's invitation (404), an answer after the
+  // RSVP-by date or once the service started (409 MEMORIAL_RSVP_CLOSED) and one over capacity (409 MEMORIAL_FULL).
+  app.post(
+    "/api/v1/portal/bereavement/memorials/:invitationId/rsvp",
+    {
+      preHandler: [
+        P("portal.bereavement.rsvp_own"),
+        ABAC_BEREAVED("portal.bereavement.rsvp_own"),
+        IDEMPOTENT,
+      ],
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const { invitationId } = parse(PortalMemorialRsvpParams, request.params);
+      const body = parse(PortalMemorialRsvpRequest, request.body);
+      try {
+        return await getSeam("BereavementPortalContentProvider").recordPortalRsvp({
+          organizationId: actor.organizationId,
+          userId: actor.userId,
+          portalAccountId: portalAccountIdOf(actor),
+          invitationId,
+          response: body.response,
+          guests: body.guests,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === "NotImplementedError") {
+          throw new ChartWardenError(
+            "BEREAVEMENT_PORTAL_CONTENT_UNAVAILABLE",
+            "Replying is not available right now. Please contact your care team.",
+            503,
+          );
+        }
+        throw error;
+      }
     },
   );
 

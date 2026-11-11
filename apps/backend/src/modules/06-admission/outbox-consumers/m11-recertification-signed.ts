@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/06-admission/outbox-consumers/m11-recertification-signed.ts — the live
 // `m11.order.recertification_signed` → "open the next PENDING election period" binding (F-223, #248).
 //
@@ -32,7 +33,7 @@
 //
 // The event name is a STRING literal and no M11 schema is imported — M6 reads M11 solely through the
 // foundation outbox (the `m11-level-of-care-change-signed.ts` precedent), so no `dependsOn` edge.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, desc, eq, gt } from "drizzle-orm";
 import {
@@ -74,9 +75,6 @@ export type RecertificationSignedOutcome =
 
 const OPEN_ADMISSION_STATUSES: readonly string[] = ["active", "on_hold"];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-/** The dispatcher's own system-attribution convention (F-102) for a consumer-driven write. */
-const CONSUMER_USER_ID = "";
 
 /** Run one delivery; exported so tests can assert the exact settle reason. */
 export async function applyRecertificationSigned(

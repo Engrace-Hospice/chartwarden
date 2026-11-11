@@ -67,7 +67,7 @@ import { Client } from "pg";
  *     unconditionally hard-coded to throw `DegradedError` regardless of config
  *     (`documents-route-service-db.ts`'s `uploadDocument`) — dead code, not a config gap. (b) The real
  *     two-step verified-upload handshake needs a live MinIO the local environment doesn't have running
- *     (`docker compose up -d minio` + `MINIO_*` env vars, neither present) — confirmed via the backend's
+ *     (`docker compose up -d rustfs` + `MINIO_*` env vars, neither present) — confirmed via the backend's
  *     own readiness probe reading `disabled`. The M39-consent-signing auto-render alt-path is ALSO a dead
  *     end for a third, independent reason: `registerDocumentSeams` in `index.ts` never passes a `store:`
  *     override, so the render consumer's document-row write lands in `createInMemoryDocumentSeamStore()`'s
@@ -322,6 +322,7 @@ async function wipePrior(
     const contactIds = contacts.rows.map((r) => r.id);
     if (contactIds.length) {
       for (const t of [
+        "bereavement_mailing_item",
         "bereavement_contact_log",
         "bereavement_opt_out",
         "bereavement_outreach",
@@ -473,7 +474,7 @@ async function main(): Promise<void> {
   const admin = await signIn("orgadmin@chartwarden.local");
   const rita = await signIn("rita@chartwarden.local");
   // `org_scope_bereavement_oversight` (M16 ABAC) only accepts clinical_supervisor / director_of_nursing /
-  // bereavement_program_coordinator / compliance_officer — vera's volunteer_coordinator role does NOT
+  // bereavement_coordinator / compliance_officer — vera's volunteer_coordinator role does NOT
   // qualify (confirmed live: FORBIDDEN), so M16's actor is supervisor@ (clinical_supervisor), not vera@.
   const supervisor = await signIn("supervisor@chartwarden.local");
   // The hospice physician — the only actor CoP 418.108 lets attest a GIP admission criterion (§2.4/D4).

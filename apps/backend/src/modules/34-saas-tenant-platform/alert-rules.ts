@@ -65,7 +65,7 @@ export const M34_ALERT_RESOLVER_NAMES = [
 ] as const;
 
 /** Default role-key sets for the two M34 audiences (overridable per-rule via `resolverArgs.roleKeys`). */
-export const M34_ALERT_RESOLVER_ROLE_KEYS = {
+const M34_ALERT_RESOLVER_ROLE_KEYS = {
   compliance_officer_for_tenant: ["compliance_officer"],
   platform_security_owner: ["platform_security_owner"],
 } as const;

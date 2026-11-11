@@ -3,6 +3,7 @@
 // validation, pre-authorization, coordination of benefits and audited overrides (#722). Submission, eligibility and
 // remittance matching land with their own issues.
 export { M41_OUTBOX_EVENTS } from "./events-by-m41";
+export { hasNonVoidCommercialClaimForPatientPayer } from "./seams/patient-payer-claim-reference";
 export { buildCommercialAuthorizationService } from "./services/authorization-service";
 export type {
   AuthorizationView,
@@ -82,6 +83,10 @@ export {
 export { type ScheduleProbe, createScheduleProbe } from "./jobs/schedule-probe";
 export { M41_CRON_QUEUES, M41_PLATFORM_JOB_ID, wireM41Tenancy } from "./jobs/queues";
 export { buildCommercialRenderPorts } from "./services/render-ports";
+export {
+  readM41HistoricalEraCandidates,
+  type M41HistoricalEraAttemptCandidate,
+} from "./services/historical-era-candidates";
 export { buildCommercial837iRenderer } from "./services/render-837i";
 export type {
   CommercialRenderParties,

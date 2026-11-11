@@ -1,3 +1,4 @@
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 // apps/backend/src/modules/16-bereavement/outbox-consumers/m6-admission-discharged-death.ts —
 // the §4.5 "secondary verifier (redundant safety net)" on `m6.admission.discharged` (F-134/#248).
 //
@@ -29,7 +30,7 @@
 //
 // NON-DEATH DISCHARGES ARE A NO-OP BEFORE ANY SEAM READ. `reason !== 'death'` returns immediately — this
 // consumer never asks M6's death census about a discharge that was not one.
-import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { AdmissionId } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
@@ -38,12 +39,16 @@ import {
   decideEligibilityIntake,
   resolveDeathFact,
 } from "../consumers/index";
-import type { WriteOutboxPort } from "../routes/write-service";
+import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
+import { emitDeathIntakeAlert } from "./death-intake-alert";
+import {
+  type AttendingUserResolver,
+  emitPhysicianLetterPendingAlert,
+  insertPendingPhysicianLetter,
+  resolveAttendingOrNull,
+} from "./physician-letter-intake";
 
 const PLAN = schema.bereavementPlan;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M16_DISCHARGE_DEATH_SECONDARY_CONSUMER = {
   eventName: "m6.admission.discharged",
@@ -54,6 +59,11 @@ export interface DischargeDeathSecondaryDeps {
   readonly db: DbClient;
   /** The bound publisher — `Value.Check`s `m16.*` against the boot catalog. */
   readonly outbox: WriteOutboxPort;
+  /** ADR-0109 D7 — the M36-backed alert port; unbound => the `death_intake` alert is skipped. */
+  readonly alerts?: AlertPort;
+  /** ADR-0109 D6 — M5's attending lookup; the plan-opening delivery also opens the physician letter for that clinician. Unbound or
+   *  failing => the letter is created with no recipient and the reviewer picks an internal clinician at approval. */
+  readonly resolveAttendingUserId?: AttendingUserResolver;
   /** Same org-explicit admission-siting port the primary intake consumer uses — see
    *  ../consumers/death-discharge.ts for why the request-scoped §4.7 seam cannot be used here. */
   readonly resolveAdmission: AdmissionAnchorResolver;
@@ -149,10 +159,20 @@ export function buildM16DischargeDeathSecondaryConsumer(deps: DischargeDeathSeco
 
       if (action.kind === "idempotent_skip") return;
 
-      await withOrgContext(
+      // ADR-0109 D6 — resolved BEFORE the transaction (a seam call inside our own tx self-deadlocks the pool).
+      const attendingUserId =
+        action.kind === "open_plan"
+          ? await resolveAttendingOrNull(
+              deps.resolveAttendingUserId,
+              organizationId,
+              action.patientId,
+            )
+          : null;
+
+      const openedPlanId = await withOrgContext(
         deps.db,
         { organizationId, userId: CONSUMER_USER_ID },
-        async (scoped) => {
+        async (scoped): Promise<string | null> => {
           const tx = scoped as unknown as DbClient;
 
           if (action.kind === "skip_per_patient_opt_out") {
@@ -167,10 +187,10 @@ export function buildM16DischargeDeathSecondaryConsumer(deps: DischargeDeathSeco
                 deathDate: action.deathDate ?? "",
               },
             });
-            return;
+            return null;
           }
 
-          await tx
+          const inserted = await tx
             .insert(PLAN)
             .values({
               organizationId,
@@ -183,9 +203,37 @@ export function buildM16DischargeDeathSecondaryConsumer(deps: DischargeDeathSeco
               deathTime: new Date(action.deathAt),
               externalSourceMetadata: action.externalSourceMetadata,
             })
-            .onConflictDoNothing();
+            .onConflictDoNothing()
+            .returning({ id: PLAN.id });
+          const planId = inserted[0]?.id ?? null;
+          // ADR-0109 D6 — only the delivery that INSERTED the plan opens its physician letter, in the same transaction.
+          if (planId !== null) {
+            await insertPendingPhysicianLetter(tx, {
+              organizationId,
+              planId,
+              patientId: action.patientId,
+              providerEntityId: action.providerEntityId,
+              locationId: deathFact?.locationId ?? null,
+              deathDate: action.deathDate,
+              attendingUserId,
+            });
+          }
+          return planId;
         },
       );
+
+      // Only the delivery that actually opened the plan alerts (a conflict-absorbed redelivery inserts nothing).
+      if (openedPlanId !== null && action.kind === "open_plan") {
+        await emitDeathIntakeAlert(deps.alerts, {
+          organizationId,
+          planId: openedPlanId,
+          deathDate: action.deathDate,
+        });
+        await emitPhysicianLetterPendingAlert(deps.alerts, {
+          organizationId,
+          planId: openedPlanId,
+        });
+      }
     },
   };
 }

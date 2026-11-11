@@ -6,8 +6,13 @@
 //                                    future outreach + `plan_closed_completed` in ONE tx.
 //   · `m16-miss-deadline`         → `missDeadline` for every `scheduled` outreach whose `late_grace_until`
 //                                    passed; `outreach_missed` outbox + best-effort M36 alert in the same tx.
+//                                    A second pass does the same for the ADR-0109 D3 assessment checkpoints:
+//                                    `scheduled` tasks past their late grace become `missed` and raise the
+//                                    `risk_assessment_overdue` alert.
 //   · `m16-anniversary-lookahead` → `anniversary_due_in_14_days` for each unfired reminder landing in the next
 //                                    14 days; `alert_fired_at` is stamped in the SAME tx as the outbox write.
+//   · `m16-mailing-sweep` (*/5)   → ADR-0109 D10: drafts mailing runs, re-sends a lost render hand-off and writes the activity log (jobs/mailing-workers.ts);
+//                                    `m16-mailing-generate` is its job-driven sibling, the batch render worker.
 //   · `m16-unreachable-detector` → PROPOSES `markUnreachable` (§2.3 / §4.9) for each active contact of an active
 //                                    plan whose newest 3 touchpoint-log rows are all `no_response`: stamps
 //                                    `unreachable_proposed_through_at` and emits
@@ -34,7 +39,20 @@ import type {
 } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
-import { transitionBereavementOutreach, transitionBereavementPlan } from "../lifecycle/index";
+import { emitAlertBestEffort } from "../alert-port";
+import type { BereavementCipher } from "../bereavement-crypto";
+import {
+  withdrawLapsedGroupEnrollments,
+  withdrawLapsedMemorialInvitations,
+} from "../groups/enrollment-sweep";
+import {
+  isAssessmentTaskOverdue,
+  transitionBereavementOutreach,
+  transitionBereavementPlan,
+} from "../lifecycle/index";
+import type { MailingGenerateEnqueuePort } from "../mailings/enqueue-port";
+import { requestDischargeSummary } from "../render-payloads/index";
+import { settleOutstandingForClosure } from "../routes/closure-settlement";
 import { runEffects } from "../routes/effects-runner";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
 import {
@@ -45,6 +63,11 @@ import {
   M16_QUEUES,
   M16_QUEUE_PARAMS,
 } from "./index";
+import {
+  type MailingBatchRenderer,
+  registerM16MailingGenerateWorker,
+  runMailingSweepCron,
+} from "./mailing-workers";
 
 const PLAN = schema.bereavementPlan;
 const OUTREACH = schema.bereavementOutreach;
@@ -52,8 +75,12 @@ const CLOSURE = schema.bereavementPlanClosure;
 const REMINDER = schema.bereavementAnniversaryReminder;
 const CONTACT = schema.bereavedContact;
 const LOG = schema.bereavementContactLog;
+const TASK = schema.bereavementAssessmentTask;
 
 const MS_PER_DAY = 86_400_000;
+
+/** One alert as the port takes it. */
+type AlertInput = Parameters<AlertPort["emit"]>[0];
 
 /** §3.3 — a cron-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention: an empty
  *  string reads back as SQL NULL through the audit trigger's actor lookup, which the `user` FK accepts). */
@@ -71,6 +98,12 @@ export interface M16WorkerDeps {
   readonly outbox: WriteOutboxPort;
   readonly alerts?: AlertPort;
   readonly activeOrgs?: ActiveOrgListPort;
+  /** ADR-0109 D10 — the tenant-DEK envelope the mailing generate worker opens addresses with. Unbound => a generate job fails closed. */
+  readonly cipher?: BereavementCipher;
+  /** ADR-0109 D10 — re-sends a run stuck in `generating` (the route service's enqueue port). */
+  readonly mailingEnqueue?: MailingGenerateEnqueuePort;
+  /** ADR-0109 D10 — the batch renderer hand-off (defaults to the registry's `DocumentRenderer`; tests inject one). */
+  readonly render?: MailingBatchRenderer;
   now?: () => Date;
 }
 
@@ -94,6 +127,9 @@ export function buildM16WorkerDeps(deps: {
   outbox: WriteOutboxPort;
   alerts?: AlertPort;
   activeOrgs?: ActiveOrgListPort;
+  cipher?: BereavementCipher;
+  mailingEnqueue?: MailingGenerateEnqueuePort;
+  render?: MailingBatchRenderer;
 }): M16WorkerDeps {
   return {
     connection: deps.connection,
@@ -101,6 +137,9 @@ export function buildM16WorkerDeps(deps: {
     outbox: deps.outbox,
     ...(deps.alerts ? { alerts: deps.alerts } : {}),
     activeOrgs: deps.activeOrgs,
+    ...(deps.cipher ? { cipher: deps.cipher } : {}),
+    ...(deps.mailingEnqueue ? { mailingEnqueue: deps.mailingEnqueue } : {}),
+    ...(deps.render ? { render: deps.render } : {}),
     now: () => new Date(),
   };
 }
@@ -208,19 +247,14 @@ async function closeOnePlan(
     .returning({ id: PLAN.id });
   if (updated.length !== 1) throw new LostRaceError();
 
-  // `cancel_future_outreach` (plan scope) — future-dated scheduled rows only, the route-path parity.
-  await tx
-    .update(OUTREACH)
-    .set({
-      status: "cancelled",
-      cancelledAt: now,
-      cancellationReasonRedacted: "plan closed at 13 months",
-      version: sql`${OUTREACH.version} + 1`, // §2.5 (GAP-194)
-      updatedAt: now,
-    })
-    .where(
-      and(eq(OUTREACH.planId, plan.id), eq(OUTREACH.status, "scheduled"), gte(OUTREACH.dueAt, now)),
-    );
+  // Everything still `scheduled` is settled before the counts freeze and the discharge summary is built: due -> missed (the d390
+  // `closeout_letter` is still inside its grace window when the 13-month close fires), future -> cancelled. The miss cron only reads
+  // ACTIVE plans, so a row left `scheduled` on this closed plan would be stranded, and M30 would count it for ever.
+  await settleOutstandingForClosure(tx, {
+    planId: plan.id,
+    at: now,
+    cancelReason: "plan closed at 13 months",
+  });
 
   const [outreach] = await tx
     .select({
@@ -243,19 +277,38 @@ async function closeOnePlan(
     contactsOptedOutCount: contacts?.optedOut ?? 0,
   };
 
-  await tx.insert(CLOSURE).values({
-    organizationId: plan.organizationId,
-    providerEntityId: plan.providerEntityId,
-    locationId: plan.locationId,
-    planId: plan.id,
-    reason: "thirteen_month_completion",
-    closedAt: now,
-    closedByUserId: null,
-    closeKind: "auto",
-    outreachCompletedCount: stats.completedCount,
-    outreachMissedCount: stats.missedCount,
-    contactsActiveCount: stats.contactsActiveCount,
-    contactsOptedOutCount: stats.contactsOptedOutCount,
+  const [closure] = await tx
+    .insert(CLOSURE)
+    .values({
+      organizationId: plan.organizationId,
+      providerEntityId: plan.providerEntityId,
+      locationId: plan.locationId,
+      planId: plan.id,
+      reason: "thirteen_month_completion",
+      closedAt: now,
+      closedByUserId: null,
+      closeKind: "auto",
+      outreachCompletedCount: stats.completedCount,
+      outreachMissedCount: stats.missedCount,
+      contactsActiveCount: stats.contactsActiveCount,
+      contactsOptedOutCount: stats.contactsOptedOutCount,
+    })
+    .returning({ id: CLOSURE.id });
+  if (!closure) throw new Error("m16: the 13-month closure insert returned no row");
+  // ADR-0109 D9 — the internal discharge summary, requested on the closure's own transaction (future outreach is already cancelled).
+  await requestDischargeSummary(tx, deps.outbox, {
+    plan: {
+      id: plan.id,
+      organizationId: plan.organizationId,
+      patientId: plan.patientId,
+      deathDate: plan.deathDate,
+    },
+    closure: {
+      id: closure.id,
+      reason: "thirteen_month_completion",
+      closeKind: "auto",
+      closedAt: now,
+    },
   });
 
   await runEffects(tx, transition.effects, {
@@ -280,30 +333,65 @@ export async function runClose13MonthsCron(deps: M16WorkerDeps): Promise<{ close
   const now = (deps.now ?? (() => new Date()))();
   const cutoff = closeCutoffDate(now);
   let closed = 0;
+  // One org's failure (its closures or its program pass) must not starve the orgs after it: every org is attempted, then the tick fails with
+  // ONE AggregateError so BullMQ retries it (every pass is idempotent) — the M22 retention-rotation precedent.
+  const failures: unknown[] = [];
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
-    const planIds = await listInOrg(deps, organizationId, async (tx) =>
-      (
-        await tx
-          .select({ id: PLAN.id })
-          .from(PLAN)
-          .where(
-            and(
-              eq(PLAN.organizationId, organizationId),
-              inArray(PLAN.status, ["active", "paused"]),
-              isNull(PLAN.legalHoldId),
-              lte(PLAN.deathDate, cutoff),
-            ),
-          )
-          .orderBy(asc(PLAN.deathDate))
-          .limit(M16_CRON_BATCH_LIMIT)
-      ).map((r) => r.id),
-    );
-    for (const planId of planIds) {
-      const won = await inRowTx(deps, organizationId, "close-13mo", planId, (tx) =>
-        closeOnePlan(tx, deps, organizationId, planId, now),
+    try {
+      const planIds = await listInOrg(deps, organizationId, async (tx) =>
+        (
+          await tx
+            .select({ id: PLAN.id })
+            .from(PLAN)
+            .where(
+              and(
+                eq(PLAN.organizationId, organizationId),
+                inArray(PLAN.status, ["active", "paused"]),
+                isNull(PLAN.legalHoldId),
+                lte(PLAN.deathDate, cutoff),
+              ),
+            )
+            .orderBy(asc(PLAN.deathDate))
+            .limit(M16_CRON_BATCH_LIMIT)
+        ).map((r) => r.id),
       );
-      if (won) closed += 1;
+      for (const planId of planIds) {
+        const won = await inRowTx(deps, organizationId, "close-13mo", planId, (tx) =>
+          closeOnePlan(tx, deps, organizationId, planId, now),
+        );
+        if (won) closed += 1;
+      }
+    } catch (error) {
+      failures.push(error);
+      log("m16.close-13mo: closures failed for an org", {
+        organizationId,
+        error: error instanceof Error ? error.name : "unknown",
+      });
     }
+    // ADR-0109 D10 (PR 3) — the nightly program pass, after the closures it may depend on: a family that left the program leaves its groups, and
+    // an open invitation of a closed plan (or a deceased / ineligible contact) is withdrawn. Set-based and idempotent; isolated per org.
+    try {
+      await inRowTx(deps, organizationId, "program-withdraw", organizationId, async (tx) => {
+        const n = await withdrawLapsedGroupEnrollments(tx, now);
+        const m = await withdrawLapsedMemorialInvitations(tx);
+        if (n + m > 0) {
+          log("m16.close-13mo: lapsed program participation withdrawn", {
+            organizationId,
+            enrollments: n,
+            invitations: m,
+          });
+        }
+      });
+    } catch (error) {
+      failures.push(error);
+      log("m16.close-13mo: the program withdraw pass failed for an org", {
+        organizationId,
+        error: error instanceof Error ? error.name : "unknown",
+      });
+    }
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(failures, `M16_CLOSE_13MO: ${failures.length} org failure(s)`);
   }
   return { closed };
 }
@@ -334,7 +422,7 @@ async function missOneOutreach(
   });
   const updated = await tx
     .update(OUTREACH)
-    // §2.5 (GAP-194) — the miss slide bumps the version, so a counselor acting on the pre-miss row gets 412.
+    // §2.5 (GAP-194) — the miss slide bumps the version, so a counselor acting on the pre-miss row gets 409 STALE_VERSION.
     .set({ status: transition.to, version: sql`${OUTREACH.version} + 1`, updatedAt: now })
     .where(and(eq(OUTREACH.id, row.id), eq(OUTREACH.status, "scheduled")))
     .returning({ id: OUTREACH.id });
@@ -369,10 +457,56 @@ async function missOneOutreach(
   });
 }
 
-/** §4.9 `m16-miss-deadline` — fan out over active orgs; mark every overdue `scheduled` outreach `missed`. */
-export async function runMissDeadlineCron(deps: M16WorkerDeps): Promise<{ missed: number }> {
+/**
+ * ADR-0109 D3 — mark one overdue assessment checkpoint `missed`. The guarded UPDATE (`WHERE status = 'scheduled'`) makes two overlapping
+ * ticks race safely; the plan must be `active` and the contact still in the program (a contact that opted out, died or was referred out
+ * had its tasks cancelled, and a stray one is skipped here too). Returns the oversight alert to raise: the caller emits it AFTER the
+ * transaction commits, so an alert is never raised for a miss that then rolled back.
+ */
+async function missOneAssessmentTask(tx: DbClient, taskId: string, now: Date): Promise<AlertInput> {
+  const [row] = await tx
+    .select({
+      task: TASK,
+      planStatus: PLAN.status,
+      contactStatus: CONTACT.status,
+    })
+    .from(TASK)
+    .innerJoin(PLAN, eq(PLAN.id, TASK.planId))
+    .innerJoin(CONTACT, eq(CONTACT.id, TASK.bereavedContactId))
+    .where(eq(TASK.id, taskId))
+    .limit(1);
+  if (!row || !isAssessmentTaskOverdue(row.task, now)) throw new LostRaceError();
+  if (row.planStatus !== "active") throw new LostRaceError();
+  if (row.contactStatus !== "proposed" && row.contactStatus !== "active") throw new LostRaceError();
+
+  const updated = await tx
+    .update(TASK)
+    .set({ status: "missed", version: sql`${TASK.version} + 1`, updatedAt: now })
+    .where(and(eq(TASK.id, taskId), eq(TASK.status, "scheduled")))
+    .returning({ id: TASK.id });
+  if (updated.length !== 1) throw new LostRaceError();
+
+  return {
+    organizationId: row.task.organizationId,
+    kind: "risk_assessment_overdue",
+    payload: {
+      planId: row.task.planId,
+      contactId: row.task.bereavedContactId,
+      taskId: row.task.id,
+      taskKind: row.task.taskKind,
+      dueAt: row.task.dueAt.toISOString(),
+    },
+  };
+}
+
+/** §4.9 `m16-miss-deadline` — fan out over active orgs; mark every overdue `scheduled` outreach `missed`, then (ADR-0109
+ *  D3) every overdue assessment checkpoint. */
+export async function runMissDeadlineCron(
+  deps: M16WorkerDeps,
+): Promise<{ missed: number; assessmentsMissed: number }> {
   const now = (deps.now ?? (() => new Date()))();
   let missed = 0;
+  let assessmentsMissed = 0;
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
     const ids = await listInOrg(deps, organizationId, async (tx) =>
       (
@@ -398,8 +532,39 @@ export async function runMissDeadlineCron(deps: M16WorkerDeps): Promise<{ missed
       );
       if (won) missed += 1;
     }
+    const taskIds = await listInOrg(deps, organizationId, async (tx) =>
+      (
+        await tx
+          .select({ id: TASK.id })
+          .from(TASK)
+          .innerJoin(PLAN, eq(PLAN.id, TASK.planId))
+          // Only a contact still in the program can miss a checkpoint: an unreachable / ineligible contact's overdue row would be
+          // skipped by `missOneAssessmentTask` anyway, and would sit at the head of the oldest-first batch of 500 forever, clogging it.
+          .innerJoin(CONTACT, eq(CONTACT.id, TASK.bereavedContactId))
+          .where(
+            and(
+              eq(TASK.organizationId, organizationId),
+              eq(TASK.status, "scheduled"),
+              lt(TASK.lateGraceUntil, now),
+              eq(PLAN.status, "active"),
+              inArray(CONTACT.status, ["proposed", "active"]),
+            ),
+          )
+          .orderBy(asc(TASK.lateGraceUntil))
+          .limit(M16_CRON_BATCH_LIMIT)
+      ).map((r) => r.id),
+    );
+    for (const taskId of taskIds) {
+      const raised: { alert?: AlertInput } = {};
+      const won = await inRowTx(deps, organizationId, "miss-assessment", taskId, async (tx) => {
+        raised.alert = await missOneAssessmentTask(tx, taskId, now);
+      });
+      if (!won) continue;
+      assessmentsMissed += 1;
+      if (raised.alert) await emitAlertBestEffort(deps.alerts, raised.alert);
+    }
   }
-  return { missed };
+  return { missed, assessmentsMissed };
 }
 
 // ── m16-anniversary-lookahead ─────────────────────────────────────────────────────────────────────────
@@ -506,12 +671,15 @@ async function latestOutcomes(
   contactId: string,
   limit: number,
 ): Promise<{ outcome: string; contactAt: Date }[]> {
-  return tx
-    .select({ outcome: LOG.outcome, contactAt: LOG.contactAt })
-    .from(LOG)
-    .where(eq(LOG.bereavedContactId, contactId))
-    .orderBy(desc(LOG.contactAt))
-    .limit(limit);
+  return (
+    tx
+      .select({ outcome: LOG.outcome, contactAt: LOG.contactAt })
+      .from(LOG)
+      // ADR-0109 D10 — a program-activity row (a mailing, a session) is not a touchpoint attempt: it neither extends nor breaks a streak.
+      .where(and(eq(LOG.bereavedContactId, contactId), isNull(LOG.activityKind)))
+      .orderBy(desc(LOG.contactAt))
+      .limit(limit)
+  );
 }
 
 /** Consecutive newest `no_response` rows (the route-17 guard's count, so proposal and acceptance agree). */
@@ -612,10 +780,11 @@ export async function runUnreachableDetectorCron(
               eq(PLAN.status, "active"),
               sql`(select count(*) filter (where t.outcome = 'no_response')
                      from (select l.outcome from ${LOG} l
-                            where l.bereaved_contact_id = ${CONTACT.id}
+                            where l.bereaved_contact_id = ${CONTACT.id} and l.activity_kind is null
                             order by l.contact_at desc limit ${threshold}) t) = ${threshold}`,
               sql`(${CONTACT.unreachableProposedThroughAt} is null or ${CONTACT.unreachableProposedThroughAt} <
-                     (select max(l.contact_at) from ${LOG} l where l.bereaved_contact_id = ${CONTACT.id}))`,
+                     (select max(l.contact_at) from ${LOG} l
+                       where l.bereaved_contact_id = ${CONTACT.id} and l.activity_kind is null))`,
             ),
           )
           .orderBy(asc(CONTACT.updatedAt))
@@ -634,7 +803,7 @@ export async function runUnreachableDetectorCron(
 
 // ── BullMQ construction (the M20/M9 registerMxCronWorkers / scheduleMxJobs template) ───────────────────
 
-/** Construct the four §4.9 cron `Worker`s (the caller owns lifecycle — `close()` on shutdown). */
+/** Construct the §4.9 cron `Worker`s plus the ADR-0109 D10 mailing sweep and render worker (the caller owns lifecycle — `close()` on shutdown). */
 export function registerM16CronWorkers(deps: M16WorkerDeps): Worker[] {
   const make = (
     queue: string,
@@ -658,6 +827,9 @@ export function registerM16CronWorkers(deps: M16WorkerDeps): Worker[] {
       M16_QUEUE_PARAMS.unreachableDetector,
       runUnreachableDetectorCron,
     ),
+    // ADR-0109 D10 — the mailing sweep (cron) and the render worker (one job per claimed run).
+    make(M16_QUEUES.mailingSweep, M16_QUEUE_PARAMS.mailingSweep, runMailingSweepCron),
+    registerM16MailingGenerateWorker(deps),
   ];
 }
 
@@ -668,6 +840,7 @@ export async function scheduleM16Jobs(connection: ConnectionOptions): Promise<Qu
     ["anniversaryLookahead"],
     ["missDeadline"],
     ["unreachableDetector"],
+    ["mailingSweep"],
   ] as const;
   const queues: Queue[] = [];
   for (const [key] of entries) {

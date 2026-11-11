@@ -438,8 +438,8 @@ have a built resolver and register into M3's registry, and a missing predicate d
 |--------------------------------------------------------|--------------------------------------------------------------------|----------------------------------------------------------------|
 |PostgreSQL data files                                   |LUKS full-disk encryption on VM disks                               |Key in TPM (Proxmox); break-glass copy sealed offline           |
 |PostgreSQL backups (pgBackRest)                         |AES-256-CBC                                                         |Three independent keys per backup repo (Ops Runbook §8.3.1)     |
-|MinIO objects                                           |Server-side encryption (SSE-S3) with site key                       |Site key derived from master in secure enclave; rotated annually|
-|MinIO buckets compliance-locked                         |Same as above + object lock prevents tampering                      |n/a (lock policy is metadata)                                   |
+|Object store objects (SeaweedFS; RustFS second copy)    |TARGET: server-side encryption. TODAY: plaintext objects, host disk encryption only, not asserted by any gate (compliance/controls.yaml CW-AC-05 gap)|Per host (LUKS or provider volume encryption)                   |
+|Off-site object backups (Object Lock bucket)            |SSE-C per object (`BACKUP_OBJECT_SSE_C_KEY`) + object lock prevents tampering|Docker secret on the production host, never sent to the store at rest|
 |Valkey AOF and snapshots                                |Filesystem-level encryption (LUKS)                                  |Per VM                                                          |
 |Application secrets in Git                              |SOPS with age                                                       |Age key per environment; backups in sealed envelopes            |
 |TLS private keys                                        |Owned by edge / per-service; not encrypted at rest beyond filesystem|Strict filesystem ACL (mode 0400 owned by service user)         |

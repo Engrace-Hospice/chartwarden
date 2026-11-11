@@ -27,7 +27,11 @@
 // reconstructed from drizzle-orm's own `NodePgDatabase<typeof schema>` (identical to the M1 `DbClient`,
 // so a `DbClient` / `withOrgContext` tx handle is structurally assignable) without taking the M1 edge.
 import * as schema from "@chartwarden/db/schema";
-import { ChartWardenError } from "@chartwarden/types";
+import {
+  ROUTE_FORMATS,
+  decodeCursor as decodeKitCursor,
+  encodeCursor as encodeKitCursor,
+} from "@chartwarden/shared/route-kit";
 import { type SQL, and, eq, lt, or } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
@@ -183,40 +187,35 @@ export interface CursorKeyset {
   readonly id: string;
 }
 
-/** Encode a keyset into an opaque base64url cursor (HMAC-signed in prod; shape identical). */
-export function encodeCursor(keyset: CursorKeyset): string {
-  return Buffer.from(JSON.stringify(keyset), "utf8").toString("base64url");
+/**
+ * Encode + sign a keyset cursor (the route kit's HMAC codec). `scope` is the org id, or for an org-less list
+ * the value the list is keyed on (a claim id, a fiscal year): a cursor minted for one scope does not verify
+ * for another.
+ */
+export function encodeCursor(scope: string, keyset: CursorKeyset): string {
+  return encodeKitCursor(scope, keyset);
 }
 
 const CURSOR_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$/;
-const CURSOR_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Decode an opaque cursor → keyset, or throw 400 VALIDATION_FAILED on a malformed/tampered value. The fields are
- * validated by SHAPE (an ISO-8601 UTC instant that is a real date, and a uuid), because they are bound straight into
- * the keyset predicate: a forged but well-formed-JSON cursor would otherwise reach Postgres as an invalid timestamp or
- * uuid and come back as a 500. Every cursor this module mints is `toISOString()` + a row uuid, so valid cursors are
- * unaffected.
+ * The keyset fields are still checked by SHAPE (an ISO-8601 UTC instant that is a real date, and a uuid)
+ * because they are bound straight into the keyset predicate.
  */
-export function decodeCursor(cursor: string): CursorKeyset {
-  try {
-    const parsed = JSON.parse(
-      Buffer.from(cursor, "base64url").toString("utf8"),
-    ) as Partial<CursorKeyset>;
-    if (typeof parsed.createdAt !== "string" || typeof parsed.id !== "string") {
-      throw new Error("missing keyset fields");
-    }
-    if (
-      !CURSOR_TIMESTAMP_RE.test(parsed.createdAt) ||
-      Number.isNaN(Date.parse(parsed.createdAt)) ||
-      !CURSOR_UUID_RE.test(parsed.id)
-    ) {
-      throw new Error("bad keyset field shape");
-    }
-    return { createdAt: parsed.createdAt, id: parsed.id };
-  } catch {
-    throw new ChartWardenError("VALIDATION_FAILED", "the cursor is malformed", 400);
-  }
+function isCursorKeyset(value: unknown): value is CursorKeyset {
+  const v = value as Partial<CursorKeyset> | null;
+  return (
+    typeof v?.createdAt === "string" &&
+    typeof v.id === "string" &&
+    CURSOR_TIMESTAMP_RE.test(v.createdAt) &&
+    !Number.isNaN(Date.parse(v.createdAt)) &&
+    ROUTE_FORMATS.uuid?.(v.id) === true
+  );
+}
+
+/** Verify + decode a cursor for `scope`; a forged, foreign or malformed cursor is 422 INVALID_CURSOR. */
+export function decodeCursor(scope: string, cursor: string | undefined): CursorKeyset | undefined {
+  return decodeKitCursor(scope, cursor, isCursorKeyset) ?? undefined;
 }
 
 /** The default + maximum page size for the M23 list routes (default 50, max 100). */
@@ -258,6 +257,7 @@ export function keysetBefore(
  * the page and mints the next cursor.
  */
 export function buildCursorPage<T>(
+  scope: string,
   fetched: readonly T[],
   size: number,
   keyOf: (item: T) => CursorKeyset,
@@ -267,7 +267,7 @@ export function buildCursorPage<T>(
   const last = items[items.length - 1];
   return {
     items,
-    nextCursor: hasMore && last ? encodeCursor(keyOf(last)) : null,
+    nextCursor: hasMore && last ? encodeCursor(scope, keyOf(last)) : null,
     hasMore,
   };
 }
@@ -278,7 +278,7 @@ export function buildCursorPage<T>(
 
 /**
  * The optimistic-concurrency outcome of a version-checked update (§2.5): the freshly-updated row, or a
- * `VERSION_CONFLICT` signal carrying the CURRENT persisted version so the service can surface a 412 and the
+ * `VERSION_CONFLICT` signal carrying the CURRENT persisted version so the service can surface a 409 STALE_VERSION and the
  * client can re-read + retry. `claim` (and the other versioned roots) use `WHERE id = ? AND version = ?`.
  */
 export type VersionedUpdateResult<TRow> =

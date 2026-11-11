@@ -1,3 +1,10 @@
+import {
+  type GuardRequest,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+  resolveActorPermissions,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/22-documents/routes/documents-routes.ts — M22-T07 the §4.1 route inventory
 // (33 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth,
 // M3) on the §4.6 keys M22 registers into M3's catalog (M22_CONTRIBUTED_PERMISSIONS). Org binding is
@@ -8,12 +15,13 @@
 // optimistic concurrency (§2.5 → 412). The §4.7 predicates M22 owns gate the PHI-content + review +
 // publish + mutate routes via `requireAbac`.
 import {
-  type GuardRequest,
-  requireAbac,
-  requirePermission,
-  requireStepUp,
-  resolveActorPermissions,
-} from "@chartwarden/auth";
+  type PreHandler,
+  ifMatchVersionOf,
+  rejectAiActor,
+  requireIdempotencyKey,
+  requireIfMatch,
+  writeActorOf,
+} from "@chartwarden/shared/route-kit";
 import {
   ChartWardenError,
   DegradedError,
@@ -23,16 +31,18 @@ import {
 } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
+import { canReadInternalDocument, canReadInternalDocuments } from "../abac-predicates";
+import {
+  INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES,
+  SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES,
+  assertNotInternalOnlyForWrite,
+  assertNotOrgLibraryForEdit,
+  isInternalOnlyAggregateType,
+} from "../internal-documents";
 import {
   RECORDS_REQUEST_FILEABLE,
   type RecordsRequestService,
 } from "../records-request/records-request-service";
-import {
-  ifMatchVersionOf,
-  rejectAiActor,
-  requireIdempotencyKey,
-  requireIfMatch,
-} from "./concurrency";
 import {
   AbandonReviewRequest,
   AddTagRequest,
@@ -85,9 +95,6 @@ import { decodeBase64Content } from "./server-upload";
 import type { DocumentRouteService, DocumentWriteActor, WriteBasis } from "./service";
 import { type SignedUrlService, isExternalDisclosure } from "./signed-url-service";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface DocumentRouteDeps {
   service: DocumentRouteService;
   signedUrl: SignedUrlService;
@@ -119,16 +126,8 @@ function actorOf(request: FastifyRequest): {
   actor: DocumentWriteActor;
   roles: readonly string[];
 } {
-  const ctx = request.context;
-  const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || !ctx.userId || typeof membershipId !== "string") {
-    throw new UnauthorizedError();
-  }
-  return {
-    organizationId: ctx.organizationId,
-    actor: { userId: ctx.userId, membershipId },
-    roles: ctx.roles,
-  };
+  const { organizationId, userId, membershipId, roles } = writeActorOf(request);
+  return { organizationId, actor: { userId, membershipId }, roles };
 }
 
 const docIdOf = (request: FastifyRequest): string => parse(DocumentParamsSchema, request.params).id;
@@ -150,7 +149,9 @@ const INTAKE_READ = P("intake.read");
 const INTAKE_CONFIRM = P("intake.confirm_classification");
 const INTAKE_REVIEW = P("intake.review");
 const INTAKE_DISCARD = P("intake.discard_batch");
-const REJECT_AI = rejectAiActor() as PreHandler;
+const REJECT_AI = rejectAiActor(
+  "AI principals cannot commit a WardenLens extraction review",
+) as PreHandler;
 const IDEMPOTENT = requireIdempotencyKey() as PreHandler;
 
 // §4.7 ABAC guards M22 owns (target = request.params → `id`).
@@ -269,6 +270,8 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     doc: { patientId: string | null; aggregateType: string; aggregateId: string | null },
     purpose: DocumentScopePurpose = "read",
   ): Promise<void> {
+    // ADR-0109 D10 (PR 3) — the published grief-library file is fixed: no generic write route may change it.
+    if (purpose === "write") assertNotOrgLibraryForEdit(doc.aggregateType);
     if (doc.aggregateType === "referral") {
       const { organizationId, actor } = actorOf(request);
       try {
@@ -283,6 +286,16 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
         if (error instanceof NotFoundError) throw new NotFoundError("document");
         throw error;
       }
+      return;
+    }
+    // ADR-0109 — an internal-only document (M16's physician letter / discharge summary) is read by ROLE, never by caseload.
+    if (isInternalOnlyAggregateType(doc.aggregateType)) {
+      // 404 for a caller who may not read it (an id probe learns nothing); 422 for one who may but tries to WRITE (render-only).
+      // (a seam-only type, the mailing batch, is a 404 for EVERY role: its one door is OrgDocumentAccessProvider)
+      if (!canReadInternalDocument(doc.aggregateType, actorOf(request).roles)) {
+        throw new NotFoundError("document");
+      }
+      if (purpose === "write") assertNotInternalOnlyForWrite(doc.aggregateType);
       return;
     }
     const scope = await metadataScopeOf(request, purpose);
@@ -306,9 +319,15 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     async (request) => {
       const { organizationId } = actorOf(request as FastifyRequest);
       const doc = await service.getDocument(organizationId, docIdOf(request as FastifyRequest));
+      // ADR-0109 D10 (PR 3) — FIRST, before the patientless early return below: a grief-library file is fixed for every actor and route.
+      assertNotOrgLibraryForEdit(doc.aggregateType);
       // #641 — remembered for the handler, which hands it to the service to re-check under the row lock.
       observedPatient.set(request as object, doc.patientId);
-      if (doc.patientId === null && doc.aggregateType !== "referral") {
+      if (
+        doc.patientId === null &&
+        doc.aggregateType !== "referral" &&
+        !isInternalOnlyAggregateType(doc.aggregateType)
+      ) {
         if (allowUnlinked || (await metadataScopeOf(request as FastifyRequest, "write")) === null)
           return;
         throw new NotFoundError("document");
@@ -459,7 +478,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/documents",
     { preHandler: [READ], config: { auditRead: { resourceKind: "document", list: true } } },
     async (request) => {
-      const { organizationId, actor } = actorOf(request);
+      const { organizationId, actor, roles } = actorOf(request);
       const q = parse(DocumentListQuerySchema, request.query);
       await assertReferralReadAllowed(organizationId, actor.userId, q.aggregateType, q.aggregateId);
       // F-023 — `documents.read` alone listed the whole org to a clinician; narrow to the caseload.
@@ -472,6 +491,13 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
           patientScope,
           patientId: q.patientId,
           aggregateType: q.aggregateType,
+          // ADR-0109 — internal-only documents are listed to the roles that may read them, and to nobody else.
+          // a seam-only type is never listed, to anyone
+          excludeAggregateTypes: [
+            ...(canReadInternalDocuments(roles)
+              ? SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES
+              : INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES),
+          ],
           aggregateId: q.aggregateId,
           retentionClass: q.retentionClass,
           tagKey: q.tagKey,

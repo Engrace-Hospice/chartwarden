@@ -2,8 +2,14 @@
 // §4.1 GET surface). The Drizzle implementation lives in read-service-drizzle.ts; a route test may bind an
 // in-memory stand-in. Money crosses as integer cents; the seam read-views (seam-impls.ts) convert to
 // cents-as-string. No Recipient ID is ever returned (only the masked last-4 fact; D12 / §3.6).
-import type { M24ReadActor } from "./actor";
-import type { CursorPage } from "./concurrency";
+import type { MedicaidClaimRouteReadiness } from "@chartwarden/medicaid-adapters";
+import type { M24Actor } from "./actor";
+
+/** A §F09 cursor page: the items plus the opaque signed cursor of the next page. */
+export interface CursorPage<T> {
+  readonly items: T[];
+  readonly nextCursor: string | null;
+}
 
 export interface ClaimView {
   id: string;
@@ -23,8 +29,10 @@ export interface ClaimView {
   version: number;
   validationRunIdLatest: string | null;
   eligibilityOutcomeSnapshot: string | null;
-  /** S11: non-null when the claim's state has no electronic gateway; the manual/paper instruction. */
+  /** Safe blocking explanation for the server-derived state/program route. */
   electronicSubmissionRefusal: string | null;
+  /** Server-derived state + FFS/MCO capability. Never inferred from a client-provided route hint. */
+  routeReadiness: MedicaidClaimRouteReadiness;
   createdAt: string;
   updatedAt: string;
 }
@@ -281,35 +289,32 @@ export interface EligibilityFilters {
 
 export interface M24ReadService {
   listClaims(
-    actor: M24ReadActor,
+    actor: M24Actor,
     filters: ClaimFilters,
     cursor: string | undefined,
     limit: number,
   ): Promise<CursorPage<ClaimView>>;
-  getClaim(actor: M24ReadActor, claimId: string): Promise<ClaimView | null>;
-  listClaimLines(actor: M24ReadActor, claimId: string): Promise<ClaimLineView[]>;
-  listSubmissions(actor: M24ReadActor, claimId: string): Promise<SubmissionView[]>;
-  listAcknowledgments(actor: M24ReadActor, claimId: string): Promise<AcknowledgmentView[]>;
-  getValidationRun(actor: M24ReadActor, runId: string): Promise<ValidationRunView | null>;
-  listValidationRuns(actor: M24ReadActor, claimId: string): Promise<ValidationRunView[]>;
-  listOverrides(actor: M24ReadActor): Promise<ValidationOverrideView[]>;
+  getClaim(actor: M24Actor, claimId: string): Promise<ClaimView | null>;
+  listClaimLines(actor: M24Actor, claimId: string): Promise<ClaimLineView[]>;
+  listSubmissions(actor: M24Actor, claimId: string): Promise<SubmissionView[]>;
+  listAcknowledgments(actor: M24Actor, claimId: string): Promise<AcknowledgmentView[]>;
+  getValidationRun(actor: M24Actor, runId: string): Promise<ValidationRunView | null>;
+  listValidationRuns(actor: M24Actor, claimId: string): Promise<ValidationRunView[]>;
+  listOverrides(actor: M24Actor): Promise<ValidationOverrideView[]>;
   /** §5.1 #5 — the org-wide blocked-claim worklist grouped by failing rule. `limit` caps the result scan. */
-  validationWorklist(actor: M24ReadActor, limit: number): Promise<ValidationWorklistView>;
-  listRuleConfig(actor: M24ReadActor): Promise<RuleConfigView[]>;
+  validationWorklist(actor: M24Actor, limit: number): Promise<ValidationWorklistView>;
+  listRuleConfig(actor: M24Actor): Promise<RuleConfigView[]>;
   listEligibilityChecks(
-    actor: M24ReadActor,
+    actor: M24Actor,
     filters: EligibilityFilters,
   ): Promise<EligibilityCheckView[]>;
-  listRbArrangements(
-    actor: M24ReadActor,
-    filters: RbArrangementFilters,
-  ): Promise<RbArrangementView[]>;
-  getRbArrangement(actor: M24ReadActor, arrangementId: string): Promise<RbArrangementView | null>;
-  listRbDays(actor: M24ReadActor, filters: RbDayFilters): Promise<RbDayView[]>;
+  listRbArrangements(actor: M24Actor, filters: RbArrangementFilters): Promise<RbArrangementView[]>;
+  getRbArrangement(actor: M24Actor, arrangementId: string): Promise<RbArrangementView | null>;
+  listRbDays(actor: M24Actor, filters: RbDayFilters): Promise<RbDayView[]>;
   listTradingPartnerCredentials(
-    actor: M24ReadActor,
+    actor: M24Actor,
     providerEntityId?: string,
   ): Promise<TradingPartnerCredentialView[]>;
-  arDashboard(actor: M24ReadActor, providerEntityId?: string): Promise<ArDashboardView>;
-  arMetrics(actor: M24ReadActor, providerEntityId?: string): Promise<ArMetricsView>;
+  arDashboard(actor: M24Actor, providerEntityId?: string): Promise<ArDashboardView>;
+  arMetrics(actor: M24Actor, providerEntityId?: string): Promise<ArMetricsView>;
 }

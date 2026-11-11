@@ -44,3 +44,10 @@ export * from "./bereavement-opt-outs"; // bereavement_opt_out
 export * from "./tenant-external-source-gate-overrides"; // tenant_bereavement_external_source_gate_override
 export * from "./bereavement-idg-risk-flags"; // bereavement_idg_risk_flag
 export * from "./bereavement-cop-opt-out-credits"; // bereavement_cop_opt_out_credit (F-206, #248)
+export * from "./bereavement-assessment-tasks"; // bereavement_assessment_task (ADR-0109 D3, migration 1342)
+export * from "./bereavement-risk-assessment-drafts"; // bereavement_risk_assessment_draft (ADR-0109 D5, migration 1343)
+export * from "./bereavement-physician-letters"; // bereavement_physician_letter (ADR-0109 D6, migration 1345)
+export * from "./bereavement-mailings"; // bereavement_mailing_config / _run / _item (ADR-0109 D10, migration 1374)
+export * from "./bereavement-support-groups"; // bereavement_support_group / _session / _enrollment / _attendance (ADR-0109 D10, migration 1390)
+export * from "./bereavement-memorials"; // bereavement_memorial_service / _invitation (ADR-0109 D10, migration 1391)
+export * from "./bereavement-library"; // bereavement_library_item (ADR-0109 D10, migration 1393)

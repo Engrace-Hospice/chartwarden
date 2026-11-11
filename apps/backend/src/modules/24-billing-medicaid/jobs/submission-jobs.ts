@@ -4,22 +4,18 @@
 // D2 outbox-only state transitions) — the one structural difference is M24's `dependsOn` DOES include M1, so
 // this file imports `@chartwarden/db` directly instead of a package-level repository layer.
 //
-// Unlike M23's platform-wide X12/MAC gateway (one bearer/URL pair from env), Oregon's OHA MMIS endpoint is
-// PER-PROVIDER-ENTITY (each PE's own `state_medicaid_trading_partner_credential` row, §3.3) — so the
-// `credentials` port here resolves + decrypts the ACTIVE credential row per job, not a fixed config.
+// The `credentials` port resolves + decrypts the active provider/state credential row per job. Its
+// presence alone does not establish a certified state/program route.
 //
-// SCOPE (documented, WX-PR-011): this drives the wire mechanics (submit → accept/reject/pending-async →
-// poll → terminal ack) for whatever claim a caller submits, including a header-only zero-line DRAFT claim
-// (per-line assembly from M6/M8 is a separate, still-open follow-up — see write-service-drizzle.ts's
-// assembleClaim comment). Real per-tenant OHA/CCO certification remains external-sandbox pending (same
-// posture as WX-PR-006/007/008): this binds against the launch-gateway's real HTTP transport when configured,
-// and is fully exercised against a fake transport in tests.
+// State submission remains blocked until a state/program route, wire format, provider enrollment, and
+// trading-partner certification are verified. This worker rechecks route readiness before credentials or
+// adapter access, so old durable jobs cannot bypass a later fail-closed policy.
 import { type DbClient, schema } from "@chartwarden/db";
 import type {
   MedicaidAdapterRegistry,
   TradingPartnerCredentials,
 } from "@chartwarden/medicaid-adapters";
-import { medicaidClaimMachine } from "@chartwarden/medicaid-adapters";
+import { medicaidClaimMachine, medicaidClaimRouteReadiness } from "@chartwarden/medicaid-adapters";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq } from "drizzle-orm";
@@ -181,6 +177,37 @@ export async function runClaimSubmit(
   if (!submission) throw new Error(`M24 claim.submit: submission ${job.submissionId} not found`);
   if (submission.result !== "pending") return; // already terminalized — idempotent no-op
 
+  // A durable job can outlive route configuration. Recheck the server-owned claim program before
+  // decrypting credentials or calling any adapter. Gateway presence alone is not certification.
+  const routeReadiness = medicaidClaimRouteReadiness(
+    claim.serviceState,
+    claim.mcoId ?? null,
+    false,
+  );
+  if (!routeReadiness.submissionAvailable) {
+    await terminalizeSubmissionAndTransition(
+      tx,
+      claim,
+      job.submissionId,
+      now,
+      {
+        result: "transport_failure",
+        errorCode: routeReadiness.reasonCode,
+        errorMessage: routeReadiness.message,
+      },
+      ["submission_failed"],
+    );
+    await publishSubmissionFailed(
+      deps,
+      tx,
+      claim,
+      job.submissionId,
+      submission.attemptIndex,
+      routeReadiness.reasonCode,
+    );
+    return;
+  }
+
   const adapter = deps.adapters.adapterForState(claim.serviceState);
   const credentials = adapter
     ? await deps.credentials.resolve({
@@ -211,6 +238,37 @@ export async function runClaimSubmit(
       job.submissionId,
       submission.attemptIndex,
       "no adapter or credential bound",
+    );
+    return;
+  }
+
+  // Provider enrollment credentials may not redirect a claim. Their state/channel/MCO must
+  // match the server-owned FFS or managed-care identity exactly.
+  const expectedChannel = claim.mcoId ? "cco_clearinghouse" : "direct_mmis";
+  if (
+    credentials.serviceState !== claim.serviceState ||
+    credentials.channel !== expectedChannel ||
+    credentials.mcoId !== (claim.mcoId ?? null)
+  ) {
+    await terminalizeSubmissionAndTransition(
+      tx,
+      claim,
+      job.submissionId,
+      now,
+      {
+        result: "transport_failure",
+        errorCode: "MEDICAID_PROVIDER_ROUTE_MISMATCH",
+        errorMessage: "the provider trading-partner route does not match the claim program",
+      },
+      ["submission_failed"],
+    );
+    await publishSubmissionFailed(
+      deps,
+      tx,
+      claim,
+      job.submissionId,
+      submission.attemptIndex,
+      "provider route mismatch",
     );
     return;
   }
@@ -466,6 +524,15 @@ export async function runClaimPoll(
   if (!submission) throw new Error(`M24 claim.poll: submission ${job.submissionId} not found`);
   if (submission.result !== "pending_async") return; // already terminal — idempotent no-op
   if (claim.state !== "POLLING") return; // already advanced past polling — idempotent no-op
+
+  // Do not let an explicitly bound but uncertified state gateway poll old pending work. Keep the
+  // existing attempt pending for authorized reconciliation; do not call the adapter or expose credentials.
+  const routeReadiness = medicaidClaimRouteReadiness(
+    claim.serviceState,
+    claim.mcoId ?? null,
+    false,
+  );
+  if (!routeReadiness.submissionAvailable) return;
 
   const adapter = deps.adapters.adapterForState(claim.serviceState);
   const credentials = adapter

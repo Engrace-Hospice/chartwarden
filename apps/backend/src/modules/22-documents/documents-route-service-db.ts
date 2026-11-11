@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/22-documents — PRODUCTION Document backend (M22L reads + the write lifecycle over
 // Drizzle+RLS). No route is left at 501.
 //
@@ -9,7 +11,7 @@
 // tenant read them). The metadata/review WRITE lifecycle is live: tag / patch (legal-hold-aware, 409),
 // intake batch upload + classify-confirm + the extraction review machine
 // (open / record-decision / bulk-approve / resolve-discrepancy / complete / abandon / discard), tenant overlay
-// publish (§2.5 optimistic concurrency, 412; persists branding + state addendum), and render retry (a
+// publish (§2.5 optimistic concurrency, 409; persists branding + state addendum), and render retry (a
 // `failed` fill only — the `form-render` worker, workers/form-render-worker.ts, consumes the `queued` fills). Binary upload/version creation (GAP-068) runs
 // through ./routes/server-upload.ts over the bound object store (verified size/SHA-256, one transaction); it
 // returns a typed 503 only when no object store is configured. One route write emits a producer outbox
@@ -28,8 +30,7 @@
 // The signed-URL STORAGE PRESIGNER is not built here — the barrel (`index.ts`) binds the S3 adapter's
 // presigner (or a typed `DegradedError` when MINIO_* is unset). This module supplies only the read
 // resolvers (`abacResolver` over document owner-facts, `objectResolver` over version object-keys).
-import { randomUUID } from "node:crypto";
-import { type DbClient, schema } from "@chartwarden/db";
+import { assertVersion } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
@@ -39,7 +40,7 @@ import {
   NotFoundError,
   type OrgId,
 } from "@chartwarden/types";
-import { and, desc, eq, exists, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, exists, gte, inArray, isNull, lte, notInArray, sql } from "drizzle-orm";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "./abac-predicates";
 import { otherBatchHoldsSudFlag } from "./extraction/batch-identity";
 import { commitClinicalWriteback } from "./extraction/writeback-commit-clinical-db";
@@ -49,8 +50,13 @@ import {
 } from "./extraction/writeback-commit-db";
 import { commitReviewDiagnosisWriteback } from "./extraction/writeback-commit-dx-db";
 import { isDiagnosisFieldPath } from "./extraction/writeback-plan-dx";
+import {
+  assertAdoptableByIntake,
+  assertNotInternalOnlyForPatientFacing,
+  assertNotOrgLibraryForEdit,
+} from "./internal-documents";
 import { markReceivedOnArrival, recordsRequestConflicts } from "./records-request/inbound-match";
-import { type CursorPage, paginate } from "./routes/concurrency";
+import { type CursorPage, paginate } from "./routes/pagination";
 import type { ServerUploadService } from "./routes/server-upload";
 import type {
   DocumentRouteService,
@@ -280,6 +286,8 @@ export function createDbDocumentRouteService(
   ): Promise<DocumentView> {
     await tx.execute(sql`select id from document where id = ${documentId} for update`);
     const doc = await loadDocRow(tx, organizationId, documentId); // 404
+    // ADR-0109 D10 (PR 3) — the DB layer refuses too (PATCH, link, tags all lock through here): a grief-library file is fixed whatever the route.
+    assertNotOrgLibraryForEdit(doc.aggregateType);
     if (basis?.expectedPatientId !== undefined && doc.patientId !== basis.expectedPatientId)
       throw new NotFoundError("document");
     if (basis?.expectedAdmissionId !== undefined && doc.admissionId !== basis.expectedAdmissionId)
@@ -336,6 +344,10 @@ export function createDbDocumentRouteService(
             : undefined,
           filter.patientId ? eq(DOC.patientId, filter.patientId) : undefined,
           filter.aggregateType ? eq(DOC.aggregateType, filter.aggregateType as never) : undefined,
+          // ADR-0109 — internal-only documents are listed to their readers only.
+          filter.excludeAggregateTypes && filter.excludeAggregateTypes.length > 0
+            ? notInArray(DOC.aggregateType, [...filter.excludeAggregateTypes] as never[])
+            : undefined,
           filter.aggregateId ? eq(DOC.aggregateId, filter.aggregateId) : undefined,
           filter.retentionClass
             ? eq(DOC.retentionClass, filter.retentionClass as never)
@@ -398,7 +410,7 @@ export function createDbDocumentRouteService(
           createdAt: iso(d.createdAt),
           updatedAt: iso(d.updatedAt),
         }));
-        return paginate(items, cursor, limit);
+        return paginate(organizationId, items, cursor, limit);
       });
     },
 
@@ -433,7 +445,7 @@ export function createDbDocumentRouteService(
           uploadedAt: iso(v.createdAt),
           createdAt: iso(v.createdAt),
         }));
-        return paginate(items, cursor, limit);
+        return paginate(organizationId, items, cursor, limit);
       });
     },
     async getVersion(organizationId, documentId, versionId) {
@@ -487,7 +499,7 @@ export function createDbDocumentRouteService(
           .where(eq(BATCH.referralId, referralId))
           .orderBy(desc(BATCH.uploadedAt), desc(BATCH.id))
           .limit(READ_WINDOW);
-        if (batches.length === 0) return paginate([], cursor, limit);
+        if (batches.length === 0) return paginate(organizationId, [], cursor, limit);
         const ids = batches.map((b) => b.id);
         const conflicts = await recordsRequestConflicts(tx, batches);
         const segments = await tx
@@ -548,7 +560,7 @@ export function createDbDocumentRouteService(
             createdAt: iso(b.uploadedAt),
           };
         });
-        return paginate(items, cursor, limit);
+        return paginate(organizationId, items, cursor, limit);
       });
     },
     async getBatch(organizationId, batchId): Promise<IntakeBatchView> {
@@ -590,6 +602,7 @@ export function createDbDocumentRouteService(
           .orderBy(desc(CP.classifiedAt), desc(CP.id))
           .limit(READ_WINDOW);
         return paginate(
+          organizationId,
           rows.map((r) => ({ id: r.id, createdAt: iso(r.createdAt), docType: String(r.docType) })),
           cursor,
           limit,
@@ -607,6 +620,7 @@ export function createDbDocumentRouteService(
           .orderBy(desc(EJ.queuedAt), desc(EJ.id))
           .limit(READ_WINDOW);
         return paginate(
+          organizationId,
           rows.map((r) => ({ id: r.id, createdAt: iso(r.createdAt), status: String(r.status) })),
           cursor,
           limit,
@@ -622,6 +636,7 @@ export function createDbDocumentRouteService(
           .orderBy(desc(EC.extractedAt), desc(EC.id))
           .limit(READ_WINDOW);
         const candidates = paginate(
+          organizationId,
           rows.map((r) => ({
             id: r.id,
             createdAt: iso(r.createdAt),
@@ -648,6 +663,7 @@ export function createDbDocumentRouteService(
           .orderBy(desc(ED.decidedAt), desc(ED.id))
           .limit(READ_WINDOW);
         const decisions = paginate(
+          organizationId,
           rows.map((d) => ({ id: d.id, createdAt: iso(d.createdAt) })),
           cursor,
           limit,
@@ -665,6 +681,7 @@ export function createDbDocumentRouteService(
           .orderBy(desc(FT.createdAt), desc(FT.id))
           .limit(READ_WINDOW);
         return paginate(
+          organizationId,
           rows.map((r) => ({ id: r.id, key: r.key, createdAt: iso(r.createdAt) })),
           cursor,
           limit,
@@ -744,6 +761,14 @@ export function createDbDocumentRouteService(
       return withOrgAs(db, organizationId, actor, async (tx) => {
         await lockDocForWrite(tx, organizationId, documentId, basis);
         await assertNoHold(tx, documentId);
+        if (patch.patientFacing === true) {
+          const [current] = await tx
+            .select({ aggregateType: DOC.aggregateType })
+            .from(DOC)
+            .where(eq(DOC.id, documentId))
+            .limit(1);
+          assertNotInternalOnlyForPatientFacing(current?.aggregateType);
+        }
         const set: Record<string, unknown> = { updatedAt: new Date() };
         if (patch.title !== undefined) set.title = patch.title;
         if (patch.patientFacing !== undefined) set.patientFacing = patch.patientFacing;
@@ -788,6 +813,7 @@ export function createDbDocumentRouteService(
           .orderBy(desc(TAG.addedAt), desc(TAG.id))
           .limit(READ_WINDOW);
         return paginate(
+          organizationId,
           rows.map((t) => ({
             id: t.id,
             tagKind: t.tagKind,
@@ -855,11 +881,13 @@ export function createDbDocumentRouteService(
         // another org's id is simply not found → the non-leaking 404).
         if (args.documentId) {
           const [d] = await tx
-            .select({ id: DOC.id })
+            .select({ id: DOC.id, aggregateType: DOC.aggregateType })
             .from(DOC)
             .where(eq(DOC.id, args.documentId))
             .limit(1);
           if (!d) throw new NotFoundError("document");
+          // ADR-0109 D10 (PR 3) — a batch is later relinked onto a chart: it never adopts an internal or a grief-library document.
+          assertAdoptableByIntake(d.aggregateType);
         }
         const [b] = await tx
           .insert(BATCH)
@@ -1262,16 +1290,10 @@ export function createDbDocumentRouteService(
           .limit(1);
         if (!t) throw new NotFoundError("form template");
         // §2.5 optimistic concurrency: the current version is the count of overlay rows for this template;
-        // the caller's If-Match `ifVersion` must match it, else 412.
+        // the caller's If-Match `ifVersion` must match it, else 409 STALE_VERSION.
         const existing = await tx.select({ id: OVL.id }).from(OVL).where(eq(OVL.templateId, t.id));
         const current = existing.length;
-        if (ifVersion !== current) {
-          throw new ChartWardenError(
-            "VERSION_MISMATCH",
-            "the overlay was modified since you read it",
-            412,
-          );
-        }
+        assertVersion(current, ifVersion, "the overlay was modified since you read it");
         await tx
           .update(OVL)
           .set({ isActive: false })
@@ -1330,7 +1352,12 @@ export function createDbDocumentAbacResolver(db: DbClient): DocumentAbacResolver
     async loadDocument(organizationId, documentId): Promise<DocumentAbacFacts | null> {
       return withOrg(db, organizationId, async (tx) => {
         const [d] = await tx
-          .select({ id: DOC.id, patientId: DOC.patientId, retentionClass: DOC.retentionClass })
+          .select({
+            id: DOC.id,
+            patientId: DOC.patientId,
+            retentionClass: DOC.retentionClass,
+            aggregateType: DOC.aggregateType,
+          })
           .from(DOC)
           .where(eq(DOC.id, documentId))
           .limit(1);
@@ -1345,6 +1372,7 @@ export function createDbDocumentAbacResolver(db: DbClient): DocumentAbacResolver
           documentId: d.id,
           patientId: d.patientId,
           retentionClass: d.retentionClass,
+          aggregateType: d.aggregateType,
           legalHoldActive: !!hold,
           // The patient discharge instant is an M6 cross-module fact (no seam bound in the read wire);
           // the care-team read window stays open (null) until M22L binds the AdmissionStatus reader.

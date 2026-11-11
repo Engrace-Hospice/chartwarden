@@ -15,7 +15,7 @@
 // is the backstop; the slice default (createInMemoryMessagingService) keeps it all in memory so
 // the route inventory is integration-testable with no live infra.
 
-import type { ClinicalLinkKind, RichBody } from "@chartwarden/types";
+import type { ClinicalLinkKind, MentionKind, RichBody } from "@chartwarden/types";
 import type { MemberAdminActor } from "../member-admin";
 import type { QuietHoursConfig, RoutingMap } from "../resolution";
 import type { MessageSearchService } from "../search/message-search";
@@ -202,7 +202,7 @@ export interface MentionNonMember {
 }
 
 export interface MentionCandidate {
-  readonly kind: "staff" | "patient";
+  readonly kind: MentionKind;
   readonly entityId: string;
   readonly displayName: string;
   readonly detail: string | null;

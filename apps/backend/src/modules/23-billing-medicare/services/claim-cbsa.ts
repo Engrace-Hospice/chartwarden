@@ -4,9 +4,12 @@
 // `@chartwarden/billing` decides. Nothing is guessed: a missing ZIP or an unplaceable one is reported as unresolved and
 // the `cbsa_value_codes_present` rule blocks the claim.
 import {
+  type DateRange,
   type FacilitySpan,
   type HospiceAreaLookup,
   type HospiceAreaResolution,
+  type HospiceCbsaReader,
+  type InpatientStay,
   type ValueCodeAreas,
   facilityPostalCodeForInpatientDates,
   hospiceFiscalYearStartingOf,
@@ -15,7 +18,6 @@ import {
 } from "@chartwarden/billing";
 import { schema } from "@chartwarden/db";
 import { and, eq } from "drizzle-orm";
-import type { DateRange, HospiceCbsaReader, InpatientStay } from "./claim-assembly-types";
 
 type Db = repositories.BillingDb;
 

@@ -19,7 +19,25 @@ export type EnvLike = Record<string, string | undefined>;
  * two agree. The registry still throws at boot for a vendor with no adapter.
  */
 export const CLEARINGHOUSE_VENDOR_ENV = "CLEARINGHOUSE_VENDOR";
-export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = ["stedi", "direct_mac"];
+export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = [
+  "stedi",
+  "direct_mac",
+  "claimmd",
+];
+
+/**
+ * The cursor-signing key `buildServer` hands the route kit. Production fails closed when it is missing (the
+ * strength rule is `assertProductionEnv`'s); dev/test return undefined and the kit signs with a process-local
+ * random key.
+ */
+export function cursorSigningKeyFrom(env: EnvLike): string | undefined {
+  const key = env.CURSOR_SIGNING_KEY?.trim();
+  if (key) return key;
+  if (env.NODE_ENV === "production") {
+    throw new Error("CURSOR_SIGNING_KEY is required in production (pagination cursors are signed)");
+  }
+  return undefined;
+}
 
 /** One unmet production requirement. */
 export interface EnvProblem {
@@ -43,10 +61,8 @@ interface Requirement {
 export const M23_LAUNCH_GATEWAY_ENABLED_ENV = "M23_LAUNCH_GATEWAY_ENABLED";
 export const M34_PROVISION_GATEWAY_ENABLED_ENV = "M34_PROVISION_GATEWAY_ENABLED";
 export const FHIR_TOKEN_ENDPOINT_ENABLED_ENV = "FHIR_TOKEN_ENDPOINT_ENABLED";
-/** GAP-146 — the M24 Oregon launch-gateway capability gate. Opt-OUT in production like the M23 switch (it was
- *  opt-in, so a production deploy that never set it silently built no Medicaid submit/poll workers). It is a
- *  capability gate only: every real endpoint comes from a provider entity's own trading-partner credential, so
- *  an enabled gate with no credential calls nothing. dev/test keep the unset-means-off default. */
+/** M24 Oregon gateway gate. Explicit opt-in in every environment; an unset value must never bind a state
+ * transport or start its workers. Configuration alone is not state certification. */
 export const M24_LAUNCH_GATEWAY_ENABLED_ENV = "M24_LAUNCH_GATEWAY_ENABLED";
 
 const INTEGRATION_SWITCHES = [
@@ -56,7 +72,7 @@ const INTEGRATION_SWITCHES = [
   M24_LAUNCH_GATEWAY_ENABLED_ENV,
 ] as const;
 
-/** Whether an opt-out production integration capability should be bound (defaults to true). */
+/** Whether a legacy opt-out production integration capability should be bound (defaults to true). */
 export function integrationEnabled(
   env: EnvLike,
   key: (typeof INTEGRATION_SWITCHES)[number],
@@ -64,14 +80,9 @@ export function integrationEnabled(
   return env[key]?.trim().toLowerCase() !== "false";
 }
 
-/**
- * GAP-146 — the env the M24 launch-gateway gate reads: in production an UNSET switch means enabled (an explicit
- * `false` still disables); outside production the value is passed through untouched, so dev/test/CI keep
- * "unset = nothing calls out by accident".
- */
+/** M24 is deliberately opt-in: preserve the environment as provided in all runtimes. */
 export function withM24LaunchGatewayDefault(env: EnvLike): EnvLike {
-  if (env.NODE_ENV !== "production" || env[M24_LAUNCH_GATEWAY_ENABLED_ENV]?.trim()) return env;
-  return { ...env, [M24_LAUNCH_GATEWAY_ENABLED_ENV]: "true" };
+  return env;
 }
 
 /**
@@ -199,6 +210,40 @@ const REQUIREMENTS: readonly Requirement[] = [
     key: "REDIS_URL",
     rule: (v) => (/^rediss?:\/\//.test(v) ? null : "must be a redis:// or rediss:// URL"),
   },
+  // ADR-0053 amendment 2026-11-04: the Claim.MD account key and which account it opens (test or production).
+  {
+    key: "CLAIMMD_ACCOUNT_KEY",
+    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
+  {
+    key: "CLAIMMD_ACCOUNT_REFERENCE",
+    rule: (v) =>
+      /^[A-Za-z0-9._:-]{1,128}$/.test(v) ? null : "must be a stable non-secret account reference",
+    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
+  {
+    key: "CLAIM_PREVIEW_INTEGRITY_KEY",
+    rule: (v) => (v.length < 32 ? "must contain at least 32 characters" : null),
+    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
+  {
+    key: "CLAIMMD_M23_PAYER_ROUTES",
+    rule: (v) => {
+      try {
+        return Array.isArray(JSON.parse(v)) && JSON.parse(v).length > 0
+          ? null
+          : "must be a non-empty JSON array of scoped effective-dated payer routes";
+      } catch {
+        return "must be valid JSON containing scoped effective-dated payer routes";
+      }
+    },
+    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
+  {
+    key: "CLAIMMD_ACCOUNT_USAGE",
+    rule: (v) => (v === "test" || v === "production" ? null : "must be 'test' or 'production'"),
+    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
   {
     key: "M23_X12_GATEWAY_URL",
     rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
@@ -283,6 +328,18 @@ const REQUIREMENTS: readonly Requirement[] = [
     when: (env) => env.EVV_DEVICE_ATTESTATION_ENFORCED !== undefined,
   },
   {
+    // ADR-0107 - lets a template marked "pending legal review" (a draft Consent to Treat) be signed. For a dev or demo tenant only: a
+    // production boot must not carry it, so it refuses unless unset or exactly `false`.
+    key: "PORTAL_ALLOW_UNREVIEWED_TEMPLATES",
+    rule: (v) =>
+      v === "false"
+        ? null
+        : "must be unset or 'false' in production (it lets a draft consent be signed)",
+    when: (env) =>
+      env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES !== undefined &&
+      env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES !== "",
+  },
+  {
     // GAP-009 — closed registration. `true`/`false` only (a typo must refuse the boot, not silently read as
     // the default). Unset: strict in production, open in dev (the seeds sign users up without an invite).
     key: "CHARTWARDEN_SIGNUP_REQUIRES_INVITE",
@@ -318,12 +375,17 @@ const REQUIREMENTS: readonly Requirement[] = [
     },
   },
   {
-    // TASK-010/SEC-005 — the shared cursor-signing secret M19/M20 concurrency.ts fall back to (each also
-    // accepts a module-specific M19_/M20_CURSOR_SIGNING_KEY override). Unset, cursors are signed with a
-    // process-local random key and stop verifying across a restart/redeploy — safe, but an avoidable
-    // re-page for every caller in production.
+    // TASK-010/SEC-005 — the secret every pagination cursor is HMAC-signed with (the route kit,
+    // `@chartwarden/shared/route-kit`, configured by `buildServer` via `cursorSigningKeyFrom`). Production
+    // refuses to boot without it; dev/test sign with a process-local random key instead.
     key: "CURSOR_SIGNING_KEY",
-    rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
+    // The .env.production.example placeholder is itself 32+ characters, so length alone would boot on a public key.
+    rule: (v) =>
+      v.length < 32
+        ? "must be at least 32 characters"
+        : /REPLACE_WITH/i.test(v)
+          ? "is still the .env.production.example placeholder"
+          : null,
   },
   {
     // TASK-010/OPS-010 — the trusted-proxy CIDR allowlist (bootstrap/index.ts parseTrustedProxies).

@@ -5098,6 +5098,48 @@
 .wx-bereavement-resource__link:hover {
   background: var(--color-surface-low);
 }
+/* ADR-0109 D10 PR 3 — the memorial RSVP form and the library video. */
+.wx-bereavement-resource__body {
+  flex: 1 1 auto;
+}
+.wx-bereavement-rsvp {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-outline-variant);
+}
+.wx-bereavement-rsvp legend {
+  padding: 0;
+  font-size: .86rem;
+  font-weight: 600;
+}
+.wx-bereavement-rsvp label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: .86rem;
+}
+.wx-bereavement-rsvp input[type="number"] {
+  width: 5rem;
+  min-height: 2.5rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-md);
+}
+.wx-bereavement-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.wx-bereavement-video {
+  width: 100%;
+  margin-top: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: #000;
+}
 .wx-bereavement-resource__link:focus-visible {
   outline: 3px solid var(--color-focus-ring);
   outline-offset: 3px;
@@ -5185,6 +5227,28 @@
   margin: var(--space-2) 0 0;
   font-size: .82rem;
   line-height: 1.6;
+}
+/* ADR-0109 D10 — stop printed mailings, keep the calls. */
+.wx-bereavement-mailings {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+  width: 100%;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-outline-variant);
+}
+.wx-bereavement-mailings h3 {
+  margin: 0;
+  font-size: .9rem;
+}
+.wx-bereavement-mailings > p {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: .84rem;
+  line-height: 1.65;
+}
+.wx-bereavement-mailings .wx-bereavement-opted-out p {
+  margin: 0;
 }
 .wx-bereavement-opt-error {
   color: var(--color-on-surface);
@@ -5900,4 +5964,114 @@
   .wx-portal-shell--messages .wx-portal-message-composer__footer p {
     max-width: calc(100% - 1rem);
   }
+}
+
+/* ADR-0107 "Documents to sign" */
+.wx-signatures-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.wx-signatures-list > li {
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.wx-signatures-list > li > div {
+  flex: 1 1 14rem;
+}
+.wx-signatures-list h2 {
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+}
+.wx-signatures-list p {
+  margin-top: var(--space-1);
+  color: var(--color-on-surface-variant);
+  font-size: .875rem;
+}
+.wx-signatures-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-primary-tint);
+  color: var(--color-primary-strong);
+  font-weight: 600;
+}
+.wx-signatures-dialog {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.wx-signatures-dialog h2 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+}
+.wx-signatures-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.wx-signatures-attestation {
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+  line-height: 1.5;
+}
+.wx-signatures-behalf > summary {
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  cursor: pointer;
+}
+.wx-signatures-behalf[open] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.wx-signatures-check {
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.wx-signatures-message {
+  color: var(--color-error);
+  font-weight: 600;
+}
+.wx-signatures-copy {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px dashed var(--color-outline);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+}
+.wx-signatures-copy h3 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+.wx-signatures-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.wx-signatures-document {
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border, #d0d5dd);
+  border-radius: 0.5rem;
 }

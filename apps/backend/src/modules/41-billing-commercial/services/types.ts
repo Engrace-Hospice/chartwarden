@@ -3,15 +3,15 @@
 // Claim FACTS (coverage, admission, election, level of care, diagnoses, attending) come from the consumed reader seams
 // Module 23 already binds (ADR-0100 D2): the reader SHAPES are reused from M23's claim-assembly types so one bound adapter
 // serves both lanes. M41 reads no other module's tables.
-import type { DbClient } from "@chartwarden/db";
-import type { CaseloadProvider, PatientCoverageReader } from "@chartwarden/types";
 import type {
   AdmissionContextReader,
   DiagnosisSequenceReader,
   ElectionPeriodReader,
   LevelOfCareReader,
   MdmEntityProvider,
-} from "../../23-billing-medicare/services/claim-assembly-types";
+} from "@chartwarden/billing";
+import type { DbClient } from "@chartwarden/db";
+import type { CaseloadProvider, PatientCoverageReader } from "@chartwarden/types";
 
 export type CommercialDb = DbClient;
 /** The org-context transaction handle every statement runs on. */
@@ -74,7 +74,10 @@ export interface CommercialAuditPort {
 }
 
 export interface CommercialClaimSeams {
-  readonly coverage: Pick<PatientCoverageReader, "coveragesForPatient" | "coverageForRange">; // M5
+  readonly coverage: Pick<
+    PatientCoverageReader,
+    "coveragesForPatient" | "coverageForRange" | "coverageSnapshotForRangeInTransaction"
+  >; // M5
   readonly admission: AdmissionContextReader; // M6
   readonly electionPeriods: ElectionPeriodReader; // M6
   readonly levelOfCare: LevelOfCareReader; // M6
@@ -88,6 +91,8 @@ export interface CommercialClaimSeams {
 
 export interface AssembleCommercialClaimInput {
   readonly providerEntityId: string;
+  /** Internal-only historical location preserved when rebuilding a correction; public assembly does not accept this field. */
+  readonly locationId?: string | null;
   readonly patientId: string;
   readonly serviceFrom: string;
   readonly serviceTo: string;
@@ -95,4 +100,14 @@ export interface AssembleCommercialClaimInput {
   readonly planId?: string;
   /** The platform clearinghouse binding's key (ADR-0053), when known; narrows the plan's payer routes. */
   readonly clearinghouseKey?: string;
+  /** Internal-only marker populated by the server after verifying a clearinghouse-stage rejection. Never accepted by the assemble route. */
+  readonly correction?: {
+    readonly parentClaimId: string;
+    readonly rootClaimId: string;
+    readonly requestKey: string;
+    readonly reasonCode:
+      | "claim_data_corrected"
+      | "clearinghouse_edit_corrected"
+      | "other_verified_correction";
+  };
 }

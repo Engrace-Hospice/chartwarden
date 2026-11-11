@@ -30,6 +30,37 @@ describe("sessionClassPathVerdict", () => {
     },
   );
 
+  it.each(PORTAL)(
+    "%s: may manage its own push endpoints (ADR-0107 D7) and nothing else under notifications",
+    (cls) => {
+      for (const p of [
+        "/api/v1/notifications/endpoints",
+        "/api/v1/notifications/endpoints/ep-1",
+        "/api/v1/notifications/endpoints/ep-1/verify",
+      ]) {
+        expect(sessionClassPathVerdict(cls, p, "POST"), p).toBe("allowed");
+      }
+      for (const p of [
+        "/api/v1/notifications/endpointsX",
+        "/api/v1/notifications/preferences",
+        "/api/v1/notifications",
+        "/api/v1/alerts/inbox",
+      ]) {
+        expect(sessionClassPathVerdict(cls, p), p).toBe("portal-session-on-staff-path");
+      }
+    },
+  );
+
+  it("a portal session reaches push registration through the tenant-host hook", async () => {
+    await expect(
+      tenantSessionClassGuard({
+        url: "/api/v1/notifications/endpoints",
+        method: "POST",
+        context: { attributes: { tenantHostOrgId: "o", sessionClass: "patient_portal" } },
+      } as unknown as FastifyRequest),
+    ).resolves.toBeUndefined();
+  });
+
   it("staff: refused on /api/v1/portal/* except the pre-bind sign-in routes", () => {
     expect(sessionClassPathVerdict("staff", "/api/v1/portal/care-summary")).toBe(
       "staff-session-on-portal-path",

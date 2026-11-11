@@ -34,6 +34,7 @@ import { createHash } from "node:crypto";
 //      and the wire types are strings. Nothing in this file parses a quantity into a JS number except the
 //      one place `@chartwarden/supplies` already does it for a positivity check.
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError, type WriteActor } from "@chartwarden/shared/route-kit";
 import {
   COMFORT_KIT_PLATFORM_FLOOR,
   RETURN_WINDOW_HOURS_DEFAULT,
@@ -74,7 +75,6 @@ import {
   verifyRequestServingLocation,
 } from "../lifecycle/index";
 import { getAdmissionStatusReader } from "../seams/index";
-import type { M21WriteActor } from "./actor";
 import { type EffectPatch, runEffects } from "./effects-runner";
 import type { M21ReadService } from "./read-service";
 import type {
@@ -487,8 +487,7 @@ export function buildDrizzleM21WriteService(
   function assertFresh(row: { updatedAt: Date }, expected: string | undefined): void {
     if (expected === undefined) return;
     if (iso(row.updatedAt) !== iso(expected)) {
-      throw new SupplyStateError(
-        "M21_STALE_VERSION",
+      throw new StaleVersionError(
         `this row changed since you read it (current updated_at ${iso(row.updatedAt)})`,
       );
     }
@@ -554,7 +553,7 @@ export function buildDrizzleM21WriteService(
 
   /** Run one §2.2 transition end to end (load → decide → effects → patch → return the fresh detail). */
   async function runRequestTransition(
-    actor: M21WriteActor,
+    actor: WriteActor,
     supplyRequestId: string,
     expectedUpdatedAt: string | undefined,
     build: (
@@ -2054,7 +2053,7 @@ export function buildDrizzleM21WriteService(
   /** Insert a template + its medication lines; returns the new template id. */
   async function insertTemplate(
     tx: Tx,
-    actor: M21WriteActor,
+    actor: WriteActor,
     input: CreateTemplateInput,
     effectiveFrom: Date,
     replacesTemplateId: string | null,
@@ -2112,7 +2111,7 @@ export function buildDrizzleM21WriteService(
    */
   async function decrementPar(
     tx: Tx,
-    actor: M21WriteActor,
+    actor: WriteActor,
     locationId: string,
     lines: readonly { readonly med: { rxnorm: string }; readonly dispatchedQuantity: string }[],
     at: Date,

@@ -22,7 +22,12 @@ import type {
 } from "../types";
 
 /** The implementations that exist or are planned. A new vendor adds its literal here (and a conformance runner). */
-export type ClearinghouseVendor = "in_memory" | "direct_mac" | "stedi" | "episode_alert";
+export type ClearinghouseVendor =
+  | "in_memory"
+  | "direct_mac"
+  | "stedi"
+  | "claimmd"
+  | "episode_alert";
 
 /** What a transport reports: a vendor, or `not_wired` for the unbound fail-closed transport (never configurable). */
 export type ClearinghouseTransportVendor = ClearinghouseVendor | "not_wired";
@@ -57,6 +62,7 @@ export type ClearinghouseErrorCode = (typeof CH)[keyof typeof CH];
 export const CREDENTIAL_REJECTED_REASONS: ReadonlySet<string> = new Set([
   "Stedi rejected the platform credential",
   "the MAC portal rejected the submitter credential",
+  "Claim.MD rejected the platform credential",
 ]);
 
 /** True for a degraded answer that means "the vendor rejected our credential" (not "not implemented"). */
@@ -95,6 +101,8 @@ export interface ClearinghouseContext {
   readonly billingNpi?: string;
   /** MAC jurisdiction is payer metadata only; it never selects the transport. */
   readonly jurisdiction?: MacJurisdiction;
+  /** Hash of the platform-owned Claim.MD route selected when a submit request was authorized; internal only. */
+  readonly claimMdRouteFingerprint?: string;
 }
 
 /**
@@ -154,6 +162,8 @@ export interface SubmissionReceipt {
   readonly receivedAt: string;
   /** True when this response is a replay of an earlier identical submission (no second send happened). */
   readonly replayed: boolean;
+  /** Exact Claim.MD response fields retained with their vendor names; absent on legacy attempt replays. */
+  readonly vendorIdentifiers?: readonly { readonly field: string; readonly value: string }[];
 }
 
 /** One finding from a dry-run. PHI-free: codes and X12 positions, never values. */
@@ -260,7 +270,23 @@ export interface ClaimStatus {
 
 // ─── Eligibility ────────────────────────────────────────────────────────────────────────────────
 
-export interface ClearinghouseMedicareEligibilityRequest {
+/**
+ * TRANSIENT, like the MBI and member id: for a vendor that searches coverage by name (Claim.MD `eligdata` requires the
+ * insured's name and the billing provider's tax id). Built into the one request; never returned, logged, stored or placed
+ * in a reason. A vendor that needs it and does not get it refuses before any call.
+ */
+export interface EligibilitySearchFacts {
+  readonly subscriber?: {
+    readonly firstName: string;
+    readonly lastName: string;
+    /** ISO yyyy-mm-dd. */
+    readonly dateOfBirth?: string;
+  };
+  /** The billing provider's EIN (digits). */
+  readonly billingProviderTaxId?: string;
+}
+
+export interface ClearinghouseMedicareEligibilityRequest extends EligibilitySearchFacts {
   /** TRANSIENT. Built into the 270 for this one call; never returned, logged, stored or placed in a reason. */
   readonly mbi: string;
   readonly serviceDate: string;
@@ -271,7 +297,7 @@ export interface ClearinghouseMedicareEligibilityRequest {
  * the plan on (`commercial_payer_route`). A transport that cannot answer a commercial 270 refuses it with a degraded envelope
  * (`CH_NOT_IMPLEMENTED` / `CH_INVALID_REQUEST`); it never guesses a payer.
  */
-export interface ClearinghouseCommercialEligibilityRequest {
+export interface ClearinghouseCommercialEligibilityRequest extends EligibilitySearchFacts {
   /** TRANSIENT, like the MBI: built into the 270 for this one call; never returned, logged, stored or placed in a reason. */
   readonly memberId: string;
   readonly serviceDate: string;

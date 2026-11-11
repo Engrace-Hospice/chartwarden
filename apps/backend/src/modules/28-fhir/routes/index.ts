@@ -29,13 +29,6 @@ export {
 } from "./mount";
 export { sampleFhirBaaCoverage, warnOnFhirBaaGap } from "./client-baa-ops";
 export {
-  type M28ReadActor,
-  type M28WriteActor,
-  type PreHandler,
-  actorOf,
-  writeActorOf,
-} from "./actor";
-export {
   ABAC_BULK_EXPORT_CANCEL,
   ABAC_CLIENT_ORG,
   ABAC_INBOUND_OWNER_MATCH,

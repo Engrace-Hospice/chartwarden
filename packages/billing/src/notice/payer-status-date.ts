@@ -27,15 +27,6 @@ export type PayerStatusDateSource =
   | "dde_manual"
   | "dde_provider";
 
-export const PAYER_STATUS_DATE_SOURCES: readonly PayerStatusDateSource[] = [
-  "277ca_stc02",
-  "999_gs04",
-  "999_isa09",
-  "receipt",
-  "dde_manual",
-  "dde_provider",
-];
-
 export interface PayerStatusDate {
   readonly date: IsoDate;
   readonly source: PayerStatusDateSource;

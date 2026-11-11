@@ -56,6 +56,11 @@ export interface NativeDestination {
    * title/body are the fixed emergency line. Absent = a normal alert, byte-for-byte as before.
    */
   readonly emergency?: boolean;
+  /**
+   * APNs only: which Apple host this token belongs to (a development build's token is refused by production and vice versa).
+   * Absent = the transport's own default (`APNS_ENVIRONMENT`).
+   */
+  readonly environment?: "sandbox" | "production";
 }
 
 export function encodeNativeDestination(destination: NativeDestination): string {
@@ -71,13 +76,17 @@ export function parseNativeDestination(raw: string): NativeDestination | null {
     return null;
   }
   if (typeof value !== "object" || value === null) return null;
-  const { provider, token, alertId, emergency } = value as Record<string, unknown>;
+  const { provider, token, alertId, emergency, environment } = value as Record<string, unknown>;
   if (provider !== "fcm" && provider !== "apns") return null;
   if (typeof token !== "string" || !isValidNativePushToken(provider, token)) return null;
   if (typeof alertId !== "string" || !UUID.test(alertId)) return null;
-  return emergency === true
-    ? { provider, token, alertId, emergency: true }
-    : { provider, token, alertId };
+  return {
+    provider,
+    token,
+    alertId,
+    ...(emergency === true ? { emergency: true as const } : {}),
+    ...(environment === "sandbox" || environment === "production" ? { environment } : {}),
+  };
 }
 
 const b64u = (input: Buffer | string): string => Buffer.from(input).toString("base64url");
@@ -243,6 +252,7 @@ export interface ApnsOptions {
   readonly teamId: string;
   /** The app's bundle id, sent as `apns-topic`. */
   readonly bundleId: string;
+  /** Default host for a token that carries no environment of its own (APNS_ENVIRONMENT=sandbox). */
   readonly sandbox?: boolean;
   readonly request?: ApnsRequest;
   readonly now?: () => Date;
@@ -300,7 +310,7 @@ export function createApnsTransport(opts: ApnsOptions): OutOfBandTransport {
   const key = createPrivateKey(opts.keyP8); // fail at construction: a bad key must stop the boot binding
   const now = opts.now ?? (() => new Date());
   const request = opts.request ?? http2Request;
-  const host = opts.sandbox ? APNS_SANDBOX_HOST : APNS_HOST;
+  const defaultSandbox = opts.sandbox === true;
   let cached: { jwt: string; issuedAt: number } | undefined;
 
   function providerToken(): string {
@@ -320,8 +330,11 @@ export function createApnsTransport(opts: ApnsOptions): OutOfBandTransport {
   return {
     async send(sendRequest) {
       const destination = requireNative(sendRequest, "apns");
+      const sandbox = destination.environment
+        ? destination.environment === "sandbox"
+        : defaultSandbox;
       const res = await request({
-        host,
+        host: sandbox ? APNS_SANDBOX_HOST : APNS_HOST,
         path: `/3/device/${destination.token}`,
         headers: {
           authorization: `bearer ${providerToken()}`,

@@ -1,0 +1,16 @@
+# Security and tenancy
+
+- Candidate data is privileged central account data. The worker composition root supplies `readSnapshot` through allowlisted `withPlatformContext` with `CLAIMMD_IDENTITY_JOB_ID` and `m34PlatformBypassAuditor`; the bypass audit and bounded owner reads run in one repeatable-read transaction. The adapter cannot open an unaudited platform connection itself.
+- Migration 1353 extends the existing non-login `claimmd_capture` role with narrowly selected source columns and read policies. It grants no application route or tenant user access. `chartwarden_platform` inherits the integration role from 1350; no new BYPASSRLS role was added.
+- Evidence and receipt reads are account/environment filtered and linked by evidence UUID. M23 reads its owned source and attempt tables. M1's exported `FoundationSiteReader` supplies provider organization and location association; M41's exported internal reader supplies immutable commercial submission facts. Each is batched by the bounded evidence IDs within the same snapshot. Account-wide inbox data does not supply WardenX organization/provider/claim authority.
+- Candidate query limits at 100; overflow is ambiguous. Search uses exact indexed identifiers or PCN; no all-claims scan. The evidence, receipt, M1 provider/location, and M41 submission reads are bounded batches. A truncated evidence result cannot become a unique candidate after owner filtering.
+- TIN remains ciphertext in DB. AES-GCM uses the existing tenant DEK provider with evidence/org/provider/attempt AAD. Decrypt errors are caught and converted to a safe retry classification. Plaintext is not returned in the resolution record or logs. TIN comparison uses `timingSafeEqual` when lengths match.
+- A protected inbox keyring is read from `CLAIMMD_RESPONSE_INBOX_KEYRING`; values are not printed in docs. Missing/invalid keyring blocks explicitly enabled worker startup. Key IDs allow historical decryption while retaining active key rotation.
+- Requeue is internal store functionality with safe enumerated reason and actor UUID; no HTTP route was added. It is audited and preserves prior history. Tenant APIs cannot access central resolution rows.
+- No resolution path can update M23/M41 claims, acknowledgment rows, M25 remittance, or payments.
+
+`arch:tables` passed after this correction. The former platform/PHI heuristic was caused by coupling the audited context opener and receipt-observation query in the adapter. Moving the transaction opener into the worker composition root preserves its job allowlist, platform credential, critical-severity audit, and owner reads. No checker rule or exception changed. The new optional repeatable-read mode in `withPlatformContext` sets isolation before the audit write, giving all owner readers one database snapshot.
+
+## Runtime certification gap
+
+The static RLS/policy/grant review is not a live security test. No private PostgreSQL instance was available/used in this task; the shared `os-postgres-1` cluster remains prohibited for live suites. Run as real NOBYPASSRLS `chartwarden_app` for denial probes and as the least-privilege platform runtime login for central resolver queries. The platform credential's exact deployed grants were not inspected in a live database.

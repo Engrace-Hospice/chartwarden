@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/33-reporting/routes/views-shares.routes.ts — M33 (§4.1 #15–#21).
 //
 // The saved-view + SHARING surface (D17): list (mine / org-shared), create a view over a published
@@ -16,10 +17,9 @@
 // `app.org_id`); each carries `requireIdempotencyKey` + returns 201. READS disclose the actor's own /
 // org-shared views; the M4 write-audit trigger on the `withOrgContext` path is the §164.312(b) anchor.
 // Org/actor/owner binding is ALWAYS server-side (request.context). Mirrors M22 routes/documents-routes.ts.
-import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { type PreHandler, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { type PreHandler, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { writeActorOf } from "./actor";
 import { parse } from "./reporting-typebox";
 import type { M33WriteRouteService } from "./write-service";
 import {

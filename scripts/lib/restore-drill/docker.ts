@@ -8,10 +8,22 @@
 import { spawnSync } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readdirSync, statSync } from "node:fs";
 import { createServer } from "node:net";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 
-export const POSTGRES_IMAGE = "pgvector/pgvector:pg18";
+// Production's Postgres, built from deploy/production/postgres unless WX_DRILL_POSTGRES_IMAGE names one.
+export const POSTGRES_IMAGE = process.env.WX_DRILL_POSTGRES_IMAGE ?? "chartwarden-postgres:drill"; // not :dev, which the shared dev stack runs
+const POSTGRES_DIR = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+  "deploy",
+  "production",
+  "postgres",
+);
+let postgresImageBuilt = Boolean(process.env.WX_DRILL_POSTGRES_IMAGE);
 // The dev stack's image (present locally); production's compose.yml pins `minio/minio:latest`.
 export const MINIO_IMAGE = process.env.WX_DRILL_MINIO_IMAGE ?? "cgr.dev/chainguard/minio:latest";
 export const PG_SUPERUSER = "postgres";
@@ -68,8 +80,16 @@ async function waitFor(what: string, probe: () => Promise<boolean>): Promise<voi
   throw new Error(`${what} did not become ready within ${WAIT_MS / 1000}s`);
 }
 
+/** Build POSTGRES_IMAGE from the working tree once per process (a no-op when WX_DRILL_POSTGRES_IMAGE names one). */
+export function ensurePostgresImage(): void {
+  if (postgresImageBuilt) return;
+  docker(["build", "-q", "-t", POSTGRES_IMAGE, POSTGRES_DIR]);
+  postgresImageBuilt = true;
+}
+
 export async function startPostgres(runId: string, role: string): Promise<Pg> {
   const name = `wx-m36-drill-${runId}-${role}-pg`;
+  ensurePostgresImage();
   const port = await freePort();
   docker([
     "run",

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * M23 Billing — Medicare — RLS cross-tenant denial — LIVE Postgres (§3.5 / §9.3).
  *
@@ -46,6 +47,7 @@ type SeedIds = {
   notr: string;
   sequestration: string;
   credential: string;
+  lineEvidence: string;
 };
 
 /**
@@ -69,6 +71,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "notr_record", key: "notr" },
   { table: "sequestration_policy", key: "sequestration" },
   { table: "mac_submitter_credential", key: "credential" },
+  { table: "claimmd_submission_line_evidence", key: "lineEvidence" },
 ];
 
 describe.skipIf(!DB_URL)(
@@ -234,6 +237,28 @@ describe.skipIf(!DB_URL)(
         [org, pe, `SUB${n}`, m],
       );
 
+      const evidenceId = randomUUID();
+      const payloadSha256 = "a".repeat(64);
+      await db.query(
+        `INSERT INTO claimmd_submission_evidence
+         (id,organization_id,provider_entity_id,claim_id,billing_module,submission_id,attempt_key,vendor,
+          account_reference,usage,billing_npi,billing_tin_ciphertext,payer_id,claim_type,pcn,isa13,gs06,st02,
+          service_from,service_to,payload_sha256,payload_format,outbound_reference,reserved_at)
+         VALUES ($1,$2,$3,$4,'M23',$5,$6,'claimmd','test-account','test','1234567890',
+          '0123456789abcdef0123456789abcdef','payer-test','institutional','PCN1','000000001','1','0001',
+          '20260101','20260131',$7,'x12','outbound-test',now())`,
+        [evidenceId, org, pe, claim, submission, `attempt-${n}`, payloadSha256],
+      );
+      const lineEvidence = await one(
+        `INSERT INTO claimmd_submission_line_evidence
+         (evidence_id,organization_id,provider_entity_id,claim_id,submission_id,attempt_key,internal_claim_line_id,
+          line_position,line_item_control_number,revenue_code,procedure_code,service_from,service_to,units,
+          charge_cents,payload_sha256,account_reference,usage)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,1,'REF-1','0651','Q5001','20260101','20260131','1',10000,$8,
+          'test-account','test') RETURNING id`,
+        [evidenceId, org, pe, claim, submission, `attempt-${n}`, claimLine, payloadSha256],
+      );
+
       return {
         pe,
         claim,
@@ -252,6 +277,7 @@ describe.skipIf(!DB_URL)(
         notr,
         sequestration,
         credential,
+        lineEvidence,
       };
     }
 
@@ -334,6 +360,51 @@ describe.skipIf(!DB_URL)(
       expect(upd.rowCount, "org B updated an org-A rule config").toBe(0);
     });
 
+    it("line evidence is append-only for its owner and invisible to another tenant", async () => {
+      const foreign = await withOrg(ORG_B, () =>
+        db.query("SELECT id FROM claimmd_submission_line_evidence WHERE id=$1", [a.lineEvidence]),
+      );
+      expect(foreign.rowCount).toBe(0);
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query("UPDATE claimmd_submission_line_evidence SET charge_cents=1 WHERE id=$1", [
+            a.lineEvidence,
+          ]),
+        ),
+      ).rejects.toThrow(
+        /permission denied for table claimmd_submission_line_evidence|CLAIMMD_SUBMISSION_EVIDENCE_IMMUTABLE/,
+      );
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            `INSERT INTO claimmd_submission_line_evidence
+           (evidence_id,organization_id,provider_entity_id,claim_id,submission_id,attempt_key,internal_claim_line_id,
+            line_position,revenue_code,charge_cents,payload_sha256,account_reference,usage)
+           SELECT evidence_id,organization_id,$2,claim_id,submission_id,attempt_key,internal_claim_line_id,
+            2,revenue_code,charge_cents,payload_sha256,account_reference,usage
+           FROM claimmd_submission_line_evidence WHERE id=$1`,
+            [a.lineEvidence, randomUUID()],
+          ),
+        ),
+      ).rejects.toThrow();
+      const own = await withOrg(ORG_A, () =>
+        db.query(
+          "SELECT payload_sha256,internal_claim_line_id FROM claimmd_submission_line_evidence WHERE id=$1",
+          [a.lineEvidence],
+        ),
+      );
+      expect(own.rows).toEqual([
+        { payload_sha256: "a".repeat(64), internal_claim_line_id: a.claimLine },
+      ]);
+      const audit = await db.query<{ billing_module: string }>(
+        `SELECT context->>'billing_module' AS billing_module FROM audit_event
+         WHERE resource_kind='claimmd_submission_line_evidence' AND resource_id=$1
+         ORDER BY created_at DESC LIMIT 1`,
+        [a.lineEvidence],
+      );
+      expect(audit.rows[0]?.billing_module).toBe("submission_line_evidence");
+    });
+
     it("only the DRAFT-claim subtree grants DELETE to the runtime role, each behind a draft-only trigger", async () => {
       // The billing ledger is append-and-amend. Migration 1061 grants DELETE on EXACTLY the eight tables a DRAFT claim
       // owns (discard an unbilled draft; re-assembly rewrites the lines), and each is guarded in the database so a
@@ -372,11 +443,24 @@ describe.skipIf(!DB_URL)(
       expect(guarded.rows.map((x) => x.relname)).toEqual(DRAFT_SUBTREE);
     });
 
-    it("terminalizes a queued claim submission exactly once and rejects deletion", async () => {
+    it("reserves and terminalizes a queued claim submission exactly once and rejects deletion", async () => {
+      const dispatchToken = randomUUID();
+      const reserved = await withOrg(ORG_A, () =>
+        db.query(
+          `UPDATE claim_submission
+              SET dispatch_state = 'sending', dispatch_token = $2, dispatch_started_at = now()
+            WHERE id = $1
+        RETURNING dispatch_state`,
+          [a.submission, dispatchToken],
+        ),
+      );
+      expect(reserved.rows[0]?.dispatch_state).toBe("sending");
+
       const updated = await withOrg(ORG_A, () =>
         db.query(
           `UPDATE claim_submission
-              SET outcome = 'submitted', generated_file_uri = 's3://claims/submitted.x12',
+              SET outcome = 'submitted', dispatch_state = 'finished',
+                  generated_file_uri = 's3://claims/submitted.x12',
                   submitted_at = now(), worker_correlation_id = 'corr-1'
             WHERE id = $1
         RETURNING outcome`,
@@ -388,12 +472,13 @@ describe.skipIf(!DB_URL)(
       await expect(
         withOrg(ORG_A, () =>
           db.query(
-            `UPDATE claim_submission SET outcome = 'failed_portal', outcome_reason = 'late rewrite'
+            `UPDATE claim_submission SET outcome = 'failed_portal', dispatch_state = 'finished',
+                outcome_reason = 'late rewrite'
               WHERE id = $1`,
             [a.submission],
           ),
         ),
-      ).rejects.toThrow(/immutable except for one queued-to-terminal transition/);
+      ).rejects.toThrow(/authorized dispatch lifecycle transition/);
 
       await expect(
         db.query("DELETE FROM claim_submission WHERE id = $1", [a.submission]),

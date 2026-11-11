@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionMedicationOrder } from "@chartwarden/dosespot";
 // apps/backend/src/modules/12-dosespot/consumers/verbal-expired-binding.ts — the live `OutboxConsumerBinding`
 // for M12's §2.3 D3 verbal-order-expiry backref (M12-T08, spec §4.5).
 //
@@ -29,8 +31,7 @@
 // `userId` is empty — §3.3, a system transition records no actor. The read and the write are both
 // M12-owned (`medication_order`) inside one `withOrgContext`. The consumed event name is a STRING literal
 // and no M11 schema is imported, so this adds no `dependsOn` edge beyond the seam M12 already has.
-import { type DbClient, schema } from "@chartwarden/db";
-import { transitionMedicationOrder } from "@chartwarden/dosespot";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { MedicationOrderStatus } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
@@ -43,9 +44,6 @@ import {
 } from "./verbal-expired";
 
 const MO = schema.medicationOrders;
-
-/** §3.3 — a consumer-driven write names no acting membership. */
-const CONSUMER_USER_ID = "";
 
 /** The event M12's verbal-expiry consumer subscribes to, and the `(eventId, consumerName)` receipt identity —
  *  already listed in `M12_OUTBOX_SUBSCRIPTIONS` (`consumers/index.ts`) pending exactly this factory. */

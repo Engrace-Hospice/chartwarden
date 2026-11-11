@@ -1,8 +1,8 @@
 // apps/backend/src/modules/23-billing-medicare/jobs/clearinghouse-submission.ts — the M23 workers' use of the bound
 // ClearinghouseTransport (ADR-0053, issue #707). ONE env switch decides the path: `CLEARINGHOUSE_VENDOR` unset keeps the
 // legacy launch-gateway ports; set, the claim/NOE/NOTR submit + retry workers and the 999/277CA ack crons go through
-// the transport and NEVER fall back to the legacy MAC portal (a degraded transport answer fails the job so BullMQ
-// retries it).
+// the transport and NEVER fall back to the legacy MAC portal. Claim workers distinguish a known pre-send refusal
+// from a transport result explicitly marked ambiguous; only the latter remains in doubt.
 import type {
   AckEvent,
   ClearinghouseBinding,
@@ -15,10 +15,18 @@ import type {
 } from "@chartwarden/x12-837-client";
 import {
   CH,
+  claimMdFilename,
   compareStediClaimJsonToX12,
+  extractX12NoticeEvidence,
+  extractX12SubmissionEvidence,
   routeAckEvent,
   scopeKey,
 } from "@chartwarden/x12-837-client";
+import type { ClaimMdNoticeEvidencePort } from "../claimmd-evidence/notice-store";
+import type {
+  ClaimMdReceiptIdentifier,
+  ClaimMdSubmissionEvidencePort,
+} from "../claimmd-evidence/store";
 import {
   type CredentialAlertPort,
   type CredentialGuardDeps,
@@ -42,6 +50,11 @@ export interface M23TransportDeps {
    * (filed or not filed); absent, an in-doubt attempt can never be judged settled and the retry stays blocked.
    */
   readonly attempts?: SubmissionAttemptStore;
+  /** Mandatory for Claim.MD; committed before the vendor transport is invoked. */
+  readonly claimMdEvidence?: ClaimMdSubmissionEvidencePort;
+  readonly claimMdNoticeEvidence?: ClaimMdNoticeEvidencePort;
+  /** Separate, default-off gate. A configured clearinghouse vendor alone never enables notice uploads. */
+  readonly claimMdNoticeUploadsEnabled?: boolean;
   /** Durable ack cursors (#749); absent, every ack pull starts from a null cursor. */
   readonly ackCursors?: AckCursorStore;
   /** Raised once per scope when the vendor rejects the credential (#714); absent, only the log line is written. */
@@ -85,8 +98,31 @@ const UPLOAD_TO_SUBMISSION_KIND: Record<TransportUploadKind, SubmissionKind> = {
   transfer_notice: "transfer_notice",
 };
 
-function failure(what: string, code: string, reason: string): Error {
-  return new Error(`clearinghouse ${what} failed (${code}): ${reason}`);
+export class ClearinghouseTransportError extends Error {
+  constructor(
+    readonly operation: string,
+    readonly code: string,
+    readonly ambiguous = false,
+    message = `clearinghouse ${operation} failed (${code})`,
+  ) {
+    super(message);
+    this.name = "ClearinghouseTransportError";
+  }
+}
+
+function failure(
+  what: string,
+  code: string,
+  reason: string,
+  ambiguous = false,
+): ClearinghouseTransportError {
+  // `reason` is useful to the caller but must never be persisted or logged; it may contain vendor details.
+  return new ClearinghouseTransportError(
+    what,
+    code,
+    ambiguous,
+    `clearinghouse ${what} failed (${code}): ${reason}`,
+  );
 }
 
 type TransportUploadKind = "claim_837i" | "noe" | "notr" | "transfer_notice";
@@ -100,6 +136,23 @@ export type TransportUpload = (input: {
   /** The same claim as Stedi's JSON; used for a Stedi claim, where it replaces the raw X12 (no ISA13 to match). */
   readonly stediJson?: StediClaimJson;
   readonly controlNumber: string;
+  readonly claimId?: string;
+  readonly submissionId?: string;
+  readonly attemptIndex?: number;
+  readonly locationId?: string | null;
+  readonly noticeId?: string;
+  /** Server-stamped route snapshot carried by the durable submit request; never accepted from user input. */
+  readonly expectedRouteFingerprint?: string;
+  /** Internal source-line identities from the same renderer invocation as `x12`; never accepted from a client. */
+  readonly submittedLines?: readonly {
+    readonly internalClaimLineId: string | null;
+    readonly revenueCode: string;
+    readonly procedureCode: string | null;
+    readonly serviceFrom: string;
+    readonly serviceTo: string;
+    readonly units: string;
+    readonly chargeCents: number;
+  }[];
 }) => Promise<{ readonly accepted: boolean; readonly generatedFileUri: string }>;
 
 /**
@@ -131,8 +184,8 @@ function payloadFor(
 }
 
 /**
- * `MacPortalPort.upload` over the transport. The legacy return shape is kept so the workers' success/failure handling
- * is unchanged: a vendor answer is `accepted`, anything degraded THROWS (the claim worker records `failed_portal`).
+ * `MacPortalPort.upload` over the transport. The legacy return shape is kept; typed errors preserve whether a degraded
+ * answer proves a pre-send refusal or whether the external outcome is ambiguous.
  */
 export function transportUpload(transport: M23TransportDeps): TransportUpload {
   return async (input) => {
@@ -146,6 +199,171 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
       );
     }
     const ctx = await transport.contexts.contextFor(input.organizationId, input.providerEntityId);
+    let evidenceId: string | null = null;
+    let noticeEvidenceId: string | null = null;
+    if (transport.binding.vendor === "claimmd") {
+      if (
+        kind === "claim" &&
+        (!input.expectedRouteFingerprint ||
+          input.expectedRouteFingerprint !== ctx.claimMdRouteFingerprint)
+      ) {
+        throw failure(
+          kind,
+          CH.INVALID_REQUEST,
+          "the Claim.MD payer route changed after submission was authorized",
+        );
+      }
+      const exact = payloadFor(transport.binding.vendor, kind, input);
+      if (exact.format !== "x12")
+        throw failure(kind, CH.INVALID_REQUEST, "Claim.MD evidence requires the final X12 payload");
+      if (kind === "claim") {
+        const evidenceStore = transport.claimMdEvidence;
+        if (
+          !evidenceStore ||
+          !input.claimId ||
+          !input.submissionId ||
+          input.attemptIndex === undefined
+        ) {
+          throw failure(
+            kind,
+            CH.NOT_WIRED,
+            "Claim.MD claim evidence is not configured for this attempt",
+          );
+        }
+        if (ctx.usage !== evidenceStore.usage)
+          throw failure(
+            kind,
+            CH.INVALID_REQUEST,
+            "Claim.MD account environment does not match submission context",
+          );
+        let parsed: ReturnType<typeof extractX12SubmissionEvidence>;
+        try {
+          parsed = extractX12SubmissionEvidence(exact.x12, undefined);
+        } catch {
+          throw failure(
+            kind,
+            CH.INVALID_REQUEST,
+            "Claim.MD outbound X12 identity is incomplete or unsupported",
+          );
+        }
+        if (parsed.claims.length !== 1)
+          throw failure(
+            kind,
+            CH.INVALID_REQUEST,
+            "Claim.MD send requires one claim identity per submission",
+          );
+        const outbound = parsed.claims[0]!;
+        if (
+          outbound.pcn !== input.controlNumber ||
+          (ctx.billingNpi && outbound.billingNpi !== ctx.billingNpi)
+        ) {
+          throw failure(
+            kind,
+            CH.INVALID_REQUEST,
+            "Claim.MD outbound X12 identity conflicts with the validated submission context",
+          );
+        }
+        try {
+          evidenceId = await evidenceStore.reserve({
+            organizationId: input.organizationId,
+            providerEntityId: input.providerEntityId,
+            locationId: input.locationId ?? null,
+            claimId: input.claimId,
+            billingModule: "M23",
+            submissionId: input.submissionId,
+            attemptKey: `${input.submissionId}:${input.attemptIndex}`,
+            accountReference: evidenceStore.accountReference,
+            usage: ctx.usage,
+            x12Claim: outbound,
+            ...(input.submittedLines === undefined
+              ? {}
+              : {
+                  submittedLines: input.submittedLines.map((line) => {
+                    if (line.internalClaimLineId === null)
+                      throw failure(
+                        kind,
+                        CH.INVALID_REQUEST,
+                        "original claim-line identity is unavailable",
+                      );
+                    return { ...line, internalClaimLineId: line.internalClaimLineId };
+                  }),
+                }),
+            payloadSha256: parsed.payloadSha256,
+            outboundReference: claimMdFilename(
+              scopeKey(ctx),
+              submissionKeyFor(kind, input.controlNumber),
+              "x12",
+            ),
+            reservedAt: new Date(),
+          });
+        } catch {
+          throw failure(kind, CH.UNAVAILABLE, "immutable Claim.MD evidence could not be reserved");
+        }
+      } else {
+        const noticeKind = input.kind === "claim_837i" ? null : input.kind;
+        const noticeStore = transport.claimMdNoticeEvidence;
+        if (!noticeKind || !transport.claimMdNoticeUploadsEnabled || !noticeStore)
+          throw failure(
+            kind,
+            CH.NOT_WIRED,
+            "Claim.MD notice uploads are disabled or notice evidence is not configured",
+          );
+        if (!input.noticeId || !input.submissionId || input.attemptIndex === undefined)
+          throw failure(kind, CH.NOT_WIRED, "Claim.MD notice attempt identity is incomplete");
+        if (ctx.usage !== noticeStore.usage)
+          throw failure(
+            kind,
+            CH.INVALID_REQUEST,
+            "Claim.MD account environment does not match notice context",
+          );
+        let parsed: ReturnType<typeof extractX12NoticeEvidence>;
+        try {
+          parsed = extractX12NoticeEvidence(exact.x12, noticeKind, input.controlNumber, ctx.usage);
+        } catch {
+          throw failure(
+            kind,
+            CH.INVALID_REQUEST,
+            "Claim.MD notice X12 identity is incomplete or unsupported",
+          );
+        }
+        if (
+          (ctx.billingNpi && parsed.billingNpi !== ctx.billingNpi) ||
+          parsed.payerId !== ctx.payerId
+        )
+          throw failure(
+            kind,
+            CH.INVALID_REQUEST,
+            "Claim.MD notice provider or payer identity conflicts with validated context",
+          );
+        try {
+          noticeEvidenceId = await noticeStore.reserve({
+            organizationId: input.organizationId,
+            providerEntityId: input.providerEntityId,
+            locationId: input.locationId ?? null,
+            noticeId: input.noticeId,
+            noticeKind,
+            submissionId: input.submissionId,
+            attemptIndex: input.attemptIndex,
+            noticeControlNumber: input.controlNumber,
+            accountReference: noticeStore.accountReference,
+            usage: ctx.usage,
+            x12: parsed,
+            outboundReference: claimMdFilename(
+              scopeKey(ctx),
+              submissionKeyFor(kind, input.controlNumber),
+              "x12",
+            ),
+            reservedAt: new Date(),
+          });
+        } catch {
+          throw failure(
+            kind,
+            CH.UNAVAILABLE,
+            "immutable Claim.MD notice evidence could not be reserved",
+          );
+        }
+      }
+    }
     const submission = {
       kind,
       controlNumber: input.controlNumber,
@@ -157,7 +375,75 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         ? transport.binding.transport.submitClaim(ctx, submission)
         : transport.binding.transport.submitNotice(ctx, submission),
     );
-    if (!result.ok) throw failure(kind, result.degraded.code, result.degraded.reason);
+    if (!result.ok)
+      throw failure(
+        kind,
+        result.degraded.code,
+        result.degraded.reason,
+        result.degraded.ambiguous === true || result.degraded.code === CH.IN_DOUBT,
+      );
+    if (
+      (evidenceId && transport.claimMdEvidence) ||
+      (noticeEvidenceId && transport.claimMdNoticeEvidence)
+    ) {
+      const value = result.data.clearinghouseSubmissionId;
+      const fieldNamespace: Record<
+        string,
+        "file" | "batch" | "claim" | "remote_claim" | "pcn" | "message" | "opaque_submission"
+      > = {
+        fileid: "file",
+        inboundid: "file",
+        batchid: "batch",
+        claimid: "claim",
+        claimmd_id: "remote_claim",
+        remote_claimid: "remote_claim",
+        pcn: "pcn",
+      };
+      const identifiers = result.data.vendorIdentifiers?.flatMap(({ field, value: identifier }) => {
+        const namespace = fieldNamespace[field];
+        return namespace
+          ? [
+              {
+                field: field as ClaimMdReceiptIdentifier["field"],
+                namespace,
+                value: identifier,
+              },
+            ]
+          : [];
+      }) ?? [
+        {
+          field: "clearinghouseSubmissionId" as const,
+          namespace: "opaque_submission" as const,
+          value,
+        },
+      ];
+      try {
+        const evidencePort = evidenceId
+          ? transport.claimMdEvidence!
+          : transport.claimMdNoticeEvidence!;
+        await evidencePort.observe({
+          evidenceId: evidenceId ?? noticeEvidenceId!,
+          organizationId: input.organizationId,
+          accountReference: evidencePort.accountReference,
+          usage: ctx.usage,
+          identifiers,
+          source: result.data.vendorIdentifiers
+            ? result.data.replayed
+              ? "upload_reconciliation"
+              : "upload_response"
+            : "attempt_store_replay",
+          sourceReference: input.submissionId ?? input.controlNumber,
+          observedAt: new Date(),
+        });
+      } catch {
+        throw failure(
+          kind,
+          CH.IN_DOUBT,
+          "Claim.MD accepted the upload but receipt evidence could not be recorded",
+          true,
+        );
+      }
+    }
     return {
       accepted: true,
       generatedFileUri: `clearinghouse:${transport.binding.vendor}:${result.data.clearinghouseSubmissionId}`,

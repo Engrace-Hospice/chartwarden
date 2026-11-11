@@ -21,7 +21,7 @@ access to the deploy directory (`/opt/chartwarden`; a legacy `/opt/wardenx` syml
 use a root SSH account or disable host-key checking.
 
 The server must already contain a mode-`0600` `.env.production` copied from the production template.
-To automate that first-time setup (and start MinIO before the first release), copy this repository
+To automate that first-time setup (storage vhost and object-store config before the first release), copy this repository
 (or just `deploy/production`) to the VPS and run:
 
 ```sh
@@ -40,9 +40,9 @@ sudo FRONTEND_DOMAIN=app.example.com BACKEND_DOMAIN=api.example.com STORAGE_DOMA
 ```
 
 The bootstrap keeps an existing `.env.production`, installs the storage Nginx vhost when Nginx is
-present, starts MinIO, and verifies `http://127.0.0.1:9000/minio/health/ready`. After DNS points
-`STORAGE_DOMAIN` to the VPS, issue TLS for that host with Certbot or the server's normal reverse-proxy
-TLS automation. The application reaches MinIO over the Compose network (`http://minio:9000`) and
+present and installs `object-store/` (the first `deploy.sh` starts SeaweedFS on `127.0.0.1:9000`, the storage vhost's
+upstream). After DNS points `STORAGE_DOMAIN` to the VPS, issue TLS for that host with Certbot or the server's normal
+reverse-proxy TLS automation. The application reaches SeaweedFS over the Compose network (`http://seaweedfs:8333`) and
 uses `STORAGE_PUBLIC_ORIGIN` only for browser-facing presigned URLs. The public origin must resolve
 for clients, but `/ready` does not depend on a host-network hairpin through Nginx/TLS.
 
@@ -67,10 +67,19 @@ Host requirements — the repo cannot enforce these, so check them once per host
   and confirm the new `/var/log/nginx/chartwarden-*.access.log` line shows `/api/health` with no `?q=Smith`.
 
 The workflow uploads `deploy.sh`, `smoke.sh` and `compose.yml` for every release, pulls the SHA-pinned
-images, provisions the scoped MinIO account, runs strict schema-only migrations and runtime-role
+images, renders the object store's scoped identities, runs strict schema-only migrations and runtime-role
 provisioning, recreates `api`, `worker` and `web`, then runs `smoke.sh`. If any step fails, it restores
 the previous image references and recreates those services. Database migrations are forward-only and
 are not rolled back.
+
+The web image contains three static SPAs: the staff app at `/`, the patient/family portal at `/portal/`,
+and Platform Ops in a separate document root selected only for `platform112026.chartwarden.cloud`.
+After the image release is live, point `platform112026.chartwarden.cloud` to the VPS and copy
+`nginx/chartwarden-platform.conf` to `/etc/nginx/sites-available/`, symlink it into `sites-enabled/`,
+then run `nginx -t` before reloading. Issue a certificate with `certbot --nginx -d
+platform112026.chartwarden.cloud`. Preserve the existing entries in the VPS `.env.production` and add
+`https://platform112026.chartwarden.cloud` to `TRUSTED_ORIGINS`; recreate only `api` so CORS and Better
+Auth load the added origin. The vhost proxies the same-origin `/api/` and `/webhooks/` routes.
 
 ## DocLens worker and the scoped object-store account (GAP-138 / GAP-139)
 
@@ -81,28 +90,39 @@ are not rolled back.
   attests `ghcr.io/<owner>/chartwarden-docling-worker:sha-<commit>` and passes it to `deploy.sh` as an optional third
   argument; `deploy.sh` verifies it like the other images and writes the digest-pinned `CHARTWARDEN_DOCLING_IMAGE`.
   `api`/`worker` deliberately do not `depends_on` it: a down worker makes DocLens answer 503, nothing else.
-- **`minio-provision`** — a one-shot that creates the IAM policy (`CHARTWARDEN_MINIO_POLICY`, default `chartwarden-app`) and the service account the api/worker use
-  (`MINIO_APP_ACCESS_KEY` / `MINIO_APP_SECRET_KEY`). The policy allows object and bucket operations on `tenant-*`
-  and `chartwarden-*` buckets only; the MinIO root account is no longer an application credential.
+- **`seaweedfs`** — the object store (ADR-0050 D6, amendment 2026-11-05): all-in-one `weed server -s3`. Only the S3
+  gateway (8333) listens on the compose network; master, volume and filer are bound to the container's loopback, so
+  no other container can reach the filer's unauthenticated API. `127.0.0.1:9000` (the storage vhost's upstream) maps
+  to it. Health: `GET /healthz`.
+- **`object-store-provision`** — a no-network one-shot that renders SeaweedFS's identities (`s3.json`, in the
+  `seaweedfs-config` volume) with `scripts/storage/seaweedfs-identities.ts`: the admin (`MINIO_ROOT_USER` /
+  `MINIO_ROOT_PASSWORD`, operators and the one-time migration only), the app key the api/worker use (`MINIO_APP_ACCESS_KEY`
+  / `MINIO_APP_SECRET_KEY`, bound to `object-store/app-policy.json`: object and bucket operations on `tenant-*` and
+  `chartwarden-*`, lifecycle on `tenant-*`, no bucket delete and no versioning or policy change), and read-only keys
+  (`object-store/reader-policy.json`) for the backup and the second copy when they are configured. The admin is not an
+  application credential.
+- **`fluent-bit`** — forwards SeaweedFS's audit log to the api (see below).
 
 - **`clamav`** (M36 message attachments) — clamd over TCP on the compose network only (no published port), config from
   `deploy/clamav/clamd.conf` (shipped to `<deploy dir>/clamav/` by `deploy.yml`): alerts on encrypted archives/documents
   and over-limit files, `StreamMaxLength` 26M (>= the 25 MB upload cap), signature DB in the `clamav-data` volume,
-  refreshed in-container by freshclam. api/worker run `MESSAGING_ATTACHMENT_SCANNER=clamd` against `clamav:3310` and do not
-  `depends_on` it: a down scanner leaves attachments `pending` (nothing is delivered). Alert on `pending` attachments
-  older than a few minutes or repeated `deferred` scans; check the scanner with `docker compose exec clamav clamdcheck.sh`.
-  `deploy.sh` brings it up without recreating it. clamd's protocol is unauthenticated, so the sidecar sits on a dedicated
-  `scan` network that only `clamav`, `api` and `worker` join (postgres, minio, docling and the rest cannot reach it), and
-  it is capped (`mem_limit: 4g`, `cpus: 2`) so a scan flood or a bad signature reload cannot starve the host. Follow-ups
-  (not done here, they need network access to resolve): pin `clamav/clamav-debian:1.4` by digest
-  (`image: clamav/clamav-debian@sha256:...`) when you promote it, and alert on a stale signature database (for example
-  `docker compose exec clamav clamscan --version` reporting a database older than 2 days, or freshclam errors in the log).
+  refreshed in-container by freshclam. api/worker run `MESSAGING_ATTACHMENT_SCANNER=clamd` against `clamav:3310` and do
+  not `depends_on` it: a down scanner leaves attachments `pending` (nothing is delivered). Alert on `pending`
+  attachments older than a few minutes or repeated `deferred` scans; check the scanner with `docker compose exec clamav
+  sh -c 'echo PING | nc 127.0.0.1 3310'` (expects `PONG`). `deploy.sh` brings it up without recreating it (compose
+  recreates it only when its image or service config changes). clamd's protocol is unauthenticated, so the sidecar sits
+  on a dedicated `scan` network that only `clamav`, `api` and `worker` join (postgres, seaweedfs, docling and the rest
+  cannot reach it), and it is capped (`mem_limit: 4g`, `cpus: 2`) so a scan flood or a bad signature reload cannot
+  starve the host. The image is upstream's Alpine `clamav/clamav:1.4`, pinned by digest (amd64 only; dev compose keeps
+  the multi-arch `clamav-debian` for Apple Silicon). Follow-up: alert on a stale signature database (for example `docker
+  compose exec clamav clamscan --version` reporting a database older than 2 days, or freshclam errors in the log).
 - **Attachment upload size (defence in depth).** The presigned PUT signs `content-length` for exactly the declared
-  `byteSize`, so MinIO refuses any other length and the quota (which counts `byteSize`) is real; `complete` also compares
+  `byteSize`, so the store refuses any other length and the quota (which counts `byteSize`) is real; `complete` also compares
   the stored size and destroys a mismatching object at once. The independent backstop is on the storage origin:
   `client_max_body_size` in `nginx/chartwarden-storage.conf` (100m today, sized for the largest M22 upload, so it is a ceiling
-  not a per-file limit) and, if you want a hard per-tenant cap, a MinIO bucket quota on `tenant-*` buckets
-  (`mc quota set <alias>/tenant-<orgId> --size <bytes>`). Browsers set `Content-Length` themselves and ignore it in the
+  not a per-file limit) and, if you want a hard per-tenant cap, a SeaweedFS bucket quota on `tenant-*` buckets
+  (`docker compose exec seaweedfs sh -c 'echo "s3.bucket.quota -name=tenant-<orgId> -op=set -sizeMB=<n>" | weed shell'`).
+  Browsers set `Content-Length` themselves and ignore it in the
   returned `headers` map, which is expected.
 - **Attachment retention.** `MESSAGING_ATTACHMENT_RETENTION_DAYS` (default 7) is how long the object of a quarantined file, or of
   a file on a deleted message, is kept before the reaper destroys it (the row stays for audit; it stops counting toward the
@@ -116,32 +136,130 @@ are not rolled back.
   (already true before attachments); `deploy.sh` generates one into `.env.production` when the file predates it and never
   overwrites a value an operator set.
 
-`minio` also runs MinIO's **audit webhook** to the api (`MINIO_AUDIT_WEBHOOK_*`, token `MINIO_ACCESS_LOG_WEBHOOK_TOKEN`):
-the api keeps successful `GetObject` calls on `tenant-*` buckets and records them as `signed_url_consumed` in
-`document_access_log`, attributed to the principal the signed URL was issued to (best effort; unattributable fetches are
-dropped).
+SeaweedFS writes an **audit record per S3 call** over the Fluent forward protocol (`object-store/audit.json`; its
+timeouts are Go nanoseconds, so `3000000000` is 3 s); `fluent-bit` posts each batch as JSON to the api's
+`/api/v1/webhooks/minio/access-log` with the bearer `MINIO_ACCESS_LOG_WEBHOOK_TOKEN` (`object-store/fluent-bit.yaml`). The
+api keeps successful object GETs on `tenant-*` buckets and records them as `signed_url_consumed` in `document_access_log`,
+attributed to the principal the signed URL was issued to (best effort; unattributable fetches are dropped). SeaweedFS
+logs asynchronously: a down `fluent-bit` loses audit records but never blocks an S3 request. The parser also reads
+MinIO's and RustFS's record shapes.
 
 `deploy.sh` generates `DOCLING_WORKER_TOKEN`, `MINIO_APP_ACCESS_KEY`, `MINIO_APP_SECRET_KEY` and `MINIO_ACCESS_LOG_WEBHOOK_TOKEN` into `.env.production`
 the first time it runs (existing values are never touched, and this happens before the rollback backup is taken).
-To rotate the MinIO application secret, edit `MINIO_APP_SECRET_KEY` and deploy: `minio-provision` re-sets it.
+To rotate the object store's app secret, edit `MINIO_APP_SECRET_KEY` and deploy: `object-store-provision` rewrites
+`s3.json` and `deploy.sh` recreates `seaweedfs` (it reads its identities at start only; a few seconds of storage
+downtime). The `MINIO_*` names are the adapter's env contract and outlived MinIO.
+
+## Object store: the SeaweedFS cutover (ADR-0050 D6 amendment, 2026-11-05)
+
+The first deploy of this release on a host that still has a `*_minio-data` volume and no `.object-store-cutover`
+marker migrates it in a short maintenance window (the api is down for the length of the copy), before any schema change:
+
+1. renders the identities, then STOPS the api and worker (`stop` keeps their containers and MinIO settings), so
+   neither store is written while the copy runs;
+2. recreates `minio` under the `legacy-minio` profile WITHOUT its host port (`127.0.0.1:9000` becomes SeaweedFS's) and
+   starts `seaweedfs`;
+3. runs `object-store-migrate` (`scripts/object-store-copy.ts --adopt-unchecksummed`, MinIO root -> SeaweedFS admin): a
+   MIRROR, so every `tenant-*` / `chartwarden-*` object is re-put WITH its SHA-256 and read back, and anything a
+   failed earlier attempt left in SeaweedFS is removed (the app never writes SeaweedFS before this pass succeeds). A
+   generic copier (`mc mirror`, rclone) would drop the stored checksum and leave every upload unverifiable;
+4. only after that pass succeeds: writes `.object-store-cutover` and stops `minio`. Migrations, `up` and smoke follow;
+   if one of them fails, the previous release comes back on SeaweedFS (it already holds everything).
+
+If steps 1-3 fail, `deploy.sh` puts the old world back (SeaweedFS stopped, MinIO recreated ON `127.0.0.1:9000`, the
+stopped api/worker started unchanged) and fails with no schema change; the next deploy retries from the start. If that
+undo itself fails (it says so with `!!`), bring MinIO back on its port by hand:
+
+```sh
+printf 'services:\n  minio:\n    ports: ["127.0.0.1:9000:9000"]\n' | docker compose --env-file .env.production \
+  -f compose.yml -f - --profile legacy-minio up -d --force-recreate --wait minio
+docker compose --env-file .env.production -f compose.yml stop seaweedfs
+docker start $(docker compose --env-file .env.production -f compose.yml ps -aq api worker)   # not `compose start`: it would start seaweedfs
+```
+
+A retry's mirror refuses to delete more than max(10, 10%) of a bucket (or all of it). If MinIO really is the truth
+for that bucket (for example the api removed its last object after a failed attempt), name it for one deploy with
+`OBJECT_STORE_MIGRATE_ALLOW_MASS_DELETE=<bucket>[,...]` in the deploy environment, then remove it. A deploy killed
+inside the window (cancelled run, dropped ssh) runs the same undo from its EXIT trap; still, do not push to `main`
+while the cutover deploy runs (a new run cancels it). The cutover is recorded twice, in `.object-store-cutover` and
+in the `seaweedfs-config` volume (`cutover-done`), so losing the marker file never re-mirrors a stale MinIO. If a
+migration then halts the deploy for an operator (exit 75), the api and worker are STOPPED, not running: recreate them
+(`up -d --no-deps --force-recreate api worker web`), never `start` them (they still point at MinIO).
+
+Rollback inside a deploy stays on SeaweedFS (it reuses the new `compose.yml` with the previous images, and the app
+works with any S3 store). Do NOT redeploy a pre-cutover commit afterwards: its `compose.yml` brings back MinIO on
+`127.0.0.1:9000` with stale data. Always include `-f compose.backup.yml` when re-running `object-store-provision` by
+hand on a host with backups configured, or the backup sidecar's reader is dropped at SeaweedFS's next restart. Keep the `*_minio-data` volume until a backup snapshot of the SeaweedFS store has
+succeeded and the access-log, upload and download paths are confirmed, then remove it with
+`docker volume rm <prefix>_minio-data` (and `preflight.sh` stops checking it once it is gone).
+
+## Object store: second copy (`compose.object-copy.yml`, `replica/`)
+
+**Not enabled in production yet** (compliance/controls.yaml): the replica host is covered by a BAA (CW-BA-01; record
+its provider there). Before starting `object-copy`, confirm disk encryption on both hosts (CW-AC-05) and make a D12
+shred reach the copy (CW-DS-01).
+
+A RustFS on ANOTHER host holds a second copy of every `tenant-*` / `chartwarden-*` object, synced by `object-copy`
+(`scripts/object-store-copy.ts --every`, default hourly). It is a SYNC, not an archive: an erasure on the primary
+reaches the copy on the next run, so the off-site Object Lock backup stays the archive. Deletions are guarded: a bucket
+whose source is empty, or a run deleting more than max(10, 10%) of a bucket, is refused and paged (a primary
+re-provisioned empty after a loss cannot wipe the copy); name a bucket in `ALLOW_MASS_DELETE` to let one through.
+
+On the replica host (`deploy/production/replica/`):
+
+```sh
+# .env (0600): RUSTFS_ROOT_USER, RUSTFS_ROOT_PASSWORD, COPY_TARGET_ACCESS_KEY, COPY_TARGET_SECRET_KEY
+chmod 0644 copy-target-policy.json             # the rc image runs as uid 100
+docker compose up -d rustfs && docker compose run --rm rustfs-provision
+```
+
+Front RustFS (`127.0.0.1:9000`) with host Nginx + TLS and allow only the primary's address in the firewall: the copy
+carries PHI between hosts, and the job refuses a plain `http://` target.
+
+On the primary, set in `.env.production`: `OBJECT_COPY_SOURCE_ACCESS_KEY` / `OBJECT_COPY_SOURCE_SECRET_KEY` (new values: the
+read-only SeaweedFS key, created by `object-store-provision` on the next deploy), `OBJECT_COPY_TARGET_ENDPOINT`
+(`https://...`), `OBJECT_COPY_TARGET_ACCESS_KEY` / `OBJECT_COPY_TARGET_SECRET_KEY` (the replica's copy key), optionally
+`OBJECT_COPY_INTERVAL_S`; `OPS_ALERT_WEBHOOK_URL` must be https. Deploy, then:
+
+```sh
+docker compose --env-file .env.production -f compose.yml -f compose.object-copy.yml up -d object-copy
+docker compose --env-file .env.production -f compose.yml -f compose.object-copy.yml logs -f object-copy  # one JSON summary per run
+```
+
+Each failed run posts `object_copy.failed` to `OPS_ALERT_WEBHOOK_URL` (counts and bucket/key ids, never content); the
+container turns unhealthy when no run has been clean for three intervals. Restore from the copy into a primary with
+`--restore` (never deletes): run `scripts/object-store-copy.ts --restore` with `SOURCE_S3_*` = the replica and
+`TARGET_S3_*` = the primary's admin, then the `tenant-buckets` backfill (the copy carries objects, not bucket
+versioning or expiry rules).
 
 ## Backups and restore (`compose.backup.yml`, `backup/`, #857)
 
-Coordinated, encrypted, off-site backups of Postgres (pgBackRest, WAL archiving / PITR) and every MinIO bucket
+Coordinated, encrypted, off-site backups of Postgres (pgBackRest, WAL archiving / PITR) and every object-store bucket
 (versioned SSE-C mirror to an object-locked bucket), tied together by a per-snapshot marker (DB LSN + object
 manifest with sha256). Design, variables, key management and RPO/RTO: `docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md`
 §4.8; operating loop and alerts: `CHARTWARDEN_OPS_RUNBOOK_v0.1.md` §5.7. `deploy.yml` ships `compose.backup.yml` and
-`backup/` with every release; nothing runs until it is enabled once:
+the source/drill kit in `backup/` with every release. After a successful manual `main` publication by
+`.github/workflows/backup-image.yml`, production will pull that scanned, signed image, so a fresh host will not need
+GitHub or the Go module proxies to rebuild it. The workflow definition alone is not evidence that publication ran.
+Nothing runs until it is enabled once:
 
 ```sh
 cd /opt/chartwarden    # after setting the BACKUP_* ids in .env.production and the files in ./secrets/ (DR/BCP §4.8.4)
 install -d -m 0700 -o 999 -g 999 secrets   # one file per secret, mode 0400, owner 999 (the image's postgres user)
 dc() { docker compose --env-file .env.production -f compose.yml -f compose.backup.yml "$@"; }
-dc build postgres                      # chartwarden-backup:local (pgvector/pgvector:pg18 + pgBackRest + mc)
-dc run --rm minio-backup-provision     # read-only MinIO account for the backup
+dc pull postgres backup                # the same digest-pinned chartwarden-backup image serves both roles
+dc run --rm object-store-provision     # adds the backup's read-only SeaweedFS key (reader-policy.json)
+docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate --wait seaweedfs  # reload identities
 dc up -d postgres backup               # recreates postgres once (same volume) with archive_mode=on
 dc logs -f backup                      # the first snapshot takes a full base backup
 ```
+
+Set `CHARTWARDEN_BACKUP_IMAGE` to the exact `tag@sha256:digest` printed by a successful manual
+`backup-image.yml` run on `main`. Before changing it, verify both the signature and SBOM attestation against
+`https://github.com/Engrace-Hospice/chartwarden/.github/workflows/backup-image.yml@refs/heads/main`, using the
+same `cosign verify` / `verify-attestation` form as the Postgres-image runbook below. Keep that output in the
+change record. Never replace it with a tag-only reference. The weekly workflow rebuilds and scans the source-pinned
+toolchain without publishing or moving the production pin.
 
 The off-site bucket must have Object Lock with a COMPLIANCE default retention of >= 100 days (every snapshot checks
 it), a lifecycle longer than the lock, and three keys with the policies in `backup/offsite-policies/` (WAL-only key
@@ -261,9 +379,9 @@ Either way, delete `.env.production.previous-release` afterwards (it holds secre
 external assets) instead of a raw 502 while app containers are stopped:
 
 ```sh
-/opt/chartwarden/maintenance.sh on       # touches /etc/nginx/chartwarden-maintenance.on; effective on the next request
-/opt/chartwarden/maintenance.sh status
-/opt/chartwarden/maintenance.sh off      # removes the flag
+sh /opt/chartwarden/maintenance.sh on       # touches /etc/nginx/chartwarden-maintenance.on; effective on the next request
+sh /opt/chartwarden/maintenance.sh status
+sh /opt/chartwarden/maintenance.sh off      # removes the flag
 ```
 
 Equivalent by hand: `touch /etc/nginx/chartwarden-maintenance.on` / `rm /etc/nginx/chartwarden-maintenance.on`. No nginx
@@ -277,7 +395,7 @@ Scope: the snippet gates the port-80 vhosts, in front of any certbot HTTP-to-HTT
 first and then sees the 503. Webhook senders (Twilio, Postmark, ...) get the 503 and must retry; nothing queues them.
 `bootstrap-vps.sh` installs `nginx/chartwarden-maintenance.conf` to `/etc/nginx/snippets/`; the frontend, backend and
 tenant vhosts include it (on a host that predates this, re-copy the vhosts and snippet, then
-`nginx -t && systemctl reload nginx`). MinIO's storage vhost is not covered.
+`nginx -t && systemctl reload nginx`). The storage vhost is not covered.
 **Turn maintenance off before re-running `deploy.sh`**: its smoke tier 3 probes the public URLs and would see the 503.
 Decision: `deploy.sh` never enables maintenance by itself. A halt is, by design, a state where the running app may
 still be serving clinicians, and flipping it on automatically would cause the outage the hold exists to avoid.
@@ -292,6 +410,246 @@ failing step, the exit code and the applied migration filenames. Delivery is bes
 timeout; a failure is logged and never changes the deploy's exit status); the URL is never printed. Unset means no
 alert, and the failed `deploy` workflow run is then the only signal.
 
+## Postgres image (`postgres/`)
+
+`postgres/Dockerfile` is ChartWarden's Postgres: PostgreSQL 18 + pgvector on Wolfi, with the base digest and every
+directly installed package pinned (the glibc locale packages follow the base's glibc) (0 HIGH/CRITICAL at pin time, against 4 CRITICAL / 77 HIGH for `pgvector/pgvector:pg18-bookworm`).
+Dev compose, every CI live-DB job and the restore drills build it from this folder. Production runs the copy that
+`.github/workflows/postgres-image.yml` (manual, `main` only) builds, scans, signs and publishes as
+`ghcr.io/engrace-hospice/chartwarden-postgres`. `compose.yml` pins its digest, and so does the `POSTGRES_IMAGE` default of
+`backup/Dockerfile`: production runs `postgres` through the backup overlay, so the image it actually starts is the
+digest-pinned `CHARTWARDEN_BACKUP_IMAGE` after its successful `backup-image.yml` publication, built `FROM` that
+Postgres digest plus pgBackRest and `mc`. The image opens a volume the Debian image
+created as is: postgres is uid/gid 999, PGDATA is `/var/lib/postgresql/18/docker`, and the server also listens on
+`/var/run/postgresql`.
+
+**Collation.** glibc orders every text index. The Dockerfile asserts `GLIBC_VERSION`, so a bump that moves glibc fails
+the build. When glibc does change (the first start on a Debian-created volume: 2.36 → 2.44), Postgres logs
+`collation version mismatch` on every connection until the indexes are rebuilt, and an index that is out of order
+returns wrong results and misses unique violations, so the app must not write before the refresh. Stop `api` and
+`worker`, then (`dc` is the overlay alias from "Backups and restore"):
+
+```bash
+dc exec -T -u postgres postgres cw-refresh-collation   # REINDEX + REFRESH COLLATION VERSION, every database
+```
+
+It does not verify the result; the runbook below adds an amcheck pass. Range partitions need nothing more: every
+range partition key is a date or timestamp. A backup taken before a glibc move holds indexes in the old order, so
+restoring one onto the new image needs the same refresh before anything reads the restored database.
+
+**Migration runbook (Debian → Wolfi, one time).** Run it from `/opt/chartwarden` with `dc` defined as in "Backups and
+restore" (`deploy.sh` never recreates `postgres`; the overlay keeps WAL archiving on, see the `compose.backup.yml`
+header). Steps 1-2 leave the running containers alone, but step 2 moves the `chartwarden-backup:local` tag to the
+Wolfi image: from then until a rollback moves it back, any `dc up` that reaches `postgres` (named, through `backup`'s
+`depends_on`, or through the `api`/`worker` chain `provision` → `migrate`) recreates it on Wolfi with no reindex. So
+every `up` below and in the rollback is `--no-deps --no-build`, one service at a time in the order written. The downtime
+is steps 3-10 and grows with the reindex.
+
+> Historical procedure: this one-time migration predates the published backup image in #993 and intentionally names
+> the old local build/tag. Current installs already on Wolfi must use the digest-pinned
+> `CHARTWARDEN_BACKUP_IMAGE` procedure above, not `dc build`. An un-migrated legacy host must execute this section
+> from the pre-#993 release it is migrating from, then move to the published-image release after step 11 succeeds.
+
+Preconditions: the release that carries the Wolfi `backup/Dockerfile` and the pinned `compose.yml` is deployed; the
+rehearsal record `audit/restore-drill/2026-11-08-wolfi-migration-rehearsal.md` exists and names this digest (rehearse
+again before using another); merges to `main` are paused from step 1 until step 10 passes, and no `deploy` run is in
+flight (`main` auto-deploys, and `deploy.sh` starts a stopped `postgres`, runs `migrate` and force-recreates
+`api`/`worker`: writers back mid-REINDEX); `cosign` is installed (Supply chain, below); `docker login ghcr.io` was done
+on the host (the package is private) and it can reach cgr.dev, github.com and proxy.golang.org/sum.golang.org (the build compiles pgBackRest and `mc`);
+`dc ps backup` is healthy.
+
+1. **Verify the base digest, and keep the evidence.** Refuse to continue unless `signature ok` and `SBOM attestation
+   ok` both print and `grep` lists both files. Attach the record file to the change record:
+
+   ```sh
+   digest=sha256:b325d5fd8f295ef1aaed77508f808fcbd573787ff0469de6126fdff4ae261636
+   ref=ghcr.io/engrace-hospice/chartwarden-postgres@$digest
+   id=https://github.com/Engrace-Hospice/chartwarden/.github/workflows/postgres-image.yml@refs/heads/main
+   install -d -m 0700 /opt/chartwarden/change-records
+   rec=/opt/chartwarden/change-records/$(date -u +%F)-postgres-wolfi.txt
+   {
+     echo "$(date -u +%FT%TZ) operator=${SUDO_USER:-$(id -un)} digest=$digest"
+     grep -l "$digest" compose.yml backup/Dockerfile      # must list both files: the two pins agree
+     cosign verify "$ref" --certificate-identity "$id" --certificate-github-workflow-repository Engrace-Hospice/chartwarden \
+       --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null && echo signature ok
+     cosign verify-attestation "$ref" --type spdxjson --certificate-identity "$id" \
+       --certificate-github-workflow-repository Engrace-Hospice/chartwarden \
+       --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null && echo SBOM attestation ok
+   } 2>&1 | tee -a "$rec"
+   ```
+
+2. **Keep the Debian image, then build the new backup image.** Running containers keep their image until recreated,
+   but the build moves the `chartwarden-backup:local` tag. The tag is guarded so that a re-run cannot label Wolfi as
+   Debian (PGDG may no longer carry pgbackrest 2.60.*: do not rely on rebuilding Debian). Build only if this prints
+   `rollback image ok`:
+
+   ```sh
+   os() { docker run --rm --pull never --entrypoint sh "$1" -c '. /etc/os-release; echo $ID'; }   # debian | wolfi
+   docker image inspect chartwarden-backup:debian-rollback >/dev/null 2>&1 ||
+     { [ "$(os chartwarden-backup:local)" = debian ] && docker tag chartwarden-backup:local chartwarden-backup:debian-rollback; }
+   [ "$(os chartwarden-backup:debian-rollback)" = debian ] && echo rollback image ok
+   ```
+
+   ```sh
+   dc build postgres
+   docker run --rm --entrypoint sh chartwarden-backup:local -c '/lib/libc.so.6 | head -1; pgbackrest version; psql --version'   # glibc 2.44, pgBackRest 2.60.0, psql 18.6
+   ```
+
+3. **Maintenance on, clients off** (maintenance page, above). Nothing may write from here on:
+
+   ```sh
+   sh /opt/chartwarden/maintenance.sh on
+   dc stop api worker                  # and hl7-listener / rust when those profiles run; they are the only DB clients
+   ```
+
+4. **Fresh backup**, DB and objects. Continue only if it succeeds, and note the time and snapshot id: it is the
+   restore point if the migration must be undone.
+
+   ```sh
+   dc exec -T backup cw-backup.sh snapshot full
+   dc exec -T backup cw-backup.sh marker
+   dc exec -T -u postgres backup pgbackrest --stanza=chartwarden info     # the new full on repo1 and repo2
+   ```
+
+5. **Stop the sidecar, confirm no client is left, shut postgres down cleanly** (the 10 s default can end in SIGKILL):
+
+   ```sh
+   dc stop backup
+   dc exec -T postgres psql -U postgres -d postgres -Atc "SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend' AND pid <> pg_backend_pid()"   # 0
+   dc stop -t 120 postgres
+   ```
+
+6. **Start postgres on the Wolfi image** (same volume, archiving on; the tag moved, so compose recreates the
+   container). From here every connection logs `collation version mismatch`: expected until step 7. The first recreate
+   since `compose.yml` added the internal `rust-db` network also attaches it:
+
+   ```sh
+   dc up -d --no-deps --no-build --wait postgres
+   dc exec -T postgres psql -U postgres -d postgres -Atc "SHOW archive_mode" -c "SHOW server_version"   # on, 18.6
+   ```
+
+7. **Rebuild the indexes** (it prints recorded vs OS collation version per database; they must match):
+
+   ```sh
+   dc exec -T -u postgres postgres cw-refresh-collation
+   ```
+
+8. **Verify the indexes** with amcheck, btree and GIN (the `pg_trgm` search indexes). The extension exists only inside
+   a rolled-back transaction, so the database keeps no trace of it. Expect, per database, a `== <name>` line and two
+   result rows (`btree_indexes` and `gin_indexes`, each equal to its `verified`); nothing else counts as a pass. An
+   `ERROR` or a non-zero exit (it stops at the first failing database), or an empty database list, means: keep
+   `api`/`worker` stopped, `REINDEX` the named index and run it again. Then confirm no database still reports a
+   collation mismatch:
+
+   ```sh
+   dc exec -T -u postgres postgres sh -eu <<'SH'
+   dbs=$(psql -X -At -d postgres -c "SELECT datname FROM pg_database WHERE datallowconn ORDER BY datname")
+   [ -n "$dbs" ] || { echo "no databases listed" >&2; exit 1; }
+   for db in $dbs; do
+     echo "== $db"
+     psql -X -q -v ON_ERROR_STOP=1 -d "$db" <<'SQL'
+   BEGIN;
+   CREATE EXTENSION amcheck;
+   SELECT count(*) AS btree_indexes, count(bt_index_check(index => c.oid, heapallindexed => true)) AS verified
+     FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_am a ON a.oid = c.relam
+    WHERE a.amname = 'btree' AND c.relkind = 'i' AND c.relpersistence <> 't' AND i.indisvalid;
+   SELECT count(*) AS gin_indexes, count(gin_index_check(c.oid)) AS verified
+     FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_am a ON a.oid = c.relam
+    WHERE a.amname = 'gin' AND c.relkind = 'i' AND c.relpersistence <> 't' AND i.indisvalid;
+   ROLLBACK;
+   SQL
+   done
+   SH
+   dc exec -T postgres psql -U postgres -d postgres -Atc "SELECT count(*) FROM pg_database WHERE datallowconn AND datcollversion IS DISTINCT FROM pg_database_collation_actual_version(oid)"   # 0
+   ```
+
+9. **Prove WAL archiving** before any client returns: the REINDEX wrote a lot of WAL, and the archiver must have
+   kept up. Expect `archived` and `not_failing` both `t` (the switched segment is in the repository and the last
+   archiver event is a success); if `archived` is `f`, re-run the block once (a slow off-site repository). Still not
+   `t | t`: keep the clients off and roll back.
+
+   ```sh
+   dc exec -T postgres psql -U postgres -d postgres -X -v ON_ERROR_STOP=1 <<'SQL'
+   SELECT pg_log_standby_snapshot() \gset
+   SELECT pg_walfile_name(pg_switch_wal()) AS seg \gset
+   SELECT pg_sleep(30) \gset
+   SELECT :'seg' AS switched, last_archived_wal, last_archived_wal >= :'seg' AS archived,
+          coalesce(last_failed_time < last_archived_time, true) AS not_failing, failed_count, last_failed_time
+     FROM pg_stat_archiver;
+   SQL
+   ```
+
+10. **Start the sidecar and the app, then check.** `smoke.sh` probes the public hostnames, so maintenance goes off
+    first; on a failure turn it back on and use the rollback:
+
+    ```sh
+    dc up -d --no-deps --no-build backup
+    dc up -d --no-deps --no-build --wait api worker          # and hl7-listener / rust when you stopped them
+    sh /opt/chartwarden/maintenance.sh off
+    ./smoke.sh
+    ```
+
+11. **Take a new full backup** (the first of the Wolfi-built cluster; it also checks that WAL reaches both
+    repositories): `dc exec -T backup cw-backup.sh snapshot full`. Expect no `backup.*` notice on
+    `OPS_ALERT_WEBHOOK_URL`. Within a week run the monthly isolated restore and verifier (Ops runbook §5.7) so a restore
+    from this image is proven on production data. Delete `chartwarden-backup:debian-rollback` once that passes.
+
+**Rollback.** Step 2 moved the `chartwarden-backup:local` tag, so a rollback starts by moving it back, after proving
+the rollback image really is Debian (it must print `tag restored`; otherwise stop and restore from the step 4 snapshot
+instead). It then brings services up one at a time with `--no-deps --no-build`: a plain `dc up -d backup` or
+`dc up -d api` would recreate `postgres` on Wolfi, unreindexed.
+
+```sh
+[ "$(docker run --rm --pull never --entrypoint sh chartwarden-backup:debian-rollback -c '. /etc/os-release; echo $ID')" = debian ] &&
+  docker tag chartwarden-backup:debian-rollback chartwarden-backup:local && echo tag restored
+```
+
+Before step 6 (postgres is still the Debian container, stopped or running) the tag is the only fix: nothing is
+recreated and no reindex is needed. Start what you stopped, in this order, then `./smoke.sh`:
+
+```sh
+dc up -d --no-deps --no-build --wait postgres
+dc up -d --no-deps --no-build backup
+dc up -d --no-deps --no-build --wait api worker          # and hl7-listener / rust when you stopped them
+sh /opt/chartwarden/maintenance.sh off
+```
+
+From step 6 on, glibc moves back to 2.36, so the indexes are rebuilt again before anything writes:
+
+1. `sh /opt/chartwarden/maintenance.sh on`, `dc stop api worker backup`, `dc stop -t 120 postgres`.
+2. With the tag restored, revert this change's PR (a `git revert` PR: it also drops the `arch:compose-policy` check
+   that a Debian `backup/Dockerfile` fails), so `compose.yml` and `backup/Dockerfile` pin
+   `pgvector/pgvector:pg18-bookworm@sha256:c29f30688a9ad961691bdf0ec1650717cc132a5814619d80f80463d6e4c42e47` again.
+3. `dc up -d --no-deps --no-build --wait postgres` (recreated from the Debian tag), then run the refresh by copy (the
+   Debian image has no script; snippet under "Bumping it") and the step 8 checks.
+4. `dc up -d --no-deps --no-build backup`, `dc up -d --no-deps --no-build --wait api worker`,
+   `sh /opt/chartwarden/maintenance.sh off`, `./smoke.sh`, then a new full backup.
+
+**Bumping it.** Refresh the base digest and the package pins in the Dockerfile (its header says how), open a PR (the
+`Postgres image smoke and CVE scan` job in `pr-image-gate.yml` builds, starts and scans it, then builds, smoke-tests
+and scans the backup image on it; re-resolve `backup/Dockerfile`'s apk pins in the new base with `apk add -s`, and
+when glibc moves re-run `scripts/backup/wolfi-migration-rehearsal.sh` into a new `audit/restore-drill/` record), merge, run
+`gh workflow run postgres-image.yml`, and move the tag and digest the run prints everywhere the old one appears:
+`compose.yml`; the `POSTGRES_IMAGE` default of `backup/Dockerfile`, which takes the image as its base; `digest=` in
+step 1 above; and the `pg_controldata` command in `INFRA_RENAME_RUNBOOK.md` (`grep -rn <old digest> deploy/production`
+must find nothing left). `arch:compose-policy` fails when `compose.yml` and `backup/Dockerfile` disagree; it does not
+read the two docs. Prove the pair with `bun run backup:coordinated-drill` (the backup image, WAL archiving, snapshot,
+restore and verifier on that Postgres) and `bun run m36:restore-drill` (migrate, provision, seed and a dump/restore on
+it). Both build `postgres/` from the working tree unless `WX_DRILL_POSTGRES_IMAGE` names an image, so to prove the
+published digest itself, set it to `$ref` (after `docker login ghcr.io`); `backup:restore-drill` tests pgBackRest
+mechanics on host binaries and proves neither image. Apply it as the runbook above does (verify the digest, tag the
+previous `chartwarden-backup:local` before rebuilding, fresh backup, `dc up -d --no-deps --no-build --wait postgres`;
+`deploy.sh` never recreates postgres), then `cw-refresh-collation` and the amcheck pass if `GLIBC_VERSION` changed.
+Rollback is the previous digest (the tag you kept, put back as in "Rollback"), plus a refresh again when glibc
+differs. An image without the script (the Debian one) takes it by copy; the VPS has no `postgres/` folder, so lift the
+script out of the published image (`ref` as in step 1):
+
+```bash
+docker run --rm --entrypoint cat "$ref" /usr/local/bin/cw-refresh-collation > cw-refresh-collation.sh && chmod 0644 cw-refresh-collation.sh
+dc cp cw-refresh-collation.sh postgres:/tmp/cw-refresh-collation.sh
+dc exec -T -u postgres postgres sh /tmp/cw-refresh-collation.sh
+```
+
 ## Infrastructure images: digest pins (#855)
 
 Every third-party image in `compose.yml` is `repo:tag@sha256:<digest>` (the tag is the human label; the digest is
@@ -300,12 +658,17 @@ arch:compose-policy` (part of `arch:fitness`) fails on any literal image without
 
 | Service | Image | Version at pin time (2026-10-27) |
 |---|---|---|
-| postgres | `pgvector/pgvector:pg18` | PostgreSQL 18 (same digest as `backup/Dockerfile`) |
+| postgres | `ghcr.io/engrace-hospice/chartwarden-postgres` | PostgreSQL 18.6 + pgvector 0.8.7, Wolfi / glibc 2.44 (pinned 2026-11-08; built by `postgres-image.yml`; same digest as `backup/Dockerfile`'s `POSTGRES_IMAGE` default) |
 | valkey | `valkey/valkey:8-alpine` | Valkey 8.x |
-| minio, minio-provision | `cgr.dev/chainguard/minio:latest` | MinIO `RELEASE.2026-10-23T20-06-51Z` |
-| clamav | `clamav/clamav-debian:1.4` | ClamAV 1.4.x |
+| seaweedfs | `chrislusf/seaweedfs:4.52` | SeaweedFS 4.52 (pinned 2026-11-05) |
+| fluent-bit | `fluent/fluent-bit:5.1.5` | Fluent Bit 5.1.5 (pinned 2026-11-05) |
+| minio (legacy profile, cutover only) | `cgr.dev/chainguard/minio:latest` | MinIO `RELEASE.2026-10-23T20-06-51Z` |
+| clamav | `clamav/clamav:1.4` (Alpine) | ClamAV 1.4.x |
 
-MinIO: `minio/minio` is no longer published to Docker Hub, so the server is Chainguard's build (it ships `minio`,
+SeaweedFS: `test:object-store:conformance:live` and `test:object-store:resilience:live` (CI job
+`object-store-conformance-live`) run against the same image and the same `object-store/` files; re-run them on a bump.
+
+MinIO (legacy, read once by the cutover): `minio/minio` is no longer published to Docker Hub, so the server is Chainguard's build (it ships `minio`,
 `mc`, `sh` and `bash`, but no `curl`; the healthcheck therefore probes `/minio/health/ready` over bash `/dev/tcp`
 and sends `Host: localhost`, which MinIO requires for this HTTP/1.0 request).
 It defaults to uid 65532, but the existing `minio-data` volume is root-owned, so the service sets `user: "0:0"`.
@@ -315,8 +678,9 @@ registry you control (e.g. GHCR) before relying on it for disaster recovery.
 
 **Updating an image**
 1. Resolve the new digest: `docker buildx imagetools inspect <repo:tag>` (the top-level `Digest:` is the index digest).
-2. Edit `compose.yml` (tag and digest together) and the version table above; if it is postgres, update
-   `backup/Dockerfile` to the same digest.
+2. Edit `compose.yml` (tag and digest together) and the version table above. Postgres is the exception: follow
+   "Bumping it" under "Postgres image" (the digest also moves in `backup/Dockerfile`, and a glibc change is a
+   REINDEX migration, not a digest bump). `deploy.sh` never recreates postgres.
 3. Restore-test: run the restore drill (`docs/runbooks/m36-restore-drill.md`; for postgres/minio also restore the
    previous backup onto the new image) and `smoke.sh` against a staging stack.
 4. `bun run arch:compose-policy`, then ship through the normal PR/deploy path. Rollback is the previous digest.
@@ -335,9 +699,10 @@ values**; tune them from `docker stats` and OOM events (`docker inspect -f '{{.S
 | docling-worker | 2g | 512m | 2 |
 | api / worker | 1536m each | 512m each | 2 each |
 | valkey | 1g | 128m | 1 |
-| minio | 1g | 256m | 2 |
+| seaweedfs | 1g | 256m | 2 |
+| fluent-bit | 128m | none | 0.25 |
 | web | 128m | 32m | 0.5 |
-| one-shots (migrate, provision, minio-provision, tenant-buckets, seed-runner, hl7-listener) | 128m-1g | none | 0.5-2 |
+| one-shots (migrate, provision, object-store-provision, object-store-migrate, tenant-buckets, seed-runner, hl7-listener) | 128m-1g | none | 0.5-2 |
 
 Long-running limits sum to about 15 GiB (memory limits are ceilings, not a simultaneous allocation) and
 reservations to about 5 GiB, which leaves headroom for the OS, host Nginx and Docker on 16 GiB. CPU limits are
@@ -399,6 +764,11 @@ and nothing else, and that identity is never accepted for the other images eithe
 (no override), `CHARTWARDEN_COSIGN_IDENTITY` does not apply to it, and `CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED` does not
 apply either: a Rust image is never rolled unverified. Only the verified digest is written, to `CHARTWARDEN_RUST_IMAGE` in
 `.env.production`. `deploy.sh` never pulls or starts the `rust` compose service.
+
+**The Postgres image.** `deploy.sh` never touches `postgres`, so nothing verifies its image at deploy time. The
+operator verifies the signature and the SBOM attestation by hand against
+`https://github.com/Engrace-Hospice/chartwarden/.github/workflows/postgres-image.yml@refs/heads/main` before building
+or recreating (step 1 of the migration runbook under "Postgres image"), and a digest that fails is not used.
 
 ## Rolling back
 

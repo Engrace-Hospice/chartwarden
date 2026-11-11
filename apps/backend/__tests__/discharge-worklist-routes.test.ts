@@ -10,12 +10,14 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
   type DischargeWorklistService,
   buildAdmissionAbacPredicates,
+  createDbDischargeWorklistService,
   createInMemoryAdmissionBackend,
   registerAdmissionRoutes,
 } from "../src/modules/06-admission/index";
@@ -250,4 +252,26 @@ describe("GET /api/v1/discharges/worklist?bucket=recently_discharged — the rea
     });
     expect(list).toHaveBeenCalledWith(ORG, { bucket: "ready" }, { patientIds: ["pat_1"] });
   });
+});
+
+describe("the Drizzle worklist's signed offset cursor", () => {
+  // The cursor is decoded before any query runs, so a bare client proves the refusal without a database.
+  it.each(["garbage", "1", "50"])(
+    "refuses the unsigned cursor %j with 422 INVALID_CURSOR instead of paging from the start",
+    async (cursor) => {
+      const worklist = createDbDischargeWorklistService({} as DbClient);
+      for (const bucket of [
+        "ready",
+        "needs_details",
+        "awaiting_cosign",
+        "recently_discharged",
+        "qio_review_open",
+        "nomnc_no_deadline",
+      ] as const) {
+        await expect(
+          worklist.list(ORG, { bucket, cursor }, { patientIds: null }),
+        ).rejects.toMatchObject({ code: "INVALID_CURSOR", statusCode: 422 });
+      }
+    },
+  );
 });

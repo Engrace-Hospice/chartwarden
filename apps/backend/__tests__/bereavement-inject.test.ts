@@ -29,6 +29,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import { factorsToWire } from "@chartwarden/bereavement";
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -38,11 +39,24 @@ import {
   type BereavementAbacResolver,
   type BereavementPlanAbacFacts,
   M16_PERMISSION_KEY_LIST,
+  type PreDeathAssessorProbe,
   buildBereavementAbacPredicates,
   mountM16Routes,
 } from "../src/modules/16-bereavement/index";
+import {
+  BereavementStateError,
+  checkVersion,
+  decideLetterApproval,
+  decideLetterDecline,
+} from "../src/modules/16-bereavement/lifecycle/index";
+import type {
+  M16DraftService,
+  PreDeathDraftView,
+} from "../src/modules/16-bereavement/routes/draft-service";
+import type { M16GroupService } from "../src/modules/16-bereavement/routes/group-service";
 import type {
   BereavedContactRowView,
+  BereavementAssessmentTaskView,
   BereavementClosureView,
   BereavementContactLogView,
   BereavementOutreachRowView,
@@ -54,6 +68,17 @@ import type {
   PlanActivationView,
   ScheduleRegenerationView,
 } from "../src/modules/16-bereavement/routes/index";
+import type {
+  M16LetterService,
+  PhysicianLetterView,
+} from "../src/modules/16-bereavement/routes/letter-service";
+import type { M16LibraryService } from "../src/modules/16-bereavement/routes/library-service";
+import type {
+  M16MailingService,
+  MailingRunView,
+} from "../src/modules/16-bereavement/routes/mailing-service";
+import type { M16MemorialService } from "../src/modules/16-bereavement/routes/memorial-service";
+import type { RecomputeRiskInput } from "../src/modules/16-bereavement/routes/write-service";
 
 // ── the M2 header-auth test shim (the M11/M40 `orders-routes.test.ts` / `mdm-routes.test.ts` precedent) ──
 // Extended with `x-test-membership` / `x-test-session-class` / `x-test-portal-account`, because M16's
@@ -90,6 +115,29 @@ const VOLUNTEER_ID = "44444444-4444-4444-8444-444444444444";
 const SUPERVISOR_ID = "55555555-5555-4555-8555-555555555555";
 const NO_PERMS_ID = "66666666-6666-4666-8666-666666666666";
 const EXTERNAL_RESOURCE = "77777777-7777-4777-8777-777777777777";
+/** ADR-0109 D5 — the pre-death draft is addressed by admission; one resolves to a patient, one does not exist. */
+const ADMISSION_ID = "10000000-0000-4000-8000-000000000001";
+const UNKNOWN_ADMISSION = "10000000-0000-4000-8000-0000000000ff";
+const DRAFT_PATIENT = "10000000-0000-4000-8000-0000000000aa";
+/** ADR-0109 D6 — the physician letter fixtures: the plan the letter belongs to and the internal clinician it addresses. */
+const LETTER_PLAN_ID = "10000000-0000-4000-8000-0000000000bb";
+const LETTER_ATTENDING = "10000000-0000-4000-8000-0000000000cc";
+/** ADR-0109 D10 — the one mailing run the fake mailing service knows. */
+const MAILING_RUN_ID = "10000000-0000-4000-8000-0000000000f1";
+// ADR-0109 D10 (PR 3) — a group the counselor facilitates (staff) and one the volunteer facilitates.
+const STAFF_GROUP_ID = "10000000-0000-4000-8000-0000000000a1";
+const VOLUNTEER_GROUP_ID = "10000000-0000-4000-8000-0000000000a2";
+const PROGRAM_ID = "10000000-0000-4000-8000-0000000000a3";
+const PICKED_CLINICIAN = "10000000-0000-4000-8000-0000000000dd";
+/** The care team of `DRAFT_PATIENT`: only the plan counselor's user sits on it. */
+const ASSESSOR_PROBE: PreDeathAssessorProbe = {
+  async patientOfAdmission(_org, admissionId) {
+    return admissionId === UNKNOWN_ADMISSION ? null : DRAFT_PATIENT;
+  },
+  async isOnCareTeam(_org, _patient, userId) {
+    return userId === "counselor_user";
+  },
+};
 
 // ── internal fake-backend record shapes (deliberately loose on enum-ish fields — cast `as never` at the
 // DTO boundary, the same convention `bereavement-authz.test.ts`'s `planFacts()` helper already uses) ─────
@@ -172,6 +220,13 @@ function createFakeBackend() {
   const outreach = new Map<string, OutreachRecord>();
   const contactLogs: BereavementContactLogView[] = [];
   const riskScores: BereavementRiskScoreView[] = [];
+  const assessmentTasks: BereavementAssessmentTaskView[] = [];
+  const recomputeInputs: RecomputeRiskInput[] = [];
+  const careGoalWrites: Array<{
+    contactId: string;
+    goals: readonly string[];
+    expectedVersion: number;
+  }> = [];
 
   function seedPlan(overrides: Partial<PlanRecord> = {}): PlanRecord {
     const planId = overrides.planId ?? fakeId();
@@ -292,6 +347,7 @@ function createFakeBackend() {
       unreachableProposedAt: c.status === "unreachable" ? null : (c.unreachableProposedAt ?? null),
       deceasedAt: c.deceasedAt,
       mayRescindOptOut: true,
+      mailingsAllowed: true,
       currentRiskTier: c.currentRiskTier as never,
       version: c.version,
     };
@@ -358,6 +414,7 @@ function createFakeBackend() {
       kind: o.kind as never,
       status: o.status as never,
       anniversaryMark: o.anniversaryMark as never,
+      cadenceMark: null,
       dueAt: o.dueAt,
       lateGraceUntil: o.lateGraceUntil,
       startedAt: o.startedAt,
@@ -392,6 +449,31 @@ function createFakeBackend() {
       if (!p) return null;
       const rows = riskScores.filter((r) => r.planId === planId);
       return { data: rows, next_cursor: null, has_more: false };
+    },
+    async listAssessmentTasks(_actor, planId) {
+      if (!plans.has(planId)) return null;
+      return {
+        items: assessmentTasks.filter((t) => t.planId === planId),
+        redactedCategories: [],
+      };
+    },
+    async listContactTimeline(_actor, contactId) {
+      if (!contacts.has(contactId)) return null;
+      return {
+        data: [
+          {
+            entryId: "10000000-0000-4000-8000-0000000000e1",
+            at: NOW as never,
+            source: "program_activity",
+            kind: null,
+            activityKind: "newsletter_mailing",
+            outcome: "mailed",
+          },
+        ],
+        next_cursor: null,
+        has_more: false,
+        redactedCategories: [],
+      };
     },
     async counselorDashboard(actor, query) {
       const mine = [...plans.values()].filter(
@@ -532,6 +614,7 @@ function createFakeBackend() {
         cosignedAt: NOW,
         stats: zeroStats(),
         bereavementSummaryDocumentId: null,
+        dischargeSummaryDocumentId: null,
       };
       p.pendingEarlyClose = null;
       bump(p);
@@ -701,9 +784,24 @@ function createFakeBackend() {
       };
       return view;
     },
+    async setCareGoals(_actor, contactId, input) {
+      const c = contacts.get(contactId);
+      if (!c) throw new NotFoundError("bereaved contact not found");
+      if (input.expectedVersion !== c.version) {
+        throw new BereavementStateError("STALE_VERSION", "the contact has moved on");
+      }
+      careGoalWrites.push({
+        contactId,
+        goals: input.goals,
+        expectedVersion: input.expectedVersion,
+      });
+      bump(c);
+      return { ...contactRow(c), careGoals: input.goals };
+    },
     async recomputeRisk(actor, planId, input) {
       const p = plans.get(planId);
       if (!p) throw new NotFoundError("bereavement plan not found");
+      recomputeInputs.push(input);
       const score: BereavementRiskScoreView = {
         scoreId: fakeId(),
         planId,
@@ -770,7 +868,35 @@ function createFakeBackend() {
     [VOLUNTEER_ID]: "bereavement_volunteer",
   };
 
+  const groupFacilitators: Record<string, { kind: "staff" | "volunteer"; facilitator: string }> = {
+    [STAFF_GROUP_ID]: { kind: "staff", facilitator: COUNSELOR_ID },
+    [VOLUNTEER_GROUP_ID]: { kind: "volunteer", facilitator: VOLUNTEER_ID },
+  };
+  /** ADR-0109 D10 (PR 3) — every program-service call, by method name (a stub service answers a fixed shape; the GUARDS are under test). */
+  const programCalls: string[] = [];
+  const programStub = <T>(): T =>
+    new Proxy(
+      {},
+      {
+        get: (_t, method: string) => async () => {
+          programCalls.push(method);
+          return method.startsWith("list") || method.startsWith("contact") ? [] : { ok: true };
+        },
+      },
+    ) as T;
   const resolver: BereavementAbacResolver = {
+    async loadGroupFacilitation(orgId, ref) {
+      const g = ref.groupId === undefined ? undefined : groupFacilitators[ref.groupId];
+      return g === undefined
+        ? null
+        : {
+            organizationId: orgId,
+            groupId: ref.groupId as string,
+            facilitatorKind: g.kind,
+            facilitatorUserId: g.facilitator,
+            coFacilitatorUserId: null,
+          };
+    },
     async loadPlan(_orgId, planId) {
       const p = plans.get(planId);
       return p ? planFacts(p) : null;
@@ -802,7 +928,258 @@ function createFakeBackend() {
     },
   };
 
-  return { readService, writeService, resolver, seedPlan, seedContact, seedOutreach };
+  // ── the pre-death draft (ADR-0109 D5): an in-memory stand-in that applies the same version / lock contract ──
+  const drafts = new Map<string, { factors: PreDeathDraftView["factors"]; version: number }>();
+  const lockedAdmissions = new Set<string>();
+  const draftWrites: Array<{ admissionId: string; membershipId: string; expectedVersion: number }> =
+    [];
+  const draftView = (admissionId: string): PreDeathDraftView => {
+    const row = drafts.get(admissionId);
+    return {
+      admissionId,
+      exists: row !== undefined,
+      factors:
+        row?.factors ??
+        ({
+          ambivalent_relationship: "unknown",
+          sudden_unexpected_death: "unknown",
+          prior_unresolved_loss: "unknown",
+          preexisting_mental_health: "unknown",
+          social_isolation: "unknown",
+          financial_strain: "unknown",
+          primary_caregiver_role: "unknown",
+          active_substance_use: "unknown",
+        } as const),
+      lastEditedDiscipline: row === undefined ? null : "medical_social_worker",
+      lastEditedAt: row === undefined ? null : (NOW as never),
+      carriedScoreId: null,
+      carriedAt: null,
+      locked: lockedAdmissions.has(admissionId),
+      version: row?.version ?? 0,
+      redactedCategories: ["sud"],
+    };
+  };
+  const draftService: M16DraftService = {
+    async getDraft(_actor, admissionId) {
+      return admissionId === UNKNOWN_ADMISSION ? null : draftView(admissionId);
+    },
+    async putDraft(actor, admissionId, input) {
+      if (admissionId === UNKNOWN_ADMISSION) throw new NotFoundError("admission not found");
+      if (lockedAdmissions.has(admissionId)) {
+        throw new BereavementStateError("DRAFT_LOCKED", "a plan already exists");
+      }
+      const held = drafts.get(admissionId)?.version ?? 0;
+      if (input.expectedVersion !== held) {
+        throw new BereavementStateError("STALE_VERSION", "the draft has moved on");
+      }
+      draftWrites.push({
+        admissionId,
+        membershipId: actor.membershipId,
+        expectedVersion: input.expectedVersion,
+      });
+      drafts.set(admissionId, { factors: factorsToWire(input.factors), version: held + 1 });
+      return draftView(admissionId);
+    },
+  };
+
+  // ADR-0109 D6 — the physician letter queue. The fake applies the REAL pure approve / decline rules, so the wiring tests also see
+  // the 409 / 422 a reviewer would, without a database.
+  const letters = new Map<string, PhysicianLetterView & { note: string | null }>();
+  const letterEvents: Array<{ letterId: string; templateKey: string; documentKind: string }> = [];
+  const seedLetter = (over: Partial<PhysicianLetterView> = {}) => {
+    const letterId =
+      over.letterId ?? `aaaa0000-0000-4000-8000-${String(letters.size + 1).padStart(12, "0")}`;
+    const letter = {
+      letterId,
+      planId: LETTER_PLAN_ID,
+      patientId: DRAFT_PATIENT,
+      status: "pending_review" as const,
+      dueAt: "2026-06-10T00:00:00.000Z",
+      createdAt: NOW,
+      attendingUserId: LETTER_ATTENDING as string | null,
+      hasPersonalNote: false,
+      declineReason: null,
+      reviewedAt: null,
+      renderedDocumentId: null,
+      version: 0,
+      note: null as string | null,
+      ...over,
+    };
+    letters.set(letterId, letter);
+    return letter;
+  };
+  const publicLetter = ({ note: _note, ...view }: PhysicianLetterView & { note: string | null }) =>
+    view;
+  const letterOf = (letterId: string) => {
+    const letter = letters.get(letterId);
+    if (!letter) throw new BereavementStateError("PHYSICIAN_LETTER_NOT_FOUND", "not found");
+    return letter;
+  };
+  const letterService: M16LetterService = {
+    async listLetters(_actor, input) {
+      const data = [...letters.values()]
+        .filter((l) => input.status === undefined || l.status === input.status)
+        .sort((a, b) => a.dueAt.localeCompare(b.dueAt))
+        .map(publicLetter);
+      return { data, next_cursor: null, has_more: false };
+    },
+    async getLetterForPlan(_actor, planId) {
+      const found = [...letters.values()].find((l) => l.planId === planId);
+      return found ? publicLetter(found) : null;
+    },
+    async approveLetter(actor, letterId, input) {
+      const letter = letterOf(letterId);
+      checkVersion(input.expectedVersion, letter.version);
+      const decision = decideLetterApproval(letter, {
+        personalNote: input.personalNote,
+        attendingUserId: input.attendingUserId,
+      });
+      const next = {
+        ...letter,
+        status: "approved" as const,
+        attendingUserId: decision.attendingUserId,
+        hasPersonalNote: decision.personalNote !== null,
+        note: decision.personalNote,
+        reviewedAt: NOW,
+        version: letter.version + 1,
+      };
+      letters.set(letterId, next);
+      letterEvents.push({
+        letterId,
+        templateKey: "bereavement_physician_condolence_letter",
+        documentKind: `by:${actor.membershipId}`,
+      });
+      return publicLetter(next);
+    },
+    async declineLetter(_actor, letterId, input) {
+      const letter = letterOf(letterId);
+      checkVersion(input.expectedVersion, letter.version);
+      const reason = decideLetterDecline(letter, input.reason);
+      const next = {
+        ...letter,
+        status: "declined" as const,
+        declineReason: reason,
+        reviewedAt: NOW,
+        version: letter.version + 1,
+      };
+      letters.set(letterId, next);
+      return publicLetter(next);
+    },
+  };
+
+  // ADR-0109 D10 — a minimal fake of the mailing service: the routes' wiring (guards, headers, status codes) is what this file proves; the state machine,
+  // the set-based selection and the worker are proven over a real database in `m16-mailings.live.test.ts`.
+  const mailingCalls: { method: string; runId?: string; expectedVersion?: number | undefined }[] =
+    [];
+  const mailingRun = (runId: string, over: Partial<MailingRunView> = {}): MailingRunView => ({
+    runId,
+    runKind: "newsletter",
+    mailingKey: "newsletter_quarterly",
+    occurrenceKey: "newsletter_quarterly:2026-Q4",
+    scheduledFor: "2026-10-15",
+    status: "draft",
+    content: {},
+    recipientCount: 0,
+    excludedCount: 0,
+    failureCode: null,
+    hasDocument: false,
+    generatedAt: null,
+    mailedAt: null,
+    itemCounts: { included: 0, excluded: 0, logged: 0, excludedAfterRender: 0 },
+    version: 0,
+    createdAt: NOW,
+    ...over,
+  });
+  const mailingService: M16MailingService = {
+    async listConfigs() {
+      return ["newsletter_quarterly", "holiday_december", "mothers_day", "fathers_day"].map(
+        (mailingKey) => ({
+          mailingKey: mailingKey as never,
+          configured: false,
+          enabled: false,
+          leadDays: 10,
+          schedule: {},
+          audienceRelationships: null,
+          content: {},
+          version: 0,
+          updatedAt: null,
+        }),
+      );
+    },
+    async putConfig(_actor, mailingKey, input) {
+      mailingCalls.push({ method: "putConfig", expectedVersion: input.expectedVersion });
+      return {
+        mailingKey,
+        configured: true,
+        enabled: input.enabled,
+        leadDays: input.leadDays,
+        schedule: input.schedule ?? {},
+        audienceRelationships: input.audienceRelationships,
+        content: input.content,
+        version: input.expectedVersion + 1,
+        updatedAt: NOW,
+      };
+    },
+    async listRuns() {
+      return { data: [mailingRun(MAILING_RUN_ID)], next_cursor: null, has_more: false };
+    },
+    async getRun(_actor, runId) {
+      return runId === MAILING_RUN_ID ? mailingRun(runId) : null;
+    },
+    async listItems(_actor, runId) {
+      return runId === MAILING_RUN_ID ? { data: [], next_cursor: null, has_more: false } : null;
+    },
+    async updateRunContent(_actor, runId, input) {
+      mailingCalls.push({
+        method: "updateRunContent",
+        runId,
+        expectedVersion: input.expectedVersion,
+      });
+      return mailingRun(runId, { content: input.content, version: input.expectedVersion + 1 });
+    },
+    async generateRun(_actor, runId, input) {
+      mailingCalls.push({ method: "generateRun", runId, expectedVersion: input.expectedVersion });
+      checkVersion(input.expectedVersion, 0);
+      return mailingRun(runId, { status: "generating", version: 1 });
+    },
+    async downloadRun(_actor, runId) {
+      mailingCalls.push({ method: "downloadRun", runId });
+      return { runId, url: "https://objects.example.test/batch", expiresAt: NOW };
+    },
+    async confirmMailed(_actor, runId, input) {
+      mailingCalls.push({ method: "confirmMailed", runId, expectedVersion: input.expectedVersion });
+      return mailingRun(runId, { status: "mailed", version: input.expectedVersion + 1 });
+    },
+    async cancelRun(_actor, runId, input) {
+      mailingCalls.push({ method: "cancelRun", runId, expectedVersion: input.expectedVersion });
+      return mailingRun(runId, { status: "cancelled", version: input.expectedVersion + 1 });
+    },
+  };
+
+  return {
+    readService,
+    writeService,
+    draftService,
+    letterService,
+    mailingService,
+    mailingCalls,
+    groupService: programStub<M16GroupService>(),
+    memorialService: programStub<M16MemorialService>(),
+    libraryService: programStub<M16LibraryService>(),
+    programCalls,
+    seedLetter,
+    letters,
+    letterEvents,
+    resolver,
+    seedPlan,
+    seedContact,
+    seedOutreach,
+    assessmentTasks,
+    recomputeInputs,
+    careGoalWrites,
+    lockedAdmissions,
+    draftWrites,
+  };
 }
 
 type FakeBackend = ReturnType<typeof createFakeBackend>;
@@ -835,6 +1212,19 @@ function makeServer(): { app: ReturnType<typeof buildServer>; backend: FakeBacke
         },
       ],
     },
+    // Holders of every key whose DISCIPLINE or care-team seat the predicate (not RBAC) is what refuses.
+    ...["offteam_msw_user", "volunteer_user"].map((userId) => ({
+      orgId: ORG,
+      userId,
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M16_PERMISSION_KEY_LIST],
+        },
+      ],
+    })),
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
@@ -847,13 +1237,23 @@ function makeServer(): { app: ReturnType<typeof buildServer>; backend: FakeBacke
     resolver: backend.resolver,
     volunteerGatesSatisfied: async ({ volunteerMembershipId }) =>
       volunteerMembershipId === VOLUNTEER_ID,
+    preDeathAssessor: ASSESSOR_PROBE,
   });
   for (const [name, predicate] of Object.entries(predicates)) reg.register(name, predicate);
   reg.register("step_up_recent", async () => true);
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  mountM16Routes(app, { readService: backend.readService, writeService: backend.writeService });
+  mountM16Routes(app, {
+    readService: backend.readService,
+    writeService: backend.writeService,
+    draftService: backend.draftService,
+    letterService: backend.letterService,
+    mailingService: backend.mailingService,
+    groupService: backend.groupService,
+    memorialService: backend.memorialService,
+    libraryService: backend.libraryService,
+  });
   return { app, backend };
 }
 
@@ -868,6 +1268,18 @@ const SUPERVISOR = {
   "x-test-org": ORG,
   "x-test-roles": "clinical_supervisor",
   "x-test-membership": SUPERVISOR_ID,
+};
+const OFFTEAM_MSW = {
+  "x-test-user": "offteam_msw_user",
+  "x-test-org": ORG,
+  "x-test-roles": "msw",
+  "x-test-membership": "77777777-7777-4777-8777-77777777aaaa",
+};
+const VOLUNTEER = {
+  "x-test-user": "volunteer_user",
+  "x-test-org": ORG,
+  "x-test-roles": "bereavement_volunteer",
+  "x-test-membership": VOLUNTEER_ID,
 };
 const NO_PERMS = {
   "x-test-user": "noperm_user",
@@ -1328,6 +1740,737 @@ describe("M16 §4.1 routes 27–29 — schedule regeneration + risk", () => {
   });
 });
 
+// ── route 28 (the honored `factors`) + route 37 (assessment tasks) — ADR-0109 D3 / D5 ───────────────────
+
+const EIGHT_FACTORS = {
+  ambivalent_relationship: true,
+  sudden_unexpected_death: "unknown",
+  prior_unresolved_loss: false,
+  preexisting_mental_health: "unknown",
+  social_isolation: true,
+  financial_strain: "unknown",
+  primary_caregiver_role: false,
+  active_substance_use: "unknown",
+} as const;
+
+describe("M16 §4.1 route 28 — recompute-risk honors `factors` and names an assessment task", () => {
+  const url = (planId: string) => `/api/v1/bereavement/plans/${planId}/recompute-risk`;
+
+  it("maps the wire factors onto the service input and passes the task, screen totals and contact through", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const contact = backend.seedContact(plan.planId);
+    const taskId = "77777777-7777-4777-8777-777777777778";
+
+    const res = await app.inject({
+      method: "POST",
+      url: url(plan.planId),
+      headers: { ...COUNSELOR, "idempotency-key": "rr-factors" },
+      payload: {
+        bereavedContactId: contact.contactId,
+        assessmentTaskId: taskId,
+        factors: { ...EIGHT_FACTORS, pg13_score: 31, ipgr_score: 12, notes: "not stored" },
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(backend.recomputeInputs.at(-1)).toEqual({
+      bereavedContactId: contact.contactId,
+      assessmentTaskId: taskId,
+      manualFactors: {
+        ambivalentRelationship: true,
+        suddenUnexpectedDeath: "unknown",
+        priorUnresolvedLoss: false,
+        preExistingMentalHealth: "unknown",
+        socialIsolation: true,
+        financialStrain: "unknown",
+        primaryCaregiverRole: false,
+        activeSubstanceUse: "unknown",
+      },
+      pg13Score: 31,
+      ipgrScore: 12,
+    });
+    await app.close();
+  });
+
+  it("passes no manual factors when the body carries none", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const res = await app.inject({
+      method: "POST",
+      url: url(plan.planId),
+      headers: { ...COUNSELOR, "idempotency-key": "rr-none" },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(201);
+    expect(backend.recomputeInputs.at(-1)).toEqual({});
+    await app.close();
+  });
+
+  it.each([
+    ["a factor missing from the eight", { factors: { ambivalent_relationship: true } }],
+    [
+      "a factor that is not tri-state",
+      { factors: { ...EIGHT_FACTORS, financial_strain: "maybe" } },
+    ],
+    ["a screen total out of range", { factors: { ...EIGHT_FACTORS, pg13_score: 99 } }],
+    ["an assessment task id that is not a uuid", { assessmentTaskId: "task-1" }],
+  ])("rejects %s with a TypeBox 422", async (_name, payload) => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const res = await app.inject({
+      method: "POST",
+      url: url(plan.planId),
+      headers: { ...COUNSELOR, "idempotency-key": "rr-bad" },
+      payload,
+    });
+    expect(res.statusCode).toBe(422);
+    expect(backend.recomputeInputs).toHaveLength(0);
+    await app.close();
+  });
+
+  it("requires an Idempotency-Key (400)", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const res = await app.inject({
+      method: "POST",
+      url: url(plan.planId),
+      headers: COUNSELOR,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+});
+
+describe("M16 §4.1 route 37 — GET /plans/:planId/assessment-tasks", () => {
+  const url = (planId: string) => `/api/v1/bereavement/plans/${planId}/assessment-tasks`;
+  const task = (planId: string): BereavementAssessmentTaskView => ({
+    taskId: "88888888-8888-4888-8888-888888888881",
+    planId: planId as never,
+    contactId: "99999999-9999-4999-8999-999999999991" as never,
+    taskKind: "initial_assessment",
+    status: "scheduled",
+    dueAt: NOW as never,
+    lateGraceUntil: NOW as never,
+    completedAt: null,
+    completedByMembershipId: null,
+    riskScoreId: null,
+    assigneeUserId: null,
+    version: 0,
+  });
+
+  it("the plan's counselor reads the checkpoints", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    backend.assessmentTasks.push(task(plan.planId));
+    const res = await app.inject({ method: "GET", url: url(plan.planId), headers: COUNSELOR });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items).toHaveLength(1);
+    expect(res.json().items[0]).toMatchObject({
+      taskKind: "initial_assessment",
+      status: "scheduled",
+    });
+    await app.close();
+  });
+
+  it("oversight reads a plan it does not hold", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const res = await app.inject({ method: "GET", url: url(plan.planId), headers: SUPERVISOR });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("a counselor outside the plan window 404s, and an unknown plan 404s (nothing about who died leaks)", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: SUPERVISOR_ID });
+    const other = await app.inject({ method: "GET", url: url(plan.planId), headers: COUNSELOR });
+    expect(other.statusCode).toBe(404);
+    const unknown = await app.inject({
+      method: "GET",
+      url: url("00000000-0000-4000-8000-00000000dead"),
+      headers: SUPERVISOR,
+    });
+    expect(unknown.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("is refused without bereavement.risk.read (403)", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const res = await app.inject({ method: "GET", url: url(plan.planId), headers: NO_PERMS });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+});
+
+// ── routes 35 / 36 — the pre-death risk-assessment draft (ADR-0109 D5) ──────────────────────────────────
+
+describe("M16 §4.1 routes 35 / 36 — pre-death risk-assessment draft", () => {
+  const url = (admission = ADMISSION_ID) =>
+    `/api/v1/bereavement/pre-death-assessments/${admission}`;
+  const put = (
+    app: ReturnType<typeof buildServer>,
+    headers: Record<string, string>,
+    payload: unknown = { factors: EIGHT_FACTORS },
+    admission = ADMISSION_ID,
+  ) => app.inject({ method: "PUT", url: url(admission), headers, payload: payload as object });
+
+  it("the care-team counselor reads an empty draft, writes it (If-Match 0), and reads it back at version 1", async () => {
+    const { app, backend } = makeServer();
+    const empty = await app.inject({ method: "GET", url: url(), headers: COUNSELOR });
+    expect(empty.statusCode).toBe(200);
+    expect(empty.json()).toMatchObject({ exists: false, version: 0, locked: false });
+
+    const saved = await put(app, { ...COUNSELOR, "idempotency-key": "d-1", "if-match": '"0"' });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({ exists: true, version: 1 });
+    expect(saved.json().factors.ambivalent_relationship).toBe(true);
+    expect(backend.draftWrites).toEqual([
+      { admissionId: ADMISSION_ID, membershipId: COUNSELOR_ID, expectedVersion: 0 },
+    ]);
+
+    const second = await put(app, { ...COUNSELOR, "idempotency-key": "d-2", "if-match": '"1"' });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().version).toBe(2);
+    await app.close();
+  });
+
+  it("requires If-Match on the PUT (428) and an Idempotency-Key (400)", async () => {
+    const { app } = makeServer();
+    expect((await put(app, { ...COUNSELOR, "idempotency-key": "d-3" })).statusCode).toBe(428);
+    expect((await put(app, { ...COUNSELOR, "if-match": '"0"' })).statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("a stale If-Match is refused 409", async () => {
+    const { app } = makeServer();
+    await put(app, { ...COUNSELOR, "idempotency-key": "d-4", "if-match": '"0"' });
+    const stale = await put(app, { ...COUNSELOR, "idempotency-key": "d-5", "if-match": '"0"' });
+    expect(stale.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it("is refused 409 DRAFT_LOCKED once a plan exists for the admission", async () => {
+    const { app, backend } = makeServer();
+    backend.lockedAdmissions.add(ADMISSION_ID);
+    const locked = await put(app, { ...COUNSELOR, "idempotency-key": "d-6", "if-match": '"0"' });
+    expect(locked.statusCode).toBe(409);
+    expect(locked.json().error?.code ?? locked.json().code).toBe("DRAFT_LOCKED");
+    // Reading a locked draft is still allowed: it is a closed record, not a hidden one.
+    const read = await app.inject({ method: "GET", url: url(), headers: COUNSELOR });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().locked).toBe(true);
+    await app.close();
+  });
+
+  it.each([
+    ["a missing factor", { factors: { ambivalent_relationship: true } }],
+    ["a non tri-state factor", { factors: { ...EIGHT_FACTORS, social_isolation: "sometimes" } }],
+    ["no factors object", {}],
+  ])("rejects %s with a TypeBox 422", async (_name, payload) => {
+    const { app, backend } = makeServer();
+    const res = await put(
+      app,
+      { ...COUNSELOR, "idempotency-key": "d-7", "if-match": '"0"' },
+      payload,
+    );
+    expect(res.statusCode).toBe(422);
+    expect(backend.draftWrites).toHaveLength(0);
+    await app.close();
+  });
+
+  it("rejects a non-uuid admission id with 422", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/bereavement/pre-death-assessments/not-a-uuid",
+      headers: COUNSELOR,
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("oversight reads and writes without a care-team seat", async () => {
+    const { app } = makeServer();
+    expect((await app.inject({ method: "GET", url: url(), headers: SUPERVISOR })).statusCode).toBe(
+      200,
+    );
+    const saved = await put(app, { ...SUPERVISOR, "idempotency-key": "d-8", "if-match": '"0"' });
+    expect(saved.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("an MSW who is NOT on the care team, and a volunteer, are denied (404 — the admission is not theirs to know)", async () => {
+    const { app } = makeServer();
+    for (const [i, who] of [OFFTEAM_MSW, VOLUNTEER].entries()) {
+      expect((await app.inject({ method: "GET", url: url(), headers: who })).statusCode).toBe(404);
+      expect(
+        (await put(app, { ...who, "idempotency-key": `d-9-${i}`, "if-match": '"0"' })).statusCode,
+      ).toBe(404);
+    }
+    await app.close();
+  });
+
+  it("a portal session is denied even with the staff roles", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: url(),
+      headers: {
+        ...COUNSELOR,
+        "x-test-session-class": "bereaved_portal",
+        "x-test-portal-account": "acct-1",
+      },
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("an unknown admission is a 404, and a caller without the key is a 403", async () => {
+    const { app } = makeServer();
+    expect(
+      (await app.inject({ method: "GET", url: url(UNKNOWN_ADMISSION), headers: SUPERVISOR }))
+        .statusCode,
+    ).toBe(404);
+    expect((await app.inject({ method: "GET", url: url(), headers: NO_PERMS })).statusCode).toBe(
+      403,
+    );
+    expect(
+      (await put(app, { ...NO_PERMS, "idempotency-key": "d-10", "if-match": '"0"' })).statusCode,
+    ).toBe(403);
+    await app.close();
+  });
+});
+
+// ── routes 38 / 39 / 40 — the physician condolence letter queue (ADR-0109 D6) ────────────────────────────
+
+describe("M16 §4.1 routes 38 / 39 / 40 — physician letter review queue", () => {
+  const LIST = "/api/v1/bereavement/physician-letters";
+  const forPlan = (planId = LETTER_PLAN_ID) =>
+    `/api/v1/bereavement/plans/${planId}/physician-letter`;
+  const approve = (
+    app: ReturnType<typeof buildServer>,
+    letterId: string,
+    headers: Record<string, string>,
+    payload: unknown = {},
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `${LIST}/${letterId}/approve`,
+      headers,
+      payload: payload as object,
+    });
+  const decline = (
+    app: ReturnType<typeof buildServer>,
+    letterId: string,
+    headers: Record<string, string>,
+    payload: unknown,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `${LIST}/${letterId}/decline`,
+      headers,
+      payload: payload as object,
+    });
+
+  it("oversight lists the queue (filtered by status) and reads the plan's letter", async () => {
+    const { app, backend } = makeServer();
+    const pending = backend.seedLetter();
+    backend.seedLetter({ planId: "10000000-0000-4000-8000-0000000000be", status: "declined" });
+    const all = await app.inject({ method: "GET", url: LIST, headers: SUPERVISOR });
+    expect(all.statusCode).toBe(200);
+    expect(all.json().data).toHaveLength(2);
+    const only = await app.inject({
+      method: "GET",
+      url: `${LIST}?status=pending_review`,
+      headers: SUPERVISOR,
+    });
+    expect(only.json().data.map((l: { letterId: string }) => l.letterId)).toEqual([
+      pending.letterId,
+    ]);
+    const plan = await app.inject({ method: "GET", url: forPlan(), headers: SUPERVISOR });
+    expect(plan.statusCode).toBe(200);
+    expect(plan.json()).toMatchObject({ letterId: pending.letterId, status: "pending_review" });
+    expect(plan.json()).not.toHaveProperty("note");
+    await app.close();
+  });
+
+  it("answers 404 when a plan has no letter, and refuses offset pagination and a bad status", async () => {
+    const { app } = makeServer();
+    expect(
+      (await app.inject({ method: "GET", url: forPlan(), headers: SUPERVISOR })).statusCode,
+    ).toBe(404);
+    expect(
+      (await app.inject({ method: "GET", url: `${LIST}?offset=5`, headers: SUPERVISOR }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (await app.inject({ method: "GET", url: `${LIST}?status=bogus`, headers: SUPERVISOR }))
+        .statusCode,
+    ).toBe(422);
+    await app.close();
+  });
+
+  it("approves with a trimmed personal note: If-Match + Idempotency-Key, version bumps, the stamp is the reviewer", async () => {
+    const { app, backend } = makeServer();
+    const letter = backend.seedLetter();
+    const res = await approve(
+      app,
+      letter.letterId,
+      { ...SUPERVISOR, "idempotency-key": "l-1", "if-match": '"0"' },
+      { personalNote: "  Thank you for caring for this family.  " },
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      status: "approved",
+      version: 1,
+      attendingUserId: LETTER_ATTENDING,
+      hasPersonalNote: true,
+    });
+    expect(res.json()).not.toHaveProperty("note");
+    expect(backend.letters.get(letter.letterId)?.note).toBe(
+      "Thank you for caring for this family.",
+    );
+    expect(backend.letterEvents).toEqual([
+      {
+        letterId: letter.letterId,
+        templateKey: "bereavement_physician_condolence_letter",
+        documentKind: `by:${SUPERVISOR_ID}`,
+      },
+    ]);
+    await app.close();
+  });
+
+  it("requires If-Match (428) and Idempotency-Key (400); a stale version is 409", async () => {
+    const { app, backend } = makeServer();
+    const letter = backend.seedLetter();
+    expect(
+      (await approve(app, letter.letterId, { ...SUPERVISOR, "idempotency-key": "l-2" })).statusCode,
+    ).toBe(428);
+    expect(
+      (await approve(app, letter.letterId, { ...SUPERVISOR, "if-match": '"0"' })).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await approve(app, letter.letterId, {
+          ...SUPERVISOR,
+          "idempotency-key": "l-3",
+          "if-match": '"7"',
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(backend.letterEvents).toHaveLength(0);
+    await app.close();
+  });
+
+  it("the If-Match header decides the version: an `expectedVersion` in the body cannot override a stale header", async () => {
+    const { app, backend } = makeServer();
+    const letter = backend.seedLetter();
+    const res = await approve(
+      app,
+      letter.letterId,
+      { ...SUPERVISOR, "idempotency-key": "l-hdr", "if-match": '"7"' },
+      { expectedVersion: 0 } as never,
+    );
+    expect(res.statusCode).toBe(409);
+    expect(backend.letterEvents).toHaveLength(0);
+    await app.close();
+  });
+
+  it("refuses to approve with no attending (422), then approves once the reviewer names an internal clinician", async () => {
+    const { app, backend } = makeServer();
+    const letter = backend.seedLetter({ attendingUserId: null });
+    const headers = { ...SUPERVISOR, "if-match": '"0"' };
+    const refused = await approve(app, letter.letterId, { ...headers, "idempotency-key": "l-4a" });
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json().error?.code ?? refused.json().code).toBe(
+      "PHYSICIAN_LETTER_ATTENDING_REQUIRED",
+    );
+    const ok = await approve(
+      app,
+      letter.letterId,
+      { ...headers, "idempotency-key": "l-4b" },
+      { attendingUserId: PICKED_CLINICIAN },
+    );
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().attendingUserId).toBe(PICKED_CLINICIAN);
+    await app.close();
+  });
+
+  it("rejects a note over 1000 characters and a non-uuid clinician with a TypeBox 422", async () => {
+    const { app, backend } = makeServer();
+    const letter = backend.seedLetter();
+    const headers = { ...SUPERVISOR, "if-match": '"0"' };
+    expect(
+      (
+        await approve(
+          app,
+          letter.letterId,
+          { ...headers, "idempotency-key": "l-5a" },
+          { personalNote: "x".repeat(1001) },
+        )
+      ).statusCode,
+    ).toBe(422);
+    expect(
+      (
+        await approve(
+          app,
+          letter.letterId,
+          { ...headers, "idempotency-key": "l-5b" },
+          { attendingUserId: "not-a-uuid" },
+        )
+      ).statusCode,
+    ).toBe(422);
+    expect(backend.letterEvents).toHaveLength(0);
+    await app.close();
+  });
+
+  it("declines with a reason of 20+ characters; a short one is 422 and a second decision is 409", async () => {
+    const { app, backend } = makeServer();
+    const letter = backend.seedLetter();
+    const headers = { ...SUPERVISOR, "if-match": '"0"' };
+    expect(
+      (
+        await decline(
+          app,
+          letter.letterId,
+          { ...headers, "idempotency-key": "l-6a" },
+          {
+            reason: "too short",
+          },
+        )
+      ).statusCode,
+    ).toBe(422);
+    const ok = await decline(
+      app,
+      letter.letterId,
+      { ...headers, "idempotency-key": "l-6b" },
+      {
+        reason: "The attending left the practice last month.",
+      },
+    );
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({ status: "declined", version: 1 });
+    const again = await approve(app, letter.letterId, {
+      ...headers,
+      "idempotency-key": "l-6c",
+      "if-match": '"1"',
+    });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error?.code ?? again.json().code).toBe("PHYSICIAN_LETTER_NOT_PENDING");
+    await app.close();
+  });
+
+  it("denies a counselor (permission without the oversight predicate), a volunteer and a portal session; a keyless user is 403", async () => {
+    const { app, backend } = makeServer();
+    const letter = backend.seedLetter();
+    for (const [i, who] of [COUNSELOR, VOLUNTEER].entries()) {
+      expect((await app.inject({ method: "GET", url: LIST, headers: who })).statusCode).toBe(403);
+      expect((await app.inject({ method: "GET", url: forPlan(), headers: who })).statusCode).toBe(
+        403,
+      );
+      expect(
+        (
+          await approve(app, letter.letterId, {
+            ...who,
+            "idempotency-key": `l-7-${i}`,
+            "if-match": '"0"',
+          })
+        ).statusCode,
+      ).toBe(403);
+    }
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: LIST,
+          // A bereaved family member's session: a portal class, a portal account, and no staff role.
+          headers: {
+            ...COUNSELOR,
+            "x-test-roles": "bereaved_family",
+            "x-test-session-class": "bereaved_portal",
+            "x-test-portal-account": "acct-1",
+          },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect((await app.inject({ method: "GET", url: LIST, headers: NO_PERMS })).statusCode).toBe(
+      403,
+    );
+    expect(backend.letterEvents).toHaveLength(0);
+    await app.close();
+  });
+
+  it("a letter that does not exist is a 404", async () => {
+    const { app } = makeServer();
+    const res = await approve(app, "10000000-0000-4000-8000-0000000000ff", {
+      ...SUPERVISOR,
+      "idempotency-key": "l-8",
+      "if-match": '"0"',
+    });
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+});
+
+// ── route 41 — the contact's care goals (ADR-0109) ──────────────────────────────────────────────────────
+
+describe("M16 §4.1 route 41 — PUT /contacts/:contactId/care-plan", () => {
+  const url = (contactId: string) => `/api/v1/bereavement/contacts/${contactId}/care-plan`;
+  const setup = () => {
+    const made = makeServer();
+    const plan = made.backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const contact = made.backend.seedContact(plan.planId);
+    return { ...made, plan, contact };
+  };
+  const put = (
+    app: ReturnType<typeof buildServer>,
+    contactId: string,
+    headers: Record<string, string>,
+    payload: unknown,
+  ) => app.inject({ method: "PUT", url: url(contactId), headers, payload: payload as object });
+
+  it("the plan's counselor records up to three goals (If-Match = the version read) and gets the contact back", async () => {
+    const { app, backend, contact } = setup();
+    const goals = ["Sleep through the night", "Call my sister on Sundays"];
+    const read = contact.version;
+    const res = await put(
+      app,
+      contact.contactId,
+      { ...COUNSELOR, "idempotency-key": "cg-1", "if-match": `"${read}"` },
+      { goals },
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ contactId: contact.contactId, careGoals: goals });
+    expect(backend.careGoalWrites).toEqual([
+      { contactId: contact.contactId, goals, expectedVersion: read },
+    ]);
+    await app.close();
+  });
+
+  it("an empty list clears the goals", async () => {
+    const { app, backend, contact } = setup();
+    const res = await put(
+      app,
+      contact.contactId,
+      { ...COUNSELOR, "idempotency-key": "cg-2", "if-match": `"${contact.version}"` },
+      { goals: [] },
+    );
+    expect(res.statusCode).toBe(200);
+    expect(backend.careGoalWrites[0]?.goals).toEqual([]);
+    await app.close();
+  });
+
+  it.each([
+    ["four goals", { goals: ["a", "b", "c", "d"] }],
+    ["a blank goal", { goals: ["   "] }],
+    ["an empty goal", { goals: [""] }],
+    ["a goal over 280 characters", { goals: ["x".repeat(281)] }],
+    ["goals that are not strings", { goals: [1] }],
+    ["no goals field", {}],
+  ])("rejects %s with a TypeBox 422", async (_name, payload) => {
+    const { app, backend, contact } = setup();
+    const res = await put(
+      app,
+      contact.contactId,
+      { ...COUNSELOR, "idempotency-key": "cg-3", "if-match": `"${contact.version}"` },
+      payload,
+    );
+    expect(res.statusCode).toBe(422);
+    expect(backend.careGoalWrites).toHaveLength(0);
+    await app.close();
+  });
+
+  it("accepts exactly 280 characters and exactly three goals", async () => {
+    const { app, contact } = setup();
+    const res = await put(
+      app,
+      contact.contactId,
+      { ...COUNSELOR, "idempotency-key": "cg-4", "if-match": `"${contact.version}"` },
+      { goals: ["x".repeat(280), "b", "c"] },
+    );
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("requires If-Match (428), an Idempotency-Key (400), and refuses a stale version (409)", async () => {
+    const { app, contact } = setup();
+    expect(
+      (
+        await put(
+          app,
+          contact.contactId,
+          { ...COUNSELOR, "idempotency-key": "cg-5" },
+          { goals: ["a"] },
+        )
+      ).statusCode,
+    ).toBe(428);
+    expect(
+      (
+        await put(
+          app,
+          contact.contactId,
+          { ...COUNSELOR, "if-match": `"${contact.version}"` },
+          { goals: ["a"] },
+        )
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await put(
+          app,
+          contact.contactId,
+          { ...COUNSELOR, "idempotency-key": "cg-6", "if-match": `"${contact.version + 7}"` },
+          { goals: ["a"] },
+        )
+      ).statusCode,
+    ).toBe(409);
+    await app.close();
+  });
+
+  it("a counselor outside the plan window 404s; a caller without the key is 403; an unknown contact 404s", async () => {
+    const { app, backend } = setup();
+    const heldBySupervisor = backend.seedPlan({
+      status: "active",
+      assignedCounselorUserId: SUPERVISOR_ID,
+    });
+    const theirs = backend.seedContact(heldBySupervisor.planId);
+    expect(
+      (
+        await put(
+          app,
+          theirs.contactId,
+          { ...COUNSELOR, "idempotency-key": "cg-7", "if-match": `"${theirs.version}"` },
+          { goals: ["a"] },
+        )
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await put(
+          app,
+          theirs.contactId,
+          { ...NO_PERMS, "idempotency-key": "cg-8", "if-match": `"${theirs.version}"` },
+          { goals: ["a"] },
+        )
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await put(
+          app,
+          "00000000-0000-4000-8000-00000000dead",
+          { ...SUPERVISOR, "idempotency-key": "cg-9", "if-match": '"1"' },
+          { goals: ["a"] },
+        )
+      ).statusCode,
+    ).toBe(404);
+    expect(backend.careGoalWrites).toHaveLength(0);
+    await app.close();
+  });
+});
+
 // ── route 33 — the D18-gated counselor first contact ───────────────────────────────────────────────────
 
 describe("M16 §4.1 route 33 — initiate-contact", () => {
@@ -1371,6 +2514,458 @@ describe("M16 §4.1 routes 30–31 — dashboards", () => {
     });
     expect(supervisorDash.statusCode).toBe(200);
 
+    await app.close();
+  });
+});
+
+// ── routes 42-52 — the mailing program and the contact timeline (ADR-0109 D10) ───────────────────────────
+
+describe("M16 §4.1 routes 42-51 — the mailing program (bereavement oversight only)", () => {
+  const BASE = "/api/v1/bereavement/mailings";
+  const RUN = `${BASE}/runs/${MAILING_RUN_ID}`;
+  const UNKNOWN_RUN = `${BASE}/runs/10000000-0000-4000-8000-0000000000fe`;
+  // the platform idempotency middleware keys on the header: a reused key with a different request is a 409, so every write gets its own
+  let keySeq = 0;
+  const nextKey = (prefix: string): string => {
+    keySeq += 1;
+    return `${prefix}${keySeq}`;
+  };
+  const write = (version = 0) => ({
+    "idempotency-key": nextKey("m-"),
+    "if-match": `"${version}"`,
+  });
+  const CONTENT = {
+    en: {
+      title: "Autumn note",
+      greeting: "Dear {name},",
+      paragraphs: ["We are thinking of you."],
+      signoff: "With care",
+    },
+  };
+  const CONFIG_BODY = {
+    enabled: true,
+    leadDays: 10,
+    audienceRelationships: null,
+    content: CONTENT,
+  };
+
+  it("oversight reads the configs, the runs, one run and its items", async () => {
+    const { app } = makeServer();
+    const configs = await app.inject({ method: "GET", url: `${BASE}/config`, headers: SUPERVISOR });
+    expect(configs.statusCode).toBe(200);
+    expect(configs.json().map((c: { mailingKey: string }) => c.mailingKey)).toEqual([
+      "newsletter_quarterly",
+      "holiday_december",
+      "mothers_day",
+      "fathers_day",
+    ]);
+    expect(
+      (await app.inject({ method: "GET", url: `${BASE}/runs`, headers: SUPERVISOR })).json().data,
+    ).toHaveLength(1);
+    expect(
+      (await app.inject({ method: "GET", url: RUN, headers: SUPERVISOR })).json(),
+    ).toMatchObject({ runId: MAILING_RUN_ID, status: "draft" });
+    expect(
+      (await app.inject({ method: "GET", url: `${RUN}/items`, headers: SUPERVISOR })).statusCode,
+    ).toBe(200);
+    await app.close();
+  });
+
+  it("a counselor holding every key is still refused: the predicate is oversight, the batch holds every address", async () => {
+    const { app, backend } = makeServer();
+    const calls = [
+      app.inject({ method: "GET", url: `${BASE}/config`, headers: COUNSELOR }),
+      app.inject({ method: "GET", url: `${BASE}/runs`, headers: COUNSELOR }),
+      app.inject({ method: "GET", url: RUN, headers: COUNSELOR }),
+      app.inject({ method: "GET", url: `${RUN}/download`, headers: COUNSELOR }),
+      app.inject({
+        method: "PUT",
+        url: `${BASE}/config/newsletter_quarterly`,
+        headers: { ...COUNSELOR, ...write() },
+        payload: CONFIG_BODY,
+      }),
+      app.inject({ method: "POST", url: `${RUN}/generate`, headers: { ...COUNSELOR, ...write() } }),
+      app.inject({
+        method: "POST",
+        url: `${RUN}/confirm-mailed`,
+        headers: { ...COUNSELOR, ...write() },
+      }),
+      app.inject({ method: "POST", url: `${RUN}/cancel`, headers: { ...COUNSELOR, ...write() } }),
+    ];
+    for (const res of await Promise.all(calls)) expect(res.statusCode).toBe(403);
+    expect(backend.mailingCalls).toEqual([]);
+    await app.close();
+  });
+
+  it("a volunteer and a caller with no permission are refused the whole surface", async () => {
+    const { app } = makeServer();
+    for (const headers of [VOLUNTEER, NO_PERMS]) {
+      expect((await app.inject({ method: "GET", url: `${BASE}/runs`, headers })).statusCode).toBe(
+        403,
+      );
+      expect(
+        (await app.inject({ method: "GET", url: `${RUN}/download`, headers })).statusCode,
+      ).toBe(403);
+    }
+    await app.close();
+  });
+
+  it("every write needs Idempotency-Key (400) and If-Match (428)", async () => {
+    const { app, backend } = makeServer();
+    const writes: [string, string, unknown][] = [
+      ["PUT", `${BASE}/config/newsletter_quarterly`, CONFIG_BODY],
+      ["PATCH", `${RUN}/content`, { content: CONTENT }],
+      ["POST", `${RUN}/generate`, undefined],
+      ["POST", `${RUN}/confirm-mailed`, undefined],
+      ["POST", `${RUN}/cancel`, undefined],
+    ];
+    for (const [method, url, payload] of writes) {
+      const send = (headers: Record<string, string>) =>
+        app.inject({
+          method: method as "PUT",
+          url,
+          headers: { ...SUPERVISOR, ...headers },
+          ...(payload === undefined ? {} : { payload: payload as object }),
+        });
+      expect(
+        (await send({ "if-match": '"0"', "x-note": "no-key" })).statusCode,
+        `${method} ${url} without a key`,
+      ).toBe(400);
+      expect(
+        (await send({ "idempotency-key": nextKey("m-x") })).statusCode,
+        `${method} ${url} without If-Match`,
+      ).toBe(428);
+    }
+    expect(backend.mailingCalls).toEqual([]);
+    await app.close();
+  });
+
+  it("the If-Match header names the version the service decides on; a stale one is 409", async () => {
+    const { app, backend } = makeServer();
+    const ok = await app.inject({
+      method: "POST",
+      url: `${RUN}/generate`,
+      headers: { ...SUPERVISOR, ...write() },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({ status: "generating", version: 1 });
+    const stale = await app.inject({
+      method: "POST",
+      url: `${RUN}/generate`,
+      headers: { ...SUPERVISOR, "idempotency-key": nextKey("m-y"), "if-match": '"9"' },
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(backend.mailingCalls.map((c) => c.expectedVersion)).toEqual([0, 9]);
+    await app.close();
+  });
+
+  it("config: the first write is If-Match 0; a bad lead, a bad date and the deferred birthday mailing are refused", async () => {
+    const { app } = makeServer();
+    const put = (key: string, payload: unknown) =>
+      app.inject({
+        method: "PUT",
+        url: `${BASE}/config/${key}`,
+        headers: { ...SUPERVISOR, ...write() },
+        payload: payload as object,
+      });
+    const ok = await put("mothers_day", CONFIG_BODY);
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({ mailingKey: "mothers_day", enabled: true, version: 1 });
+    expect((await put("mothers_day", { ...CONFIG_BODY, leadDays: 2 })).statusCode).toBe(422);
+    expect((await put("mothers_day", { ...CONFIG_BODY, leadDays: 61 })).statusCode).toBe(422);
+    expect(
+      (await put("newsletter_quarterly", { ...CONFIG_BODY, schedule: { monthDays: ["13-40"] } }))
+        .statusCode,
+    ).toBe(422);
+    expect((await put("decedent_birthday", CONFIG_BODY)).statusCode).toBe(422);
+    expect(
+      (
+        await put("mothers_day", {
+          ...CONFIG_BODY,
+          content: { en: { ...CONTENT.en, paragraphs: Array(13).fill("x") } },
+        })
+      ).statusCode,
+    ).toBe(422);
+    await app.close();
+  });
+
+  it("a run that does not exist is a 404 on every read, and offset pagination is refused", async () => {
+    const { app } = makeServer();
+    for (const suffix of ["", "/items"]) {
+      expect(
+        (await app.inject({ method: "GET", url: `${UNKNOWN_RUN}${suffix}`, headers: SUPERVISOR }))
+          .statusCode,
+      ).toBe(404);
+    }
+    expect(
+      (await app.inject({ method: "GET", url: `${BASE}/runs?offset=5`, headers: SUPERVISOR }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (await app.inject({ method: "GET", url: `${BASE}/runs?status=bogus`, headers: SUPERVISOR }))
+        .statusCode,
+    ).toBe(422);
+    await app.close();
+  });
+
+  it("download hands out a URL that is never cached", async () => {
+    const { app, backend } = makeServer();
+    const res = await app.inject({ method: "GET", url: `${RUN}/download`, headers: SUPERVISOR });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      runId: MAILING_RUN_ID,
+      url: "https://objects.example.test/batch",
+    });
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(backend.mailingCalls).toEqual([{ method: "downloadRun", runId: MAILING_RUN_ID }]);
+    await app.close();
+  });
+});
+
+describe("M16 §4.1 route 52 — a contact's program timeline", () => {
+  it("answers the contact's touchpoints and activities, refuses offset pagination, and 404s an absent contact", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan();
+    const contact = backend.seedContact(plan.planId);
+    const url = `/api/v1/bereavement/contacts/${contact.contactId}/timeline`;
+    const res = await app.inject({ method: "GET", url, headers: SUPERVISOR });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data[0]).toMatchObject({
+      source: "program_activity",
+      activityKind: "newsletter_mailing",
+      outcome: "mailed",
+    });
+    expect(res.json()).toHaveProperty("redactedCategories");
+    expect(
+      (await app.inject({ method: "GET", url: `${url}?offset=5`, headers: SUPERVISOR })).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/v1/bereavement/contacts/10000000-0000-4000-8000-0000000000fd/timeline",
+          headers: SUPERVISOR,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect((await app.inject({ method: "GET", url, headers: NO_PERMS })).statusCode).toBe(403);
+    await app.close();
+  });
+});
+
+// ── ADR-0109 D10 (PR 3) — support groups, memorial services and the grief library: the GUARD composition per route ──
+describe("M16 §4.1 routes 53-81 — program activities (groups, memorials, library)", () => {
+  let seq = 0;
+  const key = () => {
+    seq += 1;
+    return { "idempotency-key": `p-${seq}` };
+  };
+  const writeHeaders = (version = 1) => ({ ...key(), "if-match": `"${version}"` });
+  const GROUPS = "/api/v1/bereavement/groups";
+  const MEMORIALS = "/api/v1/bereavement/memorials";
+  const LIBRARY = "/api/v1/bereavement/library";
+  const status = async (
+    app: ReturnType<typeof makeServer>["app"],
+    method: "GET" | "POST" | "PATCH" | "PUT",
+    url: string,
+    headers: Record<string, string>,
+    payload?: object,
+  ) => (await app.inject({ method, url, headers, ...(payload ? { payload } : {}) })).statusCode;
+
+  const GROUP_BODY = {
+    name: "Evening group",
+    description: null,
+    format: "drop_in",
+    recurrence: null,
+    modality: "in_person",
+    enrollmentRequired: true,
+    facilitatorKind: "staff",
+    facilitatorUserId: COUNSELOR_ID,
+    coFacilitatorUserId: null,
+    capacity: 12,
+    timezone: "America/Chicago",
+    venueText: "Room 2",
+  };
+
+  it("the group list is for bereavement-capable staff and oversight; a caller with no key is refused", async () => {
+    const { app } = makeServer();
+    expect(await status(app, "GET", GROUPS, COUNSELOR)).toBe(200);
+    expect(await status(app, "GET", GROUPS, SUPERVISOR)).toBe(200);
+    expect(await status(app, "GET", `${GROUPS}/${STAFF_GROUP_ID}/sessions`, VOLUNTEER)).toBe(200);
+    expect(await status(app, "GET", GROUPS, NO_PERMS)).toBe(403);
+    await app.close();
+  });
+
+  it("creating a group is oversight only and needs an Idempotency-Key", async () => {
+    const { app, backend } = makeServer();
+    expect(await status(app, "POST", GROUPS, { ...COUNSELOR, ...key() }, GROUP_BODY)).toBe(403);
+    expect(await status(app, "POST", GROUPS, SUPERVISOR, GROUP_BODY)).toBe(400);
+    expect(await status(app, "POST", GROUPS, { ...SUPERVISOR, ...key() }, GROUP_BODY)).toBe(201);
+    expect(backend.programCalls).toEqual(["createGroup"]);
+    await app.close();
+  });
+
+  it("the staff facilitator manages their group; another clinician gets 404; If-Match is required", async () => {
+    const { app } = makeServer();
+    const { format: _format, recurrence: _recurrence, ...EDIT } = GROUP_BODY;
+    const url = `${GROUPS}/${STAFF_GROUP_ID}`;
+    expect(await status(app, "PATCH", url, { ...COUNSELOR, ...writeHeaders() }, EDIT)).toBe(200);
+    expect(await status(app, "POST", `${url}/open`, { ...COUNSELOR, ...key() })).toBe(428);
+    expect(await status(app, "POST", `${url}/open`, { ...COUNSELOR, ...writeHeaders() })).toBe(200);
+    expect(await status(app, "PATCH", url, { ...OFFTEAM_MSW, ...writeHeaders() }, EDIT)).toBe(404);
+    expect(await status(app, "GET", `${url}/roster`, OFFTEAM_MSW)).toBe(404);
+    await app.close();
+  });
+
+  it("a volunteer facilitator runs their group (roster, attendance) but never manages it", async () => {
+    const { app, backend } = makeServer();
+    const { format: _format, recurrence: _recurrence, ...EDIT } = GROUP_BODY;
+    const url = `${GROUPS}/${VOLUNTEER_GROUP_ID}`;
+    expect(await status(app, "GET", `${url}/roster`, VOLUNTEER)).toBe(200);
+    expect(
+      await status(
+        app,
+        "POST",
+        `${url}/sessions/${PROGRAM_ID}/attendance`,
+        { ...VOLUNTEER, ...key() },
+        {
+          contactIds: [PROGRAM_ID],
+        },
+      ),
+    ).toBe(200);
+    expect(await status(app, "PATCH", url, { ...VOLUNTEER, ...writeHeaders() }, EDIT)).toBe(404);
+    expect(
+      await status(
+        app,
+        "POST",
+        `${url}/sessions`,
+        { ...VOLUNTEER, ...key() },
+        {
+          startsAt: "2026-12-01T18:00:00.000Z",
+          endsAt: "2026-12-01T19:30:00.000Z",
+        },
+      ),
+    ).toBe(404);
+    expect(backend.programCalls).toEqual(["roster", "recordAttendance"]);
+    await app.close();
+  });
+
+  it("enrolling is the family's window: the assigned counselor or oversight, never an unassigned clinician", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const contact = backend.seedContact(plan.planId);
+    const url = `${GROUPS}/${STAFF_GROUP_ID}/enrollments`;
+    const body = { contactId: contact.contactId };
+    expect(await status(app, "POST", url, { ...COUNSELOR, ...key() }, body)).toBe(200);
+    expect(await status(app, "POST", url, { ...OFFTEAM_MSW, ...key() }, body)).toBe(404);
+    expect(
+      await status(
+        app,
+        "GET",
+        `/api/v1/bereavement/contacts/${contact.contactId}/support-groups`,
+        SUPERVISOR,
+      ),
+    ).toBe(200);
+    expect(
+      await status(
+        app,
+        "POST",
+        `${url}/${contact.contactId}/withdraw`,
+        { ...COUNSELOR, ...key() },
+        {
+          reason: "requested",
+        },
+      ),
+    ).toBe(200);
+    await app.close();
+  });
+
+  it("memorials: staff read the service list; create, invitations and attendance are oversight; a phone RSVP is the family's window", async () => {
+    const { app, backend } = makeServer();
+    const plan = backend.seedPlan({ status: "active", assignedCounselorUserId: COUNSELOR_ID });
+    const contact = backend.seedContact(plan.planId);
+    const body = {
+      title: "Season of remembrance",
+      description: null,
+      startsAt: "2026-12-12T18:00:00.000Z",
+      endsAt: "2026-12-12T20:00:00.000Z",
+      modality: "in_person",
+      venueText: "Chapel",
+      capacity: 80,
+      rsvpBy: "2026-12-05",
+      inviteWindowMonths: 12,
+    };
+    expect(await status(app, "GET", MEMORIALS, COUNSELOR)).toBe(200);
+    expect(await status(app, "POST", MEMORIALS, { ...COUNSELOR, ...key() }, body)).toBe(403);
+    expect(await status(app, "POST", MEMORIALS, { ...SUPERVISOR, ...key() }, body)).toBe(201);
+    expect(await status(app, "GET", `${MEMORIALS}/${PROGRAM_ID}/invitations`, COUNSELOR)).toBe(403);
+    expect(await status(app, "GET", `${MEMORIALS}/${PROGRAM_ID}/invitations`, SUPERVISOR)).toBe(
+      200,
+    );
+    expect(
+      await status(app, "POST", `${MEMORIALS}/${PROGRAM_ID}/publish`, {
+        ...SUPERVISOR,
+        ...writeHeaders(),
+      }),
+    ).toBe(200);
+    const rsvp = `/api/v1/bereavement/contacts/${contact.contactId}/memorial-invitations/${PROGRAM_ID}/rsvp`;
+    expect(
+      await status(app, "PUT", rsvp, { ...COUNSELOR, ...key() }, { response: "yes", guests: 2 }),
+    ).toBe(200);
+    expect(
+      await status(app, "PUT", rsvp, { ...OFFTEAM_MSW, ...key() }, { response: "yes", guests: 2 }),
+    ).toBe(404);
+    expect(
+      await status(app, "PUT", rsvp, { ...COUNSELOR, ...key() }, { response: "yes", guests: 11 }),
+    ).toBe(422);
+    expect(
+      await status(
+        app,
+        "POST",
+        `${MEMORIALS}/${PROGRAM_ID}/invitations/${PROGRAM_ID}/attendance`,
+        {
+          ...COUNSELOR,
+          ...key(),
+        },
+        { attended: true },
+      ),
+    ).toBe(403);
+    await app.close();
+  });
+
+  it("the grief library is oversight only (a counselor holding the keys is refused)", async () => {
+    const { app, backend } = makeServer();
+    const body = {
+      documentId: PROGRAM_ID,
+      title: "When grief arrives",
+      summary: null,
+      category: "understanding_grief",
+      transcriptDocumentId: null,
+      sortOrder: 0,
+    };
+    expect(await status(app, "GET", LIBRARY, COUNSELOR)).toBe(403);
+    expect(await status(app, "POST", LIBRARY, { ...COUNSELOR, ...key() }, body)).toBe(403);
+    expect(await status(app, "GET", LIBRARY, SUPERVISOR)).toBe(200);
+    expect(await status(app, "POST", LIBRARY, { ...SUPERVISOR, ...key() }, body)).toBe(201);
+    expect(
+      await status(
+        app,
+        "POST",
+        `${LIBRARY}/${PROGRAM_ID}/status`,
+        { ...SUPERVISOR, ...writeHeaders() },
+        {
+          status: "published",
+        },
+      ),
+    ).toBe(200);
+    const preview = await app.inject({
+      method: "GET",
+      url: `${LIBRARY}/${PROGRAM_ID}/url`,
+      headers: SUPERVISOR,
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.headers["cache-control"]).toBe("no-store");
+    expect(backend.programCalls).toEqual(["listItems", "createItem", "setStatus", "itemUrl"]);
     await app.close();
   });
 });

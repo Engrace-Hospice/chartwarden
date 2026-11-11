@@ -35,7 +35,7 @@
  *   - Backend code for a module lives at  apps/backend/src/modules/<NN-slug>/
  *   - Shared domain-area logic lives in   packages/<area>/
  *   - LEAVES (importable by everyone, depend on nothing app-specific):
- *       packages/shared, packages/types, packages/domain, packages/ui
+ *       packages/shared, packages/types, packages/ui
  *   - FOUNDATION HELPERS (implicitly importable by every module — ADR-0005 D4):
  *       packages/audit, packages/auth, packages/tenancy, packages/db/src/schema.
  *   - A module may import from: own codePaths + dependsOn codePaths + LEAVES +
@@ -59,7 +59,7 @@ exports.ALL_OWNED_PATHS =
     void 0;
 exports.allowedImportPaths = allowedImportPaths;
 exports.allowedTables = allowedTables;
-exports.LEAF_PACKAGES = ["packages/shared", "packages/types", "packages/domain", "packages/ui"];
+exports.LEAF_PACKAGES = ["packages/shared", "packages/types", "packages/ui"];
 /**
  * Foundation helper packages every module may import WITHOUT a dependsOn edge
  * (ADR-0005 D4): audit() (packages/audit), requirePermission/requireAbac/
@@ -261,6 +261,7 @@ exports.MODULES = [
       "message_ack_broadcast_recipient",
       "message_emergency",
       "message_emergency_recipient",
+      "message_group_tag_recipient",
       "death_board",
       "death_board_item",
       "death_board_item_event",
@@ -689,6 +690,19 @@ exports.MODULES = [
       "bereavement_plan_closure",
       "bereavement_risk_score",
       "bereavement_idg_risk_flag",
+      "bereavement_assessment_task",
+      "bereavement_risk_assessment_draft",
+      "bereavement_physician_letter",
+      "bereavement_mailing_config",
+      "bereavement_mailing_run",
+      "bereavement_mailing_item",
+      "bereavement_support_group",
+      "bereavement_support_group_session",
+      "bereavement_support_group_enrollment",
+      "bereavement_support_group_attendance",
+      "bereavement_memorial_service",
+      "bereavement_memorial_invitation",
+      "bereavement_library_item",
       "tenant_bereavement_external_source_gate_override",
     ],
   },
@@ -865,6 +879,18 @@ exports.MODULES = [
       "claim_state_history",
       "claim_submission",
       "clearinghouse_ack_cursor",
+      "claimmd_response_stream",
+      "claimmd_response_batch",
+      "claimmd_response_event",
+      "claimmd_response_resolution",
+      "claimmd_response_resolution_history",
+      "claimmd_ack_application",
+      "claimmd_ack_delivery",
+      "claimmd_submission_evidence",
+      "claimmd_submission_line_evidence",
+      "claimmd_notice_submission_evidence",
+      "claimmd_notice_receipt_observation",
+      "claimmd_submission_receipt_observation",
       "clearinghouse_interchange_number",
       "clearinghouse_submission_attempt",
       "dde_change_cursor",
@@ -957,6 +983,18 @@ exports.MODULES = [
       "denial_playbook_case_step",
       "remittance_pull_cursor",
       "remittance_pull_refusal",
+      "claimmd_era_stream",
+      "claimmd_era_inbox",
+      "claimmd_era_m25_stage",
+      "claimmd_era_delivery",
+      "claimmd_era_delivery_history",
+      "claimmd_era_recovery_action",
+      "claimmd_era_resolution",
+      "claimmd_era_resolution_history",
+      "claimmd_era_match_decision",
+      "claimmd_era_financial_review_decision",
+      "claimmd_era_posting_plan",
+      "claimmd_era_posting_event",
       "appeal_tier_detail",
       "recorded_deadline",
       "payer_appeal_path",
@@ -1121,6 +1159,7 @@ exports.MODULES = [
       "portal_document_upload",
       "portal_invitation",
       "portal_notification_preference",
+      "portal_signature_request",
       "telehealth_visit",
     ],
   },
@@ -1187,7 +1226,6 @@ exports.MODULES = [
     name: "SaaS Tenant Platform",
     codePaths: [
       "packages/saas-tenant-platform",
-      "packages/admin-ui-shell",
       "apps/admin/src/shell",
       "apps/backend/src/modules/34-saas-tenant-platform",
       "apps/web/src/modules/34-saas",

@@ -1,3 +1,15 @@
+import { randomUUID } from "node:crypto";
+import {
+  type ClaimState,
+  type ClaimTransitionEvent,
+  canonicalRuleKey,
+  reduce as claimReduce,
+  deriveControlNumber,
+  noeMachine,
+  notrMachine,
+  repositories,
+} from "@chartwarden/billing";
+import * as schema from "@chartwarden/db/schema";
 // apps/backend/src/modules/23-billing-medicare/routes/write-service-drizzle.ts — the Drizzle-backed
 // M23WriteRouteService (§4.1 mutating surface: claim assemble / update-draft / delete-draft / validate /
 // submit / replace / void, validation override, rule-config CRUD, NOE/NOTR submit + cancel, eligibility
@@ -9,7 +21,7 @@
 // ALWAYS the server-assembled {@link M23WriteActor} (never the body). The lifecycle methods do NOT
 // re-implement state logic — they drive the pure @chartwarden/billing machines (`claim` reducer + `noeMachine` /
 // `notrMachine`) and persist the result with the §2.5 version check (`transitionToState` →
-// VERSION_CONFLICT → 412). The §4.10 `m23.*` events are emitted through the injected {@link WriteOutboxPort}
+// 409 STALE_VERSION). The §4.10 `m23.*` events are emitted through the injected {@link WriteOutboxPort}
 // in the SAME unit of work as the mutation (transactional outbox, D2); the §4.8 worker jobs through the
 // injected {@link JobEnqueuePort}. M23 carries NO PHI and NEVER the MBI digit (D13 / §3.6 / §8.7); money is
 // INTEGER CENTS (D8).
@@ -26,18 +38,7 @@
 // re-assembly delete needs, and `withOrgContext` comes from the always-importable `@chartwarden/tenancy`
 // foundation. AI-BLOCK (D13): no `@chartwarden/ai-platform` import here; the per-route `actor_kind='ai_*'` reject
 // is composed at the route (see ./actor `rejectAiActor`).
-import { randomUUID } from "node:crypto";
-import {
-  type ClaimState,
-  type ClaimTransitionEvent,
-  canonicalRuleKey,
-  reduce as claimReduce,
-  deriveControlNumber,
-  noeMachine,
-  notrMachine,
-  repositories,
-} from "@chartwarden/billing";
-import * as schema from "@chartwarden/db/schema";
+import { StaleVersionError, isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, ConflictError, DegradedError, NotFoundError } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -289,17 +290,6 @@ async function deleteDraftClaimSubtree(
     .where(and(eq(schema.claim.id, claimId), eq(schema.claim.organizationId, organizationId)));
 }
 
-const PG_UNIQUE_VIOLATION = "23505";
-
-/** True when `err` (or its driver cause) is a Postgres unique-index violation. */
-function isUniqueViolation(err: unknown): boolean {
-  const code = (e: unknown): unknown => (e as { code?: unknown } | null)?.code;
-  return (
-    code(err) === PG_UNIQUE_VIOLATION ||
-    code((err as { cause?: unknown } | null)?.cause) === PG_UNIQUE_VIOLATION
-  );
-}
-
 /** Run `fn`; a lost first-create race (unique violation) becomes a typed 409, never a 500. */
 const mapUniqueViolation =
   (message: string) =>
@@ -431,11 +421,9 @@ export function buildDrizzleM23WriteService(
     }
   };
 
-  const conflict412 = (currentVersion: number | null): ChartWardenError =>
-    new ChartWardenError(
-      "VERSION_CONFLICT",
+  const staleVersion = (currentVersion: number | null): ChartWardenError =>
+    new StaleVersionError(
       `the record was modified concurrently (current version ${currentVersion ?? "unknown"})`,
-      412,
     );
 
   /** Map a pure-reducer rejection to the structured response envelope. */
@@ -676,7 +664,7 @@ export function buildDrizzleM23WriteService(
             totalExpectedPaymentCents: args.totalExpectedPaymentCents ?? totalCharge,
           },
         );
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
         return buildClaimDetail(tx, res.row);
       });
     },
@@ -733,7 +721,7 @@ export function buildDrizzleM23WriteService(
           stepped.state,
           { latestValidationRunId: validationRunId },
         );
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
         await new repositories.ClaimStateHistoryRepository(tx).append({
           organizationId: actor.organizationId,
           claimId: claim.id,
@@ -759,10 +747,21 @@ export function buildDrizzleM23WriteService(
       });
     },
 
-    async submitClaim(actor, claimId): Promise<ClaimSubmissionAcceptedView> {
+    async submitClaim(actor, claimId, route): Promise<ClaimSubmissionAcceptedView> {
       requireStepUp(actor);
+      if (
+        !route.reviewedSourceFingerprint ||
+        !/^[0-9a-f]{64}$/.test(route.reviewedSourceFingerprint)
+      ) {
+        throw new ChartWardenError(
+          "CLAIM_PREVIEW_REQUIRED",
+          "a valid reviewed claim preview is required",
+          409,
+        );
+      }
       return inOrgCtx(actor, async (tx) => {
         const claim = await loadClaim(tx, actor, claimId);
+        if (claim.version !== route.expectedVersion) throw staleVersion(claim.version);
         if (claim.state !== "ready") {
           throw new ConflictError("only a READY claim can be submitted");
         }
@@ -801,11 +800,26 @@ export function buildDrizzleM23WriteService(
           claimControlNumber,
           attemptIndex,
           outcome: "queued",
+          reviewedSourceFingerprint: route.reviewedSourceFingerprint,
         });
+        if (submission.reviewedSourceFingerprint !== route.reviewedSourceFingerprint) {
+          throw new ConflictError(
+            "an idempotent submission key already exists for a different reviewed claim snapshot",
+          );
+        }
         const { jobId } = await jobs.enqueue(
           "claim.submit",
           `${actor.organizationId}:${claim.id}:${attemptIndex}`,
-          { claimId: claim.id, submissionId: submission.id, claimControlNumber, attemptIndex },
+          {
+            claimId: claim.id,
+            submissionId: submission.id,
+            claimControlNumber,
+            attemptIndex,
+            reviewedSourceFingerprint: route.reviewedSourceFingerprint,
+            ...(route.expectedRouteFingerprint
+              ? { expectedRouteFingerprint: route.expectedRouteFingerprint }
+              : {}),
+          },
         );
         // D2 outbox-only: the worker performs the upload + the READY→SUBMITTED transition + `m23.claim.submitted`.
         await emit(tx, {
@@ -818,6 +832,10 @@ export function buildDrizzleM23WriteService(
             submissionId: submission.id,
             claimControlNumber,
             attemptIndex,
+            reviewedSourceFingerprint: route.reviewedSourceFingerprint,
+            ...(route.expectedRouteFingerprint
+              ? { expectedRouteFingerprint: route.expectedRouteFingerprint }
+              : {}),
           },
         });
         return { submissionId: submission.id, jobId, attemptIndex, claimControlNumber };
@@ -1014,7 +1032,7 @@ export function buildDrizzleM23WriteService(
             : {}),
           ...(args.setReason !== undefined ? { setReason: args.setReason } : {}),
         });
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
         return mapRuleConfig(res.row);
       });
     },
@@ -1027,7 +1045,7 @@ export function buildDrizzleM23WriteService(
           throw new NotFoundError("rule config");
         }
         const res = await repo.deleteWithVersion(ruleConfigId, args.expectedVersion);
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
       });
     },
 
@@ -1050,7 +1068,7 @@ export function buildDrizzleM23WriteService(
           const stepped = noeMachine.reduce(noe.state, "assemble");
           if (stepped.error) throw reduceError(stepped.error, "assemble");
           const res = await repo.transitionToState(noe.id, noe.version, stepped.state);
-          if (!res.ok) throw conflict412(res.currentVersion);
+          if (!res.ok) throw staleVersion(res.currentVersion);
           noe = res.row;
         }
         if (noe.state !== "ready") {
@@ -1095,7 +1113,7 @@ export function buildDrizzleM23WriteService(
         });
         if (stepped.error) throw reduceError(stepped.error, "cancel");
         const res = await repo.transitionToState(noe.id, noe.version, stepped.state);
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
         return mapNoe(res.row);
       });
     },
@@ -1109,7 +1127,7 @@ export function buildDrizzleM23WriteService(
           const stepped = notrMachine.reduce(notr.state, "assemble");
           if (stepped.error) throw reduceError(stepped.error, "assemble");
           const res = await repo.transitionToState(notr.id, notr.version, stepped.state);
-          if (!res.ok) throw conflict412(res.currentVersion);
+          if (!res.ok) throw staleVersion(res.currentVersion);
           notr = res.row;
         }
         if (notr.state !== "ready") {
@@ -1154,7 +1172,7 @@ export function buildDrizzleM23WriteService(
         });
         if (stepped.error) throw reduceError(stepped.error, "cancel");
         const res = await repo.transitionToState(notr.id, notr.version, stepped.state);
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
         return mapNotr(res.row);
       });
     },
@@ -1251,7 +1269,7 @@ export function buildDrizzleM23WriteService(
                 ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
                 : {}),
             });
-            if (!res.ok) throw conflict412(res.currentVersion);
+            if (!res.ok) throw staleVersion(res.currentVersion);
             row = res.row;
           } else {
             row = await repo.create({
@@ -1332,7 +1350,7 @@ export function buildDrizzleM23WriteService(
         const res = await repo.updateWithVersion(current.id, current.version, {
           lastSandboxTestAt: checkedAt,
         });
-        if (!res.ok) throw conflict412(res.currentVersion);
+        if (!res.ok) throw staleVersion(res.currentVersion);
       });
       return {
         providerEntityId,

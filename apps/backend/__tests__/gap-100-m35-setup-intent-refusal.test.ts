@@ -5,7 +5,7 @@
  */
 import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
-import type { M35WriteActor } from "../src/modules/35-subscription/routes/actor";
+import type { M35WriteActor } from "../src/modules/35-subscription/routes/service";
 import { buildDrizzleM35RouteService } from "../src/modules/35-subscription/routes/service-drizzle";
 
 const UNTOUCHED_DB = new Proxy(

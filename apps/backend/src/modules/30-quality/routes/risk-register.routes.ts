@@ -12,8 +12,9 @@
 // server-side (request.context, never the body): R-95 binds the read actor, R-96 the write actor (+ its
 // active membership id). Mirrors the M33 routes/bases-metrics.routes.ts shape.
 import { requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { type PreHandler, actorOf, writeActorOf } from "./actor";
+import { actorOf, writeActorOf } from "./actor";
 import { RiskRegisterListQuerySchema, parse } from "./quality-typebox";
 import type { M30ReadRouteService } from "./read-service";
 import type { M30WriteRouteService } from "./write-service";

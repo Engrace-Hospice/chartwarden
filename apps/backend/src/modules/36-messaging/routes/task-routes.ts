@@ -1,3 +1,7 @@
+import type { PreHandler } from "@chartwarden/shared/route-kit";
+import { ChartWardenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { TaskActorRef, TaskService } from "../tasks/task-service";
 // apps/backend/src/modules/36-messaging/routes/task-routes.ts - WP 3.4 communication tasks (ADR-0061).
 //
 //   POST /api/v1/messaging/channels/:id/messages/:messageId/tasks   convert a message into a task   (messaging.send + channel_visibility)
@@ -10,9 +14,7 @@
 // Participant rules (creator or assignee only), channel re-visibility and the state machine live in the service; a missing
 // task, a non-participant, a hidden channel and a deleted message are ONE 404. No `Idempotency-Key`: idempotency is the
 // partial unique index (one active task per message and assignee), so no request header is read here.
-import { ChartWardenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { TaskActorRef, TaskService } from "../tasks/task-service";
+import { actorRefOf } from "./actor";
 import { ThreadParamsSchema, parse } from "./messaging-typebox";
 import {
   CloseTaskBodySchema,
@@ -23,9 +25,7 @@ import {
 } from "./task-typebox";
 import { requireUuidParams } from "./uuid-params";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
-export const TASK_LIST_DEFAULTS = { scope: "assigned", state: "active", limit: 50 } as const;
+const TASK_LIST_DEFAULTS = { scope: "assigned", state: "active", limit: 50 } as const;
 
 export interface TaskRouteDeps {
   /** The tenant flag `messaging.tasks`. A throw reads as off (fail closed). */
@@ -61,12 +61,6 @@ export const DISABLED_TASKS: TaskRouteDeps = {
 
 const notFound = (): NotFoundError => new NotFoundError("communication_task");
 
-function actorOf(request: FastifyRequest): TaskActorRef {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { orgId: ctx.organizationId, userId: ctx.userId };
-}
-
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** A malformed task id is the same 404 a missing task gets (never a uuid-cast 500). */
@@ -101,7 +95,7 @@ export function registerTaskRoutes(
     "/api/v1/messaging/channels/:id/messages/:messageId/tasks",
     { preHandler: [requireUuidParams("id", "messageId"), guards.send, guards.sendToChannel] },
     async (request, reply) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const p = parse(ThreadParamsSchema, request.params);
       const body = parse(ConvertTaskBodySchema, request.body);
@@ -123,7 +117,7 @@ export function registerTaskRoutes(
       config: { auditRead: { resourceKind: "communication_task", list: true } },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       if (!(await flagOn(actor.orgId))) return { enabled: false, tasks: [] };
       const q = parse(ListTasksQuerySchema, request.query);
       const tasks = await service.list(actor, {
@@ -148,7 +142,7 @@ export function registerTaskRoutes(
       },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const { taskId } = parse(TaskParamsSchema, request.params);
       return service.get(actor, taskId);
@@ -156,7 +150,7 @@ export function registerTaskRoutes(
   );
 
   app.post("/api/v1/messaging/tasks/:taskId/accept", { preHandler: writeOne }, async (request) => {
-    const actor = actorOf(request);
+    const actor = actorRefOf(request);
     await requireFlag(actor);
     const { taskId } = parse(TaskParamsSchema, request.params);
     return { task: await service.accept(actor, taskId) };
@@ -166,7 +160,7 @@ export function registerTaskRoutes(
     "/api/v1/messaging/tasks/:taskId/complete",
     { preHandler: writeOne },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const { taskId } = parse(TaskParamsSchema, request.params);
       const body = parse(CloseTaskBodySchema, request.body);
@@ -175,7 +169,7 @@ export function registerTaskRoutes(
   );
 
   app.post("/api/v1/messaging/tasks/:taskId/cancel", { preHandler: writeOne }, async (request) => {
-    const actor = actorOf(request);
+    const actor = actorRefOf(request);
     await requireFlag(actor);
     const { taskId } = parse(TaskParamsSchema, request.params);
     const body = parse(CloseTaskBodySchema, request.body);
@@ -186,7 +180,7 @@ export function registerTaskRoutes(
     "/api/v1/messaging/tasks/:taskId/reassign",
     { preHandler: writeOne },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = actorRefOf(request);
       await requireFlag(actor);
       const { taskId } = parse(TaskParamsSchema, request.params);
       const body = parse(ReassignTaskBodySchema, request.body);

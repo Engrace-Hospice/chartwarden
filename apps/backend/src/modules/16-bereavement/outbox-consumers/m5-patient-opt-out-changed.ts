@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/16-bereavement/outbox-consumers/m5-patient-opt-out-changed.ts — the §2.6 / D9
 // M5 per-patient bereavement opt-out flip, live for the first time (F-159, #248).
 //
@@ -49,14 +50,16 @@
 // answers `already_closed` for any of the four closed/legal-hold states, so a redelivery after the first
 // delivery already closed the plan is a silent no-op — no separate uniqueness guard is needed beyond
 // `berv_closure_unique_plan` (a structural backstop, never expected to fire here).
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { BereavementPlanClosureReason, IsoInstant, MembershipId } from "@chartwarden/types";
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { decidePatientOptOutFlip } from "../lifecycle/cascades";
 import type { BereavementSideEffect } from "../lifecycle/effects";
 import { transitionBereavementPlan } from "../lifecycle/index";
+import { requestDischargeSummary } from "../render-payloads/index";
+import { settleOutstandingForClosure } from "../routes/closure-settlement";
 import { type EffectContext, runEffects } from "../routes/effects-runner";
 import type { WriteOutboxPort } from "../routes/write-service";
 
@@ -65,9 +68,6 @@ const CLOSURE = schema.bereavementPlanClosure;
 const OUTREACH = schema.bereavementOutreach;
 const CONTACT = schema.bereavedContact;
 const COP_CREDIT = schema.bereavementCopOptOutCredit;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M16_PATIENT_OPT_OUT_CHANGED_CONSUMER = {
   eventName: "m5.patient.bereavement_opt_out_changed",
@@ -153,6 +153,7 @@ export function buildM16PatientOptOutChangedConsumer(deps: PatientOptOutChangedD
                   },
                 },
                 cancelOutreach: false,
+                requestSummary: false,
               });
               // F-206 (#248) — the user's own decision: a pre-death patient opt-out counts as CoP 418.64(d)
               // coverage SATISFIED, not silently absent from `copOutreachCounts`'s denominator. Idempotent
@@ -195,6 +196,7 @@ export function buildM16PatientOptOutChangedConsumer(deps: PatientOptOutChangedD
                 },
               },
               cancelOutreach: true,
+              requestSummary: true,
             });
           }
         },
@@ -214,6 +216,8 @@ interface CloseOptions {
   readonly cosignedByUserId: null;
   readonly outboxPayload: Record<string, Record<string, unknown>>;
   readonly cancelOutreach: boolean;
+  /** ADR-0109 D9 — request the internal discharge summary. False for the pre-death SKIP: that plan never had a roster or a schedule. */
+  readonly requestSummary: boolean;
 }
 
 async function closePlan(
@@ -238,25 +242,52 @@ async function closePlan(
   const patch = await runEffects(tx, effects, effectCtx);
 
   if (opts.cancelOutreach) {
-    await cancelFutureOutreach(tx, plan.id, at, "patient opt-out (D9)");
+    // The patient's own opt-out removes the obligation: even an already-due, never-attempted row is `cancelled` (M30's denominator
+    // excludes it), not `missed` — and nothing is left `scheduled` on the closed plan for the miss crons to skip.
+    await settleOutstandingForClosure(tx, {
+      planId: plan.id,
+      at: new Date(at),
+      cancelReason: "patient opt-out (D9)",
+      pastDue: "cancelled",
+    });
   }
 
   const stats = await closeoutStats(tx, plan.id);
 
-  await tx.insert(CLOSURE).values({
-    organizationId: plan.organizationId,
-    providerEntityId: plan.providerEntityId,
-    locationId: plan.locationId,
-    planId: plan.id,
-    reason: opts.reason,
-    reasonNarrativeRedacted: null,
-    closedAt: new Date(at),
-    closedByUserId: null,
-    closeKind: opts.closeKind,
-    cosignedByUserId: opts.cosignedByUserId,
-    cosignedAt: null,
-    ...stats,
-  });
+  const [closure] = await tx
+    .insert(CLOSURE)
+    .values({
+      organizationId: plan.organizationId,
+      providerEntityId: plan.providerEntityId,
+      locationId: plan.locationId,
+      planId: plan.id,
+      reason: opts.reason,
+      reasonNarrativeRedacted: null,
+      closedAt: new Date(at),
+      closedByUserId: null,
+      closeKind: opts.closeKind,
+      cosignedByUserId: opts.cosignedByUserId,
+      cosignedAt: null,
+      ...stats,
+    })
+    .returning({ id: CLOSURE.id });
+  if (!closure) throw new Error("m16: the patient-opt-out closure insert returned no row");
+  if (opts.requestSummary) {
+    await requestDischargeSummary(tx, outbox, {
+      plan: {
+        id: plan.id,
+        organizationId: plan.organizationId,
+        patientId: plan.patientId,
+        deathDate: plan.deathDate,
+      },
+      closure: {
+        id: closure.id,
+        reason: opts.reason,
+        closeKind: opts.closeKind,
+        closedAt: new Date(at),
+      },
+    });
+  }
 
   await tx
     .update(PLAN)
@@ -268,42 +299,6 @@ async function closePlan(
       updatedAt: new Date(at),
     })
     .where(eq(PLAN.id, plan.id));
-}
-
-/** Local reimplementation of `write-service-drizzle.ts`'s private `cancelFutureOutreach` (plan scope only —
- *  this handler never needs the per-contact overload). */
-async function cancelFutureOutreach(
-  tx: DbClient,
-  planId: string,
-  at: string,
-  reason: string,
-): Promise<void> {
-  const rows = await tx
-    .select({ id: OUTREACH.id })
-    .from(OUTREACH)
-    .where(
-      and(
-        eq(OUTREACH.planId, planId),
-        eq(OUTREACH.status, "scheduled"),
-        gte(OUTREACH.dueAt, new Date(at)),
-      ),
-    );
-  if (rows.length === 0) return;
-  await tx
-    .update(OUTREACH)
-    .set({
-      status: "cancelled",
-      cancelledAt: new Date(at),
-      cancellationReasonRedacted: reason,
-      version: sql`${OUTREACH.version} + 1`, // §2.5 (GAP-194)
-      updatedAt: new Date(at),
-    })
-    .where(
-      inArray(
-        OUTREACH.id,
-        rows.map((r) => r.id),
-      ),
-    );
 }
 
 /** Local reimplementation of `write-service-drizzle.ts`'s private `closeoutStats` — the §7.11 closeout

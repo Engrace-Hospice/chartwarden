@@ -96,6 +96,13 @@ export const PORTAL_SCREEN_MANIFEST: readonly PortalScreenMeta[] = [
     requiredPermission: "portal.documents.read_list",
   },
   {
+    id: "portal.signatures",
+    path: "/p/:patientId/signatures",
+    title: "Documents to sign",
+    navGroup: "Care",
+    requiredPermission: "portal.signature.read",
+  },
+  {
     id: "portal.messages",
     path: "/p/:patientId/messages",
     title: "Messages",

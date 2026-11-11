@@ -7,6 +7,7 @@
 // `withOrgContext` (RLS) inside the actor's provider-entity scope; every change is If-Match. There are no events or
 // alerts: the write-audit triggers are the trail, and ADR deadlines already alert through the ADR flow.
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError, isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
@@ -22,8 +23,6 @@ import {
   resolveTpeThreshold,
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
-import { VersionConflictError } from "./concurrency";
-import { isUniqueViolation } from "./denial-route-service";
 import { type ClaimFactsPort, m23ClaimFactsPort } from "./remittance-ports";
 import { providerEntityScopeCondition } from "./scope";
 import {
@@ -255,7 +254,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
       .set({ ...fields, version: sql`${RD.version} + 1` })
       .where(and(eq(RD.id, round.id), eq(RD.version, ifMatch)))
       .returning({ id: RD.id, version: RD.version });
-    if (!updated[0]) throw new VersionConflictError(round.version);
+    if (!updated[0]) throw new StaleVersionError();
     return updated[0];
   }
 
@@ -433,7 +432,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
           .set({ version: sql`${PG.version} + 1` })
           .where(and(eq(PG.id, programId), eq(PG.version, ifMatch), eq(PG.state, "active")))
           .returning({ id: PG.id });
-        if (!locked[0]) throw new VersionConflictError(program.version);
+        if (!locked[0]) throw new StaleVersionError();
         const roundNumber = (prev?.roundNumber ?? 0) + 1;
         try {
           const inserted = await tx
@@ -448,7 +447,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
           const warning = intervalWarning(prev?.educationOn ?? null, noticeOn);
           return { ...inserted[0]!, roundNumber, warnings: warning ? [warning] : [] };
         } catch (e) {
-          if (isUniqueViolation(e)) throw new VersionConflictError(null);
+          if (isUniqueViolation(e)) throw new StaleVersionError();
           throw e;
         }
       });
@@ -581,7 +580,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
             });
           }
         } catch (e) {
-          if (isUniqueViolation(e)) throw new VersionConflictError(null);
+          if (isUniqueViolation(e)) throw new StaleVersionError();
           throw e;
         }
         return locked;
@@ -658,7 +657,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
           })
           .where(and(eq(PG.id, programId), eq(PG.version, ifMatch), eq(PG.state, program.state)))
           .returning({ id: PG.id, version: PG.version });
-        if (!updated[0]) throw new VersionConflictError(program.version);
+        if (!updated[0]) throw new StaleVersionError();
         return updated[0];
       });
     },
@@ -672,7 +671,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
           .set({ state: "closed", version: sql`${PG.version} + 1` })
           .where(and(eq(PG.id, programId), eq(PG.version, ifMatch), eq(PG.state, program.state)))
           .returning({ id: PG.id, version: PG.version });
-        if (!updated[0]) throw new VersionConflictError(program.version);
+        if (!updated[0]) throw new StaleVersionError();
         return updated[0];
       });
     },
@@ -735,7 +734,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
                 : and(eq(RU.id, existing[0].id), eq(RU.version, ifMatch)),
             )
             .returning({ id: RU.id, version: RU.version });
-          if (!updated[0]) throw new VersionConflictError(null);
+          if (!updated[0]) throw new StaleVersionError();
           return updated[0];
         }
         try {
@@ -746,7 +745,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
           return inserted[0]!;
         } catch (e) {
           // Two edits raced past the check above; the unique index is the backstop.
-          if (isUniqueViolation(e)) throw new VersionConflictError(null);
+          if (isUniqueViolation(e)) throw new StaleVersionError();
           throw e;
         }
       });

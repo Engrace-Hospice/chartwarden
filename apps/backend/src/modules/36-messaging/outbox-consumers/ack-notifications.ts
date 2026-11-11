@@ -27,7 +27,7 @@ export const ACK_NOTIFICATION_TEXT = {
 } as const;
 
 /** The alert type of the notice to the previous assignee and the sender (seeded rule, in-app only, not a designated route). */
-export const ACK_SUPERVISOR_REASSIGNED_NOTICE_EVENT = "m36.ack.supervisor_reassigned" as const;
+const ACK_SUPERVISOR_REASSIGNED_NOTICE_EVENT = "m36.ack.supervisor_reassigned" as const;
 
 function requireString(payload: Record<string, unknown>, key: string): string {
   const value = payload[key];

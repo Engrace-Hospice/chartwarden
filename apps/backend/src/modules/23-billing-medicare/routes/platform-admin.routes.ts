@@ -2,10 +2,9 @@
 // platform-only admin surface (GAP-144). Both routes gate on `billing.rule_config.platform_admin` (the platform
 // administrator's key — a tenant org_admin never holds it) PLUS the §D14 step-up assertion, the §D13 AI-block
 // and `Idempotency-Key`. NO PHI. See `platform-admin-service.ts` for what each command does and does not do.
+import { parse, rejectAiActor, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { rejectAiActor, writeActorOf } from "./actor";
-import { parse } from "./billing-typebox";
-import { requireIdempotencyKey } from "./concurrency";
+import { writeActorOf } from "./actor";
 import { P, STEP_UP } from "./guards";
 import type { PlatformAdminRouteService } from "./platform-admin-service";
 import {

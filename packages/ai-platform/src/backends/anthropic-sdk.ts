@@ -17,7 +17,7 @@ import type { AiBackendHealthStatus } from "@chartwarden/types";
 import type { AnthropicDispatch } from "./anthropic";
 
 /** The vendor answered, but not with a usable completion. Its `name` is what the ledger records. */
-export class AnthropicDispatchError extends Error {
+class AnthropicDispatchError extends Error {
   constructor(
     readonly reason: "refusal" | "max_tokens" | "no_text",
     detail: string,

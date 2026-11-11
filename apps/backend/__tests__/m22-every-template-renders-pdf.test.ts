@@ -80,6 +80,9 @@ describe("every platform template renders a real PDF (GAP-033)", () => {
     "evv_verification",
     "dsar_bundle",
     "tenant_export_cover_letter",
+    // ADR-0109 D10 (bereavement-mailing-batch.test.ts): a batch with no letter, or a letter with no address, is a malformed request:
+    // printing a blank envelope window is worse than failing the render (the worker moves the run to `failed`).
+    "bereavement_mailing_batch",
   ]);
 
   it("covers the full template table (guards against the loop matching nothing)", () => {
@@ -144,27 +147,6 @@ describe("every platform template renders a real PDF (GAP-033)", () => {
       }
     },
   );
-
-  it.each(["order_record", "medication_order"])(
-    "a legacy id-only %s event drained under the fallback flag renders generically, not as a form",
-    (key) => {
-      const bytes = renderPdfForTemplate(
-        key,
-        { aggregateId: "agg-1", patientId: "p-1", kind: "lab", legacyUntyped: true },
-        key,
-      );
-      expectValidPdf(bytes);
-    },
-  );
-
-  it("a legacy id-only M6 event drained under the explicit fallback flag renders generically, not as a form", () => {
-    const bytes = renderPdfForTemplate(
-      "cti",
-      { aggregateId: "agg-1", patientId: null, legacyUntyped: true },
-      "Certification of Terminal Illness",
-    );
-    expectValidPdf(bytes);
-  });
 });
 
 describe("appeal_packet (GAP-036)", () => {

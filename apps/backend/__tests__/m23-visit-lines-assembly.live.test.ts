@@ -19,6 +19,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   BillingRuleRegistry,
+  type ClaimAssemblySeams,
   claimTotalMatchesLines,
   levelOfCareCoherence,
   placeOfServiceConsistency,
@@ -32,7 +33,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildDrizzleVisitChargeService } from "../src/modules/23-billing-medicare/routes/visit-charge-service";
 import {
   type ClaimAssemblyActor,
-  type ClaimAssemblySeams,
   buildClaimAssemblyService,
 } from "../src/modules/23-billing-medicare/services/claim-assembly";
 import { buildM23ReferenceDataAdapter } from "../src/modules/23-billing-medicare/services/claim-assembly-seam-adapters";
@@ -132,6 +132,7 @@ describe.skipIf(!DB_URL)(
 
     /** A happy-path seam bundle over fakes; every call opts into the scenario with `overrides`. */
     function seams(overrides: Partial<ClaimAssemblySeams> = {}): ClaimAssemblySeams {
+      const patientPayerId = randomUUID();
       const registry = new BillingRuleRegistry();
       // The default rules that read claim lines: they must accept a claim that carries visit lines.
       for (const rule of [
@@ -145,7 +146,11 @@ describe.skipIf(!DB_URL)(
       return {
         patientPayer: {
           medicarePrimaryForRange: async () => ({
-            patientPayerId: randomUUID(),
+            patientPayerId,
+            medicarePrimary: true,
+          }),
+          medicarePrimaryForRangeInTransaction: async () => ({
+            patientPayerId,
             medicarePrimary: true,
           }),
         },

@@ -1,25 +1,23 @@
 import { SCHEDULE_BLOCK_REASONS } from "@chartwarden/messaging";
+import { Uuid } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/36-messaging/routes/scheduled-send-typebox.ts — WP 2.6 request/response schemas (kept apart
 // from scheduled-send-routes.ts so the OpenAPI emitter imports schemas only, not the auth stack).
 import { Type } from "@sinclair/typebox";
-import { UUID_PATTERN } from "./messaging-typebox";
 
-const Uuid = Type.String({ pattern: UUID_PATTERN });
+export const ScheduledMessageParamsSchema = Type.Object({ id: Uuid() });
 
-export const ScheduledMessageParamsSchema = Type.Object({ id: Uuid });
-
-export const ScheduledListQuerySchema = Type.Object({ channelId: Type.Optional(Uuid) });
+export const ScheduledListQuerySchema = Type.Object({ channelId: Type.Optional(Uuid()) });
 
 export const CreateScheduledBodySchema = Type.Object({
   // The service enforces blank (422) and the 8000-character ceiling (422).
   body: Type.String({ maxLength: 100_000 }),
-  parentMessageId: Type.Optional(Uuid),
+  parentMessageId: Type.Optional(Uuid()),
   /** ISO 8601 instant; the service bounds it (at least 1 minute, at most 30 days ahead). */
   scheduledFor: Type.String({ minLength: 10, maxLength: 40 }),
   /** IANA zone the sender chose the time in (display only). */
   timeZone: Type.Optional(Type.String({ maxLength: 64 })),
   /** Client-minted id, stable across retries of the same schedule request: a repeat returns the existing row. */
-  clientMessageId: Type.Optional(Uuid),
+  clientMessageId: Type.Optional(Uuid()),
 });
 
 export const RescheduleBodySchema = Type.Object({

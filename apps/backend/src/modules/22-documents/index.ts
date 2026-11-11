@@ -168,6 +168,8 @@ export function mountDocumentRoutes(
     createVerifiedUploadService({
       db,
       objects,
+      // ADR-0109 D10 (PR 3) — the grief-library video `ftyp` check reads the upload's first bytes back.
+      reader: objects,
       referralReader: {
         canAccessReferral(input) {
           return getSeam("ReferralReader").canAccessReferral(input);
@@ -332,15 +334,7 @@ export {
   type DocumentView,
   createInMemoryDocumentBackend,
 } from "./routes/service";
-export {
-  type CursorPage,
-  type CursorKeyset,
-  DEFAULT_PAGE_SIZE,
-  MAX_PAGE_SIZE,
-  decodeCursor,
-  encodeCursor,
-  paginate,
-} from "./routes/concurrency";
+export { type CursorPage, M22_PAGE_SIZE, paginate } from "./routes/pagination";
 export {
   type MintedSignedUrl,
   type SignedUrlObjectResolver,

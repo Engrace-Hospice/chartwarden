@@ -9,6 +9,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import { encodeOffsetCursor, offsetCursorScope } from "@chartwarden/shared/route-kit";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -143,6 +144,36 @@ describe("organizations", () => {
     expect(own.json().items.map((o: { id: string }) => o.id)).toEqual(["org_a"]);
     const all = await app.inject({ method: "GET", url: "/api/v1/orgs?q=bet", headers: PLATFORM });
     expect(all.json().items.map((o: { id: string }) => o.id)).toEqual(["org_b"]);
+    await app.close();
+  });
+
+  it("pages the platform listing with a signed cursor; a garbage or tampered cursor is a 422, not page 1", async () => {
+    const { app } = makeServer();
+    const list = (query: string) =>
+      app.inject({ method: "GET", url: `/api/v1/orgs?${query}`, headers: PLATFORM });
+    const first = await list("limit=1");
+    expect(first.json().items.map((o: { id: string }) => o.id)).toEqual(["org_a"]);
+    const { nextCursor } = first.json() as { nextCursor: string };
+    expect(nextCursor).toContain(".");
+    const second = await list(`limit=1&cursor=${encodeURIComponent(nextCursor)}`);
+    expect(second.json().items.map((o: { id: string }) => o.id)).toEqual(["org_b"]);
+    expect(second.json().nextCursor).toBeNull();
+    for (const bad of ["garbage", "1", `x${nextCursor}`]) {
+      const res = await list(`limit=1&cursor=${encodeURIComponent(bad)}`);
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("INVALID_CURSOR");
+    }
+    const foreignOrgCursor = encodeOffsetCursor("org_b", 1, offsetCursorScope("m2.organizations"));
+    const foreign = await list(`limit=1&cursor=${encodeURIComponent(foreignOrgCursor)}`);
+    expect(foreign.statusCode).toBe(422);
+    expect(foreign.json().error.code).toBe("INVALID_CURSOR");
+    const tenantGarbage = await app.inject({
+      method: "GET",
+      url: "/api/v1/orgs?cursor=garbage",
+      headers: TENANT,
+    });
+    expect(tenantGarbage.statusCode).toBe(422);
+    expect(tenantGarbage.json().error.code).toBe("INVALID_CURSOR");
     await app.close();
   });
 

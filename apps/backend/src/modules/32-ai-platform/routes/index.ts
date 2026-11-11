@@ -38,7 +38,6 @@ export {
 } from "./read-service-drizzle";
 export {
   type M32WriteActor,
-  type PreHandler,
   PHI_FULL_READ_GRANT,
   actorOf,
   killSwitchScopeOf,

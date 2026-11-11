@@ -9,6 +9,10 @@ import {
   runPostDischargeGraceSweepOnce,
 } from "./post-discharge-grace-sweep";
 import { M31_CRON_QUEUES, M31_JOB_SCHEDULES, M31_QUEUE_PARAMS } from "./queues";
+import {
+  type SignatureReminderSweepDeps,
+  runSignatureReminderSweepOnce,
+} from "./signature-reminder-sweep";
 
 /** Construct the Worker. The caller owns the lifecycle (`close()` on shutdown). */
 export function registerM31PostDischargeGraceWorker(
@@ -64,6 +68,33 @@ export async function scheduleM31LateJoinWatchdogJob(
     "tick",
     {},
     { repeat: { pattern: M31_JOB_SCHEDULES.lateJoinWatchdog, tz: "UTC" } },
+  );
+  return queue;
+}
+
+/** ADR-0107 D7 - the daily signature-request reminder Worker. */
+export function registerM31SignatureReminderWorker(
+  deps: SignatureReminderSweepDeps & { readonly connection: ConnectionOptions },
+): Worker {
+  return new Worker(
+    M31_CRON_QUEUES.signatureReminder,
+    async () => runSignatureReminderSweepOnce(deps),
+    {
+      connection: deps.connection,
+      concurrency: M31_QUEUE_PARAMS.signatureReminder.concurrency,
+    },
+  );
+}
+
+/** ADR-0107 D7 - register the reminder's repeatable daily schedule; returns the Queue for the root to `close()`. */
+export async function scheduleM31SignatureReminderJob(
+  connection: ConnectionOptions,
+): Promise<Queue> {
+  const queue = new Queue(M31_CRON_QUEUES.signatureReminder, { connection });
+  await queue.add(
+    "tick",
+    {},
+    { repeat: { pattern: M31_JOB_SCHEDULES.signatureReminder, tz: "UTC" } },
   );
   return queue;
 }

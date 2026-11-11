@@ -1,3 +1,5 @@
+import { requireAbac, requirePermission } from "@chartwarden/auth";
+import type { AnnouncementService, ScheduledSendService } from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging/routes/scheduled-send-routes.ts — M36 WP 2.6 scheduled send.
 //
 //   POST   /api/v1/messaging/channels/:id/scheduled-messages   schedule a message (messaging.send + channel_visibility,
@@ -11,8 +13,7 @@
 // state), so these routes only decide who may QUEUE. List/cancel need only messaging.read: a user who lost access must
 // still be able to see and withdraw what they queued. Org and user come from the request context, never a param or the
 // body; the service keys on them and RLS pins the owner again. Responses are never cached (they carry message text).
-import { requireAbac, requirePermission } from "@chartwarden/auth";
-import type { AnnouncementService, ScheduledSendService } from "@chartwarden/messaging";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { announcementSendGuard } from "./announcement-routes";
@@ -26,8 +27,6 @@ import {
 } from "./scheduled-send-typebox";
 import { requireUuidParams } from "./uuid-params";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 const READ = requirePermission("messaging.read") as PreHandler;
 const SEND = requirePermission("messaging.send") as PreHandler;
 const SEND_TO_CHANNEL = requireAbac("messaging.send", CHANNEL_VISIBILITY_PREDICATE) as PreHandler;
@@ -37,12 +36,6 @@ export interface ScheduledSendRouteDeps {
   readonly service: ScheduledSendService;
   /** The announcement-channel send guard (fails closed: required, like the message route). */
   readonly announcements: AnnouncementService;
-}
-
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
 
 export function registerScheduledSendRoutes(

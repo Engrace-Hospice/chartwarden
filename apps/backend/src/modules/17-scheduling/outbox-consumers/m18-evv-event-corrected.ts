@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/17-scheduling/outbox-consumers/m18-evv-event-corrected.ts — repoints a stale
 // EVV provenance pointer after a correction-of-record (F-133 follow-up, #248).
 //
@@ -26,14 +27,11 @@
 // Deliberately does NOT touch `evv_bracket_state`: the payload carries no new `gpsQuality`/
 // `geofenceDecision`, so there is no honest basis to re-derive the bracket flag from this event alone —
 // fabricating one would be the same mistake this arc's other findings refuse to make.
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
 const V = schema.visit;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 export const M17_EVV_EVENT_CORRECTED_CONSUMER = {
   eventName: "m18.evv.event_corrected",

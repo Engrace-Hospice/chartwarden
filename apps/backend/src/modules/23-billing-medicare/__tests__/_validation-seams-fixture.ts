@@ -3,8 +3,7 @@
 // admission (first period, no discharge), no encounters, no diagnoses, fixed reference data. Shared by the port's
 // unit test and the NOE acknowledgment live suite (which runs the port's own NOE read over real Postgres).
 // Not a test file (no `.test.ts`), so vitest never collects it.
-import { BillingRuleRegistry } from "@chartwarden/billing";
-import type { ClaimAssemblySeams } from "../services/claim-assembly";
+import { BillingRuleRegistry, type ClaimAssemblySeams } from "@chartwarden/billing";
 
 export function fixedValidationSeams(
   admission: { readonly admissionId: string; readonly hospiceAdmissionDate: string },
@@ -13,6 +12,10 @@ export function fixedValidationSeams(
   return {
     patientPayer: {
       medicarePrimaryForRange: async () => ({ patientPayerId: "pp-1", medicarePrimary: true }),
+      medicarePrimaryForRangeInTransaction: async () => ({
+        patientPayerId: "pp-1",
+        medicarePrimary: true,
+      }),
     },
     admission: {
       resolveForRange: async () => ({

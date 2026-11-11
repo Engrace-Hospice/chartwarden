@@ -161,6 +161,7 @@ export {
   createConsentInternalNotesCipher,
 } from "./consent-crypto";
 
+import type { ConsentRouteService } from "@chartwarden/consent";
 import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import {
@@ -179,6 +180,11 @@ export function mountConsentRoutes(
   app: FastifyInstance,
   db: DbClient,
   deps: DbConsentRouteServiceDeps = {},
-): void {
-  _registerConsentRoutes(app, { service: _createDbConsentRouteService(db, deps) });
+): ConsentRouteService {
+  const service = _createDbConsentRouteService(db, deps);
+  _registerConsentRoutes(app, { service });
+  return service; // returned so the composition root can bind the portal sign seam (ADR-0107) to the same instance
 }
+
+// ADR-0107 - the portal sign seam the composition root binds to the M31 signing routes.
+export { createPortalConsentSigner } from "./portal-consent-signer";

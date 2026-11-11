@@ -13,12 +13,10 @@ export {
 } from "./store";
 export {
   type M31Actor,
-  type PreHandler,
   actorOf,
   portalAccountIdOf,
   portalPatientIdOf,
 } from "./actor";
-export { requireIdempotencyKey, rejectOffsetPagination } from "./concurrency";
 export {
   ABAC_ACCOUNT,
   ABAC_BEREAVED,
@@ -28,6 +26,7 @@ export {
   ABAC_RECORDING_STATE,
   ABAC_TELEHEALTH_CONSENT,
   P,
+  rejectOffsetPagination,
   STEP_UP,
 } from "./guards";
 export { parse, parseQuery } from "./portal-typebox";
@@ -35,7 +34,11 @@ export { parse, parseQuery } from "./portal-typebox";
 import type { M31EventEmitter } from "../events";
 import type { PortalReasonCipher, PortalRoomCipher } from "../portal-crypto";
 import type { PortalProvisioning } from "../provisioning";
-import type { PortalAccountAuditPort, PortalBereavementOptOutPort } from "../provisioning/types";
+import type {
+  PortalAccountAuditPort,
+  PortalBereavementMailingPreferencePort,
+  PortalBereavementOptOutPort,
+} from "../provisioning/types";
 import type { PortalSignInPort } from "../sign-in";
 import type { M17VisitRoomReaderPort } from "../telehealth/room-mint";
 import type { PortalStore } from "./store";
@@ -113,6 +116,8 @@ export interface PortalRouteDeps {
   readonly provisioning?: PortalProvisioning;
   /** GAP-092 — M16's self-service opt-out (a bereaved family member's own D9 opt-out). ABSENT ⇒ 503. */
   readonly bereavementOptOut?: PortalBereavementOptOutPort;
+  /** ADR-0109 D10 — M16's mailing preference (stop / resume MAILINGS only; calls continue). ABSENT ⇒ 503. */
+  readonly bereavementMailingPreference?: PortalBereavementMailingPreferencePort;
   /** GAP-092 — M4's read trail for the admin audit-views list. ABSENT ⇒ 503. */
   readonly accountAudit?: PortalAccountAuditPort;
   /**
@@ -129,6 +134,11 @@ export interface PortalRouteDeps {
   readonly signInThrottle?: import("@chartwarden/auth").CredentialThrottle;
   /** GAP-159 - the M31 outbox emitter for decision-point events (session, upload, amendment, message). */
   readonly events?: M31EventEmitter;
+  /**
+   * ADR-0107 - the portal admission-document signing ports (the store, the M06 / M39 signers, the M39 status read). ABSENT => the three
+   * signature routes answer 503: a portal that tells a patient "signed" must have written the authoritative M06 / M39 record.
+   */
+  readonly signing?: import("./signature-deps").PortalSigningDeps;
   /** Injected clock (every timestamp decision is reproducible in a unit test). */
   readonly now?: () => Date;
 }

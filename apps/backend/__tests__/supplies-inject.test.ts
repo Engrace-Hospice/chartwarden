@@ -41,6 +41,7 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import type { CursorPage } from "@chartwarden/shared/route-kit";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -54,7 +55,6 @@ import type {
   ComfortKitReturnedLineView,
   ComfortKitTemplateMedicationView,
   ComfortKitTemplateView,
-  CursorPage,
   DispatchDetail,
   M21ReadService,
   M21WriteService,
@@ -69,7 +69,7 @@ import type {
 import { decideCoverageDetermination } from "../src/modules/21-supplies/lifecycle/index";
 
 // ── the M2 header-auth test shim (the M11/M16 `orders-routes.test.ts` / `bereavement-inject.test.ts`
-// precedent). Extended with `x-test-membership`, because M21's `writeActorOf` (routes/actor.ts) requires
+// precedent). Extended with `x-test-membership`, because M21's `writeActorOf` (@chartwarden/shared/route-kit) requires
 // a server-assembled `context.attributes.membershipId` — every attribution column M21 writes is stamped
 // from it, never from the request body. ─────────────────────────────────────────────────────────────────
 function headerAuth(request: FastifyRequest): void {
@@ -1728,7 +1728,7 @@ describe("M21 §4.1 rows 1-10 — supply-request create through delivery, cancel
     // enforced by the pure validator (`requireCaregiverSignatureEvidence`), which this file's fake write
     // service deliberately does NOT re-derive (see the fake's own doc-comment) — that rule is covered by
     // `supplies-caregiver-signature.test.ts` over the real function. This test only proves the WIRING
-    // fact that belongs here: an `if-match` mismatch on the capture route is still a 412, the same §7.2
+    // fact that belongs here: a missing `if-match` on the capture route is still a 428, the same §7.2
     // guard every other M21 mutation carries.
     const { app } = makeServer();
     const create = await app.inject({

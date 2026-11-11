@@ -1,3 +1,4 @@
+import type { CursorPage } from "@chartwarden/shared/route-kit";
 // apps/backend/src/modules/16-bereavement/routes/m16-response-dtos.ts
 // Compile-time conformance pins for the M16 §4.2 response DTOs.
 //
@@ -8,9 +9,39 @@
 // typebox would form a `typebox ↔ read-service` import cycle that `arch:boundaries` (no-circular) rejects.
 // tsc still type-checks this file (it is inside the module's compilation), so the pins are enforced.
 import type { Static } from "@sinclair/typebox";
-import type { CursorPage } from "./concurrency";
+import type { PreDeathDraftView as SvcPreDeathDraftView } from "./draft-service";
+import type {
+  AttendanceResultView as SvcAttendanceResultView,
+  GroupDetailView as SvcGroupDetailView,
+  GroupEnrollmentView as SvcGroupEnrollmentView,
+  GroupRosterView as SvcGroupRosterView,
+  GroupSessionView as SvcGroupSessionView,
+  GroupView as SvcGroupView,
+} from "./group-service";
+import type {
+  AttendanceResultResponseSchema,
+  GroupDetailResponseSchema,
+  GroupEnrollmentListResponseSchema,
+  GroupEnrollmentResponseSchema,
+  GroupPageResponseSchema,
+  GroupRosterResponseSchema,
+  GroupSessionListResponseSchema,
+  GroupSessionResponseSchema,
+  GroupViewResponseSchema,
+} from "./group-typebox";
+import type { PhysicianLetterView as SvcPhysicianLetterView } from "./letter-service";
+import type {
+  LibraryItemUrlView as SvcLibraryItemUrlView,
+  LibraryItemView as SvcLibraryItemView,
+} from "./library-service";
+import type {
+  LibraryItemListResponseSchema,
+  LibraryItemResponseSchema,
+  LibraryItemUrlResponseSchema,
+} from "./library-typebox";
 import type {
   BereavedContactRowViewResponseSchema,
+  BereavementAssessmentTaskListResponseSchema,
   BereavementClosureViewResponseSchema,
   BereavementContactLogViewResponseSchema,
   BereavementOutreachPageResponseSchema,
@@ -21,17 +52,52 @@ import type {
   BereavementRiskScorePageResponseSchema,
   BereavementRiskScoreViewResponseSchema,
   CounselorDashboardViewResponseSchema,
+  PhysicianLetterPageResponseSchema,
+  PhysicianLetterViewResponseSchema,
   PlanActivationViewResponseSchema,
+  PreDeathDraftViewResponseSchema,
   ScheduleRegenerationViewResponseSchema,
   SupervisorDashboardViewResponseSchema,
 } from "./m16-typebox";
 import type {
+  MailingConfigView as SvcMailingConfigView,
+  MailingDownloadView as SvcMailingDownloadView,
+  MailingItemView as SvcMailingItemView,
+  MailingRunView as SvcMailingRunView,
+} from "./mailing-service";
+import type {
+  ContactTimelinePageResponseSchema,
+  MailingConfigListResponseSchema,
+  MailingConfigViewResponseSchema,
+  MailingDownloadViewResponseSchema,
+  MailingItemPageResponseSchema,
+  MailingItemViewResponseSchema,
+  MailingRunPageResponseSchema,
+  MailingRunViewResponseSchema,
+} from "./mailing-typebox";
+import type {
+  ContactMemorialInvitationView as SvcContactMemorialInvitationView,
+  MemorialDetailView as SvcMemorialDetailView,
+  MemorialInvitationView as SvcMemorialInvitationView,
+  MemorialView as SvcMemorialView,
+} from "./memorial-service";
+import type {
+  ContactMemorialInvitationListResponseSchema,
+  ContactMemorialInvitationResponseSchema,
+  MemorialDetailResponseSchema,
+  MemorialInvitationListResponseSchema,
+  MemorialPageResponseSchema,
+  MemorialViewResponseSchema,
+} from "./memorial-typebox";
+import type {
   BereavedContactRowView as SvcBereavedContactRowView,
+  BereavementAssessmentTaskList as SvcBereavementAssessmentTaskList,
   BereavementClosureView as SvcBereavementClosureView,
   BereavementOutreachRowView as SvcBereavementOutreachRowView,
   BereavementPlanDetail as SvcBereavementPlanDetail,
   BereavementPlanListItem as SvcBereavementPlanListItem,
   BereavementRiskScoreView as SvcBereavementRiskScoreView,
+  ContactTimelinePage as SvcContactTimelinePage,
   CounselorDashboardView as SvcCounselorDashboardView,
   SupervisorDashboardView as SvcSupervisorDashboardView,
 } from "./read-service";
@@ -99,3 +165,92 @@ type _RiskScorePage = Conforms<
   Static<typeof BereavementRiskScorePageResponseSchema>,
   CursorPage<SvcBereavementRiskScoreView>
 >;
+type _AssessmentTasks = Conforms<
+  Static<typeof BereavementAssessmentTaskListResponseSchema>,
+  SvcBereavementAssessmentTaskList
+>;
+type _PreDeathDraft = Conforms<
+  Static<typeof PreDeathDraftViewResponseSchema>,
+  SvcPreDeathDraftView
+>;
+type _PhysicianLetter = Conforms<
+  Static<typeof PhysicianLetterViewResponseSchema>,
+  SvcPhysicianLetterView
+>;
+type _PhysicianLetterPage = Conforms<
+  Static<typeof PhysicianLetterPageResponseSchema>,
+  CursorPage<SvcPhysicianLetterView>
+>;
+
+// ADR-0109 D10 — the mailing program and the contact timeline (routes 42-52).
+type _MailingConfig = Conforms<
+  Static<typeof MailingConfigViewResponseSchema>,
+  SvcMailingConfigView
+>;
+type _MailingConfigList = Conforms<
+  Static<typeof MailingConfigListResponseSchema>,
+  readonly SvcMailingConfigView[]
+>;
+type _MailingRun = Conforms<Static<typeof MailingRunViewResponseSchema>, SvcMailingRunView>;
+type _MailingRunPage = Conforms<
+  Static<typeof MailingRunPageResponseSchema>,
+  CursorPage<SvcMailingRunView>
+>;
+type _MailingItem = Conforms<Static<typeof MailingItemViewResponseSchema>, SvcMailingItemView>;
+type _MailingItemPage = Conforms<
+  Static<typeof MailingItemPageResponseSchema>,
+  CursorPage<SvcMailingItemView>
+>;
+type _MailingDownload = Conforms<
+  Static<typeof MailingDownloadViewResponseSchema>,
+  SvcMailingDownloadView
+>;
+type _ContactTimeline = Conforms<
+  Static<typeof ContactTimelinePageResponseSchema>,
+  SvcContactTimelinePage
+>;
+
+// ADR-0109 D10 (PR 3) — support groups (routes 53-66).
+type _Group = Conforms<Static<typeof GroupViewResponseSchema>, SvcGroupView>;
+type _GroupDetail = Conforms<Static<typeof GroupDetailResponseSchema>, SvcGroupDetailView>;
+type _GroupPage = Conforms<Static<typeof GroupPageResponseSchema>, CursorPage<SvcGroupView>>;
+type _GroupSession = Conforms<Static<typeof GroupSessionResponseSchema>, SvcGroupSessionView>;
+type _GroupSessions = Conforms<
+  Static<typeof GroupSessionListResponseSchema>,
+  SvcGroupSessionView[]
+>;
+type _GroupRoster = Conforms<Static<typeof GroupRosterResponseSchema>, SvcGroupRosterView>;
+type _GroupEnrollment = Conforms<
+  Static<typeof GroupEnrollmentResponseSchema>,
+  SvcGroupEnrollmentView
+>;
+type _GroupEnrollments = Conforms<
+  Static<typeof GroupEnrollmentListResponseSchema>,
+  SvcGroupEnrollmentView[]
+>;
+type _Attendance = Conforms<Static<typeof AttendanceResultResponseSchema>, SvcAttendanceResultView>;
+
+// ADR-0109 D10 (PR 3) — memorial services (routes 67-76).
+type _Memorial = Conforms<Static<typeof MemorialViewResponseSchema>, SvcMemorialView>;
+type _MemorialDetail = Conforms<Static<typeof MemorialDetailResponseSchema>, SvcMemorialDetailView>;
+type _MemorialPage = Conforms<
+  Static<typeof MemorialPageResponseSchema>,
+  CursorPage<SvcMemorialView>
+>;
+type _MemorialInvitations = Conforms<
+  Static<typeof MemorialInvitationListResponseSchema>,
+  SvcMemorialInvitationView[]
+>;
+type _ContactInvitation = Conforms<
+  Static<typeof ContactMemorialInvitationResponseSchema>,
+  SvcContactMemorialInvitationView
+>;
+type _ContactInvitations = Conforms<
+  Static<typeof ContactMemorialInvitationListResponseSchema>,
+  SvcContactMemorialInvitationView[]
+>;
+
+// ADR-0109 D10 (PR 3) — the grief library (routes 77-81).
+type _LibraryItem = Conforms<Static<typeof LibraryItemResponseSchema>, SvcLibraryItemView>;
+type _LibraryItems = Conforms<Static<typeof LibraryItemListResponseSchema>, SvcLibraryItemView[]>;
+type _LibraryUrl = Conforms<Static<typeof LibraryItemUrlResponseSchema>, SvcLibraryItemUrlView>;

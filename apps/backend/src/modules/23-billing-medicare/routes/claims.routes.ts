@@ -1,3 +1,12 @@
+import {
+  ClaimAssembleRequest,
+  type ClaimDocument837iDetail,
+  type ClaimGap,
+  ClaimReplaceRequest,
+  ClaimSubmitRequest,
+  ClaimVoidRequest,
+  ManualValidateRequest,
+} from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/routes/claims.routes.ts — M23 (§4.1 routes #1–#13, claims
 // core). The claim lifecycle surface: server-authoritative assembly, the validation re-run trigger, the
 // READY→SUBMITTED submit (+M2 step-up), the TOB-817 replace / TOB-818 void builders, the cursor-paginated
@@ -12,7 +21,7 @@
 //     claim's patient in caseload AND its PE in scope) — the spec's `caseload_or_scope (via patient FK)`.
 //   - every MUTATING route composes `rejectAiActor` FIRST (D13 AI-block) + `Idempotency-Key` presence
 //     (§4.1.1); the versioned-root edits (PATCH / submit / replace / void) additionally carry `If-Match`
-//     (§2.5; the write service surfaces a stale precondition as 412 VERSION_CONFLICT).
+//     (§2.5; the write service surfaces a stale precondition as 409 STALE_VERSION).
 //   - submit / replace / void are filing actions → `provider_entity_billing_scope` + the §D14 `requireStepUp`
 //     assertion; the write service ALSO re-validates step-up freshness at dispatch (D2).
 //   - `claim_line` is INTERNAL-WRITE-ONLY (§3.3): there is NO line-mutation route; lines are written only by
@@ -28,24 +37,30 @@
 // actor may not carry the economic total fields (403 FIELD_OUT_OF_SCOPE). TOB re-choice routes through
 // :replace / :void (817/818) per §4.1, not this PATCH.
 import {
-  ClaimAssembleRequest,
-  ClaimReplaceRequest,
-  ClaimVoidRequest,
-  ManualValidateRequest,
-} from "@chartwarden/billing";
+  StaleVersionError,
+  actorOf,
+  ifMatchVersionOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+  requireIfMatch,
+} from "@chartwarden/shared/route-kit";
 import { ChartWardenError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { ORG_WIDE_BILLING_SCOPE_ROLES } from "../abac-predicates";
 import type { ClaimAssemblyService } from "../services/claim-assembly";
-import { type M23WriteActor, actorOf, rejectAiActor, writeActorOf } from "./actor";
+import {
+  issueClaimPreviewToken,
+  notApplicableClaimRouteFingerprint,
+  verifyClaimPreviewToken,
+} from "../services/claim-preview-integrity";
+import { type M23WriteActor, writeActorOf } from "./actor";
 import {
   ClaimIdParamsSchema,
   ClaimListQuerySchema,
   ClaimPatchDraftBodySchema,
-  parse,
 } from "./billing-typebox";
-import { parseIfMatch, requireIdempotencyKey, requireIfMatch } from "./concurrency";
 import {
   CLAIM_CASELOAD,
   P,
@@ -62,6 +77,44 @@ export interface ClaimsRouteDeps {
   readonly readService: M23ReadRouteService;
   readonly writeService: M23WriteRouteService;
   readonly assemblyService: ClaimAssemblyService;
+  readonly payerRouteStatus: (
+    organizationId: string,
+    providerEntityId: string,
+  ) => Promise<
+    | { readonly status: "verified"; readonly routeFingerprint: string }
+    | { readonly status: "not_configured"; readonly reasonCode?: string }
+    | { readonly status: "not_applicable" }
+  >;
+  /** Same authoritative 837I renderer, used only to validate and project a protected preview. */
+  readonly renderPreview?: (input: {
+    readonly organizationId: string;
+    readonly actorUserId: string;
+    readonly claimId: string;
+    readonly providerEntityId: string;
+    readonly routeFingerprint?: string;
+  }) => Promise<
+    | {
+        readonly status: "rendered";
+        readonly document: ClaimDocument837iDetail;
+        readonly sourceFingerprint: string | null;
+        readonly accountReference: string;
+        readonly usage: "test" | "production";
+      }
+    | { readonly status: "blocked"; readonly gaps: readonly ClaimGap[] }
+  >;
+  readonly previewIntegrityKey?: string;
+  readonly now?: () => number;
+}
+
+function routeFingerprintFor(
+  route: Awaited<ReturnType<ClaimsRouteDeps["payerRouteStatus"]>>,
+  organizationId: string,
+  providerEntityId: string,
+): string | null {
+  if (route.status === "verified") return route.routeFingerprint;
+  if (route.status === "not_applicable")
+    return notApplicableClaimRouteFingerprint(organizationId, providerEntityId);
+  return null;
 }
 
 // ── §6 coder_icd_only_scope: the field-allowlist for a Coder-restricted actor ────────────────────────────
@@ -169,6 +222,45 @@ const VOID = P("billing.claim.void");
 const VOID_ABAC = PROVIDER_SCOPE("billing.claim.void", targetClaimId);
 const VOID_STEPUP = STEP_UP("billing.claim.void");
 
+const ClaimSubmissionHistoryItemSchema = Type.Object(
+  {
+    submissionId: Type.String({ format: "uuid" }),
+    providerEntityId: Type.String({ format: "uuid" }),
+    kind: Type.Union([
+      Type.Literal("claim_837i"),
+      Type.Literal("noe"),
+      Type.Literal("notr"),
+      Type.Literal("transfer_notice"),
+    ]),
+    claimId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    noeId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    notrId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    transferNoticeId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    claimControlNumber: Type.String(),
+    attemptIndex: Type.Integer({ minimum: 0 }),
+    outcome: Type.Union([
+      Type.Literal("queued"),
+      Type.Literal("generated"),
+      Type.Literal("submitted"),
+      Type.Literal("failed_worker"),
+      Type.Literal("failed_portal"),
+      Type.Literal("held_stale_source"),
+    ]),
+    dispatchState: Type.Union([
+      Type.Literal("pending"),
+      Type.Literal("sending"),
+      Type.Literal("in_doubt"),
+      Type.Literal("finished"),
+    ]),
+    dispatchReasonCode: Type.Union([Type.String({ pattern: "^[A-Z0-9_]{1,64}$" }), Type.Null()]),
+    outcomeReason: Type.Union([Type.String(), Type.Null()]),
+    generatedFileUri: Type.Union([Type.String(), Type.Null()]),
+    submittedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+    createdAt: Type.String({ format: "date-time" }),
+  },
+  { additionalProperties: false },
+);
+
 const AI_REJECT = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
 const IF_MATCH = requireIfMatch();
@@ -181,7 +273,7 @@ const PageQuerySchema = Type.Object({
 
 /** Register the §4.1 claims-core routes (#1–#13) over the read / write / assembly services. */
 export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps): void {
-  const { readService, writeService, assemblyService } = deps;
+  const { readService, writeService, assemblyService, payerRouteStatus } = deps;
 
   // #1 POST /claims/assemble — server-authoritative DRAFT assembly (PE scope + idempotency + AI-block). §4.1.
   app.post(
@@ -262,6 +354,116 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     },
   );
 
+  // Read-only preparation projection. Claim facts and lines come from the existing authoritative read model;
+  // payer routing is checked against the same server-side resolver used by the submission worker. No payer ID,
+  // credentials, MBI, TIN or raw X12 is returned by this endpoint.
+  app.get(
+    "/api/v1/billing/claims/:id/preparation",
+    {
+      preHandler: [READ, READ_CLAIM],
+      config: { auditRead: { resourceKind: "claim", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const { id } = parse(ClaimIdParamsSchema, request.params);
+      const claim = await readService.getClaim(actor, id);
+      const route = await payerRouteStatus(actor.organizationId, claim.providerEntityId);
+      const now = (deps.now ?? Date.now)();
+      const boundRouteFingerprint = routeFingerprintFor(
+        route,
+        actor.organizationId,
+        claim.providerEntityId,
+      );
+      const rendered =
+        route.status === "not_configured"
+          ? {
+              status: "blocked" as const,
+              gaps: [{ field: "payerRoute", reason: route.reasonCode ?? "not_verified" }],
+            }
+          : deps.renderPreview
+            ? await deps.renderPreview({
+                organizationId: actor.organizationId,
+                actorUserId: actor.userId,
+                claimId: id,
+                providerEntityId: claim.providerEntityId,
+                ...(boundRouteFingerprint ? { routeFingerprint: boundRouteFingerprint } : {}),
+              })
+            : { status: "blocked" as const, gaps: [] as readonly ClaimGap[] };
+      const submissionEligible =
+        claim.state === "ready" &&
+        route.status !== "not_configured" &&
+        rendered.status === "rendered" &&
+        (claim.latestValidation?.outcome === "all_pass" ||
+          claim.latestValidation?.outcome === "ready_for_submission");
+      const confirmationExpiresAt = now + 10 * 60 * 1000;
+      const previewConfirmation =
+        deps.previewIntegrityKey &&
+        deps.previewIntegrityKey.length >= 32 &&
+        rendered.status === "rendered" &&
+        rendered.sourceFingerprint &&
+        boundRouteFingerprint &&
+        submissionEligible
+          ? issueClaimPreviewToken(
+              {
+                organizationId: actor.organizationId,
+                claimId: id,
+                providerEntityId: claim.providerEntityId,
+                actorUserId: actor.userId,
+                claimVersion: claim.version,
+                sourceFingerprint: rendered.sourceFingerprint,
+                routeFingerprint: boundRouteFingerprint,
+                accountReference: rendered.accountReference,
+                usage: rendered.usage,
+                issuedAt: now,
+                expiresAt: confirmationExpiresAt,
+              },
+              deps.previewIntegrityKey,
+            )
+          : null;
+      return {
+        route: {
+          status: route.status,
+          ...(route.status === "not_configured" && route.reasonCode
+            ? { reasonCode: route.reasonCode }
+            : {}),
+        },
+        previewVersion: claim.version,
+        previewGeneratedAt: new Date().toISOString(),
+        previewExpiresAt: previewConfirmation
+          ? new Date(confirmationExpiresAt).toISOString()
+          : null,
+        previewConfirmationToken: previewConfirmation,
+        rendererStatus: rendered.status,
+        ...(rendered.status === "rendered"
+          ? {
+              billingPreview: {
+                tob: rendered.document.tob,
+                serviceFrom: rendered.document.serviceFrom,
+                serviceTo: rendered.document.serviceTo,
+                admissionDate: rendered.document.admissionDate,
+                lines: rendered.document.lines.map((line) => ({
+                  lineNumber: line.lineNumber,
+                  revenueCode: line.revenueCode,
+                  hcpcs: line.hcpcs,
+                  modifiers: line.modifiers,
+                  units: line.units,
+                  chargeCents: line.chargeCents,
+                  serviceDateFrom: line.serviceDateFrom,
+                  serviceDateTo: line.serviceDateTo,
+                })),
+                diagnosisCodes: rendered.document.diagnoses.map((diagnosis) => diagnosis.icd10Code),
+                totalChargeCents: rendered.document.totalChargeCents,
+                nonCoveredChargeCents: rendered.document.nonCoveredChargeCents,
+              },
+            }
+          : { rendererGaps: rendered.gaps.map(({ field, reason }) => ({ field, reason })) }),
+        payloadDigest: null,
+        payloadDigestStatus: "not_available_from_read_projection" as const,
+        submissionEligible: submissionEligible && previewConfirmation !== null,
+      };
+    },
+  );
+
   // #4 PATCH /claims/:id — DRAFT re-assembly edit (§2.5 If-Match; coder ICD-only scope). §4.1.
   app.patch(
     "/api/v1/billing/claims/:id",
@@ -271,7 +473,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       const { id } = parse(ClaimIdParamsSchema, request.params);
       const body = parse(ClaimPatchDraftBodySchema, request.body);
       enforceCoderIcdScope(actor, body);
-      const expectedVersion = parseIfMatch(request);
+      const expectedVersion = ifMatchVersionOf(request);
       const res = await writeService.updateDraftClaim(actor, id, {
         expectedVersion,
         lines: body.lines,
@@ -316,11 +518,105 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { id } = parse(ClaimIdParamsSchema, request.params);
+      const body = parse(ClaimSubmitRequest, request.body);
       // §2.5 precondition presence; the write service re-asserts the row version + step-up freshness (D2).
       // The §4.2 `ClaimSubmitRequest` body fields (ifVersion/acknowledgeAllOverrides) are belt-and-suspenders
       // only — the authoritative version is the If-Match header and the blocking guard is server-side.
-      parseIfMatch(request);
-      const res = await writeService.submitClaim(actor, id);
+      const expectedVersion = ifMatchVersionOf(request);
+      if (body.ifVersion !== expectedVersion) {
+        throw new StaleVersionError("the claim version does not match the reviewed preview");
+      }
+      if (
+        !deps.previewIntegrityKey ||
+        deps.previewIntegrityKey.length < 32 ||
+        !deps.renderPreview
+      ) {
+        throw new ChartWardenError(
+          "CLAIM_PREVIEW_UNAVAILABLE",
+          "a current reviewed claim preview is required",
+          503,
+        );
+      }
+      const claim = await readService.getClaim(actor, id);
+      const route = await payerRouteStatus(actor.organizationId, claim.providerEntityId);
+      if (route.status === "not_configured") {
+        throw new ChartWardenError(
+          route.reasonCode ?? "PAYER_ROUTE_NOT_VERIFIED",
+          "the Medicare payer route is not verified for this provider and clearinghouse environment",
+          422,
+        );
+      }
+      const currentRouteFingerprint = routeFingerprintFor(
+        route,
+        actor.organizationId,
+        claim.providerEntityId,
+      );
+      if (!currentRouteFingerprint)
+        throw new ChartWardenError(
+          "CLAIM_PREVIEW_STALE",
+          "refresh the claim preview before submitting",
+          409,
+        );
+      const expectedRouteFingerprint =
+        route.status === "verified" ? route.routeFingerprint : undefined;
+      const reviewed = verifyClaimPreviewToken(
+        body.previewConfirmationToken,
+        deps.previewIntegrityKey,
+        {
+          organizationId: actor.organizationId,
+          claimId: id,
+          providerEntityId: claim.providerEntityId,
+          actorUserId: actor.userId,
+        },
+        (deps.now ?? Date.now)(),
+      );
+      if (
+        !reviewed ||
+        reviewed.claimVersion !== claim.version ||
+        reviewed.claimVersion !== expectedVersion ||
+        reviewed.routeFingerprint !== currentRouteFingerprint
+      ) {
+        throw new ChartWardenError(
+          "CLAIM_PREVIEW_STALE",
+          "the reviewed claim preview is expired or no longer current; refresh it",
+          409,
+        );
+      }
+      const current = await deps.renderPreview({
+        organizationId: actor.organizationId,
+        actorUserId: actor.userId,
+        claimId: id,
+        providerEntityId: claim.providerEntityId,
+        routeFingerprint: currentRouteFingerprint,
+      });
+      if (
+        current.status !== "rendered" ||
+        !current.sourceFingerprint ||
+        current.sourceFingerprint !== reviewed.sourceFingerprint ||
+        current.accountReference !== reviewed.accountReference ||
+        current.usage !== reviewed.usage
+      ) {
+        throw new ChartWardenError(
+          "CLAIM_PREVIEW_STALE",
+          "claim billing information changed after review; refresh and review the preview",
+          409,
+        );
+      }
+      const eligible =
+        claim.state === "ready" &&
+        (claim.latestValidation?.outcome === "all_pass" ||
+          claim.latestValidation?.outcome === "ready_for_submission");
+      if (!eligible)
+        throw new ChartWardenError(
+          "GUARD_FAILED",
+          "the claim is no longer eligible for submission",
+          422,
+        );
+      const res = await writeService.submitClaim(actor, id, {
+        expectedVersion,
+        ...(expectedRouteFingerprint ? { expectedRouteFingerprint } : {}),
+        reviewedSourceFingerprint: reviewed.sourceFingerprint,
+      });
       return reply.code(202).send(res);
     },
   );
@@ -333,7 +629,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       const actor = writeActorOf(request);
       const { id } = parse(ClaimIdParamsSchema, request.params);
       const body = parse(ClaimReplaceRequest, request.body);
-      parseIfMatch(request);
+      ifMatchVersionOf(request);
       const originalLines = await readService.listClaimLines(actor, id);
       const res = await writeService.replaceClaim(actor, id, {
         reason: body.reason,
@@ -351,7 +647,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       const actor = writeActorOf(request);
       const { id } = parse(ClaimIdParamsSchema, request.params);
       const body = parse(ClaimVoidRequest, request.body);
-      parseIfMatch(request);
+      ifMatchVersionOf(request);
       const res = await writeService.voidClaim(actor, id, { reason: body.reason });
       return reply.code(201).send(res);
     },
@@ -391,6 +687,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     "/api/v1/billing/claims/:id/submissions",
     {
       preHandler: [READ, READ_CLAIM],
+      schema: { response: { 200: Type.Array(ClaimSubmissionHistoryItemSchema) } },
       config: {
         auditRead: { resourceKind: "claim_submission", resourceIdParam: "id", list: true },
       },

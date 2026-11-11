@@ -29,6 +29,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
+import { assertNotOrgLibraryForEdit } from "../internal-documents";
 import type { DocumentSeamStore, RenderUpsert, RenderedDocumentRow } from "./store";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -46,6 +47,8 @@ export function createDrizzleDocumentSeamStore(db: DbClient): DocumentSeamStore 
 
   return {
     async upsertRenderedDocument(input: RenderUpsert): Promise<RenderedDocumentRow> {
+      // ADR-0109 D10 (PR 3) — defence in depth: a render never files under (or versions) a grief-library type; those are hand uploads.
+      assertNotOrgLibraryForEdit(input.aggregateType);
       return inOrg(input.organizationId, async (tx) => {
         const renderedAt = new Date(input.renderedAt);
 

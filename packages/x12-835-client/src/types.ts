@@ -68,6 +68,8 @@ export interface ParsedServiceLine {
   submittedUnits?: number;
   /** Service-line-level CAS adjustments. */
   adjustments: ParsedAdjustment[];
+  /** SVC REF identifiers, including REF*6R where supplied by the payer. */
+  references?: { readonly qualifier: string; readonly value: string }[];
   /** Service-line-level remarks. */
   remarks: ParsedRemark[];
 }
@@ -98,6 +100,8 @@ export interface ParsedClaim835 {
   remarks: ParsedRemark[];
   /** The SVC service lines under this claim. */
   serviceLines: ParsedServiceLine[];
+  /** Claim-loop REF identifiers preserved without assigning them undocumented semantics. */
+  references?: { readonly qualifier: string; readonly value: string }[];
 }
 
 /** An N1 payer (PR) or payee (PE) loop as the payer sent it; used to confirm an ERA belongs to the tenant. */
@@ -114,6 +118,24 @@ export interface ParsedRemittanceParty {
   payerAssignedId?: string;
   /** REF*2U — additional payer identification (payer loop). */
   additionalPayerId?: string;
+  /** All party-loop REF values, including qualifiers not yet interpreted by M25. */
+  references?: { readonly qualifier: string; readonly value: string }[];
+}
+
+export interface ParsedProviderAdjustment {
+  /** PLB01 — payer-reported provider identifier. This is source evidence, not a verified M40 identity. */
+  readonly providerIdentifier?: string;
+  /** PLB02 — provider fiscal period (CCYYMMDD), normalized to an ISO calendar date. */
+  readonly fiscalPeriod?: string;
+  /** One-based segment position within the selected ST..SE transaction-set body. */
+  readonly segmentPosition?: number;
+  /** One-based reason/amount pair position within this PLB segment. */
+  readonly occurrence?: number;
+  /** PLB03-1 reason code and PLB03-2 reference, preserved verbatim. */
+  readonly reason: string;
+  readonly reference?: string;
+  /** PLB04/06… signed adjustment amount in dollars. */
+  readonly amount: number;
 }
 
 /** The parsed 835 envelope — one per X12 5010 835 transaction. */
@@ -124,6 +146,8 @@ export interface ParsedRemittanceAdvice {
   interchangeControlNumber: string;
   /** ST02 — transaction set control number. */
   transactionSetControlNumber: string;
+  /** GS06 functional group control number for the original transaction set. */
+  functionalGroupControlNumber?: string;
   /** TRN02 — the check / EFT trace number. */
   checkOrEftTraceNumber?: string;
   /** BPR04 — the payment method. */
@@ -132,6 +156,10 @@ export interface ParsedRemittanceAdvice {
   totalPaymentAmount: number;
   /** Sum of the PLB provider-level adjustments in dollars (positive reduces the payment); absent when the set has none. */
   providerAdjustmentTotal?: number;
+  /** Individual PLB pairs; a total alone loses reason/reference and reversal provenance. */
+  providerAdjustments?: readonly ParsedProviderAdjustment[];
+  /** Unknown ST..SE segments the normalized M25 model does not yet understand. PHI-bearing; memory only. */
+  unknownSegments?: readonly { readonly segmentId: string; readonly elements: readonly string[] }[];
   /** BPR16 (check issue / EFT effective date), falling back to DTM*405 (production date) — ISO date-time. */
   productionDate: string;
   /** TRN03 — the originating company identifier. */

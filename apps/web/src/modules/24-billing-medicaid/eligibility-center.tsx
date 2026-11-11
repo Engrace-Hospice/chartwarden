@@ -352,7 +352,9 @@ export function MedicaidEligibilityCenter(): JSX.Element {
                           </div>
                         ) : null}
                       </td>
-                      <td style={tdMono}>{r.mcoId ? shortId(r.mcoId) : "FFS"}</td>
+                      <td style={tdMono}>
+                        {r.mcoId ? `MCO ${shortId(r.mcoId)} · unverified` : "Not determined"}
+                      </td>
                       <td style={td}>
                         {r.recipientIdMaskedAtCheck ? (
                           // No value beyond the mask ever reaches the browser, and no reveal is wired.

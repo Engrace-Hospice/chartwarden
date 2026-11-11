@@ -14,6 +14,30 @@ const eventBase = {
 };
 
 describe("M23 submission outbox bridge", () => {
+  it("preserves the durable NOE/NOTR attempt id in the worker payload", async () => {
+    const calls: unknown[] = [];
+    const consumer = buildM23SubmissionRequestConsumer({
+      async enqueue(...args) {
+        calls.push(args);
+      },
+    });
+    await consumer.handle({
+      ...eventBase,
+      id: "event-noe",
+      eventType: "m23.noe.submit_requested",
+      aggregateKind: "noe_record",
+      aggregateId: "noe-1",
+      payload: { noeId: "noe-1", submissionId: "submission-noe" },
+    });
+    expect(calls).toEqual([
+      [
+        "noe.submit",
+        "submission-noe",
+        { organizationId: "org-1", noeId: "noe-1", submissionId: "submission-noe" },
+      ],
+    ]);
+  });
+
   it("enriches a claim job with its trusted outbox organization and deduplicates by submission", async () => {
     const calls: unknown[] = [];
     const consumer = buildM23SubmissionRequestConsumer({
@@ -32,6 +56,8 @@ describe("M23 submission outbox bridge", () => {
         submissionId: "submission-1",
         claimControlNumber: "control-1",
         attemptIndex: 0,
+        expectedRouteFingerprint: "a".repeat(64),
+        reviewedSourceFingerprint: "b".repeat(64),
       },
       attemptCount: 1,
       createdAt: new Date(),
@@ -46,6 +72,8 @@ describe("M23 submission outbox bridge", () => {
           submissionId: "submission-1",
           claimControlNumber: "control-1",
           attemptIndex: 0,
+          reviewedSourceFingerprint: "b".repeat(64),
+          expectedRouteFingerprint: "a".repeat(64),
         },
       ],
     ]);
@@ -103,6 +131,7 @@ describe("M23 submission outbox bridge", () => {
         claimId: "claim-1",
         submissionId: "submission-1",
         attemptIndex: 0,
+        expectedRouteFingerprint: "b".repeat(64),
         reason: "gateway unavailable",
       },
       attemptCount: 1,
@@ -117,6 +146,7 @@ describe("M23 submission outbox bridge", () => {
           claimId: "claim-1",
           submissionId: "submission-1",
           attemptIndex: 0,
+          expectedRouteFingerprint: "b".repeat(64),
         },
       ],
     ]);

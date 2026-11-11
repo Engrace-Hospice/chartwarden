@@ -1,17 +1,23 @@
-import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/24-billing-medicaid/routes/read-service-drizzle.ts — the Drizzle-backed M24 READ
 // service. Every method opens `withOrgContext(db, {organizationId, userId}, tx => …)` so Postgres RLS scopes
 // each statement to the acting org. Claim list paging is keyset over (updated_at DESC, id DESC) — newest CHANGE first, as the Commercial list. The
 // rule-config read overlays the per-tenant config rows onto the §4.6 platform-default registry. Secrets and
 // the Recipient ID are NEVER returned (presence flags + masked last-4 only; D12 / §3.6).
+import { type DbClient, schema } from "@chartwarden/db";
 import {
   DEFAULT_MEDICAID_RULES,
   electronicSubmissionRefusal,
+  medicaidClaimRouteReadiness,
 } from "@chartwarden/medicaid-adapters";
+import {
+  type KeysetCursor,
+  ROUTE_FORMATS,
+  decodeCursor,
+  encodeCursor,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { isUsableCipher } from "../credential-crypto";
-import { type CursorPage, decodeKeysetCursor, encodeKeysetCursor } from "./concurrency";
 import type {
   AcknowledgmentView,
   ArDashboardView,
@@ -19,6 +25,7 @@ import type {
   ClaimFilters,
   ClaimLineView,
   ClaimView,
+  CursorPage,
   EligibilityCheckView,
   EligibilityFilters,
   M24ReadService,
@@ -42,6 +49,20 @@ const day = (d: Date | string | null): string => iso(d).slice(0, 10);
 const dayN = (d: Date | string | null): string | null => (d === null ? null : day(d));
 
 const RULES_BY_KEY = new Map(DEFAULT_MEDICAID_RULES.map((r) => [r.key, r]));
+
+/** Postgres `updated_at::text` (full precision) — the claim list's keyset anchor. */
+const CLAIM_CURSOR_TS = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?(\+|-)\d{2}(:\d{2})?$/;
+
+/** The claim list cursor payload `{ a: updated_at text, id }`; both are bound into the keyset SQL. */
+export function isClaimListCursor(value: unknown): value is KeysetCursor {
+  const v = value as Partial<KeysetCursor> | null;
+  return (
+    typeof v?.a === "string" &&
+    typeof v.id === "string" &&
+    CLAIM_CURSOR_TS.test(v.a) &&
+    ROUTE_FORMATS.uuid?.(v.id) === true
+  );
+}
 
 export function buildDrizzleM24ReadService(
   db: DbClient,
@@ -80,7 +101,13 @@ export function buildDrizzleM24ReadService(
     validationRunIdLatest: r.validationRunIdLatest ?? null,
     eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
     electronicSubmissionRefusal:
-      electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState))?.message ?? null,
+      electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState), r.mcoId ?? null)
+        ?.message ?? null,
+    routeReadiness: medicaidClaimRouteReadiness(
+      r.serviceState,
+      r.mcoId ?? null,
+      isGatewayBound(r.serviceState),
+    ),
     createdAt: iso(r.createdAt),
     updatedAt: iso(r.updatedAt),
   });
@@ -154,7 +181,7 @@ export function buildDrizzleM24ReadService(
 
   return {
     async listClaims(actor, filters, cursor, limit) {
-      const c = decodeKeysetCursor(cursor);
+      const c = decodeCursor(actor.organizationId, cursor, isClaimListCursor);
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
           filters.state
@@ -166,7 +193,7 @@ export function buildDrizzleM24ReadService(
           filters.patientId ? eq(C.patientId, filters.patientId) : undefined,
           peScope(C.providerEntityId, actor, filters.providerEntityId),
           // Full-precision text anchor: a JS Date truncates to ms and a keyset on it would skip or repeat rows.
-          c ? sql`(${C.updatedAt}, ${C.id}) < (${c.ts}::timestamptz, ${c.id}::uuid)` : undefined,
+          c ? sql`(${C.updatedAt}, ${C.id}) < (${c.a}::timestamptz, ${c.id}::uuid)` : undefined,
         ].filter(Boolean);
         const rows = await tx
           .select({ claim: C, ts: sql<string>`${C.updatedAt}::text` })
@@ -179,7 +206,10 @@ export function buildDrizzleM24ReadService(
         const last = slice[slice.length - 1];
         return {
           items: slice.map((r) => toClaim(r.claim)),
-          nextCursor: hasMore && last ? encodeKeysetCursor(last.ts, last.claim.id) : null,
+          nextCursor:
+            hasMore && last
+              ? encodeCursor(actor.organizationId, { a: last.ts, id: last.claim.id })
+              : null,
         } satisfies CursorPage<ClaimView>;
       });
     },

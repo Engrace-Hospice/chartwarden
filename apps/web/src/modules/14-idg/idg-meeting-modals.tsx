@@ -79,8 +79,8 @@ const footer = { display: "flex", gap: "0.5rem", justifyContent: "flex-end" } as
 function useCeremony<T>(open: boolean, onDone: (v: T) => void, onClose: () => void) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // F-081 — retain status + code: both step-up and stale-version refusals can be 412, but their recovery
-  // actions are intentionally different.
+  // F-081 — retain status + code: a step-up refusal (412 STEP_UP_REQUIRED) and a stale version (409
+  // STALE_VERSION) have intentionally different recovery actions.
   const [status, setStatus] = useState<number | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   useEffect(() => {
@@ -702,7 +702,7 @@ export function LifecycleModal({
               Re-authenticate
             </Button>
           ) : null}
-          {status === 409 || (status === 412 && errorCode !== "STEP_UP_REQUIRED") ? (
+          {status === 409 ? (
             <Button tone="secondary" onClick={() => navigate(0)} disabled={busy}>
               Refresh meeting
             </Button>

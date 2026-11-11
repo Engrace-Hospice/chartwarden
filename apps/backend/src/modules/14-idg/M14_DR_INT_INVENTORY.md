@@ -66,7 +66,7 @@ DR/security-relevant mitigations:
   present-set at decision-write time so a fraudulent attendance row is traceable in the M4 audit log.
 - **Tampering — decision payload:** TypeBox discriminated-union validation at route entry
   (`422 DECISION_PAYLOAD_INVALID`); `If-Match` + `Idempotency-Key` optimistic lock on `PATCH /decisions/:id`
-  (stale → `412`); the adjournment-burst emitter reads the *stored* row, not the original request, to build the
+  (stale → `409`); the adjournment-burst emitter reads the *stored* row, not the original request, to build the
   `idg.decision_recorded` envelope, so tampering between PATCH and ADJOURN is blocked.
 - **Tampering — packet snapshot:** `frozen_at` is set in the same transaction as the outbox burst;
   `buildPacketSnapshot` / the build route refuse a frozen packet (`422 PACKET_FROZEN`, W-PKT-02); direct SQL

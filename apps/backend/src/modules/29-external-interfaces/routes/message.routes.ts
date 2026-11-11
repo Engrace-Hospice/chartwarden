@@ -8,7 +8,7 @@
 import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
-import { actorOf, writeActorOf } from "./actor";
+import { actorOf, writeActorOf } from "@chartwarden/shared/route-kit";
 import { ABAC_IN_ORG, P, STEP_UP } from "./guards";
 import { InboundMessageListQuery, OutboundMessageListQuery, parseQuery } from "./m29-typebox";
 import {

@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/33-reporting/routes/drilldown.routes.ts — M33 (§4.1 #35–#36).
 //
 // The drilldown surface (D6/D16 — navigation-as-disclosure):
@@ -11,10 +12,9 @@
 //
 // Every route is gated by the REAL Authorization Contract (`requirePermission` + `requireAbac` / `requireStepUp`
 // from @chartwarden/auth, M3). Org/actor binding is ALWAYS server-side (request.context, never the body).
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { type PreHandler, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { type PreHandler, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { writeActorOf } from "./actor";
 import type { CsvSinkPort, M33ExportDrilldownRouteService } from "./export-drilldown-service";
 import { parse } from "./reporting-typebox";
 import { DrilldownBulkExportRequest, DrilldownEmitRequest } from "./write-typebox";

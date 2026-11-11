@@ -1,3 +1,9 @@
+import {
+  type AbacContext,
+  type AbacTarget,
+  PLATFORM_OPS_ROLE_KEYS,
+  registerPredicateIdempotent,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/29-external-interfaces/abac-predicates.ts — M29-T08 (§4.8 / §8).
 //
 // The SIX named ABAC predicate resolvers M29 registers into M3's named-predicate registry (D20). Each is a
@@ -19,12 +25,7 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so a re-boot (tests) guards
 // on `abacRegistry.has`.
-import {
-  type AbacContext,
-  type AbacTarget,
-  PLATFORM_OPS_ROLE_KEYS,
-  registerPredicateIdempotent,
-} from "@chartwarden/auth";
+import { membershipIdOf, targetStr } from "@chartwarden/shared/route-kit";
 import type { Hl7ProposalOwnerModule } from "@chartwarden/types";
 
 /** The §4.8 predicate names M29 OWNS (registered into M3). Single-owner across the platform registry. */
@@ -136,19 +137,6 @@ export interface M29AbacDeps {
 }
 
 // ── target/context extraction (server-side only) ─────────────────────────────────────────────────────
-
-function targetStr(target: AbacTarget, ...fields: readonly string[]): string | null {
-  for (const field of fields) {
-    const value = target[field];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return null;
-}
-
-function membershipIdOf(context: AbacContext): string | null {
-  const value = context.attributes?.membershipId;
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
 
 /**
  * Whether the caller carries a platform-ops role (W-XI-12). RE-DERIVED from the platform-owned role

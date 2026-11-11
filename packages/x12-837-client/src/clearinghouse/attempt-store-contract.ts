@@ -127,6 +127,23 @@ export const ATTEMPT_STORE_CONTRACT: readonly AttemptStoreContractCase[] = [
     },
   },
   {
+    id: "AS-04b",
+    title: "findByControlNumber returns the live attempt in its own tenant and scope only",
+    async run(make, ids) {
+      const store = await make();
+      await store.reserve(reservation(ids));
+      await store.complete(ids.orgA, `scope-${ids.orgA}`, "idem-1", "ch-1", T1);
+      const mine = await store.findByControlNumber(ids.orgA, `scope-${ids.orgA}`, "CCN-1");
+      assert(mine?.clearinghouseSubmissionId === "ch-1", "finds its own sent attempt");
+      const otherScope = await store.findByControlNumber(ids.orgA, "scope-live", "CCN-1");
+      assert(otherScope === null, "another scope does not see it");
+      const otherOrg = await store.findByControlNumber(ids.orgB, `scope-${ids.orgA}`, "CCN-1");
+      assert(otherOrg === null, "another tenant does not see it");
+      const unknown = await store.findByControlNumber(ids.orgA, `scope-${ids.orgA}`, "CCN-X");
+      assert(unknown === null, "an unknown number is null");
+    },
+  },
+  {
     id: "AS-05",
     title: "complete on an unknown reservation returns null",
     async run(make, ids) {

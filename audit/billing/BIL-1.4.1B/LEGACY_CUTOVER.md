@@ -1,0 +1,9 @@
+# Legacy coexistence and cutover
+
+The existing M25 `receiveAdvice` path stages advice and emits `m25.edi.835_received`; its consumer can reach `postAdvice`. BIL-1.4.1B preserves that path for distinct advice, adding only a stage-identity refusal before an advice/event is created. New Claim.MD delivery has its own source-specific flag and writes only the protected M25 stage table.
+
+`shouldRunLegacyClaimMdEraPull` suppresses the legacy provider-scoped Claim.MD pull whenever new capture or delivery is enabled. It does not suppress unrelated clearinghouse vendors. For safe rollout, stop/quiesce all legacy Claim.MD pull workers before enabling capture/delivery, confirm the deployed build includes the mutual exclusion, and preserve existing cursors. This is a process-level cutover guard; rolling deployment and multiple-version worker behavior have not been runtime-certified.
+
+The duplicate check compares bounded existing M25 advice records under the tenant context and shared advisory transaction lock. Same-source exact digest+controls is a duplicate; reused controls or TRN+amount is held as possible; weak amount/date similarity is ignored. Legacy `receiveAdvice` checks the same staging table under that lock and returns `review_required` before creating an advice row or posting-triggering event when staged controls or trace match. This closes the stage-first race for provider-scoped identity. M25 historical rows do not consistently expose payer identity/channel provenance, so it conservatively blocks possible same-trace candidates and does not prove global exactly-once posting across manual/SFTP/other integrations.
+
+No cursor is reset and no historical remittance is deleted. Before any controlled rollout, BIL-1.5 must test old/new worker overlap, manual upload races, and source-channel replay against an isolated private PostgreSQL instance.

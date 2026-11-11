@@ -1,3 +1,9 @@
+import {
+  type GuardRequest,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+} from "@chartwarden/auth";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/feature-flags-admin.ts — M34 (§4.1
 // platform-ops; §4.7 / D13). The feature-flag ADMIN routes M34 OWNS: M34 contributes the admin UI + the
 // platform-ops authentication boundary, but M1 owns the `feature_flag` SCHEMA + the `FeatureFlagAdmin`
@@ -12,14 +18,9 @@
 // (global flag → platform-ops only; per-tenant flag → org_admin) + passkey-recent-5min step-up (§6 / D10).
 // The M36 `feature_flag.platform_emergency_changed` alert (plus the outbox row and the critical audit) on
 // kill-switch is the M1 seam's emission, in-tx with the write. Mirrors the sibling tenants.ts plugin shape.
-import {
-  type GuardRequest,
-  requireAbac,
-  requirePermission,
-  requireStepUp,
-} from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   FeatureFlagListQuerySchema,
   FeatureFlagParamsSchema,
@@ -29,26 +30,9 @@ import {
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface FeatureFlagAdminRouteDeps {
   /** The §4.7 platform-ops route service — a thin boundary over M1's `FeatureFlagAdmin` seam (D13). */
   service: TenantPlatformRouteService;
-}
-
-function actorOf(request: FastifyRequest): {
-  userId: string;
-  organizationId: string;
-  membershipId: string | null;
-} {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  const membershipId = ctx.attributes?.membershipId;
-  return {
-    userId: ctx.userId,
-    organizationId: ctx.organizationId,
-    membershipId: typeof membershipId === "string" && membershipId.length > 0 ? membershipId : null,
-  };
 }
 
 const flagKeyOf = (request: FastifyRequest): string =>

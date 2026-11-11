@@ -1,3 +1,4 @@
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/baa-register.ts — M34 (§4.1
 // platform-ops; §3.8 / D11). The platform→tenant Business Associate Agreement register (DISTINCT from
 // M40's tenant→external BAA register). List (all tenants' BAA records, across addendum versions), create
@@ -10,9 +11,9 @@
 // + the `platform_tenant_baa.read_platform` key. The compliance-officer ATTESTATION route lives on the
 // tenant surface (`POST /api/v1/tenant/baa/:id/attest`, a separate group) — this group is the platform-ops
 // register CRUD only. Org/actor binding is server-side. Mirrors the sibling tenants.ts plugin shape.
-import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { type PreHandler, actorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
   BaaParamsSchema,
   BaaRegisterListQuerySchema,
@@ -22,17 +23,9 @@ import {
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 export interface BaaRegisterRouteDeps {
   /** The §4.1 platform-ops route service (in-memory slice; Drizzle under `withPlatformContext` in prod). */
   service: TenantPlatformRouteService;
-}
-
-function actorOf(request: FastifyRequest): { userId: string } {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { userId: ctx.userId };
 }
 
 const baaIdOf = (request: FastifyRequest): string => parse(BaaParamsSchema, request.params).id;

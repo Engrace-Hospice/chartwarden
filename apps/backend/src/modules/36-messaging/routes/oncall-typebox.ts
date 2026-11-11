@@ -1,3 +1,4 @@
+import { Uuid } from "@chartwarden/shared/route-kit";
 import {
   ONCALL_DIRECTORY_ROLES,
   ONCALL_DIRECTORY_STATUSES,
@@ -7,14 +8,13 @@ import {
 // accepts ONLY a role from the closed list and a patient id (the router is patient-scoped); an unknown key is a 422. The response is
 // display names, enums and instants: no user id, no contact detail, no patient data.
 import { type TSchema, Type } from "@sinclair/typebox";
-import { UUID_PATTERN } from "./messaging-typebox";
 
 const nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
 const oneOf = <T extends readonly string[]>(values: T) =>
   Type.Union(values.map((v) => Type.Literal(v)));
 
 export const OnCallCoverageQuerySchema = Type.Object(
-  { role: oneOf(ONCALL_DIRECTORY_ROLES), patient_id: Type.String({ pattern: UUID_PATTERN }) },
+  { role: oneOf(ONCALL_DIRECTORY_ROLES), patient_id: Uuid() },
   { additionalProperties: false },
 );
 

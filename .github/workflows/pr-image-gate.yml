@@ -36,6 +36,16 @@ jobs:
           for f in deploy/production/deploy.sh deploy/production/smoke.sh deploy/production/bootstrap-vps.sh deploy/production/reseed-demo.sh; do
             bash -n "$f"
           done
+      # #867: syntax-only parsing misses quoting, portability and trap mistakes in the scripts that touch production.
+      # Use the scripts' own shebangs (three POSIX sh, one bash) and pin the scanner image by digest.
+      - name: ShellCheck production deploy scripts
+        run: |
+          docker run --rm -v "$PWD:/mnt:ro" -w /mnt \
+            koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d \
+            deploy/production/deploy.sh \
+            deploy/production/smoke.sh \
+            deploy/production/bootstrap-vps.sh \
+            deploy/production/reseed-demo.sh
       # `compose.yml` reads `.env.production` (env_file) and interpolates the template's variables; the
       # example file is the contract for what a real one must define, so `config` fails here when a
       # service needs a variable the template does not list (the class of break the env-template test
@@ -84,3 +94,59 @@ jobs:
           # The locked venv (#853) makes this a multi-GB image; Trivy's default 5m analysis timeout fails the scan.
           timeout: 20m
           trivyignores: .trivyignore.yaml
+
+  # Production's Postgres (deploy/production/postgres): the image dev, CI and the drills build, and postgres-image.yml
+  # publishes. Starts it, proves pgvector and the Debian-compatible socket, then scans with unfixed findings counted
+  # too (the publish does the same), so a base or package bump that brings a CVE is red here first. The same job then
+  # builds deploy/production/backup (the image production actually runs under compose.backup.yml: this Postgres plus a
+  # source-built pgBackRest and mc) on the Postgres it just built, and scans it the same way: one job so
+  # the second image reuses the first's local layers instead of costing a second runner start.
+  postgres-scan:
+    name: Postgres image smoke and CVE scan
+    runs-on: [self-hosted, Linux, X64, ci]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and smoke-test
+        run: |
+          docker build -q -t "chartwarden-postgres:pr-${PR}" deploy/production/postgres >/dev/null
+          docker rm -f "cw-pg-gate-${PR}" 2>/dev/null || true
+          docker run -d --name "cw-pg-gate-${PR}" -e POSTGRES_PASSWORD=gate "chartwarden-postgres:pr-${PR}" >/dev/null
+          for i in $(seq 1 60); do
+            docker exec "cw-pg-gate-${PR}" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1 && break
+            sleep 1
+          done
+          docker exec -u postgres "cw-pg-gate-${PR}" psql -X -v ON_ERROR_STOP=1 -h /var/run/postgresql -Atc \
+            "CREATE EXTENSION vector; CREATE EXTENSION amcheck; SELECT '[1,2]'::vector <-> '[1,3]'::vector"
+        env:
+          PR: ${{ github.event.pull_request.number }}
+      - name: Scan Postgres image (HIGH/CRITICAL fail the PR)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: chartwarden-postgres:pr-${{ github.event.pull_request.number }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          trivyignores: .trivyignore.yaml
+      # POSTGRES_IMAGE is the tag built above, so this is the working tree's backup toolchain on the working tree's
+      # Postgres (not the published digest the Dockerfile defaults to). The Dockerfile's own RUN already executes
+      # `pgbackrest version` and `mc --version`; running pgbackrest again here proves the shipped binary starts.
+      - name: Build the backup image and smoke-test pgBackRest
+        run: |
+          docker build -q -t "chartwarden-backup:pr-${PR}" \
+            --build-arg "POSTGRES_IMAGE=chartwarden-postgres:pr-${PR}" deploy/production/backup >/dev/null
+          docker run --rm --entrypoint pgbackrest "chartwarden-backup:pr-${PR}" version
+        env:
+          PR: ${{ github.event.pull_request.number }}
+      - name: Scan backup image (HIGH/CRITICAL fail the PR)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: chartwarden-backup:pr-${{ github.event.pull_request.number }}
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          trivyignores: .trivyignore.yaml
+      - name: Cleanup
+        if: always()
+        run: docker rm -f "cw-pg-gate-${{ github.event.pull_request.number }}" 2>/dev/null || true

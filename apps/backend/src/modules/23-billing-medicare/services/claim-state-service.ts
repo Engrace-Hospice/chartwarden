@@ -1,9 +1,15 @@
+import {
+  type ClaimState,
+  type ClaimTransitionEvent,
+  reduce as reduceClaim,
+  repositories,
+} from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/services/claim-state-service.ts — the M23 claim
 // state-transition SERVICE (spec §10 task 25 / §2.2 lifecycle, D2 / D4).
 //
 // This is the single home that drives the PURE `claim` lifecycle reducer from `@chartwarden/billing`
 // (`machines/claim` → `reduce(state, event, ctx)`), persists the transition with the §2.5 If-Match version
-// check (`ClaimRepository.transitionToState` → VERSION_CONFLICT → 412), APPENDS the `claim_state_history`
+// check (`ClaimRepository.transitionToState` → 409 STALE_VERSION), APPENDS the `claim_state_history`
 // row in the SAME transaction (append-only — the repo offers no mutating surface), and emits the canonical
 // §4.10 `m23.*` outbox event(s) for that transition through the catalog-validating tx publisher (the
 // injected {@link WriteOutboxPort}, bound at boot with `bindCallerModule("m23")`) — all inside ONE
@@ -23,12 +29,7 @@
 //
 // ENUM-CASE BOUNDARY: the reducer + this service speak the lowercase domain `ClaimState`; the repo maps to
 // the UPPERCASE DB pgEnum at the DB boundary (the kernel conventions). NO PHI / NO MBI on any surface (D13).
-import {
-  type ClaimState,
-  type ClaimTransitionEvent,
-  reduce as reduceClaim,
-  repositories,
-} from "@chartwarden/billing";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 
@@ -44,9 +45,6 @@ import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/typ
 export type BillingDb = repositories.BillingDb;
 /** The structural org-context transaction handle the repos write through (a `BillingDb` for typing). */
 export type BillingTx = BillingDb;
-
-/** The legitimate `claim_state_history.actor_kind` values (D13 forbids any `ai_*` principal). */
-export type BillingActorKind = "user" | "system" | "consumer" | "worker";
 
 /**
  * The MUTATING-route/worker/consumer actor: org + user + roles, the server-assembled active membership id
@@ -158,7 +156,7 @@ export interface ClaimEventExtra {
 /** One claim lifecycle transition (the route/worker/consumer/validation-service command). */
 export interface ApplyClaimTransitionInput {
   readonly claimId: string;
-  /** The §2.5 If-Match version the transition is applied against (a stale value → 412). */
+  /** The §2.5 If-Match version the transition is applied against (a stale value → 409 STALE_VERSION). */
   readonly expectedVersion: number;
   readonly event: ClaimTransitionEvent;
   /** Columns the transition may set on the claim row (control numbers, back-refs, amounts). */
@@ -544,10 +542,8 @@ export function buildClaimStateService(
       input.patch ?? {},
     );
     if (!versioned.ok) {
-      throw new ChartWardenError(
-        "VERSION_CONFLICT",
+      throw new StaleVersionError(
         `the claim was modified concurrently (current version ${versioned.currentVersion ?? "unknown"})`,
-        412,
       );
     }
     const updated = versioned.row;

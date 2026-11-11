@@ -2,6 +2,7 @@
 // API projection of a validation run (issue #722). Ids, dates, codes, money and rule messages only: no member id, no
 // authorization number, no patient name.
 import { schema } from "@chartwarden/db";
+import { ROUTE_FORMATS, decodeCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
@@ -55,28 +56,17 @@ interface QueueCursor {
   readonly ts: string;
   readonly id: string;
 }
-const CURSOR_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CURSOR_TS = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?(\+|-)\d{2}(:\d{2})?$/;
 
-const encodeCursor = (c: QueueCursor): string =>
-  Buffer.from(JSON.stringify([c.ts, c.id])).toString("base64url");
-
-/** An opaque keyset position; anything that does not decode to a timestamp and a uuid is a 422, never reaches SQL. */
-function decodeCursor(raw: string): QueueCursor {
-  try {
-    const [ts, id] = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as unknown[];
-    if (
-      typeof ts === "string" &&
-      typeof id === "string" &&
-      CURSOR_TS.test(ts) &&
-      CURSOR_ID.test(id)
-    ) {
-      return { ts, id };
-    }
-  } catch {
-    // fall through to the refusal
-  }
-  throw new ChartWardenError("VALIDATION_FAILED", "cursor is not valid", 422);
+/** The keyset position is bound into SQL, so a signed cursor must still carry a timestamp and a uuid. */
+function isQueueCursor(value: unknown): value is QueueCursor {
+  const v = value as Partial<QueueCursor> | null;
+  return (
+    typeof v?.ts === "string" &&
+    typeof v.id === "string" &&
+    CURSOR_TS.test(v.ts) &&
+    ROUTE_FORMATS.uuid?.(v.id) === true
+  );
 }
 
 export interface ClaimListFilter {
@@ -130,6 +120,18 @@ export interface CommercialClaimReadService {
     claim: Record<string, string | number | null>;
     lines: readonly Record<string, string | number | null>[];
     validation: ValidationRunApiView | null;
+    correction: {
+      readonly correctionOfClaimId: string | null;
+      readonly correctionKind: string | null;
+      readonly correctionReasonCode: string | null;
+      readonly relatedClaims: readonly {
+        readonly id: string;
+        readonly claimControlNumber: string;
+        readonly state: string;
+        readonly relation: "original" | "correction";
+      }[];
+      readonly rejectedCorrection: { readonly eligible: boolean; readonly reasonCode: string };
+    };
   }>;
 }
 
@@ -173,7 +175,7 @@ export function buildCommercialClaimReadService(
       const items: Record<string, string | number | null>[] = [];
       let hasMore = false;
       let scanned = 0;
-      let after: QueueCursor | null = f.cursor ? decodeCursor(f.cursor) : null;
+      let after: QueueCursor | null = decodeCursor(actor.organizationId, f.cursor, isQueueCursor);
       let lastReturned: QueueCursor | null = null;
       let lastScanned: QueueCursor | null = null;
       let stoppedByLimit = false;
@@ -248,7 +250,8 @@ export function buildCommercialClaimReadService(
         }
       }
       const resume = stoppedByLimit ? lastReturned : lastScanned;
-      const nextCursor = hasMore && !exhausted && resume ? encodeCursor(resume) : null;
+      const nextCursor =
+        hasMore && !exhausted && resume ? encodeCursor(actor.organizationId, resume) : null;
       return { items, hasMore: nextCursor !== null, nextCursor };
     },
 
@@ -348,6 +351,81 @@ export function buildCommercialClaimReadService(
             .from(schema.commercialClaimLines)
             .where(eq(schema.commercialClaimLines.claimId, c.id))
             .orderBy(asc(schema.commercialClaimLines.lineNumber));
+          const rootId = c.correctionRootClaimId ?? c.id;
+          const related = await tx
+            .select({
+              id: schema.commercialClaims.id,
+              claimControlNumber: schema.commercialClaims.claimControlNumber,
+              state: schema.commercialClaims.state,
+              correctionOfClaimId: schema.commercialClaims.correctionOfClaimId,
+            })
+            .from(schema.commercialClaims)
+            .where(
+              and(
+                eq(schema.commercialClaims.organizationId, actor.organizationId),
+                eq(schema.commercialClaims.providerEntityId, c.providerEntityId),
+                eq(schema.commercialClaims.patientId, c.patientId),
+                or(
+                  eq(schema.commercialClaims.id, rootId),
+                  eq(schema.commercialClaims.correctionRootClaimId, rootId),
+                ),
+              ),
+            )
+            .orderBy(asc(schema.commercialClaims.createdAt))
+            .limit(20);
+          const [existingCorrection] = await tx
+            .select({ id: schema.commercialClaims.id })
+            .from(schema.commercialClaims)
+            .where(
+              and(
+                eq(schema.commercialClaims.organizationId, c.organizationId),
+                eq(schema.commercialClaims.correctionOfClaimId, c.id),
+              ),
+            )
+            .limit(1);
+          let rejectedCorrectionReason = "CLAIM_NOT_REJECTED";
+          let rejectedCorrectionEligible = false;
+          if (existingCorrection) rejectedCorrectionReason = "CORRECTION_ALREADY_EXISTS";
+          else if (["accepted", "paid", "partially_paid", "denied"].includes(c.state))
+            rejectedCorrectionReason = "PAYER_REPLACEMENT_UNVERIFIED";
+          else if (c.state === "rejected") {
+            const [latestSubmission] = await tx
+              .select()
+              .from(schema.commercialSubmissions)
+              .where(
+                and(
+                  eq(schema.commercialSubmissions.organizationId, c.organizationId),
+                  eq(schema.commercialSubmissions.claimId, c.id),
+                  eq(schema.commercialSubmissions.status, "sent"),
+                ),
+              )
+              .orderBy(desc(schema.commercialSubmissions.requestedAt))
+              .limit(1);
+            if (!latestSubmission || latestSubmission.clearinghouseAcceptedAt !== null) {
+              rejectedCorrectionReason = "CLEARINGHOUSE_REJECTION_NOT_VERIFIED";
+            } else {
+              const acks = await tx
+                .select({
+                  stage: schema.commercialAcknowledgments.stage,
+                  disposition: schema.commercialAcknowledgments.disposition,
+                })
+                .from(schema.commercialAcknowledgments)
+                .where(
+                  and(
+                    eq(schema.commercialAcknowledgments.claimId, c.id),
+                    eq(schema.commercialAcknowledgments.submissionId, latestSubmission.id),
+                  ),
+                );
+              if (acks.some((ack) => ack.stage === "payer"))
+                rejectedCorrectionReason = "PAYER_RESPONSE_EXISTS";
+              else if (
+                acks.some((ack) => ack.stage === "clearinghouse" && ack.disposition === "rejected")
+              ) {
+                rejectedCorrectionEligible = true;
+                rejectedCorrectionReason = "VERIFIED_CLEARINGHOUSE_REJECTION";
+              } else rejectedCorrectionReason = "CLEARINGHOUSE_REJECTION_NOT_VERIFIED";
+            }
+          }
           let validation: ValidationRunApiView | null = null;
           if (c.latestValidationRunId) {
             const results = await tx
@@ -423,6 +501,22 @@ export function buildCommercialClaimReadService(
               totalChargeCents: c.totalChargeCents,
               expectedPaymentCents: c.expectedPaymentCents,
               readyAt: c.readyAt ? c.readyAt.toISOString() : null,
+            },
+            correction: {
+              correctionOfClaimId: c.correctionOfClaimId,
+              correctionKind: c.correctionKind,
+              correctionReasonCode: c.correctionReasonCode,
+              relatedClaims: related.map((r) => ({
+                id: r.id,
+                claimControlNumber: r.claimControlNumber,
+                state: r.state,
+                relation:
+                  r.correctionOfClaimId === null ? ("original" as const) : ("correction" as const),
+              })),
+              rejectedCorrection: {
+                eligible: rejectedCorrectionEligible,
+                reasonCode: rejectedCorrectionReason,
+              },
             },
             lines: lines.map((l) => ({
               lineNumber: l.lineNumber,

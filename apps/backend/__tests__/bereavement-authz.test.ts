@@ -22,13 +22,20 @@
 //   • the §7.13 gate REDACTS on an M39 outage and never discloses, and a bereavement volunteer never sees
 //     clinical risk content (D10);
 //   • the §8.5 eraser shreds BEFORE it deletes, and a second erase reports zero.
-import { M16_CONTRIBUTED_PERMISSIONS, allPermissionMirrorRows } from "@chartwarden/auth";
+import { readFileSync } from "node:fs";
+import {
+  M16_CONTRIBUTED_PERMISSIONS,
+  SESSION_CLASS_PERMISSIONS,
+  allPermissionMirrorRows,
+} from "@chartwarden/auth";
 import type { AbacContext } from "@chartwarden/auth";
+import { type PreHandler, clampLimit } from "@chartwarden/shared/route-kit";
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { IsoInstant } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/events-by-m16";
 import {
+  BEREAVEMENT_OVERSIGHT_ROLES,
   type BereavementAbacResolver,
   M16_ABAC_PREDICATES,
   M16_PERMISSION_KEY_LIST,
@@ -41,14 +48,6 @@ import {
   eraseBereavementRecord,
 } from "../src/modules/16-bereavement/index";
 import type { M16ReadActor } from "../src/modules/16-bereavement/routes/actor";
-import type { PreHandler } from "../src/modules/16-bereavement/routes/actor";
-import {
-  M16_PAGE_SIZES,
-  clampLimit,
-  decodeCursor,
-  encodeCursor,
-  toCursorPage,
-} from "../src/modules/16-bereavement/routes/concurrency";
 import {
   type BereavementDisclosurePort,
   isBereavementVolunteer,
@@ -59,6 +58,7 @@ import {
   runEffects,
 } from "../src/modules/16-bereavement/routes/effects-runner";
 import { ABAC_ANY } from "../src/modules/16-bereavement/routes/guards";
+import { M16_PAGE_SIZES } from "../src/modules/16-bereavement/routes/pagination";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const PLAN = "22222222-2222-4222-8222-222222222222";
@@ -119,7 +119,7 @@ const resolverFor = (
 
 describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
   it("registers exactly the §4.7 catalog, single-owner across the platform mirror", () => {
-    expect(M16_PERMISSION_KEY_LIST).toHaveLength(29);
+    expect(M16_PERMISSION_KEY_LIST).toHaveLength(44);
     const mirror = allPermissionMirrorRows().map((r) => r.key);
     for (const key of M16_PERMISSION_KEY_LIST) {
       expect(mirror.filter((k) => k === key)).toHaveLength(1);
@@ -128,6 +128,129 @@ describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
 
   it("every key is namespaced `bereavement.` — nothing leaks into another module's namespace", () => {
     for (const key of M16_PERMISSION_KEY_LIST) expect(key.startsWith("bereavement.")).toBe(true);
+  });
+
+  // ADR-0109 D6 — the physician letter is disclosed only after a human approves it, so the whole queue is oversight-only.
+  it("the two physician-letter keys are gated by bereavement oversight, never by a window or a portal self", () => {
+    for (const key of ["bereavement.letter.read", "bereavement.letter.review"] as const) {
+      expect(M16_PERMISSION_KEY_LIST).toContain(key);
+      expect(M16_CONTRIBUTED_PERMISSIONS[key].abac).toBe("org_scope_bereavement_oversight");
+      expect(M16_PORTAL_SELF_PERMISSION_KEYS as readonly string[]).not.toContain(key);
+    }
+  });
+
+  it("the catalog migration (1346) mirrors exactly the two physician-letter keys with the predicate that gates them", () => {
+    const sql = readFileSync(
+      new URL(
+        "../../../packages/db/migrations/1346_m16_physician_letter_permissions.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    for (const key of ["bereavement.letter.read", "bereavement.letter.review"] as const) {
+      const def = M16_CONTRIBUTED_PERMISSIONS[key];
+      expect(sql).toContain(
+        `('${key}', '${def.resource}', '${def.action}', '${def.category}', '${def.abac}', '')`,
+      );
+    }
+    expect([...sql.matchAll(/\('bereavement\./g)]).toHaveLength(2);
+  });
+
+  // ADR-0109 D10 — the mailing batch PDF holds every recipient's address, so the whole mailing surface is oversight-only.
+  it("the three mailing keys are gated by bereavement oversight, never by a window or a portal self", () => {
+    for (const key of [
+      "bereavement.mailing.read",
+      "bereavement.mailing.manage",
+      "bereavement.mailing.dispatch",
+    ] as const) {
+      expect(M16_PERMISSION_KEY_LIST).toContain(key);
+      expect(M16_CONTRIBUTED_PERMISSIONS[key].abac).toBe("org_scope_bereavement_oversight");
+      expect(M16_PORTAL_SELF_PERMISSION_KEYS as readonly string[]).not.toContain(key);
+    }
+  });
+
+  it("the catalog migration (1377) mirrors exactly the three mailing keys with the predicate that gates them", () => {
+    const sql = readFileSync(
+      new URL("../../../packages/db/migrations/1377_m16_mailing_permissions.sql", import.meta.url),
+      "utf8",
+    );
+    for (const key of [
+      "bereavement.mailing.read",
+      "bereavement.mailing.manage",
+      "bereavement.mailing.dispatch",
+    ] as const) {
+      const def = M16_CONTRIBUTED_PERMISSIONS[key];
+      expect(sql).toContain(
+        `('${key}', '${def.resource}', '${def.action}', '${def.category}', '${def.abac}', '')`,
+      );
+    }
+    expect([...sql.matchAll(/\('bereavement\./g)]).toHaveLength(3);
+  });
+
+  // ADR-0109 D10 (PR 3) — the support-group keys and the predicate each defaults to; migration 1390 mirrors them into the catalog.
+  it("the four support-group keys: read by staff discipline, manage / run by group scope, enroll by the family's window", () => {
+    const expected = {
+      "bereavement.group.read": "discipline_can_provide_bereavement",
+      "bereavement.group.manage": "bereavement_group_scope",
+      "bereavement.group.enroll": "bereavement_window",
+      "bereavement.group.run": "bereavement_group_scope",
+    } as const;
+    const sql = readFileSync(
+      new URL("../../../packages/db/migrations/1390_m16_support_groups.sql", import.meta.url),
+      "utf8",
+    );
+    for (const [key, abac] of Object.entries(expected) as [keyof typeof expected, string][]) {
+      const def = M16_CONTRIBUTED_PERMISSIONS[key];
+      expect(def.abac).toBe(abac);
+      expect(M16_PORTAL_SELF_PERMISSION_KEYS as readonly string[]).not.toContain(key);
+      expect(sql).toContain(
+        `('${key}', '${def.resource}', '${def.action}', '${def.category}', '${def.abac}', '')`,
+      );
+    }
+    expect([...sql.matchAll(/\('bereavement\./g)]).toHaveLength(4);
+  });
+
+  // ADR-0109 D10 (PR 3) — memorial services: manage is oversight (an invitation list names every recent family), a staff RSVP is on the family's
+  // window, and the portal key is the family's own (session class `bereaved_portal`). Migration 1391 mirrors all three.
+  it("the memorial keys and the portal RSVP key, mirrored by migration 1391", () => {
+    const sql = readFileSync(
+      new URL("../../../packages/db/migrations/1391_m16_memorial_services.sql", import.meta.url),
+      "utf8",
+    );
+    expect(M16_CONTRIBUTED_PERMISSIONS["bereavement.memorial.manage"].abac).toBe(
+      "org_scope_bereavement_oversight",
+    );
+    expect(M16_CONTRIBUTED_PERMISSIONS["bereavement.memorial.rsvp"].abac).toBe(
+      "bereavement_window",
+    );
+    for (const key of ["bereavement.memorial.manage", "bereavement.memorial.rsvp"] as const) {
+      const def = M16_CONTRIBUTED_PERMISSIONS[key];
+      expect(sql).toContain(
+        `('${key}', '${def.resource}', '${def.action}', '${def.category}', '${def.abac}', '')`,
+      );
+      expect(M16_PORTAL_SELF_PERMISSION_KEYS as readonly string[]).not.toContain(key);
+    }
+    expect(sql).toContain(
+      "('portal.bereavement.rsvp_own', 'portal_bereavement', 'rsvp_own', 'portal', 'bereaved_portal_window_open', '')",
+    );
+    expect(SESSION_CLASS_PERMISSIONS.bereaved_portal).toContain("portal.bereavement.rsvp_own");
+    expect(SESSION_CLASS_PERMISSIONS.caregiver_portal).not.toContain("portal.bereavement.rsvp_own");
+  });
+
+  // ADR-0109 D10 (PR 3) — the grief library is curated by oversight; families read published items through the portal, never with these keys.
+  it("the two library keys are oversight-only and mirrored by migration 1393", () => {
+    const sql = readFileSync(
+      new URL("../../../packages/db/migrations/1393_m16_grief_library.sql", import.meta.url),
+      "utf8",
+    );
+    for (const key of ["bereavement.library.read", "bereavement.library.manage"] as const) {
+      const def = M16_CONTRIBUTED_PERMISSIONS[key];
+      expect(def.abac).toBe("org_scope_bereavement_oversight");
+      expect(sql).toContain(
+        `('${key}', '${def.resource}', '${def.action}', '${def.category}', '${def.abac}', '')`,
+      );
+      expect(SESSION_CLASS_PERMISSIONS.bereaved_portal).not.toContain(key);
+    }
   });
 
   it("the two portal-self keys are the ONLY §4.1 rows a bereaved family session may hold", () => {
@@ -145,7 +268,7 @@ describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
 
 describe("M16-T06 §4.4 — the outbox catalog", () => {
   it("declares all 23 §4.4 events, every one owned by m16 and `mN.<resource>.<verb>` shaped", () => {
-    expect(M16_OUTBOX_EVENTS).toHaveLength(23);
+    expect(M16_OUTBOX_EVENTS).toHaveLength(28);
     for (const event of M16_OUTBOX_EVENTS) {
       expect(event.moduleOwner).toBe("m16");
       expect(event.eventName).toMatch(/^m16\.[a-z_]+\.[a-z0-9_]+$/);
@@ -337,8 +460,10 @@ describe("M16-T06 §4.8 — discipline_can_provide_bereavement", () => {
 describe("M16-T06 §4.8 — oversight and portal-self", () => {
   const predicates = buildBereavementAbacPredicates({ resolver: resolverFor() });
 
-  it("registers exactly the four names M16 owns", () => {
+  it("registers exactly the six names M16 owns", () => {
     expect([...M16_ABAC_PREDICATES].sort()).toEqual([
+      "bereavement_group_scope",
+      "bereavement_pre_death_assessor",
       "bereavement_window",
       "discipline_can_provide_bereavement",
       "org_scope_bereavement_oversight",
@@ -355,6 +480,30 @@ describe("M16-T06 §4.8 — oversight and portal-self", () => {
     ).toBe(true);
     expect(
       await predicates.org_scope_bereavement_oversight!(ctx({ roles: ["chaplain"] }), {}),
+    ).toBe(false);
+  });
+
+  it("oversight admits the coordinator under the key migration 1234 grants to, and no other spelling", async () => {
+    // The role key a migration grants to is the only key tenants' membership_role rows can carry; the
+    // predicate must read that exact spelling (a different one made the coordinator invisible to oversight).
+    const migration = readFileSync(
+      new URL("../../../packages/db/migrations/1234_m36_family_messaging.sql", import.meta.url),
+      "utf8",
+    );
+    expect(migration).toContain("'bereavement_coordinator'");
+    expect(BEREAVEMENT_OVERSIGHT_ROLES).toContain("bereavement_coordinator");
+    expect(BEREAVEMENT_OVERSIGHT_ROLES).not.toContain("bereavement_program_coordinator");
+    expect(
+      await predicates.org_scope_bereavement_oversight!(
+        ctx({ roles: ["bereavement_coordinator"] }),
+        {},
+      ),
+    ).toBe(true);
+    expect(
+      await predicates.org_scope_bereavement_oversight!(
+        ctx({ roles: ["bereavement_program_coordinator"] }),
+        {},
+      ),
     ).toBe(false);
   });
 
@@ -600,26 +749,8 @@ describe("M16-T06 §7.13 / D10 — the disclosure gate", () => {
 
 // ── pagination envelope ─────────────────────────────────────────────────────────────────────────────
 
-describe("M16-T06 — the cursor envelope", () => {
-  it("round-trips an opaque cursor and treats a malformed one as 'from the beginning'", () => {
-    const cursor = encodeCursor({ a: "2026-01-01T00:00:00.000Z", id: PLAN });
-    expect(decodeCursor(cursor)).toEqual({ a: "2026-01-01T00:00:00.000Z", id: PLAN });
-    expect(decodeCursor("not-a-cursor")).toBeNull();
-    expect(decodeCursor(undefined)).toBeNull();
-  });
-
-  it("emits `{data, next_cursor, has_more}` and clamps `limit` into the route's policy", () => {
-    const rows = [1, 2, 3].map((n) => ({ id: `id-${n}`, at: `2026-01-0${n}T00:00:00.000Z` }));
-    const page = toCursorPage(
-      rows,
-      2,
-      (r) => ({ a: r.at, id: r.id }),
-      (r) => r.id,
-    );
-    expect(page.data).toEqual(["id-1", "id-2"]);
-    expect(page.has_more).toBe(true);
-    expect(page.next_cursor).not.toBeNull();
-
+describe("M16-T06 — the page-size policy", () => {
+  it("clamps `limit` into the route's policy and defaults a missing one", () => {
     expect(clampLimit("9999", M16_PAGE_SIZES.plans)).toBe(M16_PAGE_SIZES.plans.maxSize);
     expect(clampLimit("0", M16_PAGE_SIZES.plans)).toBe(1);
     expect(clampLimit(undefined, M16_PAGE_SIZES.outreach)).toBe(
@@ -640,6 +771,9 @@ describe("M16-T06 §8.5 — the bereavement_record eraser", () => {
         optOuts: 1,
         outreach: 9,
         anniversaryReminders: 2,
+        assessmentTasks: 4,
+        physicianLetters: 1,
+        mailingItems: 3,
         contacts: 2,
         plansTombstoned: 1,
         closuresShredded: 1,
@@ -649,7 +783,7 @@ describe("M16-T06 §8.5 — the bereavement_record eraser", () => {
     expect(locked).toEqual([PATIENT]);
     expect(result.shredded).toBe(7);
     // The tombstoned plan root and the surviving closure row are bookkeeping, NOT deletions.
-    expect(result.erased).toBe(4 + 3 + 1 + 9 + 2 + 2);
+    expect(result.erased).toBe(4 + 3 + 1 + 9 + 2 + 4 + 1 + 3 + 2);
     expect(result.counts.plansTombstoned).toBe(1);
     expect(result.counts.closuresShredded).toBe(1);
   });

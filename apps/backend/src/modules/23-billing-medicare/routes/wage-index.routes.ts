@@ -6,9 +6,14 @@
 // `administrator`/`org_admin`) plus the §D13 AI-block + `Idempotency-Key`. The value is ORG-SCOPED (it never touches the
 // platform-shared `wage_index_factor`), so the permission alone (org-scoped by RLS) is the gate. NO PHI. Org/actor/membership
 // binding is ALWAYS server-side.
+import {
+  actorOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, rejectAiActor, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { writeActorOf } from "./actor";
 import { P } from "./guards";
 import type { WageIndexRouteService } from "./wage-index-service";
 import {
@@ -18,7 +23,6 @@ import {
   WageIndexIdParamsSchema,
   WageIndexListQuerySchema,
   assertFactorIsString,
-  parse,
 } from "./wage-index-typebox";
 
 export interface WageIndexRouteDeps {

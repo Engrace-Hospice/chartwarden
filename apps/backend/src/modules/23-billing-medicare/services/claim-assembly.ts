@@ -29,6 +29,8 @@ import {
   type Cents,
   type ClaimAssembleRequest,
   type ClaimAssembleResponse,
+  type ClaimAssemblySeams,
+  type DateRange,
   G0679_HCPCS,
   G0679_REVENUE_CODE,
   G0679_UNITS_PER_ENCOUNTER,
@@ -39,12 +41,15 @@ import {
   applySequestrationPolicy,
   buildClaimSnapshot,
   claimAdmissionCodes,
+  claimDischargeCodeColumns,
+  claimDischargeCodes,
   claimPhysicianNpis,
   claimValueCodes,
   deriveControlNumber,
   deriveTypeOfBill,
   isSkipped,
   isWithinInclusive,
+  qCodeForPlaceOfService,
   repositories,
   summarizeRuleRun,
   telehealthF2fDatesRequiringG0679,
@@ -57,13 +62,7 @@ import {
   hospiceFiscalYearStarting,
   readAssemblyFacts,
 } from "./claim-assembly-facts";
-import {
-  perDiemLineAmounts,
-  qCodeForPlaceOfService,
-  visitLineInputs,
-  visitLinesFor,
-} from "./claim-assembly-lines";
-import { claimDischargeCodeColumns, claimDischargeCodes } from "./claim-discharge";
+import { perDiemLineAmounts, visitLineInputs, visitLinesFor } from "./claim-assembly-lines";
 import { persistedRemediation } from "./persisted-remediation";
 import { readClaimRhcCarryOver, rhcCarryOverSnapshot } from "./rhc-carry-over";
 import { assembleValidationContext } from "./validation-context";
@@ -78,9 +77,6 @@ type BillingDb = repositories.BillingDb;
 // this service legitimately names M6/M8 concepts (election/level-of-care/encounter) in its seam vocabulary.
 type NewSiaCalculationInput = Parameters<repositories.SiaCalculationRepository["append"]>[0];
 type NewValidationResultInput = Parameters<repositories.ValidationResultRepository["append"]>[0];
-
-export type * from "./claim-assembly-types";
-import type { ClaimAssemblySeams, DateRange } from "./claim-assembly-types";
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // The actor + the public service contract.
@@ -281,6 +277,22 @@ export function buildClaimAssemblyService(
 
       // ── 2. Server-authoritative TOB + the run inside the write transaction ─────────────────────────
       return inOrgCtx(actor, async (tx) => {
+        // #877 — resolve again through this transaction and hold M5's patient_payer rows FOR SHARE
+        // until the claim commits. A concurrent coverage replacement therefore cannot invalidate the
+        // patient_payer_id between this gate and the insert below.
+        const lockedPayer = await seams.patientPayer.medicarePrimaryForRangeInTransaction(
+          tx,
+          orgId,
+          patientId,
+          range,
+        );
+        if (!lockedPayer?.medicarePrimary || lockedPayer.patientPayerId !== payer.patientPayerId) {
+          throw new ChartWardenError(
+            "NON_MEDICARE_PRIMARY_PAYER",
+            "Medicare FFS coverage changed while this claim was being assembled. Reload coverage and assemble again.",
+            409,
+          );
+        }
         const claimRepo = new repositories.ClaimRepository(tx);
 
         // Prior-claim continuity for this admission (drives the TOB cadence + the duplicate/overlap guard).

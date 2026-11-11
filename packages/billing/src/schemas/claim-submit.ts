@@ -9,6 +9,7 @@ import { IfVersion, IsoDateTimeSchema, Uuid } from "./common";
 export const ClaimSubmitRequest = Type.Object({
   ifVersion: IfVersion,
   acknowledgeAllOverrides: Type.Boolean({ default: false }),
+  previewConfirmationToken: Type.String({ minLength: 20, maxLength: 4096 }),
 });
 export type ClaimSubmitRequest = Static<typeof ClaimSubmitRequest>;
 
@@ -23,7 +24,7 @@ export type ClaimSubmitResponse = Static<typeof ClaimSubmitResponse>;
 
 // Errors (per §4.2):
 //   409 CLAIM_NOT_READY             — state != READY
-//   412 STALE_VERSION               — If-Match / ifVersion mismatch
+//   409 STALE_VERSION               — If-Match / ifVersion mismatch
 //   422 VALIDATION_FAILURES_PRESENT — last run.outcome != ready_for_submission (response lists failing keys)
 //   403 STEP_UP_REQUIRED            — M2 billing-submit session profile not satisfied
 //   503 MAC_PORTAL_UNAVAILABLE      — claim still moves to SUBMITTED; submission queues (Tier-2 fallback)

@@ -35,6 +35,7 @@ const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER_A = "33333333-3333-3333-3333-333333333333";
 const USER_B = "44444444-4444-4444-4444-444444444444";
+const USER_C = "55555555-5555-5555-5555-555555555555";
 let fakeSeq = 0;
 /** A fake transport whose vendor ids are unique across the whole database (vendor ids are globally unique). */
 const fakes = (opts?: Parameters<typeof createFakeTransports>[0]) => {
@@ -148,10 +149,10 @@ describe.skipIf(!DB_URL)("GAP-101 — M36 out-of-band delivery, LIVE Postgres", 
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'a@x.test'),($2,'b@x.test')`, [
-      USER_A,
-      USER_B,
-    ]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'a@x.test'),($2,'b@x.test'),($3,'c@x.test')`,
+      [USER_A, USER_B, USER_C],
+    );
     await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M36_OUTBOX_EVENTS]));
@@ -476,6 +477,7 @@ describe.skipIf(!DB_URL)("GAP-101 — M36 out-of-band delivery, LIVE Postgres", 
       provider: "fcm",
       token: FCM,
       alertId: d.alert,
+      emergency: true, // the helper's default severity is critical (ADR-0106)
     });
     expect((await row(d.id)).status).toBe("delivered");
 
@@ -595,5 +597,268 @@ describe.skipIf(!DB_URL)("GAP-101 — M36 out-of-band delivery, LIVE Postgres", 
         )
       ).rows[0].verification_status,
     ).toBe("verified");
+  });
+  // ADR-0106 follow-ups: an emergency push reaches EVERY verified native device; the APNs host follows each token's environment.
+  describe("multi-device emergency fan-out and per-token APNs environment", () => {
+    const APNS_DEV = "a1".repeat(32);
+    const APNS_PROD = "b2".repeat(32);
+    const FCM_TOK = `${"c".repeat(40)}:multi`;
+    async function device(
+      user: string,
+      provider: "fcm" | "apns",
+      value: string,
+      ageMinutes: number,
+      environment: "sandbox" | "production" | null,
+    ) {
+      await admin.query(
+        `INSERT INTO delivery_endpoint (user_id, channel, provider, endpoint_value, environment, verification_status, verified_at, created_at)
+         VALUES ($1,'push',$2,$3,$4,'verified', now(), now() - ($5 || ' minutes')::interval)`,
+        [user, provider, value, environment, String(ageMinutes)],
+      );
+    }
+    const siblings = async (alert: string) =>
+      (
+        await admin.query(
+          "SELECT id, status, endpoint_id, fail_reason FROM notification_delivery WHERE alert_id=$1 ORDER BY queued_at, id",
+          [alert],
+        )
+      ).rows;
+    const sentTokens = (calls: { request: { destination: string } }[]) =>
+      calls.map((c) => JSON.parse(c.request.destination) as Record<string, unknown>);
+
+    it("a critical push goes to every verified device once, loud, with each APNs token's own environment", async () => {
+      await device(USER_C, "fcm", FCM_TOK, 30, null);
+      await device(USER_C, "apns", APNS_DEV, 20, "sandbox");
+      await device(USER_C, "apns", APNS_PROD, 10, "production");
+      const d = await delivery(ORG_A, USER_C, "push", { endpoint: false });
+
+      const first = fakes();
+      await runDeliverySweep(sweepDeps(first.transports), "push");
+      const second = fakes();
+      await runDeliverySweep(sweepDeps(second.transports), "push");
+      const third = fakes();
+      await runDeliverySweep(sweepDeps(third.transports), "push");
+
+      const all = sentTokens([...first.calls, ...second.calls]);
+      expect(all.map((c) => c.token).sort()).toEqual([APNS_DEV, APNS_PROD, FCM_TOK].sort());
+      expect(all.every((c) => c.emergency === true && c.alertId === d.alert)).toBe(true);
+      const byToken = Object.fromEntries(all.map((c) => [c.token as string, c]));
+      expect(byToken[APNS_DEV]?.environment).toBe("sandbox");
+      expect(byToken[APNS_PROD]?.environment).toBe("production");
+      expect(byToken[FCM_TOK]).not.toHaveProperty("environment");
+      // Idempotent per (alert, device): the third sweep and a re-run add neither sends nor rows.
+      expect(third.calls).toHaveLength(0);
+      const rows = await siblings(d.alert);
+      expect(rows).toHaveLength(3);
+      expect(rows.every((r) => r.status === "delivered")).toBe(true);
+      expect(new Set(rows.map((r) => r.endpoint_id)).size).toBe(3);
+    });
+
+    it("a failing or dead device token does not block the others and expires only itself", async () => {
+      const DEAD = `${"e".repeat(40)}:dead2`;
+      const LIVE = `${"f".repeat(40)}:live2`;
+      await device(USER_C, "fcm", LIVE, 5, null);
+      await device(USER_C, "fcm", DEAD, 1, null); // newest = the original delivery's device
+      const d = await delivery(ORG_A, USER_C, "push", { endpoint: false });
+      // Earlier tests left USER_C three more verified devices, so five in all; kill whichever send carries DEAD.
+      for (let sweep = 0; sweep < 2; sweep += 1) {
+        const f = createFakeTransports({
+          idPrefix: `d${sweep}-${seq}`,
+          failWith: (_channel, n) =>
+            f.calls[n - 1]?.request.destination.includes(DEAD)
+              ? new TransportError(PUSH_TOKEN_UNREGISTERED, false)
+              : undefined,
+        });
+        await runDeliverySweep(sweepDeps(f.transports), "push");
+      }
+      const rows = await siblings(d.alert);
+      expect(rows).toHaveLength(5);
+      expect(rows.filter((r) => r.status === "failed").map((r) => r.fail_reason)).toEqual([
+        PUSH_TOKEN_UNREGISTERED,
+      ]);
+      expect(rows.filter((r) => r.status === "delivered")).toHaveLength(4);
+      const states = (
+        await admin.query(
+          "SELECT endpoint_value, verification_status FROM delivery_endpoint WHERE user_id=$1 AND endpoint_value = ANY($2)",
+          [USER_C, [DEAD, LIVE]],
+        )
+      ).rows;
+      expect(
+        Object.fromEntries(states.map((r) => [r.endpoint_value, r.verification_status])),
+      ).toEqual({
+        [DEAD]: "expired",
+        [LIVE]: "verified",
+      });
+    });
+
+    it("a non-critical push still goes to the newest device only, with no fan-out", async () => {
+      const d = await delivery(ORG_A, USER_C, "push", {
+        endpoint: false,
+        severity: "info",
+        category: "clinical_routine",
+      });
+      const f = fakes();
+      await runDeliverySweep(sweepDeps(f.transports), "push");
+      await runDeliverySweep(sweepDeps(fakes().transports), "push");
+      expect(await siblings(d.alert)).toHaveLength(1);
+      expect(f.calls.some((c) => c.request.destination.includes(d.alert))).toBe(true);
+      expect(
+        sentTokens(f.calls.filter((c) => c.request.destination.includes(d.alert))),
+      ).toHaveLength(1);
+    });
+
+    // PR #937 review (HIGH): a slow resolve that outlives its lease is re-claimed, so two resolveDestination runs overlap on the SAME
+    // unbound critical delivery. Neither sees the other's uncommitted siblings; without the DB-level guard (migration 1303 + ON CONFLICT
+    // DO NOTHING) each phone gets the emergency push twice. A fresh user keeps this independent of the devices earlier tests left behind.
+    it("overlapping fan-outs of one critical delivery create each sibling exactly once", async () => {
+      const USER_D = "66666666-6666-6666-6666-666666666666";
+      await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'d@x.test')`, [USER_D]);
+      await device(USER_D, "fcm", `${"1".repeat(40)}:race`, 40, null);
+      await device(USER_D, "apns", "c3".repeat(32), 30, "production");
+      await device(USER_D, "apns", "d4".repeat(32), 20, "sandbox");
+      await device(USER_D, "fcm", `${"2".repeat(40)}:race`, 10, null);
+
+      // Repeated so the pool is warm after the first round: with one warm connection the runs never overlap.
+      for (let round = 0; round < 3; round += 1) {
+        const d = await delivery(ORG_A, USER_D, "push", { endpoint: false });
+        const claim = {
+          organizationId: ORG_A,
+          deliveryId: d.id,
+          channel: "push",
+          alertSeverity: "critical",
+        } as unknown as Parameters<typeof store.resolveDestination>[0];
+
+        const results = await Promise.allSettled(
+          Array.from({ length: 6 }, () => store.resolveDestination(claim)),
+        );
+
+        expect(results.filter((r) => r.status === "rejected")).toEqual([]);
+        const rows = await siblings(d.alert);
+        expect(rows).toHaveLength(4);
+        expect(new Set(rows.map((r) => r.endpoint_id)).size).toBe(4);
+      }
+    });
+
+    // Review of the fix above (HIGH): a vacation-forwarded copy is a SECOND critical push row for the same (alert, recipient) when the
+    // backup is also a direct recipient. Both bind to the recipient's newest device; the unique index must not make the second bind throw
+    // (it would error on every retry and the delivery would stay pending for ever).
+    it("a forwarded copy and a direct delivery for one recipient both resolve and bind", async () => {
+      const USER_E = "77777777-7777-7777-7777-777777777777";
+      await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'e@x.test')`, [USER_E]);
+      await device(USER_E, "fcm", `${"3".repeat(40)}:fwd`, 20, null);
+      await device(USER_E, "fcm", `${"4".repeat(40)}:fwd`, 10, null);
+      const alert = (
+        await admin.query(
+          `INSERT INTO alert (organization_id, event_type, severity, payload, correlation_id, outcome)
+           VALUES ($1,'m19.triage.case_opened','critical','{"sourceAggregateId":"call-fwd"}','g101-fwd','pending') RETURNING id`,
+          [ORG_A],
+        )
+      ).rows[0].id as string;
+      const insertDelivery = async (forwardedFrom: string | null) =>
+        (
+          await admin.query(
+            `INSERT INTO notification_delivery (alert_id, recipient_user_id, forwarded_from_user_id, alert_category, alert_severity, channel, status)
+             VALUES ($1,$2,$3,'clinical_urgent','critical','push','pending') RETURNING id`,
+            [alert, USER_E, forwardedFrom],
+          )
+        ).rows[0].id as string;
+      const direct = await insertDelivery(null);
+      const forwarded = await insertDelivery(USER_A);
+      const claimOf = (id: string) =>
+        ({
+          organizationId: ORG_A,
+          deliveryId: id,
+          channel: "push",
+          alertSeverity: "critical",
+        }) as unknown as Parameters<typeof store.resolveDestination>[0];
+
+      const results = await Promise.allSettled([
+        store.resolveDestination(claimOf(direct)),
+        store.resolveDestination(claimOf(forwarded)),
+      ]);
+      // A second pass is what a lease-lapse re-claim does; it must still not throw.
+      const again = await Promise.allSettled([
+        store.resolveDestination(claimOf(direct)),
+        store.resolveDestination(claimOf(forwarded)),
+      ]);
+
+      expect([...results, ...again].filter((r) => r.status === "rejected")).toEqual([]);
+      const bound = (
+        await admin.query(
+          "SELECT id, endpoint_id FROM notification_delivery WHERE alert_id=$1 AND id = ANY($2)",
+          [alert, [direct, forwarded]],
+        )
+      ).rows;
+      expect(bound.every((r) => r.endpoint_id !== null)).toBe(true);
+      // Both devices are covered. The other device gets a sibling (carrying its parent's forwarded_from): one when the two resolves run
+      // in order (NOT EXISTS sees the first), two when they overlap (one per logical copy, like the newest device which both bind to).
+      const total = (
+        await admin.query(
+          "SELECT count(*)::int AS n, count(DISTINCT endpoint_id)::int AS devices FROM notification_delivery WHERE alert_id=$1",
+          [alert],
+        )
+      ).rows[0] as { n: number; devices: number };
+      expect(total.devices).toBe(2);
+      expect(total.n).toBeGreaterThanOrEqual(3);
+      expect(total.n).toBeLessThanOrEqual(4);
+    });
+
+    // Review of 12052709c (MEDIUM): the forwarded copy resolves first (binds the newest device E1, fans out a sibling to E2); E1 then stops
+    // being verified, so E2 is the newest when the DIRECT delivery resolves. Its bind targets (alert, recipient, E2) - the key the forwarded
+    // copy's sibling holds unless that sibling carries the forwarded_from it came from. Otherwise the bind throws on every retry.
+    it("a direct delivery still binds after the newest device changed under a forwarded copy's fan-out", async () => {
+      const USER_F = "88888888-8888-8888-8888-888888888888";
+      await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'f@x.test')`, [USER_F]);
+      const E1 = `${"5".repeat(40)}:chg`;
+      const E2 = `${"6".repeat(40)}:chg`;
+      await device(USER_F, "fcm", E2, 20, null);
+      await device(USER_F, "fcm", E1, 10, null);
+      const alert = (
+        await admin.query(
+          `INSERT INTO alert (organization_id, event_type, severity, payload, correlation_id, outcome)
+           VALUES ($1,'m19.triage.case_opened','critical','{"sourceAggregateId":"call-chg"}','g101-chg','pending') RETURNING id`,
+          [ORG_A],
+        )
+      ).rows[0].id as string;
+      const insertDelivery = async (forwardedFrom: string | null) =>
+        (
+          await admin.query(
+            `INSERT INTO notification_delivery (alert_id, recipient_user_id, forwarded_from_user_id, alert_category, alert_severity, channel, status)
+             VALUES ($1,$2,$3,'clinical_urgent','critical','push','pending') RETURNING id`,
+            [alert, USER_F, forwardedFrom],
+          )
+        ).rows[0].id as string;
+      const direct = await insertDelivery(null);
+      const forwarded = await insertDelivery(USER_A);
+      const claimOf = (id: string) =>
+        ({
+          organizationId: ORG_A,
+          deliveryId: id,
+          channel: "push",
+          alertSeverity: "critical",
+        }) as unknown as Parameters<typeof store.resolveDestination>[0];
+
+      await store.resolveDestination(claimOf(forwarded)); // binds E1, sibling for E2
+      await admin.query(
+        "UPDATE delivery_endpoint SET verification_status='expired' WHERE user_id=$1 AND endpoint_value=$2",
+        [USER_F, E1],
+      );
+      const outcome = await Promise.allSettled([store.resolveDestination(claimOf(direct))]);
+
+      expect(outcome[0]?.status).toBe("fulfilled");
+      const rows = (
+        await admin.query(
+          `SELECT nd.id, nd.forwarded_from_user_id, e.endpoint_value
+             FROM notification_delivery nd JOIN delivery_endpoint e ON e.id = nd.endpoint_id
+            WHERE nd.alert_id=$1 ORDER BY nd.queued_at, nd.id`,
+          [alert],
+        )
+      ).rows as { id: string; forwarded_from_user_id: string | null; endpoint_value: string }[];
+      // the direct delivery is bound to E2, and the forwarded copy's sibling for E2 kept its provenance
+      expect(rows.find((r) => r.id === direct)?.endpoint_value).toBe(E2);
+      const siblingOfForwarded = rows.find((r) => r.id !== direct && r.id !== forwarded);
+      expect(siblingOfForwarded?.endpoint_value).toBe(E2);
+      expect(siblingOfForwarded?.forwarded_from_user_id).toBe(USER_A);
+    });
   });
 });

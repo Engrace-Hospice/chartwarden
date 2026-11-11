@@ -7,6 +7,7 @@ import {
   bigint,
   boolean,
   char,
+  check,
   date,
   index,
   integer,
@@ -14,6 +15,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { locations } from "../locations";
@@ -85,6 +87,12 @@ export const commercialClaims = pgTable(
     state: text("state").notNull().default("draft"), // CommercialClaimState
     /** The payer's own claim number (835 CLP07), captured from the first posted line (migration 1283). Nullable; a lookup key per tenant. */
     payerIcn: text("payer_icn"),
+    /** New immutable claim identity created only after a verified clearinghouse rejection. */
+    correctionOfClaimId: uuid("correction_of_claim_id"),
+    correctionRootClaimId: uuid("correction_root_claim_id"),
+    correctionKind: text("correction_kind"),
+    correctionReasonCode: text("correction_reason_code"),
+    correctionRequestKey: text("correction_request_key"),
     latestValidationRunId: uuid("latest_validation_run_id"),
     readyAt: timestamp("ready_at", { withTimezone: true }),
     createdByMembershipId: uuid("created_by_membership_id").notNull(),
@@ -98,9 +106,51 @@ export const commercialClaims = pgTable(
       t.patientId,
       t.serviceFrom,
     ),
+    byPrimaryPatientPayer: index("commercial_claim_org_primary_patient_payer_ix").on(
+      t.organizationId,
+      t.primaryPatientPayerId,
+    ),
+    bySecondaryPatientPayer: index("commercial_claim_org_secondary_patient_payer_ix")
+      .on(t.organizationId, t.secondaryPatientPayerId)
+      .where(sql`secondary_patient_payer_id IS NOT NULL`),
     byPayerIcn: index("commercial_claim_payer_icn_ix")
       .on(t.organizationId, t.payerIcn)
       .where(sql`payer_icn IS NOT NULL`),
+    byCorrectionRoot: index("commercial_claim_correction_root_ix").on(
+      t.organizationId,
+      t.correctionRootClaimId,
+    ),
+    oneCorrectionPerParent: uniqueIndex("commercial_claim_correction_parent_key")
+      .on(t.organizationId, t.correctionOfClaimId)
+      .where(sql`correction_of_claim_id IS NOT NULL`),
+    oneCorrectionPerRequest: uniqueIndex("commercial_claim_correction_request_key")
+      .on(t.organizationId, t.correctionRequestKey)
+      .where(sql`correction_request_key IS NOT NULL`),
+    correctionIdentity: check(
+      "commercial_claim_correction_identity_check",
+      sql`(
+      (${t.correctionOfClaimId} IS NULL AND ${t.correctionRootClaimId} IS NULL AND ${t.correctionKind} IS NULL AND ${t.correctionReasonCode} IS NULL AND ${t.correctionRequestKey} IS NULL)
+      OR
+      (${t.correctionOfClaimId} IS NOT NULL AND ${t.correctionRootClaimId} IS NOT NULL
+        AND ${t.correctionKind} = 'clearinghouse_rejection_resubmission'
+        AND ${t.correctionReasonCode} IN ('claim_data_corrected','clearinghouse_edit_corrected','other_verified_correction')
+        AND ${t.correctionRequestKey} ~ '^[A-Za-z0-9._:-]{1,128}$')
+    )`,
+    ),
+    correctionMetadataComplete: check(
+      "commercial_claim_correction_metadata_complete_ck",
+      sql`(
+      (${t.correctionOfClaimId} IS NULL AND ${t.correctionRootClaimId} IS NULL AND ${t.correctionKind} IS NULL AND ${t.correctionReasonCode} IS NULL AND ${t.correctionRequestKey} IS NULL)
+      OR
+      (${t.correctionOfClaimId} IS NOT NULL AND ${t.correctionRootClaimId} IS NOT NULL
+        AND ${t.correctionKind} IS NOT NULL
+        AND ${t.correctionKind} = 'clearinghouse_rejection_resubmission'
+        AND ${t.correctionReasonCode} IS NOT NULL
+        AND ${t.correctionReasonCode} IN ('claim_data_corrected','clearinghouse_edit_corrected','other_verified_correction')
+        AND ${t.correctionRequestKey} IS NOT NULL
+        AND ${t.correctionRequestKey} ~ '^[A-Za-z0-9._:-]{1,128}$')
+    )`,
+    ),
   }),
 );
 

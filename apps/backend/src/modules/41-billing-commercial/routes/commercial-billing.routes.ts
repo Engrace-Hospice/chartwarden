@@ -15,17 +15,17 @@
 // Every mutating route requires `Idempotency-Key`, rejects an AI actor, and carries the RBAC + ABAC pair; the override adds the
 // step-up. Org / membership / step-up are read from the server-assembled request context, never the body.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import { COMMERCIAL_BILLING_PERMISSIONS } from "@chartwarden/types";
-import type { FastifyInstance, FastifyRequest } from "fastify";
-import { billingScopeReach } from "../../23-billing-medicare/abac-predicates";
 import {
   type PreHandler,
   actorOf,
+  parse,
   rejectAiActor,
+  requireIdempotencyKey,
   writeActorOf,
-} from "../../23-billing-medicare/routes/actor";
-import { parse } from "../../23-billing-medicare/routes/billing-typebox";
-import { requireIdempotencyKey } from "../../23-billing-medicare/routes/concurrency";
+} from "@chartwarden/shared/route-kit";
+import { COMMERCIAL_BILLING_PERMISSIONS } from "@chartwarden/types";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { billingScopeReach } from "../../23-billing-medicare/abac-predicates";
 import type { CommercialAuthorizationService } from "../services/authorization-service";
 import type { CommercialClaimAssemblyService } from "../services/claim-assembly";
 import type { CommercialClaimLifecycleService } from "../services/claim-lifecycle";
@@ -41,6 +41,7 @@ import {
   PlanListQuerySchema,
   ReconcileBodySchema,
   RecordAuthorizationBodySchema,
+  RejectedCorrectionBodySchema,
   SetAuthorizationStatusBodySchema,
   SubmissionParamsSchema,
 } from "./commercial-typebox";
@@ -127,6 +128,25 @@ export function registerCommercialBillingRoutes(
       const body = parse(AssembleCommercialClaimBodySchema, request.body);
       const out = await assembly.assemble(writeActor(request), body);
       return reply.code(201).send({ ...out, validation: toRunApiView(out.validation) });
+    },
+  );
+
+  // A new original-frequency draft is allowed only after the latest recorded clearinghouse rejection, before any payer response.
+  // The server reloads the original claim and current authoritative facts; callers cannot submit payer ids or payer control numbers.
+  app.post(
+    "/api/v1/billing/commercial/claims/:id/corrections/clearinghouse-rejection",
+    { preHandler: [WRITE, CASELOAD("commercial_billing.write"), NO_AI, IDEMPOTENT] },
+    async (request, reply) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      const body = parse(RejectedCorrectionBodySchema, request.body);
+      const out = await assembly.createRejectedCorrection(
+        writeActor(request),
+        id,
+        idempotencyKeyOf(request),
+        body.reasonCode,
+      );
+      // Replays return the same created-resource status as the original idempotent operation.
+      return reply.code(201).send(out);
     },
   );
 

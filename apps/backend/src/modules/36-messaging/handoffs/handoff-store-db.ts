@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import type { HandoffItemAction } from "@chartwarden/messaging";
 // apps/backend/src/modules/36-messaging/handoffs/handoff-store-db.ts - WP 3.5: the `clinical_handoff` rows, their items
 // and the append-only `clinical_handoff_event` history.
 //
@@ -7,8 +9,7 @@
 // index makes a work item belong to ONE open handoff; the closed-row and item-guard triggers are the backstop for the
 // transition rules. Resolution takes the handoff row FOR UPDATE first, so an accept racing the expiry tick serialises
 // and the loser sees the winner's state.
-import { type DbClient, schema } from "@chartwarden/db";
-import type { HandoffItemAction } from "@chartwarden/messaging";
+import { isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
   type HandoffCloseReason,
@@ -37,8 +38,8 @@ export type HandoffActor =
   | { readonly kind: "user"; readonly userId: string }
   | { readonly kind: "system" };
 
-export const HANDOFF_LIST_DEFAULT_LIMIT = 50;
-export const HANDOFF_LIST_MAX_LIMIT = 100;
+const HANDOFF_LIST_DEFAULT_LIMIT = 50;
+const HANDOFF_LIST_MAX_LIMIT = 100;
 
 /** The handoff is not in a state this action may start from (closed, or a different outcome already recorded). */
 export class HandoffStateConflict extends Error {
@@ -170,12 +171,6 @@ export interface HandoffStore {
   needsAttentionIds(orgId: string, handoffIds: readonly string[]): Promise<ReadonlySet<string>>;
   /** Task statuses by id for the read-time item summary (a task the org does not have is simply absent). */
   taskStatuses(orgId: string, taskIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  const code = (err as { code?: string } | null)?.code;
-  const cause = (err as { cause?: { code?: string } } | null)?.cause?.code;
-  return code === "23505" || cause === "23505";
 }
 
 const ACTION_STATE: Record<HandoffItemAction, string> = {

@@ -52,7 +52,7 @@ export const messageEntityReferences = pgTable(
     }).onDelete("cascade"),
     kindShape: check(
       "message_entity_reference_kind_shape",
-      sql`${t.referenceKind} IN ('staff', 'patient')`,
+      sql`${t.referenceKind} IN ('staff', 'patient', 'role', 'team', 'on_call')`,
     ),
     rangeShape: check(
       "message_entity_reference_range_shape",

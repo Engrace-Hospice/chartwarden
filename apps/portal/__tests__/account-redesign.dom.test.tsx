@@ -46,7 +46,7 @@ describe("PR4.2 account and preferences", () => {
         )}
       />,
     );
-    expect(await screen.findByText("Family Caregiver")).toBeTruthy();
+    expect(await screen.findAllByText("Family caregiver")).not.toHaveLength(0);
     expect(screen.getByRole("link", { name: /Back to patient home/ }).getAttribute("href")).toBe(
       `/portal/p/${PATIENT}`,
     );

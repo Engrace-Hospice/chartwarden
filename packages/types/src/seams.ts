@@ -18,6 +18,7 @@ import type {
   BereavementComplianceProvider,
   BereavementOutreachProvider,
   BereavementPlanProvider,
+  BereavementPortalContentProvider,
   BereavementRiskFactorsProvider,
   BereavementRiskTierProvider,
   ExternalGriefResourceReader,
@@ -35,6 +36,7 @@ import type {
   DocumentStorageProvider,
   ExtractionProvenanceReader,
   IntakeMetricsProvider,
+  OrgDocumentAccessProvider,
   PortalDocumentReader,
   RenderedDocumentProvider,
 } from "./documents";
@@ -195,6 +197,7 @@ export type SeamName =
   | "PortalDocumentReader" // M22 — portal-safe document read seam (tags stripped, SUD filtered, mint download URL)
   | "IntakeMetricsProvider" // M22 — intake-throughput metrics read seam (bundles processed / time-to-review)
   | "ExtractionProvenanceReader" // M22 — per-chart-field extraction provenance read seam (data exists, DocLens OFF)
+  | "OrgDocumentAccessProvider" // M22 — org-level (patient-less) document download mint (M16's internal mailing batch; ADR-0109 D10)
   | "ConsentEvaluator" // M39 — disclosure/redaction gate
   | "SessionContextResolver" // M2 — authenticated, org-scoped request context (actor + step-up state)
   | "AuditorSessionMinter" // M2 — mint a time-boxed auditor magic-link session (M3 calls it)
@@ -355,6 +358,7 @@ export type SeamName =
   | "BereavementRiskFactorsProvider" // M16 — D3/D17 factor snapshot + deterministic score + the M32 Layer-2 append
   | "BereavementAssignmentReader" // M16 — plan assignment + counselor caseload (M36 recipient resolver, M3 ABAC)
   | "BereavedPortalScopeProvider" // M16 — the M31 bereaved-family session scope (§1.2 / D10 narrow)
+  | "BereavementPortalContentProvider" // M16 — ADR-0109 D10 (PR 3): the family's memorial invitations / RSVP in the M31 portal
   | "BereavementComplianceProvider" // M16 — CoP / screening-completeness / closure COUNTS (M30 HQRP, M33)
   | "BereavementRiskTierProvider" // M16 — risk-tier distribution (M30 chart, M33 dashboard)
   // M21 (Supplies, DME & Comfort Kits) owned seams (§4.8 / D14) — leaf-typed in ./supplies (this package).
@@ -1108,6 +1112,7 @@ export interface SeamContracts {
   PortalDocumentReader: PortalDocumentReader;
   IntakeMetricsProvider: IntakeMetricsProvider;
   ExtractionProvenanceReader: ExtractionProvenanceReader;
+  OrgDocumentAccessProvider: OrgDocumentAccessProvider;
   // M39's `ConsentEvaluator` is OPAQUE (`unknown`) here — the rich §4.3 interface lives in
   // @chartwarden/consent (rich-seam pattern, see the note above the interface block). Consumers that
   // list `39` in `dependsOn` import the real type from @chartwarden/consent and resolve via the
@@ -1332,6 +1337,7 @@ export interface SeamContracts {
   BereavementRiskFactorsProvider: BereavementRiskFactorsProvider;
   BereavementAssignmentReader: BereavementAssignmentReader;
   BereavedPortalScopeProvider: BereavedPortalScopeProvider;
+  BereavementPortalContentProvider: BereavementPortalContentProvider;
   BereavementComplianceProvider: BereavementComplianceProvider;
   BereavementRiskTierProvider: BereavementRiskTierProvider;
   // M21's owned seams (§4.8 / D14) — interfaces live in ./supplies (this package). No free-text column

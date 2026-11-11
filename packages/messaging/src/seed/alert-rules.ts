@@ -11,6 +11,7 @@
 import type { AlertCategory, AlertRecipientResolver, AlertSeverity } from "../interfaces/kinds";
 import type { ResolverArgs } from "../resolution";
 import type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
+import { BEREAVEMENT_ALERT_RULES } from "./alert-rules-bereavement";
 import { BILLING_CAP_ALERT_RULES } from "./alert-rules-billing-cap";
 
 export type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
@@ -21,6 +22,18 @@ export type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
  * `system_locked` rules are always-on regardless of tenant config (§7.4).
  */
 export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
+  {
+    // ADR-0107 D7: a portal signature request is waiting. The M31 consumer puts the ELIGIBLE people's user ids on the payload; push only,
+    // because a portal user has no inbox. The phone shows the sanitizer's generic line (no document, patient or request id).
+    eventType: "m36.portal_signature.pending",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserIds"] },
+    channelsOverride: ["push"],
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "m36.message.mentioned",
     category: "clinical_routine",
@@ -1855,6 +1868,8 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // ADR-0109 D7 — the M16 bereavement program's oversight alerts (death intake, physician letter, overdue assessment).
+  ...BEREAVEMENT_ALERT_RULES,
 ];
 
 /** The event types of the `system_locked` platform rules (§7.4) — the always-on floor a

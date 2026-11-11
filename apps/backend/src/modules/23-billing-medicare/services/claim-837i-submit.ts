@@ -22,6 +22,18 @@ export interface RenderedClaim {
   readonly x12: string;
   /** Absent only from a test stub; the loader always builds it. */
   readonly stediJson?: StediClaimJson;
+  /** Keyed business-source identity; contains no source data or PHI. */
+  readonly sourceFingerprint: string | null;
+  /** Ordered M23 source-line identities corresponding to the rendered outbound 837 lines. */
+  readonly submittedLines?: readonly {
+    readonly internalClaimLineId: string | null;
+    readonly revenueCode: string;
+    readonly procedureCode: string | null;
+    readonly serviceFrom: string;
+    readonly serviceTo: string;
+    readonly units: string;
+    readonly chargeCents: number;
+  }[];
 }
 
 export async function renderClaimForTransport(args: {
@@ -59,7 +71,20 @@ export async function renderClaimForTransport(args: {
       claimControlNumber: args.claimControlNumber,
     },
   );
-  if (loaded.ok) return loaded.rendered.reveal();
+  if (loaded.ok)
+    return {
+      ...loaded.rendered.reveal(),
+      sourceFingerprint: loaded.sourceFingerprint,
+      submittedLines: loaded.document.lines.map((line) => ({
+        internalClaimLineId: line.sourceLineId,
+        revenueCode: line.revenueCode,
+        procedureCode: line.hcpcs || null,
+        serviceFrom: line.serviceDateFrom.replaceAll("-", ""),
+        serviceTo: line.serviceDateTo.replaceAll("-", ""),
+        units: String(line.units),
+        chargeCents: line.chargeCents,
+      })),
+    };
   const why =
     loaded.kind === "claim_not_found"
       ? "claim not found for this organization and provider entity"

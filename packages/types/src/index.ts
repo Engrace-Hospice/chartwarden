@@ -66,6 +66,7 @@ export * from "./messaging-devices";
 export * from "./messaging-retention";
 export * from "./messaging-ack-broadcast";
 export * from "./messaging-emergency";
+export * from "./messaging-group-tags";
 export * from "./messaging-analytics";
 export * from "./messaging-ai";
 export * from "./messaging-offboarding";

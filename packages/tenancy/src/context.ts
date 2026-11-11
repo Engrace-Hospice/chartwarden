@@ -187,11 +187,16 @@ export async function withPlatformContext<Tx extends SqlExecutor, T>(
   caller: PlatformCaller,
   auditBypass: PlatformBypassAuditor<Tx>,
   fn: (tx: Tx) => Promise<T>,
+  options?: { readonly isolation?: "repeatable read" },
 ): Promise<T> {
   if (!PLATFORM_CONTEXT_ALLOWLIST.has(caller.jobId)) {
     throw new PlatformContextDeniedError(caller.jobId);
   }
   return platformDb.transaction(async (tx) => {
+    // Must precede the audit INSERT: PostgreSQL rejects a transaction isolation change after its first query.
+    // The audit and every owner-reader query then share one stable snapshot and commit atomically.
+    if (options?.isolation === "repeatable read")
+      await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`);
     await auditBypass(tx, {
       jobId: caller.jobId,
       reason: caller.reason,

@@ -1,4 +1,3 @@
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/24-billing-medicaid/routes/m24-typebox.ts — M24 (§4.2) request/response schemas.
 //
 // TypeBox request bodies, list queries, and response DTOs for the §4.1 Billing — Medicaid routes (claims,
@@ -15,20 +14,10 @@ import { ValidationError } from "@chartwarden/types";
 // side (request.context) — no body or query carries an org id or an acting membership id. A Recipient ID is
 // never returned (only the masked last-4 fact; D12 / §3.6) and credential secrets are write-only (the read
 // DTO carries presence flags only).
+import { pageLimit, pageQuery } from "@chartwarden/shared/route-kit";
+import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
-}
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -129,6 +118,27 @@ const RB_DAY_OVERRIDE_STATUS = ["pending", "billable", "excluded", "voided"] as 
 /** A two-letter USPS state code — the M24 service state (Phase 1 ships the Oregon adapter). */
 const StateCode = Type.String({ minLength: 2, maxLength: 2, pattern: "^[A-Z]{2}$" });
 
+const RouteReadinessDto = Type.Object({
+  serviceState: StateCode,
+  programKind: lit(["managed_care", "unresolved"] as const),
+  programAssignmentVerified: Type.Literal(false),
+  requestedChannel: Type.Union([lit(["cco_clearinghouse"] as const), Type.Null()]),
+  localPreparationAvailable: Type.Literal(true),
+  transportConfigured: Type.Boolean(),
+  providerEnrollmentVerified: Type.Literal(false),
+  tradingPartnerCertificationVerified: Type.Literal(false),
+  outboundFormat: Type.Literal("unverified"),
+  submissionAvailable: Type.Literal(false),
+  status: lit([
+    "transport_unconfigured",
+    "certification_pending",
+    "unsupported_program_route",
+    "unsupported_state_program",
+  ] as const),
+  reasonCode: Type.String(),
+  message: Type.String(),
+});
+
 // ── request bodies (§4.2) ───────────────────────────────────────────────────────────────────────────────
 
 /** POST /api/v1/medicaid-claims — assemble a draft over a patient + service range (§2.1). */
@@ -146,11 +156,8 @@ export const AssembleClaimBody = Type.Object(
   { additionalProperties: false },
 );
 
-/** PATCH /api/v1/medicaid-claims/:id — the only editable draft field is the MCO routing target. */
-export const UpdateDraftClaimBody = Type.Object(
-  { mcoId: Type.Optional(Type.Union([uuid(), Type.Null()])) },
-  { additionalProperties: false },
-);
+/** PATCH /api/v1/medicaid-claims/:id — no tenant-supplied payer/MCO routing mutation is supported. */
+export const UpdateDraftClaimBody = Type.Object({}, { additionalProperties: false });
 
 /** POST …/:id/submit — the channel hint is advisory; the adapter resolves the real channel (§4.4). */
 export const SubmitClaimBody = Type.Object(
@@ -302,8 +309,7 @@ export const ClaimListQuery = Type.Object(
     serviceState: Type.Optional(StateCode),
     patientId: Type.Optional(uuid()),
     providerEntityId: Type.Optional(uuid()),
-    cursor: Type.Optional(Type.String()),
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+    ...pageQuery(),
   },
   { additionalProperties: false },
 );
@@ -339,7 +345,7 @@ export const EligibilityListQuery = Type.Object(
 
 /** GET /api/v1/medicaid-validation-worklist — caps the failing-result scan (the response says if it hit). */
 export const ValidationWorklistQuery = Type.Object(
-  { limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 2000 })) },
+  { limit: pageLimit({ max: 2000 }) },
   { additionalProperties: false },
 );
 
@@ -370,6 +376,7 @@ export const ClaimDto = Type.Object({
   validationRunIdLatest: Type.Union([uuid(), Type.Null()]),
   eligibilityOutcomeSnapshot: Type.Union([lit(ELIGIBILITY_OUTCOME), Type.Null()]),
   electronicSubmissionRefusal: nullableStr(),
+  routeReadiness: RouteReadinessDto,
   createdAt: isoInstant(),
   updatedAt: isoInstant(),
 });
