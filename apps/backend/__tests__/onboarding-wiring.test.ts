@@ -1,6 +1,6 @@
 // The composition root binds what the not-yet-live organization's onboarding needs, in the places that need it.
 //
-// A lost binding is silent. Both M23 services take "a billing write voids a pending go-live attestation" as an OPTIONAL dependency
+// A lost binding is silent. Both M23 services take "a billing write guards and voids a pending go-live attestation" as an OPTIONAL dependency
 // (M23 may not import M34), so a service built without it still compiles, still passes every unit test, and quietly lets a tenant
 // change its clearinghouse or MAC credential under a pending attestation; and the identity routes report `organizationStage:
 // live` for an organization that is still being onboarded when the stage reader is not handed over. The live suite
@@ -15,24 +15,24 @@ const index = readFileSync(join(__dirname, "../src/index.ts"), "utf8");
 describe("the composition root binds the go-live void on the M23 tenant-lane writes", () => {
   it("builds the tenant clearinghouse route service with it", () => {
     expect(index).toMatch(
-      /buildDrizzleTenantClearinghouseRouteService\(\{\s*db: dbHandle\.db,\s*service: tenantClearinghouseService,\s*audit: buildClearinghouseAuditPort\(\),\s*(\/\/[^\n]*\n\s*)*onOnboardingDataChanged: voidGoLiveOnBillingWrite,/,
+      /buildDrizzleTenantClearinghouseRouteService\(\{\s*db: dbHandle\.db,\s*service: tenantClearinghouseService,\s*audit: buildClearinghouseAuditPort\(\),\s*(\/\/[^\n]*\n\s*)*onOnboardingDataChanging: guardGoLiveOnBillingWrite,/,
     );
   });
 
   it("builds the M23 write service behind the tenant MAC credential routes with it", () => {
     expect(index).toMatch(
-      /writeService: buildDrizzleM23WriteService\(dbHandle\.db, \{\s*outbox: m23OutboxPublisher,\s*(\/\/[^\n]*\n\s*)*onOnboardingDataChanged: voidGoLiveOnBillingWrite,/,
+      /writeService: buildDrizzleM23WriteService\(dbHandle\.db, \{\s*outbox: m23OutboxPublisher,\s*(\/\/[^\n]*\n\s*)*onOnboardingDataChanging: guardGoLiveOnBillingWrite,/,
     );
   });
 
   it("settles the MAC credential onboarding step after the tenant write commits", () => {
     expect(index).toMatch(
-      /onOnboardingDataChanged: voidGoLiveOnBillingWrite,\s*(\/\/[^\n]*\n\s*)*onMacCredentialChanged: settleOnboardingForOrg,\s*(\/\/[^\n]*\n\s*)*logMacCredentialSettleError:/,
+      /onOnboardingDataChanging: guardGoLiveOnBillingWrite,\s*(\/\/[^\n]*\n\s*)*onMacCredentialChanged: settleOnboardingForOrg,\s*(\/\/[^\n]*\n\s*)*logMacCredentialSettleError:/,
     );
   });
 
   it("binds it nowhere else: the operator lane voids on its own transaction (a second void would only be noise)", () => {
-    expect(index.match(/onOnboardingDataChanged:/g)).toHaveLength(2);
+    expect(index.match(/onOnboardingDataChanging:/g)).toHaveLength(2);
   });
 });
 
@@ -43,7 +43,7 @@ describe("the composition root hands the identity routes the authenticate hook's
     );
     // the very reader the authenticate hook is built with
     expect(index).toMatch(
-      /const organizationStage = dbHandle\s*\?\s*createOrganizationStageReader\(createOrganizationStatusReader\(dbHandle\.db\)\)/,
+      /const organizationStage = dbHandle\s*\?\s*createOrganizationStageReader\(readOrganizationStatus!\)/,
     );
   });
 });

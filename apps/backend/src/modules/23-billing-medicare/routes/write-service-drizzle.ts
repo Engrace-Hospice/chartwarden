@@ -1390,13 +1390,15 @@ export function buildDrizzleM23WriteService(
         "a MAC credential already exists for this provider entity; send its current version in If-Match to update it",
       )(() =>
         inOrgCtx(actor, async (tx) => {
+          const dataChanged =
+            (await ports.onOnboardingDataChanging?.(tx, {
+              organizationId: actor.organizationId,
+              userId: actor.userId,
+              membershipId: actor.membershipId,
+            })) ?? (async () => undefined);
           const saved = await upsertMacCredentialRow(tx, actor, args);
-          // Step 8's data changed: a pending go-live attestation is revoked in this same transaction (see the port's doc).
-          await ports.onOnboardingDataChanged?.(tx, {
-            organizationId: actor.organizationId,
-            userId: actor.userId,
-            membershipId: actor.membershipId,
-          });
+          // Step 8 changed: finish the guarded scope and revoke the pending attestation in this transaction.
+          await dataChanged();
           return saved;
         }),
       );

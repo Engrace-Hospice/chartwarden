@@ -97,14 +97,14 @@ describe("the composition root builds every clearinghouse port from the per-org 
     expect(index).not.toMatch(/CLEARINGHOUSE_VENDOR\?\.trim\(\) !== "claimmd"/);
   });
 
-  it("uses the same lifecycle-invalidated organization-stage reader to gate every worker transport", () => {
+  it("uses an authoritative uncached lifecycle read to gate every worker transport", () => {
     expect(index).toMatch(
-      /const organizationStage = dbHandle\s*\?\s*createOrganizationStageReader\(createOrganizationStatusReader\(dbHandle\.db\)\)/,
+      /const readOrganizationStatus = dbHandle\s*\?\s*createOrganizationStatusReader\(dbHandle\.db\)/,
     );
     expect(index).toMatch(
-      /createTenantClearinghouseRuntime\(\{[\s\S]*?isOrganizationLive: async \(organizationId: string\) => \{[\s\S]*?organizationStage\.isConfined\(organizationId\)/,
+      /createTenantClearinghouseRuntime\(\{[\s\S]*?isOrganizationLive: async \(organizationId: string\) => \{[\s\S]*?readOrganizationStatus\(organizationId\)/,
     );
-    expect(index).not.toContain("clearinghouseOrganizationStage");
+    expect(index).not.toMatch(/isOrganizationLive:[\s\S]{0,300}organizationStage\.isConfined/);
     expect(
       index.match(/organizationStage\?\.invalidate\(organizationId\)/g)?.length,
     ).toBeGreaterThan(0);

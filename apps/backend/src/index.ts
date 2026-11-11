@@ -1237,7 +1237,7 @@ import {
   validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
-import type { OnboardingDataChangedHook } from "./modules/23-billing-medicare/routes/onboarding-data-change";
+import type { OnboardingDataChangeGuard } from "./modules/23-billing-medicare/routes/onboarding-data-change";
 import { m23RouteClasses } from "./modules/23-billing-medicare/routes/route-classes";
 import {
   buildClaim837iPersistencePort,
@@ -3197,10 +3197,11 @@ export const m34PlatformBypassAuditor: PlatformBypassAuditor<DbClient> = async (
 /**
  * A tenant-lane billing write (the clearinghouse choice, its BAA record, verify and activate; the MAC credential) is onboarding
  * data: a pending go-live attestation said that data was ready, so the write revokes it IN THE WRITE'S OWN TRANSACTION (M23 may
- * not import M34, so it takes this as `onOnboardingDataChanged`). The write and the void commit or roll back together; with
- * nothing pending it is a no-op. The operator's lane voids on its own transaction (`onboarding-data-service.ts`).
+ * not import M34, so it takes this as `onOnboardingDataChanging`). The guard acquires the shared lock and decides whether the
+ * organization is still onboarding before the mutation. Its returned finalizer voids only after a successful material write,
+ * so approval cannot overtake an in-flight change and no-op/refused writes revoke nothing.
  */
-export const voidGoLiveOnBillingWrite: OnboardingDataChangedHook = async (tx, change) => {
+export const guardGoLiveOnBillingWrite: OnboardingDataChangeGuard = async (tx, change) => {
   await lockTenantOnboardingShared(tx, change.organizationId);
   const [account] = await tx
     .select({ status: schema.tenantAccount.status })
@@ -3209,12 +3210,14 @@ export const voidGoLiveOnBillingWrite: OnboardingDataChangedHook = async (tx, ch
     .limit(1);
   // A live/suspended/closing tenant may still maintain billing configuration. There is no pending onboarding
   // attestation to invalidate there, and the shared lock makes this status decision atomic with go-live approval.
-  if (!account || !ONBOARDING_WRITABLE_STATUSES.has(account.status)) return;
-  await voidPendingGoLiveForDataChange(tx, {
-    organizationId: change.organizationId,
-    revokedByUserId: change.userId,
-    revokedByMembershipId: change.membershipId,
-  });
+  if (!account || !ONBOARDING_WRITABLE_STATUSES.has(account.status)) return async () => undefined;
+  return async () => {
+    await voidPendingGoLiveForDataChange(tx, {
+      organizationId: change.organizationId,
+      revokedByUserId: change.userId,
+      revokedByMembershipId: change.membershipId,
+    });
+  };
 };
 
 /**
@@ -4228,18 +4231,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       "M23_CLAIMMD_NOTICE_UPLOAD_ENABLED is not true: this organization's own Claim.MD account cannot send its NOE / NOTR (the upload is refused NOT_WIRED and the notice is not filed); set the flag before its CMS deadlines matter",
     );
   };
-  // One status reader serves both request confinement and worker transport resolution. Lifecycle transitions invalidate this exact
-  // cache below, so active -> suspended/closed stops sends immediately rather than after a second reader's TTL.
+  const readOrganizationStatus = dbHandle ? createOrganizationStatusReader(dbHandle.db) : undefined;
+  // Request confinement is briefly cached for request-path cost. The decisive worker transport check below deliberately uses the
+  // authoritative reader on every resolution: process-local invalidation cannot stop another replica from using a stale active entry.
   const organizationStage = dbHandle
-    ? createOrganizationStageReader(createOrganizationStatusReader(dbHandle.db))
+    ? createOrganizationStageReader(readOrganizationStatus!)
     : undefined;
   const tenantClearinghouse = dbHandle
     ? createTenantClearinghouseRuntime({
         db: dbHandle.db,
         cipher: clearinghouseSecretCipher,
         isOrganizationLive: async (organizationId: string) => {
-          if (!organizationStage) throw new Error("organization stage reader is not bound");
-          return !(await organizationStage.isConfined(organizationId));
+          if (!readOrganizationStatus) throw new Error("organization status reader is not bound");
+          return (await readOrganizationStatus(organizationId)) === "active";
         },
         attempts: createDrizzleAttemptStore(dbHandle.db),
         platformBinding: platformClearinghouseBinding,
@@ -7694,7 +7698,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   service: tenantClearinghouseService,
                   audit: buildClearinghouseAuditPort(),
                   // Each write voids a pending go-live attestation in its own transaction (step 7's data changed).
-                  onOnboardingDataChanged: voidGoLiveOnBillingWrite,
+                  onOnboardingDataChanging: guardGoLiveOnBillingWrite,
                   onChanged: settleOnboardingForOrg,
                   logError: (cause, context) =>
                     app.log.error(
@@ -7734,7 +7738,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 writeService: buildDrizzleM23WriteService(dbHandle.db, {
                   outbox: m23OutboxPublisher,
                   // The tenant's own MAC credential save voids a pending go-live attestation in the same transaction (step 8's data).
-                  onOnboardingDataChanged: voidGoLiveOnBillingWrite,
+                  onOnboardingDataChanging: guardGoLiveOnBillingWrite,
                   // Once that transaction commits, settle the credential step immediately; a failure is observable but never rolls back the save.
                   onMacCredentialChanged: settleOnboardingForOrg,
                   logMacCredentialSettleError: (cause, context) =>

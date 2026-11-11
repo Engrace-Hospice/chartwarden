@@ -14,8 +14,8 @@ export interface OnboardingDataChange {
   readonly membershipId: string;
 }
 
-/** Runs on the write's own transaction, after the write: a throw rolls the write back with it. */
-export type OnboardingDataChangedHook = (
+/** Called before the write and returns its post-write finalizer, all on the write's transaction. */
+export type OnboardingDataChangeGuard = (
   tx: DbClient,
   change: OnboardingDataChange,
-) => Promise<void>;
+) => Promise<() => Promise<void>>;
