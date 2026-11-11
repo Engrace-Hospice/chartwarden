@@ -52854,8 +52854,11 @@ export interface operations {
                     /** Format: uuid */
                     providerEntityId: string;
                     macJurisdiction: "ngs_j6" | "ngs_jk" | "cgs_j15" | "palmetto_jj" | "palmetto_jm" | "noridian_jf" | "noridian_je";
+                    /** @description The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted. */
                     submitterId: string;
+                    /** @description The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted. */
                     tradingPartnerId: string;
+                    /** @description The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted. */
                     clientId: string;
                     clientSecret: string;
                     /** @description Where the MAC BAA is kept (a title, folder or document id; 1-256 characters after whitespace is collapsed; omit it to leave it unset). Never patient information: a social-security-number or MBI shape is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error. */
@@ -52866,6 +52869,31 @@ export interface operations {
             };
         };
         responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        credentialId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        macJurisdiction: string;
+                        submitterId: string;
+                        tradingPartnerId: string;
+                        clientId: string;
+                        hasSecret: boolean;
+                        baaRecordRef: string | null;
+                        credentialExpiresAt: string | null;
+                        /** @description When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used). */
+                        lastSandboxTestAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
             /** @description OK */
             201: {
                 headers: {
@@ -98212,8 +98240,11 @@ export interface operations {
                     providerEntityId: string;
                     /** @description The MAC jurisdiction key the tenant's billing screen offers (e.g. noridian_jf, ngs_j6, cgs_j15); M23 refuses any other with a 422. */
                     macJurisdiction: string;
+                    /** @description The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted. */
                     submitterId: string;
+                    /** @description The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted. */
                     tradingPartnerId: string;
+                    /** @description The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted. */
                     clientId: string;
                     /** @description Write-only: sealed under the tenant's own key and never returned. */
                     clientSecret: string;
