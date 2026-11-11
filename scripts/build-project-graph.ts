@@ -18,21 +18,13 @@ export type BuildSpawn = (
 
 function projectBatches(projects: readonly string[]): string[][] {
   const batches: string[][] = [];
-  let packageBatch: string[] = [];
-  for (const project of projects) {
-    if (project.startsWith("./packages/")) {
-      packageBatch.push(project);
-      if (packageBatch.length === 6) {
-        batches.push(packageBatch);
-        packageBatch = [];
-      }
-    } else {
-      if (packageBatch.length) batches.push(packageBatch);
-      packageBatch = [];
-      batches.push([project]);
-    }
+  const packages = projects.filter((project) => project.startsWith("./packages/"));
+  for (let index = 0; index < packages.length; index += 6) {
+    batches.push(packages.slice(index, index + 6));
   }
-  if (packageBatch.length) batches.push(packageBatch);
+  for (const project of projects) {
+    if (!project.startsWith("./packages/")) batches.push([project]);
+  }
   return batches;
 }
 
