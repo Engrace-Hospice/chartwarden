@@ -88,14 +88,33 @@ function refuse(log: Log, reason: string, target?: string, cmd?: string): never 
   return respond("deny", reason);
 }
 
-/** The real path, or for a path that does not exist yet its nearest existing parent's real path plus the rest. */
+/** A line this long is not a path (PATH_MAX is 4096): it is matched as written and never resolved on disk. */
+const MAX_PATH_CHARS = 4096;
+
+/**
+ * The real path, or for a path that does not exist yet its nearest existing parent's real path plus the rest.
+ * Iterative: the recursion this replaces overflowed the stack on a path of 100,000 `a/../`.
+ */
 function canon(p: string): string {
-  try {
-    return realpathSync(p);
-  } catch {
-    const parent = dirname(p);
-    return parent === p ? p : join(canon(parent), basename(p));
+  const rest: string[] = [];
+  for (let current = p; ; ) {
+    try {
+      const real = realpathSync(current);
+      return rest.length === 0 ? real : join(real, ...rest.reverse());
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return rest.length === 0 ? p : join(current, ...rest.reverse());
+      rest.push(basename(current));
+      current = parent;
+    }
   }
+}
+
+/** Answer `deny` for a read or write of a live secret file. */
+function refuseSecret(log: Log, name: string, why: string): never {
+  const reason = `\`${name}\` is ${why}. Agents never read or write it; use the committed .example template for its shape.`;
+  log("deny", reason, name);
+  return respond("deny", reason);
 }
 
 /**
@@ -113,7 +132,12 @@ const codexRoot = (): string =>
 /** A path as the repo sees it: real paths on both sides, relative paths resolved from the directory `base`. */
 function pathResolver(root: string, base: string): (p: string) => string {
   const realRoot = canon(root);
-  return (p) => relPath(realRoot, canon(isAbsolute(p) ? p : join(base, p)));
+  return (p) => {
+    const absolute = isAbsolute(p) ? p : join(base, p);
+    // A path longer than a path can be on disk is collapsed textually (linear) and never resolved link by link.
+    const collapsed = absolute.length > MAX_PATH_CHARS ? resolve(absolute) : absolute;
+    return relPath(realRoot, collapsed.length > MAX_PATH_CHARS ? collapsed : canon(collapsed));
+  };
 }
 
 /**
@@ -166,8 +190,6 @@ function checkPatch(text: string, root: string, base: string, log: Log): void {
 }
 
 const NOT_TEXT = "was not text, so the guard cannot judge it";
-/** A line this long is not a path (PATH_MAX is 4096): it is matched as written and never resolved on disk. */
-const MAX_PATH_CHARS = 4096;
 /** Lines of an MCP input resolved on disk in one call; past it the call is refused (the work must fit the hook's timeout). */
 const MAX_MCP_PATH_LINES = 20_000;
 
@@ -418,17 +440,13 @@ function judge(hook: HookInput): void {
 
   const rawPath = input.file_path ?? input.notebook_path ?? input.path;
   const target = relPath(root, rawPath);
-  // As written, and as the real file it names (a symlink, or a root written through a symlinked prefix).
+  // As written first (cheap), then as the real file it names (a symlink, or a root written through a symlinked prefix).
+  const written = secretPathReason(target);
+  if (written) refuseSecret(log, target, written);
   const realTarget =
     typeof rawPath === "string" && rawPath ? pathResolver(root, cwd)(rawPath) : target;
-  for (const name of new Set([target, realTarget])) {
-    const why = name ? secretPathReason(name) : null;
-    if (why) {
-      const reason = `\`${name}\` is ${why}. Agents never read or write it; use the committed .example template for its shape.`;
-      log("deny", reason, name);
-      respond("deny", reason);
-    }
-  }
+  const real = realTarget === target ? null : secretPathReason(realTarget);
+  if (real) refuseSecret(log, realTarget, real);
   // Grep/Glob with a glob that names secret files, e.g. `glob: ".env*"` or `"**/*.pem"`.
   if (
     (tool === "Grep" || tool === "Glob") &&

@@ -438,3 +438,55 @@ describe("a command built to make the classifier slow is answered quickly even w
     60_000,
   );
 });
+
+// CR-H1 (2026-11-10 review): a Read/Write/Edit/Grep/Glob `file_path` of 500 KB made of `a/../` went quadratic in
+// the real-path computation (4 to 9 s here, a SIGTERM on a loaded machine). The textual deny now runs first and
+// a path no longer than a path can be on disk is the only one resolved on disk.
+describe("CR-H1: a 500 KB file_path is answered quickly and still denies a secret target", () => {
+  const root = repo();
+  const HALF_S = 1000;
+  const detour = "a/../".repeat(100_000);
+  const secret = ["apps/backend/", ".", "env"].join("");
+  const call = (tool: string, file: string, extra: Record<string, unknown> = {}) => {
+    const started = performance.now();
+    const r = claude(root, {
+      tool_name: tool,
+      tool_input: { file_path: file, ...extra },
+      cwd: root,
+    });
+    return { r, ms: performance.now() - started };
+  };
+
+  it.each([
+    ["Read", {}],
+    ["Write", { content: "x" }],
+    ["Edit", { old_string: "a", new_string: "b" }],
+  ])("denies %s of a long path that names a live env file, in well under 1 s", (tool, extra) => {
+    const { r, ms } = call(tool, `${root}/${detour}${secret}`, extra);
+    expect(decision(r)).toBe("deny");
+    expect(ms).toBeLessThan(HALF_S);
+  });
+
+  it("denies a long relative path too", () => {
+    const { r, ms } = call("Read", `${detour}${secret}`);
+    expect(decision(r)).toBe("deny");
+    expect(ms).toBeLessThan(HALF_S);
+  });
+
+  it("allows a long path that resolves to an ordinary file: exit 0, no output", () => {
+    const started = performance.now();
+    const r = spawnSync("bun", [GUARD], {
+      input: JSON.stringify({
+        tool_name: "Read",
+        tool_input: { file_path: `${root}/${detour}apps/backend/package.json` },
+        cwd: root,
+      }),
+      encoding: "utf8",
+      env: { ...baseEnv(), CLAUDE_PROJECT_DIR: root },
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toBe("");
+    expect(r.stderr).toBe("");
+    expect(performance.now() - started).toBeLessThan(HALF_S);
+  });
+});
