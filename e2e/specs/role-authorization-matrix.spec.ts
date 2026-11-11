@@ -11,7 +11,7 @@ import type { Page } from "@playwright/test";
 import {
   ADMIN_ACCOUNT,
   AUDITOR_ACCOUNT,
-  CLINICIAN_ACCOUNT,
+  CLINICAL_ONLY_ACCOUNT,
   type DemoAccount,
 } from "../fixtures/credentials";
 import { signInAs } from "../fixtures/helpers";
@@ -116,7 +116,7 @@ function expectAllowed(account: () => DemoAccount, cases: readonly Case[]): void
 }
 
 test.describe("Authorization matrix (#852) — Clinician (clinical permissions only)", () => {
-  expectDenied(CLINICIAN_ACCOUNT, [BILLING_QUEUE, RATE_TABLES, AGENCY_SETUP, AUDIT_LOG, STAFF]);
+  expectDenied(CLINICAL_ONLY_ACCOUNT, [BILLING_QUEUE, RATE_TABLES, AGENCY_SETUP, AUDIT_LOG, STAFF]);
 });
 
 test.describe("Authorization matrix (#852) — Compliance Auditor (compliance permissions only)", () => {

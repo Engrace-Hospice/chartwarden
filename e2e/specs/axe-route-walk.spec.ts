@@ -13,9 +13,8 @@
 // keyboard operation, focus order, zoom, and screen-reader behavior on the high-risk clinical forms are
 // NOT automatable this way and stay a scheduled, manual review (#106's own acceptance criteria say so).
 //
-// SCOPE, explicitly: `web` only. `admin` (34 screens) and `portal` (13 screens) run on their own Vite
-// dev servers (ports 5175/5174) that `bun run dev` does not start and this suite's single `baseURL`
-// does not reach — walking them needs their own Playwright config, not a screen filter here. Pre-auth
+// SCOPE, explicitly: this project walks `web` only. The `admin` and `portal` registries run against
+// their own Vite servers through the dedicated Playwright projects in this suite. Pre-auth
 // screens (`permission: "(none)"` — sign-in, forgot/reset password, the MFA challenge) are excluded:
 // this spec signs in once and stays signed in, and `auth.spec.ts` already scans the sign-in page in
 // its own unauthenticated context. `bun run scripts/report-e2e-axe-coverage.ts` is the measured

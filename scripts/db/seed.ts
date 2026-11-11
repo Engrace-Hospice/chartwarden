@@ -1,11 +1,12 @@
 /**
  * ChartWarden — local dev seed (demo org + users + RBAC). NOT for production.
  *
- * Creates one demo organization, three users (via the running backend's Better Auth sign-up so
- * passwords hash exactly as prod), active memberships, and three roles wired to the real M3
+ * Creates one demo organization and deterministic demo personas (via the running backend's Better Auth
+ * sign-up so passwords hash exactly as prod), active memberships, and roles wired to the real M3
  * permission catalog (`allPermissionMirrorRows()`):
  *   • administrator — every permission (the full catalog)
  *   • clinician     — clinical permissions
+ *   • clinical_only — clinical permissions without a discipline role
  *   • auditor       — compliance permissions
  * Generated passwords are written to `CREDENTIALS.local.md` (gitignored).
  *
@@ -87,6 +88,16 @@ const USERS: SeedUser[] = [
     name: "Casey Clinician",
     roleKey: "clinician",
     roleName: "Clinician",
+    roleCategory: "clinical_staff",
+    permCats: ["clinical"],
+  },
+  {
+    // Least-privilege browser-authorization persona. Unlike Casey, this account deliberately remains
+    // discipline-free when db:seed:staff adds the RN role Casey needs for clinical authoring workflows.
+    email: "qa-clinician@chartwarden.local",
+    name: "Quinn Clinical QA",
+    roleKey: "clinical_only",
+    roleName: "Clinical-Only QA",
     roleCategory: "clinical_staff",
     permCats: ["clinical"],
   },

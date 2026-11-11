@@ -96,7 +96,9 @@ export async function expectRouteReached(
  * thread shows skeleton rows while it cannot load). Such an animation has no "settled" state to wait for.
  */
 async function waitForTransitionsToSettle(page: Page): Promise<void> {
-  await page.waitForLoadState("networkidle").catch(() => {});
+  // Polling screens never become idle. Keep this bounded just like the registry route walkers, then
+  // settle every finite animation that is currently present.
+  await page.waitForLoadState("networkidle", { timeout: 4_000 }).catch(() => {});
   await page.evaluate(async () => {
     await Promise.all(
       document

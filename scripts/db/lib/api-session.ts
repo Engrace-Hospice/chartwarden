@@ -37,7 +37,7 @@ export interface WxSession {
  *   1. Substring collision: `"orgadmin@chartwarden.local".includes("admin@chartwarden.local")` is TRUE — a plain
  *      substring search for `admin@chartwarden.local` also matches `orgadmin@chartwarden.local`'s row. Matching
  *      the backtick-delimited exact cell (`` `${email}` ``) avoids this.
- *   2. Ordering: `orgadmin@chartwarden.local` is one of `seed.ts`'s base 4 accounts AND is separately
+ *   2. Ordering: `orgadmin@chartwarden.local` is one of `seed.ts`'s base accounts AND is separately
  *      dropped-and-recreated with a different password by `seed-org-admin.ts` (its own header: "drops a
  *      prior orgadmin@chartwarden.local first, then re-creates it") — in `db:reset`'s pipeline order the base
  *      block is written first and is stale (that user no longer exists) by the time any script signs in,
