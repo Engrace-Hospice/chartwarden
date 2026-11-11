@@ -25,9 +25,11 @@ import {
   CODEX_GUARD_MATCHER,
   type HarnessFiles,
   LOCAL_PROBE_PATHS,
+  MIN_BUN,
   type Register,
   type RepoView,
   SHARED_PROBE_PATHS,
+  checkBunEngine,
   checkCodexHooks,
   checkHarness,
   checkMirror,
@@ -1032,5 +1034,73 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
     it("still answers with the real git and the default bounds", () => {
       expect(probeGitignore(gitignore)).toHaveProperty("paths");
     });
+  });
+});
+
+// bun 1.3.0 to 1.3.2 ignore `--no-env-file` (verified against each release), so the hooks' environment-file
+// protection needs bun 1.3.3 or later. The PR claimed `engines.bun` pins that; nothing checked it.
+describe("engines.bun promises a bun that honours --no-env-file", () => {
+  const pkg = (bun: unknown) => JSON.stringify({ engines: bun === undefined ? {} : { bun } });
+  const root = join(__dirname, "../..");
+
+  it("floors the version at 1.3.3", () => {
+    expect(MIN_BUN).toEqual([1, 3, 3]);
+  });
+  it.each([
+    ">=1.3.3",
+    ">=1.3.5",
+    "^1.3.3",
+    "~1.3.3",
+    "1.3.5",
+    ">=1.4.0",
+    ">=2.0.0",
+    ">=1.3.3 <2",
+    "v1.3.3",
+  ])("accepts %s", (range) => {
+    expect(checkBunEngine(pkg(range))).toEqual([]);
+  });
+  it.each([
+    ">=1.3.2",
+    ">=1.3.0",
+    ">=1.2.9",
+    "^1.3.2",
+    "1.3.0",
+    "*",
+    "<2",
+    "latest",
+    ">=1.3",
+    "1.3",
+    "",
+    "x",
+  ])("rejects %j", (range) => {
+    expect(checkBunEngine(pkg(range)).join()).toMatch(/engines\.bun/);
+  });
+  it.each([[undefined], [123], [null], [["1.3.3"]]])(
+    "rejects a missing or non-string engines.bun (%j)",
+    (value) => {
+      expect(checkBunEngine(pkg(value)).join()).toMatch(/no engines\.bun|engines\.bun is/);
+    },
+  );
+  it("rejects a missing or unparsable package.json", () => {
+    expect(checkBunEngine(undefined).join()).toMatch(/package\.json is missing/);
+    expect(checkBunEngine("{").join()).toMatch(/does not parse/);
+    expect(checkBunEngine("{}").join()).toMatch(/no engines\.bun/);
+  });
+  it("is part of checkHarness when package.json is supplied, and the committed package.json passes", () => {
+    const inputs = readHarnessInputs(root);
+    expect(inputs).toHaveProperty("packageJson");
+    expect(checkHarness(inputs)).toEqual([]);
+    const lowered = JSON.parse(inputs.packageJson as string);
+    lowered.engines.bun = ">=1.3.2";
+    expect(checkHarness({ ...inputs, packageJson: JSON.stringify(lowered) }).join("\n")).toMatch(
+      /engines\.bun is `>=1\.3\.2`/,
+    );
+    expect(checkHarness({ ...inputs, packageJson: undefined }).join("\n")).toMatch(
+      /package\.json is missing/,
+    );
+  });
+  it("the committed package.json floor is the one the docs state (1.3.3)", () => {
+    const committed = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    expect(committed.engines.bun).toBe(">=1.3.3");
   });
 });

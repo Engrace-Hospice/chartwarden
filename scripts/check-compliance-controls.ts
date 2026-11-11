@@ -618,6 +618,40 @@ export interface HarnessFiles {
   codexHooks?: string | undefined;
   /** What `git check-ignore` says about the `.gitignore` text ({@link probeGitignore}). Judged when present. */
   gitignoreProbe?: IgnoreProbe | undefined;
+  /** `package.json` text, `undefined` when the file is missing. Checked only when the key is present. */
+  packageJson?: string | undefined;
+}
+
+/**
+ * `bun --no-env-file`, which every pinned hook command passes, is a silent no-op on bun 1.3.0 to 1.3.2 (verified
+ * against each release; 1.3.3 and later honour it), so a session directory's environment file would be loaded
+ * before the guard. `engines.bun` must therefore promise at least this version.
+ */
+export const MIN_BUN: readonly [number, number, number] = [1, 3, 3];
+
+const bunVersionNumber = (major: number, minor: number, patch: number): number =>
+  major * 1_000_000 + minor * 1_000 + patch;
+
+/** PURE: `package.json` must declare `engines.bun` as a range whose floor is {@link MIN_BUN} or higher. */
+export function checkBunEngine(text: string | undefined): string[] {
+  const need = `engines.bun in package.json must be a range that starts at ${MIN_BUN.join(".")} or later (bun --no-env-file is a silent no-op before it, so the hooks would load a session environment file)`;
+  if (text === undefined) return [`package.json is missing; ${need}`];
+  let range: unknown;
+  try {
+    range = (JSON.parse(text) as { engines?: { bun?: unknown } }).engines?.bun;
+  } catch (e) {
+    return [`package.json does not parse: ${String(e)}`];
+  }
+  if (typeof range !== "string") return [`package.json declares no engines.bun; ${need}`];
+  // A floor: `>=1.3.3`, `^1.3.3`, `~1.3.3` or an exact version. Anything else (`*`, `<2`, `latest`, `1.3`) names no floor.
+  const floor = /^\s*(?:>=|\^|~)?\s*v?(\d+)\.(\d+)\.(\d+)(?:[-+][\w.-]+)?\s*(?:<[^|]*)?$/.exec(
+    range,
+  );
+  const atLeast =
+    floor !== null &&
+    bunVersionNumber(Number(floor[1]), Number(floor[2]), Number(floor[3])) >=
+      bunVersionNumber(...MIN_BUN);
+  return atLeast ? [] : [`package.json engines.bun is \`${range}\`; ${need}`];
 }
 
 /** PURE over file contents. */
@@ -784,6 +818,7 @@ export function checkHarness(files: HarnessFiles): string[] {
     v.push("AGENTS.md is not a verbatim copy of CLAUDE.md");
   if (files.mirror) v.push(...checkMirror(files.mirror.claude, files.mirror.agents));
   if ("codexHooks" in files) v.push(...checkCodexHooks(files.codexHooks));
+  if ("packageJson" in files) v.push(...checkBunEngine(files.packageJson));
   return v;
 }
 
@@ -826,6 +861,7 @@ export function readHarnessInputs(root: string): HarnessFiles {
     registry: read("compliance/synthetic-identifiers.json"),
     mirror: { claude: readMirrorTree(root, ".claude"), agents: readMirrorTree(root, ".agents") },
     codexHooks: read(".codex/hooks.json"),
+    packageJson: read("package.json"),
   };
 }
 

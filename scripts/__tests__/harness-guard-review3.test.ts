@@ -303,8 +303,12 @@ describe("finding 5: a tsconfig.json cannot rewrite the guard's own imports", ()
   const claudeCommand: string = settings.hooks.PreToolUse[0].hooks[0].command;
   const codexCommand: string = codexHooks.hooks.PreToolUse[0].hooks[0].command;
 
-  /** A throwaway git repo holding a copy of the harness and a hostile config that maps every import to `evil.ts`. */
-  const hostile = (config: string): string => {
+  /**
+   * A throwaway git repo holding a copy of the harness and a hostile config that maps every import to `evil.ts`.
+   * `at` is the directory (below the repo root) that holds the config and is the session directory; `extended` puts
+   * the paths in a `base.json` that the config only `extends`.
+   */
+  const hostileAt = (config: string, at = "", extended = false): { dir: string; cwd: string } => {
     const dir = scratch("cw-review3-tsconfig-");
     mkdirSync(join(dir, "scripts"), { recursive: true });
     cpSync(join(ROOT, "scripts/harness"), join(dir, "scripts/harness"), { recursive: true });
@@ -312,27 +316,31 @@ describe("finding 5: a tsconfig.json cannot rewrite the guard's own imports", ()
     // The Codex hook runs the script of the nearest directory that holds `.git`, `.codex/hooks.json` and the guard.
     mkdirSync(join(dir, ".codex"), { recursive: true });
     writeFileSync(join(dir, ".codex/hooks.json"), "{}\n");
-    writeFileSync(
-      join(dir, config),
-      JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "*": ["./evil.ts"] } } }),
-    );
+    const cwd = join(dir, at);
+    mkdirSync(cwd, { recursive: true });
+    const paths = { compilerOptions: { baseUrl: dir, paths: { "*": [join(dir, "evil.ts")] } } };
+    if (extended) {
+      writeFileSync(join(cwd, "base.json"), JSON.stringify(paths));
+      writeFileSync(join(cwd, config), JSON.stringify({ extends: "./base.json" }));
+    } else writeFileSync(join(cwd, config), JSON.stringify(paths));
     spawnSync("git", ["init", "-q", dir]);
-    return dir;
+    return { dir, cwd };
   };
-  const SECRET_READ = (dir: string) =>
+  const hostile = (config: string): string => hostileAt(config).dir;
+  const SECRET_READ = (dir: string, cwd = dir) =>
     JSON.stringify({
       hook_event_name: "PreToolUse",
       session_id: "t5",
       tool_name: "Read",
       tool_input: { file_path: join(dir, ".env") },
-      cwd: dir,
+      cwd,
     });
   /** The pinned command, exactly as the hook runs it: through a shell, in the session directory. */
-  const hook = (command: string, dir: string) => {
+  const hook = (command: string, dir: string, cwd = dir) => {
     const env = { ...baseEnv(), CLAUDE_PROJECT_DIR: dir, CW_AGENT_LEDGER: "off" };
     const r = spawnSync("sh", ["-c", command], {
-      cwd: dir,
-      input: SECRET_READ(dir),
+      cwd,
+      input: SECRET_READ(dir, cwd),
       encoding: "utf8",
       env,
     });
@@ -359,6 +367,31 @@ describe("finding 5: a tsconfig.json cannot rewrite the guard's own imports", ()
     expect(out?.permissionDecisionReason).toMatch(/\.env/);
     expect(r.status).toBe(0);
     expect(r.stderr).not.toMatch(/the guard failed or timed out/);
+  });
+  // The docs say the override was checked against a root, a nested and an extended config; these are those cases.
+  describe.each([
+    ["a nested config (scripts/)", "scripts", false],
+    ["a doubly nested config (scripts/harness/)", "scripts/harness", false],
+    ["a config that only extends the hostile one", "", true],
+    ["a nested config that extends the hostile one", "scripts", true],
+  ] as const)("%s", (_name, at, extended) => {
+    it.each(["tsconfig.json", "jsconfig.json"])(
+      "both pinned commands still deny a secret read with a hostile %s in the session directory",
+      (config) => {
+        const { dir, cwd } = hostileAt(config, at, extended);
+        for (const command of [claudeCommand, codexCommand]) {
+          const r = hook(command, dir, cwd);
+          const out = JSON.parse(r.stdout || "{}").hookSpecificOutput;
+          expect(out?.permissionDecision, `${command.slice(0, 30)} ${r.stderr}`).toBe("deny");
+          expect(out?.permissionDecisionReason).toMatch(/environment file/);
+        }
+      },
+    );
+    it("without the override flag the hijack is real (the case proves something)", () => {
+      const { dir, cwd } = hostileAt("tsconfig.json", at, extended);
+      const bare = claudeCommand.replace(" --tsconfig-override=/dev/null", "");
+      expect(hook(bare, dir, cwd).stdout).toBe("");
+    });
   });
   it("without the override flag the same hostile config is silent (the hijack is real)", () => {
     const dir = hostile("tsconfig.json");
