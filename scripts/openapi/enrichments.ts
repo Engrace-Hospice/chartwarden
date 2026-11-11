@@ -1538,10 +1538,10 @@ import {
   OnboardingTemplateListQuerySchema as M34OnboardingTemplateListQuerySchema,
   OnboardingTemplateListResponseSchema as M34OnboardingTemplateListResponseSchema,
   OnboardingTemplateViewSchema as M34OnboardingTemplateViewSchema,
-  PlatformSupportConsentGrantListQuerySchema as M34PlatformSupportConsentGrantListQuerySchema,
-  PlatformSupportConsentGrantListResponseSchema as M34PlatformSupportConsentGrantListResponseSchema,
   // responses
   BaaRecordViewSchema as M34PlatformBaaRecordViewSchema,
+  PlatformSupportConsentGrantListQuerySchema as M34PlatformSupportConsentGrantListQuerySchema,
+  PlatformSupportConsentGrantListResponseSchema as M34PlatformSupportConsentGrantListResponseSchema,
   TenantExportJobListResponseSchema as M34PlatformTenantExportJobListResponseSchema,
   ProvisionRetryAckSchema as M34ProvisionRetryAckSchema,
   ProvisionStatusViewSchema as M34ProvisionStatusViewSchema,
@@ -1596,14 +1596,14 @@ import {
   TenantExportJobListResponseSchema as M34ScopedTenantExportJobListResponseSchema,
   SupportConsentGrantListResponseSchema as M34SupportConsentGrantListResponseSchema,
   SupportConsentGrantViewSchema as M34SupportConsentGrantViewSchema,
-  TenantSupportSessionEventListResponseSchema as M34TenantSupportSessionEventListResponseSchema,
-  TenantSupportSessionListQuerySchema as M34TenantSupportSessionListQuerySchema,
-  TenantSupportSessionListResponseSchema as M34TenantSupportSessionListResponseSchema,
   BaaRecordViewSchema as M34TenantBaaRecordViewSchema,
   TenantExportJobViewSchema as M34TenantExportJobViewSchema,
   TenantExportListQuerySchema as M34TenantExportListQuerySchema,
   TenantExportRequest as M34TenantExportRequest,
   SupportConsentGrantRequest as M34TenantSupportConsentGrantRequest,
+  TenantSupportSessionEventListResponseSchema as M34TenantSupportSessionEventListResponseSchema,
+  TenantSupportSessionListQuerySchema as M34TenantSupportSessionListQuerySchema,
+  TenantSupportSessionListResponseSchema as M34TenantSupportSessionListResponseSchema,
 } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/tenant-typebox";
 
 import {
@@ -10940,7 +10940,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34TenantSupportSessionListResponseSchema,
   },
   "GET /api/v1/tenant/support-sessions/:id/events": {
-    summary: "Tenant-visible support-session ledger, with operator identity removed (cursor-paginated)",
+    summary:
+      "Tenant-visible support-session ledger, with operator identity removed (cursor-paginated)",
     query: M34TenantSupportSessionListQuerySchema,
     response: M34TenantSupportSessionEventListResponseSchema,
   },

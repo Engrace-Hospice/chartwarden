@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 // apps/backend/__tests__/m34-alert-rule-seed.test.ts — GAP-098.
 //
 // M34's §4.8 alert rules have been declared since the module was written and NEVER seeded — the file's
@@ -17,8 +19,6 @@ import {
   PLATFORM_OPS_ROLE_KEY as AUTH_OPS_KEY,
   PLATFORM_ALERT_AUDIENCE_ROLE_KEY,
 } from "@chartwarden/auth";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   M34_ALERT_RESOLVER_NAMES,

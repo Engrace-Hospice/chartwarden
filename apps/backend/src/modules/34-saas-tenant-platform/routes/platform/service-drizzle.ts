@@ -1131,9 +1131,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           .innerJoin(SCG, eq(SS.supportConsentGrantId, SCG.id))
           .where(
             and(
-              filter.tenantAccountId
-                ? eq(SCG.tenantAccountId, filter.tenantAccountId)
-                : undefined,
+              filter.tenantAccountId ? eq(SCG.tenantAccountId, filter.tenantAccountId) : undefined,
               statusWhere,
               cursorWhere,
             ),
@@ -1169,9 +1167,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const rows = await new SupportRepository(tx).listSessionEvents(sessionId, {
           limit: size + 1,
           organizationId: session.organizationId,
-          ...(anchor
-            ? { cursor: { occurredAt: new Date(anchor.createdAt), id: anchor.id } }
-            : {}),
+          ...(anchor ? { cursor: { occurredAt: new Date(anchor.createdAt), id: anchor.id } } : {}),
         });
         const views = rows.slice(0, size).map((e) => ({
           id: e.id,

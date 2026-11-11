@@ -13,7 +13,16 @@
 // (OPS-021). Indexes that omit the partition key are declared plain here. RLS + grants + the M4 write-audit
 // trigger land in 0052/0053.
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
 export const supportSessionEvent = pgTable(

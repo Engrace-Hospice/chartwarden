@@ -33,13 +33,7 @@ import {
 import { getRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
-import {
-  assertPageCursor,
-  decodeKeyset,
-  encodeKeyset,
-  pageSizeOf,
-  paginate,
-} from "../keyset-page";
+import { assertPageCursor, decodeKeyset, encodeKeyset, pageSizeOf, paginate } from "../keyset-page";
 import type {
   BaaRecordView,
   DownloadUrlView,
@@ -154,17 +148,14 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
     async revokeConsentGrant(organizationId, grantId, actor, reason) {
       const result = await inOrgCtx(organizationId, async (tx) => {
         // The security boundary commits first: revoke the grant and end every covered session atomically.
-        await deps.supportOps.revokeGrantAndCloseSessions(
-          deps.supportOps.depsFor(tx),
-          {
-            grantId,
-            organizationId,
-            revokedByMembershipId: actor.membershipId,
-            reason,
-            source: "tenant",
-            closedByUserId: actor.userId,
-          },
-        );
+        await deps.supportOps.revokeGrantAndCloseSessions(deps.supportOps.depsFor(tx), {
+          grantId,
+          organizationId,
+          revokedByMembershipId: actor.membershipId,
+          reason,
+          source: "tenant",
+          closedByUserId: actor.userId,
+        });
         const row = await new SupportRepository(tx).findConsentGrantById(grantId);
         if (!row) throw new NotFoundError("support consent grant");
         return grantView(row, deps.now());
@@ -199,9 +190,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
         const anchor = decodeKeyset(organizationId, cursor);
         const sessions = await repo.listSessions({
           limit: size + 1,
-          ...(anchor
-            ? { cursor: { startedAt: new Date(anchor.createdAt), id: anchor.id } }
-            : {}),
+          ...(anchor ? { cursor: { startedAt: new Date(anchor.createdAt), id: anchor.id } } : {}),
         });
         const pageRows = sessions.slice(0, size);
         const stats = await repo.opsWriteStats(pageRows.map((x) => x.id));
@@ -237,9 +226,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
         const rows = await repo.listSessionEvents(sessionId, {
           limit: size + 1,
           organizationId,
-          ...(anchor
-            ? { cursor: { occurredAt: new Date(anchor.createdAt), id: anchor.id } }
-            : {}),
+          ...(anchor ? { cursor: { occurredAt: new Date(anchor.createdAt), id: anchor.id } } : {}),
         });
         const views = rows
           .slice(0, size)

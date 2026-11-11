@@ -1308,13 +1308,7 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
         q<{ id: string }>(
           `INSERT INTO support_session (organization_id,support_consent_grant_id,actor_membership_id,started_at,expires_at)
            VALUES ($1,$2,$3, $4, $5) RETURNING id`,
-          [
-            OPERATOR_ORG,
-            grantId,
-            OPERATOR.membership,
-            clock,
-            new Date(clock.getTime() + HOUR),
-          ],
+          [OPERATOR_ORG, grantId, OPERATOR.membership, clock, new Date(clock.getTime() + HOUR)],
         ),
       ).rejects.toThrow();
       const before = clock;
