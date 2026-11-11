@@ -113,7 +113,7 @@ describe("runOnboardingAdvance", () => {
       expect.objectContaining({ event: "m34.tenant.onboarding_step_blocked" }),
     );
     expect(p.routeAlert).toHaveBeenCalledWith(
-      expect.objectContaining({ alertKey: "tenant.onboarding_step_blocked" }),
+      expect.objectContaining({ alertKey: "m34.tenant.onboarding_step_blocked" }),
     );
   });
 

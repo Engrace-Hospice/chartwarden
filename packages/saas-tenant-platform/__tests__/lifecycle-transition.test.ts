@@ -451,7 +451,7 @@ describe("§2.5 r3 onboarding → active side effects", () => {
       "welcome_email",
     ]);
     expect(outboxEvents(t)).toEqual(["m34.tenant.activated"]);
-    expect(alertKeys(t)).toEqual(["tenant.onboarding_completed"]);
+    expect(alertKeys(t)).toEqual(["m34.tenant.onboarding_completed"]);
   });
 });
 
@@ -460,7 +460,7 @@ describe("§2.5 r4 active → suspended side effects", () => {
   it("cascades session revocation, alerts compliance + security, emits suspended", () => {
     expect(effectKinds(t)).toContain("session_cascade");
     expect(outboxEvents(t)).toEqual(["m34.tenant.suspension_initiated"]);
-    expect(alertKeys(t)).toEqual(["tenant.suspension_initiated"]);
+    expect(alertKeys(t)).toEqual(["m34.tenant.suspension_initiated"]);
     const alert = t.effects.find(
       (e): e is Extract<LifecycleSideEffect, { kind: "alert" }> => e.kind === "alert",
     );
@@ -496,7 +496,7 @@ describe("§2.5 r6 final_export_pending → retained side effects", () => {
     expect(effectKinds(t)).toContain("set_retention_window");
     expect(queueJobs(t)).toEqual(["tenant.shred_eligibility_check"]);
     expect(outboxEvents(t)).toEqual(["m34.tenant.retained"]);
-    expect(alertKeys(t)).toEqual(["tenant.retention_countdown"]);
+    expect(alertKeys(t)).toEqual(["m34.tenant.retention_window_approaching"]);
   });
 });
 
@@ -505,7 +505,7 @@ describe("§2.5 r7 retained → destruction_pending side effects", () => {
   it("calls M4 requestDestruction and alerts the platform security owner", () => {
     expect(effectKinds(t)).toContain("request_destruction");
     expect(outboxEvents(t)).toEqual(["m34.tenant.destruction_pending"]);
-    expect(alertKeys(t)).toEqual(["tenant.shred_pending_approval"]);
+    expect(alertKeys(t)).toEqual(["m34.tenant.destruction_pending"]);
   });
 });
 
