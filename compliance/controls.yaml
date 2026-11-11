@@ -635,6 +635,10 @@ controls:
       - file: apps/backend/__tests__/onboarding-org-gate-routes.test.ts
       - file: apps/backend/src/bootstrap/onboarding-org-gate.ts
       - file: scripts/db/provision-runtime-roles.ts
+    gap:
+      reason: The composition root deliberately binds createUnboundSupportGrantOperations, so approval and ending an approved request return 501 and the real assist-grant issue, revoke, session-close and linked-request transaction are not yet evidenced. Merge slice 7S, bind its SupportGrantOperations bundle, and rerun the help-request live suite against that real bundle to close this gap.
+      owner: platform
+      review_by: 2026-12-15
 
   # ---------------------------------------------------------------- §164.308 administrative (engineering-side)
   - id: CW-RA-01
