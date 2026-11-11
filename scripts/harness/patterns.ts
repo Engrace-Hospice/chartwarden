@@ -20,6 +20,7 @@
  */
 import { userInfo } from "node:os";
 
+import { execCommandWrites, findActions } from "./find-expr";
 import { globMatches, globTokens } from "./glob";
 import { switchesHarness } from "./harness-switch";
 import {
@@ -1367,6 +1368,14 @@ function relativise(norm: string, ctx: BashContext): string {
   return inHome === "" ? "~" : `~/${inHome}`;
 }
 
+/** Is this resolved path the repo root's parent, or any directory above it (`..`, `~/Apps`, `/`)? */
+function isRootAncestor(rel: string, ctx: BashContext): boolean {
+  const root = ctx.root ? collapse(trimSlashes(ctx.root)) : "";
+  if (!root) return false;
+  const abs = rel === "~" || rel.startsWith("~/") ? `${homeOf(ctx)}${rel.slice(1)}` : rel;
+  return abs === "/" || relativeTo(root, abs) !== null;
+}
+
 const HERE = /^(?:\$\{?PWD\}?|\$\(pwd\)|`pwd`)(?=\/|$)/;
 const REPO_ROOT = /^\$\(git rev-parse --show-toplevel\)(?=\/|$)/;
 
@@ -1555,8 +1564,11 @@ function clusterHas(arg: string, letters: string, cluster: RegExp = SHORT_FLAGS)
   for (const letter of letters) if (arg.includes(letter)) return true;
   return false;
 }
+/** GNU getopt takes any unambiguous prefix of a long option (`--rec`); `minChars` is the fewest after `--` that is one. */
+const isLongOption = (arg: string, name: string, minChars: number): boolean =>
+  arg.startsWith("--") && arg.length - 2 >= minChars && name.startsWith(arg.slice(2));
 const isRecursive = (arg: string): boolean =>
-  clusterHas(arg, "rRa") || arg === "--recursive" || arg === "--archive";
+  clusterHas(arg, "rRa") || isLongOption(arg, "recursive", 3) || isLongOption(arg, "archive", 3);
 const RG_SHORT_FLAGS = /^-[A-Za-z.]+$/;
 /** `-ec`, `-xc`: a short cluster with `c` after its first letter (a bare `-c` is matched on its own). */
 const isShortClusterWithC = (arg: string): boolean =>
@@ -1570,7 +1582,6 @@ function isLongInPlace(arg: string): boolean {
 /** `sed -i`, `-ni`, `-i.bak`, `--in-place`, `--in-p`: edits its files where they are. */
 const isInPlace = (arg: string): boolean =>
   (/^-([A-Za-z]*)/.exec(arg)?.[1] ?? "").includes("i") || isLongInPlace(arg);
-const FIND_WRITER = /^(rm|truncate|mv|cp|tee|chmod|chown|shred|unlink|ln|install|touch|dd|rsync)$/;
 
 /**
  * Destination and sources of cp/mv/ln/install/rsync, honouring `-t DIR`, `-tDIR`, `-at DIR` and `--target-directory=DIR`
@@ -1599,26 +1610,10 @@ function copyTargets(
   return [wt(dest, contents, contents), ...srcs.map((s) => wt(`${dest}/${baseName(s)}`))];
 }
 
-const FIND_NARROWING = /^-(i?name|i?path|i?wholename|i?regex)$/;
-
-/**
- * Is the `find` action at `rest[action]` (`-delete`, `-exec rm`) limited to files whose name or path matches
- * a pattern? Reads back from the action to the start of its `-o` branch: a name test there narrows it, a
- * negated one (`! -name x`) does not, and an `-o` before any test means it runs on everything.
- */
-function findActionIsNarrowed(rest: readonly string[], action: number): boolean {
-  let depth = 0;
-  for (let j = action - 1; j >= 0; j--) {
-    const a = rest[j] ?? "";
-    if (a === ")" || a === "\\)") depth++;
-    else if (a === "(" || a === "\\(") depth = Math.max(0, depth - 1);
-    else if (depth === 0 && (a === "-o" || a === "-or")) return false;
-    else if (FIND_NARROWING.test(a)) {
-      if (rest[j - 1] === "!" || rest[j - 1] === "-not") j--;
-      else return true;
-    }
-  }
-  return false;
+/** Does an `-exec` command (its words, wrappers and all) write the files it is handed? */
+function execWritesWords(words: readonly string[]): boolean {
+  const { prog, args } = parseSegment(words.map(shellQuote).join(" "));
+  return execCommandWrites(prog, args, isInPlace);
 }
 
 /**
@@ -1640,22 +1635,21 @@ function findWrites(args: readonly string[]): WriteTarget[] {
   const starts: string[] = [];
   for (; k < args.length && !/^(-|\\?\(|!)/.test(args[k] ?? ""); k++) starts.push(args[k] ?? "");
   const rest = args.slice(k);
-  const actions = rest.flatMap((a, i) => {
-    if (a === "-delete") return [i];
-    if (!/^-(exec|execdir|ok|okdir)$/.test(a)) return [];
-    const next = rest[i + 1] ?? "";
-    const writes = FIND_WRITER.test(next) || (next === "sed" && rest.slice(i + 2).some(isInPlace));
-    return writes ? [i] : [];
-  });
+  const actions = findActions(rest, execWritesWords);
   if (actions.length === 0) return printed;
-  const wholeTree = actions.some((i) => !findActionIsNarrowed(rest, i));
+  const wholeTree = actions.some((a) => !a.narrowed);
   return [
     ...printed,
     ...fileArgs(starts.length > 0 ? starts : ["."]).map((s) => wt(s, true, wholeTree)),
   ];
 }
 
-/** `tar x…` and `unzip` unpack into `-C dir` / `-d dir`, or the current directory: a merge into it. */
+/** The tar family: GNU tar installed as `gtar`, and `bsdtar` (macOS's own). */
+const TAR = /^(?:tar|gtar|gnutar|bsdtar)$/;
+/** Programs that unpack an archive into a directory: `tar x`, `unzip`, `7z x`, `cpio -i`. */
+const UNPACKER = /^(?:tar|gtar|gnutar|bsdtar|unzip|7z[a-z]?|cpio)$/;
+
+/** `tar x…`, `unzip`, `7z x` and `cpio -i` unpack into `-C dir` / `-d dir` / `-oDIR`, or the current directory: a merge into it. */
 function unpackWrites(prog: string, args: readonly string[]): WriteTarget[] {
   const flagValue = (short: string, long: string): string | undefined => {
     const k = args.indexOf(short);
@@ -1665,6 +1659,17 @@ function unpackWrites(prog: string, args: readonly string[]): WriteTarget[] {
   if (prog === "unzip") {
     const listing = args.some((a) => clusterHas(a, "ltZpv"));
     return listing ? [] : [wt(flagValue("-d", "--directory") ?? ".", true, true)];
+  }
+  if (/^7z[a-z]?$/.test(prog)) {
+    // `7z x a.7z -oDIR`: the command word comes first, and `-o` carries its directory with no space.
+    if (!/^[xe]$/.test(args[0] ?? "")) return [];
+    return [wt(args.find((a) => a.startsWith("-o"))?.slice(2) || ".", true, true)];
+  }
+  if (prog === "cpio") {
+    const extracting = args.some(
+      (a) => a === "--extract" || (/^-[A-Za-z]+$/.test(a) && a.includes("i")),
+    );
+    return extracting ? [wt(flagValue("-D", "--directory") ?? ".", true, true)] : [];
   }
   const extract = args.some(
     (a, i) =>
@@ -1761,13 +1766,14 @@ function mainWrites(prog: string, args: readonly string[]): WriteTarget[] {
   const files = fileArgs(args);
   const recursive = args.some(isRecursive);
   if (prog === "rm") {
-    const tree = args.some((a) => clusterHas(a, "rR") || a === "--recursive");
+    const tree = args.some((a) => clusterHas(a, "rR") || isLongOption(a, "recursive", 1));
     return files.map((f) => wt(f, true, tree));
   }
   if (/^(unlink|shred|rmdir)$/.test(prog)) return files.map((f) => wt(f, true));
   if (prog === "mv") {
     return [
-      ...splitDest(args, files).srcs.map((s) => wt(s, true)),
+      // Moving the root, or a directory the root is in, takes everything under it away.
+      ...splitDest(args, files).srcs.map((s) => wt(s, true, true)),
       ...copyTargets(args, files, false),
     ];
   }
@@ -1776,7 +1782,9 @@ function mainWrites(prog: string, args: readonly string[]): WriteTarget[] {
   // rsync and scp name a remote side `host:path`; one that names this machine is a local path.
   if (/^(rsync|scp)$/.test(prog)) return copyTargets(args, files.map(localPath), true, false);
   if (/^(tee|touch|truncate|mkdir|ed|ex|vi|vim|nano)$/.test(prog)) return files.map((f) => wt(f));
-  if (/^(chmod|chown)$/.test(prog)) return files.map((f) => wt(f, recursive, recursive));
+  if (/^(chmod|chown|chgrp|setfacl|chflags|xattr)$/.test(prog)) {
+    return files.map((f) => wt(f, recursive, recursive));
+  }
   if (/^(sed|perl)$/.test(prog)) {
     const inPlace = args.some(isInPlace) ? files.map((f) => wt(f)) : [];
     return prog === "sed" ? [...inPlace, ...sedWriteTargets(args)] : inPlace;
@@ -1796,7 +1804,7 @@ function mainWrites(prog: string, args: readonly string[]): WriteTarget[] {
   }
   if (COMPRESSOR.test(prog)) return compressorWrites(args, files);
   if (prog === "find") return findWrites(args);
-  return /^(tar|unzip)$/.test(prog) ? unpackWrites(prog, args) : [];
+  return UNPACKER.test(prog) ? unpackWrites(prog, args) : [];
 }
 
 interface WriteHit {
@@ -1832,6 +1840,7 @@ function writesProtectedPath(p: Parsed, dirs: readonly Cwd[], ctx: BashContext):
       const rel = resolvePath(t.raw, dir, ctx);
       if (rel === null) unknownDir = true;
       else if (protectedTouch(rel, t) || isToolchainPath(rel)) return { path: rel };
+      else if (t.merge && isRootAncestor(rel, ctx)) return { path: "" };
     }
   }
   if (inline) {
@@ -2176,17 +2185,17 @@ function archiveRootVerdict(
   cwd: Cwd,
   ctx: BashContext,
 ): BashVerdict | null {
-  if (prog !== "tar" && prog !== "zip") return null;
+  if (!TAR.test(prog) && prog !== "zip") return null;
   let creating = prog === "zip";
   let dir: string | undefined;
   const operands: string[] = [];
   for (let k = 0; k < args.length; k++) {
     const a = args[k] ?? "";
     const cluster =
-      prog === "tar" && /^-?[A-Za-z]+$/.test(a) && (k === 0 || a.startsWith("-"))
+      TAR.test(prog) && /^-?[A-Za-z]+$/.test(a) && (k === 0 || a.startsWith("-"))
         ? a.replace(/^-/, "")
         : "";
-    if (prog === "tar" && (a === "-C" || a === "--directory")) dir = args[++k];
+    if (TAR.test(prog) && (a === "-C" || a === "--directory")) dir = args[++k];
     else if (a === "--create") creating = true;
     else if (cluster) {
       creating ||= cluster.includes("c");
