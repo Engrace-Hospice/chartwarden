@@ -417,6 +417,7 @@
         "apps/backend/__tests__/m23-eligibility-read-audit.live.test.ts",
         "apps/backend/__tests__/m23-mac-credential-cipher.live.test.ts",
         "apps/backend/__tests__/m23-mac-credential-screening.test.ts",
+        "apps/backend/__tests__/m23-mac-test-rate-limit.test.ts",
         "apps/backend/__tests__/m23-notice-external-filing-routes.test.ts",
         "apps/backend/__tests__/m23-npi-verification-routes.test.ts",
         "apps/backend/__tests__/m23-rate-table-routes.test.ts",
@@ -574,6 +575,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
+        "apps/backend/__tests__/m23-mac-credential-screening.test.ts",
         "apps/backend/__tests__/m23-tenant-clearinghouse.live.test.ts",
         "apps/backend/__tests__/m34-baa-document-upload.live.test.ts",
         "apps/backend/__tests__/m34-onboarding-baa-document.test.ts",
