@@ -2,8 +2,8 @@
 //
 // A lower-privilege seeded role is DENIED on admin / billing routes while an authorized role is
 // ALLOWED. These screens do not all redirect — most render and then fail their first data read — so the
-// observable is the one every denial shares: the SPA's own `/api/` call answers 403 (or the app leaves
-// the route). Seeded roles (scripts/db/seed.ts): the Clinician holds only `clinical` permissions, the
+// observable is the one every denial shares: the screen's authoritative `/api/` read answers 403.
+// Seeded roles (scripts/db/seed.ts): the Clinician holds only `clinical` permissions, the
 // Compliance Auditor only `compliance`, the Administrator everything; `billing.*` and `org.manage` are
 // `billing`/`admin` category, `audit.read` is `compliance`.
 import { expect, test } from "@playwright/test";
@@ -11,7 +11,7 @@ import type { Page } from "@playwright/test";
 import {
   ADMIN_ACCOUNT,
   AUDITOR_ACCOUNT,
-  CLINICIAN_ACCOUNT,
+  CLINICAL_ONLY_ACCOUNT,
   type DemoAccount,
 } from "../fixtures/credentials";
 import { signInAs } from "../fixtures/helpers";
@@ -19,21 +19,64 @@ import { signInAs } from "../fixtures/helpers";
 interface Case {
   readonly route: string;
   readonly permission: string;
+  readonly apiPath: string | ((organizationId: string) => string);
 }
 
-const BILLING_QUEUE: Case = { route: "/billing/queue", permission: "billing.claim.read" };
-const RATE_TABLES: Case = { route: "/billing/rate-tables", permission: "billing.rate_table.read" };
-const AGENCY_SETUP: Case = { route: "/admin/setup", permission: "org.manage" };
-const AUDIT_LOG: Case = { route: "/audit", permission: "audit.read" };
-const STAFF: Case = { route: "/admin/staff", permission: "member.manage" };
+const BILLING_QUEUE: Case = {
+  route: "/billing/queue",
+  permission: "billing.claim.read",
+  apiPath: "/api/v1/billing/claims?limit=1",
+};
+const RATE_TABLES: Case = {
+  route: "/billing/rate-tables",
+  permission: "billing.rate_table.read",
+  apiPath: "/api/v1/billing/rate-tables",
+};
+const AGENCY_SETUP: Case = {
+  route: "/admin/setup",
+  permission: "org.manage",
+  apiPath: "/api/v1/orgs?limit=1",
+};
+const AUDIT_LOG: Case = {
+  route: "/audit",
+  permission: "audit.read",
+  apiPath: "/api/v1/audit/events?limit=1",
+};
+const STAFF: Case = {
+  route: "/admin/staff",
+  permission: "member.manage",
+  apiPath: (organizationId) => `/api/v1/orgs/${organizationId}/members`,
+};
 
-/** Collects every `/api/` 403 the page receives, for the lifetime of the page. */
-function watchForbidden(page: Page): () => number {
-  let forbidden = 0;
-  page.on("response", (res) => {
-    if (res.status() === 403 && new URL(res.url()).pathname.startsWith("/api/")) forbidden += 1;
+async function probePrimaryRead(page: Page, testCase: Case): Promise<number> {
+  const organizationId = await page.evaluate(async () => {
+    const response = await fetch("/api/v1/auth/context", { credentials: "include" });
+    if (!response.ok) throw new Error(`auth context returned ${response.status}`);
+    const context = (await response.json()) as { organizationId: string | null };
+    if (!context.organizationId) throw new Error("authenticated session has no organization");
+    return context.organizationId;
   });
-  return () => forbidden;
+  let path =
+    typeof testCase.apiPath === "function" ? testCase.apiPath(organizationId) : testCase.apiPath;
+  if (testCase === RATE_TABLES) {
+    const providerEntityId = await page.evaluate(async () => {
+      const response = await fetch("/api/v1/provider-entities?limit=1", {
+        credentials: "include",
+      });
+      if (!response.ok) return null;
+      const providerEntities = (await response.json()) as {
+        items?: Array<{ id?: string }>;
+      };
+      return providerEntities.items?.[0]?.id ?? null;
+    });
+    if (providerEntityId) {
+      path = `/api/v1/billing/rate-tables?providerEntityId=${encodeURIComponent(providerEntityId)}`;
+    }
+  }
+  return page.evaluate(
+    async (apiPath) => (await fetch(apiPath, { credentials: "include" })).status,
+    path,
+  );
 }
 
 async function visit(page: Page, route: string): Promise<void> {
@@ -43,43 +86,37 @@ async function visit(page: Page, route: string): Promise<void> {
 }
 
 function expectDenied(account: () => DemoAccount, cases: readonly Case[]): void {
-  for (const { route, permission } of cases) {
+  for (const testCase of cases) {
+    const { route, permission } = testCase;
     test(`${route} is denied without ${permission}`, async ({ page }) => {
       await signInAs(page, account());
-      const forbiddenCount = watchForbidden(page);
-      await visit(page, route);
-      await expect
-        // ponytail: any /api/ 403 counts, not just the route's own endpoint (unknown per screen without a
-        // live stack); tighten to the screen's primary read once it has been observed. A bounce to
-        // /login (dropped session) is NOT a denial.
-        .poll(
-          () =>
-            forbiddenCount() > 0 ||
-            !["/login", route].some((p) => new URL(page.url()).pathname.startsWith(p)),
-          {
-            message: `${route}: expected an API 403 or a redirect away for a role lacking ${permission}`,
-          },
-        )
-        .toBe(true);
+      expect(
+        await probePrimaryRead(page, testCase),
+        `${route}: authoritative read is forbidden without ${permission}`,
+      ).toBe(403);
+      await expect(page.locator(`a[href="${route}"]`)).toHaveCount(0);
     });
   }
 }
 
 function expectAllowed(account: () => DemoAccount, cases: readonly Case[]): void {
-  for (const { route, permission } of cases) {
+  for (const testCase of cases) {
+    const { route, permission } = testCase;
     test(`${route} is allowed with ${permission}`, async ({ page }) => {
       await signInAs(page, account());
-      const forbiddenCount = watchForbidden(page);
+      expect(
+        await probePrimaryRead(page, testCase),
+        `${route}: authoritative read succeeds with ${permission}`,
+      ).toBe(200);
       await visit(page, route);
       await expect(page.locator("#root > *").first()).toBeVisible();
       expect(new URL(page.url()).pathname, "stayed on the route").toBe(route);
-      expect(forbiddenCount(), `no API 403 for a role holding ${permission}`).toBe(0);
     });
   }
 }
 
 test.describe("Authorization matrix (#852) — Clinician (clinical permissions only)", () => {
-  expectDenied(CLINICIAN_ACCOUNT, [BILLING_QUEUE, RATE_TABLES, AGENCY_SETUP, AUDIT_LOG, STAFF]);
+  expectDenied(CLINICAL_ONLY_ACCOUNT, [BILLING_QUEUE, RATE_TABLES, AGENCY_SETUP, AUDIT_LOG, STAFF]);
 });
 
 test.describe("Authorization matrix (#852) — Compliance Auditor (compliance permissions only)", () => {

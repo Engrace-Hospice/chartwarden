@@ -36,6 +36,44 @@ export async function signOut(page: Page): Promise<void> {
   await page.goto("/login");
 }
 
+const FAILURE_PATHS = new Set(["/login", "/403", "/404", "/error", "/expired", "/not-found"]);
+
+const normalizedPath = (path: string): string =>
+  path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
+
+/**
+ * Prove an authenticated route walk actually reached the requested screen before axe scans it.
+ * SPA auth/error redirects can otherwise render a perfectly accessible fallback and create a false
+ * green. Query/hash differences are deliberately ignored; the routed pathname is the contract.
+ */
+export async function expectRouteReached(
+  page: Page,
+  requested: string,
+  options: { readonly allowFallbackScreen?: boolean } = {},
+): Promise<void> {
+  const expected = normalizedPath(new URL(requested, page.url()).pathname);
+  const actual = normalizedPath(new URL(page.url()).pathname);
+  if (!options.allowFallbackScreen && FAILURE_PATHS.has(actual)) {
+    throw new Error(`route ${requested} redirected to fallback ${actual}`);
+  }
+  if (actual !== expected) {
+    throw new Error(`route ${requested} resolved to ${actual}; expected ${expected}`);
+  }
+  const fallback = page.getByRole("heading", {
+    name: /(?:\bnot found\b|^404$|we couldn.t find that(?: page)?|you don.t have access to this|something went wrong|your session ended)/i,
+  });
+  if (
+    !options.allowFallbackScreen &&
+    (await fallback
+      .first()
+      .isVisible()
+      .catch(() => false))
+  ) {
+    const heading = (await fallback.first().textContent())?.trim() ?? "fallback";
+    throw new Error(`route ${requested} rendered fallback heading "${heading}" at ${actual}`);
+  }
+}
+
 /**
  * F-023 (#56) — wait for in-flight CSS transitions/animations before scanning.
  *
@@ -58,7 +96,9 @@ export async function signOut(page: Page): Promise<void> {
  * thread shows skeleton rows while it cannot load). Such an animation has no "settled" state to wait for.
  */
 async function waitForTransitionsToSettle(page: Page): Promise<void> {
-  await page.waitForLoadState("networkidle").catch(() => {});
+  // Polling screens never become idle. Keep this bounded just like the registry route walkers, then
+  // settle every finite animation that is currently present.
+  await page.waitForLoadState("networkidle", { timeout: 4_000 }).catch(() => {});
   await page.evaluate(async () => {
     await Promise.all(
       document
@@ -82,14 +122,22 @@ export async function expectNoAxeViolations(
   page: Page,
   excludeSelectors: readonly string[] = [],
 ): Promise<void> {
+  const summary = await axeViolationSummaries(page, excludeSelectors);
+  expect(summary, `axe violations:\n${summary.join("\n")}`).toEqual([]);
+}
+
+/** Run the shared transition-safe axe scan and return one stable message per violation. */
+export async function axeViolationSummaries(
+  page: Page,
+  excludeSelectors: readonly string[] = [],
+): Promise<string[]> {
   await waitForTransitionsToSettle(page);
   let builder = new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]);
   for (const selector of excludeSelectors) builder = builder.exclude(selector);
   const results = await builder.analyze();
-  const summary = results.violations.map(
+  return results.violations.map(
     (v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`,
   );
-  expect(summary, `axe violations:\n${summary.join("\n")}`).toEqual([]);
 }
 
 /**

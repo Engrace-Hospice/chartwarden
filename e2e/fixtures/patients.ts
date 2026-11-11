@@ -23,7 +23,11 @@ export async function openFirstPatientChart(page: Page): Promise<string> {
   await expect.poll(() => rows.count(), { timeout: 10_000 }).toBeGreaterThan(1);
   const firstRow = rows.nth(1);
   await expect(firstRow).toBeVisible();
-  await firstRow.click();
+  // Use the DataTable row's keyboard contract. At the 320/375 reflow widths the filter panel can
+  // overlap the horizontally scrolling table's pointer hit target, while the row remains visible,
+  // focusable and fully operable with Enter.
+  await firstRow.focus();
+  await firstRow.press("Enter");
   await page.getByRole("button", { name: "Open chart" }).click();
   await page.waitForURL(/\/patients\/[^/]+$/);
   const match = page.url().match(/\/patients\/([^/?#]+)/);

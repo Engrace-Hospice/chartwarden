@@ -18,8 +18,9 @@
  * `auth.spec.ts` genuinely visits `/login`.
  *
  * DEFINITIONS, stated because both are heuristics over spec SOURCE TEXT, not a live crawl:
- *   - E2E-REACHED   — the screen's exact `path` appears as a literal string argument to some
- *                     `page.goto(...)` call anywhere under `e2e/specs/` or `e2e/fixtures/`.
+ *   - E2E-REACHED   — the screen is reached by the registry-driven route walk, or its exact `path`
+ *                     appears as a literal string argument to some `page.goto(...)` call anywhere
+ *                     under `e2e/specs/` or `e2e/fixtures/`.
  *   - AXE-REACHED   — the screen is one of `axe-route-walk.spec.ts`'s own `staticWebScreens()` (the
  *                     precise, always-true case), OR its literal path string appears in a spec FILE
  *                     that also calls `expectNoAxeViolations` somewhere in it (a file-level heuristic —
@@ -97,22 +98,32 @@ const routeWalkSpecPresent =
   routeWalkSrc.includes('s.permission !== "(none)"');
 
 // ---- #852: dynamic screens. Patient-scoped ones (the only param is the patient id) are axe-walked by the
-//      route-walk spec's second test with an id resolved at run time; the rest are listed WITH a reason. ----
+//      route-walk spec with an id resolved from the patient census; the rest are listed WITH a reason. ----
 const PATIENT_SCOPED = /^\/patients\/:(id|patientId)(\/[a-z-]+)*$/;
 const patientWalkPresent = routeWalkSrc.includes(
   String.raw`const PATIENT_SCOPED_PATH = ${PATIENT_SCOPED};`,
 );
+const SEEDED_RESOURCE =
+  /^\/(?:admissions\/:(?:id|admissionId)(?:\/[a-z-]+)*|medicaid\/billing\/claims\/:claimId(?:\/[a-z-]+)*|medication-orders\/:id(?:\/edit)?)$/;
+const seededResourceWalkPresent =
+  routeWalkSrc.includes("const SEEDED_RESOURCE_PATH") &&
+  routeWalkSrc.includes("discoverSeededResourceIds");
 const webDynamic = uiParity.screens
   .filter((s) => s.app === "web" && s.path.includes(":"))
   .sort((a, b) => a.path.localeCompare(b.path));
 const dynamicAxeReached = webDynamic.filter(
-  (s) => patientWalkPresent && s.permission !== "(none)" && PATIENT_SCOPED.test(s.path),
+  (s) =>
+    s.permission !== "(none)" &&
+    ((patientWalkPresent && PATIENT_SCOPED.test(s.path)) ||
+      (seededResourceWalkPresent && SEEDED_RESOURCE.test(s.path))),
 );
 const dynamicReasonFor = (s: RegisteredScreen): string =>
   s.permission === "(none)"
     ? "pre-auth token route: needs a live single-use invite/link token and a signed-out context"
-    : "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet";
+    : "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet";
 const dynamicExcluded = webDynamic.filter((s) => !dynamicAxeReached.includes(s));
+const adminScreenCount = uiParity.screens.filter((s) => s.app === "admin").length;
+const portalScreenCount = uiParity.screens.filter((s) => s.app === "portal").length;
 
 interface Row {
   readonly id: string;
@@ -124,7 +135,6 @@ interface Row {
 }
 
 const rows: Row[] = webStatic.map((s) => {
-  const e2eReached = allGotoLiterals.has(s.path);
   const axeReachedByRouteWalk = routeWalkSpecPresent && s.permission !== "(none)";
   const axeReachedByFileHeuristic = specFiles.some(
     (f) =>
@@ -132,13 +142,15 @@ const rows: Row[] = webStatic.map((s) => {
       axeFiles.has(f) &&
       (fileText.get(f) ?? "").includes(s.path),
   );
+  const axeReached = axeReachedByRouteWalk || axeReachedByFileHeuristic;
   return {
     id: s.id,
     module: s.module,
     path: s.path,
     permission: s.permission,
-    e2eReached,
-    axeReached: axeReachedByRouteWalk || axeReachedByFileHeuristic,
+    // Every axe scan first navigates to the screen, so axe-reached is necessarily E2E-reached.
+    e2eReached: axeReached || allGotoLiterals.has(s.path),
+    axeReached,
   };
 });
 
@@ -188,7 +200,7 @@ lines.push("");
 lines.push("## Dynamic web screens (#852)");
 lines.push("");
 lines.push(
-  `${dynamicAxeReached.length}/${webDynamic.length} registered \`web\` screens carrying a \`:param\` segment are axe-walked by the second test in \`axe-route-walk.spec.ts\`: every screen whose ONLY param is the patient id, with the id resolved at run time through the app (\`openFirstPatientChart\`). The rest are excluded, each with its reason:`,
+  `${dynamicAxeReached.length}/${webDynamic.length} registered \`web\` screens carrying a \`:param\` segment are axe-walked in \`axe-route-walk.spec.ts\`: patient-only paths plus seeded admission, Medicaid-claim and medication-order paths. Every id is resolved at run time through the signed-in app; none is copied from a seed constant. The rest are excluded, each with its reason:`,
 );
 lines.push("");
 lines.push("| Screen id | Path | Permission | Why not walked |");
@@ -204,16 +216,12 @@ lines.push(
     "plus a no-horizontal-document-scroll (WCAG 1.4.10) check. Not multiplied across the other specs.",
 );
 lines.push(
-  "- **`admin`/`portal` apps** (39 + 18 registered screens) — `admin-console-smoke.spec.ts` and " +
-    "`portal-smoke.spec.ts` (`bun run test:e2e:apps`): pre-auth screens only, skipped unless " +
-    "`E2E_ADMIN_URL` / `E2E_PORTAL_URL` point at a running dev server (the CI e2e job starts `web` only). " +
-    "Their session-gated screens are not walked: the console needs a `platform_ops` login and the portal a " +
-    "magic-link mailbox.",
+  `- **\`admin\`/\`portal\` apps** (${adminScreenCount} + ${portalScreenCount} registered screens) — \`admin-console-smoke.spec.ts\` and \`portal-smoke.spec.ts\` (\`bun run test:e2e:apps\`): pre-auth plus authenticated platform-ops and patient-self surfaces. CI starts all three SPAs and supplies \`E2E_ADMIN_URL\` / \`E2E_PORTAL_URL\`; local runs skip unless those URLs point at running servers. Credentials come from the synthetic seed, and portal password sign-in avoids a mail sink.`,
 );
 lines.push(
-  "- **Cross-role authorization** — `role-authorization-matrix.spec.ts`: Clinician and Compliance Auditor " +
-    "denied on billing / agency-setup / audit / staff routes, Auditor and Administrator allowed where their " +
-    "permissions reach.",
+  "- **Cross-role authorization** — `role-authorization-matrix.spec.ts`: the clinical-only Clinician is " +
+    "denied on billing, agency-setup, audit and staff reads; the Compliance Auditor is denied on billing " +
+    "and agency setup but allowed to read audit events; the Administrator is allowed across the matrix.",
 );
 lines.push("");
 lines.push("## Not measured here (by design)");
