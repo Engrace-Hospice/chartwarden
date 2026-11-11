@@ -208,7 +208,7 @@ describe("POST /platform/support-sessions - start", () => {
     const res = await send(
       "POST",
       "/api/v1/platform/support-sessions",
-      { ...OPS, ...FRESH },
+      { ...OPS, ...FRESH, "idempotency-key": "start-org" },
       start(PHI_GRANT),
     );
     expect(res.statusCode).toBe(201);
@@ -225,13 +225,23 @@ describe("POST /platform/support-sessions - start", () => {
     expect((await send("POST", url, { ...NO_KEYS, ...FRESH }, start(PHI_GRANT))).statusCode).toBe(
       403,
     );
-    const noStepUp = await send("POST", url, OPS, start(PHI_GRANT));
+    const noStepUp = await send(
+      "POST",
+      url,
+      { ...OPS, "idempotency-key": "start-no-step-up" },
+      start(PHI_GRANT),
+    );
     expect(noStepUp.statusCode).toBe(403);
     expect(noStepUp.json().error.code).toBe("STEP_UP_REQUIRED");
     const self = await send(
       "POST",
       url,
-      { ...OPS, ...FRESH, "x-test-membership": GRANTOR },
+      {
+        ...OPS,
+        ...FRESH,
+        "x-test-membership": GRANTOR,
+        "idempotency-key": "start-self",
+      },
       start(PHI_GRANT),
     );
     expect(self.statusCode).toBe(403);
@@ -245,7 +255,7 @@ describe("POST /platform/support-sessions/:id/elevate", () => {
     const started = await send(
       "POST",
       "/api/v1/platform/support-sessions",
-      { ...OPS, ...FRESH },
+      { ...OPS, ...FRESH, "idempotency-key": "start-assist" },
       {
         supportConsentGrantId: ASSIST_GRANT,
       },
@@ -254,7 +264,7 @@ describe("POST /platform/support-sessions/:id/elevate", () => {
     const res = await send(
       "POST",
       `/api/v1/platform/support-sessions/${sessionId}/elevate?tenantAccountId=${TENANT_ACCOUNT}`,
-      { ...OPS, ...FRESH },
+      { ...OPS, ...FRESH, "idempotency-key": "elevate-assist" },
       {},
     );
     expect(res.statusCode).toBe(403);
@@ -269,7 +279,7 @@ describe("POST /platform/support-sessions/:id/close", () => {
     const started = await send(
       "POST",
       "/api/v1/platform/support-sessions",
-      { ...OPS, ...FRESH },
+      { ...OPS, ...FRESH, "idempotency-key": "start-close" },
       {
         supportConsentGrantId: PHI_GRANT,
       },
@@ -277,14 +287,16 @@ describe("POST /platform/support-sessions/:id/close", () => {
     const { sessionId } = started.json() as { sessionId: string };
     const url = `/api/v1/platform/support-sessions/${sessionId}/close`;
     expect((await send("POST", url, NO_KEYS, {})).statusCode).toBe(403);
-    const closed = await send("POST", url, OPS, {});
+    const closed = await send("POST", url, { ...OPS, "idempotency-key": "close-1" }, {});
     expect(closed.statusCode).toBe(200);
     expect(closed.json()).toEqual({ sessionId, closeReason: "manual" });
     const listed = await send("GET", "/api/v1/platform/support-sessions?status=closed", OPS);
     expect((listed.json() as { items: { closeReason: string }[] }).items[0]?.closeReason).toBe(
       "manual",
     );
-    expect((await send("POST", url, OPS, {})).statusCode).toBe(200);
+    expect((await send("POST", url, { ...OPS, "idempotency-key": "close-2" }, {})).statusCode).toBe(
+      200,
+    );
     await app.close();
   });
 });

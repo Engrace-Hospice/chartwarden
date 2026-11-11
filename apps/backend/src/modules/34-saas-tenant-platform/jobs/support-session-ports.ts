@@ -62,12 +62,19 @@ export interface SupportSessionPortDeps {
   readonly outbox: SupportPortOutbox;
   readonly alerts: SupportPortAlerts;
   readonly now: NowPort;
+  /** M5 privacy-snapshot decision for the patients named by a patient-scoped grant. */
+  readonly partTwoHeightened?: (input: {
+    organizationId: string;
+    patientIds: readonly string[];
+  }) => Promise<boolean>;
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
 }
 
 /** What the composition root builds once: the clock and the per-transaction dependency bundle. */
 export interface SupportSessionPorts {
   readonly now: NowPort;
+  /** Best-effort notification after the transaction that produced it has committed. */
+  emitAlert(alert: Parameters<SupportSessionServiceDeps["alerts"]["emitAlert"]>[0]): Promise<void>;
   /** The tx-bound repository + the four ports + the clock, for one transaction. */
   bind(tx: DbClient): SupportSessionServiceDeps;
 }
@@ -76,8 +83,25 @@ const GRANT_EVENT_PREFIX = "m34.support_consent_grant.";
 
 /** Build the ports once; call `bind(tx)` inside each transaction that runs a support service. */
 export function createSupportSessionPorts(deps: SupportSessionPortDeps): SupportSessionPorts {
+  const emitAlert: SupportSessionPorts["emitAlert"] = async (alert) => {
+    try {
+      await deps.alerts.emit(alert.organizationId, {
+        eventType: alert.alertKey,
+        payload: { tenantAccountId: alert.tenantAccountId, ...(alert.context ?? {}) },
+        severity: "warn",
+        correlationId: `m34-${alert.alertKey}-${String(alert.context?.sessionId ?? alert.context?.grantId)}`,
+      });
+    } catch (error) {
+      deps.warn?.("m34.support_session: alert failed", {
+        organizationId: alert.organizationId,
+        alertKey: alert.alertKey,
+        errorClass: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
+  };
   return {
     now: deps.now,
+    emitAlert,
     bind: (tx) => ({
       repo: new SupportRepository(tx),
       now: deps.now,
@@ -114,23 +138,7 @@ export function createSupportSessionPorts(deps: SupportSessionPortDeps): Support
         },
       },
       alerts: {
-        emitAlert: async (alert) => {
-          // The alert must never undo the close or the grant it reports: a failed emit is logged, not thrown.
-          try {
-            await deps.alerts.emit(alert.organizationId, {
-              eventType: alert.alertKey,
-              payload: { tenantAccountId: alert.tenantAccountId, ...(alert.context ?? {}) },
-              severity: "warn",
-              correlationId: `m34-${alert.alertKey}-${String(alert.context?.sessionId ?? alert.context?.grantId)}`,
-            });
-          } catch (error) {
-            deps.warn?.("m34.support_session: alert failed", {
-              organizationId: alert.organizationId,
-              alertKey: alert.alertKey,
-              err: error,
-            });
-          }
-        },
+        emitAlert,
       },
       members: {
         userIdOf: async (membershipId) => {
@@ -140,6 +148,17 @@ export function createSupportSessionPorts(deps: SupportSessionPortDeps): Support
             .where(eq(schema.memberships.id, membershipId))
             .limit(1);
           return row?.userId ?? null;
+        },
+      },
+      partTwo: {
+        // An unbound or failing privacy resolver is not evidence that Part 2 restrictions are absent.
+        isHeightened: async (input) => {
+          if (!deps.partTwoHeightened) return true;
+          try {
+            return await deps.partTwoHeightened(input);
+          } catch {
+            return true;
+          }
         },
       },
     }),

@@ -361,6 +361,9 @@ describe.skipIf(!DB_URL)("M34 tenant hub reads, LIVE Postgres on the real roles"
       supportSessionPorts: {
         now: () => new Date(),
         // This suite never opens or closes a support session.
+        async emitAlert() {
+          throw new Error("support-session alerts are not bound in this suite");
+        },
         bind() {
           throw new Error("support-session ports are not bound in this suite");
         },

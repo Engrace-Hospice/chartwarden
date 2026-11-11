@@ -112,8 +112,8 @@ function expiryHours(scope: SupportGrantScope, requested: number): number {
 }
 
 /**
- * Issue a consent grant: the scope rule, the row, `m34.support_consent_grant.issued` and the operators' alert (a grant is the
- * signal that ChartWarden may start), all in the caller's transaction. Returns the stored grant.
+ * Issue a consent grant: the scope rule, row and `m34.support_consent_grant.issued` event share the caller's transaction.
+ * The returned after-commit hook emits the operator alert only once that transaction succeeds.
  */
 export async function issueSupportConsentGrant(
   deps: SupportSessionServiceDeps,
@@ -158,15 +158,16 @@ export async function issueSupportConsentGrant(
     },
     input.organizationId,
   );
-  // The operators learn that consent now exists; nothing in the alert names the grantor or the patients in scope.
-  await deps.alerts.emitAlert({
+  // The operators learn that consent now exists; nothing in the alert names the grantor or the patients in scope. The caller
+  // invokes this only after commit, because the alert emitter owns a separate transaction.
+  const pendingAlert: PendingGrantorAlert = {
     alertKey: "m34.support_consent_grant.issued",
     organizationId: input.organizationId,
     tenantAccountId: grant.tenantAccountId,
     grantorMembershipId: input.grantorMembershipId,
     context: { grantId: grant.id, scope: grant.scope, expiresAt: grant.expiresAt.toISOString() },
-  });
-  return grant;
+  };
+  return { ...grant, afterCommit: () => deps.alerts.emitAlert(pendingAlert) };
 }
 
 /** The contract's `issueAssistGrant`: an `assist` grant, whole hours 1..24, by an org_admin or compliance_officer. */
@@ -187,7 +188,7 @@ export const issueAssistGrant: IssueAssistGrantFn = async (
     organizationActive: false,
     helpRequestId: input.helpRequestId ?? null,
   });
-  return { grantId: grant.id, expiresAt: grant.expiresAt };
+  return { grantId: grant.id, expiresAt: grant.expiresAt, afterCommit: grant.afterCommit };
 };
 
 // ── revoke + cascade ─────────────────────────────────────────────────────────────────────────────────────
@@ -266,8 +267,16 @@ export const revokeGrantAndCloseSessions: RevokeGrantAndCloseSessionsFn = async 
     note: null,
   });
 
-  for (const alert of alerts) await deps.alerts.emitAlert(alert);
-  return { closedSessionIds };
+  return {
+    closedSessionIds,
+    ...(alerts.length > 0
+      ? {
+          afterCommit: async () => {
+            for (const alert of alerts) await deps.alerts.emitAlert(alert);
+          },
+        }
+      : {}),
+  };
 };
 
 // ── the help screens' summary ────────────────────────────────────────────────────────────────────────────

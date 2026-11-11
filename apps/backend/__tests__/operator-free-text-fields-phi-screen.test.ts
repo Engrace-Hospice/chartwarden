@@ -206,12 +206,23 @@ const M34_CASES: readonly Case[] = [
   {
     field: "onboarding template description",
     url: "/api/v1/platform/onboarding-templates",
-    body: (text) => ({ key: "t.k", title: "Title", description: text, canonicalOrder: 5 }),
+    body: (text) => ({
+      key: "t.k",
+      title: "Title",
+      description: text,
+      canonicalOrder: 5,
+      reason: "Approved template update",
+    }),
   },
   {
     field: "onboarding template title",
     url: "/api/v1/platform/onboarding-templates",
-    body: (text) => ({ key: "t.k", title: text, canonicalOrder: 5 }),
+    body: (text) => ({
+      key: "t.k",
+      title: text,
+      canonicalOrder: 5,
+      reason: "Approved template update",
+    }),
   },
   {
     field: "provision legal business name",
@@ -267,13 +278,16 @@ describe("M34 operator free-text fields refuse a patient identifier through the 
     resetAbacRegistry();
   });
 
-  const send = (c: Case, text: string) =>
-    app.inject({
+  let sendSequence = 0;
+  const send = (c: Case, text: string) => {
+    sendSequence += 1;
+    return app.inject({
       method: c.method ?? "POST",
       url: c.url,
-      headers: { ...ACTOR, ...FRESH },
+      headers: { ...ACTOR, ...FRESH, "idempotency-key": `phi-screen-${sendSequence}` },
       payload: c.body(text),
     });
+  };
 
   it.each(M34_CASES)("$field: an SSN or MBI is a 422 that never echoes it", async (c) => {
     for (const text of [SSN_TEXT, MBI_TEXT]) {

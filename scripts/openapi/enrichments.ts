@@ -10930,12 +10930,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Start a session against a consent grant (distinct actor, by membership and by person; passkey-5min step-up). The session, its ledger and its audit are recorded in the grant's (the tenant's) organization, never the operator's. 409 SUPPORT_GRANT_INACTIVE when the grant is revoked or expired",
     body: M34StartSessionRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34StartSessionAckSchema,
+    status: 201,
   },
   "POST /api/v1/platform/support-sessions/:id/close": {
     summary:
       "Close a session with reason='manual' (no step-up): the close stamp, a session.close ledger row, a critical audit, m34.support_session.expired (closeReason manual_close) and the grantor alert. Repeatable: a session already closed answers its reason and writes nothing more",
     body: M34CloseSessionRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34CloseSessionAckSchema,
   },
 
@@ -13218,7 +13221,9 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403). 403 SUPPORT_SESSION_NON_PHI on a session opened against an assist grant: it has no PHI to read or write",
     body: M34ElevateSessionRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34ElevateSessionAckSchema,
+    status: 201,
   },
   "POST /api/v1/tenant/dsar-export-jobs/:id/fulfill": {
     summary: "Flip a DSAR job to fulfilled + trigger presigned-URL email (step-up)",

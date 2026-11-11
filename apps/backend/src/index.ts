@@ -1748,6 +1748,7 @@ import {
   readTenantGoLive,
 } from "./modules/34-saas-tenant-platform/onboarding/pricing-port";
 import { createSettleOnboardingForOrg } from "./modules/34-saas-tenant-platform/onboarding/settle-for-org";
+import { lockTenantOnboardingShared } from "./modules/34-saas-tenant-platform/routes/platform/tenant-onboarding-lock";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
 // the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
@@ -6232,13 +6233,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             taxIdCipher,
             // A provider-entity, location or organization-name write also voids a pending go-live attestation in the SAME
             // transaction (the attestation said the data was ready; this write makes that stale). M34's helper, M2's routes.
-            orgWriteScope: createOrgDataWriteScope(dbHandle.db, async (tx, scope) => {
-              await voidPendingGoLiveForDataChange(tx, {
-                organizationId: scope.organizationId,
-                revokedByUserId: scope.userId,
-                revokedByMembershipId: scope.membershipId,
-              });
-            }),
+            orgWriteScope: createOrgDataWriteScope(
+              dbHandle.db,
+              async (tx, scope) => {
+                await voidPendingGoLiveForDataChange(tx, {
+                  organizationId: scope.organizationId,
+                  revokedByUserId: scope.userId,
+                  revokedByMembershipId: scope.membershipId,
+                });
+              },
+              async (tx, scope) => {
+                await lockTenantOnboardingShared(tx, scope.organizationId);
+              },
+            ),
           });
           // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — the device-attestation write path. This is what
           // puts rows in `device_attestation`, which is what lets the authenticate hook stamp
@@ -7008,6 +7015,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               emit: (orgId, input) => (getSeam("AlertEmitter") as AlertEmitter).emit(orgId, input),
             },
             now: () => new Date(),
+            partTwoHeightened: async ({ organizationId, patientIds }) => {
+              const ids = [...new Set(patientIds)];
+              if (ids.length === 0) return true;
+              const facts = await getSeam("PatientPrivacyFlagReader").roomingFactsFor({
+                organizationId,
+                patientIds: ids,
+              });
+              if (facts.length !== ids.length) return true;
+              return facts.some(
+                (fact) => fact.privacyFlagsStale === true || fact.privacyFlags.includes("sud"),
+              );
+            },
             warn: (message, context) => app.log.warn(context, message),
           });
           const m34SupportOps = createSupportGrantOperationsOver(m34SupportSessionPorts);
@@ -7699,6 +7718,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 // writes, so one allowlisted, audited withPlatformContext per call; no platform pool => 503, never a
                 // tenant-pool read.
                 npiVerificationService: buildDrizzleNpiVerificationService({
+                  beforeVerificationChanged: async (tx, organizationId) => {
+                    await lockTenantOnboardingShared(tx, organizationId);
+                  },
                   // A verify or revoke is the `ccn_registered` step's data: it also voids a pending go-live attestation, in the
                   // SAME platform transaction (M34's helper; M23 does not import M34).
                   onVerificationChanged: async (tx, change) => {

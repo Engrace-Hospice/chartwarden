@@ -245,9 +245,9 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
   // clearinghouse sync) hold the SHARED onboarding lock from before that read, as the org-profile write does: go-live approval takes the
   // same lock exclusive as its first statement, so such a write either commits before the approval judges the tenant or finds it live and
   // answers 409 TENANT_NOT_ONBOARDING. The order is that lock, then the task row, then the attestation row (the tenant skip's void), then
-  // the go-live task row; the approval takes the lock first and the rows after, so the two cannot cycle. The writers that void a pending
-  // attestation from outside this file (the BAA register, the M2 provider-entity, location and name writes, the NPI verification) and the
-  // officer assignment, the go-live attestation and the go-live revoke below are not under it.
+  // the go-live task row; the approval takes the lock first and the rows after, so the two cannot cycle. The BAA register, M2
+  // provider-entity/location/name writes and NPI verification take the same shared lock through their composition bindings. Officer
+  // assignment, go-live attestation and go-live revoke below remain separate serialized flows.
   const platformLocked = <T>(
     reason: string,
     orgSlug: string,
@@ -351,7 +351,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     reopenPlatform: async (orgSlug, taskId, actor, reason) =>
       (
         await changed(
-          await platform(
+          await platformLocked(
             "platform-ops onboarding reopen",
             orgSlug,
             async (ctx) => stepResult(ctx, await reopen(ctx, actor, taskId, reason)),
@@ -465,7 +465,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     reopenTask: async (actor, organizationId, taskId, reason) =>
       (
         await changed(
-          await tenantTx(actor, organizationId, async (ctx) =>
+          await tenantTxLocked(actor, organizationId, async (ctx) =>
             tenantStepResult(ctx, await reopen(ctx, actor, taskId, reason), actor),
           ),
         )

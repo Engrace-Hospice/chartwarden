@@ -111,6 +111,7 @@ import type {
   UpdateBaaRecordArgs,
   UpsertFeatureFlagArgs,
 } from "./service";
+import { lockTenantOnboardingShared } from "./tenant-onboarding-lock";
 import {
   ONBOARDING_WRITABLE_STATUSES,
   lockTenantOnboardingExclusive,
@@ -1180,7 +1181,6 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           id: g.id,
           tenantAccountId: g.tenantAccountId,
           scope: g.scope,
-          grantReason: g.grantReason,
           issuedAt: isoReq(g.issuedAt),
           expiresAt: isoReq(g.expiresAt),
           revokedAt: iso(g.revokedAt),
@@ -1193,7 +1193,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     },
 
     async startSession(args: StartSupportSessionArgs) {
-      return inPlatformCtx("platform-ops start support session", async (tx) => {
+      const result = await inPlatformCtx("platform-ops start support session", async (tx) => {
         // The pure §7.4 service enforces the active-grant + D16 distinct-actor invariants and writes the session (in the GRANT's
         // organization: the tenant's, never the operator's) + opening ledger event + critical audit + outbox + grantor alert
         // through the tx-bound ports.
@@ -1203,31 +1203,46 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           actorUserId: args.actorUserId,
           actorIp: args.actorIp,
         });
-        return { sessionId: res.sessionId, expiresAt: isoReq(res.expiresAt) };
+        return {
+          view: { sessionId: res.sessionId, expiresAt: isoReq(res.expiresAt) },
+          alert: res.pendingAlert,
+        };
       });
+      await deps.supportSessionPorts.emitAlert(result.alert);
+      return result.view;
     },
 
     async elevateSession(args: ElevateSupportSessionArgs) {
-      return inPlatformCtx("platform-ops elevate support session", async (tx) => {
+      const result = await inPlatformCtx("platform-ops elevate support session", async (tx) => {
         const res = await elevateSupportSession(supportDeps(tx), {
           supportSessionId: args.supportSessionId,
           actorMembershipId: args.actorMembershipId,
           actorIp: args.actorIp,
         });
-        return { elevationExpiresAt: isoReq(res.elevationExpiresAt) };
+        return {
+          view: { elevationExpiresAt: isoReq(res.elevationExpiresAt) },
+          alert: res.pendingAlert,
+        };
       });
+      await deps.supportSessionPorts.emitAlert(result.alert);
+      return result.view;
     },
 
     async closeSession(args: CloseSupportSessionArgs) {
-      return inPlatformCtx("platform-ops close support session", async (tx) => {
+      const result = await inPlatformCtx("platform-ops close support session", async (tx) => {
         // The real manual close: stamp, `session.close` ledger row, critical audit, outbox and the grantor alert.
         const res = await closeSupportSession(supportDeps(tx), {
           supportSessionId: args.supportSessionId,
           actorMembershipId: args.actorMembershipId,
           actorIp: args.actorIp,
         });
-        return { sessionId: res.sessionId, closeReason: res.closeReason };
+        return {
+          view: { sessionId: res.sessionId, closeReason: res.closeReason },
+          alert: res.pendingAlert,
+        };
       });
+      if (result.alert) await deps.supportSessionPorts.emitAlert(result.alert);
+      return result.view;
     },
 
     // ── signup intents (§4.1; F02 / ADR-0010 — org-less, withPlatformContext) ──
@@ -1371,6 +1386,10 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       const view = await inPlatformCtx("platform-ops create BAA record", async (tx) => {
         await actingAs(tx, actorUserId);
         const repo = new BaaRegisterRepository(tx);
+        // Resolve the tenant first, then serialize this readiness-changing write with go-live approval.
+        const account = await new TenantAccountRepository(tx).findById(args.tenantAccountId);
+        if (!account) throw new NotFoundError("tenant account");
+        await lockTenantOnboardingShared(tx, account.organizationId);
         const existing = await repo.listByTenantAccountId(args.tenantAccountId);
         if (existing.some((b) => b.addendumVersion === args.addendumVersion)) {
           throw new ChartWardenError(
@@ -1379,9 +1398,6 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             409,
           );
         }
-        // organizationId is resolved from the tenant_account spine.
-        const account = await new TenantAccountRepository(tx).findById(args.tenantAccountId);
-        if (!account) throw new NotFoundError("tenant account");
         await assertBaaDocumentFiled(boundTo(tx), {
           organizationId: account.organizationId,
           documentId: args.documentId,
@@ -1417,6 +1433,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const repo = new BaaRegisterRepository(tx);
         const existing = await repo.findById(baaId);
         if (!existing) throw new NotFoundError("platform-tenant BAA record");
+        await lockTenantOnboardingShared(tx, existing.organizationId);
         // Judged only when the link changes or the record becomes executed (see baaLinkNeedsJudging), on the row as it will be.
         if (baaLinkNeedsJudging(existing, args)) {
           const documentId = args.documentId ?? existing.documentId;

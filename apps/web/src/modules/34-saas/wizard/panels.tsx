@@ -4,8 +4,11 @@
 import { isSystemSkip } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { BaaPanel } from "./baa-panel";
+import { ClearinghousePanel } from "./clearinghouse-panel";
+import { DoseSpotPanel } from "./dosespot-panel";
 import { GoLivePanel } from "./go-live-panel";
 import { LocationsPanel } from "./locations-panel";
+import { MacPanel } from "./mac-panel";
 import { OfficerPanel } from "./officer-panel";
 import { OrganisationPanel } from "./organisation-panel";
 import type { StepPanelProps } from "./panel-props";
@@ -19,8 +22,6 @@ export type PanelComponent = (props: StepPanelProps) => JSX.Element | null;
 /** The generic panel: the frame already says what the step is, who owns it and how it was settled. */
 export const GenericPanel: PanelComponent = () => null;
 
-// The three billing panels are slice 7C-b's (clearinghouse_selected, mac_configured, dosespot_kickoff_initiated): when its branch is merged,
-// add them to this map. Until then those steps use the generic panel, which still offers Start, Mark done and, on steps 8, 9 and 10, Skip.
 const PANELS: Readonly<Record<string, PanelComponent>> = {
   account_created: OrganisationPanel,
   plan_contract: PlanContractPanel,
@@ -28,6 +29,9 @@ const PANELS: Readonly<Record<string, PanelComponent>> = {
   ccn_registered: ProviderEntityPanel,
   locations_seeded: LocationsPanel,
   compliance_officer_assigned: OfficerPanel,
+  clearinghouse_selected: ClearinghousePanel,
+  mac_configured: MacPanel,
+  dosespot_kickoff_initiated: DoseSpotPanel,
   go_live_checklist_complete: GoLivePanel,
 };
 

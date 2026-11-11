@@ -145,6 +145,9 @@ describe.skipIf(!DB_URL)("M34 tenant slug provisioning — LIVE Postgres, real p
       supportSessionPorts: {
         now: () => new Date(),
         // This suite never opens or closes a support session.
+        async emitAlert() {
+          throw new Error("support-session alerts are not bound in this suite");
+        },
         bind() {
           throw new Error("support-session ports are not bound in this suite");
         },

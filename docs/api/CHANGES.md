@@ -6,6 +6,18 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-10 — Support-session commands are idempotent and the go-live review shows commercial choices
+
+`POST /api/v1/platform/support-sessions`, `POST /api/v1/platform/support-sessions/{id}/elevate`, and
+`POST /api/v1/platform/support-sessions/{id}/close` now require `Idempotency-Key`. Start and elevate are documented as `201` responses.
+The service also rejects an elevation by a platform operator other than the one who opened the session.
+
+The admin go-live review now loads the tenant's clearinghouse choice and subscription billing-service mode before enabling approval. A
+failed or incomplete commercial read is shown as an error/loading state and keeps approval disabled; it is not presented as “Not chosen”
+or “No contract.” The same view lists any onboarding steps the tenant skipped and their recorded rationale.
+
+---
+
 ## 2026-11-10 — Help requests are live (slice 7, piece 7B)
 
 The six help-request routes announced below now answer for real; their shapes did not change. What an integrator can rely on:

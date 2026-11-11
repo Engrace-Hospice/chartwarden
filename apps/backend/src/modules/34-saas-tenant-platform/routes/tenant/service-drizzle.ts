@@ -114,7 +114,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
     },
 
     async issueConsentGrant(organizationId, actor, args) {
-      return inOrgCtx(organizationId, async (tx) => {
+      const issued = await inOrgCtx(organizationId, async (tx) => {
         // The tenant_account_id is resolved from the org spine (1:1 with organization).
         const account = await tx
           .select()
@@ -141,16 +141,18 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
           reason: args.grantReason,
           organizationActive: org?.status === "active",
         });
-        return grantView(row, deps.now());
+        return { view: grantView(row, deps.now()), afterCommit: row.afterCommit };
       });
+      await issued.afterCommit();
+      return issued.view;
     },
 
     async revokeConsentGrant(organizationId, grantId, actor, reason) {
-      return inOrgCtx(organizationId, async (tx) => {
+      const revoked = await inOrgCtx(organizationId, async (tx) => {
         const linkedHelpRequests = deps.linkedHelpRequestsFor?.(tx);
         // The cascade: the grant is revoked and EVERY session open on it ends (ledger, audit, outbox, grantor alert), the linked
         // help request resolves, and a later start is refused. One transaction, as the tenant's own role.
-        await deps.supportOps.revokeGrantAndCloseSessions(
+        const result = await deps.supportOps.revokeGrantAndCloseSessions(
           { ...deps.supportOps.depsFor(tx), ...(linkedHelpRequests ? { linkedHelpRequests } : {}) },
           {
             grantId,
@@ -163,8 +165,10 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
         );
         const row = await new SupportRepository(tx).findConsentGrantById(grantId);
         if (!row) throw new NotFoundError("support consent grant");
-        return grantView(row, deps.now());
+        return { view: grantView(row, deps.now()), afterCommit: result.afterCommit };
       });
+      await revoked.afterCommit?.();
+      return revoked.view;
     },
 
     // ── support sessions on this organization (read-only; RLS scopes them; never an operator id, name or address) ──

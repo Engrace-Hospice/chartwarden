@@ -1,5 +1,5 @@
-// The IDG writes whose contract DECLARES the Idempotency-Key header: each holds one key per intent (see ../__tests__/declared-key-contract).
-import { type WriteSite, describeDeclaredKeyContract } from "../__tests__/declared-key-contract";
+// The IDG writes whose contract DECLARES the Idempotency-Key header: each holds one key per intent.
+import { type WriteSite, describeDeclaredKeyContract } from "@chartwarden/ui/testing";
 import {
   createDisciplineNote,
   excuseAttendance,

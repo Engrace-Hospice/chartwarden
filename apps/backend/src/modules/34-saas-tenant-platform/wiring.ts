@@ -109,6 +109,12 @@ export class M34InfraPortUnbound extends DegradedError {
  */
 const UNBOUND_SUPPORT_SESSION_PORTS: SupportSessionPorts = {
   now: () => new Date(),
+  emitAlert() {
+    throw new M34InfraPortUnbound(
+      "supportSession.alerts",
+      "bind createSupportSessionPorts at the composition root before emitting an alert",
+    );
+  },
   bind() {
     throw new M34InfraPortUnbound(
       "supportSession.ports",

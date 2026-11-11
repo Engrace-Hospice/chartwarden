@@ -97477,7 +97477,7 @@
             "name": "Idempotency-Key",
             "in": "header",
             "required": true,
-            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
             "schema": {
               "type": "string"
             }
@@ -97646,16 +97646,22 @@
                   "submitterId": {
                     "minLength": 1,
                     "maxLength": 64,
+                    "pattern": "^(?![\\s\\S]*(?<![0-9\\uFF10-\\uFF19])[0-9\\uFF10-\\uFF19]{3}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{2}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{4}(?![0-9\\uFF10-\\uFF19]))",
+                    "description": "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.",
                     "type": "string"
                   },
                   "tradingPartnerId": {
                     "minLength": 1,
                     "maxLength": 64,
+                    "pattern": "^(?![\\s\\S]*(?<![0-9\\uFF10-\\uFF19])[0-9\\uFF10-\\uFF19]{3}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{2}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{4}(?![0-9\\uFF10-\\uFF19]))",
+                    "description": "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.",
                     "type": "string"
                   },
                   "clientId": {
                     "minLength": 1,
                     "maxLength": 256,
+                    "pattern": "^(?![\\s\\S]*(?<![0-9\\uFF10-\\uFF19])[0-9\\uFF10-\\uFF19]{3}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{2}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{4}(?![0-9\\uFF10-\\uFF19]))",
+                    "description": "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.",
                     "type": "string"
                   },
                   "clientSecret": {
@@ -97825,7 +97831,7 @@
             "name": "Idempotency-Key",
             "in": "header",
             "required": true,
-            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
             "schema": {
               "type": "string"
             }
@@ -269494,7 +269500,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "The operators' help inbox across tenants (platform ops; audited list read): each row's phase (waiting_for_consent, ready_to_start, in_session, ended), the step, the tenant, the consent grant id to start a support session against, and the session summary. `status` filters by a comma-separated list (the nav badge asks open,approved with limit 1)",
+        "summary": "The operators' help inbox across tenants (platform ops; audited list read): each row's phase (waiting_for_consent, ready_to_start, in_session, ended), the step, the tenant, the consent grant id to start a support session against, and the session summary. `status` filters by a comma-separated list and defaults to open,approved (the live requests; ask for resolved or cancelled by name; the nav badge asks open,approved with limit 1). A page is at most 50 rows",
         "parameters": [
           {
             "name": "status",
@@ -269502,7 +269508,7 @@
             "required": false,
             "schema": {
               "pattern": "^(open|approved|resolved|cancelled)(,(open|approved|resolved|cancelled))*$",
-              "description": "Comma-separated statuses to include (open, approved, resolved, cancelled); every status when omitted.",
+              "description": "Comma-separated statuses to include (open, approved, resolved, cancelled); open and approved when omitted.",
               "type": "string"
             }
           },
@@ -269883,7 +269889,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "End help from ChartWarden's side with a tenant-visible note of 8 to 500 characters (platform ops; no AI actor; Idempotency-Key required): closes the request's open support sessions (reason manual), revokes its consent grant and resolves the request. It ends the consent and the session, not ChartWarden's contractual access to onboard the tenant",
+        "summary": "End help from ChartWarden's side with a tenant-visible note of 8 to 500 characters (platform ops; no AI actor; Idempotency-Key required): revokes its consent grant and closes the request's open support sessions with it (close reason grant_revoked), and resolves the request (an open request, which has no grant, is resolved with the note alone). It ends the consent and the session, not ChartWarden's contractual access to onboard the tenant",
         "parameters": [
           {
             "name": "id",
@@ -269897,7 +269903,7 @@
             "name": "Idempotency-Key",
             "in": "header",
             "required": true,
-            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
             "schema": {
               "type": "string"
             }
@@ -271543,7 +271549,6 @@
                           "id",
                           "tenantAccountId",
                           "scope",
-                          "grantReason",
                           "issuedAt",
                           "expiresAt",
                           "revokedAt",
@@ -271571,9 +271576,6 @@
                                 "type": "string"
                               }
                             ]
-                          },
-                          "grantReason": {
-                            "type": "string"
                           },
                           "issuedAt": {
                             "format": "date-time",
@@ -271817,9 +271819,19 @@
           "34-saas-tenant-platform"
         ],
         "summary": "Start a session against a consent grant (distinct actor, by membership and by person; passkey-5min step-up). The session, its ledger and its audit are recorded in the grant's (the tenant's) organization, never the operator's. 409 SUPPORT_GRANT_INACTIVE when the grant is revoked or expired",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {
@@ -271882,6 +271894,15 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
             "schema": {
               "type": "string"
             }
@@ -271950,10 +271971,19 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {
@@ -278670,16 +278700,22 @@
                   "submitterId": {
                     "minLength": 1,
                     "maxLength": 64,
+                    "pattern": "^(?![\\s\\S]*(?<![0-9\\uFF10-\\uFF19])[0-9\\uFF10-\\uFF19]{3}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{2}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{4}(?![0-9\\uFF10-\\uFF19]))",
+                    "description": "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.",
                     "type": "string"
                   },
                   "tradingPartnerId": {
                     "minLength": 1,
                     "maxLength": 64,
+                    "pattern": "^(?![\\s\\S]*(?<![0-9\\uFF10-\\uFF19])[0-9\\uFF10-\\uFF19]{3}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{2}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{4}(?![0-9\\uFF10-\\uFF19]))",
+                    "description": "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.",
                     "type": "string"
                   },
                   "clientId": {
                     "minLength": 1,
                     "maxLength": 256,
+                    "pattern": "^(?![\\s\\S]*(?<![0-9\\uFF10-\\uFF19])[0-9\\uFF10-\\uFF19]{3}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{2}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{4}(?![0-9\\uFF10-\\uFF19]))",
+                    "description": "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.",
                     "type": "string"
                   },
                   "clientSecret": {
@@ -356480,7 +356516,7 @@
             "name": "Idempotency-Key",
             "in": "header",
             "required": true,
-            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
             "schema": {
               "type": "string"
             }
@@ -356820,7 +356856,7 @@
             "name": "Idempotency-Key",
             "in": "header",
             "required": true,
-            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
             "schema": {
               "type": "string"
             }
@@ -357153,7 +357189,7 @@
             "name": "Idempotency-Key",
             "in": "header",
             "required": true,
-            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
             "schema": {
               "type": "string"
             }
@@ -360100,7 +360136,7 @@
             "name": "Idempotency-Key",
             "in": "header",
             "required": true,
-            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
             "schema": {
               "type": "string"
             }

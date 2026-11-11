@@ -89,6 +89,8 @@ export interface RevokeGrantAndCloseSessionsInput {
 export interface RevokeGrantAndCloseSessionsResult {
   /** Every session the revoke closed (`close_reason = grant_revoked`), in close order. Empty when none was open. */
   readonly closedSessionIds: readonly string[];
+  /** Best-effort grantor notifications to run only after the caller's transaction commits. */
+  readonly afterCommit?: () => Promise<void>;
 }
 
 /**

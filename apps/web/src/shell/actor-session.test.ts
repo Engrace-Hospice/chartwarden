@@ -72,7 +72,7 @@ describe("toSession — organizationStage (slice 7A adds it to the auth context)
   });
 
   it("leaves the stage undefined when the server sends none or something unknown (fail open to the normal shell)", () => {
-    expect(toSession(ORG_BOUND).organizationStage).toBeUndefined();
+    expect(toSession(withStage(undefined)).organizationStage).toBeUndefined();
     expect(toSession(withStage("suspended")).organizationStage).toBeUndefined();
     expect(toSession(withStage(null)).organizationStage).toBeUndefined();
   });

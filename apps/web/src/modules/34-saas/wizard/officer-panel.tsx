@@ -199,7 +199,8 @@ export function OfficerPanel({ step, view, held, roles, onChanged }: StepPanelPr
       {canWrite && staff.data && people.length === 0 ? (
         <p>
           ChartWarden assigns the compliance officer role. Ask ChartWarden to give it to the person
-          you want, then choose them here. <AskChartWardenSlot topic="compliance-officer-role" />
+          you want, then choose them here.{" "}
+          <AskChartWardenSlot topic="compliance_officer_assigned" />
         </p>
       ) : null}
       {staff.data?.partial ? (

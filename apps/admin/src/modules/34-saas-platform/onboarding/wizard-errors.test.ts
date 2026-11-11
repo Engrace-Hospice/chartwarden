@@ -94,7 +94,7 @@ describe("a rate-limited write (nginx's per-address limit or the API's own)", ()
     for (const failure of [bare, enveloped]) {
       expect(failure.kind).toBe("rate-limited");
       expect(failure.message).toBe(
-        "Too many attempts. Nothing was saved. Wait a minute, then try again.",
+        "Too many attempts. Nothing was saved. Wait before trying again; some limits take ten minutes to reset.",
       );
     }
   });

@@ -99,6 +99,7 @@ import {
   type DrizzleTenantPlatformDeps,
   createDrizzleTenantPlatformBackend,
 } from "../src/modules/34-saas-tenant-platform/routes/platform/service-drizzle";
+import { lockTenantOnboardingShared } from "../src/modules/34-saas-tenant-platform/routes/platform/tenant-onboarding-lock";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -356,6 +357,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       supportSessionPorts: {
         now: () => new Date(),
         // This suite never opens or closes a support session.
+        async emitAlert() {
+          throw new Error("support-session alerts are not bound in this suite");
+        },
         bind() {
           throw new Error("support-session ports are not bound in this suite");
         },
@@ -3028,13 +3032,19 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         revoked_by_membership_id: string | null;
       };
     const writeScope = () =>
-      createOrgDataWriteScope(app.db, async (tx, scope) => {
-        await voidPendingGoLiveForDataChange(tx, {
-          organizationId: scope.organizationId,
-          revokedByUserId: scope.userId,
-          revokedByMembershipId: scope.membershipId,
-        });
-      });
+      createOrgDataWriteScope(
+        app.db,
+        async (tx, scope) => {
+          await voidPendingGoLiveForDataChange(tx, {
+            organizationId: scope.organizationId,
+            revokedByUserId: scope.userId,
+            revokedByMembershipId: scope.membershipId,
+          });
+        },
+        async (tx, scope) => {
+          await lockTenantOnboardingShared(tx, scope.organizationId);
+        },
+      );
 
     beforeAll(async () => {
       await readyTenant(ORG_R2, T_R2, "rr-scope");

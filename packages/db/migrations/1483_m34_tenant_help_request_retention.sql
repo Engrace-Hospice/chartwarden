@@ -1,4 +1,4 @@
--- compat: expand
+-- compat: contract
 -- M34 slice 7 (piece 7B), round 2: what migration 1482's review asked the database to hold.
 --
 -- 1. RETENTION OF FREE TEXT. A help request's message and an operator's close note are text a person typed; the PHI screen is a

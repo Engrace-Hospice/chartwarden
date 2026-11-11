@@ -85,6 +85,10 @@ class FakeRepo implements SupportSessionRepository {
   async findSessionById(id: string): Promise<Session | null> {
     return this.sessions.get(id) ?? null;
   }
+  async findSessionByIdForUpdate(id: string): Promise<Session | null> {
+    this.calls.push(`session-update:${id}`);
+    return this.sessions.get(id) ?? null;
+  }
   async closeSessionIfOpen(
     id: string,
     patch: Pick<schema.NewSupportSession, "closedAt" | "closeReason">,
@@ -93,6 +97,17 @@ class FakeRepo implements SupportSessionRepository {
     if (!s || s.closedAt !== null) return null;
     const next = { ...s, ...patch } as Session;
     this.sessions.set(id, next);
+    // Migration 1484 owns the tenant-role grant-revoke ledger row in a trigger; the fake mirrors it.
+    if (patch.closeReason === "grant_revoked") {
+      this.events.push({
+        organizationId: s.organizationId,
+        supportSessionId: s.id,
+        eventKind: "session.close",
+        occurredAt: patch.closedAt as Date,
+        actorIp: null,
+        context: { closeReason: "grant_revoked" },
+      });
+    }
     return next;
   }
   async listOpenSessionsByGrant(grantId: string): Promise<readonly Session[]> {
@@ -150,6 +165,7 @@ function harness(opts: { now?: Date; userOf?: Record<string, string> } = {}) {
     repo,
     now: () => now,
     members: { userIdOf: async (m) => userOf[m] ?? null },
+    partTwo: { isHeightened: async () => false },
     audit: {
       emitCriticalAudit: async (e) => {
         log.audits.push(e);
@@ -227,7 +243,7 @@ describe("startSupportSession — the organization is the grant's", () => {
       event: "m34.support_session.started",
       organizationId: TENANT_ORG,
     });
-    expect(h.log.alerts.at(-1)).toMatchObject({
+    expect(started.pendingAlert).toMatchObject({
       alertKey: "m34.support_session.started",
       organizationId: TENANT_ORG,
       grantorMembershipId: GRANTOR,
@@ -237,8 +253,8 @@ describe("startSupportSession — the organization is the grant's", () => {
   it("never puts the operator in the alert the tenant's members read", async () => {
     const h = harness();
     const grant = await grantOf(h);
-    await startSupportSession(h.deps, startInput(grant.id));
-    expect(JSON.stringify(h.log.alerts.at(-1))).not.toContain(OPERATOR);
+    const started = await startSupportSession(h.deps, startInput(grant.id));
+    expect(JSON.stringify(started.pendingAlert)).not.toContain(OPERATOR);
   });
 
   it("caps the window at the earlier of 8 hours and the grant's expiry", async () => {
@@ -323,12 +339,20 @@ describe("elevateSupportSession", () => {
 
   it("elevates a PHI-scoped session in the GRANT's organization and alerts the grantor", async () => {
     const h = harness();
-    const grant = await grantOf(h);
+    const grant = await grantOf(h, {
+      scope: "patient_scoped",
+      patientIdsInScope: ["80000000-0000-4000-8000-000000000001"],
+    });
     const started = await startSupportSession(h.deps, startInput(grant.id));
+    h.repo.calls.length = 0;
     const res = await elevateSupportSession(h.deps, {
       supportSessionId: started.sessionId,
       actorMembershipId: OPERATOR,
     });
+    expect(h.repo.calls.slice(0, 2)).toEqual([
+      `share:${grant.id}`,
+      `session-update:${started.sessionId}`,
+    ]);
     expect(res.elevationExpiresAt.getTime()).toBe(T0.getTime() + 2 * 60 * 1000);
     expect(h.repo.events.at(-1)).toMatchObject({
       organizationId: TENANT_ORG,
@@ -342,13 +366,16 @@ describe("elevateSupportSession", () => {
 
   it("refuses a closed session and a Part 2-heightened one", async () => {
     const h = harness();
-    const grant = await grantOf(h);
+    h.deps.partTwo.isHeightened = async () => true;
+    const grant = await grantOf(h, {
+      scope: "patient_scoped",
+      patientIdsInScope: ["80000000-0000-4000-8000-000000000001"],
+    });
     const started = await startSupportSession(h.deps, startInput(grant.id));
     await expect(
       elevateSupportSession(h.deps, {
         supportSessionId: started.sessionId,
         actorMembershipId: OPERATOR,
-        isPartTwoHeightened: true,
       }),
     ).rejects.toMatchObject({ code: "SUPPORT_SESSION_PART_TWO_READ_ONLY" });
     await closeSupportSession(h.deps, {
@@ -375,7 +402,7 @@ describe("closeSupportSession — the real manual close", () => {
       actorMembershipId: OPERATOR,
       actorIp: "203.0.113.9",
     });
-    expect(res).toEqual({
+    expect(res).toMatchObject({
       sessionId: started.sessionId,
       closeReason: "manual",
       alreadyClosed: false,
@@ -399,7 +426,7 @@ describe("closeSupportSession — the real manual close", () => {
       organizationId: TENANT_ORG,
       payload: { closeReason: "manual_close", sessionId: started.sessionId },
     });
-    expect(h.log.alerts.at(-1)).toMatchObject({
+    expect(res.pendingAlert).toMatchObject({
       alertKey: "m34.support_session.expired",
       grantorMembershipId: GRANTOR,
     });
@@ -426,6 +453,7 @@ describe("closeSupportSession — the real manual close", () => {
       sessionId: started.sessionId,
       closeReason: "manual",
       alreadyClosed: true,
+      pendingAlert: null,
     });
     expect({
       events: h.repo.events.length,
@@ -577,7 +605,7 @@ describe("the grant authority matrix", () => {
     ).rejects.toMatchObject({ statusCode: 422 });
   });
 
-  it("emits m34.support_consent_grant.issued (with the help request) and alerts the operators", async () => {
+  it("emits m34.support_consent_grant.issued in transaction and alerts operators after commit", async () => {
     const h = harness();
     const helpRequestId = "70000000-0000-4000-8000-000000000001";
     const res = await issueAssistGrant(h.deps, {
@@ -600,6 +628,8 @@ describe("the grant authority matrix", () => {
         helpRequestId,
       },
     });
+    expect(h.log.alerts).toHaveLength(0);
+    await res.afterCommit?.();
     expect(h.log.alerts.at(-1)).toMatchObject({ alertKey: "m34.support_consent_grant.issued" });
     expect(h.repo.grants.get(res.grantId)).toMatchObject({
       scope: "assist",
@@ -689,18 +719,20 @@ describe("revokeGrantAndCloseSessions — the cascade", () => {
     ]);
   });
 
-  it("revokes the grant BEFORE closing sessions and emits the alerts after every write", async () => {
+  it("revokes the grant before closing sessions and defers alerts until after commit", async () => {
     const h = harness();
     const grant = await grantOf(h);
     await startSupportSession(h.deps, startInput(grant.id));
     h.order.length = 0;
     h.repo.calls.length = 0;
-    await revokeGrantAndCloseSessions(h.deps, revokeInput(grant.id));
+    const revoked = await revokeGrantAndCloseSessions(h.deps, revokeInput(grant.id));
     expect(h.repo.calls[0]).toBe("grant-revoked");
     const lastWrite = Math.max(
       h.order.lastIndexOf("outbox:m34.support_consent_grant.revoked"),
       h.order.lastIndexOf("audit:support_session.grant_revoked"),
     );
+    expect(h.order.indexOf("alert:m34.support_session.expired")).toBe(-1);
+    await revoked.afterCommit?.();
     expect(h.order.indexOf("alert:m34.support_session.expired")).toBeGreaterThan(lastWrite);
   });
 

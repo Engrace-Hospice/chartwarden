@@ -20,6 +20,7 @@ import type { JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ONBOARDING_HOME, isOnboardingSession } from "../../../shell/onboarding-stage";
 import { useSession } from "../../../shell/session";
+import { WizardHelp } from "../help/help-center";
 import { StepTitlesContext, stepHref } from "./failure-notice";
 import { panelFor } from "./panels";
 import { usePermissions, useRoles } from "./permissions";
@@ -156,6 +157,7 @@ export function OnboardingWizard(): JSX.Element {
         </header>
 
         <StaleNotice stale={wizard.stale} onReload={() => void refresh()} />
+        <WizardHelp />
         <WentLiveNotice view={view} />
 
         <div className="wx-wizard">

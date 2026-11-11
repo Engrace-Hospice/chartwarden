@@ -203,11 +203,11 @@ function makeServer(
       service: help.service,
       ...(opts.fileRateLimit
         ? {
-          fileRateLimit: createRouteRateLimit({
-            store: createInMemoryRateLimitStore(),
-            limit: HELP_REQUEST_ROUTE_RATE_LIMIT,
-            keyPrefix: "m34-help-request-test",
-          }),
+            fileRateLimit: createRouteRateLimit({
+              store: createInMemoryRateLimitStore(),
+              limit: HELP_REQUEST_ROUTE_RATE_LIMIT,
+              keyPrefix: "m34-help-request-test",
+            }),
           }
         : {}),
     },

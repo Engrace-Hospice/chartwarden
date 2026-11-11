@@ -150,6 +150,7 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
   let appUrl: string;
   let server: FastifyInstance;
   let clock = new Date();
+  let idempotencySequence = 0;
   const alerts: { orgId: string; eventType: string; payload: Record<string, unknown> }[] = [];
   const warnings: { message: string; context: Record<string, unknown> }[] = [];
   const linked: Parameters<LinkedHelpRequestPort["resolveForRevokedGrant"]>[0][] = [];
@@ -179,7 +180,11 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
     headers: Record<string, string>,
     payload?: Record<string, unknown>,
   ) {
-    const res = await server.inject({ method, url, headers, payload });
+    const requestHeaders =
+      method === "POST" && url.startsWith("/api/v1/platform/support-sessions")
+        ? { "idempotency-key": `support-live-${++idempotencySequence}`, ...headers }
+        : headers;
+    const res = await server.inject({ method, url, headers: requestHeaders, payload });
     return { statusCode: res.statusCode, body: res.json() as any, text: res.body };
   }
 
@@ -570,33 +575,31 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
         ]) {
           await expect(c.query(sql, [grantId])).rejects.toMatchObject({ code: "42501" });
         }
-        // the ledger: only the cascade's row, and never with a patient
+        // The ledger is trigger-owned: the tenant role cannot forge any event, including a close.
         await expect(
           c.query(
             "INSERT INTO support_session_event (organization_id,support_session_id,event_kind) VALUES ($1,$2,'ops.write')",
             [TENANT_ORG, sessionId],
           ),
-        ).rejects.toThrow(/row-level security/);
+        ).rejects.toMatchObject({ code: "42501" });
         await expect(
           c.query(
             "INSERT INTO support_session_event (organization_id,support_session_id,event_kind,patient_id) VALUES ($1,$2,'session.close',gen_random_uuid())",
             [TENANT_ORG, sessionId],
           ),
-        ).rejects.toThrow(/row-level security/);
+        ).rejects.toMatchObject({ code: "42501" });
         await expect(
           c.query(
             "INSERT INTO support_session_event (organization_id,support_session_id,event_kind) VALUES ($1,$2,'session.close')",
             [OTHER_ORG, sessionId],
           ),
-        ).rejects.toThrow(/row-level security/);
-        expect(
-          (
-            await c.query(
-              "INSERT INTO support_session_event (organization_id,support_session_id,event_kind) VALUES ($1,$2,'session.close')",
-              [TENANT_ORG, sessionId],
-            )
-          ).rowCount,
-        ).toBe(1);
+        ).rejects.toMatchObject({ code: "42501" });
+        await expect(
+          c.query(
+            "INSERT INTO support_session_event (organization_id,support_session_id,event_kind) VALUES ($1,$2,'session.close')",
+            [TENANT_ORG, sessionId],
+          ),
+        ).rejects.toMatchObject({ code: "42501" });
       });
     });
 
@@ -616,19 +619,12 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
             [sessionId],
           ),
         ).rejects.toThrow(/row-level security/);
-        expect(
-          (
-            await c.query(
-              "UPDATE support_session SET closed_at = now(), close_reason = 'grant_revoked' WHERE id = $1",
-              [sessionId],
-            )
-          ).rowCount,
-        ).toBe(1);
-        // closed: it can no longer be touched, in either direction
-        expect(
-          (await c.query("UPDATE support_session SET closed_at = NULL WHERE id = $1", [sessionId]))
-            .rowCount,
-        ).toBe(0);
+        await expect(
+          c.query(
+            "UPDATE support_session SET closed_at = now(), close_reason = 'grant_revoked' WHERE id = $1",
+            [sessionId],
+          ),
+        ).rejects.toMatchObject({ code: "23514" });
         // a revoke must carry a reason; then it is final
         await expect(
           c.query("UPDATE support_consent_grant SET revoked_at = now() WHERE id = $1", [grantId]),
@@ -641,6 +637,25 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
             )
           ).rowCount,
         ).toBe(1);
+        expect(
+          (
+            await c.query(
+              "UPDATE support_session SET closed_at = now(), close_reason = 'grant_revoked' WHERE id = $1",
+              [sessionId],
+            )
+          ).rowCount,
+        ).toBe(1);
+        const closeEvents = await c.query(
+          `SELECT context FROM support_session_event
+           WHERE organization_id = $1 AND support_session_id = $2 AND event_kind = 'session.close'`,
+          [TENANT_ORG, sessionId],
+        );
+        expect(closeEvents.rows).toEqual([{ context: { closeReason: "grant_revoked" } }]);
+        // closed: it can no longer be touched, in either direction
+        expect(
+          (await c.query("UPDATE support_session SET closed_at = NULL WHERE id = $1", [sessionId]))
+            .rowCount,
+        ).toBe(0);
         expect(
           (
             await c.query(

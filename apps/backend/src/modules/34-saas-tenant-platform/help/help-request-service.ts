@@ -19,14 +19,15 @@ import { classifyDatabaseError, schema } from "@chartwarden/db";
 import type { SupportGrantOperations } from "@chartwarden/saas-tenant-platform";
 import type { WriteActor } from "@chartwarden/shared/route-kit";
 import { ForbiddenError, NotFoundError, ValidationError } from "@chartwarden/types";
-import { normalizeReason } from "../onboarding/evidence";
 import { isPlatformStaffMember } from "../onboarding/wizard-core";
 import {
   HELP_APPROVE_HOURS_DEFAULT,
   HELP_APPROVE_HOURS_MAX,
   HELP_APPROVE_HOURS_MIN,
   HELP_MESSAGE_MAX,
+  HELP_MESSAGE_MIN,
   HELP_NOTE_MAX,
+  HELP_NOTE_MIN,
 } from "../routes/help-request-typebox";
 import {
   type CursorPage,
@@ -52,6 +53,7 @@ import type {
   HelpRequestRunner,
   HelpRequestStore,
 } from "./help-request-store";
+import { normalizeHelpText } from "./help-request-text";
 import { toPlatformView, toTenantView } from "./help-request-view";
 
 /** The outbox event a filed request emits; M36 routes it to the operators (`tenant.help_requested`). Ids and codes only. */
@@ -251,6 +253,7 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
         hours,
         reason: `help request ${row.id}`,
       });
+      if (grant.afterCommit) store.afterCommit(grant.afterCommit);
       const approvedAt = now();
       const approved = await store.markApproved(row.id, {
         grantId: grant.grantId,
@@ -294,7 +297,7 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
     if (!row.supportConsentGrantId) {
       throw new HelpRequestError("HELP_REQUEST_NOT_OPEN", "an approved help request has no grant");
     }
-    await grants.revokeGrantAndCloseSessions(
+    const revoked = await grants.revokeGrantAndCloseSessions(
       {
         ...grants.depsFor(store.tx),
         linkedHelpRequests: store.linkedRequests(ending.defaults),
@@ -307,6 +310,7 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
         source: ending.source,
       },
     );
+    if (revoked.afterCommit) store.afterCommit(revoked.afterCommit);
     const after = await store.findForUpdate(row.id);
     if (after?.status === "approved") {
       await store.markClosed(row.id, { ...ending.closing, from: "approved", to: "resolved" });
@@ -347,7 +351,11 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
 
     async file(actor, input: FileHelpRequestInput) {
       assertMemberSession(actor);
-      const message = normalizeReason(input.message, { max: HELP_MESSAGE_MAX, field: "message" });
+      const message = normalizeHelpText(input.message, {
+        field: "message",
+        min: HELP_MESSAGE_MIN,
+        max: HELP_MESSAGE_MAX,
+      });
       const stepKey = input.stepKey === undefined ? null : input.stepKey.trim();
       if (stepKey === "") {
         throw new HelpRequestError(
@@ -466,7 +474,11 @@ export function createHelpRequestService(deps: HelpRequestServiceDeps): HelpRequ
       if (actor.actorKind.startsWith("ai_")) {
         throw new ForbiddenError("AI principals cannot resolve help requests");
       }
-      const note = normalizeReason(input.note, { max: HELP_NOTE_MAX, field: "note" });
+      const note = normalizeHelpText(input.note, {
+        field: "note",
+        min: HELP_NOTE_MIN,
+        max: HELP_NOTE_MAX,
+      });
       return runner.asPlatform(
         { userId: actor.userId, reason: "m34 help request resolve" },
         async (store) => {

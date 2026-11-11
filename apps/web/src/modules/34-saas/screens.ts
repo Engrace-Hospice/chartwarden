@@ -18,6 +18,9 @@ const OnboardingWizard = lazy(() =>
 const SupportGrants = lazy(() =>
   import("./support-grants").then((m) => ({ default: m.SupportGrants })),
 );
+const HelpCenter = lazy(() =>
+  import("./help/help-center").then((m) => ({ default: m.HelpCenter })),
+);
 
 export const saasScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 34,
@@ -57,6 +60,13 @@ export const saasScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "onboarding.read_own",
       screen: OnboardingWizard,
+    },
+    {
+      id: "saas.help",
+      path: "/admin/help",
+      title: "Help and support",
+      navGroup: "Admin",
+      screen: HelpCenter,
     },
     {
       id: "saas.support-grants",

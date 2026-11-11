@@ -134,7 +134,6 @@ export interface PlatformSupportConsentGrantView {
   readonly id: string;
   readonly tenantAccountId: string;
   readonly scope: "organization_scoped" | "patient_scoped" | "assist";
-  readonly grantReason: string;
   readonly issuedAt: string;
   readonly expiresAt: string;
   readonly revokedAt: string | null;

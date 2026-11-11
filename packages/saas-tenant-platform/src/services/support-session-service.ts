@@ -96,6 +96,8 @@ export const M34_SUPPORT_SESSION_ERROR_STATUS = {
   SUPPORT_SESSION_ACTOR_NOT_DISTINCT: 403,
   /** §7.4 step 5 — the session is already closed (or expired); it cannot be elevated. */
   SUPPORT_SESSION_NOT_OPEN: 409,
+  /** §7.4 step 5 — only the operator who opened a session may elevate its PHI-write window. */
+  SUPPORT_SESSION_NOT_OWNED: 403,
   /** §7.4 step 4a / M34-F13 — elevation is refused for a Part 2-heightened session (read-only regardless). */
   SUPPORT_SESSION_PART_TWO_READ_ONLY: 403,
   /** Slice 7 — a session on a non-PHI `assist` grant can never be elevated: it has no PHI to read or write. */
@@ -173,6 +175,14 @@ export interface SupportSessionMemberPort {
   userIdOf(membershipId: string): Promise<string | null>;
 }
 
+/** Resolve M5's authoritative patient privacy snapshots for a patient-scoped grant. Errors must fail closed. */
+export interface SupportSessionPartTwoPort {
+  isHeightened(input: {
+    readonly organizationId: string;
+    readonly patientIds: readonly string[];
+  }): Promise<boolean>;
+}
+
 /** Injected clock (deterministic effects — the `+8h` ceiling, the elevation window, the sweep cutoff).
  *  Mirrors the `now()` port in `runNppesNightlyDelta` so a run is reproducible/assertable. */
 export type NowPort = () => Date;
@@ -186,6 +196,7 @@ export type SupportSessionRepository = Pick<
   | "markConsentGrantRevoked"
   | "createSession"
   | "findSessionById"
+  | "findSessionByIdForUpdate"
   | "closeSessionIfOpen"
   | "listOpenSessionsByGrant"
   | "listSessionIdsClosedAs"
@@ -201,6 +212,7 @@ export interface SupportSessionServiceDeps {
   readonly outbox: SupportSessionOutboxPort;
   readonly alerts: SupportSessionAlertPort;
   readonly members: SupportSessionMemberPort;
+  readonly partTwo: SupportSessionPartTwoPort;
   readonly now: NowPort;
 }
 
@@ -234,7 +246,7 @@ export interface StartSupportSessionInput {
 export async function startSupportSession(
   deps: SupportSessionServiceDeps,
   input: StartSupportSessionInput,
-): Promise<{ sessionId: string; expiresAt: Date }> {
+): Promise<{ sessionId: string; expiresAt: Date; pendingAlert: PendingGrantorAlert }> {
   const grant = await deps.repo.findConsentGrantByIdForShare(input.supportConsentGrantId);
   require_(grant !== null, "SUPPORT_GRANT_NOT_FOUND", "support_consent_grant not found");
 
@@ -251,7 +263,7 @@ export async function startSupportSession(
   );
   const grantorUserId = await deps.members.userIdOf(grant.grantorMembershipId);
   require_(
-    grantorUserId === null || grantorUserId !== input.actorUserId,
+    grantorUserId !== null && grantorUserId !== input.actorUserId,
     "SUPPORT_SESSION_ACTOR_NOT_DISTINCT",
     "the support-session actor must be a different person from the consent-grant grantor (D16)",
   );
@@ -304,16 +316,16 @@ export async function startSupportSession(
     organizationId,
   );
 
-  // §7.4 step 2/3 — M36 warns the grantor (and the organization's admins) that a support session is now open.
-  await deps.alerts.emitAlert({
+  // Returned to the transaction owner, which emits only after commit.
+  const pendingAlert: PendingGrantorAlert = {
     alertKey: "m34.support_session.started",
     organizationId,
     tenantAccountId: grant.tenantAccountId,
     grantorMembershipId: grant.grantorMembershipId,
     context: { sessionId: session.id, scope: grant.scope },
-  });
+  };
 
-  return { sessionId: session.id, expiresAt };
+  return { sessionId: session.id, expiresAt, pendingAlert };
 }
 
 // ── elevate (§7.4 step 5): open a PHI-write window; refuse for assist (non-PHI) and Part 2-heightened sessions ──
@@ -321,11 +333,8 @@ export async function startSupportSession(
 /** What a caller supplies to elevate a session for PHI write (the route binds these post step-up). */
 export interface ElevateSupportSessionInput {
   readonly supportSessionId: string;
-  /** The platform-ops actor performing the fresh step-up (must own the session — route-enforced). */
+  /** The platform-ops actor performing the fresh step-up (must own the session — service-enforced). */
   readonly actorMembershipId: string;
-  /** §7.4 step 4a / M34-F13 — true when the session touches an M39 Part 2 patient; elevation is REFUSED
-   *  (those sessions are read-only regardless of step-up). Resolved upstream by the route (M39 designation). */
-  readonly isPartTwoHeightened?: boolean;
   readonly actorIp?: string | null;
 }
 
@@ -339,11 +348,30 @@ export interface ElevateSupportSessionInput {
 export async function elevateSupportSession(
   deps: SupportSessionServiceDeps,
   input: ElevateSupportSessionInput,
-): Promise<{ elevationExpiresAt: Date }> {
-  const session = await deps.repo.findSessionById(input.supportSessionId);
-  require_(session !== null, "SUPPORT_SESSION_NOT_OPEN", "support_session not found");
-  const grant = await deps.repo.findConsentGrantById(session.supportConsentGrantId);
+): Promise<{ elevationExpiresAt: Date; pendingAlert: PendingGrantorAlert }> {
+  const observedSession = await deps.repo.findSessionById(input.supportSessionId);
+  require_(observedSession !== null, "SUPPORT_SESSION_NOT_OPEN", "support_session not found");
+  require_(
+    observedSession.actorMembershipId === input.actorMembershipId,
+    "SUPPORT_SESSION_NOT_OWNED",
+    "only the support-session actor may elevate this session",
+  );
+  // Serialize against grant revocation first, then session close. Revocation takes the grant row before it closes
+  // sessions; this matching order avoids a deadlock and ensures no elevation effects can commit after either control.
+  const grant = await deps.repo.findConsentGrantByIdForShare(observedSession.supportConsentGrantId);
   require_(grant !== null, "SUPPORT_GRANT_NOT_FOUND", "support_consent_grant not found");
+  const session = await deps.repo.findSessionByIdForUpdate(input.supportSessionId);
+  require_(session !== null, "SUPPORT_SESSION_NOT_OPEN", "support_session not found");
+  require_(
+    session.actorMembershipId === input.actorMembershipId,
+    "SUPPORT_SESSION_NOT_OWNED",
+    "only the support-session actor may elevate this session",
+  );
+  require_(
+    session.supportConsentGrantId === grant.id,
+    "SUPPORT_GRANT_INACTIVE",
+    "the support session grant changed while elevation was evaluated",
+  );
 
   // Slice 7 — an `assist` grant is non-PHI by construction: there is nothing to elevate for. Judged first, so the answer does not
   // depend on whether the session happens to be open.
@@ -354,12 +382,25 @@ export async function elevateSupportSession(
   );
 
   const now = deps.now();
+  require_(
+    grant.revokedAt === null && grant.expiresAt.getTime() > now.getTime(),
+    "SUPPORT_GRANT_INACTIVE",
+    "the support consent grant is revoked or expired",
+  );
   const open = session.closedAt === null && session.expiresAt.getTime() > now.getTime();
   require_(open, "SUPPORT_SESSION_NOT_OPEN", "the support session is closed or expired");
 
-  // §7.4 step 4a / M34-F13 — elevation is refused outright for Part 2-heightened sessions (read-only).
+  // Organization-wide access can touch any patient, so it is conservatively read-only. For a patient-scoped
+  // grant, M5's authoritative privacy snapshots decide whether any in-scope patient is Part 2-heightened.
+  const partTwoHeightened =
+    grant.scope === "organization_scoped" ||
+    (grant.scope === "patient_scoped" &&
+      (await deps.partTwo.isHeightened({
+        organizationId: grant.organizationId,
+        patientIds: grant.patientIdsInScope ?? [],
+      })));
   require_(
-    input.isPartTwoHeightened !== true,
+    !partTwoHeightened,
     "SUPPORT_SESSION_PART_TWO_READ_ONLY",
     "elevation is refused for Part 2-heightened support sessions (read-only, §7.4 step 4a)",
   );
@@ -399,16 +440,15 @@ export async function elevateSupportSession(
     organizationId,
   );
 
-  // §7.4 step 5 — M36 alerts the grantor that a break-glass PHI write window is now open.
-  await deps.alerts.emitAlert({
+  const pendingAlert: PendingGrantorAlert = {
     alertKey: "m34.support_session.elevated",
     organizationId,
     tenantAccountId: grant.tenantAccountId,
     grantorMembershipId: grant.grantorMembershipId,
     context: { sessionId: session.id, elevationExpiresAt: elevationExpiresAt.toISOString() },
-  });
+  };
 
-  return { elevationExpiresAt };
+  return { elevationExpiresAt, pendingAlert };
 }
 
 // ── ending a session: the one place a close is written (manual close, the sweep and the revoke cascade share it) ──
@@ -447,14 +487,18 @@ export async function endSupportSession(
   });
   if (closed === null) return null;
 
-  await deps.repo.appendSessionEvent({
-    organizationId: input.organizationId,
-    supportSessionId: input.sessionId,
-    eventKind: "session.close",
-    occurredAt: input.now,
-    actorIp: input.actorIp ?? null,
-    context: { closeReason: input.reason },
-  });
+  // The tenant role may close only for grant revocation and holds no ledger INSERT. A database trigger owns that close row so the
+  // tenant cannot forge it; platform/system closes append their own richer row here.
+  if (input.reason !== "grant_revoked") {
+    await deps.repo.appendSessionEvent({
+      organizationId: input.organizationId,
+      supportSessionId: input.sessionId,
+      eventKind: "session.close",
+      occurredAt: input.now,
+      actorIp: input.actorIp ?? null,
+      context: { closeReason: input.reason },
+    });
+  }
 
   await deps.audit.emitCriticalAudit({
     action: CLOSE_AUDIT_ACTION[input.reason],
@@ -505,7 +549,12 @@ export interface CloseSupportSessionInput {
 export async function closeSupportSession(
   deps: SupportSessionServiceDeps,
   input: CloseSupportSessionInput,
-): Promise<{ sessionId: string; closeReason: SupportSessionCloseReason; alreadyClosed: boolean }> {
+): Promise<{
+  sessionId: string;
+  closeReason: SupportSessionCloseReason;
+  alreadyClosed: boolean;
+  pendingAlert: PendingGrantorAlert | null;
+}> {
   const session = await deps.repo.findSessionById(input.supportSessionId);
   if (!session) throw new NotFoundError("support session");
   if (session.closedAt !== null) {
@@ -513,6 +562,7 @@ export async function closeSupportSession(
       sessionId: session.id,
       closeReason: (session.closeReason as SupportSessionCloseReason | null) ?? "manual",
       alreadyClosed: true,
+      pendingAlert: null,
     };
   }
   const grant = await deps.repo.findConsentGrantById(session.supportConsentGrantId);
@@ -530,8 +580,12 @@ export async function closeSupportSession(
     now: deps.now(),
     actorIp: input.actorIp ?? null,
   });
-  if (alert) await deps.alerts.emitAlert(alert);
-  return { sessionId: session.id, closeReason: "manual", alreadyClosed: alert === null };
+  return {
+    sessionId: session.id,
+    closeReason: "manual",
+    alreadyClosed: alert === null,
+    pendingAlert: alert,
+  };
 }
 
 // ── close-sweep (§7.4 step 6): close expired open sessions; emit m34.support_session.expired ──────────
