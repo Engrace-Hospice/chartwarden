@@ -534,7 +534,7 @@ export function Avatar({
 
         background: `color-mix(in srgb, ${c} 14%, ${t.surfaceLowest})`,
 
-        color: c,
+        color: t.onSurface,
 
         fontSize: `${size * 0.36}rem`,
 

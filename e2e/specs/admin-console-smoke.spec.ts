@@ -7,8 +7,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { PLATFORM_OPS_ACCOUNT } from "../fixtures/credentials";
-import { expectRouteReached, signInAs } from "../fixtures/helpers";
+import type { Page } from "@playwright/test";
+import { DEMO_ORG_NAME, PLATFORM_OPS_ACCOUNT } from "../fixtures/credentials";
+import { expectRouteReached } from "../fixtures/helpers";
 
 test.skip(
   !process.env.E2E_ADMIN_URL,
@@ -35,6 +36,17 @@ function authenticatedAdminRoutes(): string[] {
     .filter((screen) => screen.permission !== "(none)" && !screen.path.includes(":"))
     .map((screen) => screen.path)
     .sort();
+}
+
+async function signInToAdminConsole(page: Page): Promise<void> {
+  const account = PLATFORM_OPS_ACCOUNT();
+  await page.goto("/login");
+  await page.getByRole("textbox", { name: "Email", exact: true }).fill(account.email);
+  await page.getByRole("textbox", { name: "Password", exact: true }).fill(account.password);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.waitForURL("**/login/organization");
+  await page.getByRole("button", { name: `Select ${DEMO_ORG_NAME}` }).click();
+  await page.waitForURL((url) => url.pathname === "/", { timeout: 15_000 });
 }
 
 test.describe("Admin console — smoke (#852)", () => {
@@ -64,7 +76,7 @@ test.describe("Admin console — smoke (#852)", () => {
     const routes = authenticatedAdminRoutes();
     expect(routes.length).toBeGreaterThan(20);
     test.setTimeout(Math.max(120_000, routes.length * 8_000));
-    await signInAs(page, PLATFORM_OPS_ACCOUNT());
+    await signInToAdminConsole(page);
 
     const failures: string[] = [];
     for (const route of routes) {

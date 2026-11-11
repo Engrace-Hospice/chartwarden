@@ -167,6 +167,11 @@ export function MedicaidValidationQueue(): JSX.Element {
                 ? "No Medicaid claim is failing validation or partially acknowledged."
                 : "Blocked claims exist but none carry an outstanding failing rule — open them individually from the workbench."
             }
+            action={
+              <a href="/medicaid/billing/claims" style={linkStyle}>
+                Open claim workbench
+              </a>
+            }
           />
         ) : (
           <table style={tableStyle}>

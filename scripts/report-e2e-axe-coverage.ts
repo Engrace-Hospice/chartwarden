@@ -18,8 +18,9 @@
  * `auth.spec.ts` genuinely visits `/login`.
  *
  * DEFINITIONS, stated because both are heuristics over spec SOURCE TEXT, not a live crawl:
- *   - E2E-REACHED   — the screen's exact `path` appears as a literal string argument to some
- *                     `page.goto(...)` call anywhere under `e2e/specs/` or `e2e/fixtures/`.
+ *   - E2E-REACHED   — the screen is reached by the registry-driven route walk, or its exact `path`
+ *                     appears as a literal string argument to some `page.goto(...)` call anywhere
+ *                     under `e2e/specs/` or `e2e/fixtures/`.
  *   - AXE-REACHED   — the screen is one of `axe-route-walk.spec.ts`'s own `staticWebScreens()` (the
  *                     precise, always-true case), OR its literal path string appears in a spec FILE
  *                     that also calls `expectNoAxeViolations` somewhere in it (a file-level heuristic —
@@ -132,7 +133,6 @@ interface Row {
 }
 
 const rows: Row[] = webStatic.map((s) => {
-  const e2eReached = allGotoLiterals.has(s.path);
   const axeReachedByRouteWalk = routeWalkSpecPresent && s.permission !== "(none)";
   const axeReachedByFileHeuristic = specFiles.some(
     (f) =>
@@ -140,13 +140,15 @@ const rows: Row[] = webStatic.map((s) => {
       axeFiles.has(f) &&
       (fileText.get(f) ?? "").includes(s.path),
   );
+  const axeReached = axeReachedByRouteWalk || axeReachedByFileHeuristic;
   return {
     id: s.id,
     module: s.module,
     path: s.path,
     permission: s.permission,
-    e2eReached,
-    axeReached: axeReachedByRouteWalk || axeReachedByFileHeuristic,
+    // Every axe scan first navigates to the screen, so axe-reached is necessarily E2E-reached.
+    e2eReached: axeReached || allGotoLiterals.has(s.path),
+    axeReached,
   };
 });
 

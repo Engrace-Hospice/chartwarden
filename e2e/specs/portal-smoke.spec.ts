@@ -19,7 +19,6 @@ test.skip(
 const PUBLIC_PORTAL_ROUTES = [
   "/portal/",
   "/portal/accept-invitation",
-  "/portal/signed-in",
   "/portal/funeral/redeem",
   "/portal/collaborator/redeem",
 ] as const;
@@ -63,26 +62,22 @@ test.describe("Portal — pre-auth smoke (#852)", () => {
   }
 
   test("the seeded patient-self account reaches authenticated portal screens", async ({ page }) => {
+    const routeCount = authenticatedPortalRoutes("pending-patient-id").length;
+    test.setTimeout(Math.max(120_000, routeCount * 8_000));
     const account = PORTAL_ACCOUNT();
     await page.goto("/portal/");
     await page.getByRole("button", { name: "Use a password instead" }).click();
     await page.getByLabel("Email address").fill(account.email);
-    await page.getByLabel("Password").fill(account.password);
+    await page.getByRole("textbox", { name: "Password", exact: true }).fill(account.password);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
-    await page.waitForURL(/\/portal\/(signed-in|patient-picker|p\/)/, { timeout: 15_000 });
-
-    await page.goto("/portal/patient-picker");
-    await page
-      .getByRole("button", { name: /Open care record/ })
-      .first()
-      .click();
-    await page.waitForURL(/\/portal\/p\/[^/]+$/, { timeout: 15_000 });
+    // `/signed-in` establishes the portal account, then the single-patient picker auto-opens the
+    // only granted record. Navigating away from that transient route aborts establishment.
+    await page.waitForURL(/\/portal\/p\/[^/]+$/, { timeout: 30_000 });
     const patientId = new URL(page.url()).pathname.match(/\/portal\/p\/([^/]+)/)?.[1];
     if (!patientId) throw new Error(`could not discover portal patient id from ${page.url()}`);
 
     const routes = authenticatedPortalRoutes(patientId);
     expect(routes.length).toBeGreaterThan(10);
-    test.setTimeout(Math.max(120_000, routes.length * 8_000));
     const failures: string[] = [];
     for (const route of routes) {
       await page.goto(route, { waitUntil: "domcontentloaded" });
