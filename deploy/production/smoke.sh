@@ -55,6 +55,8 @@ print_readiness_diagnostic() {
     docker logs --tail 80 "$container_id" 2>&1 || true
     return
   fi
+  # Keep the Bun source single-quoted so the shell cannot expand JavaScript template literals.
+  # shellcheck disable=SC2016
   $compose exec -T "$svc" bun -e '
     const port = process.env.PROCESS_ROLE === "worker"
       ? (process.env.WORKER_PORT ?? "3001")
@@ -140,6 +142,8 @@ ok "api /ready (db + valkey + object store)"
 # The worker publishes no port, so this runs INSIDE its container. It serves only /health and /ready
 # (index.ts, TASK-040A) on WORKER_PORT — enough to prove the process is alive and its dependencies
 # resolve, which is exactly what was unverified before.
+# Keep the Bun source single-quoted so the shell cannot expand JavaScript template literals.
+# shellcheck disable=SC2016
 $compose exec -T worker bun -e '
   const port = process.env.WORKER_PORT ?? "3001";
   const response = await fetch(`http://127.0.0.1:${port}/ready`);

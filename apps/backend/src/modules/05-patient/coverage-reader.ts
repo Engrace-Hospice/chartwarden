@@ -22,29 +22,42 @@ const day = (d: Date | string | null): string | null => {
 };
 
 export function buildPatientCoverageReader(db: DbClient): PatientCoverageReader {
+  const PATIENT = schema.patients;
   const PAYER = schema.patientPayers;
 
+  const project = (rows: readonly (typeof PAYER.$inferSelect)[]): PatientCoverage[] =>
+    rows.map(
+      (r): PatientCoverage => ({
+        id: r.id,
+        patientId: r.patientId,
+        payerId: r.payerId,
+        rank: r.rank,
+        coverageKind: r.coverageKind,
+        subscriberId: r.subscriberId,
+        groupNumber: r.groupNumber ?? null,
+        current: r.effectiveTo === null,
+        effectiveFrom: day(r.effectiveFrom) ?? "",
+        effectiveTo: day(r.effectiveTo),
+      }),
+    );
+
+  const loadFrom = async (
+    tx: DbClient,
+    organizationId: string,
+    patientId: string,
+    lock: boolean,
+  ): Promise<PatientCoverage[]> => {
+    const query = tx
+      .select()
+      .from(PAYER)
+      .where(and(eq(PAYER.organizationId, organizationId), eq(PAYER.patientId, patientId)));
+    return project(await (lock ? query.for("share") : query));
+  };
+
   const load = async (organizationId: string, patientId: string): Promise<PatientCoverage[]> =>
-    withOrgContext(db, { organizationId, userId: "system" }, async (tx) => {
-      const rows = await tx
-        .select()
-        .from(PAYER)
-        .where(and(eq(PAYER.organizationId, organizationId), eq(PAYER.patientId, patientId)));
-      return rows.map(
-        (r): PatientCoverage => ({
-          id: r.id,
-          patientId: r.patientId,
-          payerId: r.payerId,
-          rank: r.rank,
-          coverageKind: r.coverageKind,
-          subscriberId: r.subscriberId,
-          groupNumber: r.groupNumber ?? null,
-          current: r.effectiveTo === null,
-          effectiveFrom: day(r.effectiveFrom) ?? "",
-          effectiveTo: day(r.effectiveTo),
-        }),
-      );
-    });
+    withOrgContext(db, { organizationId, userId: "system" }, (tx) =>
+      loadFrom(tx as DbClient, organizationId, patientId, false),
+    );
 
   return {
     async coveragesForPatient({ organizationId, patientId }) {
@@ -66,6 +79,27 @@ export function buildPatientCoverageReader(db: DbClient): PatientCoverageReader 
     // #845 — the range-wide, cross-kind resolver. A billing gate asks this, never two point reads at the endpoints.
     async coverageForRange({ organizationId, patientId, from, to, coverageKind }) {
       return coverageForRange(await load(organizationId, patientId), { from, to }, coverageKind);
+    },
+
+    async coverageSnapshotForRangeInTransaction(
+      transaction,
+      { organizationId, patientId, from, to, coverageKind },
+    ) {
+      // #877 — the payer rows alone are not a complete concurrency fence: when a higher-priority
+      // rank does not exist yet, FOR SHARE cannot predicate-lock that absent row under READ COMMITTED.
+      // The stable patient row is the per-patient namespace lock. M5's payer writer takes FOR UPDATE
+      // on this same row before replacing/inserting coverage, so no payer INSERT can become a phantom
+      // between this snapshot and the consuming claim write.
+      await (transaction as DbClient)
+        .select({ id: PATIENT.id })
+        .from(PATIENT)
+        .where(and(eq(PATIENT.organizationId, organizationId), eq(PATIENT.id, patientId)))
+        .for("share");
+      const coverages = await loadFrom(transaction as DbClient, organizationId, patientId, true);
+      return {
+        coverages: [...coverages].sort((a, b) => a.rank - b.rank),
+        resolution: coverageForRange(coverages, { from, to }, coverageKind),
+      };
     },
   };
 }

@@ -9,6 +9,7 @@ import type {
 import type { OnboardingBillingModePort } from "../../../../bootstrap/onboarding-billing-mode-port";
 import type { OnboardingClearinghousePort } from "../../../../bootstrap/onboarding-clearinghouse-port";
 import type { OnboardingCredentialPort } from "../../../../bootstrap/onboarding-credential-port";
+import type { OnboardingDoseSpotPort } from "../../../../bootstrap/onboarding-dosespot-port";
 import type {
   OnboardingNoticeFilingList,
   OnboardingNoticeKind,
@@ -17,12 +18,13 @@ import type {
 } from "../../../../bootstrap/onboarding-notice-port";
 import type { TaxIdCipherPort } from "../../../02-identity/org-admin-site-service";
 import type { OnboardingOperator } from "./onboarding-data-audit";
+import type { DoseSpotLaneMethods } from "./onboarding-dosespot-lane";
 import type { TenantMemberView } from "./onboarding-members";
 
 /** A body field set with the platform `reason` already removed, ready for the tenant's own validators. */
 export type OnboardingFields = Readonly<Record<string, unknown>>;
 
-export interface OnboardingDataService {
+export interface OnboardingDataService extends DoseSpotLaneMethods {
   listProviderEntities(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
   createProviderEntity(
     op: OnboardingOperator,
@@ -180,6 +182,8 @@ export interface OnboardingDataDeps {
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
   /** M23's clearinghouse adapter (ADR-0053 amendment 2026-11-06); unbound -> the clearinghouse routes answer 503. */
   readonly clearinghouse?: OnboardingClearinghousePort;
+  /** M12's DoseSpot adapter (tenant onboarding slice 4); unbound -> the DoseSpot routes answer 503. */
+  readonly dosespot?: OnboardingDoseSpotPort;
   /** M23's notice adapter (an operator withdraws a tenant's external-filing record); unbound -> that route answers 503. */
   readonly notices?: OnboardingNoticePort;
   /** M22's BAA document adapter (an operator uploads the tenant's signed BAA); unbound -> that route answers 503. */

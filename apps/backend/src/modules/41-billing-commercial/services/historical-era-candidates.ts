@@ -21,7 +21,7 @@ export interface M41HistoricalEraAttemptCandidate {
   readonly lineage: "original" | "correction" | "replacement" | "void" | "unknown";
   readonly attemptState: string;
   readonly submittedAt: string;
-  readonly submittedLines: "unavailable";
+  readonly submittedLines: "available" | "unavailable";
 }
 
 /** Safe M23-owned evidence projection supplied by the composition root. */

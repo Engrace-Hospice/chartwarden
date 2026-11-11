@@ -5,7 +5,7 @@
 
 `openapi:check` proves openapi.json was regenerated and that no enrichment targets a dead route. It does NOT prove a route carries a request contract — an unenriched route is still emitted, with no `requestBody` and a bare `200: OK`, and the generated client then types its body as `never`. This report is the coverage half.
 
-**Totals:** 2034/2034 routes enriched (100%) · **1/1168 mutating routes read a body they publish none for** · 9/813 GETs carry no response schema
+**Totals:** 2050/2050 routes enriched (100%) · **1/1180 mutating routes read a body they publish none for** · 9/817 GETs carry no response schema
 
 `Deficit` = routes with no enrichment entry; it is the ratcheted number (see `baseline.json`). `Mut. unpublished body` counts a POST/PUT/PATCH whose HANDLER READS a payload and whose contract publishes none — `client:gen` then types that body `never`, so the generated client cannot express the call. It used to count every mutating route with no body schema, which could never honestly reach 0 (an action POST correctly publishes none) and made shipping an empty `{}` schema the cheapest way to move it — 25 routes did exactly that. The reverse direction — a published body no handler reads, which returns 200 and discards the payload — is enforced by `arch:request-body-contract`, not counted here.
 
@@ -14,14 +14,14 @@
 | 02-identity | 57 | 57 (100%) | 0 | 35 | 0 | 18 | 0 |
 | 03-authorization | 17 | 17 (100%) | 0 | 9 | 0 | 6 | 0 |
 | 04-audit | 13 | 13 (100%) | 0 | 5 | 0 | 8 | 0 |
-| 05-patient | 48 | 48 (100%) | 0 | 27 | 0 | 21 | 4 |
+| 05-patient | 49 | 49 (100%) | 0 | 28 | 0 | 21 | 4 |
 | 06-admission | 98 | 98 (100%) | 0 | 72 | 0 | 26 | 0 |
 | 07-care-plan | 25 | 25 (100%) | 0 | 15 | 0 | 10 | 0 |
 | 08-encounters | 39 | 39 (100%) | 0 | 23 | 0 | 15 | 0 |
 | 09-assessments | 20 | 20 (100%) | 0 | 8 | 0 | 12 | 0 |
 | 10-hope | 30 | 30 (100%) | 0 | 15 | 0 | 15 | 1 |
 | 11-orders | 35 | 35 (100%) | 0 | 24 | 0 | 11 | 0 |
-| 12-dosespot | 34 | 34 (100%) | 0 | 23 | 0 | 11 | 0 |
+| 12-dosespot | 43 | 43 (100%) | 0 | 30 | 0 | 13 | 0 |
 | 13-emar | 28 | 28 (100%) | 0 | 18 | 0 | 10 | 0 |
 | 14-idg | 39 | 39 (100%) | 0 | 22 | 0 | 14 | 0 |
 | 15-discipline-care-plans | 28 | 28 (100%) | 0 | 17 | 0 | 11 | 0 |
@@ -43,7 +43,7 @@
 | 31-portal | 72 | 72 (100%) | 0 | 35 | 0 | 37 | 0 |
 | 32-ai-platform | 32 | 32 (100%) | 0 | 11 | 0 | 17 | 0 |
 | 33-reporting | 43 | 43 (100%) | 0 | 22 | 0 | 21 | 0 |
-| 34-saas-tenant-platform | 91 | 91 (100%) | 0 | 59 | 0 | 31 | 0 |
+| 34-saas-tenant-platform | 97 | 97 (100%) | 0 | 63 | 0 | 33 | 0 |
 | 35-subscription | 72 | 72 (100%) | 0 | 40 | 1 | 31 | 0 |
 | 36-messaging | 212 | 212 (100%) | 0 | 105 | 0 | 89 | 1 |
 | 37-ipu | 52 | 52 (100%) | 0 | 34 | 0 | 16 | 0 |

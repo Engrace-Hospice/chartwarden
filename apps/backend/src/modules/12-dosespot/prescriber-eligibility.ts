@@ -146,6 +146,15 @@ export function mdmIdAlreadyEnrolled(): ChartWardenError {
   );
 }
 
+/** 409 — the roster row is already linked to a DoseSpot clinician under another physician record; the link cannot be moved. */
+export function prescriberVendorLinked(): ChartWardenError {
+  return new ChartWardenError(
+    "DOSESPOT_PRESCRIBER_VENDOR_LINKED",
+    "This prescriber is already linked to a DoseSpot clinician under a different physician record; the link cannot be re-pointed through the roster. Ask platform support to correct it.",
+    HTTP_CONFLICT,
+  );
+}
+
 /** 422 — the verbal order's named prescriber MDM id has no active roster row, so nobody could ever sign it. */
 export function namedPrescriberNotEnrolled(): ChartWardenError {
   return new ChartWardenError(

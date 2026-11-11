@@ -60,6 +60,7 @@ export function decodeCursor<T>(
   isPayload: (value: unknown) => value is T,
 ): T | null {
   if (!raw) return null;
+  if (raw.length > CURSOR_MAX_LENGTH) throw new InvalidCursorError();
   const dot = raw.lastIndexOf(".");
   if (dot <= 0) throw new InvalidCursorError();
   const body = raw.slice(0, dot);
@@ -85,16 +86,53 @@ export function decodeCursor<T>(
  */
 interface OffsetCursor {
   readonly o: number;
+  /** HMAC tag of the list identity + normalized filters; never the filter values themselves. */
+  readonly c: string;
 }
 
 function isOffsetCursor(value: unknown): value is OffsetCursor {
-  const o = (value as Partial<OffsetCursor> | null)?.o;
-  return typeof o === "number" && Number.isSafeInteger(o) && o >= 0;
+  const cursor = value as Partial<OffsetCursor> | null;
+  return (
+    typeof cursor?.o === "number" &&
+    Number.isSafeInteger(cursor.o) &&
+    cursor.o >= 0 &&
+    typeof cursor.c === "string" &&
+    /^[A-Za-z0-9_-]{43}$/.test(cursor.c)
+  );
 }
 
-/** Sign the offset of the next page's first row for `orgId`. */
-export function encodeOffsetCursor(orgId: string, offset: number): string {
-  return encodeCursor(orgId, { o: offset } satisfies OffsetCursor);
+export type OffsetCursorFilterValue = string | number | boolean | null | undefined;
+
+/**
+ * Stable in-memory context for one offset-paged list. Filter values may contain PHI; the cursor stores only
+ * a keyed digest of this string, never the string itself. Callers normalize semantically equivalent values
+ * (for example trim `q`) before passing them.
+ */
+export function offsetCursorScope(
+  list: string,
+  filters: Readonly<Record<string, OffsetCursorFilterValue>> = {},
+): string {
+  const entries = Object.entries(filters)
+    .filter(
+      (entry): entry is [string, Exclude<OffsetCursorFilterValue, undefined>] =>
+        entry[1] !== undefined,
+    )
+    .sort(([left], [right]) => left.localeCompare(right));
+  return JSON.stringify([list, entries]);
+}
+
+function offsetContextTag(orgId: string, scope: string): string {
+  return createHmac("sha256", signingKey())
+    .update(`offset-scope\0${orgId}\0${scope}`)
+    .digest("base64url");
+}
+
+/** Sign the offset of the next page's first row for `orgId`, bound to one list/filter scope. */
+export function encodeOffsetCursor(orgId: string, offset: number, scope: string): string {
+  return encodeCursor(orgId, {
+    o: offset,
+    c: offsetContextTag(orgId, scope),
+  } satisfies OffsetCursor);
 }
 
 /**
@@ -102,9 +140,16 @@ export function encodeOffsetCursor(orgId: string, offset: number): string {
  * is {@link InvalidCursorError}. `raw` is `unknown` so a route that reads `request.query` unvalidated can pass it
  * straight through: a repeated `?cursor=a&cursor=b` (an array) is refused, not coerced to page 1.
  */
-export function decodeOffsetCursor(orgId: string, raw: unknown): number {
+export function decodeOffsetCursor(orgId: string, raw: unknown, scope: string): number {
   if (raw !== undefined && raw !== null && typeof raw !== "string") throw new InvalidCursorError();
-  return decodeCursor(orgId, raw, isOffsetCursor)?.o ?? 0;
+  const cursor = decodeCursor(orgId, raw, isOffsetCursor);
+  if (cursor === null) return 0;
+  const provided = Buffer.from(cursor.c, "utf8");
+  const expected = Buffer.from(offsetContextTag(orgId, scope), "utf8");
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+    throw new InvalidCursorError();
+  }
+  return cursor.o;
 }
 
 /** The common keyset payload: a sort value (ISO instant/date or text) plus the tie-breaking row id. */

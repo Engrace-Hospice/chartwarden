@@ -29,7 +29,17 @@ function stage(state = "staged", reasonCode: string | null = null) {
           paymentMethod: "eft",
           totalPaymentAmount: 130,
           productionDate: "2026-10-01",
-          providerAdjustments: [{ reason: "WO", reference: "SYNTH-REF", amount: -5 }],
+          providerAdjustments: [
+            {
+              reason: "WO",
+              reference: "SYNTH-REF",
+              amount: -5,
+              providerIdentifier: "1234567893",
+              fiscalPeriod: "2026-12-31",
+              segmentPosition: 17,
+              occurrence: 1,
+            },
+          ],
           claims: [
             {
               patientControlNumber: "SYNTH-PCN",
@@ -204,7 +214,21 @@ describe("M25 Claim.MD ERA review projection", () => {
           serviceLines: [{ procedureCode: "SYNTH-HCPCS" }],
         },
       ],
-      providerAdjustments: [{ reason: "WO", amount: -5 }],
+      sourceDigest: "b".repeat(64),
+      providerAdjustments: [
+        {
+          reason: "WO",
+          amount: -5,
+          providerIdentifierMasked: "••••7893",
+          fiscalPeriod: "2026-12-31",
+          segmentPosition: 17,
+          occurrence: 1,
+          classification: "overpayment_recovery_reported",
+          historicalReference: "not_verified",
+          policyStatus: "not_configured",
+          postingEligible: false,
+        },
+      ],
       claimOutcomes: [
         {
           outcome: "verified",

@@ -721,6 +721,43 @@ export interface ClaimsBillingEntitlementReader {
 }
 
 /**
+ * Owner decision D1 (2026-11-06) — a suspended, paused or canceled ChartWarden subscription still blocks NEW claims and
+ * eligibility work, whatever the tenant's clearinghouse says (the add-on is gone; the subscription is not). The reasons are the
+ * same strings the gate's 402 carries ({@link ClaimsBillingDenyReason}).
+ */
+export type SubscriptionWorkBlockReason =
+  | "subscription_suspended"
+  | "subscription_paused"
+  | "subscription_canceled";
+
+export type SubscriptionWorkBlock =
+  | { readonly blocked: false }
+  | { readonly blocked: true; readonly reason: SubscriptionWorkBlockReason };
+
+/**
+ * The seam (owner M35) through which M23's claims-billing decision reads the org's subscription: `blocked` for a suspended,
+ * paused or canceled one; not blocked for trialing / active / past_due / at_risk, and for an org with no subscription row
+ * (nothing suspended it). No cache. Throws when the read fails; the gate then fails CLOSED.
+ */
+export interface SubscriptionWorkBlockReader {
+  blockForOrg(organizationId: OrgId): Promise<SubscriptionWorkBlock>;
+}
+
+/**
+ * Slice 2 (tenant pricing) — the billing service mode of an organisation's subscription (owner M35). `null` = the org has
+ * no LIVE contracted (census_banded) subscription right now, which is wider than "never contracted": it is also what an org
+ * whose contracted subscription is CANCELED or PAUSED reads (the read covers live contracts only, the same scope the daily
+ * census records for; a pause with an end date whose date has passed counts as live again, an open-ended pause or one still
+ * in the future does not). A paused org still has a contract and a mode; this read does not report it. A caller must therefore
+ * not take `null` to mean "uncontracted, so unrestricted" for an org that may be paused or between contracts. A small read so
+ * another module can enforce a rule that depends on it (slice 3: a tenant that bills outside ChartWarden must be on `none`).
+ * Reads the database every call (no cache); throws when the read fails, and a caller that must not guess fails closed.
+ */
+export interface BillingServiceModeReader {
+  billingServiceModeForOrg(organizationId: OrgId): Promise<BillingServiceMode | null>;
+}
+
+/**
  * Slice 2 (tenant pricing) — one organisation's NET COLLECTIONS for a period (owner M25 remittance), the meter the
  * billing-service percentage is charged on. Integer cents.
  *   netCents          = the sum of `remittance_advice.total_payment_amount` (835 BPR02) over remittances of the org
@@ -759,29 +796,6 @@ export interface NetCollectionsReader {
     organizationId: OrgId,
     period: { readonly periodStart: Date; readonly periodEnd: Date },
   ): Promise<NetCollectionsMonth[]>;
-}
-
-/**
- * Owner decision D1 (2026-11-06) — a suspended, paused or canceled ChartWarden subscription still blocks NEW claims and
- * eligibility work, whatever the tenant's clearinghouse says (the add-on is gone; the subscription is not). The reasons are the
- * same strings the gate's 402 carries ({@link ClaimsBillingDenyReason}).
- */
-export type SubscriptionWorkBlockReason =
-  | "subscription_suspended"
-  | "subscription_paused"
-  | "subscription_canceled";
-
-export type SubscriptionWorkBlock =
-  | { readonly blocked: false }
-  | { readonly blocked: true; readonly reason: SubscriptionWorkBlockReason };
-
-/**
- * The seam (owner M35) through which M23's claims-billing decision reads the org's subscription: `blocked` for a suspended,
- * paused or canceled one; not blocked for trialing / active / past_due / at_risk, and for an org with no subscription row
- * (nothing suspended it). No cache. Throws when the read fails; the gate then fails CLOSED.
- */
-export interface SubscriptionWorkBlockReader {
-  blockForOrg(organizationId: OrgId): Promise<SubscriptionWorkBlock>;
 }
 
 /** §4.5 platform-shared revenue metrics (consumed by M33 for the platform-ops revenue dashboard). */

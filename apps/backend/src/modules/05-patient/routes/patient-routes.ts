@@ -73,6 +73,8 @@ import {
   MergeBodySchema,
   MessagingPatientSearchQuerySchema,
   PatientListQuerySchema,
+  PatientPayerParamsSchema,
+  VoidPatientPayerBodySchema,
   parse,
 } from "./patient-typebox";
 import type { PatientRouteService } from "./service";
@@ -139,6 +141,7 @@ const CREATE_SSN_GATE: PreHandler = async (request, reply) => {
 };
 const EDIT = requirePermission("patient.edit") as PreHandler;
 const EDIT_PAYERS = requirePermission("patient.edit_payers") as PreHandler;
+const VOID_PAYER_STEP_UP = requireStepUp("patient.edit_payers") as PreHandler;
 const AMEND_RECORD = requirePermission("patient.amend_request_record") as PreHandler;
 const AMEND_REVIEW = requirePermission("patient.amend_review") as PreHandler;
 
@@ -366,6 +369,21 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
       const payer = await service.addPayer(organizationId, id, body, userId);
 
       return reply.code(201).send(payer);
+    },
+  );
+
+  app.post(
+    "/api/v1/patients/:id/payers/:payerRowId/void",
+    {
+      // #874 — voiding billing-relevant coverage is deliberately stronger than adding a successor:
+      // the narrow payer permission + chart scope + a server-verified fresh step-up all compose.
+      preHandler: [EDIT_PAYERS, SCOPE_EDIT_PAYERS, VOID_PAYER_STEP_UP],
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id, payerRowId } = parse(PatientPayerParamsSchema, request.params);
+      const { reason } = parse(VoidPatientPayerBodySchema, request.body);
+      return service.voidPayer(organizationId, id, payerRowId, reason, userId);
     },
   );
 

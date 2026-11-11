@@ -188,6 +188,10 @@ export const PLATFORM_ONBOARDING_DATA_KEYS = [
   // Owner decision 2026-11-06: an operator uploads the signed BAA for a tenant (migration 1424). Scoped to the one document kind
   // `tenant_baa` and the tenant in the path; it is not `documents.upload` and reads no document.
   "tenant_baa_document.upload_platform",
+  // Tenant onboarding slice 4 (ADR-0111): the tenant's DoseSpot clinic registration is onboarding data entered on its behalf,
+  // with the same predicate, step-up and reason (migration 1429).
+  "tenant_dosespot.read_platform",
+  "tenant_dosespot.write_platform",
 ] as const;
 const PLATFORM_ONBOARDING_DATA_ROLES: readonly PlatformOpsRoleKey[] = ["platform_ops"];
 

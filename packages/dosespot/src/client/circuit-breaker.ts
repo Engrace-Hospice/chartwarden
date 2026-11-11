@@ -91,7 +91,8 @@ export function applyOutcome(
 
   const failures = [...live, nowInstant];
   // A failure during the half-open probe re-opens immediately; otherwise trip once the threshold is met.
-  const shouldOpen = snapshot.state === "half_open" || failures.length >= config.failureThreshold;
+  // The stored state never reads `half_open` (evaluateBreaker only reports it), so a failure on an `open` snapshot is that probe's.
+  const shouldOpen = snapshot.state !== "closed" || failures.length >= config.failureThreshold;
   return shouldOpen
     ? { state: "open", recentFailureInstants: failures, openedAt: nowInstant }
     : { state: "closed", recentFailureInstants: failures, openedAt: null };

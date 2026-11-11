@@ -90,8 +90,8 @@ const BAA_DOCUMENT_UPLOAD_KEY = "tenant_baa_document.upload_platform";
  */
 const PRICING_WRITE_KEY = "subscription.onboard_platform";
 
-const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
-const OPS = (key: string): PreHandler => requireAbac(key, PLATFORM_OPS) as PreHandler;
+export const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
+export const OPS = (key: string): PreHandler => requireAbac(key, PLATFORM_OPS) as PreHandler;
 
 const READ: readonly PreHandler[] = [P(READ_KEY), OPS(READ_KEY)];
 const WRITE: readonly PreHandler[] = [
@@ -182,7 +182,7 @@ const BAA_DOCUMENT_UPLOAD: readonly PreHandler[] = [
 ];
 
 /** The operator, from the server-assembled session (never the body); the kit's write actor: 401 without a session, 403 for a live session with no membership. */
-function operatorOf(request: FastifyRequest): OnboardingOperator {
+export function operatorOf(request: FastifyRequest): OnboardingOperator {
   const actor = writeActorOf(request);
   const ctx = request.context;
   return {

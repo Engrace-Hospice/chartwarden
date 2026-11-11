@@ -57,6 +57,7 @@ import {
   type OnboardingOperator,
   recordOnboardingAudit,
 } from "./onboarding-data-audit";
+import { buildDoseSpotLane } from "./onboarding-dosespot-lane";
 import type {
   OnboardingDataDeps,
   OnboardingDataService,
@@ -292,6 +293,38 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       `this change is accepted only while the tenant is ${list} (it is ${status.replaceAll("_", " ")})`,
       409,
     );
+  }
+
+  /**
+   * Apply the onboarding-status gate before work that cannot be rolled back (for example, a DoseSpot vendor call).
+   * The normal `write` path repeats this check under the same shared lock before recording the result.
+   */
+  async function precheck(op: OnboardingOperator, orgSlug: string, spec: WriteSpec): Promise<void> {
+    const target = await targetOf(orgSlug);
+    const refusedStatus = await withOrgContext<DbClient, string | null>(
+      db,
+      { organizationId: target.organizationId, userId: op.userId },
+      async (tx) => {
+        await lockTenantOnboardingShared(tx, target.organizationId);
+        const [account] = await tx
+          .select({ status: ACCOUNT.status })
+          .from(ACCOUNT)
+          .where(eq(ACCOUNT.organizationId, target.organizationId))
+          .limit(1);
+        if (!account) throw new NotFoundError("tenant");
+        const accepted = spec.allowedStatuses ?? ONBOARDING_WRITABLE_STATUSES;
+        if (spec.anyTenantStatus || accepted.has(account.status)) return null;
+        await recordOnboardingAudit(tx, op, target, {
+          eventType: EVENTS.writeRefused,
+          resourceKind: spec.resourceKind,
+          outcome: "denied",
+          reason: spec.reason,
+          detail: { attemptedEvent: spec.event, tenantStatus: account.status },
+        });
+        return account.status;
+      },
+    );
+    if (refusedStatus !== null) throw statusRefusal(spec, refusedStatus);
   }
 
   /** Post-commit, best effort: let the advance sweep settle whatever step this write satisfied. */
@@ -729,5 +762,17 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       ),
     upsertMedicaidCredential: (op, orgSlug, fields, reason) =>
       upsertCredential(op, orgSlug, MEDICAID_LANE, fields, reason),
+
+    // Tenant onboarding slice 4: the DoseSpot lane reuses this service's lock, audit, status and settle helpers.
+    ...buildDoseSpotLane({
+      port: () => deps.dosespot,
+      targetOf,
+      scopeOf,
+      write,
+      precheck,
+      read,
+      settle: settleStepAfter,
+      ...(deps.logError ? { logError: deps.logError } : {}),
+    }),
   };
 }

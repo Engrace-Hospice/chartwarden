@@ -264,6 +264,9 @@ describe("M1 — ledger integrity", () => {
 describe("M2 — the harness protects itself from the shell", () => {
   it.each([
     "sed -i s/a/b/ .claude/settings.json",
+    "sed -i s/a/b/ .agents/rules/phi-and-secrets.md",
+    "sed -i s/a/b/ .codex/hooks.json",
+    "rm .codex/config.toml",
     "rm -rf .claude/audit",
     "echo x > scripts/harness/patterns.ts",
     "echo x >> compliance/controls.yaml",
@@ -338,12 +341,23 @@ describe("M4 — .gitignore keeps new .claude/ state local", () => {
     ".claude/settings.local.json",
     ".claude/audit/agent-ledger-2026-10.jsonl",
     ".claude/some-future-state.json",
+    ".agents/plans/x.md",
+    ".agents/prds/x.md",
+    ".agents/settings.json",
+    ".agents/settings.local.json",
+    ".agents/some-future-state.json",
+    ".codex/config.toml",
+    ".codex/sessions/x.jsonl",
   ])("ignores %s", (p) => expect(ignored(p)).toBe(true));
   it.each([
     ".claude/settings.json",
     ".claude/rules/phi-and-secrets.md",
     ".claude/agents/compliance-reviewer.md",
     ".claude/skills/synthetic-phi/SKILL.md",
+    ".agents/rules/phi-and-secrets.md",
+    ".agents/agents/compliance-reviewer.md",
+    ".agents/skills/synthetic-phi/SKILL.md",
+    ".codex/hooks.json",
   ])("shares %s", (p) => expect(ignored(p)).toBe(false));
 });
 

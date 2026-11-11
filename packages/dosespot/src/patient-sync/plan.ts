@@ -6,6 +6,7 @@
 // coalesces same-state re-syncs, §2.6), and folds an upsert outcome into the retry/escalation decision. No
 // reverse sync: a demographic mismatch raises an M36 alert, never a silent overwrite (§2.6). IO-free; the
 // upstream upsert is keyed on `chartwardenPatientId` so repeated calls are no-ops at DoseSpot's side.
+import { createHash } from "node:crypto";
 import type { M12AlertPayload, M12EventName } from "@chartwarden/types";
 import type { DoseSpotPatientPayload } from "../client/contract";
 
@@ -35,13 +36,28 @@ export interface PatientSyncSnapshot {
   readonly updatedAt: string;
 }
 
+/** How many hex characters of the registration target's SHA-256 a patient-sync key carries (64 bits: two clinics never collide in practice). */
+const TARGET_DIGEST_HEX_CHARS = 16;
+
 /**
  * `patientSyncIdempotencyKey` — the `dosespot.patient_sync` job key `patient:${patientId}:${updatedAt}` (§2.6).
  * Two events carrying the same patient at the same `updated_at` collapse to one job — same-state re-syncs are
  * no-ops without hitting the adapter.
+ *
+ * With `registrationTarget` (which clinic the tenant's registration names: `<environment>:<clinic id>`) the key becomes
+ * `patient:${patientId}:${updatedAt}:${digest}`. It rides as the `Idempotency-Key` of the upsert, and a patient's `updated_at` does not change when
+ * the tenant moves to another clinic: without the target, `addPatient` at the NEW clinic would carry the key the OLD clinic already answered, and a
+ * vendor that dedupes by key could replay the old clinic's patient id. Only a digest of the target is in the key, never the clinic id.
  */
-export function patientSyncIdempotencyKey(patientId: string, updatedAt: string): string {
-  return `patient:${patientId}:${updatedAt}`;
+export function patientSyncIdempotencyKey(
+  patientId: string,
+  updatedAt: string,
+  registrationTarget?: string,
+): string {
+  const base = `patient:${patientId}:${updatedAt}`;
+  if (registrationTarget === undefined) return base;
+  const digest = createHash("sha256").update(registrationTarget, "utf8").digest("hex");
+  return `${base}:${digest.slice(0, TARGET_DIGEST_HEX_CHARS)}`;
 }
 
 /**
@@ -79,9 +95,16 @@ export interface PlannedPatientSync {
  * `planPatientSync` — build the dispatch plan from an M5 snapshot: the coalescing idempotency key, the upsert
  * payload, and the `m12.dosespot_patient_synced` success event the worker emits on a clean upsert.
  */
-export function planPatientSync(snapshot: PatientSyncSnapshot): PlannedPatientSync {
+export function planPatientSync(
+  snapshot: PatientSyncSnapshot,
+  registrationTarget?: string,
+): PlannedPatientSync {
   return {
-    idempotencyKey: patientSyncIdempotencyKey(snapshot.patientId, snapshot.updatedAt),
+    idempotencyKey: patientSyncIdempotencyKey(
+      snapshot.patientId,
+      snapshot.updatedAt,
+      registrationTarget,
+    ),
     payload: buildPatientUpsertPayload(snapshot),
     event: "m12.dosespot_patient_synced",
   };

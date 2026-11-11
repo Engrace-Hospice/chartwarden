@@ -74,7 +74,10 @@ export interface CommercialAuditPort {
 }
 
 export interface CommercialClaimSeams {
-  readonly coverage: Pick<PatientCoverageReader, "coveragesForPatient" | "coverageForRange">; // M5
+  readonly coverage: Pick<
+    PatientCoverageReader,
+    "coveragesForPatient" | "coverageForRange" | "coverageSnapshotForRangeInTransaction"
+  >; // M5
   readonly admission: AdmissionContextReader; // M6
   readonly electionPeriods: ElectionPeriodReader; // M6
   readonly levelOfCare: LevelOfCareReader; // M6

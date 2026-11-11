@@ -14,6 +14,7 @@ export type {
   PortalSessionBinder,
   VendorSessionBinder,
   BillingStatusProvider,
+  BillingServiceModeReader,
   ClaimsBillingEntitlementReader,
   SubscriptionWorkBlockReader,
   TenantClearinghouseReader,

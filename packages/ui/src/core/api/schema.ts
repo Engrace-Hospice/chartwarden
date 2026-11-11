@@ -1310,6 +1310,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/dosespot-prescribers/{membershipId}/dosespot-enrollment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a roster prescriber with DoseSpot and record the vendor's id (the link transmission sends under). Needs a verified or active registration (409 DOSESPOT_NOT_READY) and a membership of this organization (404). The body is empty: the NPI and legal name are NEVER taken from the caller (a typed npi, firstName or lastName is a 422) but derived from the physician record the prescriber roster links the member to (409 DOSESPOT_PRACTITIONER_NOT_LINKED / _NOT_ACTIVE / _NPI_MISSING / _NAME_MISSING, 422 DOSESPOT_NPI_INVALID by its check digit), and cross-checked against NPPES (409 DOSESPOT_NPPES_MISMATCH when NPPES lists an organization, a deactivated provider or another surname; a production registration also needs NPPES to list the NPI, 409 DOSESPOT_NPPES_UNVERIFIED); idempotent for a prescriber already linked; never reinstates a revoked prescriber (409 DOSESPOT_PRESCRIBER_REVOKED); a second enrolment in flight is 409 DOSESPOT_ENROLLMENT_IN_PROGRESS; the prescriber must first have confirmed the linked record themself (409 DOSESPOT_PRACTITIONER_UNCONFIRMED); a roster re-link while it ran is 409 DOSESPOT_ROSTER_CHANGED; a registration move to another clinic while the vendor call ran is 409 DOSESPOT_REGISTRATION_MOVED (nothing is linked: enrol again under the new registration); a 2xx DoseSpot accepted but did not confirm is 502 DOSESPOT_ENROLLMENT_UNCONFIRMED (the claim is kept: the clinician may exist); the vendor call runs with no transaction open. Never starts EPCS or IAL2. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        post: operations["postApiV1AdminDosespotprescribersByMembershipIdDosespotenrollment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/dosespot-prescribers/{membershipId}/enroll": {
         parameters: {
             query?: never;
@@ -1319,7 +1336,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Enroll a prescriber into DoseSpot; Idempotency-Key required */
+        /** Put a member on the prescriber roster and link them to a physician record (externalPhysicianMdmId). The acting administrator is recorded as the link's asserter: the linked member cannot confirm a link they made themself (409 DOSESPOT_LINK_SELF_CONFIRM on the confirmation); re-saving a link that has no recorded maker records the acting administrator as its maker. prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused */
         post: operations["postApiV1AdminDosespotprescribersByMembershipIdEnroll"];
         delete?: never;
         options?: never;
@@ -1336,7 +1353,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke a prescriber; Idempotency-Key required */
+        /** Revoke a prescriber from the roster (their link confirmation goes with it). prescribing.admin.roster + a fresh step-up; Idempotency-Key required; an AI actor is refused */
         post: operations["postApiV1AdminDosespotprescribersByMembershipIdRevoke"];
         delete?: never;
         options?: never;
@@ -15408,6 +15425,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/dosespot-prescriber-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The signed-in prescriber's OWN link: the physician record the prescriber roster linked them to, shown with its name and NPI (public provider data), and whether they have confirmed it. prescribing.sign; the session's membership selects the roster row */
+        get: operations["getApiV1MeDosespotprescriberlink"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/dosespot-prescriber-link/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The prescriber confirms, from their own account, that the physician record the roster linked them to is theirs. Pinned to the link and NPI they were shown (409 DOSESPOT_ROSTER_CHANGED if either moved); a link the member made themself cannot be confirmed by them (409 DOSESPOT_LINK_SELF_CONFIRM: another roster administrator must link them), nor can a link whose maker was never recorded (409 DOSESPOT_LINK_MAKER_UNKNOWN: a roster administrator must link them again), and the enrolment refuses a link whose linker is its confirmer; 409 DOSESPOT_PRACTITIONER_NOT_LINKED when they are not on the roster, _NOT_ACTIVE / _NPI_MISSING / DOSESPOT_NPPES_MISMATCH when the record cannot vouch. Never on behalf of another member and no platform route exists. The DoseSpot enrolment, on both lanes, is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until a confirmation matches the current link. prescribing.sign + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        post: operations["postApiV1MeDosespotprescriberlinkConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/permissions": {
         parameters: {
             query?: never;
@@ -15987,6 +16038,23 @@ export interface paths {
         put?: never;
         /** Move a draft to pending_signature; Idempotency-Key required */
         post: operations["postApiV1MedicationordersByIdRequestsignature"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/medication-orders/{id}/resolve-held-transmission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** An organization administrator resolves a medication order HELD because DoseSpot may have acted on its NewRx call but did not confirm the outcome (an unreadable or id-less 2xx, a lost send answer, or a send answered with a 5xx other than 503; the order is in flight and its transmission is marked unconfirmed_outcome; while it is held no worker fails, retries or re-sends it, though the slow original call's own late answer can still end the hold). Check the prescriber's DoseSpot account, then say `sent` (with the DoseSpot prescription id: the order becomes transmitted and the status poll follows it as for any transmitted order) or `not_sent` (the order becomes transmission_failed and the prescriber retransmits it; it is never re-sent). Accepted only while the order is still held, under a row lock (409 DOSESPOT_TRANSMISSION_NOT_HELD otherwise, including a second resolution); `sent` without an id is 422 DOSESPOT_PRESCRIPTION_ID_REQUIRED, `not_sent` with one is 422 DOSESPOT_PRESCRIPTION_ID_UNEXPECTED, and an id another order of the organization already carries is 409 DOSESPOT_PRESCRIPTION_ID_IN_USE (webhooks bind by it); a reason that is under 10 characters once trimmed (it passed the request schema's length only because it was padded with whitespace) is 422 DOSESPOT_REASON_REQUIRED, while one under 10 characters as sent, or nothing but whitespace, is already a 400 from the request schema; an order of another organization is 404. The reason is kept on the transmission record, never in an event or an audit entry. prescribing.clinic.admin + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        post: operations["postApiV1MedicationordersByIdResolveheldtransmission"];
         delete?: never;
         options?: never;
         head?: never;
@@ -20653,6 +20721,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/payers/{payerRowId}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Void an unclaimed mistaken payer row as an audited empty window (step-up required) */
+        post: operations["postApiV1PatientsByIdPayersByPayerRowIdVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{id}/privacy": {
         parameters: {
             query?: never;
@@ -22071,6 +22156,92 @@ export interface paths {
         put?: never;
         /** Request a DEK rotation (enqueues tenant.dek_rotate; step-up) */
         post: operations["postApiV1PlatformTenantsByOrgSlugDekrotate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's DoseSpot registration, masked (hasSecret; no credential is ever returned) — platform ops; read is audited */
+        get: operations["getApiV1PlatformTenantsByOrgSlugDosespot"];
+        /** Register a tenant's DoseSpot clinic on its behalf: create (201) or version-checked change (200, If-Match). Platform support may set the clinic's own Subscription-Key; draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused */
+        put: operations["putApiV1PlatformTenantsByOrgSlugDosespot"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take a tenant's active DoseSpot registration out of service (back to verified). NOT limited to an onboarding tenant: a live tenant needs it too. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` are required; an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugDosespotDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/prescribers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's prescriber roster and whether each prescriber is linked to DoseSpot (no NPI, no DEA number, no vendor id) — platform ops; read is audited */
+        get: operations["getApiV1PlatformTenantsByOrgSlugDosespotPrescribers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/prescribers/{membershipId}/enroll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register a roster prescriber with DoseSpot on the tenant's behalf and record the vendor's id (409 DOSESPOT_NOT_READY until the registration is verified or active; the NPI and legal name are derived from the physician record the roster links the member to and cross-checked against NPPES, never typed, so the body is the reason alone, and the prescriber must have confirmed that link themself (the roster list shows linkConfirmed; the operator cannot confirm for them): see the tenant route for the 409/422 codes; idempotent for a linked prescriber; never starts EPCS). tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugDosespotPrescribersByMembershipIdEnroll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/dosespot/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test a tenant's DoseSpot connection (a no-PHI token mint; a failed test is a 200 with the outcome); 6 requests/min per target tenant. tenant_dosespot.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise; deactivate is the one exception); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugDosespotVerify"];
         delete?: never;
         options?: never;
         head?: never;
@@ -28355,6 +28526,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenant/dosespot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's DoseSpot registration, masked (hasSecret; no credential is ever returned; prescribersEnrolled and queuedTransmissions are shown, neither gates anything) — draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned. prescribing.clinic.read (org-level) */
+        get: operations["getApiV1TenantDosespot"];
+        /** Save the DoseSpot registration: create (201) or version-checked change (200, If-Match). Complete input is `registered`, incomplete stays `draft` (save and resume); ANY change to the environment, clinic, clinician or a key sends the row back and clears the test and activation (a change of environment or clinic also drops the stored key). The environment is a name, never a URL. A tenant administrator cannot introduce a Subscription-Key (422 DOSESPOT_SUBSCRIPTION_KEY_PLATFORM_ONLY) but may rotate one platform support set — draft -> registered -> verified -> active: only an ACTIVE registration transmits (an org with no registration of its own keeps its DOSESPOT_TENANT_CONFIGS env entry, if it has one; a registration that exists is served by itself alone). The clinic key (and a Subscription-Key) are write-only, sealed under the tenant's own key and never returned. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused */
+        put: operations["putApiV1TenantDosespot"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/dosespot/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a verified registration: e-prescribing then transmits for the organization (409 DOSESPOT_NOT_VERIFIED before a passed test; production only when the platform enabled it; idempotent once active). prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantDosespotActivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/dosespot/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take an active registration out of service (back to verified; the credential is unchanged, so no new test is owed). Newly signed orders then activate locally and queued ones wait. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantDosespotDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/dosespot/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test the DoseSpot connection: one service-clinician token mint with the stored credential, no patient data. The probe runs with no transaction open (409 DOSESPOT_CHANGED_DURING_VERIFY if the registration moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome (credential_rejected or unreachable) and leaves the status where it was; production is refused (409 DOSESPOT_PRODUCTION_NOT_ENABLED) until the platform enables it. prescribing.clinic.admin (org-level) + a fresh step-up; Idempotency-Key required */
+        post: operations["postApiV1TenantDosespotVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/dsar-export-jobs": {
         parameters: {
             query?: never;
@@ -34086,10 +34326,48 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1AdminDosespotprescribersByMembershipIdDosespotenrollment: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                membershipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        /** @constant */
+                        enrolledWithDoseSpot: true;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AdminDosespotprescribersByMembershipIdEnroll: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
             path: {
                 membershipId: string;
             };
@@ -34119,7 +34397,10 @@ export interface operations {
     postApiV1AdminDosespotprescribersByMembershipIdRevoke: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
             path: {
                 membershipId: string;
             };
@@ -68030,6 +68311,7 @@ export interface operations {
                     ifVersion?: number;
                     /** Format: date-time */
                     targetDate: string;
+                    /** @description RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline. */
                     authorDiscipline: "RN" | "NP" | "MD" | "LPN" | "LVN";
                     data: {
                         I?: {
@@ -68173,6 +68455,8 @@ export interface operations {
                 "application/json": {
                     reason: string;
                     ifVersion?: number;
+                    /** @description RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline. */
+                    authorDiscipline: "RN" | "NP" | "MD" | "LPN" | "LVN";
                 };
             };
         };
@@ -76374,6 +76658,89 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MeDosespotprescriberlink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        /** @description The member is on the prescriber roster (not revoked) and the roster links a physician record to them. */
+                        linked: boolean;
+                        externalPhysicianMdmId: string | null;
+                        physician: {
+                            firstName: string;
+                            lastName: string;
+                            npi: string;
+                        } | null;
+                        /** @description The prescriber has confirmed THIS link and the record's CURRENT NPI. The DoseSpot enrolment is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until they have. */
+                        confirmed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MeDosespotprescriberlinkConfirm: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Format: uuid
+                     * @description The physician record the prescriber was shown (the link the roster held when they looked).
+                     */
+                    externalPhysicianMdmId: string;
+                    /** @description The NPI the prescriber was shown for that record. A link or NPI that has since changed is a 409. */
+                    npi: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        /** @description The member is on the prescriber roster (not revoked) and the roster links a physician record to them. */
+                        linked: boolean;
+                        externalPhysicianMdmId: string | null;
+                        physician: {
+                            firstName: string;
+                            lastName: string;
+                            npi: string;
+                        } | null;
+                        /** @description The prescriber has confirmed THIS link and the record's CURRENT NPI. The DoseSpot enrolment is refused (409 DOSESPOT_PRACTITIONER_UNCONFIRMED) until they have. */
+                        confirmed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MePermissions: {
         parameters: {
             query?: never;
@@ -78484,6 +78851,48 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicationordersByIdResolveheldtransmission: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description `sent`: the prescription IS in the prescriber's DoseSpot account (give its id). `not_sent`: it is NOT there; the order becomes transmission_failed and the prescriber retransmits it. Neither re-sends anything. */
+                    outcome: "sent" | "not_sent";
+                    /** @description What you checked and found. Kept on the transmission record (not in any audit image or event); do not put patient details in it. */
+                    reason: string;
+                    /** @description The DoseSpot prescription id you found. Required for `sent`; refused for `not_sent`. */
+                    dosespotPrescriptionId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        orderId: string;
+                        outcome: "sent" | "not_sent";
+                        status: "transmitted" | "transmission_failed";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -93167,6 +93576,48 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1PatientsByIdPayersByPayerRowIdVoid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                payerRowId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "wrong_payer" | "wrong_coverage_kind" | "wrong_subscriber_id" | "wrong_effective_date" | "duplicate_entry";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        payerId: string;
+                        rank: number;
+                        coverageKind: string;
+                        subscriberId: string;
+                        groupNumber: string | null;
+                        binPcn: string | null;
+                        current: boolean;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PatientsByIdPrivacy: {
         parameters: {
             query?: never;
@@ -97539,6 +97990,305 @@ export interface operations {
                     "application/json": {
                         tenantAccountId: string;
                         jobId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugDosespot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        prescribersEnrolled: number;
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1PlatformTenantsByOrgSlugDosespot: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+                /** @description The registration's current integer version; required to change an existing registration, absent on a first save. */
+                "If-Match"?: string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The DoseSpot environment the clinic lives in. A name, never a URL: the host is platform configuration. Production needs the platform to have enabled it. */
+                    environment: "sandbox" | "production";
+                    clinicId?: string;
+                    serviceClinicianId?: string;
+                    /** @description Write-only: sealed under the tenant's own key and never returned. */
+                    clinicKey?: string;
+                    /** @description Write-only. Platform support may set the clinic's own Subscription-Key; a tenant administrator may only rotate one that was set. */
+                    subscriptionKey?: string;
+                    /** @description Attests that this clinic has NO Subscription-Key of its own (the platform's is used), so a new clinic key can be sealed alone: the repair for a registration whose stored credential cannot be opened. Contradicts a subscriptionKey in the same call. */
+                    usePlatformSubscriptionKey?: boolean;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        prescribersEnrolled: number;
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugDosespotDeactivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        prescribersEnrolled: number;
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugDosespotPrescribers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            membershipId: string;
+                            onRoster: boolean;
+                            enrolledWithDoseSpot: boolean;
+                            vendorEnrollmentRequestedAt: string | null;
+                            /** @description The prescriber has confirmed the physician record linked to them (from their own account; there is no operator route for it). An enrolment is refused 409 DOSESPOT_PRACTITIONER_UNCONFIRMED until they have. */
+                            linkConfirmed: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugDosespotPrescribersByMembershipIdEnroll: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+                membershipId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        /** @constant */
+                        enrolledWithDoseSpot: true;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugDosespotVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        config: {
+                            source: "tenant" | "platform_env" | "none";
+                            status: ("draft" | "registered" | "verified" | "active") | null;
+                            environment: ("sandbox" | "production") | null;
+                            clinicId: string | null;
+                            serviceClinicianId: string | null;
+                            hasSecret: boolean;
+                            live: boolean;
+                            notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                            registeredAt: string | null;
+                            verifiedAt: string | null;
+                            activatedAt: string | null;
+                            lastTest: {
+                                outcome: "ok" | "credential_rejected" | "unreachable";
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            prescribersEnrolled: number;
+                            queuedTransmissions: number;
+                            version: number | null;
+                            updatedAt: string | null;
+                        };
+                        test: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                        };
                     };
                 };
             };
@@ -106485,6 +107235,7 @@ export interface operations {
                         eraId: string;
                         fileIndex: number;
                         transactionSetControlNumber: string;
+                        sourceDigest: string;
                         state: string;
                         holdReason: string | null;
                         possibleDuplicate: boolean;
@@ -106550,6 +107301,17 @@ export interface operations {
                             reason: string | null;
                             reference: string | null;
                             amount: number | null;
+                            providerIdentifierMasked: string | null;
+                            fiscalPeriod: string | null;
+                            segmentPosition: number | null;
+                            occurrence: number | null;
+                            classification: "overpayment_recovery_reported" | "forward_balance_reported" | "other_provider_adjustment_reported" | "unclassified";
+                            /** @constant */
+                            historicalReference: "not_verified";
+                            /** @constant */
+                            policyStatus: "not_configured";
+                            /** @constant */
+                            postingEligible: false;
                         }[];
                         claimOutcomes: {
                             claimId: string | null;
@@ -106817,8 +107579,7 @@ export interface operations {
                             submittedAt: string;
                             supportingEvidence: string[];
                             selectable: boolean;
-                            /** @constant */
-                            submittedLines: "unavailable";
+                            submittedLines: "available" | "unavailable";
                         }[];
                         /** @constant */
                         postingAuthorized: false;
@@ -106898,6 +107659,7 @@ export interface operations {
                         reason: string;
                         adviceId: string | null;
                         remittanceLineId: string | null;
+                        remittanceLineIds: string[];
                     }[];
                 };
             };
@@ -106932,6 +107694,60 @@ export interface operations {
                         providerEntityId: string;
                         payer: string | null;
                         paymentCents: number | null;
+                        billedCents: number | null;
+                        unresolvedCents: number | null;
+                        providerAdjustments: {
+                            sourceDigest: string;
+                            providerIdentifierMasked: string | null;
+                            fiscalPeriod: string | null;
+                            segmentPosition: number | null;
+                            occurrence: number | null;
+                            reason: string | null;
+                            reference: string | null;
+                            amountCents: number | null;
+                            classification: "overpayment_recovery_reported" | "forward_balance_reported" | "other_provider_adjustment_reported" | "unclassified";
+                            /** @constant */
+                            historicalReference: "not_verified";
+                            policy: {
+                                /** @constant */
+                                status: "not_configured";
+                                version: null;
+                            };
+                            /** @constant */
+                            action: "none";
+                        }[];
+                        claims: {
+                            claimIndex: number;
+                            billingModule: "M23" | "M41" | null;
+                            patientControlNumber: string | null;
+                            payerIcn: string | null;
+                            claimId: string | null;
+                            payerId: string | null;
+                            submissionId: string | null;
+                            evidenceId: string | null;
+                            evidenceVersion: number;
+                            matching: "verified" | "human_confirmed_candidate" | "blocked";
+                            billedCents: number | null;
+                            paidCents: number | null;
+                            patientResponsibilityCents: number | null;
+                            adjustments: {
+                                /** @constant */
+                                scope: "claim";
+                                groupCode: "CO" | "PR" | "OA" | "PI" | "CR" | "unknown";
+                                reasonCode: string | null;
+                                amountCents: number | null;
+                                responsibility: "provider_reported" | "patient_reported" | "other_unallocated" | "payer_initiated_reported" | "correction_or_reversal_reported" | "unsupported";
+                                classification: "contractual_obligation_reported" | "patient_responsibility_reported" | "other_adjustment_unresolved" | "payer_initiated_reduction_reported" | "correction_or_reversal_reported" | "unsupported";
+                                accountingDisposition: "unresolved_review" | "policy_required";
+                                policyVersion: null;
+                                m25Action: "flagged_review" | "not_authorized";
+                            }[];
+                            unresolvedCents: number | null;
+                            financialStatus: "fully_paid" | "partial_paid" | "unsupported";
+                            duplicate: "none" | "potential";
+                            eligible: boolean;
+                            blockers: string[];
+                        }[];
                         claimId: string | null;
                         eligible: boolean;
                         status: "eligible" | "blocked" | "already_posted";
@@ -107014,6 +107830,7 @@ export interface operations {
                         outcome: "approved" | "already_approved" | "posted" | "already_posted";
                         adviceId: string | null;
                         remittanceLineId: string | null;
+                        remittanceLineIds: string[];
                         paymentCents: number;
                     };
                 };
@@ -116420,6 +117237,272 @@ export interface operations {
                 content: {
                     "application/json": {
                         complianceOfficerMembershipId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TenantDosespot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                        prescribersEnrolled: number;
+                        /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1TenantDosespot: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+                /** @description The registration's current integer version; required to change an existing registration, absent on a first save. */
+                "If-Match"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Which DoseSpot environment the clinic lives in. A name, never a URL: the host is platform configuration. Production is available only when the platform has enabled it. */
+                    environment: "sandbox" | "production";
+                    /** @description The clinic id DoseSpot issued (1-64 letters, digits, dots, dashes or underscores). */
+                    clinicId?: string;
+                    /** @description The DoseSpot clinician the service token is minted for (patient sync, history, status polling). */
+                    serviceClinicianId?: string;
+                    /** @description The clinic key DoseSpot issued. Write-only: it is sealed under the tenant's own key and never returned. Omit it to keep the stored one. */
+                    clinicKey?: string;
+                    /** @description The DoseSpot Subscription-Key, when the clinic has its own. Write-only. Platform support may set it; a tenant administrator may only rotate one that platform support set. */
+                    subscriptionKey?: string;
+                    /** @description Platform support only: attests that this clinic has NO Subscription-Key of its own (the platform's is used), so a new clinic key can be sealed alone, which is how a registration whose stored credential cannot be opened is repaired. Recorded on the audit row as a changed field; contradicts a subscriptionKey in the same call. */
+                    usePlatformSubscriptionKey?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                        prescribersEnrolled: number;
+                        /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantDosespotActivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                        prescribersEnrolled: number;
+                        /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantDosespotDeactivate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        source: "tenant" | "platform_env" | "none";
+                        status: ("draft" | "registered" | "verified" | "active") | null;
+                        environment: ("sandbox" | "production") | null;
+                        clinicId: string | null;
+                        serviceClinicianId: string | null;
+                        hasSecret: boolean;
+                        /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                        live: boolean;
+                        notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                        registeredAt: string | null;
+                        verifiedAt: string | null;
+                        activatedAt: string | null;
+                        lastTest: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                        prescribersEnrolled: number;
+                        /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                        queuedTransmissions: number;
+                        version: number | null;
+                        updatedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantDosespotVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        config: {
+                            source: "tenant" | "platform_env" | "none";
+                            status: ("draft" | "registered" | "verified" | "active") | null;
+                            environment: ("sandbox" | "production") | null;
+                            clinicId: string | null;
+                            serviceClinicianId: string | null;
+                            hasSecret: boolean;
+                            /** @description Whether the registration is actually served on this deployment: active, and its environment allowed (a sandbox row needs the platform to enable sandbox). `status` alone says what the row was left in. */
+                            live: boolean;
+                            notLiveReason: ("sandbox_not_enabled" | "environment_unavailable") | null;
+                            registeredAt: string | null;
+                            verifiedAt: string | null;
+                            activatedAt: string | null;
+                            lastTest: {
+                                outcome: "ok" | "credential_rejected" | "unreachable";
+                                /** Format: date-time */
+                                at: string;
+                            } | null;
+                            /** @description Roster prescribers already linked to DoseSpot. A fact for the screen; it does not gate activation. */
+                            prescribersEnrolled: number;
+                            /** @description Signed orders waiting to transmit; they pause while the registration is not active. */
+                            queuedTransmissions: number;
+                            version: number | null;
+                            updatedAt: string | null;
+                        };
+                        test: {
+                            outcome: "ok" | "credential_rejected" | "unreachable";
+                        };
                     };
                 };
             };

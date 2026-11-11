@@ -106,6 +106,13 @@ export const commercialClaims = pgTable(
       t.patientId,
       t.serviceFrom,
     ),
+    byPrimaryPatientPayer: index("commercial_claim_org_primary_patient_payer_ix").on(
+      t.organizationId,
+      t.primaryPatientPayerId,
+    ),
+    bySecondaryPatientPayer: index("commercial_claim_org_secondary_patient_payer_ix")
+      .on(t.organizationId, t.secondaryPatientPayerId)
+      .where(sql`secondary_patient_payer_id IS NOT NULL`),
     byPayerIcn: index("commercial_claim_payer_icn_ix")
       .on(t.organizationId, t.payerIcn)
       .where(sql`payer_icn IS NOT NULL`),

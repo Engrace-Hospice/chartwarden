@@ -1,6 +1,6 @@
 # Coordinated, off-site, encrypted backups for the single-host stack (#857). An OVERLAY on compose.yml:
 #
-#   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml build postgres
+#   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml pull postgres backup
 #   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml run --rm object-store-provision
 #   docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate --wait seaweedfs
 #   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml up -d postgres backup
@@ -36,8 +36,9 @@ x-backup-common: &backup-common
 
 services:
   postgres:
-    image: chartwarden-backup:local
-    build: ./backup
+    # Published, scanned, signed and SBOM-attested by backup-image.yml. The required value includes
+    # both its readable sha tag and immutable digest; see README "Backups and restore".
+    image: "${CHARTWARDEN_BACKUP_IMAGE:?set-digest-pinned-GHCR-reference}"
     # An init process as PID 1, not the postmaster: pgBackRest's async archive worker is orphaned onto PID 1, and
     # the postmaster treats an untracked child that exits with anything but 0 or 1 (no stanza yet, off-site outage)
     # as a crash: it kills every connection and runs crash recovery, once per archiver retry (60 s).
@@ -66,7 +67,7 @@ services:
       - archive_timeout=60
 
   backup:
-    image: chartwarden-backup:local
+    image: "${CHARTWARDEN_BACKUP_IMAGE:?set-digest-pinned-GHCR-reference}"
     restart: unless-stopped
     user: postgres
     command: ["cw-backup.sh", "schedule"]

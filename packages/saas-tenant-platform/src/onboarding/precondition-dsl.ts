@@ -6,6 +6,7 @@
 //   org_seeded                 context.providerEntityCount > 0 AND context.locationCount > 0
 //   ccn_registered             context.providerEntities[*].ccn != null
 //   clearinghouse_selected     context.clearinghouseSettled == true
+//   dosespot_kickoff_initiated context.dosespotSettled == true
 //   mac_configured             context.macFeedConfigured == true
 //   go_live_checklist_complete context.allCanonicalTasksDoneOrSkipped == true AND context.baaExecuted == true
 //
@@ -155,6 +156,7 @@ const CONTEXT_SCALARS: ReadonlySet<string> = new Set([
   "macFeedConfigured",
   "clearinghouseSettled",
   "dosespotKickoffRecorded",
+  "dosespotSettled",
   "xeroConnected",
   "gustoConnected",
   "primaryLocationExists",

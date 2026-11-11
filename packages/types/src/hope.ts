@@ -144,6 +144,7 @@ export const M10_EVENT_NAMES = [
   "m10.hope.sfv_overdue",
   "m10.hope.sfv_missed",
   "m10.hope.correction_submitted",
+  "m10.hope.inactivation_created",
   "m10.hope.submission_queued",
   "m10.hope.submission_transmitted",
   "m10.hope.submission_accepted",

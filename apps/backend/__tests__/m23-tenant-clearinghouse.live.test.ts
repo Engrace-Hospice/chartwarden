@@ -2768,6 +2768,9 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         code: "BILLING_SERVICE_MODE_NOT_APPLICABLE",
       });
       expect(await inForce(ORG_J)).toBe("managed_billing");
+    });
+  });
+
   // Migration 1468: a platform operator revokes the vendor BAA a tenant recorded (the vendor ended it). Proven on the real roles: the
   // app role writes the new columns under RLS, the CHECKs and the guard trigger hold, the revoke is atomic with its audit row and its
   // outbox announcement, the revoked config is unbound for every consumer of the resolver, and the exception to the vendor lock works

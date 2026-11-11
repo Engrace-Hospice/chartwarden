@@ -548,7 +548,13 @@ export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
     membershipId: string,
     deaAuthorizedSchedules: readonly DeaSchedule[],
     /** GAP-035 — the M40 ExternalPhysician this membership IS (the verbal named-prescriber mapping). */
-    externalPhysicianMdmId?: string,
+    externalPhysicianMdmId: string | undefined,
+    /**
+     * The acting roster administrator's membership: recorded as the link's asserter when the link is set, changed or reinstated, so the
+     * linked member cannot also be the one who confirms it (409 DOSESPOT_LINK_SELF_CONFIRM). Required: a link is never written without
+     * its maker, so a re-link can never overwrite a recorded linker with NULL.
+     */
+    linkedByMembershipId: string,
   ): Promise<PrescriberRosterView>;
   revokePrescriber(
     organizationId: string,

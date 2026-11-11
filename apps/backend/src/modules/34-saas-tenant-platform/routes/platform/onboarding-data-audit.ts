@@ -35,6 +35,12 @@ export const ONBOARDING_DATA_AUDIT_EVENTS = {
   /** ADR-0053 amendment 2026-11-06: the tenant's clearinghouse choice (vendor, mode, sealed credential). */
   clearinghouseSet: "m34.tenant_onboarding.clearinghouse_set",
   clearinghouseVerified: "m34.tenant_onboarding.clearinghouse_verified",
+  /** Tenant onboarding slice 4 (ADR-0111): the tenant's DoseSpot clinic registration (environment, clinic, sealed key). */
+  dosespotSet: "m34.tenant_onboarding.dosespot_set",
+  dosespotVerified: "m34.tenant_onboarding.dosespot_verified",
+  /** A deactivation is the one DoseSpot write a LIVE tenant also needs, so it is not status-gated. */
+  dosespotDeactivated: "m34.tenant_onboarding.dosespot_deactivated",
+  dosespotPrescriberEnrolled: "m34.tenant_onboarding.dosespot_prescriber_enrolled",
   /** A platform operator verified the BAA the tenant recorded for its own vendor account (a live tenant too: not status-gated). */
   clearinghouseBaaVerified: "m34.tenant_onboarding.clearinghouse_baa_verified",
   /**
