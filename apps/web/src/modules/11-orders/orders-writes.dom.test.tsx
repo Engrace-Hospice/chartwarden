@@ -84,6 +84,10 @@ function detailOf(
 
 let calls: string[] = [];
 let bodies: Record<string, unknown>[] = [];
+/** The Idempotency-Key each write carried, in order. */
+let keys: (string | null)[] = [];
+/** Set by a test to make the NEXT write get no answer at all (a lost reply: the request is read, then the network drops). */
+let dropNextWrite = false;
 /** Set by a test to make the NEXT write fail. The api client captures `stubFetch` at construction, so a
  *  re-stubbed global would never reach it — the override has to live inside the stub itself. */
 let writeFailure: { status: number; body: unknown } | null = null;
@@ -121,6 +125,9 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   const path = new URL(url, "http://localhost").pathname;
   calls.push(`${method} ${path}`);
   if (method !== "GET") {
+    keys.push(
+      typeof input === "object" && "headers" in input ? input.headers.get("Idempotency-Key") : null,
+    );
     const raw =
       typeof input === "object" && "clone" in input
         ? await (input as Request).clone().text()
@@ -134,6 +141,10 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
         // No M11 write sends a non-JSON body; recording nothing is the honest answer.
       }
     }
+  }
+  if (method !== "GET" && dropNextWrite) {
+    dropNextWrite = false;
+    throw new TypeError("Failed to fetch");
   }
   if (method !== "GET" && writeFailure) {
     return new Response(JSON.stringify(writeFailure.body), {
@@ -178,6 +189,8 @@ const writes = () => calls.filter((c) => !c.startsWith("GET "));
 beforeEach(() => {
   calls = [];
   bodies = [];
+  keys = [];
+  dropNextWrite = false;
   detailRow = { ...baseOrder };
   writeFailure = null;
   vi.stubGlobal("fetch", vi.fn(stubFetch));
@@ -280,6 +293,36 @@ describe("#91 — the order detail offers the §2.2 ceremonies the server permit
     await waitFor(() => expect(writes()).toContain(`POST /api/v1/orders/${ORDER}/sign`));
     expect(bodies[0]?.signerDiscipline).toBe("hospice_physician");
     expect(typeof bodies[0]?.signedAtClient).toBe("string");
+  });
+
+  it("a retry of Sign order after a lost reply replays: the same key and the same signedAtClient the server may already have seen", async () => {
+    detailRow = detailOf(baseOrder, { sign: true });
+    mount(`/orders/${ORDER}`, "/orders/:id", <OrderDetail />);
+    dropNextWrite = true;
+    fireEvent.click(await screen.findByRole("button", { name: "Sign order" }));
+    await screen.findByText(/could not be updated/i);
+    await new Promise((resolve) => setTimeout(resolve, 5)); // a clock read now would differ from the first attempt's
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sign order" }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+
+    expect(keys[1]).toBe(keys[0]);
+    expect(bodies[1]?.signedAtClient).toBe(bodies[0]?.signedAtClient);
+  });
+
+  it("a new Sign order after an answer is a new intent: a new key and a new signedAtClient", async () => {
+    detailRow = detailOf(baseOrder, { sign: true });
+    mount(`/orders/${ORDER}`, "/orders/:id", <OrderDetail />);
+    fireEvent.click(await screen.findByRole("button", { name: "Sign order" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    detailRow = detailOf(baseOrder, { sign: true }); // the order is still signable in the stub
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sign order" }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+
+    expect(keys[1]).not.toBe(keys[0]);
+    expect(bodies[1]?.signedAtClient).not.toBe(bodies[0]?.signedAtClient);
   });
 
   it("an ACTIVE order offers Discontinue, which POSTs a reason from the server's vocabulary", async () => {

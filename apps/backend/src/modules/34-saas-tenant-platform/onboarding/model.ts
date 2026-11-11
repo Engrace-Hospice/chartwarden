@@ -27,6 +27,37 @@ export function isSkippableStep(template: Pick<StepTemplate, "key" | "canonical"
   return !template.canonical || SKIPPABLE_STEP_KEYS.has(template.key);
 }
 
+/**
+ * The canonical steps the TENANT's own org_admin may skip (slice 7): the three where "does not apply to us" is the tenant's to say
+ * (MAC credentials, payer enrollment, DoseSpot kickoff). Sample data stays the operator's (ChartWarden's own content), and a step an
+ * operator added is never in it: a tenant must not be able to skip a requirement ChartWarden added. A subset of `SKIPPABLE_STEP_KEYS`.
+ */
+export const TENANT_SKIPPABLE_STEP_KEYS: ReadonlySet<string> = new Set([
+  "mac_configured",
+  "payer_enrollment",
+  "dosespot_kickoff_initiated",
+]);
+
+/**
+ * The tenant's own skip may settle this step: a canonical step on `TENANT_SKIPPABLE_STEP_KEYS` that is also operator-skippable, whose
+ * owner the tenant's org_admin can act for (`either` or `org_admin`; an operator re-owning the step to `platform_ops` closes it to
+ * the tenant, as it does every other action).
+ */
+export function isTenantSkippableStep(
+  template: Pick<StepTemplate, "key" | "canonical" | "owner">,
+): boolean {
+  return (
+    template.canonical &&
+    TENANT_SKIPPABLE_STEP_KEYS.has(template.key) &&
+    isSkippableStep(template) &&
+    (template.owner === "either" || template.owner === "org_admin")
+  );
+}
+
+/** Who typed a skip: the tenant's own org_admin, a platform operator, or the system (a tenant that bills outside ChartWarden). */
+export const SKIP_ACTOR_KINDS = ["tenant", "platform_ops", "system"] as const;
+export type SkipActorKind = (typeof SKIP_ACTOR_KINDS)[number];
+
 /** Who may settle a step. `either` = the tenant's org_admin or platform ops. */
 export const STEP_OWNERS = ["platform_ops", "org_admin", "compliance_officer", "either"] as const;
 export type StepOwner = (typeof STEP_OWNERS)[number];
@@ -73,12 +104,29 @@ export interface StepTask {
   readonly attestedAt: Date | null;
   /** The platform-ops skip rationale, when the step was skipped. */
   readonly skipRationale: string | null;
-  /** The skip was made by the SYSTEM (a tenant that bills outside ChartWarden), not typed by a person. Absent = false. */
-  readonly skippedBySystem?: boolean;
+  /** Who skipped the step (`completion_evidence.skip.skippedByActorKind`); null unless the step is skipped. Absent = the store did not say. */
+  readonly skippedByActorKind?: SkipActorKind | null;
 }
 
 /** The membership id the system acts under (the clearinghouse sync's skip and reopen); a person's membership is never this. */
 export const SYSTEM_MEMBERSHIP_ID = "system";
+
+/**
+ * The actor kind of a stored `completion_evidence.skip` record. The record names it since slice 7; one written before that carries
+ * none, and was the system's when it names the system membership and an operator's otherwise (a tenant could not skip). The jsonb is
+ * never trusted: a value outside `SKIP_ACTOR_KINDS` falls back to the same derivation.
+ */
+export function skipActorKindOf(
+  skip:
+    | { readonly skippedByActorKind?: unknown; readonly skippedByMembershipId?: unknown }
+    | null
+    | undefined,
+): SkipActorKind {
+  const recorded = skip?.skippedByActorKind;
+  const known = SKIP_ACTOR_KINDS.find((kind) => kind === recorded);
+  if (known) return known;
+  return skip?.skippedByMembershipId === SYSTEM_MEMBERSHIP_ID ? "system" : "platform_ops";
+}
 
 /** The two kinds of caller the wizard serves. */
 export interface PlatformActor {
@@ -142,6 +190,12 @@ export interface GoverningBaa {
    * otherwise. Go-live approval is refused to that operator too: uploading the file is as much a part of recording the BAA as writing the row.
    */
   readonly documentUploadedByMembershipId: string | null;
+  /**
+   * The USER behind that membership. A revoked membership is terminal (a returning operator is re-invited as a NEW membership row, MEMBERSHIP_REVOKED
+   * in M2), so the uploader's old membership id no longer names the person who now approves: the refusal compares users as well as memberships,
+   * as it does for the register row's writers. Null when there is no uploader to name, or the membership cannot be read by the store.
+   */
+  readonly documentUploadedByUserId: string | null;
   readonly recordedByUserId: string | null;
   readonly updatedByUserId: string | null;
 }

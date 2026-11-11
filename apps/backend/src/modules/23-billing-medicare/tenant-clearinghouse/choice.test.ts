@@ -40,6 +40,20 @@ describe("claims-billing decision from the clearinghouse choice", () => {
     }
   });
 
+  it("tells an org whose BAA a platform operator revoked why, not just that it is not active", () => {
+    const revoked = row({ status: "verified", baaRevokedAt: new Date("2026-11-09T12:00:00Z") });
+    expect(choiceOf(revoked, null)).toMatchObject({ baaRevoked: true });
+    expect(decideClaimsBilling(choiceOf(revoked, null))).toEqual({
+      entitled: false,
+      reason: "clearinghouse_baa_revoked",
+    });
+    // the same org after it recorded a new BAA is back to the plain "not active yet"
+    expect(decideClaimsBilling(choiceOf(row({ status: "verified" }), null))).toEqual({
+      entitled: false,
+      reason: "clearinghouse_not_active",
+    });
+  });
+
   it("refuses an org that chose nothing", () => {
     expect(decideClaimsBilling(choiceOf(null, null))).toEqual({
       entitled: false,

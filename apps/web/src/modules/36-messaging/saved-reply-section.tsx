@@ -9,7 +9,7 @@ import { SavedReplyForm } from "./saved-reply-form";
 
 export interface ReplyWrites {
   /** Each resolves to null on success or the text to show. */
-  readonly create: (draft: ReplyDraft, idempotencyKey: string) => Promise<string | null>;
+  readonly create: (draft: ReplyDraft) => Promise<string | null>;
   readonly update: (id: string, draft: ReplyDraft) => Promise<string | null>;
   readonly remove: (id: string) => Promise<string | null>;
 }

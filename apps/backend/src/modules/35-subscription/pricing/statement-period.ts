@@ -110,3 +110,32 @@ export function daysLiveInMonth(period: MonthPeriod, windows: readonly LiveWindo
   }
   return days;
 }
+
+/**
+ * The daily census sweep runs every this many hours, on the hour, from 00:00 UTC (it must divide 24). `billing-runtime/workers.ts` builds
+ * its cron pattern from this constant, so what the statement EXPECTS of a month and when the sweep RUNS cannot drift apart.
+ */
+export const CENSUS_SWEEP_INTERVAL_HOURS = 6;
+
+const HOUR_MS = 3_600_000;
+
+/**
+ * How many UTC days of the month the census sweep could have observed the subscription: the days that contain at least one sweep
+ * instant inside a live window (`from <= instant < until`). Not the same as {@link daysLiveInMonth}, which counts a day live at ANY
+ * instant of it: a go-live at 18:30 makes that day live, but its last sweep (18:00) had already run, so nothing could be observed on it
+ * and a healthy census would look one day short. The sweep only records while the subscription is live, so this is the denominator a
+ * "was the census complete" judgement needs.
+ */
+export function expectedCensusDays(period: MonthPeriod, windows: readonly LiveWindow[]): number {
+  let days = 0;
+  for (let i = 0; i < period.days; i++) {
+    const dayStart = period.start.getTime() + i * DAY_MS;
+    let observable = false;
+    for (let hour = 0; hour < 24 && !observable; hour += CENSUS_SWEEP_INTERVAL_HOURS) {
+      const instant = dayStart + hour * HOUR_MS;
+      observable = windows.some((w) => w.from <= instant && instant < w.until);
+    }
+    if (observable) days += 1;
+  }
+  return days;
+}

@@ -4,6 +4,7 @@ import {
   CH,
   InMemoryAttemptStore,
   NOT_WIRED_TRANSPORT,
+  UNBOUND_BAA_REVOKED,
   UNBOUND_BINDING,
   UNBOUND_NOT_ACTIVE,
   UNBOUND_NOT_CHOSEN,
@@ -119,6 +120,23 @@ describe("per-organization clearinghouse binding", () => {
     for (const org of [ORG_A, ORG_B, "99999999-9999-4999-8999-999999999999"]) {
       expect((await runtime.binding.forOrg?.(org))?.vendor).toBeNull();
     }
+  });
+
+  it("serves nothing for a config whose BAA a platform operator revoked: it left `active`, so every consumer of the binding (sends, acknowledgment and 835 pulls) skips it", async () => {
+    const { runtime, put } = await setup();
+    await put(ORG_A, {
+      vendor: "claimmd",
+      mode: "production",
+      status: "verified",
+      secret: KEY,
+      baaRevokedAt: new Date("2026-11-09T12:00:00Z"),
+      baaRevokedReasonCode: "vendor_terminated",
+    });
+    const binding = await runtime.binding.forOrg?.(ORG_A);
+    expect(binding).toBe(UNBOUND_BAA_REVOKED); // unbound like `not_active`, but the pulls can tell the two apart
+    expect(binding?.unboundReason).toBe("baa_revoked");
+    expect(binding?.vendor).toBeNull();
+    expect(await runtime.usageFor(ORG_A)).toBeNull();
   });
 
   it("says WHY an org is unbound: outside, a config that is not live yet, nothing chosen", async () => {

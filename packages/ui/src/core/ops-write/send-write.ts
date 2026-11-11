@@ -6,8 +6,10 @@
 // 2. A request that got NO answer at all (offline, reset: openapi-fetch rethrows) is its own outcome, never an exception: the caller
 //    releases its busy lock and says the server was not reached.
 // 3. With a keeper, the Idempotency-Key is held per user intent: the same fingerprint keeps the key across a retry after no answer (the
-//    request may have landed and only the reply been lost, so the server must be able to recognise the retry), and any ANSWER renews it.
+//    request may have landed and only the reply been lost, so the server must be able to recognise the retry), and any ANSWER renews it,
+//    except a gateway page and the server's "an earlier request under this key is still running" 409 (`keepsKey`, idempotency-key.ts).
 import type { IdempotencyKeeper } from "./idempotency";
+import { isGatewayPage, isInFlightDuplicate, keepsKey } from "./idempotency-key";
 
 export interface WriteResponse {
   readonly error?: unknown;
@@ -22,11 +24,9 @@ export function writeRefused(result: WriteResponse): boolean {
   return response.ok === false || response.status >= 400;
 }
 
-/** A gateway error page: a 5xx whose body is not the API's error envelope never reached the app, so nothing was cached under the key. */
+/** A gateway error page: a 5xx whose body is not the API's error envelope never reached the app (the definition lives in idempotency-key.ts). */
 export function reachedNoOne(result: WriteResponse): boolean {
-  if (!writeRefused(result) || (result.response?.status ?? 0) < 500) return false;
-  const code = (result.error as { error?: { code?: unknown } } | null | undefined)?.error?.code;
-  return typeof code !== "string";
+  return isGatewayPage(result.response?.status ?? 0, result.error);
 }
 
 export type SettledWrite<R extends WriteResponse> =
@@ -51,15 +51,25 @@ export async function settleWrite<R extends WriteResponse>(
 
 /**
  * Send a write under the keeper's key for `fingerprint` (the body, or any stable text for the intent) and classify it. The key is kept
- * when the request got no answer (and when a gateway answered for the app), renewed by every real answer, success or refusal.
+ * when the request got no answer, when a gateway answered for the app, and when the server says an earlier request under the key is
+ * still running (`keepsKey`); it is renewed by every other answer, success or refusal. The idle window restarts after an unanswered
+ * attempt (no answer, a gateway page) but NOT after the in-flight 409, so a claim left pending cannot hold the form forever.
+ * `call` also gets the intent's first-attempt time (`IdempotencyAttempt.stampedAt`) for a body that carries a click-time clock value.
  */
 export async function sendWrite<R extends WriteResponse>(
   keeper: IdempotencyKeeper,
   fingerprint: string,
-  call: (idempotencyKey: string) => Promise<R>,
+  call: (idempotencyKey: string, stampedAt: string) => Promise<R>,
 ): Promise<SettledWrite<R>> {
-  const settled = await settleWrite(call(keeper.keyFor(fingerprint)));
-  if (settled.status === "unreachable") return settled;
-  if (!reachedNoOne(settled.res)) keeper.settled();
+  const { key, stampedAt } = keeper.attemptFor(fingerprint);
+  const settled = await settleWrite(Promise.resolve().then(() => call(key, stampedAt)));
+  if (settled.status === "unreachable") {
+    keeper.unanswered();
+    return settled;
+  }
+  const status = settled.res.response?.status ?? 0;
+  const body = settled.res.error;
+  if (!keepsKey(status, body)) keeper.settled();
+  else if (!isInFlightDuplicate(status, body)) keeper.unanswered();
   return settled;
 }

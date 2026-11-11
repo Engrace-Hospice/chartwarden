@@ -530,6 +530,30 @@ describe("BaaPanel: uploading the signed agreement", () => {
     expect(client.POST).toHaveBeenCalledTimes(1);
   });
 
+  // nginx's per-address limit on this location answers a bare HTML 429, never the API's envelope: the operator is told to wait.
+  it.each([
+    [
+      "nginx's bare 429 page",
+      () => ({ error: "<html>429 Too Many Requests</html>", response: { status: 429 } }),
+    ],
+    ["the API's own 429", () => refused(429, "RATE_LIMITED", "rate limit exceeded")],
+  ])(
+    "%s says nothing was saved and to wait, and keeps the upload open to try again",
+    async (_what, reply) => {
+      const { client } = await openNew({ POST: { [UPLOAD]: reply } });
+      await chooseAndUpload();
+      const dialog = await screen.findByRole("dialog");
+      expect(
+        await within(dialog).findByText(
+          "Too many attempts. Nothing was saved. Wait before trying again; some limits take ten minutes to reset.",
+        ),
+      ).toBeTruthy();
+      expect(within(dialog).queryByText(/quote the reference/i)).toBeNull();
+      expect(screen.queryByText(/Uploaded signed-baa\.pdf/)).toBeNull();
+      expect(client.POST).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("offers Re-verify on a stale step-up, and after it keeps what was typed but asks for the file again", async () => {
     await openNew({ POST: { [UPLOAD]: () => refused(403, "STEP_UP_REQUIRED") } });
     fireEvent.change(screen.getByLabelText("Addendum version"), { target: { value: "v7" } });

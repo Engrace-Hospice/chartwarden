@@ -4,7 +4,7 @@
 // and tenant `/tenant/...`). Bodies bound the RAW strings; the trimmed-length rules (evidence note, reason, display name,
 // time zone) are enforced by the service (onboarding/evidence.ts, org-profile.ts), which is the authority.
 import { type SchemaOptions, type Static, type TSchema, Type } from "@sinclair/typebox";
-import { COMPLETION_MODES, STEP_OWNERS } from "../onboarding/model";
+import { COMPLETION_MODES, SKIP_ACTOR_KINDS, STEP_OWNERS } from "../onboarding/model";
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 const Nullable = <T extends TSchema>(t: T, options?: SchemaOptions) =>
@@ -90,9 +90,13 @@ export const WizardStepViewSchema = Type.Object({
     description:
       "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
   }),
-  skippedBy: Nullable(lit(["system", "tenant", "platform_ops"] as const), {
+  skippedBy: Nullable(lit(SKIP_ACTOR_KINDS), {
     description:
-      "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+      "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
+  }),
+  skippedByLabel: Nullable(Type.String(), {
+    description:
+      "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
   }),
   skippable: Type.Boolean({
     description:
@@ -100,7 +104,7 @@ export const WizardStepViewSchema = Type.Object({
   }),
   tenantSkippable: Type.Boolean({
     description:
-      "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+      "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
   }),
   createdAt: Nullable(Instant),
   templateKey: Type.String(),

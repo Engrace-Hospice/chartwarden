@@ -11,6 +11,7 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
+  freshIdempotencyKeyHeaders,
   useApiClient,
   useClaimsBilling,
 } from "@chartwarden/ui";
@@ -100,6 +101,7 @@ export function MedicaidEligibilityCenter(): JSX.Element {
     setActionError(null);
     const { error: err, response } = (await client.POST("/api/v1/medicaid-eligibility-checks", {
       body: { patientId, patientPayerId: payerId, asOfServiceDate: asOf },
+      headers: freshIdempotencyKeyHeaders(), // a check asks the payer now: never replay an earlier answer
     } as never)) as { error?: unknown; response?: Response };
     setBusy(false);
     if (err) {

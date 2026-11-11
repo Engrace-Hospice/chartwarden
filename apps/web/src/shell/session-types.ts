@@ -42,4 +42,10 @@ export interface Session {
   permissions?: string[];
   /** Whether the actor holds the org_admin role (FB-T15). */
   isAdmin?: boolean;
+  /**
+   * Where the bound organization is in its life: `onboarding` until go-live is approved (the server then refuses every route
+   * outside onboarding with 403 ORGANIZATION_ONBOARDING), `live` after. Absent means unknown: the shell stays normal and the
+   * server stays the authority.
+   */
+  organizationStage?: "onboarding" | "live";
 }

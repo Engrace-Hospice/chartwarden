@@ -1,6 +1,6 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 217,
+  "totalStaticWebScreens": 218,
   "e2eReachedCount": 26,
   "axeReachedCount": 205,
   "zeroE2eCoverage": [
@@ -43,6 +43,14 @@
       "permission": "documents.read_templates",
       "e2eReached": false,
       "axeReached": true
+    },
+    {
+      "id": "saas.help",
+      "module": "34-saas",
+      "path": "/admin/help",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
     },
     {
       "id": "saas.onboarding",
@@ -1535,6 +1543,14 @@
   ],
   "zeroAxeCoverage": [
     {
+      "id": "saas.help",
+      "module": "34-saas",
+      "path": "/admin/help",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
       "id": "identity.auditor-enrolment",
       "module": "02-identity",
       "path": "/auditor/enrol",
@@ -1631,12 +1647,17 @@
       "axeReached": false
     }
   ],
-  "dynamicWebScreens": 118,
+  "dynamicWebScreens": 119,
   "dynamicAxeReachedCount": 28,
   "dynamicExcluded": [
     {
       "id": "medicaid.surveyor-read",
       "path": "/admin/medicaid-billing-audit/:claimId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "saas.onboarding-step",
+      "path": "/admin/onboarding/:stepKey",
       "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
     },
     {
@@ -2125,6 +2146,14 @@
       "permission": "documents.read_templates",
       "e2eReached": false,
       "axeReached": true
+    },
+    {
+      "id": "saas.help",
+      "module": "34-saas",
+      "path": "/admin/help",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
     },
     {
       "id": "saas.onboarding",

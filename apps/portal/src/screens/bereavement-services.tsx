@@ -1,10 +1,11 @@
-import { Button, Glyph, useApiClient } from "@chartwarden/ui";
+import { Button, Glyph, NO_ANSWER, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 // M31 bereavement support — the family's memorial-service invitations (ADR-0109 D10, PR 3), with a reply form while replies are open.
 // M16 decides who is invited and when replies close (`rsvpOpen`); this section only shows the invitation and sends the family's answer.
 // No invitation (or a route this account may not use) shows nothing at all; a failure is said with a retry. A reply carries one
-// Idempotency-Key per attempt, tied to what is sent: any server answer ends the attempt, a dropped connection keeps the key for a retry of
-// the SAME answer (so it cannot reply twice), and a changed answer or guest count gets a new key. No answer is chosen for the family: a
+// Idempotency-Key per attempt (the shared useAttemptKey), tied to what is sent: any answer the app gives ends the attempt, a dropped
+// connection (or a gateway page, or the in-flight 409) keeps the key for a retry of the SAME answer (so it cannot reply twice), and a
+// changed answer or guest count gets a new key. No answer is chosen for the family: a
 // reply sent without one is asked for it. The reply's answer never carries the join link, so a "yes" re-reads the invitations to show it.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -65,9 +66,6 @@ const REFUSAL_TEXT: Record<string, string> = {
   IDEMPOTENCY_CONFLICT:
     "Your reply changed while it was being sent. Please check your answer and send it again.",
 };
-
-const newKey = (): string =>
-  globalThis.crypto?.randomUUID?.() ?? `rsvp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 /** Read the family's invitations; never throws. */
 async function readInvitations(client: ApiClient): Promise<Exclude<Loaded, { kind: "loading" }>> {
@@ -178,7 +176,7 @@ function ServiceCard({
   const [error, setError] = useState<string | null>(null);
   const [thanks, setThanks] = useState(false);
   /** The key of the attempt in doubt (a dropped connection) and the reply it carried: reused only for that same reply. */
-  const attempt = useRef<{ fingerprint: string; key: string } | null>(null);
+  const attempt = useAttemptKey();
   const guestCount = answer === "no" ? 0 : Number(guests);
   const guestsValid = Number.isInteger(guestCount) && guestCount >= 0 && guestCount <= MAX_GUESTS;
   const when = formatPortalInstant(item.startsAt) ?? item.startsAt;
@@ -196,16 +194,14 @@ function ServiceCard({
     setError(null);
     setThanks(false);
     const body = { response: answer, guests: guestCount };
-    const fingerprint = JSON.stringify(body);
-    if (attempt.current?.fingerprint !== fingerprint)
-      attempt.current = { fingerprint, key: newKey() };
+    const key = attempt.keyFor(JSON.stringify([item.invitationId, body]));
     try {
       const res = await client.POST("/api/v1/portal/bereavement/memorials/{invitationId}/rsvp", {
         params: { path: { invitationId: item.invitationId } },
-        headers: { "Idempotency-Key": attempt.current.key },
+        headers: { "Idempotency-Key": key },
         body,
       });
-      attempt.current = null; // the server answered: a new reply is a new attempt
+      attempt.settle(res.response.status, res.error); // the app answered: a new reply is a new attempt
       if (res.error || !res.data) {
         const code = errorCode(res.error);
         setError(
@@ -217,6 +213,7 @@ function ServiceCard({
       onReplied(res.data as Invitation);
       setThanks(true);
     } catch {
+      attempt.settle(NO_ANSWER);
       setError(
         "We couldn't confirm your reply was received. Please check your connection and try again.",
       );

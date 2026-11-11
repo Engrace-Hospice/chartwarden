@@ -8,7 +8,8 @@
 //
 //   scope "live"        a contract whose subscription is billable NOW: not canceled, and not paused unless the pause has lapsed (an admin
 //                       pause with an end date whose date has passed: nothing resumes it, so billing treats it as over at that date, the
-//                       same as the statement's pause windows do). The census records for these, and the mode seam answers for these.
+//                       hourly sweep resumes the stored status; until then billing treats it as over at that date, the same as the
+//                       statement's pause windows do). The census records for these, and the mode seam answers for these.
 //   scope "current"     a contract that has not been canceled: live OR paused. A paused contract still belongs to the tenant (it bills
 //                       again on resume), so "does this tenant have a contract" and the billing mode that must follow its clearinghouse
 //                       choice are asked here, never against "live" (which would let a paused contract slip past both)
@@ -60,10 +61,23 @@ export interface ContractRecord {
   readonly plan: typeof PL.$inferSelect;
 }
 
+/**
+ * An operator's pause with an end date whose date has passed at `at` (a `paused` row's own columns: an open-ended pause, and an org
+ * suspension, carry no date and never match). The ONE definition of "lapsed" in SQL: the live scope below and the pause-resume sweep
+ * both use it, so what billing treats as over and what the sweep resumes cannot differ.
+ */
+export const pauseLapsed = (at: Date): SQL | undefined =>
+  and(isNotNull(SUB.pausedUntil), lte(SUB.pausedUntil, at));
+
+/** The TypeScript twin of {@link pauseLapsed} for a row already read: `paused`, with an end date that has passed at `at`. */
+export const isPauseLapsed = (
+  sub: Pick<typeof SUB.$inferSelect, "status" | "pausedUntil">,
+  at: Date,
+): boolean => sub.status === "paused" && sub.pausedUntil !== null && sub.pausedUntil <= at;
+
 function scopeFilter(scope: ContractScope, at: Date): SQL | undefined {
   if (scope === "live") {
-    const pauseLapsed = and(isNotNull(SUB.pausedUntil), lte(SUB.pausedUntil, at));
-    return and(ne(SUB.status, "canceled"), or(ne(SUB.status, "paused"), pauseLapsed));
+    return and(ne(SUB.status, "canceled"), or(ne(SUB.status, "paused"), pauseLapsed(at)));
   }
   if (scope === "current") return ne(SUB.status, "canceled");
   if (scope === "statements") {
@@ -125,13 +139,15 @@ export async function loadModeHistory(
   if (contractIds.length === 0) return byContract;
   const rows = await tx
     .select({
+      id: SCM.id,
       contractId: SCM.contractId,
       billingServiceMode: SCM.billingServiceMode,
       effectiveFrom: SCM.effectiveFrom,
       createdAt: SCM.createdAt,
     })
     .from(SCM)
-    .where(inArray(SCM.contractId, [...contractIds]));
+    .where(inArray(SCM.contractId, [...contractIds]))
+    .orderBy(SCM.effectiveFrom, SCM.createdAt, SCM.id);
   for (const { contractId, ...row } of rows) {
     byContract.set(contractId, [...(byContract.get(contractId) ?? []), row]);
   }

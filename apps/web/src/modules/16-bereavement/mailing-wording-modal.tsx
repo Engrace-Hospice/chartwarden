@@ -7,7 +7,7 @@
 // "Try again"; the typed wording stays. A 409/404 (the run is no longer a draft, or is gone) closes the dialog and the page says why.
 // Unsaved wording is protected three ways: the scrim cannot dismiss the dialog, Cancel and Escape ask before discarding, and while the
 // write is in flight every control is inert and the dialog cannot close.
-import { useApiClient } from "@chartwarden/ui";
+import { useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import {
@@ -17,14 +17,7 @@ import {
   isStaleWrite,
   updateMailingRunContent,
 } from "./bereavement-api";
-import {
-  ErrorText,
-  Modal,
-  Notice,
-  ghostButtonStyle,
-  primaryButtonStyle,
-  useIdempotencyKey,
-} from "./bereavement-ui";
+import { ErrorText, Modal, Notice, ghostButtonStyle, primaryButtonStyle } from "./bereavement-ui";
 import { MailingContentEditor } from "./mailing-content-editor";
 import { contentForSave, sameWording, wordingOf, wordingProblems } from "./mailing-status";
 
@@ -58,7 +51,7 @@ export function EditWordingModal({
   const [reloading, setReloading] = useState(false);
   /** A reload after the STALE_VERSION answered without their wording: "Try again" is offered (and stays mounted while it retries). */
   const [reloadFailed, setReloadFailed] = useState(false);
-  const idempotency = useIdempotencyKey();
+  const idempotency = useAttemptKey();
   // The newer wording, once the page has re-read the run past the refused version.
   const theirs = conflictAt !== null && run.version !== conflictAt ? baseline : null;
   const theirsRef = useRef<HTMLElement>(null);
@@ -100,7 +93,7 @@ export function EditWordingModal({
       content,
       idempotency.keyFor(`${run.version}:${JSON.stringify(content)}`),
     );
-    idempotency.settle(status);
+    idempotency.settle(status, err);
     setBusy(false);
     if (err || !next) {
       if (isStaleVersion(status, err)) {

@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 2031,
-    "coveredRoutes": 2031,
-    "directRoutesReferenced": 1850
+    "routes": 2032,
+    "coveredRoutes": 2032,
+    "directRoutesReferenced": 1852
   },
   "modules": [
     {
@@ -571,7 +571,7 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 100,
+      "routes": 101,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
@@ -585,11 +585,14 @@
         "apps/backend/__tests__/m34-onboarding-wizard.live.test.ts",
         "apps/backend/__tests__/m34-ops-routes-inject.test.ts",
         "apps/backend/__tests__/m34-slice7-contract-routes.test.ts",
+        "apps/backend/__tests__/m34-support-session-routes.test.ts",
+        "apps/backend/__tests__/m34-support-session.live.test.ts",
         "apps/backend/__tests__/onboarding-org-gate-inject.test.ts",
+        "apps/backend/__tests__/operator-free-text-fields-phi-screen.test.ts",
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
       ],
-      "directRoutesReferenced": 99
+      "directRoutesReferenced": 101
     },
     {
       "module": "35-subscription",
@@ -601,6 +604,7 @@
         "apps/backend/__tests__/m35-pricing-routes.test.ts",
         "apps/backend/__tests__/m35-stripe-webhook-route.test.ts",
         "apps/backend/__tests__/onboarding-org-gate-inject.test.ts",
+        "apps/backend/__tests__/operator-free-text-fields-phi-screen.test.ts",
         "apps/backend/__tests__/redact-database-error.test.ts",
         "apps/backend/__tests__/subscription-inject.test.ts"
       ],

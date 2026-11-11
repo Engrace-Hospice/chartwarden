@@ -341,6 +341,13 @@ export function getM23BootContracts() {
   } as const;
 }
 
+// ADR-0053 amendment ("build it"): an operator's BAA revoke -> M36 alert to the tenant + platform-ops notice on every revoke.
+export {
+  M23_BAA_REVOKED_EVENT,
+  type M23BaaRevokedDeps,
+  buildM23BaaRevokedConsumer,
+} from "./outbox-consumers/baa-revoked";
+
 // Owner decision (round 2, Q4): the late external NOE / NOTR filing event -> M36 alert + platform-ops notice.
 export {
   M23_NOTICE_FILED_LATE_EVENTS,

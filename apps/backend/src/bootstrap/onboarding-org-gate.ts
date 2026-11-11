@@ -44,6 +44,7 @@ const CONFINED_ROUTES: readonly string[] = [
   "POST /api/v1/tenant/onboarding/:taskId/block",
   "POST /api/v1/tenant/onboarding/:taskId/complete", // the deprecated alias of /attest, still called by existing clients
   "POST /api/v1/tenant/onboarding/:taskId/reopen",
+  "POST /api/v1/tenant/onboarding/:taskId/skip", // the organization's own skip of MAC credentials, payer enrollment or DoseSpot kickoff (step-up, Idempotency-Key)
   "POST /api/v1/tenant/onboarding/:taskId/start",
   "PATCH /api/v1/tenant/org-profile",
   "PUT /api/v1/tenant/compliance-officer",
@@ -70,6 +71,13 @@ const CONFINED_ROUTES: readonly string[] = [
   "POST /api/v1/locations",
   "GET /api/v1/locations/:id",
   "PATCH /api/v1/locations/:id",
+  // ── M34 help requests (slice 7): file, read, approve (consent) and end. The generic support-consent-grant and support-session
+  // routes stay refused; through these four a confined organization can create only a non-PHI `assist` grant, and the service
+  // refuses ChartWarden staff, auditor and family sessions and AI principals on every one.
+  "GET /api/v1/tenant/help-requests",
+  "POST /api/v1/tenant/help-requests",
+  "POST /api/v1/tenant/help-requests/:id/approve",
+  "POST /api/v1/tenant/help-requests/:id/close",
 ];
 
 /**

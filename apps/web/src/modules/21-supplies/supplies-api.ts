@@ -173,22 +173,16 @@ export type ReceivedConfirmedActor = ReqBody<
 
 // ── request helpers ────────────────────────────────────────────────────────────────────────────────────
 
-/** ADR-0021 — a fresh client idempotency key per mutation attempt. */
-export function idemKey(): string {
-  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `m21-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-}
-
 /**
  * §7.2 — the mutation headers. `If-Match` carries the row `updated_at` the caller READ, as an exact ISO
- * string. Passing `undefined` is for the two creates that have no row to have read (`POST /supply-requests`,
+ * string. The Idempotency-Key is left to the API client, which holds one per write intent (method + URL + If-Match + body): kept across a lost
+ * reply (no answer, a gateway page, the in-flight 409) and renewed by any other answer. Passing `undefined` is for the two creates that have no row to have read (`POST /supply-requests`,
  * `POST /comfort-kit-dispatches`); every transition passes the stamp, and omitting it is a 428, not a
  * silent last-write-wins — for a controlled-substance count, "last write wins" means one of the two counts
  * is silently gone.
  */
 export function writeHeaders(updatedAt?: string | null): Record<string, string> {
-  const header: Record<string, string> = { "Idempotency-Key": idemKey() };
+  const header: Record<string, string> = {};
   if (updatedAt) header["If-Match"] = updatedAt;
   return header;
 }

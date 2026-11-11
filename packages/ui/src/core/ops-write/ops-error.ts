@@ -9,10 +9,12 @@
 //   refused       any other coded 409           -> the server REFUSED the change on its merits (an account in use, work still queued):
 //                                                  show its sentence and keep the form, nothing was stale
 //   locked        409 ONBOARDING_STEP_OUT_OF_ORDER -> `blockedBy` names the earlier step to finish
+//   rate-limited  429 (the API's own, or a proxy's bare page) -> wait, then try again; `retryAfterSeconds` when the response says
 //   validation    400 / 422                     -> `fieldErrors` maps each detail to its field
 //   not-found / forbidden / unavailable / network, and unknown for the rest
 // Nothing is retried on the operator's behalf: a pinned write that was refused must be confirmed again against what was re-read.
 import { envelopeErrorMessage } from "../error-message";
+import { isInFlightDuplicate, isKeyStuck } from "./idempotency-key";
 
 export type OpsFailureKind =
   | "step-up"
@@ -20,6 +22,7 @@ export type OpsFailureKind =
   | "conflict"
   | "refused"
   | "locked"
+  | "rate-limited"
   | "validation"
   | "not-found"
   | "forbidden"
@@ -45,9 +48,20 @@ export interface OpsFailure {
   /** The earlier wizard step that must be settled first (ONBOARDING_STEP_OUT_OF_ORDER), else null. */
   readonly blockedBy: string | null;
   readonly correlationId: string | null;
+  /** The wait a 429 asked for (its `Retry-After` in seconds), when the response carried a usable one. */
+  readonly retryAfterSeconds?: number | null;
 }
 
 export type OpsErrorCopy = Readonly<Record<string, string>>;
+
+/** The part of a fetch Response this reads: its status and, for a 429, its headers. */
+export interface ResponseLike {
+  readonly status: number;
+  readonly headers?: { get(name: string): string | null };
+}
+
+/** Backward-compatible name used by existing operator-write call sites. */
+export type ErrorResponse = ResponseLike;
 
 interface Envelope {
   readonly code: string | null;
@@ -61,6 +75,7 @@ const GENERIC: Readonly<Record<OpsFailureKind, string>> = {
   conflict: "This changed since you opened it. Reload, review what it says now, and try again.",
   refused: "That was refused. Nothing was changed.",
   locked: "An earlier step is not finished yet.",
+  "rate-limited": "Too many attempts. Wait a minute, then try again.",
   validation: "Some details need attention.",
   "not-found": "That could not be found.",
   forbidden: "You do not have access to do that.",
@@ -89,8 +104,33 @@ const STALE_PIN_409_CODES: ReadonlySet<string> = new Set([
   "TENANT_STATUS_CHANGED",
   "STALE_VERSION",
 ]);
+/**
+ * The server's own sentence for an in-flight duplicate is an implementation detail ("Idempotency-Key request is still being processed").
+ * The operator's situation: an earlier try of this same change is still being saved, and re-sending it now would not help.
+ */
+const IN_FLIGHT_COPY =
+  "That change is still being saved. Wait a moment, then check the record before trying again.";
+/**
+ * The server's sentence for a stuck key tells a client how to treat an Idempotency-Key, which is not the operator's question: did my change
+ * save? The key is already spent, nothing is retried for them, and the next step is to look at the record before trying again.
+ */
+const KEY_STUCK_COPY =
+  "We could not confirm whether that change was saved. Check the record before trying again.";
 /** A 413 with no envelope is a proxy (nginx's body cap) refusing before the app saw the request; it gets a code the caller's copy can name. */
 const PAYLOAD_TOO_LARGE_CODE = "PAYLOAD_TOO_LARGE";
+/** The API's own 429 code; a 429 with no envelope (nginx's per-address limit sends an HTML page) is given the same one. */
+const RATE_LIMITED_CODE = "RATE_LIMITED";
+
+/** `Retry-After` as whole seconds (the delta form every limiter here sends); anything else is not used. */
+function retryAfterOf(response: ResponseLike | null | undefined): number | null {
+  const raw = response?.headers?.get("retry-after") ?? response?.headers?.get("Retry-After");
+  if (raw === null || raw === undefined || !/^\d{1,6}$/.test(raw.trim())) return null;
+  const seconds = Number(raw.trim());
+  return seconds > 0 && seconds <= 3600 ? seconds : null;
+}
+
+const waitWords = (seconds: number): string =>
+  seconds <= 90 ? `${seconds} seconds` : `about ${Math.ceil(seconds / 60)} minutes`;
 
 function envelopeOf(error: unknown): Envelope {
   const body = (error as { error?: unknown } | null | undefined)?.error;
@@ -122,6 +162,7 @@ function envelopeOf(error: unknown): Envelope {
 function kindOf(status: number | null, code: string | null): OpsFailureKind {
   if (status === null) return "network";
   if (status === 403 && code === STEP_UP_CODE) return "step-up";
+  if (status === 429) return "rate-limited";
   if (status === 428) return "precondition";
   if (code === OUT_OF_ORDER_CODE) return "locked";
   if (status === 412) return "conflict";
@@ -141,14 +182,17 @@ function kindOf(status: number | null, code: string | null): OpsFailureKind {
  */
 export function describeOpsError(
   error: unknown,
-  response: { readonly status: number } | null | undefined,
+  response: ResponseLike | null | undefined,
   copy: OpsErrorCopy = {},
 ): OpsFailure {
   const status = response?.status ?? null;
   const envelope = envelopeOf(error);
   const { correlationId, details } = envelope;
-  const code = envelope.code ?? (status === 413 ? PAYLOAD_TOO_LARGE_CODE : null);
+  const code =
+    envelope.code ??
+    (status === 413 ? PAYLOAD_TOO_LARGE_CODE : status === 429 ? RATE_LIMITED_CODE : null);
   const kind = kindOf(status, code);
+  const retryAfterSeconds = kind === "rate-limited" ? retryAfterOf(response) : null;
   const recordedAt = details.find((d) => d.field === CURRENT_RECORDED_AT)?.message;
   const fieldErrors: Record<string, string> = {};
   if (kind === "validation") {
@@ -159,12 +203,35 @@ export function describeOpsError(
     code,
     status,
     message:
-      (code !== null ? copy[code] : undefined) ?? envelopeErrorMessage(error) ?? GENERIC[kind],
+      // A limiter's own sentence ("rate limit exceeded") says nothing to do: a 429 gets the wait the response named, else the caller's copy,
+      // else the kit's words.
+      kind === "rate-limited"
+        ? retryAfterSeconds !== null
+          ? `Too many attempts. Wait ${waitWords(retryAfterSeconds)}, then try again.`
+          : ((code !== null ? copy[code] : undefined) ?? GENERIC[kind])
+        : ((code !== null ? copy[code] : undefined) ??
+          (status !== null && isKeyStuck(status, error) ? KEY_STUCK_COPY : undefined) ??
+          (status !== null && isInFlightDuplicate(status, error) ? IN_FLIGHT_COPY : undefined) ??
+          envelopeErrorMessage(error) ??
+          GENERIC[kind]),
     fieldErrors,
     details,
     current: recordedAt ? { recordedAt } : null,
     blockedBy:
       kind === "locked" ? (details.find((d) => d.field === "templateKey")?.code ?? null) : null,
     correlationId,
+    ...(kind === "rate-limited" ? { retryAfterSeconds } : {}),
   };
+}
+
+/**
+ * A refusal that is about an input the screen renders: the form stays open and each message is read beside its field, so the notice is
+ * not repeated. `renders` says which fields this screen actually shows (default: any): a refusal that names only fields the screen does
+ * not render (the server's `(root)` for an unknown shape) is NOT about an input, and its notice must show.
+ */
+export function isAboutAnInput(
+  failure: Pick<OpsFailure, "kind" | "fieldErrors">,
+  renders: (field: string) => boolean = () => true,
+): boolean {
+  return failure.kind === "validation" && Object.keys(failure.fieldErrors).some(renders);
 }

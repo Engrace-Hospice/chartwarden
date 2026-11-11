@@ -7,7 +7,7 @@
 import { schema } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
 import { asc, eq, inArray } from "drizzle-orm";
-import { PAUSED_UNTIL_PREFIX } from "../routes/admin-transition";
+import { ORG_SUSPENDED_REASON_CODE, pausedUntilOfLedgerRow } from "../routes/admin-transition";
 import type { WriteTx } from "../routes/service-drizzle";
 import { type ContractRecord, loadModeHistory, selectContracts } from "./contract-select";
 import { loadBands } from "./plan-service";
@@ -24,19 +24,15 @@ export interface Transition {
   readonly from: Sub["status"] | null;
   readonly to: Sub["status"];
   readonly at: Date;
-  /** The ledger row's `reason_detail`: an admin pause with an end date records it as `paused_until=<ISO instant>` (PAUSED_UNTIL_PREFIX). */
+  /** The ledger row's `reason_code`: only an operator's pause (`platform_ops_pause`) is read for an end date. */
+  readonly reasonCode?: string | null;
+  /** The ledger row's `reason_detail`: an operator's pause with an end date records it as `paused_until=<ISO instant>` (pausedUntilDetail). */
   readonly detail?: string | null;
 }
 
 export interface Lifetime {
   readonly endedAt: Date | null;
   readonly pauses: { readonly from: Date; readonly to: Date | null }[];
-}
-
-function pausedUntilOf(t: Transition): Date | null {
-  if (!t.detail?.startsWith(PAUSED_UNTIL_PREFIX)) return null;
-  const until = new Date(t.detail.slice(PAUSED_UNTIL_PREFIX.length));
-  return Number.isNaN(until.getTime()) ? null : until;
 }
 
 /**
@@ -49,10 +45,13 @@ function pausedUntilOf(t: Transition): Date | null {
  * open forever (an open pause bills nothing, so a stale one would stop the bill for good). `updated_at` drifts on unrelated writes, which
  * is why it is only the fallback.
  *
- * A pause with an END DATE (`paused_until`) is over at that date whether or not anyone resumed it: nothing resumes a subscription when its
- * date arrives, so without this a pause "until the 15th" would bill nothing after the 15th until an operator remembered. The date is read
- * from the row for the pause still in force and from the ledger row's `reason_detail` for one already closed (a resume clears the row's
- * date). The pause ends at the EARLIER of its date and the transition that closed it; a date still in the future at `at` changes nothing.
+ * A pause with an END DATE (`paused_until`) is over at that date whether or not anyone has resumed it yet. The hourly pause-resume sweep
+ * (billing-runtime/pause-resume.ts) resumes the stored status once the date has passed and dates its ledger row AT that date, which this
+ * reads as the transition that closed the pause (the same window); this branch covers the hours between the date and the next sweep, and a
+ * sweep that is late, so a pause "until the 15th" never bills nothing after the 15th. The date is read from the row for the pause still in
+ * force and from the ledger row's `reason_detail` for one already closed (a resume clears the row's date). The pause ends at the EARLIER of
+ * its date and the transition that closed it; a date still in the future at `at` changes nothing. A platform suspension that arrives while the
+ * pause is still running (a `paused -> paused` ledger row with ORG_SUSPENDED_REASON_CODE) voids the date: the pause is open-ended from then.
  */
 export function lifetimeFromTransitions(
   transitions: readonly Transition[],
@@ -64,8 +63,13 @@ export function lifetimeFromTransitions(
     const open = pauses[pauses.length - 1];
     const keepsPaused = t.from === "paused" && t.to === "paused";
     if (open && open.to === null && !keepsPaused) open.to = t.at;
+    // A platform suspension that arrived while the dated pause was running makes it open-ended (the consumer cleared the row's date with
+    // it): the date no longer ends the pause. Any other `paused -> paused` row (a plan change) leaves the date in force.
+    if (open && open.to === null && keepsPaused && t.reasonCode === ORG_SUSPENDED_REASON_CODE) {
+      open.until = null;
+    }
     if (t.to === "paused" && t.from !== "paused")
-      pauses.push({ from: t.at, to: null, until: pausedUntilOf(t) });
+      pauses.push({ from: t.at, to: null, until: pausedUntilOfLedgerRow(t) });
   }
   const last = pauses[pauses.length - 1];
   if (last && last.to === null && sub.status !== "paused") last.to = sub.updatedAt;
@@ -86,6 +90,7 @@ async function lifetimeOf(tx: WriteTx, sub: Sub, at: Date): Promise<Lifetime> {
       from: SH.fromStatus,
       to: SH.toStatus,
       at: SH.transitionedAt,
+      reasonCode: SH.reasonCode,
       detail: SH.reasonDetail,
     })
     .from(SH)
@@ -194,8 +199,9 @@ export async function loadContractFacts(
 /**
  * The same for EVERY org that has a contract in scope, in the one transaction the caller already holds: the sweep's single platform
  * read (every platform runner call is an audited cross-tenant bypass, so the hourly sweep asks once, not twice per org). An org that is
- * not live is left out. An org whose own data is refused (a contract on a plan with no prices) maps to null instead of failing every
- * other org's read: the per-org path reads it again and raises the real error where the sweep logs it. Reads only; the per-org write
+ * not live is left out. Each org is read in a SAVEPOINT and whatever fails there (an aborted-statement database error, a domain refusal
+ * such as a contract on a plan with no prices, a JS error on odd data) maps that org to null instead of failing every other org's read:
+ * the per-org path reads it again and raises the real error where the sweep logs it with the org's id. Reads only; the per-org write
  * path re-reads under its own lock.
  */
 export async function loadContractFactsByOrg(
@@ -211,10 +217,12 @@ export async function loadContractFactsByOrg(
   const facts = new Map<string, ContractFacts[] | null>();
   for (const [organizationId, records] of byOrg) {
     try {
-      const orgFacts = await factsOfRecords(tx, goLive, organizationId, records, at);
+      const orgFacts = await tx.transaction((savepoint) =>
+        factsOfRecords(savepoint as unknown as WriteTx, goLive, organizationId, records, at),
+      );
       if (orgFacts.length > 0) facts.set(organizationId, orgFacts);
-    } catch (error) {
-      if (!(error instanceof ChartWardenError)) throw error; // a database error aborted the transaction: nothing after it can be read
+    } catch {
+      // not swallowed: the per-org path (runStatementsForOrg without preloaded facts) repeats this read and throws, and the fan-out logs it
       facts.set(organizationId, null);
     }
   }

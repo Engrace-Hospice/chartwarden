@@ -46,40 +46,78 @@ describe("runBaaExpiryCron", () => {
 });
 
 describe("runSupportSessionCloseCron", () => {
-  it("closes an expired open session and routes the outbox event to the session's org", async () => {
-    const closeSession = vi.fn(async () => undefined);
-    const publish = vi.fn(async (_org: string | undefined, _event: string) => undefined);
-    const result = await runSupportSessionCloseCron({
-      candidates: [
-        {
-          sessionId: "s1",
-          organizationId: "o1",
-          supportConsentGrantId: "g1",
-          tenantAccountId: "t1",
-          grantorMembershipId: "m1",
-          actorMembershipId: "m2",
-          expiresAt: new Date("2026-10-09T00:00:00Z"),
-        },
-      ],
-      serviceDeps: (orgBySession) => ({
+  const candidate = {
+    sessionId: "s1",
+    organizationId: "o1",
+    supportConsentGrantId: "g1",
+    tenantAccountId: "t1",
+    grantorMembershipId: "m1",
+    actorMembershipId: "m2",
+    expiresAt: new Date("2026-10-09T00:00:00Z"),
+  };
+  const serviceDeps = (opts: { closeSessionIfOpen: () => Promise<unknown> }) => {
+    const published: { org: string; event: string; payload: Record<string, unknown> }[] = [];
+    const events: { organizationId: string; eventKind: string }[] = [];
+    return {
+      published,
+      events,
+      deps: {
         now: () => NOW,
         repo: {
-          findSessionById: async () => ({ id: "s1", closedAt: null }),
-          closeSession,
-          appendSessionEvent: async () => undefined,
+          closeSessionIfOpen: opts.closeSessionIfOpen,
+          appendSessionEvent: async (e: { organizationId: string; eventKind: string }) => {
+            events.push(e);
+          },
         } as never,
+        members: { userIdOf: async () => null },
         audit: { emitCriticalAudit: async () => undefined },
         outbox: {
-          publish: async (event, payload) => {
-            await publish(orgBySession.get(String(payload.sessionId)), event);
+          publish: async (event: string, payload: Record<string, unknown>, org: string) => {
+            published.push({ org, event, payload });
           },
         },
         alerts: { emitAlert: async () => undefined },
-      }),
+      },
+    };
+  };
+
+  it("closes an expired open session and routes the outbox event and the ledger row to the grant's organization", async () => {
+    const closeSessionIfOpen = vi.fn(async () => ({ id: "s1" }));
+    const h = serviceDeps({ closeSessionIfOpen });
+    const result = await runSupportSessionCloseCron({
+      candidates: [candidate],
+      serviceDeps: () => h.deps as never,
     });
     expect(result.closed).toBe(1);
-    expect(closeSession).toHaveBeenCalledTimes(1);
-    expect(publish).toHaveBeenCalledWith("o1", "m34.support_session.expired");
+    expect(closeSessionIfOpen).toHaveBeenCalledWith("s1", {
+      closedAt: NOW,
+      closeReason: "expired",
+    });
+    expect(h.published).toEqual([
+      expect.objectContaining({ org: "o1", event: "m34.support_session.expired" }),
+    ]);
+    expect(h.published[0]?.payload.closeReason).toBe("expired");
+    expect(h.events).toEqual([
+      {
+        organizationId: "o1",
+        eventKind: "session.close",
+        occurredAt: NOW,
+        actorIp: null,
+        supportSessionId: "s1",
+        context: { closeReason: "expired" },
+      },
+    ]);
+  });
+
+  it("skips a session a manual close or a revoke already ended", async () => {
+    const h = serviceDeps({ closeSessionIfOpen: async () => null });
+    const result = await runSupportSessionCloseCron({
+      candidates: [candidate],
+      serviceDeps: () => h.deps as never,
+    });
+    expect(result.closed).toBe(0);
+    expect(h.published).toEqual([]);
+    expect(h.events).toEqual([]);
   });
 });
 

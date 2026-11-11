@@ -46,6 +46,7 @@ const EXPECTED_ALLOWLIST = [
   "GET /api/v1/tenant/account",
   "GET /api/v1/tenant/baa",
   "GET /api/v1/tenant/clearinghouse",
+  "GET /api/v1/tenant/help-requests",
   "GET /api/v1/tenant/onboarding",
   "GET /health",
   "GET /ready",
@@ -69,10 +70,14 @@ const EXPECTED_ALLOWLIST = [
   "POST /api/v1/tenant/clearinghouse/baa",
   "POST /api/v1/tenant/clearinghouse/verify",
   "POST /api/v1/tenant/go-live/attest",
+  "POST /api/v1/tenant/help-requests",
+  "POST /api/v1/tenant/help-requests/:id/approve",
+  "POST /api/v1/tenant/help-requests/:id/close",
   "POST /api/v1/tenant/onboarding/:taskId/attest",
   "POST /api/v1/tenant/onboarding/:taskId/block",
   "POST /api/v1/tenant/onboarding/:taskId/complete",
   "POST /api/v1/tenant/onboarding/:taskId/reopen",
+  "POST /api/v1/tenant/onboarding/:taskId/skip",
   "POST /api/v1/tenant/onboarding/:taskId/start",
   "PUT /api/v1/tenant/clearinghouse",
   "PUT /api/v1/tenant/compliance-officer",
@@ -117,9 +122,10 @@ describe("the onboarding-org allowlist against the registered route table", () =
     ["POST", "/api/v1/tenant/dsar-export-jobs/:id/fulfill"],
     ["GET", "/api/v1/tenant/tenant-export-jobs"],
     ["GET", "/api/v1/tenant/tenant-export-jobs/:id/download"],
+    ["GET", "/api/v1/tenant/support-consent-grants"],
     ["POST", "/api/v1/tenant/support-consent-grants"],
     ["POST", "/api/v1/tenant/support-consent-grants/:id/revoke"],
-    ["GET", "/api/v1/tenant/support-consent-grants"],
+    // slice 7: the generic grant and session routes stay refused; a confined organization reaches consent only through help requests
     ["GET", "/api/v1/tenant/support-sessions"],
     ["GET", "/api/v1/tenant/support-sessions/:id/events"],
     ["GET", "/api/v1/billing/rate-tables"],
@@ -139,8 +145,19 @@ describe("the onboarding-org allowlist against the registered route table", () =
     expect(allowed(method, path)).toBe(false);
   });
 
-  it("every other /api/v1/tenant route that is not a wizard route is refused", () => {
+  it.each([
+    ["GET", "/api/v1/tenant/help-requests"],
+    ["POST", "/api/v1/tenant/help-requests"],
+    ["POST", "/api/v1/tenant/help-requests/:id/approve"],
+    ["POST", "/api/v1/tenant/help-requests/:id/close"],
+  ])("%s %s exists and is open: the four help-request routes, and only those", (method, path) => {
+    expect(registered.has(`${method} ${path}`), "the route must be real").toBe(true);
+    expect(allowed(method, path)).toBe(true);
+  });
+
+  it("every other /api/v1/tenant route that is not a wizard or help-request route is refused", () => {
     const wizardPrefixes = [
+      "/api/v1/tenant/help-requests",
       "/api/v1/tenant/onboarding",
       "/api/v1/tenant/org-profile",
       "/api/v1/tenant/compliance-officer",

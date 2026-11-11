@@ -1,4 +1,4 @@
-import { Button, InlineAlert, useApiClient } from "@chartwarden/ui";
+import { Button, InlineAlert, useApiClient, useAttemptKey } from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — one-click "File in DDE" on a claim or NOE/NOTR (ADR-0052, #766).
 // FISS-side work (adjust or cancel a paid claim, fix a returned claim, key or correct a notice) has no electronic
 // signal, so the biller queues it here with one click: POST /api/v1/billing/dde-items {itemType, subjectId}. The
@@ -7,7 +7,6 @@ import { Button, InlineAlert, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
-import { useAttemptKey } from "./use-attempt-key";
 
 export type DdeFileItemType = "rtp_correction" | "adjustment" | "cancel" | "noe" | "notr";
 

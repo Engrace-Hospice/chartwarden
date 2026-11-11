@@ -224,16 +224,10 @@ export interface HourRatioView {
 
 // ── request helpers ────────────────────────────────────────────────────────────────────────────────────
 
-/** §F08 — a fresh client idempotency key per mutation attempt. */
-export function idemKey(): string {
-  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `m15-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-}
-
-/** §2.5 — the mutation headers: an idempotency key always, `If-Match` whenever a row version was read. */
+/** §2.5 — the mutation headers: `If-Match` whenever a row version was read. The Idempotency-Key is left to the API client, which holds one per write intent (method + URL + If-Match + body): kept across a lost
+ * reply (no answer, a gateway page, the in-flight 409) and renewed by any other answer. */
 export function writeHeaders(version?: number | null): Record<string, string> {
-  const header: Record<string, string> = { "Idempotency-Key": idemKey() };
+  const header: Record<string, string> = {};
   if (version != null) header["If-Match"] = String(version);
   return header;
 }

@@ -156,6 +156,22 @@ export {
   scheduleM34PlatformSweepJobs,
 } from "./jobs/platform-sweeps-worker";
 
+export type {
+  SupportLedgerRecorder,
+  SupportLedgerWrite,
+} from "./routes/platform/support-ledger-hook";
+export { createDrizzleSupportLedgerRecorder } from "./routes/platform/support-ledger-drizzle";
+// Slice 7 (7S) - the support-session ports bound once at the composition root and shared by the platform service, the tenant service
+// and the close sweep; the support-grant operations bundle piece 7B is handed; the ledger hook for an operator's writes on a tenant.
+export {
+  type SupportPortAlerts,
+  type SupportPortOutbox,
+  type SupportSessionPortDeps,
+  type SupportSessionPorts,
+  createSupportGrantOperationsOver,
+  createSupportSessionPorts,
+} from "./jobs/support-session-ports";
+
 export {
   buildM34ProvisionQueue,
   buildM34ProvisionStartedConsumer,
@@ -289,7 +305,7 @@ const SLICE_M34_SIGNUP_SERVICE: _SignupIntentRouteService = {
  * `registerTenantPlatformAbacPredicates`.
  */
 import type { HelpRequestService } from "./help/help-request-contract";
-import { createUnbuiltHelpRequestService } from "./help/help-request-unbuilt";
+import { createInMemoryHelpRequestService } from "./help/help-request-factory";
 import { type OnboardingWizard, createOnboardingWizard } from "./onboarding/wizard-service";
 import {
   createMemoryOrgProfile,
@@ -305,6 +321,10 @@ import {
   type PlatformOpsService,
   createInMemoryPlatformOpsService,
 } from "./routes/platform/ops-service";
+import {
+  type SupportLedgerHookDeps,
+  registerSupportLedgerHook,
+} from "./routes/platform/support-ledger-hook";
 import { registerTenantAccountFlagsRoutes } from "./routes/tenant/account-flags-routes";
 import {
   type TenantAccountFlagsService,
@@ -329,8 +349,13 @@ export function mountTenantPlatformRoutes(
     /** GAP-164 - tenant account + feature-flag read/write (absent => in-memory slice). */
     tenantAccountFlags?: { service: TenantAccountFlagsService };
     /**
-     * Slice 7 - help requests, both surfaces. `service` absent => the stand-in that answers 501 NOT_IMPLEMENTED until piece 7B binds
-     * the real one; `fileRateLimit` is the per-member and per-organization cap on filing (absent => uncapped: tests, no-db boot).
+     * Slice 7 (7S) - appends one `ops.write` ledger row per successful non-GET operator request on `/platform/tenants/:orgSlug/*`
+     * while the operator holds an open consented support session on that tenant. Absent => the hook is not registered (tests, no-db boot).
+     */
+    supportLedger?: SupportLedgerHookDeps;
+    /**
+     * Slice 7 - help requests, both surfaces. `service` absent => the in-memory slice (route tests, no-db boot); the composition root
+     * binds `buildDrizzleHelpRequestService`. `fileRateLimit` is the per-member and per-organization cap on filing (absent => uncapped).
      */
     help?: { service?: HelpRequestService; fileRateLimit?: HelpRequestRateLimit };
     /** Operator-entered tenant onboarding data (provider entities, locations, MAC credential); absent => not mounted. */
@@ -342,6 +367,8 @@ export function mountTenantPlatformRoutes(
       baaUploadRateLimit?: (request: never, reply: never) => Promise<void>;
       /** Per-target-tenant cap on the clearinghouse `PUT` (its 409 is an account-in-use oracle); fail-closed in production. */
       clearinghousePutRateLimit?: (request: never, reply: never) => Promise<void>;
+      /** Per-operator (across tenants) cap on the BAA revoke, a kill switch; fail-open in production (the audit row and alerts still fire). */
+      clearinghouseRevokeBaaRateLimit?: (request: never, reply: never) => Promise<void>;
     };
     public?: {
       service?: _SignupIntentRouteService;
@@ -352,6 +379,9 @@ export function mountTenantPlatformRoutes(
   },
 ): void {
   void db; // the Drizzle services already hold the platform/org-pooled handles (services.* below).
+
+  // The support-session ledger hook goes first so it is in scope for every platform route mounted below.
+  if (services?.supportLedger) registerSupportLedgerHook(app, services.supportLedger);
 
   // ── platform-ops surface (withPlatformContext; F03/F09 audited cross-tenant reads) ──
   // Drizzle-backed when the composition root injects it; the in-memory slice otherwise (tests / no-db).
@@ -367,7 +397,7 @@ export function mountTenantPlatformRoutes(
   _registerTenantKeyRingRoutes(app, { service: platformService });
   _registerOnboardingTemplateRoutes(app, { service: platformService });
   _registerSupportSessionRoutes(app, { service: platformService });
-  const helpService = services?.help?.service ?? createUnbuiltHelpRequestService();
+  const helpService = services?.help?.service ?? createInMemoryHelpRequestService().service;
   registerPlatformHelpRequestRoutes(app, { service: helpService });
   _registerSignupIntentRoutes(app, { service: platformService });
   _registerBaaRegisterRoutes(app, { service: platformService });
@@ -408,6 +438,12 @@ export function mountTenantPlatformRoutes(
         : {}),
       ...(services.onboardingData.clearinghousePutRateLimit
         ? { clearinghousePutRateLimit: services.onboardingData.clearinghousePutRateLimit as never }
+        : {}),
+      ...(services.onboardingData.clearinghouseRevokeBaaRateLimit
+        ? {
+            clearinghouseRevokeBaaRateLimit: services.onboardingData
+              .clearinghouseRevokeBaaRateLimit as never,
+          }
         : {}),
     });
   }
@@ -486,6 +522,26 @@ export type {
   PlatformHelpRequestView,
   TenantHelpRequestListView,
 } from "./help/help-request-contract";
+export {
+  type DrizzleHelpRequestServiceDeps,
+  buildDrizzleHelpRequestService,
+  createInMemoryHelpRequestService,
+} from "./help/help-request-factory";
+export {
+  createDrizzleHelpRequestRunner,
+  createLinkedHelpRequestPort,
+} from "./help/help-request-store-drizzle";
+export {
+  HELP_REQUEST_REQUESTED_EVENT,
+  type HelpOutboxPort,
+} from "./help/help-request-service";
+export {
+  HELP_REQUEST_SWEEP_QUEUE,
+  registerM34HelpRequestSweepWorker,
+  runHelpRequestSweep,
+  scheduleM34HelpRequestSweepJob,
+} from "./help/help-request-sweep";
+export { createUnboundSupportGrantOperations } from "./help/support-grant-operations-unbound";
 export {
   HELP_REQUEST_ID_DETAIL_FIELD,
   HelpRequestError,

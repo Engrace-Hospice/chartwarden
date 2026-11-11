@@ -6,11 +6,13 @@ import {
   InlineAlert,
   LoadingSpinner,
   Modal,
+  NO_ANSWER,
   Panel,
   PatientWorkspaceLayout,
   SelectField,
   StatusPill,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 import type { DataTableColumn } from "@chartwarden/ui";
 // apps/web/src/modules/31-portal — the patient chart's Signatures tab (ADR-0107). Staff send a patient or their representative an
@@ -43,16 +45,6 @@ import {
 } from "./signatures-model";
 
 const BASE = "/api/v1/admin/portal-signature-requests";
-const idemKey = (): string =>
-  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `sig-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-/**
- * Any HTTP response is definitive: the server's idempotency plugin records it (5xx included) and replays it for the same key, so keeping
- * the key after a 5xx would replay the failure forever. Only a thrown network error, which may still have landed, keeps the key.
- */
-const isDefinitive = (res: unknown): boolean =>
-  (res as { response?: Response }).response?.status !== undefined;
 const when = (iso: string | null): string =>
   iso ? new Date(iso).toLocaleDateString("en-US") : "—";
 
@@ -92,21 +84,25 @@ function PatientSignaturesInner(): JSX.Element {
   const [confirming, setConfirming] = useState<SignatureRequestRow | null>(null);
   /** Rows with a review call in flight, read synchronously so a second click on the same row is dropped. */
   const inFlight = useRef<ReadonlySet<string>>(new Set());
-  /** One Idempotency-Key per user action (kind + row + choice), kept until the action gets a definitive answer. */
-  const actionKeys = useRef<ReadonlyMap<string, string>>(new Map());
-  const keyFor = (action: string): string => {
-    const existing = actionKeys.current.get(action);
-    if (existing) return existing;
-    const key = idemKey();
-    actionKeys.current = new Map(actionKeys.current).set(action, key);
-    return key;
-  };
+  /**
+   * One Idempotency-Key per user action (kind + row + choice), held by the shared useAttemptKey until the action gets an answer from the app:
+   * the server records every answer it gives (5xx included) and replays it for the same key, so any such answer renews the key; a thrown
+   * network error (which may still have landed), a gateway page and the in-flight 409 keep it.
+   */
+  const attempt = useAttemptKey();
+  const keyFor = (action: string): string => attempt.keyFor(action);
   const settle = (action: string, res: unknown): void => {
-    if ((res as { error?: unknown }).error && !isDefinitive(res)) return;
-    const next = new Map(actionKeys.current);
-    next.delete(action);
-    actionKeys.current = next;
+    const answer = res as { error?: unknown; response?: Response };
+    const status = answer.response?.status;
+    if (status !== undefined) attempt.settle(status, answer.error, action);
   };
+  /** A request that threw got no answer: its key is kept for the retry. */
+  const unanswered =
+    (action: string) =>
+    (error: unknown): never => {
+      attempt.settle(NO_ANSWER, undefined, action);
+      throw error;
+    };
 
   const load = useCallback(async () => {
     if (!patientId) return;
@@ -163,17 +159,19 @@ function PatientSignaturesInner(): JSX.Element {
 
   const sendOnce = async (option: SendOption): Promise<string | null> => {
     const action = `send:${option.kind}:${option.targetRef ?? ""}`;
-    const res = await client.POST(
-      BASE as never,
-      {
-        headers: { "Idempotency-Key": keyFor(action) },
-        body: {
-          patientId,
-          docKind: option.kind,
-          ...(option.targetRef ? { targetRef: option.targetRef } : {}),
-        },
-      } as never,
-    );
+    const res = await client
+      .POST(
+        BASE as never,
+        {
+          headers: { "Idempotency-Key": keyFor(action) },
+          body: {
+            patientId,
+            docKind: option.kind,
+            ...(option.targetRef ? { targetRef: option.targetRef } : {}),
+          },
+        } as never,
+      )
+      .catch(unanswered(action));
     settle(action, res);
     const r = res as { error?: unknown };
     if (r.error) return refusalMessage(r.error, "The request could not be sent.");
@@ -195,14 +193,16 @@ function PatientSignaturesInner(): JSX.Element {
     reason: VoidReason,
   ): Promise<string | null> => {
     const action = `void:${row.id}:${reason}`;
-    const res = await client.POST(
-      `${BASE}/{requestId}/void` as never,
-      {
-        params: { path: { requestId: row.id } },
-        headers: { "Idempotency-Key": keyFor(action) },
-        body: { reason },
-      } as never,
-    );
+    const res = await client
+      .POST(
+        `${BASE}/{requestId}/void` as never,
+        {
+          params: { path: { requestId: row.id } },
+          headers: { "Idempotency-Key": keyFor(action) },
+          body: { reason },
+        } as never,
+      )
+      .catch(unanswered(action));
     settle(action, res);
     const r = res as { error?: unknown };
     if (r.error) return refusalMessage(r.error, "The request could not be withdrawn.");
@@ -234,15 +234,17 @@ function PatientSignaturesInner(): JSX.Element {
 
   const reviewOnce = async (row: SignatureRequestRow, decision: "accepted" | "rejected") => {
     const action = `review:${row.id}:${row.uploadedDocumentId}:${decision}`;
-    const res = await client.POST(
-      `${BASE}/{requestId}/review` as never,
-      {
-        params: { path: { requestId: row.id } },
-        headers: { "Idempotency-Key": keyFor(action) },
-        // The copy this row showed: the server refuses a decision on a copy that was replaced since (UPLOADED_COPY_CHANGED).
-        body: { decision, uploadedDocumentId: row.uploadedDocumentId },
-      } as never,
-    );
+    const res = await client
+      .POST(
+        `${BASE}/{requestId}/review` as never,
+        {
+          params: { path: { requestId: row.id } },
+          headers: { "Idempotency-Key": keyFor(action) },
+          // The copy this row showed: the server refuses a decision on a copy that was replaced since (UPLOADED_COPY_CHANGED).
+          body: { decision, uploadedDocumentId: row.uploadedDocumentId },
+        } as never,
+      )
+      .catch(unanswered(action));
     settle(action, res);
     const r = res as { error?: unknown };
     if (r.error) {

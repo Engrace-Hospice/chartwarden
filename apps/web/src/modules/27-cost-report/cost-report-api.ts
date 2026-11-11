@@ -10,6 +10,7 @@
 //     submit body carries NO membership id and no timestamp — `submit` is sent `{}`.
 //   • The lifecycle state machine: a 409 means the report is not in the state the action needs.
 // `Idempotency-Key` is attached to every mutation by the shared api client.
+import { freshIdempotencyKeyHeaders } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 
 export type WriteResult<T> =
@@ -117,7 +118,8 @@ export async function computeWorksheet(
 ): Promise<WriteResult<JobAccepted>> {
   const { data, error, response } = await client.POST(
     "/api/v1/cost-reports/{id}/worksheets/{code}/compute",
-    { params: { path: { id, code } } },
+    // A recompute reads the worksheet as it is now: never replay an earlier (lost-reply) answer.
+    { params: { path: { id, code } }, headers: freshIdempotencyKeyHeaders() },
   );
   if (error || !data) return failure(response?.status, error);
   return ok(data as JobAccepted);
@@ -138,10 +140,11 @@ export async function runValidation(
   client: ApiClient,
   id: string,
 ): Promise<WriteResult<JobAccepted>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/cost-reports/{id}/validate",
-    byId(id),
-  );
+  const { data, error, response } = await client.POST("/api/v1/cost-reports/{id}/validate", {
+    ...byId(id),
+    // A validation run checks the report as it is now: never replay an earlier (lost-reply) answer.
+    headers: freshIdempotencyKeyHeaders(),
+  });
   if (error || !data) return failure(response?.status, error);
   return ok(data as JobAccepted);
 }

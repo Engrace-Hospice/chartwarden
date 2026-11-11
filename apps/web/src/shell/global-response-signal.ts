@@ -14,6 +14,8 @@ export type GlobalResponseSignal =
   | { kind: "session-expired" | "service-unavailable" }
   | { kind: "tenant-unavailable"; reason: TenantUnavailableReason }
   | { kind: "org-not-selected" }
+  /** A route outside onboarding was refused because the organization is not live yet: the wizard is where to go. */
+  | { kind: "organization-onboarding" }
   | null;
 
 type Listener = () => void;
@@ -69,12 +71,16 @@ export function mayCarryTenantRefusal(status: number, url?: string): boolean {
   return path?.startsWith("/api/") === true && !path.startsWith(PUBLIC_API_PREFIX);
 }
 
-/** The tenant-unavailable signal for a refusal body `{ error: { code } }`, or null for any other body. Reads a clone. */
+/** The 403 a session on an organization that is not live yet gets from any route outside onboarding, go-live, account and sign-in. */
+const ORGANIZATION_ONBOARDING_CODE = "ORGANIZATION_ONBOARDING";
+
+/** The tenant-unavailable (or organization-onboarding) signal for a refusal body `{ error: { code } }`, or null for any other body. Reads a clone. */
 export async function tenantSignalFromResponse(response: Response): Promise<GlobalResponseSignal> {
   try {
     if (!response.headers.get("content-type")?.includes("json")) return null;
     const body = (await response.clone().json()) as { error?: { code?: unknown } } | null;
     const code = body?.error?.code;
+    if (code === ORGANIZATION_ONBOARDING_CODE) return { kind: "organization-onboarding" };
     const reason = typeof code === "string" ? TENANT_ERROR_CODES[code] : undefined;
     return reason ? { kind: "tenant-unavailable", reason } : null;
   } catch {
@@ -160,10 +166,25 @@ export function handleObservedResponse(
   }
 }
 
+const sessionExpiredHooks = new Set<() => void>();
+
+/**
+ * Run `hook` when the shell decides the session is dead (the `session-expired` signal: a 401 that is NOT a step-up or unlock refusal
+ * and NOT a live session with no organization yet). main.tsx uses it to drop the API client's held Idempotency-Keys, which the client
+ * cannot do itself because it cannot tell those 401s apart. Returns the unsubscribe.
+ */
+export function onSessionExpired(hook: () => void): () => void {
+  sessionExpiredHooks.add(hook);
+  return () => sessionExpiredHooks.delete(hook);
+}
+
 export function setGlobalResponseSignal(signal: GlobalResponseSignal): void {
   // A dead session must not leave PHI-bearing ceremony drafts in memory for whoever signs in next on this tab (the
   // /expired route is an SPA navigation, not a reload). An idle LOCK is different and keeps them.
-  if (signal?.kind === "session-expired") clearAllDrafts();
+  if (signal?.kind === "session-expired") {
+    clearAllDrafts();
+    for (const hook of sessionExpiredHooks) hook();
+  }
   if (signal?.kind === "tenant-unavailable") lastTenantReason = signal.reason;
   current = signal;
   for (const listener of listeners) listener();
