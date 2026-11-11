@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { type BuildSpawn, runProjectBuild } from "../build-project-graph";
 
 describe("build project graph", () => {
-  it("batches applications separately, packages by six, and preserves the bounded heap policy", () => {
+  it("builds packages first in batches of six, then applications separately", () => {
     const spawn = vi.fn<BuildSpawn>(() => ({ status: 0 }));
     const log = vi.fn();
     const projects = [
@@ -13,7 +13,6 @@ describe("build project graph", () => {
 
     expect(runProjectBuild(projects, { NODE_OPTIONS: "--trace-warnings" }, spawn, log)).toBe(0);
     expect(spawn.mock.calls.map((call) => call[1])).toEqual([
-      ["-b", "./apps/admin"],
       [
         "-b",
         "./packages/p1",
@@ -24,6 +23,7 @@ describe("build project graph", () => {
         "./packages/p6",
       ],
       ["-b", "./packages/p7"],
+      ["-b", "./apps/admin"],
       ["-b", "./scripts"],
     ]);
     for (const call of spawn.mock.calls) {
