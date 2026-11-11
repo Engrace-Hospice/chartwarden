@@ -125,8 +125,16 @@ GRANT INSERT ON "support_session_event" TO chartwarden_audit_writer;--> statemen
 
 CREATE TRIGGER "trg_m34_record_support_session_close"
   AFTER UPDATE ON "support_session"
-  FOR EACH ROW WHEN (OLD.closed_at IS NULL AND NEW.closed_at IS NOT NULL)
+  FOR EACH ROW WHEN (
+    OLD.closed_at IS NULL
+    AND NEW.closed_at IS NOT NULL
+    AND NEW.close_reason = 'grant_revoked'
+  )
   EXECUTE FUNCTION m34_record_support_session_close();--> statement-breakpoint
+
+DROP POLICY IF EXISTS "support_session_event_audit_writer_insert" ON "support_session_event";--> statement-breakpoint
+CREATE POLICY "support_session_event_audit_writer_insert" ON "support_session_event"
+  FOR INSERT TO chartwarden_audit_writer WITH CHECK (true);--> statement-breakpoint
 
 DROP POLICY IF EXISTS "support_grant_org_issue" ON "support_consent_grant";--> statement-breakpoint
 CREATE POLICY "support_grant_org_issue" ON "support_consent_grant"

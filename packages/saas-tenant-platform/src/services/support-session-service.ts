@@ -176,6 +176,12 @@ export interface SupportSessionMemberPort {
   userIdOf(membershipId: string): Promise<string | null>;
 }
 
+/** Tenant-bound patient existence check used before a patient-scoped consent envelope is stored. */
+export interface SupportSessionPatientPort {
+  /** True only when every requested id resolves inside `organizationId`; errors must fail closed. */
+  allBelongToOrganization(organizationId: string, patientIds: readonly string[]): Promise<boolean>;
+}
+
 /** Injected clock (deterministic effects — the `+8h` ceiling, the elevation window, the sweep cutoff).
  *  Mirrors the `now()` port in `runNppesNightlyDelta` so a run is reproducible/assertable. */
 export type NowPort = () => Date;
@@ -204,6 +210,7 @@ export interface SupportSessionServiceDeps {
   readonly outbox: SupportSessionOutboxPort;
   readonly alerts: SupportSessionAlertPort;
   readonly members: SupportSessionMemberPort;
+  readonly patients: SupportSessionPatientPort;
   readonly now: NowPort;
 }
 
@@ -541,7 +548,13 @@ export async function closeSupportSession(
     actorIp: input.actorIp ?? null,
   });
   if (alert) await deps.alerts.emitAlert(alert);
-  return { sessionId: session.id, closeReason: "manual", alreadyClosed: alert === null };
+  if (alert) return { sessionId: session.id, closeReason: "manual", alreadyClosed: false };
+  const winner = await deps.repo.findSessionById(session.id);
+  return {
+    sessionId: session.id,
+    closeReason: (winner?.closeReason as SupportSessionCloseReason | null) ?? "manual",
+    alreadyClosed: true,
+  };
 }
 
 // ── close-sweep (§7.4 step 6): close expired open sessions; emit m34.support_session.expired ──────────

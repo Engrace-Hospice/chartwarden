@@ -54,14 +54,14 @@ const CLOSE = P("support_session.close");
 
 // §4.6 ABAC. The list/close routes gate on `tenant_lifecycle_platform_ops`; start gates on the
 // `support_session_actor_distinct_from_grantor` predicate (D16 — the grant id is server-resolved, surfaced
-// on the body so the predicate is exercisable end-to-end); elevate gates on `tenant_consented_support_active`.
+// on the body so the predicate is exercisable end-to-end); elevate resolves the session id server-side
+// through `tenant_consented_support_active`.
 const startTarget = (request: GuardRequest): Record<string, unknown> => {
   const b = request.body as { supportConsentGrantId?: unknown } | undefined;
   return { supportConsentGrantId: b?.supportConsentGrantId };
 };
 const elevateTarget = (request: GuardRequest): Record<string, unknown> => {
-  const q = request.query as { tenantAccountId?: unknown } | undefined;
-  return { ...(request.params as Record<string, unknown>), tenantAccountId: q?.tenantAccountId };
+  return { supportSessionId: (request.params as { id?: unknown } | undefined)?.id };
 };
 const ABAC_PLATFORM_OPS = requireAbac(
   "support_session.list_platform",
@@ -100,7 +100,10 @@ export function registerSupportSessionRoutes(
   // 1 — list active + recent support sessions across tenants (cursor-paginated; tenant/status filters). §4.1.
   app.get(
     "/api/v1/platform/support-sessions",
-    { preHandler: [LIST, ABAC_PLATFORM_OPS] },
+    {
+      preHandler: [LIST, ABAC_PLATFORM_OPS],
+      config: { auditRead: { resourceKind: "support_session", list: true } },
+    },
     async (request) => {
       writeActorOf(request);
       const q = parse(SupportSessionListQuerySchema, request.query);
@@ -115,7 +118,17 @@ export function registerSupportSessionRoutes(
   // 2 — read a session's event ledger (the surveyor trail; cursor-paginated; audited read). §7.4 acc.
   app.get(
     "/api/v1/platform/support-sessions/:id/events",
-    { preHandler: [LIST, ABAC_PLATFORM_OPS] },
+    {
+      preHandler: [LIST, ABAC_PLATFORM_OPS],
+      config: {
+        auditRead: {
+          resourceKind: "support_session_event",
+          list: true,
+          listResourceId: true,
+          resourceIdParam: "id",
+        },
+      },
+    },
     async (request) => {
       writeActorOf(request);
       const q = parse(SessionEventListQuerySchema, request.query);

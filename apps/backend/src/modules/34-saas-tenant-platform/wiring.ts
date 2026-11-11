@@ -466,6 +466,8 @@ export function buildDrizzleTenantService(deps: {
   supportOps?: SupportGrantOperations;
   /** The help request linked to a grant, resolved inside the revoke's transaction (piece 7B's; absent: sessions only). */
   linkedHelpRequestsFor?: (tx: TenantTx) => LinkedHelpRequestPort;
+  /** IDs-only warning sink for best-effort linked-help reconciliation. */
+  warn?: (message: string, context: Record<string, unknown>) => void;
 }): { service: TenantRouteService } {
   const presign: PresignDownloadPort = {
     async presign(organizationId, objectKey, ttlSeconds) {
@@ -494,6 +496,7 @@ export function buildDrizzleTenantService(deps: {
         now: UNBOUND_SUPPORT_SESSION_PORTS.now,
       }),
     ...(deps.linkedHelpRequestsFor ? { linkedHelpRequestsFor: deps.linkedHelpRequestsFor } : {}),
+    ...(deps.warn ? { warn: deps.warn } : {}),
   };
   return createDrizzleTenantBackend(drizzleDeps);
 }

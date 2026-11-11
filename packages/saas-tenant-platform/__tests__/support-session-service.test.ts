@@ -150,6 +150,7 @@ function harness(opts: { now?: Date; userOf?: Record<string, string> } = {}) {
     repo,
     now: () => now,
     members: { userIdOf: async (m) => userOf[m] ?? null },
+    patients: { allBelongToOrganization: async () => true },
     audit: {
       emitCriticalAudit: async (e) => {
         log.audits.push(e);
@@ -461,6 +462,27 @@ describe("closeSupportSession — the real manual close", () => {
     }).toEqual(before);
   });
 
+  it("answers the persisted winning reason when a concurrent expiry closes first", async () => {
+    const h = harness();
+    const grant = await grantOf(h);
+    const started = await startSupportSession(h.deps, startInput(grant.id));
+    const original = h.repo.closeSessionIfOpen.bind(h.repo);
+    h.repo.closeSessionIfOpen = async (id, patch) => {
+      await original(id, { ...patch, closeReason: "expired" });
+      return null;
+    };
+    await expect(
+      closeSupportSession(h.deps, {
+        supportSessionId: started.sessionId,
+        actorMembershipId: OPERATOR,
+      }),
+    ).resolves.toEqual({
+      sessionId: started.sessionId,
+      closeReason: "expired",
+      alreadyClosed: true,
+    });
+  });
+
   it("answers 404 for a session that does not exist", async () => {
     const h = harness();
     await expect(
@@ -649,6 +671,12 @@ describe("the grant authority matrix", () => {
     await expect(
       grantOf(h, { scope: "patient_scoped", patientIdsInScope: [uuid()] }),
     ).resolves.toBeDefined();
+    await expect(
+      grantOf(
+        { ...h, deps: { ...h.deps, patients: { allBelongToOrganization: async () => false } } },
+        { scope: "patient_scoped", patientIdsInScope: [uuid()] },
+      ),
+    ).rejects.toMatchObject({ statusCode: 422 });
   });
 });
 

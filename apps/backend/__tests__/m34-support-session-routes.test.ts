@@ -67,6 +67,7 @@ interface Harness {
   readonly recorded: SupportLedgerWrite[];
   readonly warnings: { message: string; context: Record<string, unknown> }[];
   readonly routes: string[];
+  readonly auditReads: Map<string, unknown>;
   readonly send: (
     method: "GET" | "POST" | "PUT",
     url: string,
@@ -133,8 +134,11 @@ function makeServer(opts: { recorderThrows?: boolean } = {}): Harness {
       return reply.code(200).send({ ok: true, replay: true });
   });
   const routes: string[] = [];
+  const auditReads = new Map<string, unknown>();
   app.addHook("onRoute", (route) => {
-    routes.push(`${[route.method].flat().join(",")} ${route.url}`);
+    const key = `${[route.method].flat().join(",")} ${route.url}`;
+    routes.push(key);
+    auditReads.set(key, route.config?.auditRead);
   });
   const recorded: SupportLedgerWrite[] = [];
   const warnings: Harness["warnings"] = [];
@@ -184,6 +188,7 @@ function makeServer(opts: { recorderThrows?: boolean } = {}): Harness {
     recorded,
     warnings,
     routes,
+    auditReads,
     send: (method, url, headers, payload) =>
       app.inject({ method, url, headers: headers ?? {}, payload }) as never,
   };
@@ -193,6 +198,23 @@ beforeEach(() => {
   resetAuthorizationContract();
   resetRbacEngine();
   resetAbacRegistry();
+});
+
+describe("support-session disclosure accounting declarations", () => {
+  it("declares platform session and event lists for read auditing", async () => {
+    const { app, auditReads } = makeServer();
+    expect(auditReads.get("GET /api/v1/platform/support-sessions")).toEqual({
+      resourceKind: "support_session",
+      list: true,
+    });
+    expect(auditReads.get("GET /api/v1/platform/support-sessions/:id/events")).toEqual({
+      resourceKind: "support_session_event",
+      list: true,
+      listResourceId: true,
+      resourceIdParam: "id",
+    });
+    await app.close();
+  });
 });
 afterEach(() => {
   resetAuthorizationContract();
@@ -253,7 +275,7 @@ describe("POST /platform/support-sessions/:id/elevate", () => {
     const { sessionId } = started.json() as { sessionId: string };
     const res = await send(
       "POST",
-      `/api/v1/platform/support-sessions/${sessionId}/elevate?tenantAccountId=${TENANT_ACCOUNT}`,
+      `/api/v1/platform/support-sessions/${sessionId}/elevate`,
       { ...OPS, ...FRESH },
       {},
     );

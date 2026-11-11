@@ -80,6 +80,8 @@ export interface DrizzleTenantRouteDeps {
    * the cascade then closes sessions only).
    */
   readonly linkedHelpRequestsFor?: (tx: TenantTx) => LinkedHelpRequestPort;
+  /** IDs-only warning for best-effort linked-help reconciliation failures. */
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
 }
 
 const SCG = schema.supportConsentGrant;
@@ -173,8 +175,13 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
               note: null,
             }),
           );
-        } catch {
+        } catch (error) {
           // The linked request can be reconciled independently; consent revocation remains successful.
+          deps.warn?.("m34.support_grant: linked help reconciliation failed", {
+            organizationId,
+            grantId,
+            errorClass: error instanceof Error ? error.name : "UnknownError",
+          });
         }
       }
       return result;

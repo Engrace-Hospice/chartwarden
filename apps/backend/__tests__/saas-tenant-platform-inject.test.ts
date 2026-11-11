@@ -182,8 +182,8 @@ const ORG_ADMIN_PERMISSIONS = [
  */
 function buildTestAbacResolver(): TenantPlatformAbacResolver {
   return {
-    async hasActiveConsentedSupportSession({ tenantAccountId }) {
-      return tenantAccountId === TENANT_ACME_ID;
+    async hasActiveConsentedSupportSession({ supportSessionId }) {
+      return supportSessionId.length > 0;
     },
     async loadConsentGrant(_organizationId, grantId) {
       if (grantId !== GRANT_ID) return null;

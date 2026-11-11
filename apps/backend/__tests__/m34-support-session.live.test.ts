@@ -88,6 +88,8 @@ const OPERATOR_ORG = "11111111-1111-4111-8111-1111f7500009";
 const TENANT_ACCOUNT = "55555555-5555-4555-8555-5555f7500001";
 const OTHER_ACCOUNT = "55555555-5555-4555-8555-5555f7500002";
 const CONFINED_ACCOUNT = "55555555-5555-4555-8555-5555f7500003";
+const TENANT_PATIENT = "77777777-7777-4777-8777-7777f7500001";
+const OTHER_PATIENT = "77777777-7777-4777-8777-7777f7500002";
 
 interface Person {
   readonly user: string;
@@ -153,6 +155,7 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
   const alerts: { orgId: string; eventType: string; payload: Record<string, unknown> }[] = [];
   const warnings: { message: string; context: Record<string, unknown> }[] = [];
   const linked: Parameters<LinkedHelpRequestPort["resolveForRevokedGrant"]>[0][] = [];
+  let linkedShouldFail = false;
   let ops: ReturnType<typeof createSupportGrantOperationsOver>;
   let ports: ReturnType<typeof createSupportSessionPorts>;
 
@@ -251,6 +254,15 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
         [id, org, `Tenant ${id}`],
       );
     }
+    for (const [id, org, mrn] of [
+      [TENANT_PATIENT, TENANT_ORG, "S7S-001"],
+      [OTHER_PATIENT, OTHER_ORG, "S7S-002"],
+    ] as const) {
+      await admin.query(
+        "INSERT INTO patient (id,organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth) VALUES ($1,$2,$3,'Synthetic','Patient','1970-01-01','U')",
+        [id, org, mrn],
+      );
+    }
     const people = [
       ADMIN,
       OFFICER,
@@ -299,6 +311,13 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
       },
       alerts: emitter,
       now: () => clock,
+      patientBelongsToOrganization: async (organizationId, patientId) =>
+        (
+          await q("SELECT 1 FROM patient WHERE organization_id = $1 AND id = $2", [
+            organizationId,
+            patientId,
+          ])
+        ).length === 1,
       warn: (message, context) => warnings.push({ message, context }),
     });
     ops = createSupportGrantOperationsOver(ports);
@@ -363,6 +382,7 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
       // 7B's table is not in this tree: the port a grant revoke hands the linked request to is a recording fake.
       linkedHelpRequestsFor: () => ({
         resolveForRevokedGrant: async (input) => {
+          if (linkedShouldFail) throw new Error("sensitive downstream detail must not be logged");
           linked.push(input);
           return { helpRequestId: "70000000-0000-4000-8000-000000000001" };
         },
@@ -591,13 +611,13 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
             "UPDATE support_session SET closed_at = now(), close_reason = 'manual' WHERE id = $1",
             [sessionId],
           ),
-        ).rejects.toThrow(/row-level security/);
+        ).rejects.toThrow(/row-level security|invalid support session close transition/);
         await expect(
           c.query(
             "UPDATE support_session SET closed_at = NULL, close_reason = 'grant_revoked' WHERE id = $1",
             [sessionId],
           ),
-        ).rejects.toThrow(/row-level security/);
+        ).rejects.toThrow(/row-level security|invalid support session close transition/);
         expect(
           (
             await c.query(
@@ -709,9 +729,14 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
         expect(res.statusCode, who.roles).toBe(201);
       }
       const patientScoped = await issue(ADMIN, "patient_scoped", {
-        patientIdsInScope: [randomUUID()],
+        patientIdsInScope: [TENANT_PATIENT],
       });
       expect(patientScoped.statusCode).toBe(201);
+      const crossTenant = await issue(ADMIN, "patient_scoped", {
+        patientIdsInScope: [OTHER_PATIENT],
+      });
+      expect(crossTenant.statusCode).toBe(422);
+      expect(crossTenant.body.error.details[0]?.code).toBe("PATIENT_SCOPE_TENANT_MISMATCH");
       // the table CHECK, answered 422 rather than a 500
       expect((await issue(ADMIN, "patient_scoped")).statusCode).toBe(422);
       expect((await issue(ADMIN, "assist", { patientIdsInScope: [randomUUID()] })).statusCode).toBe(
@@ -724,7 +749,7 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
         const res = await issue(
           CONFINED_ADMIN,
           scope,
-          scope === "patient_scoped" ? { patientIdsInScope: [randomUUID()] } : {},
+          scope === "patient_scoped" ? { patientIdsInScope: [OTHER_PATIENT] } : {},
         );
         expect(res.statusCode, scope).toBe(403);
         expect(res.body.error.code).toBe("SUPPORT_GRANT_SCOPE_NOT_ALLOWED");
@@ -838,6 +863,28 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
       ]);
       tenantReads += list.text + events.text;
 
+      const platformList = await send(
+        "GET",
+        `/api/v1/platform/support-sessions?tenantAccountId=${TENANT_ACCOUNT}`,
+        headersOf(OPERATOR),
+      );
+      const platformEvents = await send(
+        "GET",
+        `/api/v1/platform/support-sessions/${sessionId}/events`,
+        headersOf(OPERATOR),
+      );
+      expect(platformList.statusCode).toBe(200);
+      expect(platformEvents.statusCode).toBe(200);
+      const platformReadAudits = await q<{ event_type: string }>(
+        `SELECT event_type FROM audit_event
+          WHERE organization_id = $1
+            AND event_type IN ('support_session.list_viewed', 'support_session_event.list_viewed')`,
+        [OPERATOR_ORG],
+      );
+      expect(new Set(platformReadAudits.map((row) => row.event_type))).toEqual(
+        new Set(["support_session.list_viewed", "support_session_event.list_viewed"]),
+      );
+
       const theirs = await send("GET", "/api/v1/tenant/support-sessions", headersOf(OTHER_ADMIN));
       expect(theirs.body.items.some((s: { id: string }) => s.id === sessionId)).toBe(false);
       const theirEvents = await send(
@@ -894,7 +941,7 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
       const elevate = (id: string) =>
         send(
           "POST",
-          `/api/v1/platform/support-sessions/${id}/elevate?tenantAccountId=${TENANT_ACCOUNT}`,
+          `/api/v1/platform/support-sessions/${id}/elevate`,
           headersOf(OPERATOR, FRESH),
           {},
         );
@@ -1110,6 +1157,11 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
     it("never names the operator, their user or their address anywhere the tenant reads", async () => {
       const grants = await send("GET", "/api/v1/tenant/support-consent-grants", headersOf(ADMIN));
       tenantReads += grants.text;
+      const grantReadAudit = await q(
+        "SELECT resource_kind FROM audit_event WHERE organization_id = $1 AND event_type = 'support_consent_grant.list_viewed' ORDER BY occurred_at DESC LIMIT 1",
+        [TENANT_ORG],
+      );
+      expect(grantReadAudit).toHaveLength(1);
       const genericAuditProjection = await q(
         `SELECT before, after, context FROM audit_event
           WHERE organization_id = $1
@@ -1295,6 +1347,30 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
         (await q("SELECT revoked_at FROM support_consent_grant WHERE id = $1", [grantId]))[0]
           ?.revoked_at,
       ).toBeNull();
+    });
+
+    it("keeps revocation committed and emits an ids-only warning when linked-help reconciliation fails", async () => {
+      const grantId = (await issue(ADMIN, "organization_scoped")).body.id;
+      linkedShouldFail = true;
+      try {
+        const res = await revoke(ADMIN, grantId);
+        expect(res.statusCode).toBe(200);
+        const warning = warnings.find(
+          (entry) => entry.message === "m34.support_grant: linked help reconciliation failed",
+        );
+        expect(warning?.context).toEqual({
+          organizationId: TENANT_ORG,
+          grantId,
+          errorClass: "Error",
+        });
+        expect(JSON.stringify(warning)).not.toContain("sensitive downstream detail");
+        expect(
+          (await q("SELECT revoked_at FROM support_consent_grant WHERE id = $1", [grantId]))[0]
+            ?.revoked_at,
+        ).not.toBeNull();
+      } finally {
+        linkedShouldFail = false;
+      }
     });
   });
 

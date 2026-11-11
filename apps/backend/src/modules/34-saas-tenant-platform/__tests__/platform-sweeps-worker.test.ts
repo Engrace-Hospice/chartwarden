@@ -70,6 +70,7 @@ describe("runSupportSessionCloseCron", () => {
           },
         } as never,
         members: { userIdOf: async () => null },
+        patients: { allBelongToOrganization: async () => false },
         audit: { emitCriticalAudit: async () => undefined },
         outbox: {
           publish: async (event: string, payload: Record<string, unknown>, org: string) => {

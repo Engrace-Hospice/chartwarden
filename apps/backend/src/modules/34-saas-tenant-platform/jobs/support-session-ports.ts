@@ -62,6 +62,10 @@ export interface SupportSessionPortDeps {
   readonly outbox: SupportPortOutbox;
   readonly alerts: SupportPortAlerts;
   readonly now: NowPort;
+  readonly patientBelongsToOrganization?: (
+    organizationId: string,
+    patientId: string,
+  ) => Promise<boolean>;
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
 }
 
@@ -127,7 +131,7 @@ export function createSupportSessionPorts(deps: SupportSessionPortDeps): Support
             deps.warn?.("m34.support_session: alert failed", {
               organizationId: alert.organizationId,
               alertKey: alert.alertKey,
-              err: error,
+              errorClass: error instanceof Error ? error.name : "UnknownError",
             });
           }
         },
@@ -140,6 +144,15 @@ export function createSupportSessionPorts(deps: SupportSessionPortDeps): Support
             .where(eq(schema.memberships.id, membershipId))
             .limit(1);
           return row?.userId ?? null;
+        },
+      },
+      patients: {
+        allBelongToOrganization: async (organizationId, patientIds) => {
+          if (!deps.patientBelongsToOrganization) return false;
+          for (const patientId of new Set(patientIds)) {
+            if (!(await deps.patientBelongsToOrganization(organizationId, patientId))) return false;
+          }
+          return true;
         },
       },
     }),

@@ -133,6 +133,21 @@ export async function issueSupportConsentGrant(
       ],
     );
   }
+  if (
+    hasPatients &&
+    !(await deps.patients.allBelongToOrganization(
+      input.organizationId,
+      input.patientIdsInScope ?? [],
+    ))
+  ) {
+    throw new ValidationError("every patientIdsInScope entry must belong to this organization", [
+      {
+        field: "patientIdsInScope",
+        code: "PATIENT_SCOPE_TENANT_MISMATCH",
+        message: "one or more patients do not belong to this organization",
+      },
+    ]);
+  }
 
   const now = deps.now();
   const expiresAt = new Date(now.getTime() + expiryHours(input.scope, input.hours) * MS_PER_HOUR);

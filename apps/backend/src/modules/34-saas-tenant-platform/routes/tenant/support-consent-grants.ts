@@ -41,17 +41,25 @@ export function registerSupportConsentGrantRoutes(
   const { service } = deps;
 
   // list own grants (§4.1).
-  app.get("/api/v1/tenant/support-consent-grants", { preHandler: [LIST] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(GrantListQuerySchema, request.query);
-    return service.listConsentGrants(organizationId, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/tenant/support-consent-grants",
+    {
+      preHandler: [LIST],
+      config: { auditRead: { resourceKind: "support_consent_grant", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(GrantListQuerySchema, request.query);
+      return service.listConsentGrants(organizationId, q.cursor, q.limit);
+    },
+  );
 
   // issue a grant — step-up; 72h max expiry (assist: 1-24 whole hours); emits m34.support_consent_grant.issued + an M36 alert to
   // platform-ops. Who may issue which scope is the SERVICE's rule (it needs the actor's role keys and the organization's
   // status, neither of which a permission key can say): `assist` (non-PHI) only by org_admin or compliance_officer, and an
-  // organization that is not active may issue only `assist` (403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED). The existing scopes keep
-  // their rule: the permission and the step-up.
+  // service-level callers for a non-active organization may issue only `assist` (403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED).
+  // The production onboarding gate still denies this direct HTTP issuance route before activation; the assist-only service
+  // rule is defense in depth for a future explicitly allowlisted integration. Existing active-organization scopes keep their rule.
   app.post(
     "/api/v1/tenant/support-consent-grants",
     { preHandler: [ISSUE, STEP_UP_ISSUE] },

@@ -7084,6 +7084,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               emit: (orgId, input) => (getSeam("AlertEmitter") as AlertEmitter).emit(orgId, input),
             },
             now: () => new Date(),
+            patientBelongsToOrganization: async (organizationId, patientId) =>
+              (await getSeam("PatientReader").findById({ organizationId, id: patientId })) !== null,
             warn: (message, context) => app.log.warn(context, message),
           });
           const m34SupportOps = createSupportGrantOperationsOver(m34SupportSessionPorts);
@@ -7292,6 +7294,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               enqueue: m34TenantEnqueue.enqueue,
               // The consent grant's issue and its revoke cascade (sessions closed, ledger, outbox, alerts) run through these.
               supportOps: m34SupportOps,
+              warn: (message, context) => app.log.warn(context, message),
             }),
             // Slice 7 (7S): every successful non-GET operator write on /platform/tenants/:orgSlug/* is appended to the ledger of the
             // operator's open consented session on that tenant (route template, method, status; best effort, after the response).

@@ -23,6 +23,7 @@ function build(opts: { alertFails?: boolean } = {}) {
   const warnings: { message: string; context: Record<string, unknown> }[] = [];
   const ports = createSupportSessionPorts({
     now: () => NOW,
+    patientBelongsToOrganization: async () => true,
     outbox: {
       publish: async (_tx, input) => {
         published.push(input as never);
@@ -109,7 +110,9 @@ describe("the shared ports' alerts", () => {
     expect(warnings[0]?.context).toMatchObject({
       organizationId: TENANT_ORG,
       alertKey: "m34.support_session.started",
+      errorClass: "Error",
     });
+    expect(warnings[0]?.context).not.toHaveProperty("err");
   });
 
   it("the two alerts the brief seeds rules for are matched by a rule: granted reaches the operators, started the admins", () => {

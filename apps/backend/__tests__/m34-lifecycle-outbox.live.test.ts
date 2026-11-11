@@ -294,11 +294,12 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
        VALUES ($1,$2,$3,'organization_scoped','abac live',$4, now() + interval '1 hour')`,
       [grantId, ORG_A, TENANT_ACCOUNT_A, grantor],
     );
-    await admin.query(
+    const insertedSession = await admin.query<{ id: string }>(
       `INSERT INTO support_session (organization_id,support_consent_grant_id,actor_membership_id,expires_at)
-       VALUES ($1,$2,$3, now() + interval '1 hour')`,
+       VALUES ($1,$2,$3, now() + interval '1 hour') RETURNING id`,
       [ORG_A, grantId, operator],
     );
+    const sessionId = insertedSession.rows[0]!.id;
     const resolver = buildDrizzleTenantPlatformAbacResolver({
       db: platformDb.db,
       platformDb: platformDb.db,
@@ -312,14 +313,14 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
     expect(
       await resolver.hasActiveConsentedSupportSession({
         organizationId: platformOrg,
-        tenantAccountId: TENANT_ACCOUNT_A,
+        supportSessionId: sessionId,
         actorMembershipId: operator,
       }),
     ).toBe(true);
     expect(
       await resolver.hasActiveConsentedSupportSession({
         organizationId: platformOrg,
-        tenantAccountId: TENANT_ACCOUNT_A,
+        supportSessionId: sessionId,
         actorMembershipId: grantor,
       }),
     ).toBe(false);
@@ -331,7 +332,7 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
     expect(
       await resolver.hasActiveConsentedSupportSession({
         organizationId: platformOrg,
-        tenantAccountId: TENANT_ACCOUNT_A,
+        supportSessionId: sessionId,
         actorMembershipId: operator,
       }),
     ).toBe(false);

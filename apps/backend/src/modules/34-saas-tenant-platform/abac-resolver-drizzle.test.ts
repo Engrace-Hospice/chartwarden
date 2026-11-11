@@ -16,6 +16,7 @@ const TENANT = "00000000-0000-4000-8000-0000000000aa";
 const GRANT = "00000000-0000-4000-8000-0000000000b1";
 const GRANTOR = "00000000-0000-4000-8000-0000000000c1";
 const OPERATOR = "00000000-0000-4000-8000-0000000000d1";
+const SESSION = "00000000-0000-4000-8000-0000000000e1";
 
 const grantRow = (
   over: Partial<{ revokedAt: Date | null; expiresAt: Date; tenantAccountId: string }> = {},
@@ -34,6 +35,15 @@ function build(
 ) {
   const reader: PlatformFactsReader = {
     findGrant: async (id) => (id === GRANT ? grantRow() : null),
+    findSession: async (id) =>
+      id === SESSION
+        ? {
+            id: SESSION,
+            supportConsentGrantId: GRANT,
+            actorMembershipId: OPERATOR,
+            expiresAt: new Date(NOW.getTime() + HOUR),
+          }
+        : null,
     listOpenSessions: async () => [
       {
         id: "s1",
@@ -103,13 +113,13 @@ describe("M34 Drizzle ABAC resolver (GAP-098)", () => {
     const { predicates } = build();
     expect(
       await predicates.tenant_consented_support_active!(ctx(["platform_ops"]), {
-        tenantAccountId: TENANT,
+        supportSessionId: SESSION,
       }),
     ).toBe(true);
   });
 
   it("elevate: denies another actor, an expired session, a revoked grant or a different tenant's grant", async () => {
-    const target = { tenantAccountId: TENANT };
+    const target = { supportSessionId: SESSION };
     expect(
       await build().predicates.tenant_consented_support_active!(
         ctx(["platform_ops"], "other"),
@@ -118,14 +128,12 @@ describe("M34 Drizzle ABAC resolver (GAP-098)", () => {
     ).toBe(false);
     expect(
       await build({
-        listOpenSessions: async () => [
-          {
-            id: "s1",
-            supportConsentGrantId: GRANT,
-            actorMembershipId: OPERATOR,
-            expiresAt: new Date(NOW.getTime() - 1),
-          },
-        ],
+        findSession: async () => ({
+          id: SESSION,
+          supportConsentGrantId: GRANT,
+          actorMembershipId: OPERATOR,
+          expiresAt: new Date(NOW.getTime() - 1),
+        }),
       }).predicates.tenant_consented_support_active!(ctx(["platform_ops"]), target),
     ).toBe(false);
     expect(
@@ -133,8 +141,10 @@ describe("M34 Drizzle ABAC resolver (GAP-098)", () => {
         .tenant_consented_support_active!(ctx(["platform_ops"]), target),
     ).toBe(false);
     expect(
-      await build({ findGrant: async () => grantRow({ tenantAccountId: "other-tenant" }) })
-        .predicates.tenant_consented_support_active!(ctx(["platform_ops"]), target),
+      await build({ findSession: async () => null }).predicates.tenant_consented_support_active!(
+        ctx(["platform_ops"]),
+        target,
+      ),
     ).toBe(false);
   });
 
@@ -299,7 +309,7 @@ describe("M34 Drizzle ABAC resolver (GAP-098)", () => {
     };
     const { predicates } = build({
       findGrant: boom,
-      listOpenSessions: boom,
+      findSession: boom,
       findOnboardingTask: boom,
     });
     expect(
@@ -309,7 +319,7 @@ describe("M34 Drizzle ABAC resolver (GAP-098)", () => {
     ).toBe(false);
     expect(
       await predicates.tenant_consented_support_active!(ctx(["platform_ops"]), {
-        tenantAccountId: TENANT,
+        supportSessionId: SESSION,
       }),
     ).toBe(false);
     expect(
