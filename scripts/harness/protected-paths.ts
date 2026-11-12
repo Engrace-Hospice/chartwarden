@@ -11,6 +11,8 @@
  * `.git/config` or `.git/hooks/` make git run a program (`core.worktree`, `core.fsmonitor`, `core.hooksPath`)
  * outside the classifier.
  */
+import { aliasNormalise } from "./path-alias";
+
 const ROOT_ANCHORED = [
   String.raw`\.claude\/(?:audit|\.cache|rules|agents|skills|commands|hooks|plugins)(?:\/|$)`,
   String.raw`\.claude\/launch\.json$`,
@@ -45,7 +47,7 @@ const PROTECTED_PATH = new RegExp(
 );
 
 /** A repo-relative path the harness protects: guard, ledger, rules, compliance record, hook and git configuration. */
-export const isProtectedPath = (rel: string): boolean => PROTECTED_PATH.test(rel);
+export const isProtectedPath = (rel: string): boolean => PROTECTED_PATH.test(aliasNormalise(rel));
 
 /** `PROTECTED_PATH` itself, for code that tests it against many candidate paths. */
 export const protectedPathPattern = PROTECTED_PATH;

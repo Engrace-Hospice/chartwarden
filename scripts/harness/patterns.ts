@@ -59,7 +59,7 @@ import {
 } from "./inline-code";
 import { runsLiveSuite } from "./live-suite";
 import { type LongOption, optionValues } from "./option-values";
-import { fold, relativeTo } from "./path-alias";
+import { aliasNormalise, fold, relativeTo } from "./path-alias";
 import {
   PROTECTED_FRAGMENT,
   PROTECTED_SAMPLES,
@@ -168,7 +168,7 @@ const SECRET_PATH_RULES: ReadonlyArray<readonly [RegExp, string]> = [
 
 /** Returns why `path` is off-limits to an agent, or null when it is fine. */
 export function secretPathReason(path: string): string | null {
-  const p = path.replace(/\\/g, "/");
+  const p = aliasNormalise(path).replace(/\\/g, "/");
   if (TEMPLATE_SUFFIX.test(p)) return null;
   const copy = backupName(p);
   // A copy of a template is a template.
@@ -1534,7 +1534,8 @@ const REPO_ROOT = /^\$\(git rev-parse --show-toplevel\)(?=\/|$)/;
  */
 function resolvePath(raw: string, cwd: Cwd, ctx: BashContext, strict = false): string | null {
   if (!spendResolution(raw.length + (cwd?.length ?? 0), strict)) return null;
-  let t = unescapeWord(raw)
+  // The spellings the file system folds into one name (`hoo<KELVIN SIGN>s`, `harne<SHARP S>`) read as the ASCII name.
+  let t = aliasNormalise(unescapeWord(raw))
     .replace(/^\$\{?CODEX_HOME\}?(?=\/|$)/, "~/.codex")
     .replace(/^\$\{?HOME\}?(?=\/|$)/, "~");
   let base = cwd;
@@ -1999,7 +2000,8 @@ function writesProtectedPath(p: Parsed, dirs: readonly Cwd[], ctx: BashContext):
 /** Quotes, `+`, backslashes and whitespace removed: `'scripts/'+'harness/x'` reads as `scripts/harness/x`. */
 const squash = (s: string): string => s.replace(/['"`+\\\s]/g, "");
 /** A script (inline `-c` code, or a heredoc/stdin body) naming a secret file (deny) or a protected one (ask). */
-function scriptTextVerdict(text: string): BashVerdict | null {
+function scriptTextVerdict(given: string): BashVerdict | null {
+  const text = aliasNormalise(given);
   const flat = squash(text);
   if (SECRET_MENTION.test(text) || SECRET_MENTION.test(flat)) {
     return deny(

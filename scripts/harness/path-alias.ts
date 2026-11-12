@@ -33,3 +33,21 @@ export function relativeTo(path: string, base: string): string | null {
   if (folded[head.length] !== "/") return null;
   return path.slice(dropped(path) + head.length + 1);
 }
+
+const NON_ASCII = /[\u0080-\u{10ffff}]/u;
+
+/**
+ * A path with the spellings APFS treats as one name written as ASCII. The file system folds case by full Unicode case
+ * folding and ignores normalization, so U+212A KELVIN SIGN is `k`, U+017F LONG S is `s`, U+00DF SHARP S is `ss` and the
+ * U+FB01/U+FB02 ligatures are `fi`/`fl`: `.claude/hoo<KELVIN>s/x` IS `.claude/hooks/x`, and `scripts/harne<SHARP S>/…`
+ * is `scripts/harness/…`. NFKC does the compatibility and canonical part (and keeps the case the pattern's `/i`
+ * folds); sharp s has no decomposition, so it is spelled out. Wider than APFS (a fullwidth letter folds too): the direction
+ * that fails safe. A path with no non-ASCII character comes back as it came in, at the cost of one linear scan.
+ */
+export function aliasNormalise(path: string): string {
+  if (!NON_ASCII.test(path)) return path;
+  return path
+    .normalize("NFKC")
+    .replace(/\u00df/g, "ss")
+    .replace(/\u1e9e/g, "SS");
+}

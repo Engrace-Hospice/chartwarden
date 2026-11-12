@@ -521,6 +521,19 @@ still denied (`harness-hidden-path-budget.test.ts`).
   x.live.test.ts` and `rg`/`grep`/`cat`/`sed`/`git`/`wc` over it still allow (the corpus shows no live-suite transition against
   the wave-5 stack). There is no Makefile, so `make live` names nothing. **Not decided by text:** `xargs bunx vitest run < list`
   (the files come from standard input), and a runner started by a script file the agent wrote.
+- *One file, however APFS spells it* (`path-alias.ts` `aliasNormalise`, `harness-path-spellings.test.ts`). On macOS's case- and
+  normalization-insensitive APFS (checked in a scratch directory on the machine the stack was built on) upper and mixed case, an
+  NFD or NFC spelling, `./`, `//`, `/./` and `/../` all name one file, and so do the names that differ by Unicode case folding:
+  U+212A KELVIN SIGN is `k`, U+017F LONG S is `s`, U+00DF SHARP S is `ss`, the U+FB01 and U+FB02 ligatures are `fi` and `fl`. The
+  guard's `/i` patterns knew ASCII case only, so `.claude/hoo<KELVIN SIGN>s/x`, `scripts/harne<SHARP S>/pre-tool-guard.ts` and
+  `~/.pgpa<LONG S><LONG S>` reached a protected or secret file unasked. `aliasNormalise` (NFKC, plus sharp s) now runs where a
+  shell word becomes a path (`resolvePath`), inside `isProtectedPath` and inside `secretPathReason`, so Bash, Write, Edit,
+  MultiEdit, NotebookEdit, Read, `apply_patch` and the MCP path words judge the ASCII name; it is wider than APFS (a fullwidth
+  letter folds too), the direction that fails safe, and a path with no non-ASCII character is returned untouched after one linear
+  scan. A real path through a symlink (`src/link -> scripts/harness`) is judged by its real path for the editing tools and
+  `apply_patch`. **Not decided by text:** a symlink inside a shell command's text (the guard reads no file system for it), and
+  Windows' trailing dot and space (`pre-tool-guard.ts.` is a different file on APFS and Linux, and is protected anyway by the
+  directory it sits in).
 - *The pinned Codex command ignores perl's own variables* (`PERL5OPT`, `PERL5LIB`, `PERLLIB`, `PERL5DB`): see "The hook command is
   pinned byte for byte" above and `harness-codex-perl-env.test.ts`.
 
