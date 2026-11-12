@@ -68,6 +68,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEADLINE_MS } from "./harness/hard-deadline";
 import {
   CLAUDE_MCP_GUARD_MATCHER,
   claudeGuardMatcherViolations,
@@ -271,8 +272,12 @@ export const FORBIDDEN_ENV = [
  */
 export const ALLOWED_ENV_PREFIXES = ["ECC_", "CLAUDE_CODE_"] as const;
 
-/** The Claude guard's `timeout` (seconds): an integer in this range. The pinned value is 10. */
-const CLAUDE_GUARD_TIMEOUT_RANGE = [5, 30] as const;
+/**
+ * The Claude guard's `timeout` (seconds): an integer in this range. The pinned value is 10. The lower bound is the first
+ * whole second ABOVE the guard's own in-process deadline (`DEADLINE_MS`, 6.5 s): a hook killed by Claude Code before the
+ * guard has answered is an allow, so a 5 s or 6 s timeout would put the kill ahead of the guard's own refusal.
+ */
+const CLAUDE_GUARD_TIMEOUT_RANGE = [Math.floor(DEADLINE_MS / 1000) + 1, 30] as const;
 /** The ledger's and the Stop gate's `timeout` (seconds), when one is set: a sane integer. The pinned values are 10 and 300. */
 const CLAUDE_OTHER_HOOK_TIMEOUT_RANGE = [5, 600] as const;
 /** Upper bound for the Codex guard's `timeout` (seconds); the lower bound is the perl alarm plus one. */

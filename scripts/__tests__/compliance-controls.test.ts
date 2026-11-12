@@ -40,6 +40,7 @@ import {
   readMirrorTree,
   registryFingerprint,
 } from "../check-compliance-controls";
+import { DEADLINE_MS } from "../harness/hard-deadline";
 
 const ROOT = join(__dirname, "../..");
 const TODAY = new Date("2026-10-27T00:00:00Z");
@@ -702,13 +703,20 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
   });
 
   describe("(b) the Claude guard timeout is a sane integer", () => {
-    it.each([0, 0.001, -1, 4, 31, 300, 9.5, "10", null])("fails a timeout of %j", (t) => {
+    it.each([0, 0.001, -1, 4, 5, 6, 31, 300, 9.5, "10", null])("fails a timeout of %j", (t) => {
       expect(withGuardTimeout(t)).toMatch(
         /PreToolUse guard needs (an integer timeout|an explicit timeout)/,
       );
     });
-    it.each([5, 10, 30])("accepts a timeout of %s", (t) => {
+    it.each([7, 10, 30])("accepts a timeout of %s", (t) => {
       expect(withGuardTimeout(t)).toBe("");
+    });
+    // CR-M2 (round 4): a hook that Claude Code kills before the guard has answered is an ALLOW, so the timeout must
+    // be above the guard's own 6.5 s deadline; 5 s and 6 s used to pass.
+    it("refuses a timeout at or under the guard's own deadline, in the words the doc uses", () => {
+      expect(DEADLINE_MS).toBe(6500);
+      expect(withGuardTimeout(5)).toMatch(/integer timeout of 7 to 30 seconds/);
+      expect(withGuardTimeout(6)).toMatch(/integer timeout of 7 to 30 seconds/);
     });
     it("leaves the Stop gate's 300 and the async ledger's 10 alone", () => {
       const parsed = JSON.parse(settings);

@@ -169,7 +169,7 @@ same constant, because a timeout at or under the alarm fires inside Codex first 
 `.claude/settings.json` has no PreToolUse group with the pinned MCP matcher (`CLAUDE_MCP_GUARD_MATCHER`, see
 "MCP tools in Claude Code" below) or any guard group's matcher also matches a tool with no path in its input
 (`mcp__.*`, `*`, an empty matcher), if one of the three Claude hook commands differs from its pinned form or the Claude guard's timeout is not an integer of
-5 to 30 s, if the ledger's or the Stop gate's timeout (when one is set) is not an integer of 5 to 600 s or the
+7 to 30 s (above the guard's own 6.5 s deadline, derived from `DEADLINE_MS`: a hook that Claude Code kills first is an allow), if the ledger's or the Stop gate's timeout (when one is set) is not an integer of 5 to 600 s or the
 Stop gate is `async` (it would no longer hold the turn), if `.claude/settings.json` sets `disableAllHooks`, a
 `bypassPermissions` default mode, or an `env` entry that is not an `ECC_*` or `CLAUDE_CODE_*` variable (the block
 is an ALLOW-list: `PATH`, `BASH_ENV`, `ZDOTDIR`, `NODE_OPTIONS`, `HOME`, `SHELL`, `LD_PRELOAD`,
