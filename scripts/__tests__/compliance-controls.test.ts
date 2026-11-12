@@ -19,6 +19,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   CLAUDE_GUARD_COMMAND,
   CLAUDE_LEDGER_COMMAND,
+  CLAUDE_MCP_GUARD_MATCHER,
   CLAUDE_STOP_COMMAND,
   CODEX_ALARM_SECONDS,
   CODEX_GUARD_COMMAND,
@@ -1102,5 +1103,88 @@ describe("engines.bun promises a bun that honours --no-env-file", () => {
   it("the committed package.json floor is the one the docs state (1.3.3)", () => {
     const committed = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
     expect(committed.engines.bun).toBe(">=1.3.3");
+  });
+});
+
+describe("the Claude MCP guard matcher is pinned like CODEX_GUARD_MATCHER (wave 5, M1)", () => {
+  const settings = readFileSync(join(ROOT, ".claude/settings.json"), "utf8");
+  const gitignore = readFileSync(join(ROOT, ".gitignore"), "utf8");
+  const codeowners = readFileSync(join(ROOT, ".github/CODEOWNERS"), "utf8");
+  const codexHooks = readFileSync(join(ROOT, ".codex/hooks.json"), "utf8");
+  const CORE_MATCHER = "Bash|Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit";
+  type Group = { matcher: string; hooks: Array<Record<string, unknown>> };
+  const run = (s: string) => checkHarness({ settings: s, gitignore, codeowners, codexHooks });
+  /** The committed settings with their PreToolUse groups replaced by `edit(groups)`. */
+  const withGroups = (edit: (groups: Group[]) => Group[]): string => {
+    const parsed = JSON.parse(settings);
+    return JSON.stringify({
+      ...parsed,
+      hooks: { ...parsed.hooks, PreToolUse: edit(parsed.hooks.PreToolUse) },
+    });
+  };
+  const onMcpGroup =
+    (change: (g: Group) => Group) =>
+    (groups: Group[]): Group[] =>
+      groups.map((g) => (g.matcher === CORE_MATCHER ? g : change(g)));
+  const matcherOf = (matcher: string) => (g: Group) => ({ ...g, matcher });
+  const hookWith = (patch: Record<string, unknown>) => (g: Group) => ({
+    ...g,
+    hooks: g.hooks.map((h) => ({ ...h, ...patch })),
+  });
+
+  it("pins the literal, and the committed settings run the same pinned guard command under it", () => {
+    expect(CLAUDE_MCP_GUARD_MATCHER).toBe(
+      "^mcp__claude-in-chrome__(file_upload|upload_image|javascript_tool|navigate|browser_batch)$|^mcp__plugin_ecc_chrome-devtools__(upload_file|evaluate_script|navigate_page|new_page|take_screenshot|take_snapshot|take_heapsnapshot|performance_start_trace|performance_stop_trace|get_network_request|lighthouse_audit)$",
+    );
+    const groups: Group[] = JSON.parse(settings).hooks.PreToolUse;
+    expect(groups.map((g) => g.matcher)).toEqual([CORE_MATCHER, CLAUDE_MCP_GUARD_MATCHER]);
+    expect(groups[1]?.hooks).toEqual(groups[0]?.hooks);
+    expect(groups[1]?.hooks[0]?.command).toBe(CLAUDE_GUARD_COMMAND);
+    expect(run(settings)).toEqual([]);
+  });
+  it("fails when the MCP group is dropped", () => {
+    expect(run(withGroups((g) => g.slice(0, 1))).join("\n")).toMatch(/pinned MCP matcher/);
+  });
+  it.each(["mcp__.*", "*", "", ".*", "mcp__claude-in-chrome__.*", "^mcp__"])(
+    "fails when the MCP group is widened to %j",
+    (wide) => {
+      const v = run(withGroups(onMcpGroup(matcherOf(wide)))).join("\n");
+      expect(v).toMatch(/pinned MCP matcher/);
+      expect(v).toMatch(/also matches `mcp__/);
+    },
+  );
+  it("fails when a tool is dropped from the MCP group", () => {
+    const fewer = CLAUDE_MCP_GUARD_MATCHER.replace("|navigate", "");
+    const v = run(withGroups(onMcpGroup(matcherOf(fewer)))).join("\n");
+    expect(v).toMatch(/pinned MCP matcher/);
+    expect(v).toMatch(/covers `mcp__claude-in-chrome__navigate`/);
+  });
+  it("fails when the core group is widened to `*` (it would send every connector's prose to the guard)", () => {
+    const v = run(withGroups((groups) => groups.map((g, i) => (i === 0 ? matcherOf("*")(g) : g))));
+    expect(v.join("\n")).toMatch(/also matches `mcp__/);
+  });
+  it("fails when only the MCP group runs the guard, or it runs a different command", () => {
+    const coreEchoes = withGroups((groups) =>
+      groups.map((g, i) => (i === 0 ? hookWith({ command: "echo nothing" })(g) : g)),
+    );
+    expect(run(coreEchoes).join("\n")).toMatch(/does not run scripts\/harness\/pre-tool-guard\.ts/);
+    const echoes = withGroups(onMcpGroup(hookWith({ command: "echo nothing" })));
+    expect(run(echoes).join("\n")).toMatch(/pinned MCP matcher/);
+    const orTrue = withGroups(onMcpGroup(hookWith({ command: `${CLAUDE_GUARD_COMMAND} || true` })));
+    expect(run(orTrue).join("\n")).toMatch(/must be exactly CLAUDE_GUARD_COMMAND/);
+  });
+  it("fails when the MCP group is async or has no timeout", () => {
+    expect(run(withGroups(onMcpGroup(hookWith({ async: true })))).join("\n")).toMatch(
+      /must not be async/,
+    );
+    expect(run(withGroups(onMcpGroup(hookWith({ timeout: undefined })))).join("\n")).toMatch(
+      /needs an explicit timeout/,
+    );
+  });
+  it("still requires the core group to cover Bash and the editing tools", () => {
+    const v = run(
+      withGroups((groups) => groups.map((g, i) => (i === 0 ? matcherOf("Read|Edit|Write")(g) : g))),
+    );
+    expect(v.join("\n")).toMatch(/matcher does not cover `Bash`/);
   });
 });

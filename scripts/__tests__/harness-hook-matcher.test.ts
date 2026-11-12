@@ -26,7 +26,8 @@ describe("matcherCovers: Claude Code's matcher semantics", () => {
     expect(matcherCovers(CORE, "mcp__claude-in-chrome__navigate")).toBe(false);
   });
   it("reads `*`, an empty matcher and a missing one as every tool", () => {
-    for (const m of ["*", "", undefined]) expect(matcherCovers(m, "mcp__x__y"), String(m)).toBe(true);
+    for (const m of ["*", "", undefined])
+      expect(matcherCovers(m, "mcp__x__y"), String(m)).toBe(true);
   });
   it("reads anything else as a regular expression, and an invalid one as matching nothing", () => {
     expect(matcherCovers("mcp__.*", "mcp__claude-in-chrome__computer")).toBe(true);

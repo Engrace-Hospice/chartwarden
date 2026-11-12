@@ -93,6 +93,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "^mcp__claude-in-chrome__(file_upload|upload_image|javascript_tool|navigate|browser_batch)$|^mcp__plugin_ecc_chrome-devtools__(upload_file|evaluate_script|navigate_page|new_page|take_screenshot|take_snapshot|take_heapsnapshot|performance_start_trace|performance_stop_trace|get_network_request|lighthouse_audit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null \"$CLAUDE_PROJECT_DIR\"/scripts/harness/pre-tool-guard.ts",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [
