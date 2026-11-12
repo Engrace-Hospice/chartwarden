@@ -610,6 +610,27 @@ describe("what the member may see and do", () => {
     expect(screen.queryByText("No MAC credential yet.")).toBeNull();
   });
 
+  it("does not offer Add while the credential list is unresolved, even when provider entities load first", async () => {
+    let releaseCredentials: (reply: ReturnType<typeof ok>) => void = () => undefined;
+    const stub = stubClient({
+      GET: {
+        [LIST]: () =>
+          new Promise((resolve) => {
+            releaseCredentials = resolve;
+          }) as never,
+        [ENTITIES]: () => ok(ONE_ENTITY),
+      },
+    });
+    mount(stub);
+
+    await waitFor(() => expect(stub.GET).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("button", { name: "Add MAC credential" })).toBeNull();
+
+    releaseCredentials(ok(page([macCredential()])));
+    expect(await screen.findByRole("table")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add MAC credential" })).toBeNull();
+  });
+
   it("never shows a provider entity's raw id while the names are not known", async () => {
     const stub = stubClient({
       GET: {

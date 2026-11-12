@@ -90,12 +90,17 @@ function makeServer(opts: { verifyLimit?: number; putStore?: RateLimitStore } = 
       });
       return { created: expectedVersion === undefined, view: VIEW };
     },
-    async recordBaa(actor, body) {
-      calls.push({ method: "recordBaa", organizationId: actor.organizationId, body });
+    async recordBaa(actor, body, expectedVersion) {
+      calls.push({
+        method: "recordBaa",
+        organizationId: actor.organizationId,
+        body,
+        expectedVersion,
+      });
       return VIEW;
     },
-    async verify(actor, body) {
-      calls.push({ method: "verify", organizationId: actor.organizationId, body });
+    async verify(actor, body, expectedVersion) {
+      calls.push({ method: "verify", organizationId: actor.organizationId, body, expectedVersion });
       return { view: { ...VIEW, status: "verified" }, test: { outcome: "ok" } };
     },
     async activate(actor) {
@@ -275,7 +280,7 @@ describe("tenant clearinghouse routes", () => {
     const verify = await app.inject({
       method: "POST",
       url: `${URL}/verify`,
-      headers: { ...ADMIN, ...idem() },
+      headers: { ...ADMIN, ...idem(), "if-match": "1" },
       payload: { evidenceNote: "Sandbox claim accepted by the vendor, ticket OPS-9" },
     });
     expect(verify.statusCode).toBe(200);
@@ -301,7 +306,7 @@ describe("tenant clearinghouse routes", () => {
       app.inject({
         method: "POST",
         url: `${URL}/baa`,
-        headers: { ...ADMIN, ...idem() },
+        headers: { ...ADMIN, ...idem(), "if-match": "1" },
         payload,
       });
     expect((await post(BAA_BODY)).statusCode).toBe(200);
@@ -311,6 +316,33 @@ describe("tenant clearinghouse routes", () => {
     expect((await post({ ...BAA_BODY, verified: true })).statusCode).toBe(422); // a tenant cannot verify its own BAA
     expect((await post({ heldBy: "tenant" })).statusCode).toBe(422);
     expect(calls.map((c) => c.method)).toEqual(["recordBaa"]);
+    expect(calls[0]?.expectedVersion).toBe(1);
+    await app.close();
+  });
+
+  it("requires a well-formed If-Match for BAA and verification writes", async () => {
+    const { app, calls } = makeServer();
+    for (const [path, payload] of [
+      ["/baa", BAA_BODY],
+      ["/verify", {}],
+    ] as const) {
+      const missing = await app.inject({
+        method: "POST",
+        url: `${URL}${path}`,
+        headers: { ...ADMIN, ...idem() },
+        payload,
+      });
+      expect(missing.statusCode).toBe(428);
+      expect(missing.json().error?.code ?? missing.json().code).toBe("IF_MATCH_REQUIRED");
+      const malformed = await app.inject({
+        method: "POST",
+        url: `${URL}${path}`,
+        headers: { ...ADMIN, ...idem(), "if-match": "not-a-version" },
+        payload,
+      });
+      expect(malformed.statusCode).toBe(400);
+    }
+    expect(calls).toEqual([]);
     await app.close();
   });
 
@@ -320,7 +352,7 @@ describe("tenant clearinghouse routes", () => {
       app.inject({
         method: "POST",
         url: `${URL}/verify`,
-        headers: { ...headers, ...idem() },
+        headers: { ...headers, ...idem(), "if-match": "1" },
         payload: {},
       });
     // a caller who may not verify is refused (403) without spending the budget

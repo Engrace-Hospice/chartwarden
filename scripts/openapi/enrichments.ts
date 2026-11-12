@@ -16127,16 +16127,16 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/tenant/clearinghouse/baa": {
     summary:
-      "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. Recording a BAA also clears a revocation by a platform operator (it is a new agreement, so it starts again at unverified; re-recording the same document counts, but the operator must then acknowledge that the document was revoked before). Leaving the vendor (a vendor change, or outside) clears it too. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+      "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information), pinned by If-Match to the clearinghouse version the administrator read. A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. Recording a BAA also clears a revocation by a platform operator (it is a new agreement, so it starts again at unverified; re-recording the same document counts, but the operator must then acknowledge that the document was revoked before). Leaving the vendor (a vendor change, or outside) clears it too. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key and If-Match required; an AI actor is refused",
     body: M23RecordBaaBodySchema,
-    headers: IDEMPOTENCY_KEY_HEADER,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
     response: M23ClearinghouseConfigViewSchema,
   },
   "POST /api/v1/tenant/clearinghouse/verify": {
     summary:
-      "Verify the vendor connection: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note and the confirmation that it names no patient information where it has none (Stedi). The vendor probe runs with no transaction open (409 CLEARINGHOUSE_CHANGED_DURING_VERIFY if the config moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome and leaves the config at draft. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
+      "Verify the vendor connection, pinned by If-Match to the clearinghouse version the administrator read: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note and the confirmation that it names no patient information where it has none (Stedi). The vendor probe runs with no transaction open (409 CLEARINGHOUSE_CHANGED_DURING_VERIFY if the config moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome and leaves the config at draft. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key and If-Match required",
     body: M23VerifyClearinghouseBodySchema,
-    headers: IDEMPOTENCY_KEY_HEADER,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
     response: M23VerifyClearinghouseResponseSchema,
   },
   "POST /api/v1/tenant/clearinghouse/activate": {

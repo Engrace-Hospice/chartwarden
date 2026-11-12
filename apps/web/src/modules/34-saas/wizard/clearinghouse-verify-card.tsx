@@ -18,7 +18,13 @@ import { BILLING_ERROR_COPY, isViewMoved } from "./billing-errors";
 import { BillingFailureNotice } from "./billing-failure-notice";
 import { useServerFieldErrors } from "./billing-field-errors";
 import type { CardContext } from "./card-context";
-import type { TenantClearinghouseActions, TenantClearinghouseView } from "./clearinghouse-tenant";
+import {
+  type TenantClearinghouseActions,
+  type TenantClearinghouseIdentity,
+  type TenantClearinghouseView,
+  sameTenantClearinghouseIdentity,
+  tenantClearinghouseIdentity,
+} from "./clearinghouse-tenant";
 import { useGuarded } from "./use-guarded";
 
 const BASE = "/api/v1/tenant/clearinghouse";
@@ -42,6 +48,11 @@ function testProblemOf(outcome: string | undefined): string | null {
 
 const collapse = (text: string): string => text.trim().replace(/\s+/g, " ");
 
+interface VerifyDraft {
+  readonly config: TenantClearinghouseIdentity;
+  readonly note: string;
+}
+
 export function VerifyCard({
   view,
   ctx,
@@ -55,7 +66,11 @@ export function VerifyCard({
   const serverErrors = useServerFieldErrors(write.failure);
   const attesting = view.verifiableBy === "attestation";
   const draftKey = draftKeyFor(ctx.scope, DRAFT_ACTIONS.clearinghouseVerify, ctx.stepKey);
-  const restored = useRestoredDraft<{ note: string }>(draftKey, ctx.scope.returning);
+  const config = tenantClearinghouseIdentity(view);
+  const candidate = useRestoredDraft<VerifyDraft>(draftKey, ctx.scope.returning);
+  const restored = sameTenantClearinghouseIdentity(candidate?.config, config)
+    ? candidate
+    : undefined;
   const [note, setNote] = useState(restored?.note ?? "");
   const [confirmed, setConfirmed] = useState(false);
   const [noteError, setNoteError] = useState<string | null>(null);
@@ -64,6 +79,7 @@ export function VerifyCard({
   const { onBusy } = ctx;
   useEffect(() => {
     onBusy("verify", write.busy);
+    return () => onBusy("verify", false);
   }, [onBusy, write.busy]);
 
   async function verify(): Promise<void> {
@@ -88,7 +104,12 @@ export function VerifyCard({
     const outcome = await write.run(
       attesting ? `verify:${trimmed}` : "verify:test",
       (key) =>
-        client.POST(`${BASE}/verify`, { params: { header: { "Idempotency-Key": key } }, body }),
+        client.POST(`${BASE}/verify`, {
+          params: {
+            header: { "Idempotency-Key": key, "If-Match": String(view.version) },
+          },
+          body,
+        }),
       async (data) => {
         // An attestation runs no vendor test; a connection test that reports nothing is not a pass.
         const problem = attesting ? null : testProblemOf(data?.test?.outcome);
@@ -157,7 +178,7 @@ export function VerifyCard({
           {stray ? (
             <BillingFailureNotice
               failure={write.failure}
-              onReverify={() => stashDraft(draftKey, { note })}
+              onReverify={() => stashDraft(draftKey, { config, note } satisfies VerifyDraft)}
             />
           ) : null}
           <div className="wx-drawer-actions">

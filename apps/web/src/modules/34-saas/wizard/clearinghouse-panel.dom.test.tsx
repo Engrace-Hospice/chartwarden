@@ -29,6 +29,8 @@ import {
 const PATH = "/api/v1/tenant/clearinghouse";
 const SECRET = "sk_live_correct-horse-battery";
 const DRAFT_KEY = draftKey("tenant-clearinghouse-choice", "clearinghouse_selected");
+const BAA_DRAFT_KEY = draftKey("tenant-clearinghouse-baa", "clearinghouse_selected");
+const VERIFY_DRAFT_KEY = draftKey("tenant-clearinghouse-verify", "clearinghouse_selected");
 
 const STEPS = [
   tenantStep("provider_setup", 1, { status: "done" }),
@@ -302,6 +304,7 @@ describe("recording the vendor BAA", () => {
       documentRef: "Claim.MD BAA, signed copy",
     });
     expect(idempotencyKeyOf(call)).toBeTruthy();
+    expect(ifMatchOf(call)).toBe(String(CLAIMMD_DRAFT.version));
     await waitFor(() => expect(props.onChanged).toHaveBeenCalledTimes(1));
   });
 
@@ -346,6 +349,37 @@ describe("recording the vendor BAA", () => {
     fireEvent.click(screen.getByRole("button", { name: "Record BAA" }));
     expect(await screen.findByRole("link", { name: "Re-verify" })).toBeTruthy();
   });
+
+  it("does not restore a BAA draft onto a different clearinghouse configuration", async () => {
+    const refusedWrite = client(CLAIMMD_DRAFT, {
+      POST: { [BAA_PATH]: () => refused(403, "STEP_UP_REQUIRED") as never },
+    });
+    mount(refusedWrite);
+    fireEvent.change(await screen.findByLabelText("Effective date"), {
+      target: { value: "2026-10-01" },
+    });
+    fireEvent.change(screen.getByLabelText("Where the signed BAA is kept"), {
+      target: { value: "Claim.MD BAA" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record BAA" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Re-verify" }));
+    expect(peekStepUpDraft(BAA_DRAFT_KEY)).toBeTruthy();
+
+    cleanup();
+    returnFromStepUp();
+    const changed = {
+      ...CLAIMMD_DRAFT,
+      vendor: "stedi" as const,
+      mode: "test" as const,
+      version: (CLAIMMD_DRAFT.version ?? 0) + 1,
+      verifiableBy: "attestation" as const,
+    };
+    mount(client(changed));
+    expect(((await screen.findByLabelText("Effective date")) as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Where the signed BAA is kept") as HTMLInputElement).value).toBe(
+      "",
+    );
+  });
 });
 
 describe("verifying the connection and activating", () => {
@@ -367,6 +401,7 @@ describe("verifying the connection and activating", () => {
     expect(call[0]).toBe(VERIFY_PATH);
     expect((call[1] as { body: unknown }).body).toEqual({});
     expect(idempotencyKeyOf(call)).toBeTruthy();
+    expect(ifMatchOf(call)).toBe(String(CLAIMMD_DRAFT.version));
     expect(await screen.findByText(/The vendor rejected the credential/)).toBeTruthy();
     await waitFor(() => expect(props.onChanged).toHaveBeenCalled());
   });
@@ -414,6 +449,34 @@ describe("verifying the connection and activating", () => {
     mount(stub);
     fireEvent.click(await screen.findByRole("button", { name: "Test the connection" }));
     expect(await screen.findByRole("link", { name: "Re-verify" })).toBeTruthy();
+  });
+
+  it("does not restore connection-attestation evidence onto a changed configuration", async () => {
+    const stedi = {
+      ...CLAIMMD_DRAFT,
+      vendor: "stedi" as const,
+      verifiableBy: "attestation" as const,
+    };
+    const refusedWrite = client(stedi, {
+      POST: { [VERIFY_PATH]: () => refused(403, "STEP_UP_REQUIRED") as never },
+    });
+    mount(refusedWrite);
+    fireEvent.change(await screen.findByLabelText("What was checked, and by whom"), {
+      target: { value: "Signed in to Stedi and saw the key active, J. Rivera" },
+    });
+    fireEvent.click(screen.getByLabelText("This note names no patient information"));
+    fireEvent.click(screen.getByRole("button", { name: "Verify the connection" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Re-verify" }));
+    expect(peekStepUpDraft(VERIFY_DRAFT_KEY)).toBeTruthy();
+
+    cleanup();
+    returnFromStepUp();
+    const changed = { ...stedi, mode: "test" as const, version: (stedi.version ?? 0) + 1 };
+    mount(client(changed));
+    expect(
+      ((await screen.findByLabelText("What was checked, and by whom")) as HTMLTextAreaElement)
+        .value,
+    ).toBe("");
   });
 
   it("offers Re-verify when activation needs a fresh step-up, and explains a refusal in the tenant's words", async () => {
@@ -493,9 +556,18 @@ describe("what the member may see and do", () => {
   });
 
   it("reads a failed load as a failure, not as no choice", async () => {
-    const stub = stubClient({ GET: { [PATH]: () => refused(500, "INTERNAL", "boom") as never } });
+    let reads = 0;
+    const stub = stubClient({
+      GET: {
+        [PATH]: () =>
+          reads++ === 0 ? (refused(500, "INTERNAL", "boom") as never) : ok(clearinghouseView()),
+      },
+    });
     mount(stub);
     expect(await screen.findByText(/Could not load the clearinghouse settings/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Choose the clearinghouse" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("button", { name: "Choose the clearinghouse" })).toBeTruthy();
   });
 });

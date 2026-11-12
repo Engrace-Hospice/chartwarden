@@ -101,6 +101,7 @@ function MacBody({ step, view, held, onChanged, skip }: StepPanelProps): JSX.Ele
   // An editor open, a save running or a portal check running: the others wait, so none bumps the version the editor is pinned to.
   const locked = editor.editing !== null || editor.busy || check.busy;
   const only = withoutCredential.length === 1 ? (withoutCredential[0]?.id ?? null) : null;
+  const listsLoaded = credentials.data !== null && entities.data !== null;
 
   return (
     <>
@@ -111,7 +112,7 @@ function MacBody({ step, view, held, onChanged, skip }: StepPanelProps): JSX.Ele
         nameOf={nameOf}
         canWrite={canWrite}
         locked={locked}
-        canAdd={canWrite && withoutCredential.length > 0}
+        canAdd={canWrite && listsLoaded && withoutCredential.length > 0}
         onAdd={() => editor.open(null, only)}
         onReplace={(c) => editor.open(c, null)}
         onCheck={(id) => void check.check(id)}

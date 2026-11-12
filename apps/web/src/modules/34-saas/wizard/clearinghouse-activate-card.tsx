@@ -33,6 +33,7 @@ export function ActivateCard({
   const { onBusy } = ctx;
   useEffect(() => {
     onBusy("activate", write.busy);
+    return () => onBusy("activate", false);
   }, [onBusy, write.busy]);
 
   async function activate(): Promise<void> {

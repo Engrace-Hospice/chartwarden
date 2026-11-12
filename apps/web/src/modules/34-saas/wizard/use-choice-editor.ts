@@ -57,6 +57,7 @@ export function useChoiceEditor(args: {
   const { onBusy } = ctx;
   useEffect(() => {
     onBusy("choice", editing || write.busy);
+    return () => onBusy("choice", false);
   }, [onBusy, editing, write.busy]);
 
   function open(): void {
@@ -157,6 +158,7 @@ export function useChoiceEditor(args: {
     secret,
     setSecret: (value: string) => {
       setSecret(value);
+      setLocalErrors((currentErrors) => ({ ...currentErrors, secret: undefined }));
       serverErrors.touch("secret");
     },
     errors,

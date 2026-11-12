@@ -946,6 +946,19 @@ describe("tenant clearinghouse service: the tenant-held vendor BAA (owner decisi
     expect(again.version).toBe(first.version);
   });
 
+  it("pins a tenant BAA write to the clearinghouse version read by the administrator", async () => {
+    const { store, service } = await verifiedClaimMd();
+    const current = await service.view(store, ORG);
+    const stale = await service
+      .recordBaa(store, ACTOR, BAA, (current.version as number) + 1)
+      .catch((e: unknown) => e);
+    expect(stale).toMatchObject({ code: "STALE_VERSION", statusCode: 409 });
+    expect((await service.view(store, ORG)).baa).toBeNull();
+    await expect(
+      service.recordBaa(store, ACTOR, BAA, current.version as number),
+    ).resolves.toMatchObject({ view: { baa: { effectiveDate: BAA.effectiveDate } } });
+  });
+
   it("pins the verification to the record the operator saw: a record changed after the read is a 409 and stays unverified (re-review M1)", async () => {
     const { store, service } = await verifiedClaimMd();
     await service.recordBaa(store, ACTOR, BAA);
@@ -1130,6 +1143,22 @@ describe("tenant clearinghouse service: the vendor probe never runs inside a tra
     );
     const err = await service.completeVerify(store, ACTOR, plan, "ok").catch((e: unknown) => e);
     expect(err).toMatchObject({ code: "CLEARINGHOUSE_CHANGED_DURING_VERIFY", statusCode: 409 });
+    expect((await service.view(store, ORG)).status).toBe("draft");
+  });
+
+  it("refuses a verification request pinned to an already stale clearinghouse version before probing", async () => {
+    const { store, service, calls } = tracedSetup();
+    const first = await service.put(
+      store,
+      ACTOR,
+      { vendor: "claimmd", mode: "test", secret: FAKE_KEY },
+      undefined,
+    );
+    const err = await service
+      .prepareVerify(store, ACTOR, {}, (first.view.version as number) + 1)
+      .catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "STALE_VERSION", statusCode: 409 });
+    expect(calls).not.toContain("PROBE");
     expect((await service.view(store, ORG)).status).toBe("draft");
   });
 

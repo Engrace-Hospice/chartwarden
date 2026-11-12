@@ -316,7 +316,7 @@ describe("results and focus survive the card that raised them", () => {
   it("keeps a passed connection test on screen and moves focus to the status line when the card goes away", async () => {
     const stub = stubClient({
       GET: {
-        [PATH]: reads(CLAIMMD_DRAFT, { ...CLAIMMD_DRAFT, status: "verified", baa: baa(null) }),
+        [PATH]: reads(CLAIMMD_DRAFT, READY),
       },
       POST: { [`${PATH}/verify`]: () => ok({ config: CLAIMMD_DRAFT, test: { outcome: "ok" } }) },
     });
@@ -326,6 +326,10 @@ describe("results and focus survive the card that raised them", () => {
 
     await waitFor(() => expect(status().textContent).toContain("The connection test passed."));
     await waitFor(() => expect(screen.queryByRole("region", { name: "Connection" })).toBeNull());
+    expect(
+      (screen.getByRole("button", { name: "Activate the clearinghouse" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
     expect(document.activeElement).toBe(status());
   });
 
@@ -402,6 +406,34 @@ describe("results and focus survive the card that raised them", () => {
   });
 });
 
+describe("configuration-bound card state", () => {
+  it("drops typed attestation evidence when an in-place choice write changes the configuration", async () => {
+    const stedi = {
+      ...CLAIMMD_DRAFT,
+      vendor: "stedi" as const,
+      verifiableBy: "attestation" as const,
+    };
+    const changed = { ...stedi, mode: "test" as const, version: (stedi.version ?? 0) + 1 };
+    const stub = stubClient({
+      GET: { [PATH]: reads(stedi, changed) },
+      PUT: { [PATH]: () => ok(changed) },
+    });
+    mount(stub);
+    fireEvent.change(await screen.findByLabelText("What was checked, and by whom"), {
+      target: { value: "Signed in to Stedi and saw the key active, J. Rivera" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Change the clearinghouse" }));
+    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "test" } });
+    fireEvent.change(screen.getByLabelText("Vendor credential"), { target: { value: SECRET } });
+    fireEvent.click(screen.getByRole("button", { name: "Save choice" }));
+
+    await waitFor(() => expect(stub.GET.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(
+      (screen.getByLabelText("What was checked, and by whom") as HTMLTextAreaElement).value,
+    ).toBe("");
+  });
+});
+
 describe("the write-only credential", () => {
   it("is cleared when the vendor or the mode it was typed for changes, so it never rides to another vendor", async () => {
     const stub = stubClient({
@@ -422,6 +454,9 @@ describe("the write-only credential", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save choice" }));
     expect(await screen.findByText("Enter the vendor credential.")).toBeTruthy();
     expect(stub.PUT).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Vendor credential"), { target: { value: SECRET } });
+    expect(screen.queryByText("Enter the vendor credential.")).toBeNull();
   });
 
   it("is cleared when billing outside ChartWarden is picked, and nothing is sent with it", async () => {

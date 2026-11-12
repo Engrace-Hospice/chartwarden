@@ -123,13 +123,17 @@ describe("buildDrizzleTenantClearinghouseRouteService: onOnboardingDataChanging 
     [
       "recordBaa",
       (r) =>
-        r.recordBaa(ACTOR, {
-          heldBy: "tenant",
-          effectiveDate: "2026-01-02",
-          documentRef: "BAA folder",
-        }),
+        r.recordBaa(
+          ACTOR,
+          {
+            heldBy: "tenant",
+            effectiveDate: "2026-01-02",
+            documentRef: "BAA folder",
+          },
+          1,
+        ),
     ],
-    ["verify", (r) => r.verify(ACTOR, {})],
+    ["verify", (r) => r.verify(ACTOR, {}, 1)],
     ["activate", (r) => r.activate(ACTOR)],
   ];
 
@@ -225,11 +229,15 @@ describe("buildDrizzleTenantClearinghouseRouteService: onOnboardingDataChanging 
     [
       "recordBaa",
       (r: TenantClearinghouseRouteService) =>
-        r.recordBaa(ACTOR, {
-          heldBy: "tenant",
-          effectiveDate: "2026-01-02",
-          documentRef: "BAA folder",
-        }),
+        r.recordBaa(
+          ACTOR,
+          {
+            heldBy: "tenant",
+            effectiveDate: "2026-01-02",
+            documentRef: "BAA folder",
+          },
+          1,
+        ),
     ],
   ] as const)(
     "%s does not void when the service reports no changed fields",
