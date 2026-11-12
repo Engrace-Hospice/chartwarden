@@ -23,7 +23,7 @@
 > audit era's own ADR numbering (a historical namespace, exempt), and bare short `ADR-00N` refs
 > are the architecture §21 open-decision register (see its numbering note).
 
-## Modules (40)
+## Modules (41)
 
 | # | Module | Spec ver | File |
 |---|---|---|---|

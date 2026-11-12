@@ -59,6 +59,7 @@ export const GATES = [
   "arch:ai-governance",
   "arch:ai-messaging-readonly",
   "arch:architecture-docs",
+  "arch:architecture-sync",
   "arch:module-docs",
   "arch:adr-docs",
   "arch:plan-integrity",

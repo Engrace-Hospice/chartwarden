@@ -13,6 +13,16 @@ target so backend contracts do not extend the obsolete Capacitor design; histori
 remain historical. The ADR status does not claim that owner ratification or native device controls
 have been completed.
 
+## Document Control — Module 41 reconciliation (2026-11-11)
+
+Module 41 (Billing — Commercial) was added by [ADR-0100](../adr/ADR-0100-commercial-billing-module-41.md) (accepted 2026-10-24) and landed in the manifest, the module-spec index and the spec gate, but not in this document. Reconciled here:
+
+|Change                                                                                                                                                                  |Driver (ADR / finding)                            |
+|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|
+|**§11 catalog count 40 → 41**, with a Module 41 entry (§S).                                                                                                             |ADR-0100                                          |
+|**§20 build sequence:** Module 41 row (depends on 23, 40; M1 implicit) and a scheduling note. **§20.A:** Phase 1 count reads 29 of 41; Module 41 is not in Phase 1 and has no assigned phase.|ADR-0100 D2, ADR-0009                             |
+|**§25.16 manifest row:** "40 modules, 464 tables" → 41 modules; the table count is no longer restated here.                                                              |Hand-kept counts go stale; generated reports own them|
+
 ## Document Control — Changes from v0.11 (Phase 0 remediation, 2026-06-11)
 
 Phase 0 of the compliance-audit remediation (`audit/AUDIT_CONSOLIDATED_FINAL.md`). These are the
@@ -1638,7 +1648,7 @@ For tenants with strict sovereignty requirements (e.g., government agency hospic
 
 -----
 
-## 11. Module Catalog — All 40 Modules
+## 11. Module Catalog — All 41 Modules
 
 Each module is a complete spec produced as a separate document under `docs/modules/`. This catalog is the index, with the substantive shape of each module. Per-module specs are produced **before that module’s build cycle starts**.
 
@@ -2246,6 +2256,20 @@ See §10 for capability inventory, discipline rules, and §10.7 for model backen
 - **Data quality monitoring:** Dashboard for tenant admin shows: external entities without NPI (potential dupes), entities not referenced in 12+ months (candidate for archival), conflicting addresses across overlays (canonical correction candidates)
 - **Compliance:** Vendor risk management for external entities engaged in PHI exchange (signed BAAs tracked per entity where applicable)
 
+### S. Billing — Commercial
+
+#### Module 41 — Billing — Commercial
+
+- **Purpose:** Bill **commercial** payers for hospice care as its own module, so Module 23 stays Medicare-FFS-only and keeps its `NON_MEDICARE_PRIMARY_PAYER` guard. Decision record: [ADR-0100](../adr/ADR-0100-commercial-billing-module-41.md). Module spec (an implementation proposal — this catalog wins on conflict): `docs/modules/CHARTWARDEN_MODULE_41_BILLING_COMMERCIAL_SPEC_v0_1.md`.
+- **Dependencies (manifest):** M1, M23 (the shared 837I builder and `ClearinghouseTransport` in `x12-837-client`), M40 (payer master). M41 imports neither M23's nor M40's schemas; claim facts arrive through published seams.
+- **Entities:** commercial payer plan, payer route (the payer id a clearinghouse routes a plan on), contract rate, payer enrollment, authorization, eligibility check, claim, claim line, claim state history, submission, acknowledgment (with its pull cursor and a quarantine for events that were not applied), validation run / result / override. The manifest's `ownedTables` is the authoritative list.
+- **Submission:** only through `ClearinghouseTransport` ([ADR-0053](../adr/ADR-0053-clearinghouse-transport-port.md)); there is no direct-to-payer channel and no per-payer adapter. Enrollment per payer and per provider entity gates every send; an unbound transport answers `CH_NOT_WIRED` and nothing is sent.
+- **Claim shape:** an 837I driven by the payer contract (claim filing indicator, the payer id the clearinghouse routes on, edit rules, contract rate terms); pre-authorization is a first-class check; coordination of benefits is explicit. A Medicare Advantage enrollee who elects hospice is **not** an M41 patient: Original Medicare pays the hospice, so that claim goes through Module 23.
+- **Integration with other modules:**
+  - **Module 23** — shared 837I builder and transport; M23 refuses a non-Medicare-primary claim and points to M41
+  - **Module 25** — reads commercial claim ownership through the `CommercialClaimReader` seam (owner M41, PHI, fail-closed deny-stub), so M25 has **no** `dependsOn` edge on M41; M41 consumes the `m25.remittance.claim_paid`, `.claim_partial_paid` and `.claim_denied` outbox events to move a claim to its paid or denied state
+  - **Module 40** — payer master; a commercial plan may only reference a payer whose M40 kind is `commercial`
+
 -----
 
 ## 12. Worker Services (Python sidecars)
@@ -2433,14 +2457,15 @@ Strict dependency-ordered. Each module is “done with tests + UI + audit + RBAC
 > The manifest is what `arch:boundaries` actually enforces — if you need to know whether module A may
 > import module B, read the manifest, not this table.
 >
-> Known deliberate divergences, all of which post-date this table:
+> Known divergences, all of which post-date this table. `arch:architecture-sync` fails when a row above
+> differs from the manifest without an entry here, and when an entry here goes stale:
 >
 > | Module | This table says | Manifest enforces | Why |
 > |---|---|---|---|
+> | 8 Encounters | 6, 7, 36, 38 | 1, 6, 7, 9, 36, 38 | **Open conflict with [ADR-0043](../adr/ADR-0043-m8-completeness-seam-inversion.md):** the manifest lets M8 import M9 (`LatestAssessmentProvider`, #125), while ADR-0043 says M8 reaches M9/M10 only through boot-registered seams, never by importing them. Unresolved: it needs an ADR amendment or a manifest change. |
 > | 9 Assessments | 8, 38 | 1, 38 | **ADR-0007 seam inversion** — M9 no longer imports M8; the encounter link is a forward seam. Recorded in this document's own changelog and never propagated here. |
 > | 10 HOPE | 8, 9, 36, 38 | 1, 9, 36, 38 | Same ADR-0007 inversion (M8 edge dropped). |
 > | 11 Orders | 6, 8, 36, 38, 40 | 1, 6, 36, 38, 40 | Same ADR-0007 inversion (M8 edge dropped). |
-> | 22 Documents | — | 1, 5 | M22 reads the patient spine directly. |
 > | 35 Subscription Billing | 34 | (see manifest) | M35 may import `@chartwarden/auth`, **not** the M34 shell registry. |
 >
 > Every module additionally depends on **1 (Foundation)**, which this table leaves implicit for rows
@@ -2468,12 +2493,12 @@ Strict dependency-ordered. Each module is “done with tests + UI + audit + RBAC
 |14|IDG                                                                          |7, 8, 36                                                                                    |
 |15|Discipline Care Plans                                                        |7, 8                                                                                        |
 |16|Bereavement                                                                  |5, 6, 36                                                                                    |
-|17|Scheduling & Route Optimization                                              |5, 8, 40                                                                                    |
+|17|Scheduling & Route Optimization                                              |5, 8, 36, 40                                                                                    |
 |18|EVV                                                                          |17                                                                                          |
 |19|On-Call Triage                                                               |5, 17, 36                                                                                   |
 |20|Field Safety                                                                 |17, 36                                                                                      |
 |21|Supplies, DME & Comfort Kits                                                 |11, 40                                                                                      |
-|22|Document Management                                                          |1, 5, 39                                                                                    |
+|22|Document Management                                                          |1, 5, 6                                                                                    |
 |23|Billing — Medicare                                                           |6, 8, 22, 38, 40                                                                            |
 |24|Billing — Medicaid                                                           |23, 40                                                                                      |
 |25|Remittance & Denials                                                         |23, 36                                                                                      |
@@ -2481,13 +2506,14 @@ Strict dependency-ordered. Each module is “done with tests + UI + audit + RBAC
 |27|Cost Report                                                                  |23, 26, 38                                                                                  |
 |28|FHIR Gateway                                                                 |5, 6, 7, 8, 11, 12, 13, 38, 40                                                              |
 |29|External Interfaces                                                          |5, 11, 40                                                                                   |
-|30|HQRP & Quality                                                               |10, 23, 27, 36, 38                                                                          |
+|30|HQRP & Quality                                                               |2, 3, 4, 10, 23, 27, 36, 38                                                                          |
 |31|Patient/Family Portal & Telehealth                                           |5, 7, 8, 22, 36, 39                                                                         |
 |32|AI Platform                                                                  |parallel from Module 5 onward (provides capabilities consumed by other modules including 36)|
 |33|Reporting & Dashboards                                                       |all clinical + billing modules                                                              |
 |34|SaaS Tenant Platform                                                         |2, 3, 4, 36                                                                                 |
 |35|Subscription Billing                                                         |34                                                                                          |
-|37|Inpatient Unit (IPU) Management                                              |6, 8, 11, 13, 17, 23 — built late as it’s only needed for tenants operating IPUs            |
+|37|Inpatient Unit (IPU) Management                                              |2, 3, 4, 5, 6, 8, 9, 11, 12, 13, 14, 15, 17, 18, 21, 22, 23, 26, 27, 36, 38, 40 — built late as it’s only needed for tenants operating IPUs            |
+|41|Billing — Commercial                                                         |23, 40 — submits only through the shared `ClearinghouseTransport` (ADR-0100)                |
 
 **Critical scheduling notes:**
 
@@ -2498,6 +2524,7 @@ Strict dependency-ordered. Each module is “done with tests + UI + audit + RBAC
 - Modules 23/24 (Medicare/Medicaid Billing) gate Engrace go-live since the production agency needs to bill from day one.
 - **Modules 38 (Terminology) and 40 (MDM) land immediately after foundation (1-4) and messaging (36) and before Module 5.** Every clinical module from Module 5 onward consumes one or both. Building 38/40 late means retrofitting code lookups and external-entity references across 20+ modules.
 - **Module 39 (Consent) lands after Module 5 (Patient).** Consent records attach to patients. Signed consent-form PDFs are rendered/stored by Module 22, but Module 39 consumes Module 22 via a **boot-registered forward seam** (`DocumentRenderer`/`DocumentStorageProvider`, deny-stub default) — **not** an import edge — so Module 39 does **not** depend on Module 22 (ADR-0006 breaks the manifest's 22↔39 cycle). Module 39 then gates Module 31 (Portal) and is consulted by Modules 6 (election forms), 5 (PrivacyFlag derivation), 7 (DPOA on care plan), and 22 (which consumes the `ConsentEvaluator` to gate document disclosure).
+- **Module 41 (Billing — Commercial) lands after Modules 23 and 40.** It builds on M23's shared 837I builder and `ClearinghouseTransport` and on the M40 payer master ([ADR-0100](../adr/ADR-0100-commercial-billing-module-41.md)). It is not a prerequisite of Module 25: M25 consumes commercial claim ownership through the boot-registered `CommercialClaimReader` seam (deny-stub default), not an import edge.
 
 -----
 
@@ -2541,7 +2568,9 @@ Minimum set to operate Engrace Hospice LLC as a real hospice agency. If a module
 |32 AI Platform (capability shell + HearthNote Layer 1 only)                |Foundation for Phase 2 AI                                                                                                                |
 |34 SaaS Tenant Platform (single-tenant mode for Engrace)                   |Multi-tenant infra running single-tenant                                                                                                 |
 
-**Phase 1 module count: 29 of 40 modules** (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 18, 22, 23, 25, 26, 28, 29, 30, 32, 34, 36, 38, 39, 40 — matching the table above). This is the ship cut to put Engrace into production. Approximately 7-10 months of build with a focused engineering pace (added 1-2 months vs the prior 26-module estimate because Modules 38/39/40 add real work, though they save downstream rework).
+**Phase 1 module count: 29 of 41 modules** (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 17, 18, 22, 23, 25, 26, 28, 29, 30, 32, 34, 36, 38, 39, 40 — matching the table above). This is the ship cut to put Engrace into production. Approximately 7-10 months of build with a focused engineering pace (added 1-2 months vs the prior 26-module estimate because Modules 38/39/40 add real work, though they save downstream rework).
+
+Module 41 (Billing — Commercial, [ADR-0100](../adr/ADR-0100-commercial-billing-module-41.md)) is not in the Phase 1 cut: Module 23 refuses a non-Medicare-primary claim and points commercial billing at M41. No phase table below assigns M41 a phase yet; per ADR-0009 a phase moves by an ADR, not by assertion here.
 
 ### Phase 2 — AI Activation + Operational Depth (v1.1)
 
@@ -3088,7 +3117,7 @@ Standardized patterns that every module follows. Locks the patterns explicitly; 
 
 **Implementation:** Module 1 §8.2 audit helper API.
 
-**Anti-pattern:** “I’ll add audit logging later.” There is no later — retrofitting audit through 40 modules produces gaps.
+**Anti-pattern:** “I’ll add audit logging later.” There is no later — retrofitting audit through 41 modules produces gaps.
 
 ### 25.7 Error Handling
 
@@ -3165,7 +3194,7 @@ summarized here with pointers; the linked file is authoritative in each case.
 
 | Pattern | What it is | Where it lives |
 |---|---|---|
-| **The module manifest** | Single source of truth for every module's `codePaths`, `dependsOn` and `ownedTables` (40 modules, 464 tables). Edit it, then run `bun run scaffold`. **Both** the `.ts` and `.cjs` copies must change together. | `architecture/module-manifest.{ts,cjs}` |
+| **The module manifest** | Single source of truth for every module's `codePaths`, `dependsOn` and `ownedTables` (41 modules; table counts live in the generated audit reports, not here). Edit it, then run `bun run scaffold`. **Both** the `.ts` and `.cjs` copies must change together. | `architecture/module-manifest.{ts,cjs}` |
 | **Architecture fitness** | `bun run arch:fitness` (read the gate count/chain from `package.json`). A green run proves architectural coherence, **not** feature completeness. Read the chain from `package.json`, never from prose. | `ARCHITECTURE_25_15_FITNESS.md`, `scripts/check-*.ts` |
 | **dependency-cruiser boundaries** | Enforces the import graph the manifest declares, plus the vendor-adapter mandate, domain purity, and "leaves stay leaves". | `architecture/.dependency-cruiser.cjs` |
 | **Seams (`getSeam`)** | The cross-module call mechanism. A seam creates **no** dependency-cruiser edge — it is typed off `SeamContracts` in the leaf `@chartwarden/types`. A seam consumer that binds an uncatalogued event **crashes boot**. | `packages/types/src/seams.ts`, `bootstrap/seams/` |

@@ -13,7 +13,7 @@
  *                   the README's "Spec ver" column matches the HEADER version. Specs are re-locked
  *                   in place (the filename version is pinned and may lag — same convention the
  *                   architecture corpus adopted); the header is authoritative, and the index used
- *                   to track the filename, sitting one or two re-locks stale for 26 of 40 modules.
+ *                   to track the filename, sitting one or two re-locks stale for 26 of the 40 modules then indexed (M41 came later).
  *   3. ADRS       — every four-digit `ADR-NNNN` citation resolves to a file in docs/adr/, EXCEPT
  *                   on lines that also carry an `ARCH-\d+` audit-finding id: those are audit-era
  *                   composite citations (e.g. "ADR-0144 / ARCH-281#5") from the 2026-06 audit's

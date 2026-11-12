@@ -1,7 +1,7 @@
 /**
  * ChartWarden — Module Manifest (single source of truth for architecture fitness)
  * ---------------------------------------------------------------------------
- * Encodes, per logical module (the 40 in ARCHITECTURE §11):
+ * Encodes, per logical module (the 41 in ARCHITECTURE §11):
  *   - codePaths:   the package(s) and backend route dir(s) that BELONG to the module
  *   - dependsOn:   the modules it MAY import from. This STARTED as a verbatim copy of the
  *                  ARCHITECTURE §20 dependency table and is no longer one — the manifest is the
@@ -10,8 +10,8 @@
  *                  recorded in the architecture changelog but never propagated into the §20 table),
  *                  plus M22→39 and M35→34. Change this array, then regenerate §20 — never the
  *                  reverse, and never edit both by hand.
- *   - ownedTables: the DB tables it owns. As of the M07-F02 manifest pass, ALL 40
- *                  modules are populated (464 tables as of 2026-08-14) from their specs, so the ownership
+ *   - ownedTables: the DB tables it owns. As of the M07-F02 manifest pass, ALL 41
+ *                  modules are populated from their specs, so the ownership
  *                  check enforces the full corpus — no longer "enforces only what is
  *                  declared." A new module's tables are added here when its spec lands.
  *

@@ -14,6 +14,23 @@
   namespace). Warn-only `<!-- verified-against: sha · date -->` staleness stamps. The six build
   divergences the 2026-08-13 audit surfaced are recorded as ADR-0036…0040 (+ ADR-0030/0032/0035
   for the frontend stack).
+- `scripts/check-architecture-sync.ts` — **architecture-vs-implementation sync gate**
+  (`bun run arch:architecture-sync`, in `arch:fitness` since 2026-11-11). Incident: M41 (ADR-0100,
+  accepted 2026-10-24) reached the manifest, the module index and `check-module-docs`, but not
+  `docs/architecture/`. Every doc gate passed while the authoritative corpus still said "All 40
+  Modules", had no M41 catalog entry or §20 row, and described no Rust bridge at all (it was
+  built and merged off). Reconciling it also surfaced §20 dependency rows that had drifted from the
+  manifest for modules unrelated to M41 (8, 17, 22, 30, 37), a stale divergence row, a stale
+  "no outbound claim transport" banner in INTEGRATIONS, no inventory row for the clearinghouse, and
+  43 Accepted ADRs (as of 2026-11-11) the architecture never cites. The gate compares each claim with
+  the source that decides it: counts and ids against the manifest, §20 rows against `dependsOn` (the
+  doc's own divergences table is the only allowlist, and a stale row fails), documented table
+  ownership against `ownedTables`, Accepted ADRs against the corpus (shrink-only
+  `architecture-adr-baseline.ts`), and the SYSTEM_DESIGN §1.4 Bun/Rust ownership matrix against
+  `RUST_BRIDGE_ROUTES` and the literal `RUST_ROUTES` in production compose. Open when it landed: the
+  manifest gives M8 an edge on M9 that ADR-0043's principle forbids (recorded in §20's divergences
+  table, unresolved). Not covered: prose diagrams against deployed services and ADR-vs-architecture
+  conflicts need a reader; per-module implementation status stays with the generated `status:matrix`.
 - `scripts/check-module-docs.ts` — **module-spec corpus gate** (`bun run arch:module-docs`, in
   `arch:fitness`). Different contract from the architecture gate because specs are PROPOSALS:
   no cited-path rule (planned paths are legal); enforces index parity (40 rows ↔ 40 files),

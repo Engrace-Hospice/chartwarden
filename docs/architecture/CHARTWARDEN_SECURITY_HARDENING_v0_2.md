@@ -385,6 +385,7 @@ Full STRIDE in module specs; summary here:
 |34 SaaS Platform        |Tenant escape (I+E), provisioning abuse (E)                                 |
 |39 Consent              |Consent bypass (E+R), forgery (S+T)                                         |
 |40 MDM                  |Cross-tenant overlay leak (I), canonical record poisoning (T)               |
+|41 Billing — Commercial |Unauthorized or duplicate claim send (E+T), cross-tenant remittance match (I)|
 
 ### 3.5 M29 External Interfaces — Adapter-Mandate Compliance (ARCHITECTURE §25.14)
 
@@ -406,6 +407,29 @@ co-located `m29-adapter-mandate.test.ts` unit guard:
 Named-predicate drift is closed separately by `arch:abac-predicates` (M3's registry fails closed on an
 unregistered name) with the W-XI-15 unit arm in `m29-abac.test.ts`: every §4.8 predicate M29 declares must
 have a built resolver and register into M3's registry, and a missing predicate denies (never falls open).
+
+### 3.6 M41 Commercial Billing — Submission Confinement and the PHI Seam ([ADR-0100](../adr/ADR-0100-commercial-billing-module-41.md))
+
+M41 bills commercial payers and carries PHI (claims, authorizations, eligibility). Its security posture rests on four properties:
+
+- **One way out.** Submission goes only through the shared `ClearinghouseTransport` ([ADR-0053](../adr/ADR-0053-clearinghouse-transport-port.md)); there is no direct-to-payer channel and no per-payer HTTP client. An organization with no live clearinghouse sends nothing (`CH_NOT_WIRED`).
+- **Enrollment gates every send**, per payer and per provider entity. A refusal is a stable code and creates no queue job (ADR-0100 D5); the submit permission follows `billing.claim.submit` (D11).
+- **Cross-module access is a seam, not a schema import.** M41's declared dependencies are `[1, 23, 40]` in the manifest, so `arch:boundaries` and `check-table-ownership` confine its imports and tables. M25 reads commercial claim ownership through the `CommercialClaimReader` seam (owner M41, PHI, fail-closed deny-stub registered at boot), never by importing M41.
+- **A remittance for another tenant or payer posts nothing.** It quarantines (D8). Proven live as the NOBYPASSRLS `chartwarden_app` role, including cross-tenant isolation, in `m25-commercial-remit-matching.live.test.ts`.
+
+An authorization number is never shown in a message or an audit event (M41 spec §2.2).
+
+### 3.7 Bun→Rust Bridge Trust Boundary (CW-RUST-M02; control `CW-AC-07`)
+
+A Rust API is being introduced beside the Bun backend; the endpoint ownership matrix is [SYSTEM_DESIGN §1.4](./CHARTWARDEN_SYSTEM_DESIGN_v0.3.md). The security-relevant facts, as enforced in this repository:
+
+- **Authenticated requests only.** Bun signs an Ed25519 actor assertion only for a request that has already passed authentication and the session check (or for the daily parity sweep's audited comparison). Rust trusts the assertion, never a client header.
+- **A client cannot supply the assertion.** The header is stripped in Bun and blanked by nginx.
+- **Key custody.** The signing key is a compose secret mounted on `api` only; Rust holds public keys only (`CW_ACTOR_PUBLIC_KEYS`).
+- **Network confinement.** The `rust` service publishes no port and is on the internal `rust-db` network with Postgres only: no default network, no egress, read-only filesystem, non-root.
+- **Image provenance.** `deploy.sh` rolls the Rust image only by a cosign-verified digest from the `chartwarden-rust` image workflow; the opt-out for unverified images does not apply to it.
+
+Status is honest: `CW-AC-07` is `partial`. The bridge is merged **off** (`RUST_ROUTES` empty in production), and the Rust-side enforcement is proven in `chartwarden-rust`, not here. Turning a route on is a reviewed change to the compose literal plus the signing-key secret.
 
 -----
 

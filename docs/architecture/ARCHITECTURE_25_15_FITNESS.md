@@ -14,7 +14,7 @@ artifacts live in `architecture/` and `scripts/`.
 
 ## Why this exists
 
-The module architecture (§11, §20) is modular **by design**, but until now it is enforced only by documents and discipline — and documents do not fail a build. Across 40 modules built largely by one engineer, the realistic failure mode is not a bad design decision; it is a deadline-driven shortcut that reaches across a module boundary, imports another module's schema directly, or smuggles a vendor SDK out of its adapter. Each such shortcut is invisible in review and compounds.
+The module architecture (§11, §20) is modular **by design**, but until now it is enforced only by documents and discipline — and documents do not fail a build. Across 41 modules built largely by one engineer, the realistic failure mode is not a bad design decision; it is a deadline-driven shortcut that reaches across a module boundary, imports another module's schema directly, or smuggles a vendor SDK out of its adapter. Each such shortcut is invisible in review and compounds.
 
 **Principle:** every boundary the architecture cares about is converted into a check that runs on every PR. The CI pipeline is the reviewer that a solo or small team otherwise lacks. The rule of thumb for the moment a deadline tempts a shortcut: **if you must cross a boundary, extend its interface in the manifest (a deliberate, reviewed change); never reach through it** — and the tooling makes reaching-through unmergeable anyway.
 
@@ -109,6 +109,17 @@ RLS enforces the **tenant** boundary: rows must match `app.org_id`. It says noth
 > `arch:ui-parity`, `arch:frame-fidelity`, `arch:design-tokens`, `arch:abac-predicates`,
 > `arch:live-suites`, `arch:org-indexes`, `arch:audit-denylist-sync`, `arch:audit-exceptions`,
 > `docs:ui`, `openapi:check`, `arch:openapi-coverage`, `arch:inject-coverage`, `client:check`.
+>
+> **Added 2026-11-11 — `arch:architecture-sync`.** `arch:architecture-docs` proves this corpus is
+> well-formed; it cannot prove it is *true* (a doc could say "40 modules" while the manifest has 41 and
+> still pass). `scripts/check-architecture-sync.ts` compares the claims against their source: module
+> counts and ids (§11 catalog, §20 table) against the manifest; every §20 dependency row against the
+> manifest's `dependsOn`, with the §20 "known divergences" table as the only allowlist (a stale row fails
+> too); documented table ownership against `ownedTables`; every Accepted ADR against the corpus (a
+> shrink-only baseline holds the pre-existing uncited ones); and the SYSTEM_DESIGN §1.4 Bun/Rust ownership
+> matrix against the bridge's route table and the production compose file. It does **not** verify prose
+> diagrams against deployed services, or whether an ADR conflicts with the architecture — those still
+> need a reader. Per-module status stays with the generated `arch:status-matrix`.
 
 > **Layout (realized 2026-06-11).** The kit now lives in its intended layout: the manifest
 > (`architecture/module-manifest.{ts,cjs}`) and the depcruise config (`architecture/.dependency-cruiser.cjs`,
@@ -153,9 +164,11 @@ A failing fitness check blocks merge exactly like a failing test. The visual gra
 | `scripts/check-table-ownership.ts` | checks 6 + 11 (ownership + ADR-0011 evasions) |
 | `scripts/check-tenancy.ts` | check 10 (ADR-0010 tenancy/RLS invariants) |
 | `scripts/check-ddl-legality.ts` | check 12 (ADR-0022 PostgreSQL DDL legality) |
+| `scripts/check-architecture-sync.ts` + `scripts/lib/architecture-sync.ts` | architecture-vs-implementation sync (counts, ids, §20 deps, table ownership, ADR reflection, Rust ownership matrix) |
+| `scripts/architecture-adr-baseline.ts` | the frozen, shrink-only list of Accepted ADRs the architecture corpus does not cite yet |
 
-> **Superseded (2026-08-14).** The manifest is now authoritative for **all 40 modules** — every one
-> has `codePaths`, `dependsOn` and a filled `ownedTables` (**464 tables**), and `arch:parity` keeps
+> **Superseded (2026-08-14; Module 41 added 2026-10-24, ADR-0100).** The manifest is now authoritative for **all 41 modules** — every one
+> has `codePaths`, `dependsOn` and a filled `ownedTables`, and `arch:parity` keeps
 > the generated `apps/`+`packages/` tree 1:1 with it. The tightening described above has completed;
 > nothing is left to fill in.
 >
