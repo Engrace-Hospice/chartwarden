@@ -23,6 +23,10 @@ const MAX_COMMAND_RESOLUTION_CHARS = 8 * 1024 * 1024;
 const MAX_COMMAND_JUDGED_CHARS = 256 * 1024;
 /** A word longer than a path can be (PATH_MAX) is not a file name, so its braces are not expanded. */
 export const MAX_BRACE_WORD_CHARS = 4096;
+/** Characters the cheap fallback reading of ONE word may produce (a 60 KB word of alternatives would otherwise be gigabytes). */
+const MAX_FALLBACK_CHARS = 1024 * 1024;
+/** Groups the all-first / all-last reading follows: one linear scan each, so a few dozen cost nothing. */
+const MAX_EDGE_GROUPS = 64;
 /**
  * Wall-clock backstop for one `classifyBash`. The guard has a hard deadline of its own (`hard-deadline.ts`); this
  * is the earlier, politer one, and it judges a command twice when the root or cwd is a symlink.
@@ -123,28 +127,75 @@ function firstBraceGroup(word: string): { pre: string; body: string; post: strin
  */
 function singleGroupAlternatives(word: string): string[] {
   const out: string[] = [];
+  let room = MAX_FALLBACK_CHARS;
   let from = 0;
-  for (let group = 0; group < MAX_BRACE_GROUPS; group++) {
+  for (let group = 0; group < MAX_BRACE_GROUPS && room > 0; group++) {
     const found = firstBraceGroup(word.slice(from));
     if (!found) break;
     const pre = word.slice(0, from + found.pre.length);
     const post = found.post;
-    for (const alternative of found.body.split(",")) out.push(`${pre}${alternative}${post}`);
+    for (const alternative of found.body.split(",")) {
+      if (room <= 0) break;
+      out.push(`${pre}${alternative}${post}`);
+      room -= pre.length + alternative.length + post.length;
+    }
     from += found.pre.length + found.body.length + 2;
   }
   return out;
 }
 
+/**
+ * The word with EVERY group (up to 64) taking its first alternative, and with every group taking its last. The cap on
+ * alternatives keeps the first few hundred combinations, and an attacker orders a group's alternatives so that the
+ * real name is the one that is cut: `~/.aws/{x,}{x,}…credentials` is `~/.aws/credentials` only when each group
+ * takes its (empty) last alternative.
+ */
+function edgeAlternatives(word: string): string[] {
+  const pick = (last: boolean): string => {
+    let w = word;
+    for (let group = 0; group < MAX_EDGE_GROUPS; group++) {
+      const found = firstBraceGroup(w);
+      if (!found) break;
+      const alternatives = found.body.split(",");
+      const chosen = last ? alternatives[alternatives.length - 1] : alternatives[0];
+      w = `${found.pre}${chosen ?? ""}${found.post}`;
+    }
+    return w;
+  };
+  return [pick(false), pick(true)];
+}
+
+/** What a word the budget will not expand fully still reads as: each group alone, and all-first / all-last. */
+const cheapAlternatives = (word: string): string[] => [
+  ...singleGroupAlternatives(word),
+  ...edgeAlternatives(word),
+];
+
 /** Bash brace expansion of one word: `.en{v,}` is `.env` and `.en`. Bounded, so it cannot be made to blow up. */
 export function expandBraces(word: string): string[] {
-  if (word.length > MAX_BRACE_WORD_CHARS) return [word];
+  if (word.length > MAX_BRACE_WORD_CHARS) {
+    // Not a file name, so not expanded; but a group in it may still read as a protected name through one alternative
+    // (`cat {<secret>,<4,100 characters>}`), so the command asks and the cheap reading below can still deny.
+    if (firstBraceGroup(word) === null) return [word];
+    work.spent = true;
+    return [word, ...cheapAlternatives(word)];
+  }
   let out = [word];
+  let cut = false;
   for (let round = 0; round < MAX_BRACE_GROUPS; round++) {
     const next: string[] = [];
     let changed = false;
+    let capped = false;
     for (const w of out) {
-      const group = next.length >= MAX_BRACE_ALTERNATIVES ? null : firstBraceGroup(w);
+      // Past the cap the rest of the round is carried as written, unscanned: the cap is also the cost bound.
+      const group = capped ? null : firstBraceGroup(w);
       if (!group) {
+        next.push(w);
+        continue;
+      }
+      if (next.length >= MAX_BRACE_ALTERNATIVES) {
+        capped = true;
+        cut = true; // the cap leaves this group unexpanded: the command asks, and the cheap reading still denies
         next.push(w);
         continue;
       }
@@ -162,7 +213,9 @@ export function expandBraces(word: string): string[] {
     out = next;
     if (!changed) break;
   }
-  return out;
+  if (!cut) return out;
+  work.spent = true;
+  return [...out, ...cheapAlternatives(word)];
 }
 
 /** `p` without its trailing slashes (and a trailing `/.`): `src/`, `src//` and `src/.` are `src`. Linear. */

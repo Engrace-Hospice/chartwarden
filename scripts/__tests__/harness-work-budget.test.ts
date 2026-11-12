@@ -99,10 +99,105 @@ describe("expandBraces: a spent budget still reads a name one group builds", () 
     expect(expandBraces("{a,b}{c,d}.en{v,}")).toContain("{a,b}{c,d}.env");
   });
 
-  it("never expands a word past a path's length", () => {
+  it("never expands a word past a path's length: it keeps the word, reads each group alone, and spends the budget", () => {
     refillWork(1000);
     const long = `${"a".repeat(4097)}{x,y}`;
+    const out = expandBraces(long);
+    expect(out[0]).toBe(long);
+    expect(out).toContain(`${"a".repeat(4097)}x`);
+    expect(out).toContain(`${"a".repeat(4097)}y`);
+    expect(work.spent).toBe(true);
+  });
+
+  it("leaves a long word with no brace group alone, and does not spend the budget on it", () => {
+    refillWork(1000);
+    const long = "a".repeat(5000);
     expect(expandBraces(long)).toEqual([long]);
+    expect(expandBraces(`${long}{x}`)).toEqual([`${long}{x}`]);
+    expect(work.spent).toBe(false);
+  });
+});
+
+/** Filler that pushes a brace word past a path's length (4,096 characters). */
+const FILLER = "z".repeat(4100);
+
+describe("CR-C1 (round 4): a brace word longer than a path is not a way past the budget", () => {
+  // Each answered `allow` in both agents at the base of this wave; the base before it denied or asked.
+  it.each([
+    [`cat {${ENV},${FILLER}}`, "deny"],
+    [`cat ~/.aws/{credentials,${FILLER}}`, "deny"],
+    [`cat {${FILLER},${ENV}}`, "deny"],
+    [`rm {scripts/harness/hard-deadline.ts,${FILLER}}`, "ask"],
+    [`echo x | tee {scripts/harness/hard-deadline.ts,${FILLER}}`, "ask"],
+    [`rm {scripts/harness/pre-tool-guard.ts,${"z".repeat(3000)}}`, "ask"],
+    [`rm {scripts/harness/hard-deadline.ts,${"z".repeat(70000)}}`, "deny"],
+  ])("payload %#", (cmd, expected) => {
+    // The last row is over the 64 KB command cap, which refuses outright: still not an allow.
+    expect(d(cmd)).toBe(expected);
+  });
+
+  it("a deny found in the cheap reading stands over the budget's ask", () => {
+    const verdict = v(`cat {${ENV},${FILLER}}`);
+    expect(verdict.decision).toBe("deny");
+  });
+
+  it.each([
+    `echo ${"a".repeat(60000)}`,
+    `echo ${"a".repeat(5000)}{x}`,
+    `rm ${"a".repeat(5000)}`,
+    `cat README.md ${"z".repeat(4100)}`,
+  ])("an everyday long word with no brace group is not a finding (%#)", (cmd) => {
+    expect(d(cmd), cmd.slice(0, 40)).not.toBe("deny");
+    expect(timed(cmd).ms).toBeLessThan(FAST_MS);
+  });
+
+  it("a 60 KB word of alternatives is cheap: the fallback reading is bounded in size and time", () => {
+    const body = Array.from({ length: 12000 }, (_, i) => `a${i}`).join(",");
+    const { verdict, ms } = timed(`cat {${body},${ENV}}`);
+    expect(ms).toBeLessThan(FAST_MS);
+    expect(["ask", "deny"]).toContain(verdict.decision);
+  });
+});
+
+describe("CR-C2 (round 4): the 256-alternative cap does not leave later groups silently unexpanded", () => {
+  const empties = (n: number) => "{x,}".repeat(n);
+  it.each([8, 9, 10, 12, 16, 20, 60])("`cat ~/.aws/{x,}` x%s then `credentials` is a deny", (n) => {
+    expect(d(`cat ~/.aws/${empties(n)}credentials`)).toBe("deny");
+  });
+  it("with more groups than the cheap reading follows it is still not an allow", () => {
+    expect(d(`cat ~/.aws/${empties(200)}credentials`)).not.toBe("allow");
+  });
+  it.each([8, 9, 12])("`cat ~/.pgpass` spelled with %s groups of `{x,}` is not an allow", (n) => {
+    expect(d(`cat ~/${empties(n)}.pgpass`)).not.toBe("allow");
+  });
+  it("a name that only exists when EVERY group takes its last alternative is still found", () => {
+    // `.env` is the last alternative of each of the first three groups; six more groups push the count past 256.
+    const cmd = `cat apps/backend/.{x,e}{x,n}{x,v}${"{,}".repeat(6)}`;
+    expect(d(cmd)).toBe("deny");
+  });
+  it("and the one that needs the FIRST alternative of each", () => {
+    const cmd = `cat apps/backend/.{e,x}{n,x}{v,x}${"{,}".repeat(6)}`;
+    expect(d(cmd)).toBe("deny");
+  });
+  it("a harness path hidden the same way asks", () => {
+    expect(d(`rm scripts/harness/${empties(9)}hard-deadline.ts`)).toBe("ask");
+    expect(d(`rm scripts/harness/${"{x,hard-deadline.ts}".repeat(1)}${"{,}".repeat(9)}`)).toBe(
+      "ask",
+    );
+  });
+  it("spends the budget, so a command that holds one asks even when nothing in it is a path", () => {
+    refillWork(1000);
+    expandBraces(`a${empties(9)}b`);
+    expect(work.spent).toBe(true);
+  });
+  it.each([
+    `echo ${empties(8)}ok`,
+    "cp a.ts{,.bak} scripts/",
+    "mkdir -p src/{a,b,c}/{x,y,z}",
+    "echo {1,2,3}{a,b,c}{x,y,z}",
+    "git add src/{a,b}.ts",
+  ])("everyday brace words below the cap still allow: %s", (cmd) => {
+    expect(d(cmd), cmd).toBe("allow");
   });
 });
 
