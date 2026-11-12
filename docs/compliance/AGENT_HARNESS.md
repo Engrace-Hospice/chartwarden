@@ -500,6 +500,20 @@ still denied (`harness-hidden-path-budget.test.ts`).
   --no-index a.txt b.txt`, `git diff HEAD~1`, `diff -r dir1 dir2` over directories with no live env file, and `git grep --no-index foo
   -- 'scripts/*.ts'` stay allowed. **Not decided by text:** a symlink to a directory inside an operand, and a glob whose literal part
   is built at run time. The corpus cost: grep -r over `..` and a recursive diff after an unresolvable `cd $VAR`.
+- *Files a git option makes git write* (`git-config-rules.ts`, `harness-git-output-writes.test.ts`). `--output=FILE` (or `--output
+  FILE`) was judged for `diff`, `log` and `show` only (a deny); `format-patch`, `blame`, `shortlog`, `range-diff`, `diff-tree`,
+  `diff-index`, `diff-files`, `whatchanged`, `reflog`, `difftool`, `rev-list` and `stash show` now ask when FILE is a protected path (every
+  one was run in a scratch repository on git 2.53 and wrote the file, except `stash show`, which needs a stash and rests on
+  the documentation), `git credential-store --file=PATH` and `git credential-cache --socket=PATH` are write targets too, and a
+  relative FILE is read from where `git -C DIR` runs. The harmless `--output-indicator-new=+` of `git log` is no longer denied.
+  The other round-4 ADV-6 forms were re-run on git 2.53 and run nothing, so they are not findings: `git pull --rebase --exec`
+  ("unknown option `exec'"), `git fetch -u CMD` (`-u` is `--update-head-ok`), `git rebase -xi CMD` (`-x` takes `i`), `git
+  rebase --e=CMD` ("ambiguous option"), `git bisect --no-checkout run` and `git submodule foreach -- CMD` (usage errors) and
+  `git grep -O CMD` (the pager's value is attached only). The git config keys that name a program joined the exec-key table
+  (denied, as `git config core.pager` is): `core.alternateRefsCommand`, `browser.*.cmd|path`, `web.browser`, `help.browser`,
+  `man.*.cmd|path`, `guitool.*.cmd`, `sendemail.smtpServer|toCmd|ccCmd`, `instaweb.httpd|browser`, `imap.tunnel`,
+  `gpg.ssh.defaultKeyCommand`, `tar.*.command` and `trailer.*.command`; each is in the git 2.53 documentation, and none was
+  run (the chain from the key to a command is the documentation's).
 - *The pinned Codex command ignores perl's own variables* (`PERL5OPT`, `PERL5LIB`, `PERLLIB`, `PERL5DB`): see "The hook command is
   pinned byte for byte" above and `harness-codex-perl-env.test.ts`.
 
