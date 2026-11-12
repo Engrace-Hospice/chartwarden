@@ -50,6 +50,33 @@ export const isProtectedPath = (rel: string): boolean => PROTECTED_PATH.test(rel
 /** `PROTECTED_PATH` itself, for code that tests it against many candidate paths. */
 export const protectedPathPattern = PROTECTED_PATH;
 
+/**
+ * Where protected files live, for a rule that needs their NAMES (`protected-names.ts` lists these and keeps what
+ * {@link isProtectedPath} accepts). `recursive` follows subdirectories; `.claude` is flat because its `worktrees/` holds
+ * whole copies of the repo. A test (`harness-protected-names.test.ts`) fails when a tracked protected file is in no root.
+ */
+export const PROTECTED_LISTING_ROOTS: ReadonlyArray<{ dir: string; recursive: boolean }> = [
+  { dir: "", recursive: false },
+  { dir: "scripts", recursive: false },
+  { dir: "docs", recursive: false },
+  { dir: ".claude", recursive: false },
+  { dir: ".claude/audit", recursive: true },
+  { dir: ".claude/.cache", recursive: true },
+  { dir: ".claude/rules", recursive: true },
+  { dir: ".claude/agents", recursive: true },
+  { dir: ".claude/skills", recursive: true },
+  { dir: ".claude/commands", recursive: true },
+  { dir: ".claude/hooks", recursive: true },
+  { dir: ".claude/plugins", recursive: true },
+  { dir: ".agents", recursive: true },
+  { dir: ".codex", recursive: true },
+  { dir: ".githooks", recursive: true },
+  { dir: ".github", recursive: true },
+  { dir: "scripts/harness", recursive: true },
+  { dir: "compliance", recursive: true },
+  { dir: "deploy/production", recursive: true },
+];
+
 /** Representative protected files, lower-case: a directory that holds one of them is an ancestor. */
 export const PROTECTED_SAMPLES: readonly string[] = [
   ".claude/settings.json",

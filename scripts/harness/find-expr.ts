@@ -4,79 +4,34 @@
  * -------------------------------------------------------------------------------------------------------------
  * `find . -name '*.tmp' -delete` is an everyday cleanup; `find . -name '*' -delete` and `find . -name '*.ts' -delete`
  * delete the guard. A name or path test narrows an action only when its pattern matches no protected file, which is
- * judged against {@link PROTECTED_NAME_SAMPLES}. The expression is read as a boolean expression: `( A -o B )`
+ * judged against {@link protectedFindSamples}. The expression is read as a boolean expression: `( A -o B )`
  * narrows only when BOTH branches do, `-o` before an action and `!` narrow nothing, `-name x -o -true` is `-true`.
- * A text heuristic; a test the module does not know (`-newer`, `-perm`, `-type`) narrows nothing. Pure.
+ * A text heuristic; a test the module does not know (`-newer`, `-perm`, `-type`) narrows nothing. Pure, but for one
+ * lazy listing of the protected files in the tree (`protected-names.ts`), when a name or path test has to be judged.
  */
 import { globMatches, globTokens } from "./glob";
+import { protectedNameSamples } from "./protected-names";
+
+const baseOf = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
+
+/** The extension of a file name (`.ts`), or "" when it has none. */
+const extOf = (name: string): string =>
+  name.includes(".") ? name.slice(name.lastIndexOf(".")) : "";
+
+let samples: readonly string[] | null = null;
 
 /**
  * Protected files, as paths below the repo root: the real names (a pattern such as `p*` or `*.t?` must be able to
- * match them) and one sample per extension the protected files carry. A test keeps the list current against
- * `git ls-files`: a protected file whose name and extension have no sample here fails it.
+ * match them), listed from the tree (`protected-names.ts`, one definition of "protected"), and one `x<ext>` sample per
+ * extension they carry, for a protected directory that may gain a file. Read once per process, on first use.
  */
-export const PROTECTED_NAME_SAMPLES: readonly string[] = [
-  "scripts/harness/pre-tool-guard.ts",
-  "scripts/harness/patterns.ts",
-  "scripts/harness/shell-lex.ts",
-  "scripts/harness/io.ts",
-  "scripts/harness/post-tool-ledger.ts",
-  "scripts/harness/stop-gate.ts",
-  "scripts/harness/phi-scan.ts",
-  "scripts/harness/ledger-verify.ts",
-  "scripts/harness/codex-patch.ts",
-  "scripts/harness/harness-switch.ts",
-  "scripts/harness/inline-code.ts",
-  "scripts/harness/writers.ts",
-  "scripts/harness/glob.ts",
-  "scripts/harness/option-values.ts",
-  "scripts/harness/path-alias.ts",
-  "scripts/harness/toolchain-paths.ts",
-  "scripts/harness/find-expr.ts",
-  "scripts/check-compliance-controls.ts",
-  "compliance/controls.yaml",
-  "compliance/synthetic-identifiers.json",
-  ".claude/settings.json",
-  ".claude/settings.local.json",
-  ".claude/audit/ledger.jsonl",
-  ".claude/rules/phi-and-secrets.md",
-  ".claude/agents/compliance-reviewer.md",
-  ".claude/skills/synthetic-phi/SKILL.md",
-  ".agents/rules/phi-and-secrets.md",
-  ".codex/hooks.json",
-  ".codex/config.toml",
-  ".githooks/pre-commit",
-  ".githooks/pre-push",
-  ".github/CODEOWNERS",
-  ".github/workflows/ci.yml",
-  ".github/workflows/deploy.yml",
-  "deploy/production/compose.yml",
-  "deploy/production/README.md",
-  "deploy/production/Dockerfile",
-  "deploy/production/deploy.sh",
-  "deploy/production/backup/restore.sh",
-  "deploy/production/.env.production.example",
-  ".gitleaks.toml",
-  ".trivyignore.yaml",
-  "AGENTS.md",
-  "CLAUDE.md",
-  "bunfig.toml",
-  "x.md",
-  "x.json",
-  "x.jsonl",
-  "x.yml",
-  "x.yaml",
-  "x.toml",
-  "x.sh",
-  "x.ts",
-  "x.sql",
-  "x.conf",
-  "x.mod",
-  "x.sum",
-  "x.example",
-];
-
-const baseOf = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
+export function protectedFindSamples(): readonly string[] {
+  if (samples !== null) return samples;
+  const names = protectedNameSamples();
+  const exts = new Set(names.map((n) => extOf(baseOf(n))).filter((e) => e !== ""));
+  samples = [...names, ...[...exts].map((e) => `x${e}`)];
+  return samples;
+}
 
 /** `find` matches names with fnmatch: `*` takes a leading dot and a `/` too. */
 const matchesAny = (pattern: string, candidates: readonly string[], fold: boolean): boolean => {
@@ -84,9 +39,10 @@ const matchesAny = (pattern: string, candidates: readonly string[], fold: boolea
   return candidates.some((c) => globMatches(tokens, fold ? c.toLowerCase() : c));
 };
 
-const NAME_CANDIDATES = PROTECTED_NAME_SAMPLES.map(baseOf);
+/** What `-name` sees: the base name of each sample. */
+const nameCandidates = (): string[] => protectedFindSamples().map(baseOf);
 /** What `-path` sees under a start of `.` and under a start that is a directory below the root. */
-const PATH_CANDIDATES = PROTECTED_NAME_SAMPLES.flatMap((p) => [`./${p}`, p]);
+const pathCandidates = (): string[] => protectedFindSamples().flatMap((p) => [`./${p}`, p]);
 
 /**
  * A `-regex` that is a plain wildcard in disguise (`.*\.tmp`, `./dist/.*`) as the equivalent glob; null for one
@@ -110,13 +66,13 @@ function regexAsGlob(regex: string): string | null {
 
 /** Does this test ONLY pass files that cannot be protected ones? */
 function narrowsTo(test: string, pattern: string): boolean {
-  if (/^-name$/.test(test)) return !matchesAny(pattern, NAME_CANDIDATES, false);
-  if (/^-iname$/.test(test)) return !matchesAny(pattern, NAME_CANDIDATES, true);
-  if (/^-(?:path|wholename)$/.test(test)) return !matchesAny(pattern, PATH_CANDIDATES, false);
-  if (/^-i(?:path|wholename)$/.test(test)) return !matchesAny(pattern, PATH_CANDIDATES, true);
+  if (/^-name$/.test(test)) return !matchesAny(pattern, nameCandidates(), false);
+  if (/^-iname$/.test(test)) return !matchesAny(pattern, nameCandidates(), true);
+  if (/^-(?:path|wholename)$/.test(test)) return !matchesAny(pattern, pathCandidates(), false);
+  if (/^-i(?:path|wholename)$/.test(test)) return !matchesAny(pattern, pathCandidates(), true);
   if (/^-i?regex$/.test(test)) {
     const glob = regexAsGlob(pattern);
-    return glob !== null && !matchesAny(glob, PATH_CANDIDATES, test === "-iregex");
+    return glob !== null && !matchesAny(glob, pathCandidates(), test === "-iregex");
   }
   return false;
 }

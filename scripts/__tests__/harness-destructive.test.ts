@@ -6,7 +6,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { PROTECTED_NAME_SAMPLES, findActions } from "../harness/find-expr";
+import { findActions, protectedFindSamples } from "../harness/find-expr";
 import { classifyBash, isProtectedPath } from "../harness/patterns";
 
 const ctx = { root: "/Users/dev/Apps/repo", home: "/Users/dev", cwd: "/Users/dev/Apps/repo" };
@@ -204,29 +204,27 @@ describe("findActions", () => {
 });
 
 describe("the protected name samples cover every protected file the repository tracks", () => {
+  // Round 4 (CR-C3): the list used to be hand-kept and accepted "or an extension it has a sample for", which hid 63
+  // missing names (`hard-deadline.ts` among them). It is read from the tree now, and every file is held BY NAME.
   const tracked = execFileSync("git", ["ls-files"], {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   })
     .split("\n")
     .filter((f) => f !== "" && isProtectedPath(f));
-  const base = (f: string) => f.slice(f.lastIndexOf("/") + 1);
-  const ext = (f: string) => (f.includes(".") ? f.slice(f.lastIndexOf(".")) : "");
-  const sampleBases = new Set(PROTECTED_NAME_SAMPLES.map(base));
-  const sampleExts = new Set(PROTECTED_NAME_SAMPLES.map(ext).filter((e) => e !== ""));
+  const sampleSet = new Set(protectedFindSamples());
 
   it("finds protected files to check", () => {
     expect(tracked.length).toBeGreaterThan(20);
   });
 
-  it("holds each by name, or by an extension it has a sample for", () => {
-    const missing = tracked.filter((f) => !sampleBases.has(base(f)) && !sampleExts.has(ext(f)));
-    expect(missing).toEqual([]);
+  it("holds each by its exact path, with no extension standing in for a name", () => {
+    expect(tracked.filter((f) => !sampleSet.has(f))).toEqual([]);
   });
 
-  it("holds only names that are protected themselves", () => {
-    for (const sample of PROTECTED_NAME_SAMPLES) {
-      expect(isProtectedPath(sample) || /^\.?[\w-]+\.\w+$/.test(sample), sample).toBe(true);
+  it("holds only names that are protected themselves, or an extension sample", () => {
+    for (const sample of protectedFindSamples()) {
+      expect(isProtectedPath(sample) || /^x\.[\w-]+$/.test(sample), sample).toBe(true);
     }
   });
 });
