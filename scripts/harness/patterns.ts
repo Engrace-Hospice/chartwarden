@@ -1331,7 +1331,6 @@ const SECRET_MENTION =
   /(?:^|[^A-Za-z0-9_$)\]])\.(?:env(?!\.example)(?:\.[A-Za-z]+)?|pgpass|netrc)(?![A-Za-z0-9_])|['"/][\w-]+\.env(?:\.(?:local|development|staging|production|tenant))?['"]|id_(?:rsa|ed25519|ecdsa)|\.ssh\/|\.aws\/credentials|['"/][\w.-]*\.(?:pem|key|p12|pfx)['"]/;
 
 export { isProtectedPath };
-const PROTECTED_PATH = protectedPathPattern;
 
 // What is typed into an interactive process later reaches it through Codex's `write_stdin`, which does
 // NOT fire PreToolUse. Login, quiet and connection flags do not make a process terminate: require a real
@@ -1652,7 +1651,7 @@ interface WriteTarget {
 const wt = (raw: string, anc = false, merge = false): WriteTarget => ({ raw, anc, merge });
 
 function protectedTouch(rel: string, t: WriteTarget): boolean {
-  if (PROTECTED_PATH.test(rel)) return true;
+  if (protectedPathPattern.test(rel)) return true;
   if (!t.anc) return false;
   const dir = trimSlashes(rel).toLowerCase();
   return dir === "" ? t.merge : PROTECTED_SAMPLES.some((s) => s.startsWith(`${dir}/`));
@@ -1943,7 +1942,7 @@ function findProtectedIn(arg: string, dirs: readonly Cwd[], ctx: BashContext): s
   for (const m of arg.matchAll(/['"]([^'"\s]+)['"]/g)) {
     for (const dir of dirs) {
       const rel = resolvePath(m[1] ?? "", dir, ctx);
-      if (rel !== null && PROTECTED_PATH.test(rel)) return rel;
+      if (rel !== null && protectedPathPattern.test(rel)) return rel;
     }
   }
   return null;

@@ -32,8 +32,8 @@ interface PathMatcher {
   test(path: string): boolean;
 }
 
-/** Path pattern → the fast gates that read it. Exported for the tests. */
-export const GATE_MAP: ReadonlyArray<readonly [PathMatcher, readonly string[]]> = [
+/** Path pattern → the fast gates that read it. */
+const GATE_MAP: ReadonlyArray<readonly [PathMatcher, readonly string[]]> = [
   [
     /^packages\/db\/migrations\//,
     ["arch:tenancy", "arch:ddl", "arch:migration-numbering", "arch:org-indexes"],

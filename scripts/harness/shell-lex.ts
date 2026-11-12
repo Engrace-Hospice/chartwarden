@@ -27,7 +27,7 @@
 /** Shell syntax at the top level of the command: operators, whitespace, ordinary word characters. */
 export const BARE = 0;
 /** Quoted, escaped, or inside a substitution or group opener/closer: part of a word, never an operator. */
-export const INERT = 1;
+const INERT = 1;
 /** A `#` comment, up to (not including) its newline. */
 export const COMMENT = 2;
 /** A top-level heredoc body and its delimiter line: data. */

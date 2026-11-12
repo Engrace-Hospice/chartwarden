@@ -68,7 +68,7 @@ function write(fd: 1 | 2, text: string): void {
 }
 
 /** Print the deny, say why on stderr, and exit 2 (blocks in Claude Code and in Codex). */
-export function emergencyDeny(reason: string): never {
+function emergencyDeny(reason: string): never {
   write(1, denyJson(reason));
   write(2, `[chartwarden-harness] ${reason}\n`);
   process.exit(2);
