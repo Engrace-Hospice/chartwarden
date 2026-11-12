@@ -444,6 +444,29 @@ still denied (`harness-hidden-path-budget.test.ts`).
   `.gitleaks.toml.bak` are not, and a `.bak` of an original with no source extension (`prod.sql.bak`, `prod.bak`) is still a database
   backup. A file named `*backup*` with an archive extension (`backup.tar.gz`) is refused.
 
+**Wave 6.** Each item has a test file under `scripts/__tests__/harness-*.test.ts`.
+- *Git and command-line variables are judged wherever a command line sets them* (`shell-assignments.ts`,
+  `git-exec-strings.ts`, `harness-env-assignments.test.ts`). One reading of an assignment (`NAME=v`, `NAME+=v`, `${NAME:=v}`, a
+  name spelled with quotes, backslashes or a brace group: `GIT_TR\ACE=x`, `GIT_TRACE{,}=x`) is shared by the harness-switch rule and
+  these. A prefix assignment, `export`/`declare`/`typeset`/`readonly`/`local`, `env`, a subshell, a brace group, a later statement and
+  a nested `bash -c` or `ssh h '…'` all count: `export GIT_TRACE=<guard file>; git status` no longer slips past a rule that only read
+  the git segment's own prefix. The git variables that name a FILE git writes (`GIT_TRACE`, `GIT_TRACE2`, `GIT_TRACE2_EVENT`,
+  `GIT_TRACE2_PERF`, `GIT_TRACE_PACKET`, `GIT_TRACE_PACKFILE`, `GIT_TRACE_CURL`, `GIT_TRACE_SETUP`, `GIT_TRACE_PERFORMANCE`,
+  `GIT_TRACE_REFS`, `GIT_TRACE_SHALLOW`, `GIT_TRACE_FSMONITOR`, `GIT_TRACE_PACK_ACCESS`, `GIT_REDIRECT_STDOUT`, `GIT_REDIRECT_STDERR`,
+  and `GIT_INDEX_FILE`) are judged as write targets, like a redirect: a path onto the guard, the ledger, the hook configuration or a
+  startup file **asks** (Codex: denies); `/dev/null`, `/dev/stderr`, `/tmp/x.log`, and the values `1`, `2`, `true`, `false`, `0`, `off`,
+  a file descriptor, `2>&1` and an `af_unix:` socket stay allowed. Why it matters: git appends one trace line to the file, and a line
+  appended to `pre-tool-guard.ts` or `hard-deadline.ts` (the two modules the entry thread imports before the worker exists) makes bun
+  fail to start, so the pinned Claude command exits 1, which Claude Code reads as allow for every later call
+  (`harness-trace-corrupts-guard.test.ts` proves it on a copy of the guard tree through the real pinned commands, and that the
+  write is refused first; the pinned Codex command still fails closed). The variables whose value is a command line are judged as one
+  (`MANPAGER`, `BROWSER`, `LESSOPEN`, `LESSCLOSE`, `PROMPT_COMMAND`, `PYTHONSTARTUP`, `RUBYOPT`, `SUDO_EDITOR`, `KUBE_EDITOR`,
+  `GH_EDITOR`, `GH_PAGER`, `GH_BROWSER`, `SVN_EDITOR`, `FCEDIT`, `PSQL_EDITOR`, `PSQL_PAGER`, `RSYNC_RSH`, `GIT_SSH` and the older
+  list), and `EDITOR+=…` reaches them as `EDITOR=…` does; `GIT_COMMON_DIR` joins the re-pointing variables that ask. **Not decided by
+  text:** a name set by `read`, `printf -v`, `launchctl setenv`, `tmux set-environment` or a sourced file, a value built at run
+  time (`GIT_TRACE=$LOG`, `GIT_TRACE=$(mktemp)`), and a program path named in one of the command variables (`PAGER=/tmp/x`: the path is
+  judged, the program behind it is not read).
+
 **Shell lexing.** `scripts/harness/shell-lex.ts` reads a command once, in one linear pass, before any rule
 runs; the line splitter, the redirection reader and the substitution scan all use its result, so a quote, an
 escape, a comment or a heredoc body cannot hide a later command. It models single quotes (no escapes); double
