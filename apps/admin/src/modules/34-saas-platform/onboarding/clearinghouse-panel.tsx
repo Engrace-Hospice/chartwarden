@@ -18,6 +18,7 @@ import {
 import { useState } from "react";
 import type { JSX } from "react";
 import { bodyFingerprint } from "./body-digest";
+import { RevokeBaa } from "./clearinghouse-baa-revoke";
 import { VerifyBaa } from "./clearinghouse-baa-verify";
 import {
   BLANK_CHOICE,
@@ -121,6 +122,15 @@ function SummaryCard({ view }: { view: ClearinghouseView }): JSX.Element | null 
               effective {baa.effectiveDate}, recorded {new Date(baa.recordedAt).toLocaleString()}
             </span>
           </dd>
+          {baa.previousRevocation ? (
+            <>
+              <dt>Previous revocation</dt>
+              <dd>
+                {new Date(baa.previousRevocation.at).toLocaleString()}
+                {baa.previousRevocation.sameDocument ? " — same document as this record" : ""}
+              </dd>
+            </>
+          ) : null}
         </>
       ) : null}
     </dl>
@@ -355,14 +365,23 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
         {canWrite && available && !editing ? (
           <div className="wx-drawer-actions">
             {current ? (
-              <VerifyBaa
-                orgSlug={orgSlug}
-                view={current}
-                reload={() => load.reload(true)}
-                onVerified={() =>
-                  Promise.all([load.reload(true), ctx.refresh()]).then(() => undefined)
-                }
-              />
+              <>
+                <VerifyBaa
+                  orgSlug={orgSlug}
+                  view={current}
+                  reload={() => load.reload(true)}
+                  onVerified={() =>
+                    Promise.all([load.reload(true), ctx.refresh()]).then(() => undefined)
+                  }
+                />
+                <RevokeBaa
+                  orgSlug={orgSlug}
+                  view={current}
+                  reload={() =>
+                    Promise.all([load.reload(true), ctx.refresh()]).then(() => undefined)
+                  }
+                />
+              </>
             ) : null}
             {available.canVerifyConnection ? (
               <Button

@@ -387,7 +387,6 @@ export const PlatformSupportConsentGrantViewSchema = Type.Object({
   id: Type.String(),
   tenantAccountId: Type.String(),
   scope: lit(SUPPORT_GRANT_SCOPE),
-  grantReason: Type.String(),
   issuedAt: Type.String({ format: "date-time" }),
   expiresAt: Type.String({ format: "date-time" }),
   revokedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),

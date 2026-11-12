@@ -26,13 +26,14 @@ import {
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { SupportSessionsCard } from "./help/support-sessions-card";
 import { SUPPORT_SESSION_TONE, cap, statusLabel } from "./saas-status";
 
 // The §4.1 list response (CursorPage<SupportConsentGrantView>), as the tenant route projects it.
 interface SupportConsentGrantView {
   id: string;
   tenantAccountId: string;
-  scope: "organization_scoped" | "patient_scoped";
+  scope: "organization_scoped" | "patient_scoped" | "assist";
   grantReason: string;
   issuedAt: string;
   expiresAt: string;
@@ -58,7 +59,11 @@ function grantState(g: SupportConsentGrantView): string {
 }
 
 const scopeLabel = (s: SupportConsentGrantView["scope"]): string =>
-  s === "patient_scoped" ? "Patient-scoped" : "Organization-scoped";
+  s === "patient_scoped"
+    ? "Patient-scoped"
+    : s === "assist"
+      ? "Non-PHI help"
+      : "Organization-scoped";
 
 export function SupportGrants(): JSX.Element {
   const client = useApiClient();
@@ -207,6 +212,7 @@ export function SupportGrants(): JSX.Element {
         onCommit={(v) => void issue(v)}
         onCancel={() => setCeremonyOpen(false)}
       />
+      <SupportSessionsCard />
     </>
   );
 }

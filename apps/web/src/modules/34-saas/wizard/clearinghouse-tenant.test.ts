@@ -15,6 +15,9 @@ const verifiedBaa = (over = {}) => ({
   documentRef: "Claim.MD BAA, signed copy",
   recordedAt: "2026-11-02T00:00:00.000Z",
   verified: { at: "2026-11-03T00:00:00.000Z" },
+  revoked: false,
+  revokedAt: null,
+  revokedReasonCode: null,
   ...over,
 });
 

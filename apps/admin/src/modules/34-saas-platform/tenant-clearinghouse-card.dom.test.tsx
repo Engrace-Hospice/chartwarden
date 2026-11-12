@@ -305,6 +305,81 @@ describe("TenantClearinghouseCard", () => {
     });
   });
 
+  describe("revoking the vendor BAA for a live tenant", () => {
+    const BAA_REVOKE = "/api/v1/platform/tenants/{orgSlug}/clearinghouse/baa/revoke";
+
+    it("pins the destructive request to the BAA shown on the live-tenant card", async () => {
+      const client = stubClient({
+        GET: { [CH]: () => ok(CLAIMMD), [SUBSCRIPTION]: () => ok({ contract: null }) },
+        POST: { [BAA_REVOKE]: () => ok(CLAIMMD) },
+      });
+      renderAt(
+        "/x",
+        [
+          {
+            path: "/x",
+            element: <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus="active" />,
+          },
+        ],
+        client,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Revoke vendor BAA" }));
+      const dialog = within(screen.getByRole("alertdialog"));
+      expect(dialog.getByText("Claim.MD BAA, contract folder 7")).toBeTruthy();
+      fireEvent.change(dialog.getByLabelText(/^Operator ticket/), { target: { value: "sec-42" } });
+      fireEvent.click(dialog.getByRole("button", { name: "Revoke BAA" }));
+      await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+      const [path, init] = client.POST.mock.calls[0] as [
+        string,
+        { params: { header: Record<string, string> }; body: unknown },
+      ];
+      expect(path).toBe(BAA_REVOKE);
+      expect(init.params.header["If-Match"]).toBe(CLAIMMD.baa.recordedAt);
+      expect(init.body).toEqual({ reasonCode: "vendor_terminated", ticketRef: "SEC-42" });
+    });
+
+    it("closes on a stale conflict so the replacement BAA needs a fresh review", async () => {
+      let reads = 0;
+      const replacement = {
+        ...CLAIMMD,
+        baa: {
+          ...CLAIMMD.baa,
+          documentRef: "Claim.MD BAA v2",
+          recordedAt: "2026-11-08T12:00:00.000Z",
+        },
+      };
+      const client = stubClient({
+        GET: {
+          [CH]: () => ok(++reads === 1 ? CLAIMMD : replacement),
+          [SUBSCRIPTION]: () => ok({ contract: null }),
+        },
+        POST: { [BAA_REVOKE]: () => refused(409, "CLEARINGHOUSE_BAA_CHANGED", "changed") },
+      });
+      renderAt(
+        "/x",
+        [
+          {
+            path: "/x",
+            element: <TenantClearinghouseCard orgSlug="cedar-ridge" tenantStatus="active" />,
+          },
+        ],
+        client,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Show clearinghouse" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Revoke vendor BAA" }));
+      fireEvent.change(screen.getByLabelText(/^Operator ticket/), { target: { value: "SEC-42" } });
+      fireEvent.click(
+        within(screen.getByRole("alertdialog")).getByRole("button", { name: "Revoke BAA" }),
+      );
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      expect(client.POST).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByRole("button", { name: "Revoke vendor BAA" }));
+      expect(within(screen.getByRole("alertdialog")).getByText("Claim.MD BAA v2")).toBeTruthy();
+      expect(client.POST).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("releasing earlier credentials (migration 1435)", () => {
     const RELEASE = "/api/v1/platform/tenants/{orgSlug}/clearinghouse/credentials/release";
     const mountWith = (
@@ -848,6 +923,13 @@ describe("TenantClearinghouseCard: each control is gated on its own key", () => 
       hidden: "Verify the vendor BAA",
       note: /Your role cannot verify the vendor BAA/,
       stays: "Release earlier credentials",
+    },
+    {
+      key: "tenant_clearinghouse.revoke_baa_platform",
+      choice: UNVERIFIED,
+      hidden: "Revoke vendor BAA",
+      note: /Your role cannot revoke the vendor BAA/,
+      stays: "Verify the vendor BAA",
     },
     {
       key: "tenant_clearinghouse.release_credential_platform",

@@ -2,7 +2,6 @@
 // Step 14, Go-live: two people. The tenant's compliance officer attests readiness in the tenant app; a different platform operator
 // approves here (fresh step-up, a reason), and only then does the tenant go active. The panel shows where it stands and offers
 // exactly what this operator can do in that state.
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { type JSX, useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -23,8 +22,30 @@ import type { WizardView } from "./wizard-model";
 
 const APPROVE = "/api/v1/platform/tenants/{orgSlug}/go-live/approve";
 const REVOKE = "/api/v1/platform/tenants/{orgSlug}/go-live/revoke";
+const CLEARINGHOUSE = "/api/v1/platform/tenants/{orgSlug}/clearinghouse";
+const SUBSCRIPTION = "/api/v1/platform/tenants/{orgSlug}/subscription";
 const NOW = Date.now();
 const iso = (offsetDays: number): string => new Date(NOW + offsetDays * 86_400_000).toISOString();
+const commercialGet = {
+  [CLEARINGHOUSE]: () =>
+    ok({
+      vendor: null,
+      mode: null,
+      status: null,
+      source: "none",
+      hasSecret: false,
+      verifiableBy: null,
+      verification: null,
+      lastTest: null,
+      baaRequired: false,
+      baa: null,
+      activatedAt: null,
+      version: null,
+      updatedAt: null,
+      hasContract: false,
+    }),
+  [SUBSCRIPTION]: () => ok({ contract: null }),
+};
 
 type Attestation = NonNullable<WizardView["goLive"]["attestation"]>;
 const attestation = (over: Partial<Attestation> = {}): Attestation => ({
@@ -79,7 +100,13 @@ function mount(
   session: Parameters<typeof renderAt>[3] = ONBOARDING_OPERATOR,
   at: Parameters<typeof renderAt>[0] = "/x",
 ) {
-  const client = stubClient(extra);
+  const client = stubClient({
+    ...extra,
+    GET: {
+      ...commercialGet,
+      ...(extra.GET ?? {}),
+    },
+  });
   const ctx = panelCtx(view, "go_live_checklist_complete");
   renderAt(at, [{ path: "/x", element: <GoLivePanel ctx={ctx} /> }], client, session);
   return { client, ctx };
@@ -140,6 +167,11 @@ describe("GoLivePanel: awaiting approval", () => {
 
   it("approves behind a reason and reloads the wizard", async () => {
     const { client, ctx } = mount(ready(), { POST: { [APPROVE]: () => ok(wizard("live")) } });
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Approve go-live" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Approve go-live" }));
     fireEvent.change(screen.getByLabelText(/^Reason/), {
       target: { value: "Checked the BAA and the officer's attestation" },
@@ -191,8 +223,15 @@ describe("GoLivePanel: awaiting approval", () => {
         };
         return <GoLivePanel ctx={ctx} />;
       }
-      const client = stubClient({ POST: { [path]: () => ok({}) } });
+      const client = stubClient({ GET: commercialGet, POST: { [path]: () => ok({}) } });
       renderAt("/x", [{ path: "/x", element: <Host /> }], client);
+      if (trigger === "Approve go-live") {
+        await waitFor(() =>
+          expect(
+            (screen.getByRole("button", { name: trigger }) as HTMLButtonElement).disabled,
+          ).toBe(false),
+        );
+      }
       fireEvent.click(screen.getByRole("button", { name: trigger }));
       fireEvent.change(screen.getByLabelText(/^Reason/), {
         target: { value: "Checked the BAA and the officer's attestation" },
@@ -250,7 +289,12 @@ describe("GoLivePanel: awaiting approval", () => {
     expect(client.POST.mock.calls[0]?.[0]).toBe(REVOKE);
   });
 
-  const approveWith = (reason = "Checked everything with the officer") => {
+  const approveWith = async (reason = "Checked everything with the officer") => {
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Approve go-live" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Approve go-live" }));
     fireEvent.change(screen.getByLabelText(/^Reason/), { target: { value: reason } });
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
@@ -261,7 +305,7 @@ describe("GoLivePanel: awaiting approval", () => {
     ["GO_LIVE_APPROVER_WROTE_BAA", /recorded, changed or uploaded the signed agreement/],
   ])("tells the operator what %s means", async (code, words) => {
     mount(ready(), { POST: { [APPROVE]: () => refused(409, code, "x") } });
-    approveWith();
+    await approveWith();
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByText(words)).toBeTruthy();
   });
@@ -272,7 +316,7 @@ describe("GoLivePanel: awaiting approval", () => {
     const { ctx } = mount(ready(), {
       POST: { [APPROVE]: () => refused(503, "ORGANIZATION_ACTIVATION_FAILED", "x") },
     });
-    approveWith();
+    await approveWith();
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByText(/Approve again to retry/)).toBeTruthy();
     expect(within(dialog).getByText(/Reference: corr-test/)).toBeTruthy();
@@ -296,7 +340,7 @@ describe("GoLivePanel: awaiting approval", () => {
           ),
       },
     });
-    approveWith();
+    await approveWith();
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByText("Every required step is done or skipped")).toBeTruthy();
     expect(within(dialog).getByText("Locations is pending")).toBeTruthy();
@@ -311,7 +355,7 @@ describe("GoLivePanel: awaiting approval", () => {
     const { ctx } = mount(ready(), {
       POST: { [APPROVE]: () => refused(409, "GO_LIVE_NOT_ATTESTED", "x") },
     });
-    approveWith();
+    await approveWith();
     expect(await screen.findByText(/has not attested readiness yet/)).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => expect(ctx.refresh).toHaveBeenCalled());
@@ -320,7 +364,7 @@ describe("GoLivePanel: awaiting approval", () => {
   it("keeps the reason typed in the approve prompt through a Re-verify and reopens it on the return", async () => {
     const typed = "Checked the BAA and the officer's attestation";
     mount(ready(), { POST: { [APPROVE]: () => refused(403, "STEP_UP_REQUIRED", "x") } });
-    approveWith(typed);
+    await approveWith(typed);
     fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
     expect(await screen.findByText("step-up page")).toBeTruthy();
     expect(JSON.stringify({ ...window.sessionStorage })).not.toContain(typed);

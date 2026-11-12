@@ -1110,6 +1110,31 @@ describe("a BAA recorded or last changed by the approving operator cannot take t
     expect(activateOrganization).not.toHaveBeenCalled();
   });
 
+  // A revoked membership is never revived: a returning operator is re-invited as a NEW membership row. The document still names the OLD
+  // membership id, which no longer equals the approver's, so the user behind it is what has to match.
+  it("refuses an approver who uploaded the file under an OLDER, revoked membership of the same user (the membership id no longer matches)", async () => {
+    state.baa = new Map([
+      [
+        TENANT,
+        {
+          baaStatus: "executed",
+          expiresOn: "2028-01-01",
+          documentId: "doc-1",
+          recordedByUserId: "someone-u",
+          updatedByUserId: "someone-u",
+          documentUploadedByMembershipId: "ops-m-before-the-revoke",
+          documentUploadedByUserId: OPS.userId,
+        },
+      ],
+    ]);
+    await expect(wizard().approveGoLive("acme", OPS, APPROVAL)).rejects.toMatchObject({
+      code: "GO_LIVE_APPROVER_WROTE_BAA",
+      statusCode: 409,
+    });
+    expect(tenant().status).toBe("onboarding");
+    expect(activateOrganization).not.toHaveBeenCalled();
+  });
+
   it("another operator approves when someone else uploaded the file, and a legacy row with no recorded uploader cannot be judged", async () => {
     state.baa = new Map([
       [

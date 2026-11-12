@@ -52,7 +52,8 @@ export interface DrizzleSaasTenantPlatformEraseDeps {
  * (`dsar_export_job`, `support_session_event`) have NO method here and are never reached.
  *
  * INTERNAL SERIALIZATION + FK CARRY. `eraseTenantSaasPlatform` fires the eight methods CONCURRENTLY
- * (`Promise.all`), but two pairs are ordered in the database:
+ * (`Promise.all`), but two pairs are ordered in the database (and the grant delete also removes the organization's
+ * `tenant_help_request` rows first: they reference the grants):
  *   · `support_session.support_consent_grant_id` → `support_consent_grant` (FK, ON DELETE RESTRICT) —
  *     the grant delete must not run while the org's session headers exist;
  *   · `tenant_signup_token.tenant_signup_intent_id` → `tenant_signup_intent` (app-validated, no SQL FK) —
@@ -73,6 +74,7 @@ export function createDrizzleSaasTenantPlatformEraseStore(
   const jobId = deps.platformJobId ?? M34_PLATFORM_JOB_ID;
   const TASK = schema.onboardingTask;
   const GRANT = schema.supportConsentGrant;
+  const HELP = schema.tenantHelpRequest;
   const SESSION = schema.supportSession;
   const BAA = schema.platformTenantBaaRecord;
   const INVITE = schema.tenantInvitation;
@@ -154,6 +156,10 @@ export function createDrizzleSaasTenantPlatformEraseStore(
     eraseSupportConsentGrants(orgId) {
       return serialize(() =>
         inPlatform("m34 tenant-offboarding erase: support_consent_grant", async (tx) => {
+          // FK (RESTRICT): tenant_help_request → support_consent_grant (slice 7). The org's help requests go first inside
+          // this tx: they are the tenant's own working rows (a member's typed message), erased with the grants they stand on,
+          // and a request that never had a grant is the same data. Not counted: the port reports the grant class.
+          await tx.delete(HELP).where(eq(HELP.organizationId, orgId));
           // FK (RESTRICT): support_session → support_consent_grant. The org's session HEADERS go first
           // inside this tx (count carried to eraseSupportSessions); support_session_event SURVIVES
           // (§164.528 — app-validated parent ref, no SQL FK, so the header delete cannot cascade into it).

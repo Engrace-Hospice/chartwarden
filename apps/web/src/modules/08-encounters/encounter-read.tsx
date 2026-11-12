@@ -10,8 +10,10 @@ import {
   ageYears,
   cardSurface,
   ghostBorder,
+  sendWrite,
   t,
   useApiClient,
+  useIdempotencyKeeper,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
@@ -254,6 +256,9 @@ function hasAnyValue(record: Record<string, unknown> | null | undefined): boolea
 
 export function EncounterRead(): JSX.Element {
   const client = useApiClient();
+  // The supervisor release body carries `stepUpAuthAt`, a click-time clock value the route requires (and ignores: step-up provenance
+  // comes from the session). One key and one first-attempt time per intent keeps a retry after a lost reply byte-identical.
+  const releaseKeeper = useIdempotencyKeeper();
   const navigate = useNavigate();
 
   const { patientId, encounterId } = useParams<{
@@ -593,8 +598,6 @@ export function EncounterRead(): JSX.Element {
         clearFieldError("reason");
       }
 
-      const stepUpAuthAt = new Date().toISOString();
-
       const path =
         mode === "sign"
           ? "/api/v1/encounters/{encounterId}/sign"
@@ -612,7 +615,7 @@ export function EncounterRead(): JSX.Element {
           : mode === "supervisor-release"
             ? {
                 reason: reason.trim(),
-                stepUpAuthAt,
+                stepUpAuthAt: "", // replaced by the intent's first-attempt time below
               }
             : undefined;
 
@@ -625,7 +628,7 @@ export function EncounterRead(): JSX.Element {
         ...(body ? { body } : {}),
       };
 
-      const { error: err, response } = (await client.POST(path as never, init as never)) as {
+      type WriteOutcome = {
         error?: {
           message?: string;
           error?: {
@@ -635,6 +638,35 @@ export function EncounterRead(): JSX.Element {
         };
         response?: Response;
       };
+      let outcome: WriteOutcome;
+      if (mode === "supervisor-release" && body) {
+        const sent = await sendWrite(
+          releaseKeeper,
+          `${encounterId}|supervisor-release|${reason.trim()}`,
+          (key, stampedAt) =>
+            client.POST(
+              path as never,
+              {
+                ...init,
+                body: { ...body, stepUpAuthAt: stampedAt },
+                headers: { "Idempotency-Key": key },
+              } as never,
+            ) as Promise<WriteOutcome>,
+        );
+        if (sent.status === "unreachable") {
+          setBusy(false);
+          setActionError("Could not reach the server. Check your connection and try again.");
+          return;
+        }
+        // A refusal with an empty body (a gateway 5xx) is still a refusal: never read it as a success.
+        outcome =
+          sent.status === "refused" && sent.res.error === undefined
+            ? { ...sent.res, error: { message: "The action was refused." } }
+            : sent.res;
+      } else {
+        outcome = (await client.POST(path as never, init as never)) as WriteOutcome;
+      }
+      const { error: err, response } = outcome;
 
       if (err) {
         const errCode = err?.error?.code;
@@ -676,7 +708,7 @@ export function EncounterRead(): JSX.Element {
 
       void load();
     },
-    [encounterId, reason, client, navigate, closeCeremony, load, clearFieldError],
+    [encounterId, reason, client, releaseKeeper, navigate, closeCeremony, load, clearFieldError],
   );
 
   async function runMutation(

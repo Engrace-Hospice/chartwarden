@@ -3,6 +3,7 @@ import {
   Glyph,
   InlineAlert,
   Modal,
+  NO_ANSWER,
   ReverifyLink,
   SelectField,
   StatGrid,
@@ -11,6 +12,7 @@ import {
   TextField,
   focusFirstInvalid,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 // apps/admin/src/modules/23-billing-medicare — PLATFORM WAGE-INDEX LOAD (M23 §4.1 #42, GAP-144). The annual CMS
 // hospice wage index into the PLATFORM-SHARED table, by a ChartWarden platform administrator:
@@ -370,8 +372,9 @@ function ConfirmLoadModal({
   onLoaded,
 }: ConfirmLoadModalProps): JSX.Element {
   const client = useApiClient();
-  // One key per confirmation: a retry of the SAME submission (a timeout, a 5xx) replays safely; a new review is new.
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  // One key per confirmation, held by the shared useAttemptKey: a retry of the SAME submission after a lost reply (no answer, a gateway
+  // page, the in-flight 409) replays safely; any answer the app gave (a refusal included, the server caches it) renews it; a new review is new.
+  const attempt = useAttemptKey();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<LoadErrorView | null>(null);
   const count = parsed.rows.length;
@@ -379,11 +382,14 @@ function ConfirmLoadModal({
   async function submit(): Promise<void> {
     setBusy(true);
     setFailure(null);
+    const body = { fiscalYearStarting, sourceReference, rows: [...parsed.rows] };
+    const idempotencyKey = attempt.keyFor(JSON.stringify(body));
     try {
       const res = await client.POST("/api/v1/admin/billing/wage-indexes/load", {
-        body: { fiscalYearStarting, sourceReference, rows: [...parsed.rows] },
+        body,
         headers: { "Idempotency-Key": idempotencyKey },
       });
+      attempt.settle(res.response.status, res.error);
       setBusy(false);
       if (res.error || !res.data) {
         setFailure(loadErrorView(res.response?.status ?? null, res.error, parsed.sourceLines));
@@ -391,6 +397,7 @@ function ConfirmLoadModal({
       }
       onLoaded(res.data);
     } catch {
+      attempt.settle(NO_ANSWER);
       setBusy(false);
       setFailure(loadErrorView(null, undefined, parsed.sourceLines));
     }

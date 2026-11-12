@@ -184,22 +184,16 @@ export type CancelSosResult = Ok<operations["postApiV1SafetySosBySosAlertIdCance
 
 // ── request helpers ────────────────────────────────────────────────────────────────────────────────────
 
-/** ADR-0021 — a fresh client idempotency key per mutation attempt. */
-export function idemKey(): string {
-  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `m20-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-}
-
 /**
- * §2.5 — the mutation headers. `If-Match` carries the INTEGER row `version` the caller READ.
+ * §2.5 — the mutation headers. `If-Match` carries the INTEGER row `version` the caller READ. The Idempotency-Key is left to the API client, which holds one per write intent (method + URL + If-Match + body): kept across a lost
+ * reply (no answer, a gateway page, the in-flight 409) and renewed by any other answer.
  *
  * Passing `undefined` is for the routes with no row to have read (the check-in post, the incident create,
  * a subscription, an area, a consent grant); every state transition on a versioned row passes it, and
  * omitting it there is a 428, not a silent last-write-wins.
  */
 export function writeHeaders(version?: number | null): Record<string, string> {
-  const header: Record<string, string> = { "Idempotency-Key": idemKey() };
+  const header: Record<string, string> = {};
   if (version !== undefined && version !== null) header["If-Match"] = String(version);
   return header;
 }

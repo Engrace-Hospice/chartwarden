@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-// The Idempotency-Key lifecycle of useAckReassign: the server caches EVERY response (errors included) under the key, so the key
-// survives only a thrown fetch (no response) and only while the body is unchanged.
+// The Idempotency-Key lifecycle of useAckReassign: the server caches every answer the app gives (errors included) under the key, so the key
+// survives only a request that got no answer (a thrown fetch), a gateway page or the in-flight 409, and only while the body is unchanged.
 import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -33,8 +33,10 @@ const keyOf = (post: ReturnType<typeof vi.fn>, i: number) =>
   ];
 
 describe("useAckReassign Idempotency-Key", () => {
-  it.each([422, 500])("is new on the retry after an HTTP %s", async (status) => {
-    const post = vi.fn().mockResolvedValue({ error: {}, response: { status } });
+  it.each([422, 500])("is new on the retry after an app answer with HTTP %s", async (status) => {
+    const post = vi
+      .fn()
+      .mockResolvedValue({ error: { error: { code: "REFUSED" } }, response: { status } });
     const { result } = setup(post);
     await waitFor(() => expect(result.current.candidates.status).toBe("ready"));
     act(() => result.current.setUserId("u-1"));
@@ -42,6 +44,20 @@ describe("useAckReassign Idempotency-Key", () => {
     await act(() => result.current.submit());
     expect(post).toHaveBeenCalledTimes(2);
     expect(keyOf(post, 1)).not.toBe(keyOf(post, 0));
+  });
+
+  it.each([
+    ["a gateway page", 502, "<html>Bad gateway</html>"],
+    ["the in-flight 409", 409, { error: { code: "IDEMPOTENCY_IN_FLIGHT", message: "m" } }],
+  ])("is kept on the retry after %s", async (_label, status, error) => {
+    const post = vi.fn().mockResolvedValue({ error, response: { status } });
+    const { result } = setup(post);
+    await waitFor(() => expect(result.current.candidates.status).toBe("ready"));
+    act(() => result.current.setUserId("u-1"));
+    await act(() => result.current.submit());
+    await act(() => result.current.submit());
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(keyOf(post, 1)).toBe(keyOf(post, 0));
   });
 
   it("is kept on the retry after a thrown fetch, and dropped when the choice changes", async () => {

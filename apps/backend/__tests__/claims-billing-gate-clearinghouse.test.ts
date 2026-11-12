@@ -54,6 +54,17 @@ const REFUSED: readonly [string, TenantClearinghouseChoice, string][] = [
     choice({ vendor: "claimmd", status: "verified", mode: "test", source: "tenant" }),
     "clearinghouse_not_active",
   ],
+  [
+    "a config whose vendor BAA a platform operator revoked",
+    choice({
+      vendor: "claimmd",
+      status: "verified",
+      mode: "production",
+      source: "tenant",
+      baaRevoked: true,
+    }),
+    "clearinghouse_baa_revoked",
+  ],
 ];
 const ALLOWED: readonly [string, TenantClearinghouseChoice][] = [
   ["an active stedi config", ACTIVE_STEDI],

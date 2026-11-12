@@ -18,7 +18,7 @@
 // field on purpose: ABSENT means "the D10 volunteer scope or the §7.13 Part 2 gate withheld it", `null`
 // means "no tier has been computed yet", and a value is a value. Collapsing absent into null in the web
 // layer would tell a volunteer that a high-risk survivor is unscored.
-import { envelopeErrorMessage } from "@chartwarden/ui";
+import { envelopeErrorMessage, freshIdempotencyKeyHeaders } from "@chartwarden/ui";
 import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction (TASK-022) ──────────────────────────────────────────────────────────
@@ -162,24 +162,25 @@ export type BereavementRiskTier = ReqBody<
 
 // ── request helpers ────────────────────────────────────────────────────────────────────────────────────
 
-/** §F08 — a fresh client idempotency key per mutation attempt. */
-export function idemKey(): string {
-  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `m16-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-}
-
 /**
- * §2.5 — the mutation headers: an idempotency key always, `If-Match` whenever a row version was read. A screen that may
- * RETRY a write (a modal whose response was lost) passes the key of that attempt so the retry dedupes server-side.
+ * §2.5 — the mutation headers: `If-Match` whenever a row version was read, and an Idempotency-Key only when a screen holds one. A screen that
+ * may RETRY a write (a modal whose response was lost) passes the key of that attempt (the shared useAttemptKey) so the retry dedupes
+ * server-side. With no key passed, the API client holds one per write intent (method + URL + If-Match + body): kept across a lost reply,
+ * renewed by any answer. A write that is a deliberate re-run uses `rerunHeaders` instead.
  */
 export function writeHeaders(
   version?: number | null,
   idempotencyKey?: string,
 ): Record<string, string> {
-  const header: Record<string, string> = { "Idempotency-Key": idempotencyKey ?? idemKey() };
+  const header: Record<string, string> = {};
+  if (idempotencyKey !== undefined) header["Idempotency-Key"] = idempotencyKey;
   if (version != null) header["If-Match"] = String(version);
   return header;
+}
+
+/** The headers of a write whose every call is a deliberate re-run (recompute, regenerate): its own new key, never a replay of an earlier answer. */
+export function rerunHeaders(version?: number | null): Record<string, string> {
+  return { ...writeHeaders(version), ...freshIdempotencyKeyHeaders() };
 }
 
 /** The error a write reports when its fetch rejected: the connection dropped and the answer, if any, never arrived. */
@@ -489,7 +490,7 @@ export async function regenerateSchedule(
 ): Promise<{ result: ScheduleRegeneration | null; error: unknown }> {
   const res = await client.POST("/api/v1/bereavement/plans/{planId}/regenerate-schedule", {
     params: { path: { planId } },
-    headers: writeHeaders(version),
+    headers: rerunHeaders(version), // idempotency: fresh per click (re-run): regenerating reads the plan as it is now
     body,
   });
   if (res.error) return { result: null, error: res.error };
@@ -507,7 +508,7 @@ export async function recomputeRisk(
 ): Promise<{ score: RiskScoreRow | null; error: unknown }> {
   const res = await client.POST("/api/v1/bereavement/plans/{planId}/recompute-risk", {
     params: { path: { planId } },
-    headers: writeHeaders(),
+    headers: rerunHeaders(), // idempotency: fresh per click (re-run): recomputing reads the contact as it is now
     body,
   });
   if (res.error) return { score: null, error: res.error };

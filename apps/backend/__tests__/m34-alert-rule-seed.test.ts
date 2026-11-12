@@ -68,6 +68,17 @@ describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
     expect(rule?.resolverArgs).toEqual({ roleKeys: [TENANT_ALERT_AUDIENCE_ROLE_KEY] });
   });
 
+  it("seeds the help-request rule on the event a filed request emits, locked and routed at platform-ops", () => {
+    const rule = M34_ALERT_RULES.find((r) => r.ruleKey === "tenant.help_requested");
+    expect(rule?.eventType).toBe("m34.help_request.requested");
+    expect(rule?.enabled).toBe(true);
+    // Emitted under the tenant's own org: locked so a tenant override cannot redirect or disable it (0334).
+    expect(rule?.systemLocked).toBe(true);
+    expect(rule?.recipientResolver).toBe("role_set");
+    expect(rule?.resolverArgs).toEqual({ roleKeys: [TENANT_ALERT_AUDIENCE_ROLE_KEY] });
+    expect(M34_ALERT_RULE_KEYS).toContain("tenant.help_requested");
+  });
+
   it("seeds a critical rule for the kill-switch emergency event, routed at real people today", () => {
     const rule = M34_ALERT_RULES.find(
       (r) => r.ruleKey === "feature_flag.platform_emergency_changed",
@@ -97,6 +108,36 @@ describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
         true,
       );
     }
+  });
+
+  it("slice 7: tells the operators when consent is granted, locked and routed at the zero-authority audience role", () => {
+    const rule = M34_ALERT_RULES.find((r) => r.ruleKey === "support_consent.granted.platform_ops");
+    expect(rule?.eventType).toBe("m34.support_consent_grant.issued");
+    expect(rule?.recipientResolver).toBe("role_set");
+    expect(rule?.resolverArgs).toEqual({ roleKeys: [TENANT_ALERT_AUDIENCE_ROLE_KEY] });
+    // Emitted under the tenant's org: a tenant administrator's override must not redirect or silence it.
+    expect(rule?.systemLocked).toBe(true);
+    expect(rule?.enabled).toBe(true);
+    expect(M34_ALERT_RULE_KEYS).toContain("support_consent.granted.platform_ops");
+  });
+
+  it("slice 7: the session-started notice also reaches the organization's administrators, at a distinct floor", () => {
+    const rules = M34_ALERT_RULES.filter((r) => r.eventType === "m34.support_session.started");
+    const orgAdmin = rules.find((r) => r.ruleKey === "support_session.started.org_admin");
+    expect(orgAdmin?.recipientResolver).toBe("role_set");
+    expect(orgAdmin?.resolverArgs).toEqual({ roleKeys: ["org_admin"] });
+    expect(orgAdmin?.systemLocked).toBe(false);
+    expect(M34_ALERT_RULE_KEYS).toContain("support_session.started.org_admin");
+    // The unique index is (org, event_type, severity_floor): the grantor's rule and this one may not share a floor.
+    expect(new Set(rules.map((r) => r.severityFloor)).size).toBe(rules.length);
+  });
+
+  it("the support rules' (event, floor) pairs are unique (the alert_rule unique index)", () => {
+    const pairs = M34_ALERT_RULES.filter((r) => r.eventType.startsWith("m34.support_")).map(
+      (r) => `${r.eventType}|${r.severityFloor}`,
+    );
+    expect(pairs.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(pairs).size).toBe(pairs.length);
   });
 
   it("keeps the canonical key list in step with the rule table", () => {

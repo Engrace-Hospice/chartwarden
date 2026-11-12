@@ -3154,6 +3154,8 @@ export interface RouteEnrichment {
   headers?: Record<string, { required?: boolean; description?: string }>;
   /** The route's actual success status code (`reply.code(...)`). Default 200 when omitted. */
   status?: 200 | 201 | 202 | 204;
+  /** Other success codes returning the same response schema (for routes whose create/update paths differ). */
+  additionalSuccessStatuses?: readonly (200 | 201 | 202 | 204)[];
   /** Human summary for the operation. */
   summary?: string;
 }
@@ -3164,7 +3166,7 @@ const IDEMPOTENCY_KEY_HEADER: RouteEnrichment["headers"] = {
   "Idempotency-Key": {
     required: true,
     description:
-      "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+      "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
   },
 };
 const IF_MATCH_HEADER: RouteEnrichment["headers"] = {
@@ -4014,12 +4016,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
   },
-  // ── MAC credentials (mac-credentials.routes.ts, §3.6) ──
-  "POST /api/v1/billing/mac-credentials": {
-    summary:
-      "Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35)",
-    body: UpsertMacCredentialBodySchema,
-  },
+  // ── MAC credentials (mac-credentials.routes.ts, §3.6): the POST upsert is enriched beside its view schema, near the GETs ──
   // ── EDI profile (edi-profile.routes.ts; migration 1268) ──
   "PUT /api/v1/billing/edi-profiles/:providerEntityId/:routeKey": {
     summary:
@@ -10858,7 +10855,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34SupportConsentGrantViewSchema,
   },
   "POST /api/v1/tenant/support-consent-grants/:id/revoke": {
-    summary: "Revoke a grant (cascades to any open support_session)",
+    summary:
+      "Revoke a grant: ends every support_session open on it (ledger row, critical audit, outbox event, grantor alert) and resolves a linked help request, in one transaction. A later start on it is 409 SUPPORT_GRANT_INACTIVE; repeating the revoke answers the same grant and writes nothing more",
     body: M34RevokeConsentGrantRequest,
     response: M34SupportConsentGrantViewSchema,
   },
@@ -10932,13 +10930,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/platform/support-sessions": {
     summary:
-      "Start a session against a consent grant (distinct-actor + passkey-5min step-up). 409 SUPPORT_GRANT_INACTIVE when the grant is revoked or expired",
+      "Start a session against a consent grant (distinct actor, by membership and by person; passkey-5min step-up). The session, its ledger and its audit are recorded in the grant's (the tenant's) organization, never the operator's. 409 SUPPORT_GRANT_INACTIVE when the grant is revoked or expired",
     body: M34StartSessionRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34StartSessionAckSchema,
+    status: 201,
   },
   "POST /api/v1/platform/support-sessions/:id/close": {
-    summary: "Close a session with reason='manual' (no step-up)",
+    summary:
+      "Close a session with reason='manual' (no step-up): the close stamp, a session.close ledger row, a critical audit, m34.support_session.expired (closeReason manual_close) and the grantor alert. Repeatable: a session already closed answers its reason and writes nothing more",
     body: M34CloseSessionRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34CloseSessionAckSchema,
   },
 
@@ -13221,7 +13223,9 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403). 403 SUPPORT_SESSION_NON_PHI on a session opened against an assist grant: it has no PHI to read or write",
     body: M34ElevateSessionRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34ElevateSessionAckSchema,
+    status: 201,
   },
   "POST /api/v1/tenant/dsar-export-jobs/:id/fulfill": {
     summary: "Flip a DSAR job to fulfilled + trigger presigned-URL email (step-up)",
@@ -13785,6 +13789,13 @@ const M23RuleConfigListResponse = Type.Object({
   hasMore: Type.Boolean(),
 });
 
+/**
+ * What `lastSandboxTestAt` and the test route's `ok` mean. The probe is the launch gateway's portal health check for the credential's
+ * jurisdiction: it sends neither the secret nor the client id, so it cannot say the credential works (the secret is first used by the
+ * first real submission). The names stay; the words must not promise more than the check does.
+ */
+const M23_MAC_PORTAL_CHECK_NOTE =
+  "It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used)";
 const M23MacCredentialView = Type.Object({
   credentialId: Type.String(),
   organizationId: Type.String(),
@@ -13796,7 +13807,9 @@ const M23MacCredentialView = Type.Object({
   hasSecret: Type.Boolean(),
   baaRecordRef: Type.Union([Type.String(), Type.Null()]),
   credentialExpiresAt: Type.Union([Type.String(), Type.Null()]),
-  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()]),
+  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()], {
+    description: `When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. ${M23_MAC_PORTAL_CHECK_NOTE}.`,
+  }),
   version: Type.Integer(),
   createdAt: Type.String(),
   updatedAt: Type.String(),
@@ -13809,11 +13822,21 @@ const M23MacCredentialListResponse = Type.Object({
 const M23MacCredentialTestResponse = Type.Object({
   providerEntityId: Type.String(),
   macJurisdiction: Type.String(),
-  ok: Type.Boolean(),
-  method: Type.Literal("portal_health_probe"),
-  detail: Type.String(),
+  ok: Type.Boolean({
+    description: `True when the MAC portal for the credential's jurisdiction answered. ${M23_MAC_PORTAL_CHECK_NOTE}.`,
+  }),
+  method: Type.Literal("portal_health_probe", {
+    description:
+      "Always portal_health_probe: the check calls the jurisdiction's MAC portal health endpoint. It does not submit a test claim and does not use the stored credential.",
+  }),
+  detail: Type.String({
+    description:
+      "What the check saw (the portal answered or did not). It is never about the credential itself.",
+  }),
   checkedAt: Type.String(),
-  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()]),
+  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()], {
+    description: `The time the credential now records for this check: set when the portal answered, null when it did not. ${M23_MAC_PORTAL_CHECK_NOTE}.`,
+  }),
 });
 const M23ValidationOverrideAuditPage = Type.Object({
   items: Type.Array(
@@ -13833,6 +13856,15 @@ const M23ValidationOverrideAuditPage = Type.Object({
   hasMore: Type.Boolean(),
 });
 const M23MacCredentialByProviderResponse = Type.Union([M23MacCredentialView, Type.Null()]);
+/** The upsert pins the version it changes: absent on a first save, required on a change (428 / 409). */
+const M23_MAC_CREDENTIAL_WRITE_HEADERS = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: false,
+    description:
+      "The credential's current integer version; required to change an existing credential (428 IF_MATCH_REQUIRED without one, 409 STALE_VERSION when stale), absent on a first save.",
+  },
+};
 
 const M23ArAgingDto = Type.Object({
   bucket0to30Cents: Type.Integer(),
@@ -13919,8 +13951,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/billing/mac-credentials/:providerEntityId/test": {
     summary:
-      "Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up (§4.1 #36)",
+      "Check that the MAC portal for this credential's jurisdiction answers (a portal health probe) and, when it does, record the time as lastSandboxTestAt. It does not validate the credential: the secret, client id and submitter id are not sent, and the first real submission is the first time they are used. billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; 503 when no MAC gateway is configured (§4.1 #36)",
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M23MacCredentialTestResponse,
+  },
+  "POST /api/v1/billing/mac-credentials": {
+    summary:
+      "Upsert a MAC credential: create (201) or version-checked change (200, If-Match). clientSecret is write-only and encrypted at the boundary, never returned; billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; an AI actor is refused (§4.1 #35)",
+    body: UpsertMacCredentialBodySchema,
+    headers: M23_MAC_CREDENTIAL_WRITE_HEADERS,
+    status: 201,
+    additionalSuccessStatuses: [200],
+    response: M23MacCredentialView,
   },
   "GET /api/v1/billing/validation-overrides": {
     summary:
@@ -16024,6 +16066,8 @@ import {
 import {
   OnboardingBaaDocumentUploadRequest as M34OnboardingBaaDocumentUploadRequest,
   OnboardingBaaDocumentViewSchema as M34OnboardingBaaDocumentViewSchema,
+  OnboardingBaaRevokeRequest as M34OnboardingBaaRevokeRequest,
+  OnboardingBaaVerifyRequest as M34OnboardingBaaVerifyRequest,
   OnboardingClearinghousePutRequest as M34OnboardingClearinghousePutRequest,
   OnboardingClearinghouseReadSchema as M34OnboardingClearinghouseReadSchema,
   OnboardingClearinghouseReleaseResponseSchema as M34OnboardingClearinghouseReleaseResponseSchema,
@@ -16053,6 +16097,8 @@ const M34_CLEARINGHOUSE_PUT_NOTE = M34_CLEARINGHOUSE_WRITE_NOTE.replace(
 );
 const M34_CLEARINGHOUSE_BAA_NOTE =
   "tenant_clearinghouse.verify_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. NOT limited to an onboarding tenant (a live tenant that changed vendor needs it too); an AI actor is refused";
+const M34_CLEARINGHOUSE_REVOKE_NOTE =
+  "tenant_clearinghouse.revoke_baa_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key, If-Match and a closed `reasonCode` plus a `ticketRef` (no free text exists on this route) are required. NOT limited to an onboarding tenant (a live tenant is the point); an AI actor is refused; 10 revokes per operator (across every tenant) and 20 in all per ten minutes, answering 429 beyond that (the limiter fails open)";
 const M34_CLEARINGHOUSE_RELEASE_NOTE =
   "tenant_clearinghouse.release_credential_platform (its own key) + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator, the tenant and how many were released) are required. NOT limited to an onboarding tenant; an AI actor is refused";
 const M34_NOTICE_WITHDRAW_NOTE =
@@ -16073,7 +16119,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M23ClearinghouseConfigViewSchema,
   },
   "PUT /api/v1/tenant/clearinghouse": {
-    summary: `Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) while a production submission is in flight or was sent in the last 90 days, and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); a tenant that bills outside ChartWarden cannot leave outside on its own while it has a pricing contract (409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR: the switch also sets its billing mode, which only a platform operator does); test mode is refused on a production deployment (422) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
+    summary: `Choose the clearinghouse: create (201) or version-checked change (200, If-Match). The credential is write-only; any change (vendor, mode, or a credential rotation) restarts at draft for the new key and clears what the old one earned (a vendor change also voids the vendor BAA); vendor and mode lock (409 CLEARINGHOUSE_VENDOR_LOCKED) while a production submission is in flight or was sent in the last 90 days, except while a platform operator has revoked the vendor BAA (then the tenant may change vendor or mode or switch to outside, and the vendor it left no longer locks the next one), and a switch is refused while claims or submissions are queued (409 CLEARINGHOUSE_WORK_WAITING); a credential another organization holds (it stays held through that organization's switch to outside or a rotation, until a platform operator releases it), or the platform's own, is refused (409 CLEARINGHOUSE_ACCOUNT_IN_USE; the holder is never named; the tenant route allows 10 saves a minute per user); a tenant that bills outside ChartWarden cannot leave outside on its own while it has a pricing contract (409 CLEARINGHOUSE_OUTSIDE_SWITCH_REQUIRES_OPERATOR: the switch also sets its billing mode, which only a platform operator does); test mode is refused on a production deployment (422) — ${CLEARINGHOUSE_CHOICE_NOTE}. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused`,
     body: M23PutClearinghouseBodySchema,
     headers: CLEARINGHOUSE_IF_MATCH_HEADERS,
     status: 201,
@@ -16081,7 +16127,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/tenant/clearinghouse/baa": {
     summary:
-      "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+      "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. Recording a BAA also clears a revocation by a platform operator (it is a new agreement, so it starts again at unverified; re-recording the same document counts, but the operator must then acknowledge that the document was revoked before). Leaving the vendor (a vendor change, or outside) clears it too. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
     body: M23RecordBaaBodySchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M23ClearinghouseConfigViewSchema,
@@ -16095,7 +16141,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/tenant/clearinghouse/activate": {
     summary:
-      "Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification, 409 CLEARINGHOUSE_BAA_NOT_VERIFIED until an operator verified the vendor BAA; idempotent once active). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
+      "Activate a verified config: claims and eligibility work is then allowed (409 CLEARINGHOUSE_NOT_VERIFIED before verification, 409 CLEARINGHOUSE_BAA_NOT_VERIFIED until an operator verified the vendor BAA, 409 CLEARINGHOUSE_BAA_REVOKED while an operator's revocation of it stands; idempotent once active). billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M23ClearinghouseConfigViewSchema,
   },
@@ -16118,8 +16164,21 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34OnboardingClearinghouseVerifyResponseSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/baa/verify": {
-    summary: `Verify the vendor BAA the tenant recorded for its own clearinghouse account (409 CLEARINGHOUSE_BAA_NOT_RECORDED if it has not; idempotent). Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; the audit row names the document reference and effective date verified. ${M34_CLEARINGHOUSE_BAA_NOTE}`,
-    body: M34OnboardingReasonSchema,
+    summary: `Verify the vendor BAA the tenant recorded for its own clearinghouse account (409 CLEARINGHOUSE_BAA_NOT_RECORDED if it has not; idempotent). A record whose document is the one a platform operator revoked before (the platform view's baa.previousRevocation.sameDocument) is refused with 409 CLEARINGHOUSE_BAA_PREVIOUSLY_REVOKED unless the request carries acknowledgePreviousRevocation: true; the audit row then records the supersession and the earlier revocation's time; a BAA that is currently revoked is refused with 409 CLEARINGHOUSE_BAA_REVOKED. Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; the audit row names the document reference and effective date verified. ${M34_CLEARINGHOUSE_BAA_NOTE}`,
+    body: M34OnboardingBaaVerifyRequest,
+    headers: {
+      ...IDEMPOTENCY_KEY_HEADER,
+      "If-Match": {
+        required: true,
+        description:
+          "The `baa.recordedAt` (UTC ISO timestamp) of the BAA record the operator read from the clearinghouse view; a changed record is refused with 409 CLEARINGHOUSE_BAA_CHANGED.",
+      },
+    },
+    response: M34OnboardingClearinghouseViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/baa/revoke": {
+    summary: `Revoke the vendor BAA the tenant recorded for its own clearinghouse account (the vendor ended it). In ONE transaction under the tenant's own scope the verification is voided, a live config leaves active (it becomes verified, as when a changed BAA is re-recorded), the audit row is written and the tenant is told (the outbox event m23.tenant_clearinghouse.baa_revoked becomes an alert to its billing, compliance and org administrators and a platform-ops notice, carrying ids, the closed code and counts of attempts still in flight or sent in the response window and of queued claims). Its claims, NOE, NOTR and transfer notices are then held and its acknowledgment (999/277CA) and 835 pulls skip, with a once-a-day alert while responses may still be owed, until the tenant records a new BAA, an operator verifies it and the tenant activates the config again; no new job or tick starts after the commit, and a job already past its pre-flight finishes (an M41 drain stops at the next row). While revoked, baa/verify and activate are refused with 409 CLEARINGHOUSE_BAA_REVOKED, the claims gate answers 402 clearinghouse_baa_revoked, and the tenant (never the operator) may change vendor or mode or switch to outside although production traffic is recent (it is not locked by 409 CLEARINGHOUSE_VENDOR_LOCKED); once it has left the revoked vendor, that vendor's attempts no longer lock the next one. The tenant clears the revocation by recording a new BAA or by leaving the vendor. NO free text: the body is a closed reasonCode (vendor_terminated, account_closed, baa_expired, other) and a ticketRef such as SEC-42; the audit row and the BAA record carry only those, and the tenant's own view shows the code and the time but never the ticket. Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; 409 CLEARINGHOUSE_BAA_NOT_RECORDED when none was recorded, 409 CLEARINGHOUSE_BAA_REVOKED when it is already revoked, 422 CLEARINGHOUSE_BAA_NOT_APPLICABLE for outside, 503 CLEARINGHOUSE_OUTBOX_UNBOUND when the outbox is not bound. The write touches only the BAA and status columns, so it works whatever the state of the credential or the encryption key (a row sealed before migration 1434 loses its credential with the BAA). A revoke is not an expiry: nothing ends a BAA by itself and no vendor signal reaches ChartWarden. ${M34_CLEARINGHOUSE_REVOKE_NOTE}`,
+    body: M34OnboardingBaaRevokeRequest,
     headers: {
       ...IDEMPOTENCY_KEY_HEADER,
       "If-Match": {
@@ -16237,20 +16296,20 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/tenant/onboarding/:taskId/skip": {
     summary:
-      "The organization's own \"this does not apply to us\" for MAC credentials, payer enrollment or DoseSpot kickoff (org_admin only; a fresh step-up; no AI actor; Idempotency-Key required). The rationale is screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE for any other step (sample data and a step an operator added stay operator-only), 409 ONBOARDING_STEP_OUT_OF_ORDER, 409 ONBOARDING_STEP_ALREADY_SETTLED. Reversible by re-opening; the step's `skippedBy` says tenant",
+      "The organization's own \"this does not apply to us\" for MAC credentials, payer enrollment or DoseSpot kickoff (org_admin only; a fresh step-up; no AI actor; Idempotency-Key required). The rationale is screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE for any other step (sample data and a step an operator added stay operator-only), 409 ONBOARDING_STEP_OUT_OF_ORDER, 409 ONBOARDING_STEP_ALREADY_SETTLED. Recorded as the tenant's (the step's `skippedBy` says tenant, with the rationale, which the go-live approver sees) and, like any onboarding-data change, voids a pending go-live attestation. Reversible by re-opening",
     body: M34SkipOnboardingTaskRequest,
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M34WizardStepViewSchema,
   },
   "GET /api/v1/platform/help-requests": {
     summary:
-      "The operators' help inbox across tenants (platform ops; audited list read): each row's phase (waiting_for_consent, ready_to_start, in_session, ended), the step, the tenant, the consent grant id to start a support session against, and the session summary. `status` filters by a comma-separated list (the nav badge asks open,approved with limit 1)",
+      "The operators' help inbox across tenants (platform ops; audited list read): each row's phase (waiting_for_consent, ready_to_start, in_session, ended), the step, the tenant, the consent grant id to start a support session against, and the session summary. `status` filters by a comma-separated list and defaults to open,approved (the live requests; ask for resolved or cancelled by name; the nav badge asks open,approved with limit 1). A page is at most 50 rows",
     query: M34PlatformHelpRequestListQuerySchema,
     response: M34PlatformHelpRequestListResponseSchema,
   },
   "POST /api/v1/platform/help-requests/:id/resolve": {
     summary:
-      "End help from ChartWarden's side with a tenant-visible note of 8 to 500 characters (platform ops; no AI actor; Idempotency-Key required): closes the request's open support sessions (reason manual), revokes its consent grant and resolves the request. It ends the consent and the session, not ChartWarden's contractual access to onboard the tenant",
+      "End help from ChartWarden's side with a tenant-visible note of 8 to 500 characters (platform ops; no AI actor; Idempotency-Key required): revokes its consent grant and closes the request's open support sessions with it (close reason grant_revoked), and resolves the request (an open request, which has no grant, is resolved with the note alone). It ends the consent and the session, not ChartWarden's contractual access to onboard the tenant",
     body: M34ResolveHelpRequestRequest,
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M34PlatformHelpRequestViewSchema,

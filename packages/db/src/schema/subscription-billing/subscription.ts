@@ -11,11 +11,18 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import { subscriptionStatus } from "../../enums";
 import { plan } from "./plan";
+
+const SUBSCRIPTION_ORG_ACTIVE_UQ = businessRule(
+  "subscription_org_active_uq",
+  "This organization already has another live subscription.",
+);
 
 // Exported as `subscriptionRow` (not `subscription`): the arch:tables ownership scanner keys on the
 // Drizzle CONST name with a `\bsubscription\b` word-boundary match, and the common English word
@@ -48,7 +55,8 @@ export const subscriptionRow = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    orgActiveUq: uniqueIndex("subscription_org_active_uq")
+    idOrgPlanUq: unique("subscription_id_org_plan_uq").on(t.id, t.organizationId, t.planId),
+    orgActiveUq: uniqueIndex(SUBSCRIPTION_ORG_ACTIVE_UQ)
       .on(t.organizationId)
       .where(sql`status NOT IN ('canceled', 'paused')`),
     stripeCustomerUq: uniqueIndex("subscription_stripe_customer_uq").on(t.stripeCustomerId),

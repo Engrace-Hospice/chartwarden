@@ -45,7 +45,7 @@ export function WriteFailureNotice({
         <InlineAlert tone="error" live={false}>
           {fieldsShown ? "Some details need attention." : failure.message}
           {quoteReference ? ` Reference: ${failure.correlationId}.` : ""}
-          {failure.retryAfterSeconds !== undefined
+          {failure.retryAfterSeconds != null
             ? ` Try again in about ${failure.retryAfterSeconds} seconds.`
             : ""}
         </InlineAlert>

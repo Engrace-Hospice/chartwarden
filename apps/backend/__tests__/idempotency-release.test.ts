@@ -1,9 +1,11 @@
 /**
  * A retryable failure must not be replayed. The error handler answers a deadlock / serialization failure with
- * `409 CONCURRENT_UPDATE` ("nothing was saved; retry it"), and any 5xx says the write did not complete. The
+ * `409 CONCURRENT_UPDATE` ("this step was not applied ... check the current state before retrying"), and any 5xx says the write did not complete. The
  * idempotency middleware used to `complete` every response, so a same-key retry got the cached failure back for the
- * whole 24h TTL while the write never ran. These outcomes now RELEASE the claim, so the same key runs again; every
- * other outcome (a 201, a business-rule 409, a 4xx) is still cached and replayed.
+ * whole 24h TTL while the write never ran. These outcomes now RELEASE the claim, so the same key runs again, PROVIDED the
+ * request committed nothing (these handlers fail before any write; the committed-then-failed half is
+ * `idempotency-commit-tracker.test.ts`); every other outcome (a 201, a business-rule 409, a 4xx) is still cached and replayed.
+ * If the release itself fails (the store is down) the key stays pending: a retry is a 409 in flight until the TTL.
  *
  * Unit level over the in-memory store; the Postgres store's `release` is proved in
  * `gap-007-idempotency-claim.live.test.ts`.
@@ -31,7 +33,7 @@ describe("in-memory IdempotencyStore.release", () => {
     const store = createInMemoryIdempotencyStore();
     await store.putPending(ORG, "k", "owner");
     await store.release(ORG, "k", "someone-else");
-    expect(await store.load(ORG, "k")).toEqual({ state: "pending", requestHash: "owner" });
+    expect(await store.load(ORG, "k")).toMatchObject({ state: "pending", requestHash: "owner" });
   });
 
   it("never deletes a completed response", async () => {

@@ -10,6 +10,7 @@ import {
   TextField,
   interactiveRowProps,
   useApiClient,
+  useAttemptKey,
   useDrawerA11y,
 } from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — Transfer notices: the receiving hospice's Medicare Change of
@@ -37,7 +38,6 @@ import {
   validateConfirm,
   validateCorrection,
 } from "./transfer-notice-model";
-import { useAttemptKey } from "./use-attempt-key";
 import { authFailureRedirect } from "./write-workflow";
 
 interface PatientName {

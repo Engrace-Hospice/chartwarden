@@ -28,6 +28,7 @@ export const ONBOARDING_KEYS = {
   onboardingData: "tenant_onboarding_data.write_platform",
   clearinghouseWrite: "tenant_clearinghouse.write_platform",
   clearinghouseVerifyBaa: "tenant_clearinghouse.verify_baa_platform",
+  clearinghouseRevokeBaa: "tenant_clearinghouse.revoke_baa_platform",
   clearinghouseRelease: "tenant_clearinghouse.release_credential_platform",
   noticeWithdraw: "tenant_notice_filing.withdraw_platform",
   baaDocumentUpload: "tenant_baa_document.upload_platform",
@@ -47,7 +48,15 @@ export const OWNER_LABEL: Record<WizardOwner, string> = {
   either: "Tenant admin or operator",
 };
 
+/** Who skipped a step, in words: the server's `skippedBy` (what the skip recorded), never the rationale's wording. */
+export const SKIPPED_BY_LABEL: Record<NonNullable<WizardStep["skippedBy"]>, string> = {
+  tenant: "Skipped by the organization",
+  platform_ops: "Skipped by ChartWarden operations",
+  system: "Skipped by the system",
+};
+
 const isSettled = isSettledStep;
+const isGating = (s: WizardStep): boolean => s.isCanonical && !s.optional;
 
 function titleOf(view: WizardView, key: string): string {
   return view.steps.find((s) => s.key === key)?.title ?? key;

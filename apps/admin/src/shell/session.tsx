@@ -1,4 +1,4 @@
-import { useApiClient } from "@chartwarden/ui";
+import { clearIdempotencyKeys, useApiClient } from "@chartwarden/ui";
 // apps/admin/src/shell — session/tenant context (M1, ADR-0030). Ported verbatim from
 // apps/web/src/shell/session.tsx (see that file for the full design rationale): self-loads the
 // authenticated actor's role/membership context from the live `GET /api/v1/auth/context` endpoint on
@@ -47,11 +47,14 @@ export function ActorSessionProvider({
           setState({ status: "authenticated", session: toSession(data) });
           return;
         }
-        setState(
-          response.status === 401
-            ? { status: "anonymous", session: null }
-            : { status: "outage", session: null },
-        );
+        if (response.status === 401) {
+          // The console's only session-expired decision. A held Idempotency-Key belongs to the session that is gone, so the next
+          // sign-in on this page (no reload between them) must not inherit it.
+          clearIdempotencyKeys(client);
+          setState({ status: "anonymous", session: null });
+          return;
+        }
+        setState({ status: "outage", session: null });
       })
       .catch(() => {
         if (!cancelled) setState({ status: "outage", session: null });

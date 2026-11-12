@@ -89,9 +89,12 @@ interface Sent {
   readonly organizationId: string;
 }
 const sent: Sent[] = [];
+/** Runs right after a row went out: a test uses it to change the org's clearinghouse mid-tick. */
+let afterSend: (() => void) | undefined;
 const transportOf = (vendor: string) => ({
   submitClaim: async (ctx: { organizationId: string }) => {
     sent.push({ vendor, organizationId: ctx.organizationId });
+    afterSend?.();
     return { ok: true as const, data: { clearinghouseSubmissionId: `receipt-${vendor}` } };
   },
 });
@@ -168,6 +171,29 @@ describe("runSubmissionDrain: each org's due claim goes out through that org's o
     sent.length = 0;
     evidence.length = 0;
     dueByOrg.clear();
+    afterSend = undefined;
+  });
+
+  it("stops at the first row after the org's clearinghouse goes out of service mid-tick (a BAA revoke): the rest stays queued", async () => {
+    dueByOrg.set("org-1", [SUB("org-1", "a"), SUB("org-1", "b"), SUB("org-1", "c")]);
+    const bound: Record<string, string> = { "org-1": "stedi" };
+    // the operator's revoke commits while the first row is in flight: from then on the org's resolver binds nothing
+    afterSend = () => {
+      Reflect.deleteProperty(bound, "org-1");
+    };
+
+    const result = await runSubmissionDrain(deps(bound, ["org-1"]) as never);
+
+    expect(result).toEqual({ sent: 1, failures: [] }); // the row already past its check finished; no more went out
+    expect(sent).toEqual([{ vendor: "stedi", organizationId: "org-1" }]);
+  });
+
+  it("keeps draining while the org's clearinghouse stays live", async () => {
+    dueByOrg.set("org-1", [SUB("org-1", "a"), SUB("org-1", "b")]);
+
+    const result = await runSubmissionDrain(deps({ "org-1": "stedi" }, ["org-1"]) as never);
+
+    expect(result.sent).toBe(2);
   });
 
   it("sends org-1's row through org-1's vendor and org-2's through org-2's, each with its own context", async () => {

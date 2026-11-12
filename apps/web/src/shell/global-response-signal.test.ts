@@ -6,12 +6,14 @@
 // route's own lockout counter, which exists to allow `STEP_UP_POLICY.lockoutThreshold` consecutive
 // failures before terminating the session, and the step-up screen's "That code didn't verify. Try
 // again" branch, which no longer had a way to render.
-import { afterEach, describe, expect, it } from "vitest";
+import { clearIdempotencyKeys, createApiClient } from "@chartwarden/ui";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { clearAllDrafts, loadDraft, saveDraft } from "./ceremony-drafts";
 import {
   getGlobalResponseSignal,
   handleObservedResponse,
   mayCarryTenantRefusal,
+  onSessionExpired,
   setGlobalResponseSignal,
   signalForStatus,
   tenantSignalFromResponse,
@@ -94,6 +96,12 @@ describe("tenant refusals (ADR-0049)", () => {
     });
   });
 
+  it("maps 403 ORGANIZATION_ONBOARDING (a route outside onboarding on an organization not live yet) to its own signal", async () => {
+    expect(await tenantSignalFromResponse(json(403, "ORGANIZATION_ONBOARDING"))).toEqual({
+      kind: "organization-onboarding",
+    });
+  });
+
   it("leaves an ordinary 403 / 404 alone, and reads a clone so the caller still gets the body", async () => {
     const forbidden = json(403, "FORBIDDEN");
     expect(await tenantSignalFromResponse(forbidden)).toBeNull();
@@ -129,6 +137,7 @@ describe("org-less 401 (ORGANIZATION_NOT_SELECTED)", () => {
       headers: { "content-type": "application/json" },
     });
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  beforeEach(() => setGlobalResponseSignal(null)); // an earlier case may have left a signal
   afterEach(() => setGlobalResponseSignal(null));
 
   it("never lets an org-less 401 overwrite a pending session-expired", async () => {
@@ -188,5 +197,83 @@ describe("503 BILLING_ENTITLEMENT_UNAVAILABLE", () => {
     handleObservedResponse(503, url, new Response("down", { status: 503 }));
     await settle();
     expect(getGlobalResponseSignal()).toEqual({ kind: "service-unavailable" });
+  });
+});
+
+describe("held Idempotency-Keys and the shell's session decision", () => {
+  const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const answer = (status: number, code: string): Response =>
+    new Response(JSON.stringify({ error: { code, message: "m" } }), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+
+  /** The wiring main.tsx does: the client observes through handleObservedResponse, and the shell's session-expired clears the keys. */
+  function wired(script: (Response | "no-answer")[]) {
+    const keys: (string | null)[] = [];
+    const client = createApiClient({
+      baseUrl: "http://localhost",
+      onResponseStatus: handleObservedResponse,
+      fetch: async (request) => {
+        keys.push(request.headers.get("Idempotency-Key"));
+        const step = script.shift() ?? new Response("{}", { status: 200 });
+        if (step === "no-answer") throw new TypeError("Failed to fetch");
+        Object.defineProperty(step, "url", { value: request.url }); // a real fetch sets it; the shell decides by path
+        return step;
+      },
+    });
+    const unsubscribe = onSessionExpired(() => clearIdempotencyKeys(client));
+    const write = () =>
+      client
+        .POST("/api/v1/orgs/{id}/notes" as never, { body: { a: 1 } } as never)
+        .catch(() => undefined);
+    const get = (path: string) => client.GET(path as never, {} as never).catch(() => undefined);
+    return { keys, write, get, unsubscribe };
+  }
+
+  afterEach(() => setGlobalResponseSignal(null));
+
+  it.each([
+    ["a mistyped unlock password", "/api/v1/auth/unlock", "INVALID_CREDENTIALS"],
+    ["a failed step-up factor", "/api/v1/sessions/step-up", "STEP_UP_FAILED"],
+    ["a failed portal step-up factor", "/api/v1/portal/sessions/step-up", "STEP_UP_FAILED"],
+    ["a live session with no organization yet", "/api/v1/patients", "ORGANIZATION_NOT_SELECTED"],
+  ])("keeps a held key when the 401 is %s", async (_label, path, code) => {
+    const { keys, write, get, unsubscribe } = wired(["no-answer", answer(401, code)]);
+
+    await write(); // the reply was lost: its key is held
+    await get(path); // a 401 that is NOT session death
+    await settle();
+    await write(); // the retry
+
+    expect(getGlobalResponseSignal()?.kind).not.toBe("session-expired");
+    expect(keys[2]).toBe(keys[0]);
+    unsubscribe();
+  });
+
+  it("clears the held keys when the shell decides the session is dead", async () => {
+    const { keys, write, get, unsubscribe } = wired(["no-answer", answer(401, "UNAUTHENTICATED")]);
+
+    await write();
+    await get("/api/v1/patients");
+    await settle();
+    await write();
+
+    expect(getGlobalResponseSignal()).toEqual({ kind: "session-expired" });
+    expect(keys[2]).not.toBe(keys[0]);
+    unsubscribe();
+  });
+
+  it("stops calling a hook once it is unsubscribed", () => {
+    let calls = 0;
+    const unsubscribe = onSessionExpired(() => {
+      calls += 1;
+    });
+
+    setGlobalResponseSignal({ kind: "session-expired" });
+    unsubscribe();
+    setGlobalResponseSignal({ kind: "session-expired" });
+
+    expect(calls).toBe(1);
   });
 });

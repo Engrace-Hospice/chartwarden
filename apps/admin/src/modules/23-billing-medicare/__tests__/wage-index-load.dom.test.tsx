@@ -309,7 +309,7 @@ describe("Platform wage-index load (M23 §4.1 #42)", () => {
     expect(screen.getAllByRole("alert")[0]?.textContent).toBe(alerts[0]?.textContent);
   });
 
-  it("keeps the same Idempotency-Key when the operator retries the same confirmation", async () => {
+  it("starts a new Idempotency-Key when the operator retries after the app answered (the server caches its answer under the key)", async () => {
     reply = {
       status: 500,
       body: { error: { code: "INTERNAL_ERROR", message: "boom", correlationId: "c" } },
@@ -320,6 +320,27 @@ describe("Platform wage-index load (M23 §4.1 #42)", () => {
     await within(dialog).findByText("boom");
     fireEvent.click(within(dialog).getByRole("button", { name: /^Load \d+ rows?$/ }));
     await waitFor(() => expect(calls.length).toBe(2));
-    expect(calls[0]?.key).toBe(calls[1]?.key);
+    expect(calls[1]?.key).not.toBe(calls[0]?.key);
   });
+
+  it.each([
+    ["a gateway page", 502, "<html>Bad gateway</html>"],
+    [
+      "the in-flight 409",
+      409,
+      { error: { code: "IDEMPOTENCY_IN_FLIGHT", message: "m", correlationId: "c" } },
+    ],
+  ])(
+    "keeps the same Idempotency-Key when the operator retries after %s",
+    async (_label, status, body) => {
+      reply = { status, body };
+      mount();
+      fill();
+      const dialog = await confirmLoad();
+      await within(dialog).findByRole("alert");
+      fireEvent.click(within(dialog).getByRole("button", { name: /^Load \d+ rows?$/ }));
+      await waitFor(() => expect(calls.length).toBe(2));
+      expect(calls[0]?.key).toBe(calls[1]?.key);
+    },
+  );
 });

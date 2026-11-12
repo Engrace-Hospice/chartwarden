@@ -10,6 +10,15 @@ import type { Session, SessionStatus } from "./session-types";
 export type ActorContextResponse =
   paths["/api/v1/auth/context"]["get"]["responses"][200]["content"]["application/json"];
 
+/**
+ * The organization's stage, read narrowly: slice 7A adds `organizationStage` to the auth context, and until its generated type
+ * is in the contract this is the one place that reads it. use the generated type after 7A lands.
+ */
+function organizationStageOf(ctx: ActorContextResponse): Session["organizationStage"] {
+  const stage = (ctx as { organizationStage?: unknown }).organizationStage;
+  return stage === "onboarding" || stage === "live" ? stage : undefined;
+}
+
 /** Map the live actor-context response into the shell Session (cookie-auth: no bearer token). */
 export function toSession(ctx: ActorContextResponse): Session {
   return {
@@ -23,6 +32,7 @@ export function toSession(ctx: ActorContextResponse): Session {
     orgWidePatientScope: ctx.orgWidePatientScope,
     permissions: ctx.permissions,
     isAdmin: ctx.isAdmin,
+    organizationStage: organizationStageOf(ctx),
   };
 }
 

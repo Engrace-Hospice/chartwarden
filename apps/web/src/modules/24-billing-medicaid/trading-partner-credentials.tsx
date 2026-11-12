@@ -10,6 +10,7 @@ import {
   PageHeader,
   StatusPill,
   WorkQueueLayout,
+  freshIdempotencyKeyHeaders,
   useApiClient,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -98,6 +99,7 @@ export function MedicaidTradingPartnerCredentials(): JSX.Element {
         response,
       } = (await client.POST("/api/v1/state-medicaid-trading-partner-credentials/{id}/test", {
         params: { path: { id: credentialId } },
+        headers: freshIdempotencyKeyHeaders(), // a probe of the credential as it is now: never replay an earlier result
       } as never)) as {
         data?: { ok?: boolean; errorMessage?: string };
         error?: unknown;

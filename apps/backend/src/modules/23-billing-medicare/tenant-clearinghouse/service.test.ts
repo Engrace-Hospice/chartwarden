@@ -19,6 +19,7 @@ const ACTOR: ClearinghouseActor = {
   organizationId: ORG,
   userId: "33333333-3333-4333-8333-333333333333",
   membershipId: "44444444-4444-4444-8444-444444444444",
+  lane: "tenant",
 };
 const FAKE_KEY = "fake-key-not-a-secret#1";
 const OPERATOR: ClearinghouseActor = {
@@ -767,6 +768,14 @@ describe("tenant clearinghouse service: verifying and activating", () => {
         }),
       ),
     ).toBe("VALIDATION_FAILED");
+    expect(
+      await codeOf(
+        verify(service, store, ACTOR, {
+          evidenceNote: "tested with beneficiary ９００-１２-３４５６ today",
+          confirmNoPatientInformation: true,
+        }),
+      ),
+    ).toBe("VALIDATION_FAILED");
   });
 
   it("refuses to verify with nothing chosen, with `outside`, or before the credential is entered", async () => {
@@ -883,6 +892,8 @@ describe("tenant clearinghouse service: the tenant-held vendor BAA (owner decisi
       { ...BAA, documentRef: "ab" },
       { ...BAA, documentRef: "x".repeat(201) },
       { ...BAA, documentRef: "scan for beneficiary 900-12-3456" },
+      { ...BAA, documentRef: "scan for beneficiary ９００-１２-３４５６" },
+      { ...BAA, documentRef: "scan for beneficiary １EG４TE５MK７３" },
     ];
     for (const bad of cases) {
       expect(await codeOf(service.recordBaa(store, ACTOR, bad as typeof BAA))).toBe(

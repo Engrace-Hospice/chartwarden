@@ -1136,6 +1136,37 @@ describe("Admission activation — service location", () => {
     );
   });
 
+  it("a retry of the Notice of Rights acknowledgement after a lost reply replays: the same key and the same acknowledgedAt", async () => {
+    const client = clientFor();
+    const post = client.POST as ReturnType<typeof vi.fn>;
+    post.mockRejectedValueOnce(new TypeError("Failed to fetch")); // the first attempt gets no answer
+    renderWithShell(client);
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Complete Notice of Rights" }))[0]!,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Record in ChartWarden/ }));
+    fireEvent.change(await screen.findByLabelText("Acknowledged by (name)"), {
+      target: { value: "Pat Example" },
+    });
+    const record = () =>
+      fireEvent.click(screen.getByRole("button", { name: "Record acknowledgment" }));
+
+    record();
+    expect(await screen.findByText(/Could not reach the server/)).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 5)); // a clock read now would differ from the first attempt's
+    record();
+
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    const [first, second] = post.mock.calls.map(
+      (call) => call[1] as { headers: Record<string, string>; body: { acknowledgedAt: string } },
+    );
+    expect(second?.headers["Idempotency-Key"]).toBe(first?.headers["Idempotency-Key"]);
+    expect(second?.body.acknowledgedAt).toBe(first?.body.acknowledgedAt);
+  });
+
   it("shows the server's location refusal in the open dialog and omits locationId when none is picked", async () => {
     const client = unsited(clientFor(readiness({ canActivate: true, blockingRemaining: 0 })));
     (client.POST as ReturnType<typeof vi.fn>).mockResolvedValue({

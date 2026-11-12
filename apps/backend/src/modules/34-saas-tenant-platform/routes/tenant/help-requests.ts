@@ -9,7 +9,7 @@
 //   POST /api/v1/tenant/help-requests               session, AI block, Idempotency-Key, rate limit (3/member, 10/org an hour)
 //   POST /api/v1/tenant/help-requests/:id/approve   `support_consent_grant.issue`, fresh step-up (the grant-issue key), AI block, Idempotency-Key
 //   POST /api/v1/tenant/help-requests/:id/close     session, AI block, Idempotency-Key (no step-up: ending help is frictionless)
-// The service behind them is piece 7B's; until it lands the injected stand-in answers 501 NOT_IMPLEMENTED.
+// The service behind them is `help/help-request-service.ts`, which judges the member.
 import { requirePermission, requireSession, requireStepUp } from "@chartwarden/auth";
 import {
   type PreHandler,
@@ -57,6 +57,7 @@ export function registerTenantHelpRequestRoutes(
   app.post(
     "/api/v1/tenant/help-requests",
     {
+      config: { noIdempotencyCapture: true },
       preHandler: [
         SESSION,
         NO_AI,
@@ -74,7 +75,10 @@ export function registerTenantHelpRequestRoutes(
 
   app.post(
     "/api/v1/tenant/help-requests/:id/approve",
-    { preHandler: [ISSUE, STEP_UP_ISSUE, NO_AI, IDEMPOTENT] },
+    {
+      config: { noIdempotencyCapture: true },
+      preHandler: [ISSUE, STEP_UP_ISSUE, NO_AI, IDEMPOTENT],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(HelpRequestParamsSchema, request.params);
@@ -85,7 +89,10 @@ export function registerTenantHelpRequestRoutes(
 
   app.post(
     "/api/v1/tenant/help-requests/:id/close",
-    { preHandler: [SESSION, NO_AI, IDEMPOTENT] },
+    {
+      config: { noIdempotencyCapture: true },
+      preHandler: [SESSION, NO_AI, IDEMPOTENT],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(HelpRequestParamsSchema, request.params);

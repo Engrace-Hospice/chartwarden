@@ -2,6 +2,7 @@
 // compared with the clock at render, and a snooze ended elsewhere shows on the next visit). The server is the authority on whether the
 // conversation can be snoozed: the control follows `snoozable`. A 404 means the feature is off for the tenant (nothing is shown).
 import type { SnoozeDto } from "@chartwarden/types";
+import { useAttemptKey } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useOptionalApiClient } from "./use-promotions-enabled";
 
@@ -24,6 +25,8 @@ interface RawAnswer {
 const NETWORK_FAILURE: SnoozeResult = { ok: false, status: undefined, code: undefined };
 
 export function useChannelSnooze(channelId: string) {
+  // One Idempotency-Key per (channel, chosen length): a retry of the same choice replays, another choice is a new request.
+  const attempt = useAttemptKey();
   const client = useOptionalApiClient();
   // The stored view remembers its channel, so a channel switch reads as loading while a reload of the SAME channel keeps the last answer
   // on screen (the control, its dialog and its live region are not unmounted by a re-read).
@@ -96,23 +99,25 @@ export function useChannelSnooze(channelId: string) {
   );
 
   const snooze = useCallback(
-    async (durationMinutes: number, idempotencyKey?: string): Promise<SnoozeResult> => {
+    async (durationMinutes: number): Promise<SnoozeResult> => {
       if (!client) return NETWORK_FAILURE;
       const started = generation.current;
       try {
-        const answer = await client.PUT("/api/v1/messaging/channels/{id}/snooze", {
-          params: {
-            path: { id: channelId },
-            header: { "Idempotency-Key": idempotencyKey ?? crypto.randomUUID() },
-          },
-          body: { duration_minutes: durationMinutes },
-        });
+        const answer = await attempt.run(`${channelId}|${durationMinutes}`, (idempotencyKey) =>
+          client.PUT("/api/v1/messaging/channels/{id}/snooze", {
+            params: {
+              path: { id: channelId },
+              header: { "Idempotency-Key": idempotencyKey },
+            },
+            body: { duration_minutes: durationMinutes },
+          }),
+        );
         return toResult(answer, answer.data ?? null, started);
       } catch {
         return NETWORK_FAILURE;
       }
     },
-    [client, channelId, toResult],
+    [attempt, client, channelId, toResult],
   );
 
   const clear = useCallback(async (): Promise<SnoozeResult> => {

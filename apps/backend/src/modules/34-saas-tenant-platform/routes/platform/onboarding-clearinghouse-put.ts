@@ -323,6 +323,7 @@ export function createClearinghousePut(ctx: ClearinghousePutDeps) {
           return {
             value: { created: done.created === true, view: done.view },
             resourceId: done.resourceId,
+            dataChanged: done.changedFields?.length !== 0,
             ...(done.changedFields ? { changedFields: done.changedFields } : {}),
           };
         },

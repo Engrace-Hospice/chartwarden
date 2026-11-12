@@ -32,6 +32,11 @@ import { Queue } from "bullmq";
 import type { DbClient } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
 import {
+  type LinkedHelpRequestPort,
+  type SupportGrantOperations,
+  createSupportGrantOperations,
+} from "@chartwarden/saas-tenant-platform";
+import {
   type PlatformBypassAuditor,
   registerPlatformJob,
   withOrgContext,
@@ -57,6 +62,7 @@ import type { InvitationDeliveryPort } from "./invitation-token";
 import { type M34QueueName, M34_QUEUES } from "./jobs/index";
 import { type ProvisionJobPort, createProvisionJobPort } from "./jobs/provision-job-port";
 import type { M34WorkerDeps } from "./jobs/saas-jobs";
+import type { SupportSessionPorts } from "./jobs/support-session-ports";
 import type { TenantPlatformRouteService } from "./routes/platform/service";
 import type { EnqueuePort as PlatformEnqueuePort } from "./routes/platform/service";
 import {
@@ -72,6 +78,7 @@ import type { TenantRouteService } from "./routes/tenant/service";
 import {
   type DrizzleTenantRouteDeps,
   type PresignDownloadPort,
+  type TenantTx,
   createDrizzleTenantBackend,
 } from "./routes/tenant/service-drizzle";
 import {
@@ -94,6 +101,27 @@ export class M34InfraPortUnbound extends DegradedError {
     this.name = "M34InfraPortUnbound";
   }
 }
+
+/**
+ * The fail-closed support-session ports: the fallback for a build that was not handed the real ones (a slice or a test that never
+ * starts a session). Every use inside a transaction throws the named `M34InfraPortUnbound`. Production binds the real ports once
+ * (`createSupportSessionPorts`, `apps/backend/src/index.ts`) and hands them to the platform service, the tenant service and the sweep.
+ */
+const UNBOUND_SUPPORT_SESSION_PORTS: SupportSessionPorts = {
+  now: () => new Date(),
+  emitAlert() {
+    throw new M34InfraPortUnbound(
+      "supportSession.alerts",
+      "bind createSupportSessionPorts at the composition root before emitting an alert",
+    );
+  },
+  bind() {
+    throw new M34InfraPortUnbound(
+      "supportSession.ports",
+      "bind createSupportSessionPorts at the composition root (audit, outbox, alerts and the member lookup)",
+    );
+  },
+};
 
 /** No M34 async capability is production-ready while its required adapters remain deny-stubs. */
 const READY_M34_JOB_CAPABILITIES = new Set<M34QueueName>();
@@ -323,6 +351,11 @@ export function buildDrizzlePlatformService(deps: {
   warn?: DrizzleTenantPlatformDeps["warn"];
   /** M22's BAA document check: a BAA record links only a signed BAA filed for its own tenant, and go-live rests on it. REQUIRED. */
   baaDocuments: DrizzleTenantPlatformDeps["baaDocuments"];
+  /**
+   * The support-session ports (`createSupportSessionPorts`): the audit, outbox, alert and member ports a start, an elevation and a
+   * manual close run on, bound per transaction. Omitted, those three commands fail closed (`M34InfraPortUnbound`), never silently.
+   */
+  supportSessionPorts?: SupportSessionPorts;
 }): ReturnType<typeof createDrizzleTenantPlatformBackend> {
   const outbox: OutboxPublishPort = deps.outbox ?? {
     async publish(_tx, input) {
@@ -405,33 +438,7 @@ export function buildDrizzlePlatformService(deps: {
     lifecycleAlerts: {
       emit: (orgId, input) => (getSeam("AlertEmitter") as AlertEmitter).emit(orgId, input),
     },
-    supportSessionPorts: {
-      audit: {
-        async emitCriticalAudit() {
-          throw new M34InfraPortUnbound(
-            "supportSession.audit",
-            "bind the M4 critical-audit emitter (§7.4)",
-          );
-        },
-      },
-      outbox: {
-        async publish() {
-          throw new M34InfraPortUnbound(
-            "supportSession.outbox",
-            "bind the live transactional-outbox dispatcher",
-          );
-        },
-      },
-      alerts: {
-        async emitAlert() {
-          throw new M34InfraPortUnbound(
-            "supportSession.alerts",
-            "bind the M36 alert router (§7.4 grantor notification)",
-          );
-        },
-      },
-      now: () => new Date(),
-    },
+    supportSessionPorts: deps.supportSessionPorts ?? UNBOUND_SUPPORT_SESSION_PORTS,
     platformJobId: M34_PLATFORM_JOB_ID,
     ...(deps.advanceOnboarding ? { advanceOnboarding: deps.advanceOnboarding } : {}),
     baaDocuments: deps.baaDocuments,
@@ -458,6 +465,13 @@ export function buildDrizzlePlatformService(deps: {
 export function buildDrizzleTenantService(deps: {
   db: DbClient;
   enqueue: TenantEnqueuePort;
+  /**
+   * The support-grant operations (`createSupportGrantOperationsOver(ports)`): a consent grant's issue and its revoke cascade run through
+   * them on the tenant's own transaction. Omitted, issuing and revoking a grant fail closed (`M34InfraPortUnbound`).
+   */
+  supportOps?: SupportGrantOperations;
+  /** The help request linked to a grant, resolved inside the revoke's transaction (piece 7B's; absent: sessions only). */
+  linkedHelpRequestsFor?: (tx: TenantTx) => LinkedHelpRequestPort;
 }): { service: TenantRouteService } {
   const presign: PresignDownloadPort = {
     async presign(organizationId, objectKey, ttlSeconds) {
@@ -479,6 +493,13 @@ export function buildDrizzleTenantService(deps: {
     enqueue: deps.enqueue,
     presign,
     now: () => new Date(),
+    supportOps:
+      deps.supportOps ??
+      createSupportGrantOperations({
+        depsFor: (tx) => UNBOUND_SUPPORT_SESSION_PORTS.bind(tx),
+        now: UNBOUND_SUPPORT_SESSION_PORTS.now,
+      }),
+    ...(deps.linkedHelpRequestsFor ? { linkedHelpRequestsFor: deps.linkedHelpRequestsFor } : {}),
   };
   return createDrizzleTenantBackend(drizzleDeps);
 }

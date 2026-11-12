@@ -5,7 +5,7 @@
 // renders, and a 403 renders nothing either. An answer can be recorded only while the service is published (afterwards the RSVP is closed).
 // The write carries one Idempotency-Key per attempt; the row is replaced by the server's answer. A refusal (409: closed, full) is said in
 // place and the list is read again.
-import { Button, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
+import { Button, LoadingSpinner, StatusPill, useApiClient, useAttemptKey } from "@chartwarden/ui";
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";
@@ -24,7 +24,6 @@ import {
   td,
   th,
   useActionStatus,
-  useIdempotencyKey,
   visuallyHidden,
 } from "./bereavement-ui";
 import { useLoaded } from "./mailing-load";
@@ -159,7 +158,7 @@ function RsvpModal({
   onDone: (row: ContactInvitation) => void;
 }): JSX.Element {
   const client = useApiClient();
-  const keys = useIdempotencyKey();
+  const keys = useAttemptKey();
   const [response, setResponse] = useState<RsvpBody["response"]>(
     RESPONSE_OF[invitation.status] ?? "yes",
   );
@@ -185,7 +184,7 @@ function RsvpModal({
       body,
       keys.keyFor(`rsvp:${invitation.invitationId}:${response}:${guestCount}`),
     );
-    keys.settle(status);
+    keys.settle(status, err);
     setBusy(false);
     if (err || !data) {
       setError(errorMessage(err, "The RSVP could not be recorded."));

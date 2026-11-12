@@ -308,8 +308,41 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
         Type.Literal("expired"),
         Type.Literal("grant_revoked"),
         Type.Literal("manual_close"),
+        Type.Literal("forced_terminated"),
       ]),
       closedAt: isoInstant,
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  // ── consent grants (slice 7): the signal that ChartWarden may start, and that it may not any more ───
+  {
+    eventName: "m34.support_consent_grant.issued",
+    moduleOwner: "m34",
+    description:
+      "A tenant member issued a support consent grant (any scope; the non-PHI `assist` scope is the one an onboarding help request creates). M36 alerts the platform operators that consent now exists; the payload names no grantor and no patient.",
+    payloadSchema: Type.Object({
+      grantId: id,
+      tenantAccountId: id,
+      scope: id,
+      expiresAt: isoInstant,
+      helpRequestId: nullableId,
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m34.support_consent_grant.revoked",
+    moduleOwner: "m34",
+    description:
+      "A support consent grant was revoked (by the tenant, a platform operator resolving a help request, or the system); every session open on it was closed in the same transaction (`closedSessionCount`) and a later start on it is refused.",
+    payloadSchema: Type.Object({
+      grantId: id,
+      tenantAccountId: id,
+      revokedAt: isoInstant,
+      closedSessionCount: Type.Integer({ minimum: 0 }),
     }),
     declaredConsumers: [],
     seamConsumers: ["m36"],
@@ -386,6 +419,24 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
         Type.Literal("expiring_7d"),
         Type.Literal("expired"),
       ]),
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  // ── help requests (slice 7, piece 7B) ──────────────────────────────────────────────────────────────
+  {
+    eventName: "m34.help_request.requested",
+    moduleOwner: "m34",
+    description:
+      "A member of a tenant filed a help request (`POST /tenant/help-requests`); after commit the M34 producer calls M36's AlertEmitter seam for the `tenant.help_requested` operator alert. Ids and the step key only: the member's message never enters this event or alert payload.",
+    payloadSchema: Type.Object({
+      helpRequestId: id,
+      tenantAccountId: id,
+      orgId: id,
+      // The onboarding step the question is about (an `onboarding_task_template` key), or null for a general one.
+      stepKey: nullableId,
+      requestedAt: isoInstant,
     }),
     declaredConsumers: [],
     seamConsumers: ["m36"],

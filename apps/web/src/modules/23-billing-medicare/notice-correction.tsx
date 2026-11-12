@@ -5,6 +5,7 @@ import {
   TextAreaField,
   TextField,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — "File corrected NOE / NOTR" on a notice Medicare rejected (CMS Pub.
 // 100-04 ch. 11 §20.1.1 / §20.1.2; M23 §2.2 "corrected NOE is its own row"): the rejection (stage + reason codes)
@@ -24,7 +25,6 @@ import {
   correctionAvailability,
   validateCorrectionDraft,
 } from "./notice-correction-model";
-import { useAttemptKey } from "./use-attempt-key";
 
 /** What the correction surface needs from the NOE / NOTR config. */
 export interface NoticeCorrectionConfig {

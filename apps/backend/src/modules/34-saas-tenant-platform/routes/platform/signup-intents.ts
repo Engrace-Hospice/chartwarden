@@ -15,6 +15,7 @@ import { requireAbac, requirePermission } from "@chartwarden/auth";
 import { type PreHandler, writeActorOf } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { screenFreeText, screenNames } from "../free-text";
 import {
   IntentParamsSchema,
   QualifyIntentRequest,
@@ -61,6 +62,7 @@ export function registerSignupIntentRoutes(
     async (request, reply) => {
       const { membershipId } = writeActorOf(request);
       const body = parse(QualifyIntentRequest, request.body);
+      screenNames({ firstAdminFullName: body.firstAdminFullName });
       const res = await service.qualifyIntent(intentIdOf(request), membershipId, {
         planLabel: body.planLabel,
         firstAdminFullName: body.firstAdminFullName,
@@ -79,6 +81,7 @@ export function registerSignupIntentRoutes(
       // moment that plumbing is wired up it must receive a membership id, not the raw user id.
       const { membershipId } = writeActorOf(request);
       const body = parse(RejectIntentRequest, request.body);
+      screenFreeText({ rejectionReason: body.rejectionReason });
       return service.rejectIntent(intentIdOf(request), membershipId, {
         rejectionReason: body.rejectionReason,
       });

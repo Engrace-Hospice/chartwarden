@@ -182,8 +182,8 @@ const ORG_ADMIN_PERMISSIONS = [
  */
 function buildTestAbacResolver(): TenantPlatformAbacResolver {
   return {
-    async hasActiveConsentedSupportSession({ tenantAccountId }) {
-      return tenantAccountId === TENANT_ACME_ID;
+    async hasActiveConsentedSupportSession({ supportSessionId, actorMembershipId }) {
+      return supportSessionId.length > 0 && actorMembershipId === MEMBER_PLATFORM_OPS;
     },
     async loadConsentGrant(_organizationId, grantId) {
       if (grantId !== GRANT_ID) return null;
@@ -1056,6 +1056,60 @@ describe("M34-saas-tenant-platform-inject — onboarding-template catalog", () =
     await app.close();
   });
 
+  // The title and description go to EVERY tenant's wizard: they pass the same identifier screen as the reason, before any write.
+  it.each([
+    ["title", { title: "Training for SSN 000-12-3456" }, "title"],
+    [
+      "description",
+      { title: "Staff training", description: "Customer MBI 1EG4TE5MK73" },
+      "description",
+    ],
+  ])(
+    "refuses a %s that holds a patient identifier (422 EVIDENCE_LOOKS_LIKE_PHI) and writes nothing",
+    async (_field, text, field) => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/platform/onboarding-templates",
+        headers: TEMPLATE_WRITE_HEADERS(),
+        payload: { key: "screened_step", canonicalOrder: 5, reason: TEMPLATE_REASON, ...text },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+      expect(res.json().error.details).toEqual([expect.objectContaining({ field })]);
+      // the value is never echoed back
+      expect(res.body).not.toContain("000-12-3456");
+      expect(res.body).not.toContain("1EG4TE5MK73");
+      const list = await app.inject({
+        method: "GET",
+        url: "/api/v1/platform/onboarding-templates",
+        headers: PLATFORM_OPS,
+      });
+      expect((list.json().items as { key: string }[]).some((t) => t.key === "screened_step")).toBe(
+        false,
+      );
+      await app.close();
+    },
+  );
+
+  it("lets a title and a description with no identifier through", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: TEMPLATE_WRITE_HEADERS(),
+      payload: {
+        key: "screened_ok",
+        title: "Staff training (ticket CHG-6001)",
+        description: "Walk the first admin through the staff roster import.",
+        canonicalOrder: 6,
+        reason: TEMPLATE_REASON,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    await app.close();
+  });
+
   it("refuses an AI principal and a caller with no fresh step-up", async () => {
     const { app } = makeServer();
     const payload = {
@@ -1090,7 +1144,7 @@ describe("M34-saas-tenant-platform-inject — tenant-consented support sessions 
     const start = await app.inject({
       method: "POST",
       url: "/api/v1/platform/support-sessions",
-      headers: PLATFORM_OPS_STEPUP,
+      headers: { ...PLATFORM_OPS_STEPUP, "idempotency-key": "support-session-start" },
       payload: { supportConsentGrantId: GRANT_ID },
     });
     expect(start.statusCode).toBe(201);
@@ -1099,7 +1153,7 @@ describe("M34-saas-tenant-platform-inject — tenant-consented support sessions 
     const elevate = await app.inject({
       method: "POST",
       url: `/api/v1/platform/support-sessions/${sessionId}/elevate?tenantAccountId=${TENANT_ACME_ID}`,
-      headers: PLATFORM_OPS_STEPUP,
+      headers: { ...PLATFORM_OPS_STEPUP, "idempotency-key": "support-session-elevate" },
       payload: {},
     });
     expect(elevate.statusCode).toBe(201);
@@ -1124,7 +1178,7 @@ describe("M34-saas-tenant-platform-inject — tenant-consented support sessions 
     const close = await app.inject({
       method: "POST",
       url: `/api/v1/platform/support-sessions/${sessionId}/close`,
-      headers: PLATFORM_OPS,
+      headers: { ...PLATFORM_OPS, "idempotency-key": "support-session-close" },
       payload: {},
     });
     expect(close.statusCode).toBe(200);

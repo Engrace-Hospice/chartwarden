@@ -129,9 +129,11 @@ export function useMacEditor(args: {
       (key) =>
         client.POST(LIST, {
           body,
-          headers: {
-            "Idempotency-Key": key,
-            ...(pinned !== null ? { "If-Match": String(pinned) } : {}),
+          params: {
+            header: {
+              "Idempotency-Key": key,
+              ...(pinned !== null ? { "If-Match": String(pinned) } : {}),
+            },
           },
         }),
       async () => {

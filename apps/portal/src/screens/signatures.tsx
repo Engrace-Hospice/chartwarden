@@ -6,10 +6,12 @@ import {
   Button,
   Glyph,
   Modal,
+  NO_ANSWER,
   StatusPill,
   TextAreaField,
   TextField,
   useApiClient,
+  useAttemptKey,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, JSX } from "react";
@@ -71,8 +73,6 @@ const REFUSALS: Readonly<Record<string, string>> = {
   UPLOAD_NOT_USABLE: "That file cannot be used as the signed copy. Please upload it again.",
 };
 
-const newKey = (): string =>
-  globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const errorCode = (res: { error?: unknown }): string | null =>
   (res.error as { error?: { code?: string } } | undefined)?.error?.code ?? null;
 const statusOf = (res: unknown): number | undefined =>
@@ -102,11 +102,6 @@ const CODE_FIELD_ID = "signatures-code";
 /** A 4xx is a refusal of this attempt (the wording and upload state follow it). */
 const isDefinitive = (status: number | undefined): boolean =>
   status !== undefined && status >= 400 && status < 500;
-/**
- * Any HTTP answer ends the attempt's key: the server records every response (5xx included) under its Idempotency-Key and replays it, so
- * a retry under the same key would replay the failure. Only a thrown network error, which may still have landed, keeps the key.
- */
-const isAnswered = (status: number | undefined): boolean => status !== undefined;
 
 interface DialogProps {
   requestId: string;
@@ -136,8 +131,10 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
   const [fieldError, setFieldError] = useState<{ field: SignField; text: string } | null>(null);
   /** Where focus goes after an attempt ends; a fresh object each time so the same target is focused again. */
   const [focusRequest, setFocusRequest] = useState<{ id: string } | null>(null);
-  const attemptKey = useRef<string | null>(null);
-  const attachKey = useRef<string | null>(null);
+  // The signing and the signed-copy attach each hold one key per attempt (the shared useAttemptKey): the server records every answer the app
+  // gives (5xx included) under its Idempotency-Key and replays it, so any such answer renews the key; a thrown network error (which may
+  // still have landed), a gateway page and the in-flight 409 keep it.
+  const attempt = useAttemptKey();
   const resumeUpload = useRef<string | null>(null);
   /** Mirrors `resumeUpload` for the button label: a ref read during render only updates by accident. */
   const [resumable, setResumable] = useState(false);
@@ -159,9 +156,8 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
   useEffect(() => {
     if (focusRequest) document.getElementById(focusRequest.id)?.focus();
   }, [focusRequest]);
-  /** Any change to what is signed starts a new attempt: the same key with a different body would be refused or replayed. */
+  /** Any change to what is signed starts a new attempt (its fingerprint changes): the same key with a different body would be refused or replayed. */
   const edited = (): void => {
-    attemptKey.current = null;
     setFieldError(null);
   };
 
@@ -194,7 +190,13 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
     setMessage(null);
     setFieldError(null);
     setFocusRequest(null);
-    attemptKey.current ??= newKey();
+    const signIntent = JSON.stringify([
+      requestId,
+      name.trim(),
+      relationship.trim(),
+      unableReason.trim(),
+    ]);
+    const signKey = attempt.keyFor(signIntent);
     try {
       const step = await client.POST("/api/v1/portal/sessions/step-up", {
         body: { totpCode: code.trim() },
@@ -209,7 +211,7 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
       }
       const res = await client.POST("/api/v1/portal/signature-requests/{requestId}/sign", {
         params: { path: { requestId } },
-        headers: { "Idempotency-Key": attemptKey.current },
+        headers: { "Idempotency-Key": signKey },
         body: {
           signedTypedName: name.trim(),
           ...(relationship.trim() ? { signerRelationshipText: relationship.trim() } : {}),
@@ -217,10 +219,13 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
           attested: true,
         },
       } as never);
+      const signStatus = statusOf(res);
+      if (signStatus !== undefined) {
+        attempt.settle(signStatus, "error" in res ? res.error : undefined, signIntent);
+      }
       if (!live.current) return;
       if ("error" in res && res.error) {
         const refusedCode = errorCode(res);
-        if (isAnswered(statusOf(res))) attemptKey.current = null;
         const field = refusedCode ? FIELD_OF_CODE[refusedCode] : undefined;
         if (field) {
           if (field !== "name") setBehalfOpen(true);
@@ -231,9 +236,9 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
         setMessage(refusalMessage(res, statusOf(res)));
         return;
       }
-      attemptKey.current = null;
       onDone("Thank you. Your signature was recorded.");
     } catch {
+      attempt.settle(NO_ANSWER, undefined, signIntent);
       if (live.current) setMessage("We could not complete that right now. Please try again.");
     } finally {
       if (live.current) {
@@ -249,7 +254,6 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
     event.target.value = "";
     setResume(null);
     completedUpload.current = null;
-    attachKey.current = null;
     setMessage(null);
     if (!selected) return;
     if (
@@ -265,16 +269,25 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
   };
 
   const attach = async (uploadId: string): Promise<boolean> => {
-    attachKey.current ??= newKey();
+    const attachIntent = `attach|${requestId}|${uploadId}`;
+    const attachKey = attempt.keyFor(attachIntent);
     setUploadStep("Attaching your copy…");
-    const res = await client.POST("/api/v1/portal/signature-requests/{requestId}/signed-copy", {
-      params: { path: { requestId } },
-      headers: { "Idempotency-Key": attachKey.current },
-      body: { uploadId },
-    } as never);
+    const res = await client
+      .POST("/api/v1/portal/signature-requests/{requestId}/signed-copy", {
+        params: { path: { requestId } },
+        headers: { "Idempotency-Key": attachKey },
+        body: { uploadId },
+      } as never)
+      .catch((error: unknown) => {
+        attempt.settle(NO_ANSWER, undefined, attachIntent);
+        throw error;
+      });
+    const attachStatus = statusOf(res);
+    if (attachStatus !== undefined) {
+      attempt.settle(attachStatus, "error" in res ? res.error : undefined, attachIntent);
+    }
     if (!live.current) return false;
     if ("error" in res && res.error) {
-      if (isAnswered(statusOf(res))) attachKey.current = null;
       if (isDefinitive(statusOf(res))) {
         setResume(null);
         completedUpload.current = null;
@@ -282,7 +295,6 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
       setMessage(refusalMessage(res, statusOf(res)));
       return false;
     }
-    attachKey.current = null;
     setResume(null);
     completedUpload.current = null;
     return true;

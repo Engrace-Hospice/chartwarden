@@ -166,6 +166,11 @@ export const AuthContextResponseSchema = Type.Object({
   orgWidePatientScope: Type.Boolean(),
   isAdmin: Type.Boolean(),
   permissions: Type.Array(Type.String()),
+  /**
+   * `onboarding`: the organization is not live, so the session is confined to the onboarding routes (anything else is 403
+   * ORGANIZATION_ONBOARDING). `live`: no such confinement; also what a session with no organization yet reports.
+   */
+  organizationStage: Type.Union([Type.Literal("onboarding"), Type.Literal("live")]),
 });
 
 /** GET /api/v1/auth/csrf — authenticated native double-submit bootstrap. */

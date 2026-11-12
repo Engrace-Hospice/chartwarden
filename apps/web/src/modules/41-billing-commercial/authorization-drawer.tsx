@@ -7,8 +7,10 @@ import {
   Button,
   Glyph,
   InlineAlert,
+  NO_ANSWER,
   StatusPill,
   useApiClient,
+  useAttemptKey,
   useDrawerA11y,
 } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
@@ -165,8 +167,9 @@ function StatusActions({
   const [busy, setBusy] = useState(false);
   const controls = useRef<HTMLDivElement>(null);
   const lastOpened = useRef<NextStatus | null>(null);
-  // One key per confirm attempt: dropped when the confirm opens/closes and on any HTTP response; kept only after a thrown/no-response failure.
-  const attemptKey = useRef<string | null>(null);
+  // One key per confirm attempt, held by the shared useAttemptKey: dropped when the confirm opens/closes and on any answer the app gave;
+  // kept across a thrown fetch, a gateway page and the in-flight 409.
+  const attempt = useAttemptKey();
   const inFlight = useRef(false);
 
   // Deny / Void swap for Confirm / Keep: move focus into the pair, and back to the button that opened it when it closes.
@@ -181,7 +184,7 @@ function StatusActions({
 
   const open = (status: NextStatus): void => {
     lastOpened.current = status;
-    attemptKey.current = null;
+    attempt.clear();
     setError(null);
     setConfirming(status);
   };
@@ -191,26 +194,25 @@ function StatusActions({
     inFlight.current = true;
     setBusy(true);
     setError(null);
-    attemptKey.current ??= crypto.randomUUID();
+    const key = attempt.keyFor(`${authorizationId}:${status}`);
     try {
       const { error: err, response } = await client.POST(
         "/api/v1/billing/commercial/authorizations/{id}/status",
         {
           params: {
             path: { id: authorizationId },
-            header: { "Idempotency-Key": attemptKey.current },
+            header: { "Idempotency-Key": key },
           },
           body: { status },
         },
       );
+      attempt.settle(response.status, err);
       if (!err) {
-        attemptKey.current = null;
         onChanged(status);
         return;
       }
-      // The server caches EVERY answer (4xx/5xx too) under the key for 24h and replays it for the same body, so a key survives only
-      // when no HTTP response arrived (the catch below); any response, 503/500/403/404/422 included, retires it.
-      attemptKey.current = null;
+      // The server caches EVERY answer (4xx/5xx too) under the key for 24h and replays it for the same body, so `settle` above retires
+      // the key on any answer the app gave; only a throw (below), a gateway page and the in-flight 409 keep it.
       const code = (err as { error?: { code?: string } }).error?.code;
       const redirect = authFailureRedirect(
         response.status,
@@ -237,6 +239,7 @@ function StatusActions({
             : "That did not go through. Try again.",
       );
     } catch {
+      attempt.settle(NO_ANSWER);
       setError("That did not go through. Check your connection and try again.");
     } finally {
       inFlight.current = false;
@@ -263,7 +266,7 @@ function StatusActions({
             tone="tertiary"
             disabled={busy}
             onClick={() => {
-              attemptKey.current = null;
+              attempt.clear();
               setConfirming(null);
             }}
           >

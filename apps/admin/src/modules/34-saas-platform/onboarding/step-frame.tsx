@@ -6,7 +6,6 @@ import {
   InlineAlert,
   type OpsFailure,
   REASON_RULES,
-  ReasonDialog,
   StatusPill,
   type StatusTone,
   stashStepUpMemoryDraft,
@@ -24,7 +23,7 @@ import { RecordSaveDialog } from "./record-save-dialog";
 import { useEditorFocus } from "./use-editor-focus";
 import { useOpsWrite } from "./use-ops-write";
 import { viewHasMoved } from "./wizard-errors";
-import { OWNER_LABEL, isSystemSkip } from "./wizard-model";
+import { OWNER_LABEL, SKIPPED_BY_LABEL, isSystemSkip } from "./wizard-model";
 
 const STEP_TONE: Record<string, StatusTone> = {
   done: "success",
@@ -55,12 +54,15 @@ function EvidenceCard({ ctx }: { ctx: PanelContext }): JSX.Element | null {
   const me = useSession()?.membershipId;
   const { step } = ctx;
   const by = settledBy(ctx, me);
-  if (!step.evidence && !step.skipRationale && !by) return null;
+  const skippedBy =
+    step.status === "skipped" && step.skippedBy ? SKIPPED_BY_LABEL[step.skippedBy] : null;
+  if (!step.evidence && !step.skipRationale && !by && !skippedBy) return null;
   return (
     <section className="wx-drawer-card" aria-label="How this step was settled">
       <div className="wx-drawer-card-head">
         <h3>{step.status === "skipped" ? "Skipped" : "Settled"}</h3>
       </div>
+      {skippedBy ? <p className="wx-row-sub">{skippedBy}</p> : null}
       {isSystemSkip(step) ? (
         <p className="wx-row-sub">
           Skipped automatically because this tenant bills outside ChartWarden.
