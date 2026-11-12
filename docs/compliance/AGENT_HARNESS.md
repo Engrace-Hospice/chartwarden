@@ -514,6 +514,13 @@ still denied (`harness-hidden-path-budget.test.ts`).
   `man.*.cmd|path`, `guitool.*.cmd`, `sendemail.smtpServer|toCmd|ccCmd`, `instaweb.httpd|browser`, `imap.tunnel`,
   `gpg.ssh.defaultKeyCommand`, `tar.*.command` and `trailer.*.command`; each is in the git 2.53 documentation, and none was
   run (the chain from the key to a command is the documentation's).
+- *The live-suite ask reaches a runner through indirection* (`live-suite.ts`, `harness-live-suite-indirection.test.ts`): `node
+  node_modules/.bin/vitest run x.live.test.ts`, `node`/`bun node_modules/vitest/vitest.mjs …`, the package's own `test` script
+  (`bun run test -- x.live.test.ts`, `npm test`, `npm run test`, `pnpm test`, `yarn test`) and a quoted glob
+  (`"apps/backend/__tests__/*.live.*"`) ask like `vitest run x.live.test.ts`; `bunx biome|tsc|prettier|eslint …
+  x.live.test.ts` and `rg`/`grep`/`cat`/`sed`/`git`/`wc` over it still allow (the corpus shows no live-suite transition against
+  the wave-5 stack). There is no Makefile, so `make live` names nothing. **Not decided by text:** `xargs bunx vitest run < list`
+  (the files come from standard input), and a runner started by a script file the agent wrote.
 - *The pinned Codex command ignores perl's own variables* (`PERL5OPT`, `PERL5LIB`, `PERLLIB`, `PERL5DB`): see "The hook command is
   pinned byte for byte" above and `harness-codex-perl-env.test.ts`.
 
