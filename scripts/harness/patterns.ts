@@ -30,6 +30,7 @@ import {
   GIT_TEMPLATE_OPTION_REASON,
   assignmentWords,
   envCommandStrings,
+  envWriteTargets,
   gitCommandStrings,
   gitEnvVerdict,
   gitSubcommandConfigs,
@@ -537,7 +538,8 @@ function words(seg: string): string[] {
   return out;
 }
 
-const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+// `NAME=v` and `NAME+=v` both assign for the one command that follows.
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
 // Words that run the NEXT word as the command. Each takes its own value-carrying flags (`sudo -u root`,
 // `nice -n 5`, `xargs -I{}`), which must not be read as the program. Shell keywords (`then`, `do`) are in
 // the list because `if x; then rm …; fi` splits into a `then rm …` segment.
@@ -1063,6 +1065,23 @@ function handedScriptVerdicts(
   return out;
 }
 
+const ENV_WRITE_REASON =
+  "A git trace or redirect variable (GIT_TRACE*, GIT_REDIRECT_*, GIT_INDEX_FILE) makes git append to, or rewrite, the file it names, so git can corrupt a file the guard protects: a trace line in the hook's entry file makes it exit 1, which Claude Code reads as allow.";
+
+/** Each file a git trace variable in `words` names, judged like a redirect target onto the harness or a startup file. */
+function envWriteVerdicts(
+  words: readonly string[],
+  here: readonly Cwd[],
+  ctx: BashContext,
+): BashVerdict[] {
+  const out: BashVerdict[] = [];
+  for (const target of envWriteTargets(words)) {
+    const hit = writesProtectedPath({ ...NO_COMMAND, outs: [target] }, here, ctx);
+    if (hit) out.push(ask(`${ENV_WRITE_REASON} ${writeHitReason(hit)}`));
+  }
+  return out;
+}
+
 /**
  * Command lines git and the variables it honours hand to a shell (`git rebase -x '…'`, `git bisect run …`,
  * `EDITOR='…' git commit`), each judged as a command line; and what the git-related variables set, or a global
@@ -1078,6 +1097,7 @@ function gitExecVerdicts(
   const out: BashVerdict[] = [];
   const env = gitEnvVerdict(words);
   if (env) out.push(env.decision === "deny" ? deny(env.reason) : ask(env.reason));
+  out.push(...envWriteVerdicts(words, here, ctx));
   for (const text of envCommandStrings(words)) out.push(judge(text, ctx, depth + 1, here));
   if (parsed.prog !== "git") return out;
   const git = gitInvocation(parsed.args);
@@ -1883,6 +1903,18 @@ interface WriteHit {
   readonly path: string | null;
 }
 
+/** A command that is nothing but the files it writes: what a variable assignment is judged as. */
+const NO_COMMAND: Parsed = {
+  prog: "",
+  word: "",
+  args: [],
+  assigns: [],
+  outs: [],
+  ins: [],
+  docs: [],
+  strings: [],
+};
+
 /** A protected path quoted inside an inline-code argument, e.g. `open('.claude/settings.json','w')`. */
 function findProtectedIn(arg: string, dirs: readonly Cwd[], ctx: BashContext): string | null {
   for (const m of arg.matchAll(/['"]([^'"\s]+)['"]/g)) {
@@ -1968,6 +2000,12 @@ const protectedReason = (path: string): string =>
 const WHOLE_TREE: WriteTarget = { raw: "", anc: true, merge: true };
 const ROOT_WIDE_REASON =
   "This recursive delete, permission change or tree merge takes in the whole repo root, and with it the agent harness and the compliance record. A human decides.";
+const writeHitReason = (hit: WriteHit): string =>
+  hit.path === null
+    ? UNKNOWN_DIR_REASON
+    : hit.path === ""
+      ? ROOT_WIDE_REASON
+      : protectedReason(hit.path);
 
 /** Pathspecs a `git checkout|restore|rm|mv` writes, by the git rules for each (`--`, `--source X`, `-b`). */
 function gitPathspecs(sub: string, rest: readonly string[], ctx: BashContext, dir: Cwd): string[] {
@@ -2635,15 +2673,7 @@ function classifySegment(
     );
   }
   const protectedHit = writesProtectedPath(parsed, here, ctx);
-  if (protectedHit) {
-    return ask(
-      protectedHit.path === null
-        ? UNKNOWN_DIR_REASON
-        : protectedHit.path === ""
-          ? ROOT_WIDE_REASON
-          : protectedReason(protectedHit.path),
-    );
-  }
+  if (protectedHit) return ask(writeHitReason(protectedHit));
   if (runsInlineCode(prog, args)) {
     const code = scriptTextVerdict(inlineScriptText(prog, args));
     if (code) return code;

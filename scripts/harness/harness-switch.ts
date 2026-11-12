@@ -17,12 +17,11 @@
  *
  * Pure: the caller hands over the parsed commands, so this module imports nothing from the classifier.
  */
+import { ASSIGN, shellWords } from "./shell-assignments";
 
 /** The names of the variables the rule guards. `HOME` moves what `~` and `$HOME` mean. */
 const NAMES =
   "CW_STOP_GATE|CW_AGENT_LEDGER|CW_HARNESS_FAIL_OPEN|CW_HARNESS_ROOT_FOR_TESTS|ECC_DISABLED_HOOKS|ECC_GATEGUARD|CODEX_HOME|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR|HOME";
-/** `=`, `+=` and `:=` (the last two only matter to the shell, but `${NAME:=v}` really assigns). */
-const ASSIGN = "[:+]?=";
 /** A word that assigns one: `NAME=value`. */
 const SWITCH_WORD = new RegExp(`^(?:${NAMES})${ASSIGN}`);
 /** A word that IS the name, which a command like `read` takes as the variable to set. */
@@ -80,36 +79,6 @@ export interface SwitchPart {
 
 /** git's subcommand and the arguments after it; the caller owns git's global-option grammar. */
 export type GitSplitter = (args: readonly string[]) => { sub: string; rest: readonly string[] };
-
-const MAX_VARIANTS = 64;
-
-/** `a{b,c}d` as `abd` and `acd`: one flat pass per group, bounded. Past the bound the word is kept whole. */
-function braceVariants(word: string): string[] {
-  let out = [word];
-  for (let round = 0; round < 8 && out.length < MAX_VARIANTS; round++) {
-    const next: string[] = [];
-    let changed = false;
-    for (const w of out) {
-      const open = w.indexOf("{");
-      const close = open < 0 ? -1 : w.indexOf("}", open);
-      const body = close < 0 ? "" : w.slice(open + 1, close);
-      if (close < 0 || !body.includes(",") || body.includes("{")) {
-        next.push(w);
-        continue;
-      }
-      changed = true;
-      for (const alt of body.split(","))
-        next.push(`${w.slice(0, open)}${alt}${w.slice(close + 1)}`);
-    }
-    out = next.slice(0, MAX_VARIANTS);
-    if (!changed) break;
-  }
-  return out;
-}
-
-/** A word the way the shell passes it on: backslashes removed, braces expanded. */
-const shellWords = (words: readonly string[]): string[] =>
-  words.flatMap((w) => braceVariants(w.replace(/\\(.)/gs, "$1")));
 
 /** The script of a `sed` command line: every `-e`/`--expression` value, else the first operand (the rest are files). */
 function sedScripts(args: readonly string[]): string[] {
