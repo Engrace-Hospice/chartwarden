@@ -10,6 +10,7 @@
 **Execution stance:** Local-first development (MacBook Pro + Docker Compose), Proxmox VMs for initial production deployment. All design decisions favor cloud-portability — every component is containerized, every storage interface is portable (S3-compatible, standard PostgreSQL, standard Redis protocol). Cloud migration later is a deployment-target change, not an architecture change.
 
 ## Changelog
+- **2026-11-11 (reconciliation, no version bump)** — §1.4 added: Bun/Rust API ownership matrix, checked by `arch:architecture-sync`. §7.3 notes the M41 (Billing — Commercial, [ADR-0100](../adr/ADR-0100-commercial-billing-module-41.md)) queues.
 - **v0.3** — §2.2 updated: ml-worker VM hardware specs for local AI model serving (CPU minimum / GPU recommended / production-scale GPU). §4.5 updated: MinIO `platform/ml-models/` layout for local model artifact storage. §4.8 new: Local AI Inference Data Flow.
 - **v0.2** — §4.6 added: Platform-shared vs Tenant-scoped data model for Module 40 (Master Data Management). §4.7 added: Feature flag evaluation data flow and cache invalidation.
 - **v0.1** — Initial system design
@@ -35,6 +36,7 @@ flowchart TB
 
   subgraph app["Application tier"]
     backend["Backend (apps/backend)<br/>Fastify 5 — REST + Socket.IO<br/>(N instances, stateless)"]
+    rust["Rust API (cw-server)<br/>CW-RUST-M02 — merged off, §1.4"]
   end
 
   subgraph workers["Worker tier (Python sidecars)"]
@@ -63,7 +65,7 @@ flowchart TB
     sentry["Sentry self-hosted"]
   end
 
-  subgraph external["External services (over BAA)"]
+  subgraph external["External services (BAA status per INTEGRATIONS §5)"]
     dosespot["DoseSpot"]
     anthropic["Anthropic API"]
     twilio["Twilio (SMS/Voice)"]
@@ -88,7 +90,15 @@ flowchart TB
   workers --> external
   backend & workers --> otel --> grafana
   backend & workers --> sentry
+  backend -.->|"Unix socket + signed actor assertion"| rust
+  rust -.-> pg
 ```
+
+> **Target topology, not a deployment inventory (2026-11-11).** Not every node above is built: the Python
+> sidecars in the worker tier other than `docling-worker` are marked TARGET — NOT BUILT in ARCHITECTURE §12
+> (`docling-worker` is built: `services/docling-worker`, a compose service). The dashed Rust API is drawn
+> because its bridge is merged here, off by default (§1.4); compose pins no Rust image. Deployed services
+> are defined by `deploy/production/compose.yml`.
 
 ### 1.2 Trust Boundaries
 
@@ -376,6 +386,31 @@ sequenceDiagram
     AE->>DB: UPDATE alert status=delivered, channels=<list>
   end
 ```
+
+### 1.4 Bun/Rust API ownership matrix (CW-RUST-M02)
+
+The backend is a Bun/TypeScript service (`apps/backend`). A Rust API (`cw-server`) is being introduced beside it. Its source, and the image build and signing, live in the separate `chartwarden-rust` repository; this repository holds only the **bridge** that can forward to it (`apps/backend/src/bootstrap/rust-bridge/`) and the deployment wiring (`deploy/production/compose.yml`, `deploy.sh`). This section is the versioned record of which endpoints each runtime serves. `arch:architecture-sync` checks it against the bridge's `RUST_BRIDGE_ROUTES` and the production compose file: a change to the route set, the production mode or the parity sweep in either place fails the gate until this section is updated. The `tested` status is an attestation (the named suites exist) that the gate does not verify.
+
+**Default owner: Bun.** Every route not in the table below is served by Bun, always. nginx sends all API traffic to Bun (`127.0.0.1:3000`; the web and storage vhosts are separate); Rust publishes no port and sits on the internal `rust-db` network with Postgres only (no default network, no egress, read-only filesystem, non-root user), reached by Bun over a Unix socket.
+
+| Route key | Request | Status | Production mode |
+|---|---|---|---|
+| `me-permissions` | GET /api/v1/me/permissions | tested | off |
+
+**Status** (one word per route, so a reader cannot mistake "built" for "live"):
+
+- `planned` — named in the Rust spec; no bridge code (the only status that may name a route absent from `RUST_BRIDGE_ROUTES`).
+- `implemented` — the route is in `RUST_BRIDGE_ROUTES` and the forwarder handles it.
+- `tested` — implemented, with unit tests (`m02-rust-bridge-route.test.ts`, the forwarder and parity-sweep suites) and the live DB-cancel suite (`test:rust-bridge-db-cancel:live`).
+- `production-active` — named in `RUST_ROUTES` in the production compose file, in `shadow` or `serve` mode.
+
+**Production mode** is `off` (not in `RUST_ROUTES`, the shipped state: `RUST_ROUTES: ""` and `RUST_PARITY_SWEEP: "off"` on `api`), `shadow` or `serve`. In `shadow`, Bun answers exactly as before and the same request is sent to Rust in the background (bounded in flight, aborted at 300 ms); a difference is re-resolved on Bun without cache and counted as `explained:stale-cache` or `unexplained`. In `serve`, Rust answers only when it returns a valid 200; any other outcome is answered by Bun and counted as a fallback, and a run of consecutive failures opens a circuit so Bun answers meanwhile. A Rust error never reaches a client.
+
+Parity sweep in production: `off`. (The daily sweep calls Rust even with no routes bridged, so it is part of the shipped state, and the gate checks it against `RUST_PARITY_SWEEP`.)
+
+**Trust boundary.** The bridge runs inside the route handler, after authentication, so Rust only sees requests Bun has already authenticated. Bun signs an Ed25519 actor assertion (`X-CW-Actor-Assertion`) per call; Rust verifies it against `CW_ACTOR_PUBLIC_KEYS` (that verification is enforced in `chartwarden-rust`, not provable from this repository). The bridge reads the signing key from `CW_ACTOR_SIGNING_KEY_FILE`, and production refuses the inline `CW_ACTOR_SIGNING_KEY`; provisioning the key as a compose secret on `api` only is a P2 prerequisite that is **not yet in `compose.yml`** (control `CW-AC-07`, open gap). Bun deletes the assertion header from inbound requests and nginx blanks it, so a client can never supply one. The `rust` compose service is behind a profile and defaults to an all-zero image digest that cannot be pulled; `deploy.sh` records it only as a digest verified with cosign against the `chartwarden-rust` image workflow (never under `CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED`) and never pulls or starts the service.
+
+Adding a bridged route is a reviewed change in four places: `RUST_BRIDGE_ROUTES`, this table, the `RUST_ROUTES` literal in `deploy/production/compose.yml` (when it goes live), and the Rust spec in `chartwarden-rust`.
 
 ---
 
@@ -1195,6 +1230,8 @@ Room membership computed at connection time from current memberships + active sh
 | `data_export.subject_access` | low | 2 | exponential | 2 |
 
 Each queue has a dead-letter queue (DLQ). DLQ entries surfaced in admin console for manual triage.
+
+Module 41 (Billing — Commercial) owns three further queues, declared in `apps/backend/src/modules/41-billing-commercial/jobs/queues.ts`: `m41.submission-drain`, `m41.ack-pull` and `m41.quarantine-prune`. It submits only through the shared `ClearinghouseTransport` ([ADR-0053](../adr/ADR-0053-clearinghouse-transport-port.md)), so it adds no vendor connection of its own. `arch:queue-names` keeps every queue name owned by exactly one module.
 
 ### 7.4 Job Idempotency
 

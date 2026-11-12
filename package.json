@@ -491,6 +491,7 @@
     "arch:ai-governance": "bun run scripts/check-ai-governance.ts",
     "arch:ai-messaging-readonly": "bun run scripts/check-ai-messaging-readonly.ts",
     "arch:architecture-docs": "bun run scripts/check-architecture-docs.ts",
+    "arch:architecture-sync": "bun run scripts/check-architecture-sync.ts",
     "arch:module-docs": "bun run scripts/check-module-docs.ts",
     "arch:adr-docs": "bun run scripts/check-adr-docs.ts",
     "arch:parity": "bun run scripts/scaffold-from-manifest.ts --check",

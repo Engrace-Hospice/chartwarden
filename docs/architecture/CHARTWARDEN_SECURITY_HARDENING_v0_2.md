@@ -9,6 +9,8 @@
 
 **Document Control — Changes from v0.1:** Session idle timeout reconciled to **15 minutes for all clinical sessions** (was inconsistently stated as "30 min web / 15 mobile" in §5.1.4 and "8-hour idle" in §3.2.3 / §10). Absolute timeout remains 8-hour work-session / 24-hour maximum; UI screen-lock is a separate 5-minute soft re-auth. Driver: Module 2 lock decision D1 — architecture §7's stricter 15-min governs for shared clinical workstations; all timeouts derive from one `SESSION_POLICY` constant.
 
+**Document Control — 2026-11-11 reconciliation (no version bump):** §3.4 gains an M41 row; §3.6 (M41 submission confinement and its PHI seam), §3.7 (the Bun→Rust bridge trust boundary, control `CW-AC-07`) and §3.8 (four Accepted ADRs this guide did not reflect) are new. Review cadence and the "Last reviewed" date above are unchanged: this was a targeted reconciliation, not a full review.
+
 **Scope distinction:** Operations procedures live in CHARTWARDEN_OPS_RUNBOOK; AI-specific governance lives in CHARTWARDEN_AI_GOVERNANCE; vendor security reviews live in CHARTWARDEN_INTEGRATIONS. This document is the threat-and-control layer cutting across all of them.
 
 -----
@@ -385,6 +387,7 @@ Full STRIDE in module specs; summary here:
 |34 SaaS Platform        |Tenant escape (I+E), provisioning abuse (E)                                 |
 |39 Consent              |Consent bypass (E+R), forgery (S+T)                                         |
 |40 MDM                  |Cross-tenant overlay leak (I), canonical record poisoning (T)               |
+|41 Billing — Commercial |Unauthorized or duplicate claim send (E+T), cross-tenant remittance match (I)|
 
 ### 3.5 M29 External Interfaces — Adapter-Mandate Compliance (ARCHITECTURE §25.14)
 
@@ -406,6 +409,39 @@ co-located `m29-adapter-mandate.test.ts` unit guard:
 Named-predicate drift is closed separately by `arch:abac-predicates` (M3's registry fails closed on an
 unregistered name) with the W-XI-15 unit arm in `m29-abac.test.ts`: every §4.8 predicate M29 declares must
 have a built resolver and register into M3's registry, and a missing predicate denies (never falls open).
+
+### 3.6 M41 Commercial Billing — Submission Confinement and the PHI Seam ([ADR-0100](../adr/ADR-0100-commercial-billing-module-41.md))
+
+M41 bills commercial payers and carries PHI (claims, authorizations, eligibility). Its security posture rests on four properties:
+
+- **One way out.** Submission goes only through the shared `ClearinghouseTransport` ([ADR-0053](../adr/ADR-0053-clearinghouse-transport-port.md)); there is no direct-to-payer channel and no per-payer HTTP client. An organization with no live clearinghouse sends nothing (`CH_NOT_WIRED`).
+- **Enrollment gates every send**, per payer and per provider entity. A refusal is a stable code and creates no queue job (ADR-0100 D5). The submit permission is `commercial_billing.submit`, granted by migration 1274 to every role that already held the Medicare analogue `billing.claim.submit`, plus three named roles (D11); that is a grant made once, not a rule that keeps the two keys in step.
+- **Cross-module access is a seam, not a schema import.** M41's declared dependencies are `[1, 23, 40]` in the manifest, so `arch:boundaries` and `check-table-ownership` confine its imports and tables. M25 reads commercial claim ownership through the `CommercialClaimReader` seam (owner M41, PHI, fail-closed deny-stub registered at boot), never by importing M41.
+- **A remittance for another tenant or payer posts nothing.** It quarantines (D8). Proven live as the NOBYPASSRLS `chartwarden_app` role, including cross-tenant isolation, in `m25-commercial-remit-matching.live.test.ts`.
+
+An authorization number is never shown in a message or an audit event (M41 spec §2.2).
+
+### 3.7 Bun→Rust Bridge Trust Boundary (CW-RUST-M02; control `CW-AC-07`)
+
+A Rust API is being introduced beside the Bun backend; the endpoint ownership matrix is [SYSTEM_DESIGN §1.4](./CHARTWARDEN_SYSTEM_DESIGN_v0.3.md). The security-relevant facts, each marked by where it is enforced (a claim about `chartwarden-rust` is not provable from this repository):
+
+- **Authenticated requests only** (this repository). Bun signs an Ed25519 actor assertion only for a request that has already passed authentication and the session check, or for the daily parity sweep; the sweep's active-organization enumeration is audited; differences are logged by user id, while matches, errors and skips are only counted in the run summary. That Rust trusts the assertion and never a client header is enforced in `chartwarden-rust`.
+- **A client cannot supply the assertion** (this repository). Bun deletes the header from inbound requests and nginx blanks it.
+- **Key custody** (partly open). The bridge reads the signing key from `CW_ACTOR_SIGNING_KEY_FILE`, and production refuses the inline `CW_ACTOR_SIGNING_KEY`. Provisioning the key as a compose secret mounted on `api` only is a P2 prerequisite and is **not yet in `compose.yml`**; it is an open gap in `CW-AC-07`. Rust holds only the public keys for assertions (`CW_ACTOR_PUBLIC_KEYS`).
+- **Rust holds a database credential** (this repository wires it; the isolation is proven in `chartwarden-rust`). The `rust` service connects to Postgres as the NOBYPASSRLS `chartwarden_app` role, so on the Rust path tenant isolation rests on the assertion's `org` claim plus RLS.
+- **Network confinement** (this repository). The `rust` service publishes no port and is on the internal `rust-db` network with Postgres only: no default network, no egress, read-only filesystem, non-root.
+- **Image provenance** (this repository, for the verify-and-record step). `deploy.sh` records the Rust image only as a cosign-verified digest, checked against the `chartwarden-rust` image workflow's identity; it never pulls or starts the `rust` service, and the opt-out for unverified images does not apply to it. That the workflow exists and signs is not verifiable here.
+
+Status is honest: `CW-AC-07` is `partial`. The bridge is merged **off** (`RUST_ROUTES` empty in production), and the register records Rust-side enforcement as tested in `chartwarden-rust`, which this repository cannot verify. Turning a route on is a reviewed change to the compose literal plus the signing-key secret.
+
+### 3.8 Accepted Decisions That Adjust This Document's Baseline
+
+Four Accepted ADRs change what this guide describes and were not reflected in it. They are recorded here so the guide is not read alone. They are not the complete set: the other Accepted ADRs on the architecture-sync gate's uncited baseline (`scripts/architecture-adr-baseline.ts`) have not been reviewed against this guide.
+
+- **[ADR-0012](../adr/ADR-0012-ai-governance-contract.md) — AI governance contract.** An automatic kill-switch, an eval gate, mandatory `ai.*` audit events and a BAA plus zero-data-retention gate (see CHARTWARDEN_AI_GOVERNANCE). As the ADR records it, the Anthropic BAA was in negotiation, not executed, so the cloud AI path stays disabled until the platform flag `external.anthropic_baa_executed` is set.
+- **[ADR-0013](../adr/ADR-0013-disclosure-accounting-writer.md) — §164.528 accounting of disclosures.** Decides that a disclosure-record writer sits at every egress; this guide does not verify that it is built.
+- **[ADR-0074](../adr/ADR-0074-messaging-lock-screen-privacy.md) — Lock-screen privacy.** Out-of-band message text is composed in one render function from a fixed allowlist, and anything not minted by a sanitiser renders as generic wording. The generic wording and the choice to name the urgency level are **provisional**: the ADR records no clinical-lead sign-off.
+- **[ADR-0090](../adr/ADR-0090-administrator-and-org-admin-org-wide-patient-scope.md) — Org-wide patient scope.** `administrator` and `org_admin` read every patient in the org in every module that asks (including eMAR and prescribing), without a caseload assignment. The product owner accepted that this **widens PHI access against the previously documented design**. The same shared rule also waives the caseload check wherever a module uses it on a mutating route, so it widens writes as well as reads; break-glass is never invoked for these roles, and read-audit rows do not record that org-wide scope admitted the read.
 
 -----
 

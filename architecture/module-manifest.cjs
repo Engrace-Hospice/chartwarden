@@ -2,17 +2,16 @@
 /**
  * ChartWarden — Module Manifest (single source of truth for architecture fitness)
  * ---------------------------------------------------------------------------
- * Encodes, per logical module (the 40 in ARCHITECTURE §11):
+ * Encodes, per logical module (the 41 in ARCHITECTURE §11):
  *   - codePaths:   the package(s) and backend route dir(s) that BELONG to the module
  *   - dependsOn:   the modules it MAY import from. This STARTED as a verbatim copy of the
  *                  ARCHITECTURE §20 dependency table and is no longer one — the manifest is the
- *                  source of truth and §20 is the derived view (AD-10). Known deliberate
- *                  divergences: M9/M10/M11 dropped their edge on M8 (the post-ADR-0007 seam-direction inversion (ADR-0007 prescribed keeping the M8 edges; the build deliberately inverted — recorded as ADR-0043),
- *                  recorded in the architecture changelog but never propagated into the §20 table),
- *                  plus M22→39 and M35→34. Change this array, then regenerate §20 — never the
- *                  reverse, and never edit both by hand.
- *   - ownedTables: the DB tables it owns. As of the M07-F02 manifest pass, ALL 40
- *                  modules are populated (464 tables as of 2026-08-14) from their specs, so the ownership
+ *                  source of truth and §20 is the derived view (AD-10). Deliberate divergences are
+ *                  recorded, with their reasons, in the divergences table in ARCHITECTURE §20, and
+ *                  `arch:architecture-sync` fails when a §20 row differs from this array without one.
+ *                  There is no generator: change this array, then update the §20 row by hand.
+ *   - ownedTables: the DB tables it owns. As of the M07-F02 manifest pass, ALL 41
+ *                  modules are populated from their specs, so the ownership
  *                  check enforces the full corpus — no longer "enforces only what is
  *                  declared." A new module's tables are added here when its spec lands.
  *
