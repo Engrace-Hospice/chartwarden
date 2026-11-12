@@ -5,6 +5,7 @@
  * `core.editor`, `credential.helper`, `diff.external`, `filter.*.smudge`, `include.path` and a `core.hooksPath`
  * spelled in any case (the old rule was case-sensitive) are all that. One list serves both entry points.
  */
+import { optionValues } from "./option-values";
 
 /** Keys that make git run a program of the caller's choosing, read config from another file, or skip the hooks. */
 export const GIT_EXEC_CONFIG = new RegExp(
@@ -27,8 +28,19 @@ export const GIT_EXEC_CONFIG = new RegExp(
     String.raw`uploadpack\.packobjectshook`,
     String.raw`remote\..+\.(?:vcs|receivepack|uploadpack)`,
     String.raw`submodule\..+\.update`,
-    String.raw`trailer\..+\.cmd`,
+    String.raw`trailer\..+\.(?:cmd|command)`,
     String.raw`interactive\.difffilter`,
+    // Named in `git help config` (and `git help archive` for `tar.<format>.command`) as a shell command or a program
+    // git runs. Anchored where a longer key shares the prefix (`web.browserish`, `sendemail.smtpServerPort`).
+    String.raw`core\.alternaterefscommand$`,
+    String.raw`(?:browser|man)\..+\.(?:cmd|path)$`,
+    String.raw`(?:web|help)\.browser$`,
+    String.raw`guitool\..+\.cmd$`,
+    String.raw`sendemail\.(?:.+\.)?(?:smtpserver|tocmd|cccmd)$`,
+    String.raw`instaweb\.(?:httpd|browser)$`,
+    String.raw`imap\.tunnel$`,
+    String.raw`gpg\.ssh\.defaultkeycommand$`,
+    String.raw`tar\..+\.command$`,
     String.raw`init\.templatedir`,
   ].join("|")})`,
   "i",
@@ -127,9 +139,37 @@ export function gitConfigDenial(rest: readonly string[]): string | null {
   return null;
 }
 
-/** The files a git subcommand writes through an option: `config --file F`, `archive -o F`, `bundle create F`. */
+/**
+ * The git commands whose diff or revision-walk machinery takes `--output=FILE` and writes it (each run in a scratch
+ * repository on git 2.53; `stash show` shares the diff options but needs a stash to run). `diff`, `log` and `show`
+ * are denied outright by the classifier; the rest are judged as a write onto FILE.
+ */
+const OUTPUT_FILE_COMMANDS: ReadonlySet<string> = new Set([
+  "diff",
+  "log",
+  "show",
+  "format-patch",
+  "blame",
+  "shortlog",
+  "range-diff",
+  "diff-tree",
+  "diff-index",
+  "diff-files",
+  "whatchanged",
+  "reflog",
+  "difftool",
+  "rev-list",
+  "stash",
+]);
+
+/** The files a git subcommand writes through an option: `config --file F`, `--output F`, `archive -o F`, `bundle create F`. */
 export function gitFileWrites(sub: string, rest: readonly string[]): string[] {
   if (sub === "config") return [...parseGitConfig(rest).files];
+  // `credential-store --file F` stores a credential line in F; `credential-cache --socket F` creates the socket F.
+  if (sub === "credential-store") return optionValues(rest, "", [["file", 4]]);
+  if (sub === "credential-cache") return optionValues(rest, "", [["socket", 6]]);
+  // git accepts only the full `--output` (an abbreviation is ambiguous with `--output-indicator-*`).
+  if (OUTPUT_FILE_COMMANDS.has(sub)) return optionValues(rest, "", [["output", 6]]);
   if (sub === "archive") {
     const out: string[] = [];
     for (let k = 0; k < rest.length; k++) {

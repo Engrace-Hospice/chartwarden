@@ -1862,6 +1862,17 @@ function compressorWrites(args: readonly string[], files: readonly string[]): Wr
   return files.flatMap((f) => [wt(f), wt(f.replace(COMPRESSED_SUFFIX, ""))]);
 }
 
+const isAbsoluteWord = (w: string): boolean => w.startsWith("/") || w.startsWith("~");
+
+/** `file` as written for a git that runs in the directory the `-C` operands lead to (an absolute one starts over). */
+function underGitDirs(dirs: readonly string[], file: string): string {
+  const base = dirs.reduce(
+    (at, dir) => (isAbsoluteWord(dir) || at === "" ? dir : `${at}/${dir}`),
+    "",
+  );
+  return isAbsoluteWord(file) || base === "" ? file : `${base}/${file}`;
+}
+
 /** Every path one simple command writes, deletes, moves or re-modes (redirections are added by the caller). */
 function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
   return [...mainWrites(prog, args), ...targetsOf(extraOutputFiles(prog, args))];
@@ -1897,8 +1908,9 @@ function mainWrites(prog: string, args: readonly string[]): WriteTarget[] {
   if (prog === "curl") return curlWrites(args);
   if (prog === "dd") return args.filter((a) => a.startsWith("of=")).map((a) => wt(a.slice(3)));
   if (prog === "git") {
-    const { sub, rest } = gitInvocation(args);
-    return gitFileWrites(sub, rest).map((f) => wt(f));
+    const { sub, rest, dirs } = gitInvocation(args);
+    // git writes `--output=F` relative to where it runs: `git -C DIR … --output=F` writes DIR/F.
+    return gitFileWrites(sub, rest).map((f) => wt(underGitDirs(dirs, f)));
   }
   const outputOptions = OUTPUT_OPTIONS.get(prog);
   if (outputOptions) {
@@ -2604,7 +2616,7 @@ function classifySegment(
     }
     if (
       (sub === "diff" || sub === "log" || sub === "show") &&
-      rest.some((a) => /^--(output|ext-diff)\b/.test(a))
+      rest.some((a) => /^--(?:output(?:=|$)|ext-diff$)/.test(a))
     ) {
       return deny(
         "`--output` writes a file and `--ext-diff` runs an external program; neither is the read-only diff/log/show the allow-list is for.",
