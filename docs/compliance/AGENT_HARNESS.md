@@ -488,6 +488,18 @@ still denied (`harness-hidden-path-budget.test.ts`).
   and `rg BUN_OPTIONS= docs` assign nothing, and an empty value clears the variable. Codex denies every ask. **Not decided by
   text:** a variable set by an earlier tool call, a startup file or the human's own shell; `bun`/`node`/`perl` running a harness
   script directly is not modelled.
+- *Commands that print every file under a directory* (`tree-sweep.ts`, `secret-reads.ts`, `harness-tree-sweeps.test.ts`).
+  `git diff --no-index DIR DIR`, `diff -r`/`-R`/`--recursive` (any cluster, `-ru`, `-rq`, `-Nr`), `colordiff -r`, and
+  `git diff A B` when one operand is outside the working tree (git implies `--no-index`; `git diff HEAD -- A` is not it)
+  **ask**, as `grep -r` does, when an operand is the repo root, a directory above it (`..`, `~`), a directory that holds a live
+  env file that exists, a glob that can match such a directory (`apps/*`, `apps/b*`), or cannot be placed (a `cd` the guard
+  cannot follow). A plain `diff DIR DIR` compares the same-named files directly under both (`-N`: any file), so it asks when
+  an operand directly holds one. `git grep --no-index` and `grep -r`/`rg -u` now read their operands the same way: pathspec magic
+  (`:/apps`, `:(glob)…`, `:!x`; for git grep only) cannot be placed and asks, and so do `..`, `~` and a glob. `cmp` is not
+  judged (on a directory it only says "Is a directory"); words inside `<( )` are not operands. `diff -r a.txt b.txt`, `git diff
+  --no-index a.txt b.txt`, `git diff HEAD~1`, `diff -r dir1 dir2` over directories with no live env file, and `git grep --no-index foo
+  -- 'scripts/*.ts'` stay allowed. **Not decided by text:** a symlink to a directory inside an operand, and a glob whose literal part
+  is built at run time. The corpus cost: grep -r over `..` and a recursive diff after an unresolvable `cd $VAR`.
 - *The pinned Codex command ignores perl's own variables* (`PERL5OPT`, `PERL5LIB`, `PERLLIB`, `PERL5DB`): see "The hook command is
   pinned byte for byte" above and `harness-codex-perl-env.test.ts`.
 
