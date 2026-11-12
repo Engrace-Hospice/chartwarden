@@ -21,6 +21,7 @@
 import { userInfo } from "node:os";
 
 import { backupName } from "./backup-names";
+import { isAgentSpawn, loaderEnvReason } from "./env-hazards";
 import { execCommandWrites, findActions } from "./find-expr";
 import { GIT_EXEC_CONFIG, configKey, gitConfigDenial, gitFileWrites } from "./git-config-rules";
 import {
@@ -1206,6 +1207,16 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   // Every simple command is judged, in order; any deny wins, else the first ask, else allow. Writes are
   // judged against every directory the command could be running in (see `Cwd`), and so are the whole-tree reads.
   const verdicts: BashVerdict[] = [];
+  // A variable bun or perl reads at start (`BUN_OPTIONS=--preload=…`, `PERL5OPT`, `LD_PRELOAD`), or one that picks a
+  // nested agent's hook binary: set anywhere in this command line, so a later or earlier statement counts too.
+  const loaderReason = loaderEnvReason(
+    parsedParts.map((p) => ({
+      prog: p.prog,
+      args: p.args,
+      words: assignmentWords(p.prog, p.args, p.assigns),
+    })),
+  );
+  if (loaderReason) verdicts.push(ask(loaderReason));
   // The text ends inside a quote, substitution or heredoc: the shell would wait for more, so what ran is unknown.
   if (incomplete !== null) {
     verdicts.push(
@@ -2130,7 +2141,6 @@ function treeHoldsRepo(dir: Cwd, ctx: BashContext): boolean {
 // the guard no longer watches.
 const AGENT_BYPASS_FLAG =
   /^--(dangerously-skip-permissions|allow-dangerously-skip-permissions|dangerously-bypass-approvals-and-sandbox|yolo)$/;
-const AGENT_CLI = /(^|\/)(codex|claude(-code)?)(@[\w.-]+)?$/;
 
 function nestedAgentVerdict(
   prog: string,
@@ -2144,8 +2154,7 @@ function nestedAgentVerdict(
     );
   const bypass = args.find((a) => AGENT_BYPASS_FLAG.test(a));
   if (bypass) return switchedOff(`\`${echo(bypass)}\``);
-  const agent = [prog, ...args.slice(0, 3)].some((w) => AGENT_CLI.test(w));
-  if (!agent) return null;
+  if (!isAgentSpawn(prog, args)) return null;
   const mode = args.findIndex(
     (a) => a === "--permission-mode" || a.startsWith("--permission-mode="),
   );
