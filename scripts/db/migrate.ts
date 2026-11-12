@@ -156,7 +156,30 @@ const HISTORICAL_FILENAME_RENAMES: ReadonlyMap<string, string> = new Map([
     "1380_m41_clearinghouse_rejection_corrections.sql",
   ],
   ["1385_m41_correction_metadata_not_null.sql", "1381_m41_correction_metadata_not_null.sql"],
+  // The S7 integration moved the already-deployed M36 death-notification sequence out of ordinals
+  // 1454-1456 after those ordinals collided with M25/M34 work. Migration 1478 is byte-identical.
+  // Migrations 1479/1480 received the ack-actor correction after production applied their legacy
+  // names; their exact deployed checksums are accepted below and 1481 applies that delta forward.
+  ["1478_m36_death_notification.sql", "1454_m36_death_notification.sql"],
+  ["1479_m36_death_notification_funeral_send.sql", "1455_m36_death_notification_funeral_send.sql"],
+  [
+    "1480_m36_death_notification_disclosure_integrity.sql",
+    "1456_m36_death_notification_disclosure_integrity.sql",
+  ],
 ]);
+
+const HISTORICAL_FILENAME_RENAME_LEGACY_CHECKSUMS: ReadonlyMap<string, readonly string[]> = new Map(
+  [
+    [
+      "1479_m36_death_notification_funeral_send.sql",
+      ["70a713ace1fedde081da6209dcf0ef9bbe755d60e36f05dc5db506f55c894268"],
+    ],
+    [
+      "1480_m36_death_notification_disclosure_integrity.sql",
+      ["db72f50bca94c0db6922a51eee08adb551487f6caa15828f913cb562542f31c2"],
+    ],
+  ],
+);
 
 export interface ApplyMigrationsOptions {
   /** Defaults to the repo's real `packages/db/migrations` — override only for tests. */
@@ -211,14 +234,19 @@ export async function applyMigrations(
   // Migrate only the verified historical filename aliases above. This is deliberately not a
   // generic "same checksum means same migration" heuristic: two independent migrations can have
   // identical SQL, while a filename is the migration ledger's identity. A changed old file is left
-  // alone so the normal pending/drift path remains fail-closed rather than silently adopting it.
+  // alone unless its exact deployed checksum is explicitly registered with a forward migration that
+  // applies the delta, so the normal pending/drift path remains fail-closed.
   for (const [currentFilename, legacyFilename] of HISTORICAL_FILENAME_RENAMES) {
     const legacyChecksum = applied.get(legacyFilename);
     if (legacyChecksum === undefined || !files.includes(currentFilename)) continue;
     const currentChecksum = createHash("sha256")
       .update(readFileSync(join(migrationsDir, currentFilename), "utf8"))
       .digest("hex");
-    if (legacyChecksum !== currentChecksum) continue;
+    const acceptedLegacyChecksums =
+      HISTORICAL_FILENAME_RENAME_LEGACY_CHECKSUMS.get(currentFilename) ?? [];
+    if (legacyChecksum !== currentChecksum && !acceptedLegacyChecksums.includes(legacyChecksum)) {
+      continue;
+    }
 
     // A few locally recovered ledgers already contain both aliases. The current filename is the
     // canonical entry, so remove only the byte-identical obsolete duplicate.

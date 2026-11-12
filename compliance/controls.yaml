@@ -1184,6 +1184,7 @@ controls:
       - file: apps/backend/src/modules/02-identity/routes/link-routes.ts
       - file: packages/db/migrations/1479_m36_death_notification_funeral_send.sql
       - file: packages/db/migrations/1480_m36_death_notification_disclosure_integrity.sql
+      - file: packages/db/migrations/1481_m36_death_notification_ack_actor.sql
       - file: apps/backend/src/modules/36-messaging/death-notification/recipient-hash.ts
       - script: test:m2:link-redemption:live
 

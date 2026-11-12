@@ -1207,10 +1207,10 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
       });
     });
 
-    it("acked_by is forced to the session user whatever the client sends, and an acknowledgment without a user is refused", async () => {
+    it("acked_by preserves the service-supplied actor, and an acknowledgment without an actor is refused", async () => {
       const { boardId, opened } = await newDeath();
       await deliverOpened(opened);
-      const row = (await noticeRows(boardId))[0];
+      const [row, missingActorRow] = await noticeRows(boardId);
       await asUser(supervisor, async () => {
         await kit.appConn.query(
           "UPDATE death_notification SET state='acked', acked_by=$2 WHERE id=$1",
@@ -1220,13 +1220,12 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
           "SELECT acked_by FROM death_notification WHERE id=$1",
           [row?.id],
         );
-        expect(after.rows[0].acked_by).toBe(supervisor);
+        expect(after.rows[0].acked_by).toBe(attending);
       });
       await asUser(null, async () => {
         expect(
-          await attempt("UPDATE death_notification SET state='acked', acked_by=$2 WHERE id=$1", [
-            row?.id,
-            attending,
+          await attempt("UPDATE death_notification SET state='acked', acked_by=NULL WHERE id=$1", [
+            missingActorRow?.id,
           ]),
         ).toBe("23514");
       });
