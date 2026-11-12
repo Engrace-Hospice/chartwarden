@@ -30,6 +30,7 @@ import {
   withOrgContext,
   withOrgContextFromRequest,
 } from "@chartwarden/tenancy";
+import type { HttpRequestContext } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 
 /**
@@ -802,7 +803,7 @@ export function createFixedActorResolver(actor: Actor | null): ActorResolver {
 export function createContextActorResolver(): ActorResolver {
   return {
     resolve(request) {
-      const ctx = request.context;
+      const ctx = (request as FastifyRequest & { readonly context?: HttpRequestContext }).context;
       if (!ctx?.userId) return null;
       const sid =
         ctx.attributes && typeof ctx.attributes.sessionId === "string"
