@@ -20,7 +20,8 @@ export const GIT_EXEC_CONFIG = new RegExp(
     String.raw`include\.`,
     String.raw`includeif\.`,
     String.raw`pager\.`,
-    String.raw`protocol\.ext`,
+    // `protocol.allow` is the default policy of every protocol, `ext::` (which runs a command) included.
+    String.raw`protocol\.(?:ext|allow$)`,
     String.raw`gpg\.(?:.+\.)?program`,
     String.raw`sequence\.editor`,
     String.raw`uploadpack\.packobjectshook`,

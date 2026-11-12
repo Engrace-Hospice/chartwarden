@@ -45,7 +45,8 @@ export const WRAPPER_OPERANDS: ReadonlyMap<string, { count: number; suppliedBy?:
     ["chrt", { count: 1 }],
   ]);
 
-const shellQuote = (w: string): string =>
+/** A word as the shell must read it back as one word. */
+export const shellQuote = (w: string): string =>
   /^[A-Za-z0-9_@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, "'\\''")}'`;
 
 /** The words of `args` after options (those in `valueFlag` take the next word as a value). */
