@@ -224,7 +224,9 @@ claude.ai connector) carry prose and can send it off the machine; whether to gua
 a path-word judge would stop a message that names `.env`. Pencil's `execute` (a `filePath` of a design file and a
 script) and REA's binary tools open files the agent names and are not guarded either: they have no demonstrated
 path to a protected file in this repo's use and are left to an owner decision. The words are text, so a path the
-page code computes (`'.' + 'env'`), reads from a string table or builds from `atob` is not seen; the tools' own
+page code computes (`'.' + 'env'`), reads from a string table or builds from `atob` is not seen. The names are
+the ones this repo's sessions show (`claude-in-chrome`, `plugin_ecc_chrome-devtools`): the same server installed
+under another name (`mcp__chrome-devtools__…`) is not matched until it is added to the list and to the pin. The tools' own
 permission prompts and Claude Code's permission rules are the other layer. `arch:compliance` pins the matcher
 like Codex's: a dropped or edited MCP group, and any guard group that also matches a tool with no path in its input
 (`mcp__.*`, `*`, an empty matcher), fails it.

@@ -2,9 +2,10 @@
  * Claude Code's MCP tools through the guard (wave 5, M2). The PreToolUse matcher in `.claude/settings.json`
  * hands the guard only the MCP tools whose input can name a path (file uploads, `navigate` to a `file://`
  * URL, page JavaScript, the screenshot and trace tools that write a path: `hook-matcher.ts`). For one of them
- * every string value AND key of the input is split on every Unicode line break and into the words a tool could
- * open as a path (`mcp-tokens.ts`, shared with Codex), and each word is judged as a secret path and as a
- * protected path, as written and resolved from the session directory with symlinks followed.
+ * every string value AND key of the input is split on every Unicode line break (`LINE_BREAKS`, shared with
+ * Codex) and into the words a tool could open as a path (a finer split than Codex's: it reads page code, and it
+ * shares Codex's `file://` and percent-decoding), and each word is judged as a secret path and as a protected
+ * path, as written and resolved from the session directory with symlinks followed.
  *
  * The answer is an ASK that names the tool and the category, never the value (a value may be a patient name in
  * a URL). Two differences from Codex, which judges every MCP tool and cannot ask: no PHI/credential text scan
@@ -121,7 +122,9 @@ function* pathWords(written: string, resolve: ResolvePath): Generator<string> {
 /** A line that reads as a secret or protected path only once control, format and non-ASCII-space characters are removed. */
 function hiddenPath(line: string, written: string, resolve: ResolvePath): boolean {
   const bare = withoutOddChars(line).trim();
-  if (!bare || bare === written || bare.length > MAX_PATH_CHARS) return false;
+  if (!bare || bare === written || bare.length > MAX_PATH_CHARS || !looksLikeOnePath(bare)) {
+    return false;
+  }
   return [bare, resolve(bare)].some((target) => sensitivity(target) !== undefined);
 }
 
