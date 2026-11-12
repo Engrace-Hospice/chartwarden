@@ -5,6 +5,7 @@
 // a stale pin or a refusal that says the settings moved reloads this step and the wizard and says so. The cards (choice, BAA, connection,
 // activation) hold still while one of them has an editor open or a write running, and results land on a status line that outlives them.
 import {
+  Button,
   FactList,
   InlineAlert,
   LoadingSpinner,
@@ -23,6 +24,7 @@ import { ChoiceSection } from "./clearinghouse-choice-section";
 import {
   type TenantClearinghouseView,
   tenantActionsOf,
+  tenantClearinghouseIdentityKey,
   tenantFactsOf,
 } from "./clearinghouse-tenant";
 import { VerifyCard } from "./clearinghouse-verify-card";
@@ -80,6 +82,7 @@ function ClearinghouseBody({ step, view, held, onChanged }: StepPanelProps): JSX
   }, [reload, onChanged]);
 
   const current = load.data;
+  const configKey = current ? tenantClearinghouseIdentityKey(current) : null;
   const canWrite = held.has(ADMIN_KEY) && isStepOpenForWork(view, step);
   const actions = current ? tenantActionsOf(current, canWrite) : null;
   const ctx: CardContext = {
@@ -112,6 +115,11 @@ function ClearinghouseBody({ step, view, held, onChanged }: StepPanelProps): JSX
             <InlineAlert tone="error">
               Could not load the clearinghouse settings. {load.failure.message}
             </InlineAlert>
+            <div>
+              <Button size="sm" tone="secondary" onClick={() => void load.reload()}>
+                Try again
+              </Button>
+            </div>
           </div>
         ) : null}
         <StaleNotice stale={load.stale} onReload={() => void load.reload()} />
@@ -121,8 +129,12 @@ function ClearinghouseBody({ step, view, held, onChanged }: StepPanelProps): JSX
       </section>
 
       {current ? <ChoiceSection current={current} canWrite={canWrite} ctx={ctx} /> : null}
-      {current && actions?.canRecordBaa ? <BaaCard view={current} ctx={ctx} /> : null}
-      {current && actions?.canVerifyConnection ? <VerifyCard view={current} ctx={ctx} /> : null}
+      {current && actions?.canRecordBaa ? (
+        <BaaCard key={`baa:${configKey}`} view={current} ctx={ctx} />
+      ) : null}
+      {current && actions?.canVerifyConnection ? (
+        <VerifyCard key={`verify:${configKey}`} view={current} ctx={ctx} />
+      ) : null}
       {current && actions?.showActivation ? (
         <ActivateCard view={current} actions={actions} ctx={ctx} onRefresh={() => reload(true)} />
       ) : null}

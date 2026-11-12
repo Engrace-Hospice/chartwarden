@@ -4370,17 +4370,25 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
 
     it("recording the vendor BAA revokes a pending attestation", async () => {
       await attestPending();
-      await clearinghouse().recordBaa(writeActor(adminH, ORG_H), {
-        heldBy: "tenant",
-        effectiveDate: "2026-01-02",
-        documentRef: "BAA folder 2026",
-      });
+      const route = clearinghouse();
+      const current = await route.get(writeActor(adminH, ORG_H));
+      await route.recordBaa(
+        writeActor(adminH, ORG_H),
+        {
+          heldBy: "tenant",
+          effectiveDate: "2026-01-02",
+          documentRef: "BAA folder 2026",
+        },
+        current.version as number,
+      );
       await expectVoidedBy(ORG_H, adminH);
     });
 
     it("verifying the connection revokes a pending attestation", async () => {
       await attestPending();
-      const done = await clearinghouse().verify(writeActor(adminH, ORG_H), {});
+      const route = clearinghouse();
+      const current = await route.get(writeActor(adminH, ORG_H));
+      const done = await route.verify(writeActor(adminH, ORG_H), {}, current.version as number);
       expect(done.view.status).toBe("verified");
       await expectVoidedBy(ORG_H, adminH);
     });

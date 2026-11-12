@@ -17,6 +17,33 @@ import {
 export type TenantClearinghouseView =
   operations["getApiV1TenantClearinghouse"]["responses"][200]["content"]["application/json"];
 
+/** The immutable identity of the clearinghouse configuration that evidence and drafts describe. */
+export interface TenantClearinghouseIdentity {
+  readonly vendor: TenantClearinghouseView["vendor"];
+  readonly mode: TenantClearinghouseView["mode"];
+  readonly version: TenantClearinghouseView["version"];
+}
+
+export const tenantClearinghouseIdentity = (
+  view: TenantClearinghouseView,
+): TenantClearinghouseIdentity => ({
+  vendor: view.vendor,
+  mode: view.mode,
+  version: view.version,
+});
+
+export const sameTenantClearinghouseIdentity = (
+  left: TenantClearinghouseIdentity | undefined,
+  right: TenantClearinghouseIdentity,
+): boolean =>
+  left !== undefined &&
+  left.vendor === right.vendor &&
+  left.mode === right.mode &&
+  left.version === right.version;
+
+export const tenantClearinghouseIdentityKey = (view: TenantClearinghouseView): string =>
+  `${view.vendor ?? "none"}:${view.mode ?? "none"}:${view.version}`;
+
 export const TENANT_WORDING: ClearinghouseWording = {
   platformEnvDetail:
     "Only the deployment's shared setting names one; none is recorded for your organization.",

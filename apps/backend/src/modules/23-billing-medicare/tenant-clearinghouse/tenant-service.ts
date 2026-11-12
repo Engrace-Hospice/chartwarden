@@ -41,10 +41,15 @@ export interface TenantClearinghouseRouteService {
     expectedVersion: number | undefined,
   ): Promise<{ readonly created: boolean; readonly view: ClearinghouseConfigView }>;
   /** The tenant records the BAA it holds with its own vendor account. */
-  recordBaa(actor: M23WriteActor, body: RecordBaaInput): Promise<ClearinghouseConfigView>;
+  recordBaa(
+    actor: M23WriteActor,
+    body: RecordBaaInput,
+    expectedVersion: number,
+  ): Promise<ClearinghouseConfigView>;
   verify(
     actor: M23WriteActor,
     body: VerifyClearinghouseInput,
+    expectedVersion: number,
   ): Promise<{
     readonly view: ClearinghouseConfigView;
     readonly test: { readonly outcome: string } | null;
@@ -211,13 +216,14 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
       return then(actor.organizationId, result);
     },
 
-    async recordBaa(actor, body) {
+    async recordBaa(actor, body, expectedVersion) {
       const result = await inOrg(actor, async (tx) => {
         const dataChanged = await guardDataChange(tx, actor);
         const done = await service.recordBaa(
           createDrizzleConfigStore(tx),
           asTenantLane(actor),
           body,
+          expectedVersion,
         );
         if (done.changedFields.length > 0) {
           await record(tx, actor, CLEARINGHOUSE_AUDIT_EVENTS.baaRecorded, done.changedFields, {
@@ -232,10 +238,15 @@ export function buildDrizzleTenantClearinghouseRouteService(deps: {
       return then(actor.organizationId, result);
     },
 
-    async verify(actor, body) {
+    async verify(actor, body, expectedVersion) {
       // Read + decrypt in one transaction, the vendor call with none open, the compare-and-set in another.
       const plan = await inOrg(actor, (tx) =>
-        service.prepareVerify(createDrizzleConfigStore(tx), asTenantLane(actor), body),
+        service.prepareVerify(
+          createDrizzleConfigStore(tx),
+          asTenantLane(actor),
+          body,
+          expectedVersion,
+        ),
       );
       const outcome = await service.runProbe(plan);
       const result = await inOrg(actor, async (tx) => {

@@ -19,7 +19,12 @@ import { BILLING_ERROR_COPY, isViewMoved } from "./billing-errors";
 import { BillingFailureNotice } from "./billing-failure-notice";
 import { useServerFieldErrors } from "./billing-field-errors";
 import type { CardContext } from "./card-context";
-import type { TenantClearinghouseView } from "./clearinghouse-tenant";
+import {
+  type TenantClearinghouseIdentity,
+  type TenantClearinghouseView,
+  sameTenantClearinghouseIdentity,
+  tenantClearinghouseIdentity,
+} from "./clearinghouse-tenant";
 import { useGuarded } from "./use-guarded";
 
 const PATH = "/api/v1/tenant/clearinghouse/baa";
@@ -32,6 +37,10 @@ const FIELDS: ReadonlySet<string> = new Set(["effectiveDate", "documentRef"]);
 interface BaaForm {
   readonly effectiveDate: string;
   readonly documentRef: string;
+}
+interface BaaDraft {
+  readonly config: TenantClearinghouseIdentity;
+  readonly form: BaaForm;
 }
 type BaaErrors = Partial<Record<keyof BaaForm, string>>;
 
@@ -64,7 +73,11 @@ export function BaaCard({
   const { guard, notice } = useGuarded();
   const serverErrors = useServerFieldErrors(write.failure);
   const draftKey = draftKeyFor(ctx.scope, DRAFT_ACTIONS.clearinghouseBaa, ctx.stepKey);
-  const restored = useRestoredDraft<BaaForm>(draftKey, ctx.scope.returning);
+  const config = tenantClearinghouseIdentity(view);
+  const candidate = useRestoredDraft<BaaDraft>(draftKey, ctx.scope.returning);
+  const restored = sameTenantClearinghouseIdentity(candidate?.config, config)
+    ? candidate?.form
+    : undefined;
   const recorded = view.baa;
   // First BAA: the form is open. A recorded BAA is shown, and a different one is recorded only on request (it voids the verification).
   const [replacing, setReplacing] = useState(restored !== undefined);
@@ -77,6 +90,7 @@ export function BaaCard({
   const { onBusy } = ctx;
   useEffect(() => {
     onBusy(CARD, write.busy);
+    return () => onBusy(CARD, false);
   }, [onBusy, write.busy]);
 
   async function record(): Promise<void> {
@@ -90,7 +104,13 @@ export function BaaCard({
     };
     const outcome = await write.run(
       JSON.stringify(body),
-      (key) => client.POST(PATH, { params: { header: { "Idempotency-Key": key } }, body }),
+      (key) =>
+        client.POST(PATH, {
+          params: {
+            header: { "Idempotency-Key": key, "If-Match": String(view.version) },
+          },
+          body,
+        }),
       async () => {
         setReplacing(false);
         ctx.announce(
@@ -187,7 +207,7 @@ export function BaaCard({
           {write.failure && !isAboutAnInput(write.failure, (f) => FIELDS.has(f)) ? (
             <BillingFailureNotice
               failure={write.failure}
-              onReverify={() => stashDraft(draftKey, form)}
+              onReverify={() => stashDraft(draftKey, { config, form } satisfies BaaDraft)}
             />
           ) : null}
           <div className="wx-drawer-actions">
