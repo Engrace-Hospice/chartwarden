@@ -36,8 +36,8 @@ against Codex 0.162.1: its own config is `.codex/config.toml` and `.codex/hooks.
 ### The Codex guard (`.codex/hooks.json`)
 
 `.codex/hooks.json` runs the same `scripts/harness/pre-tool-guard.ts` for Codex, with `--codex`. It matches
-`Bash`, `write_stdin`, `apply_patch` and MCP tools (`Bash|write_stdin|apply_patch|mcp__.*`). Four things differ from Claude Code, all
-from Codex's hook protocol:
+`Bash`, `write_stdin`, `apply_patch` and MCP tools (`Bash|write_stdin|apply_patch|mcp__.*`). Several things differ from Claude Code, all
+from Codex's hook protocol (the bullets below):
 
 - **Codex cannot ask.** `permissionDecision: "ask"` is "parsed but not supported yet": the hook run is
   marked failed and the tool call proceeds. So under `--codex` every `ask` is answered `deny`, including a
@@ -152,12 +152,14 @@ stricter answer wins (real paths alone would lose the match for an absolute path
 own symlinked text). Read/Write/Edit paths are checked as written and as the real file they name, so a
 symlink to a secret file is refused under an innocent name.
 
-`.codex/` (except its `sessions/`), `bunfig.toml`, `.mcp.json`, `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`,
-`AGENTS.override.md`, `.git/config` and `.git/hooks/` are on the guard's protected list at any depth (they are
+`.codex/` (except its `sessions/`), `bunfig.toml` and `.bunfig.toml`, `.mcp.json`, `AGENTS.md`, `CLAUDE.md`, `CLAUDE.local.md`,
+`AGENTS.override.md`, `.claude/settings.json` and `settings.local.json`, `.git/config` and `.git/config.worktree`, `.git/hooks/`,
+`.git/modules/`, `.git/worktrees/` and the `.git` gitfile itself are on the guard's protected list at any depth (they are
 loaded or run from any directory, and `~/.codex/config.toml` can disable the hook for a user); at the repo root
 so are `.claude/{audit,.cache,rules,agents,skills,commands,hooks,plugins,launch.json}`, `.agents/` (except its
 local `plans/` and `prds/`), `scripts/harness/`, `compliance/`, `.githooks/`, `.github/workflows/`,
-`deploy/production/` and CODEOWNERS at its three homes. One definition (`scripts/harness/protected-paths.ts`)
+`deploy/production/` and CODEOWNERS at its three homes. One pattern definition (`scripts/harness/protected-paths.ts`; the names the find rule and the wildcard rules try are read from the
+tree by `protected-names.ts`, and the Stop gate's `arch:compliance` map asks the same `isProtectedPath`)
 judges a shell write, a Codex patch, an MCP string and Claude's own Write/Edit/MultiEdit/NotebookEdit, which ASK
 for every one of them: the `permissions.ask` rules in `settings.json` name fewer paths, and an Edit tool call
 the rules did not name used to pass without a word (2026-11-10 review, ADV-H2); `.codex/config.toml` itself stays local and git-ignored, at any depth: `.gitignore` ignores
@@ -404,10 +406,14 @@ wall-clock limit of 1 s per judging backs them (the guard judges twice from a sy
 sample names and with no regular expression (so no exponential backtracking), brace alternatives
 (4,096) and path resolutions (16,384) are budgeted per command in items AND in characters (8 MB of expanded
 brace text, 8 MB of resolved path text, so one 4,000-character word expanded 4,096 ways spends what 4,096 short
-words would not; a word over 4,096 characters is never expanded, and a `cd` is charged for characters only), a
+words would not; a word over 4,096 characters is not expanded, but with a brace group in it and no whitespace it spends the budget and is
+read one group at a time, all-first and all-last, and a `cd` is charged for characters only), a
 `git -C` chain of more than 8 operands asks and a followed directory is capped at 1,024 characters, and
 substitutions (32 per level) and judged command lines (300 per call) are capped; over any of those caps the
-answer is ask, and a deny found before the cap was hit still stands. A spent brace or resolution budget does not
+answer is ask (a word of up to 4,096 characters that holds more than 256 brace alternatives is cut and spends the budget; a quoted
+word with whitespace in it is not a brace word, and a long inline script with object literals is not a finding), and a deny found before
+the cap was hit still stands. The cut keeps the real name reachable: each group alone, and every group taking its first and its last
+alternative, so `~/.aws/{x,}` repeated nine times and then `credentials` is a deny, not a silent allow. A spent brace or resolution budget does not
 stop the rest of the command from being judged: a secret file name is still found, even one that a single brace
 group builds from a stem and an optional suffix, because each word is also read one group at a time, linearly;
 only the clock and the judged-text budget stop judging. `baseName` and `trimSlashes` are linear (a regular
@@ -437,7 +443,8 @@ still denied (`harness-hidden-path-budget.test.ts`).
 - *A script written and run by one command line* (`written-scripts.ts`, `harness-written-scripts.test.ts`). A heredoc body is
   data, so `cat > /tmp/x.sh <<'EOF' … EOF` and `bash /tmp/x.sh` hid the script. The text a command writes with a heredoc, a
   here-string, a printed literal (`echo`/`printf`) or an `echo`/`printf` piped into `tee` is now matched, by the same path
-  normalisation as every other path (each directory a `cd` may have left it in), with a later command that runs the file: a shell
+  normalisation as every other path (each directory a `cd` may have left it in, and with `/tmp`, `/private/tmp`, `/TMP` and the
+  `/System/Volumes/Data` firmlink folded to one file: `harness-written-script-aliases.test.ts`), with a later command that runs the file: a shell
   (`bash|sh|zsh|dash|ksh F`, `source F`, `. F`, `bash < F`), an interpreter (`python3|node|bun [run]|deno run|perl|ruby|php F`) or the
   file itself (`./F`, `/tmp/F`), and judged as the script it is (shell text as a command line, other languages as inline code). **A
   file written by an earlier tool call, built from a variable or a command's output (`cat a b > F`, `sed -i`), or edited in place stays
@@ -570,9 +577,9 @@ worker (`guard-worker.ts`), and when the timer fires, the worker dies or errors 
 ends, it prints the standard deny JSON, a stderr line and EXITS 2 (a block in both agents), whatever the worker is
 stuck in. The worker makes `process.exit` a throw: on bun 1.3.5 (what CI pins) a `process.exit(0)` called in a
 worker ended the WHOLE process silently with status 0, which both agents read as an allow. Normal answers are unchanged (JSON for a deny or an ask, nothing for an allow, exit 0); the extra
-latency is about 2 ms per call. A worker needs neither `--config` nor `--tsconfig-override` of its own: it is
+latency is about 5 ms per call (median 21 to 26 ms over 35 runs). A worker needs neither `--config` nor `--tsconfig-override` of its own: it is
 started by the already-hardened entry, and the hostile-config tests run through it. Test seams, never set in
-production and forbidden in the shared `env`: `CW_HARNESS_TEST_FAULT` (`hang`, `exit`, `throw`) and
+production and forbidden in the shared `env`: `CW_HARNESS_TEST_FAULT` (`hang`, `exit`, `process-exit`, `throw`) and
 `CW_HARNESS_DEADLINE_MS_FOR_TESTS` (it can only shorten the deadline); `harness-hard-deadline.test.ts` forces each
 through the entry point and through both real pinned commands. Not covered: a `bun` that is missing or too slow
 to start, and a process killed for memory before it can answer; the Stop gate, the pre-commit scan and CI are the
