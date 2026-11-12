@@ -30539,8 +30539,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** MinIO audit-webhook receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8) */
+        /** Legacy alias for the object-store audit receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8) */
         post: operations["postApiV1WebhooksMinioAccesslog"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/object-store/access-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Object-store audit receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8) */
+        post: operations["postApiV1WebhooksObjectstoreAccesslog"];
         delete?: never;
         options?: never;
         head?: never;
@@ -125309,6 +125326,41 @@ export interface operations {
         };
     };
     postApiV1WebhooksMinioAccesslog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                } | {
+                    [key: string]: unknown;
+                }[];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: number;
+                        recorded: number;
+                        unattributed: number;
+                        duplicates: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1WebhooksObjectstoreAccesslog: {
         parameters: {
             query?: never;
             header?: never;

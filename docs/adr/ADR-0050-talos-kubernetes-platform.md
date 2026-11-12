@@ -287,14 +287,15 @@ OS with no SSH and no shell.
     1. **Pin a Garage release that stores and returns `x-amz-checksum-sha256`** with checksum mode
        enabled. Pin the image by digest. The checksum read-back is the adapter's integrity check, so
        an unsupported release would fail every download.
-    2. **Region:** Garage's SigV4 region (`s3_region`) defaults to `garage`. Set `MINIO_REGION` to the
+    2. **Region:** Garage's SigV4 region (`s3_region`) defaults to `garage`. Set `OBJECT_STORE_REGION` to the
        same value, or set `s3_region = "us-east-1"`. A mismatch fails every signature.
     3. **Buckets and keys** are created with Garage's admin API or CLI, not S3 `CreateBucket`. A
        bootstrap Job does it, alongside `provision`. Access keys get per-bucket read/write grants;
        Garage has no bucket policies.
-    4. **Keep the env names.** `MINIO_ENDPOINT` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` /
-       `MINIO_REGION` keep their names: they are the adapter's S3 contract, not a MinIO dependency. A
-       rename to `S3_*` is optional follow-up churn, not part of this ADR.
+    4. **Vendor-neutral application contract (amended 2026-11-12).** `OBJECT_STORE_ENDPOINT` /
+       `OBJECT_STORE_ACCESS_KEY` / `OBJECT_STORE_SECRET_KEY` / `OBJECT_STORE_REGION` are the adapter's
+       S3 contract. The additive rollout temporarily accepts and injects matching `MINIO_*` aliases so
+       the immediately previous release remains rollback-safe; SeaweedFS provisioning uses `SEAWEEDFS_*`.
   - **Proof before cutover:** a live suite runs the real adapter against Garage: put with checksum,
     get and head with checksum mode, presigned GET and PUT, delete, and the M22 erase path. It runs in
     CI on a Garage container, as a `package.json` script plus a `ci.yml` job (the standing live-suite

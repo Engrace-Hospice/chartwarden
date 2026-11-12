@@ -48,10 +48,10 @@ CHARTWARDEN_APP_PASSWORD=chartwarden-app-dev-password
 CHARTWARDEN_DEV_BYPASSRLS=1
 
 REDIS_URL=redis://localhost:6379
-MINIO_ENDPOINT=http://localhost:9000
-MINIO_ACCESS_KEY=chartwarden
-MINIO_SECRET_KEY=chartwarden-object-store-dev-secret
-MINIO_REGION=us-east-1
+OBJECT_STORE_ENDPOINT=http://localhost:9000
+OBJECT_STORE_ACCESS_KEY=chartwarden
+OBJECT_STORE_SECRET_KEY=chartwarden-object-store-dev-secret
+OBJECT_STORE_REGION=us-east-1
 
 BETTER_AUTH_URL=http://localhost:3000
 BETTER_AUTH_SECRET=chartwarden-local-development-secret-change-me

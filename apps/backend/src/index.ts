@@ -5360,7 +5360,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   );
   if (s3ObjectStoreConfigFromEnv(process.env) && !destructionDbHandle) {
     console.warn(
-      "⚠️  M36 attachments are enabled (MINIO_* is set) but DATABASE_DESTRUCTION_URL is not: the attachment orphan reaper is off and a tenant erase will refuse (chartwarden_app cannot DELETE message_attachment). Provision chartwarden_destruction_login (db:provision-roles) and set it.",
+      "⚠️  M36 attachments are enabled (OBJECT_STORE_* is set) but DATABASE_DESTRUCTION_URL is not: the attachment orphan reaper is off and a tenant erase will refuse (chartwarden_app cannot DELETE message_attachment). Provision chartwarden_destruction_login (db:provision-roles) and set it.",
     );
   }
   // GAP-099 — M40's first publisher. It had none until now because nothing could WRITE a canonical
@@ -10176,7 +10176,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         );
       } else {
         app.log.warn(
-          "M34 tenant.bundle_expiry_sweep NOT started: MINIO_* object-store configuration is absent, so DSAR / " +
+          "M34 tenant.bundle_expiry_sweep NOT started: OBJECT_STORE_* configuration is absent, so DSAR / " +
             "tenant-export bundle objects will not be reaped after their 7-day TTL until it is configured",
         );
       }
@@ -10248,7 +10248,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       );
     } else {
       app.log.warn(
-        "M34 tenant provisioning disabled: platform DB, provision gateway, and MINIO_* configuration are required",
+        "M34 tenant provisioning disabled: platform DB, provision gateway, and OBJECT_STORE_* configuration are required",
       );
     }
 
@@ -10668,7 +10668,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               bucketConfigured: auditArchiveSetup !== null,
               objectStoreConfigured: m34DsarObjectStore !== null,
             },
-            "audit.archive skipped: AUDIT_ARCHIVE_BUCKET and the MINIO_* credentials are both required",
+            "audit.archive skipped: AUDIT_ARCHIVE_BUCKET and the OBJECT_STORE_* credentials are both required",
           );
           return { skipped: "unconfigured" };
         }
@@ -12350,10 +12350,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           )
         : {
             async read(): Promise<Uint8Array> {
-              throw new Error("platform object storage is not configured (MINIO_* unset)");
+              throw new Error("platform object storage is not configured (OBJECT_STORE_* unset)");
             },
             async write(): Promise<void> {
-              throw new Error("platform object storage is not configured (MINIO_* unset)");
+              throw new Error("platform object storage is not configured (OBJECT_STORE_* unset)");
             },
           };
       const m38Embeddings = embedderUnavailable;
@@ -14245,7 +14245,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           if (!intakeObjects) {
             throw new DegradedError(
               "document-storage",
-              "no object store is bound (MINIO_* is not configured)",
+              "no object store is bound (OBJECT_STORE_* is not configured)",
             );
           }
           const { url } = await intakeObjects.presign({

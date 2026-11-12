@@ -139,22 +139,87 @@ esac
 # GAP-138/139 — secrets the release needs but an older `.env.production` predates. Generated ONCE and
 # appended BEFORE the rollback backup is taken, so the backup (and therefore a rollback, which runs the
 # new compose.yml against the restored env file) interpolates cleanly. Existing values are never touched.
+append_env() {
+  [ -z "$(tail -c 1 .env.production)" ] || echo >> .env.production   # file may lack a final newline
+  printf '%s=%s\n' "$1" "$2" >> .env.production
+}
 ensure_secret() {
   if ! grep -q "^$1=" .env.production; then
-    [ -z "$(tail -c 1 .env.production)" ] || echo >> .env.production   # file may lack a final newline
-    printf '%s=%s\n' "$1" "$2" >> .env.production
+    append_env "$1" "$2"
     echo "generated $1 in .env.production"
   fi
 }
-# The docling-worker bearer (backend -> worker); it holds no object-store credentials.
+# ── object-store credential names: canonical <-> legacy (additive compatibility release) ───────────────────────────
+# compose.yml reads the canonical names (SEAWEEDFS_* provisioning credentials, OBJECT_STORE_AUDIT_WEBHOOK_TOKEN) and also
+# injects the legacy MINIO_* names with the SAME values, so the previous release (which reads MINIO_*) still boots on a
+# rollback. The admin pair also feeds the legacy-minio profile (the one-time cutover's source). Each pair is made to
+# agree HERE, before the rollback backup below is taken, so the backup (and any rollback) carries both names:
+#   old name only   -> its exact value is copied to the new name
+#   new name only   -> its exact value is copied to the old name (the rollback alias)
+#   neither         -> ONE value is generated and written under both names
+#   both, equal     -> untouched
+#   both, different -> the deploy stops here (exit 78) before any service is touched or any migration applied
+# A credential is never rotated, and no value is ever printed: output names the variables only. Values are compared and
+# copied as the raw text after `=` (the last occurrence wins, as it does for compose), so both lines parse identically.
+OBJECT_STORE_ENV_PAIRS="SEAWEEDFS_ADMIN_ACCESS_KEY:MINIO_ROOT_USER
+SEAWEEDFS_ADMIN_SECRET_KEY:MINIO_ROOT_PASSWORD
+SEAWEEDFS_APP_ACCESS_KEY:MINIO_APP_ACCESS_KEY
+SEAWEEDFS_APP_SECRET_KEY:MINIO_APP_SECRET_KEY
+OBJECT_STORE_AUDIT_WEBHOOK_TOKEN:MINIO_ACCESS_LOG_WEBHOOK_TOKEN"
+env_has() { grep -q "^$1=" .env.production; }
+env_raw() { sed -n "s/^$1=//p" .env.production | tail -n 1; }
+# The value a pair gets when neither name exists. The two access keys are account names, not secrets (they must differ:
+# scripts/storage/seaweedfs-identities.ts); every other value is a fresh random secret.
+object_store_fresh_value() {
+  case "$1" in
+    SEAWEEDFS_ADMIN_ACCESS_KEY) echo "chartwarden-seaweedfs-admin" ;;
+    SEAWEEDFS_APP_ACCESS_KEY) echo "chartwarden-app" ;;
+    SEAWEEDFS_APP_SECRET_KEY) openssl rand -hex 24 ;;
+    *) openssl rand -hex 32 ;;
+  esac
+}
+deploy_step=object-store-env
+object_store_mismatch=""
+for pair in $OBJECT_STORE_ENV_PAIRS; do
+  new_name=${pair%%:*}
+  old_name=${pair#*:}
+  if env_has "$new_name" && env_has "$old_name" && [ "$(env_raw "$new_name")" != "$(env_raw "$old_name")" ]; then
+    object_store_mismatch="$object_store_mismatch
+  $new_name and $old_name"
+  fi
+done
+if [ -n "$object_store_mismatch" ]; then
+  {
+    echo "OBJECT-STORE ENV MISMATCH: these pairs are both set in .env.production with different values (values not shown):$object_store_mismatch"
+    echo "deploy.sh never picks one or rotates a credential. Decide which value is live, make both lines identical, and re-run."
+    echo "No service was touched and no migration was applied."
+  } >&2
+  exit 78
+fi
+# The docling-worker bearer (backend -> worker); it holds no object-store credentials. Generated only after the mismatch
+# check above, so a deploy refused with exit 78 leaves .env.production byte-identical.
 ensure_secret DOCLING_WORKER_TOKEN "$(openssl rand -hex 32)"
-# The scoped object-store key the api/worker use instead of the store's admin key (the `object-store-provision`
-# one-shot binds it to deploy/production/object-store/app-policy.json; see compose.yml). The MINIO_* names are the
-# adapter's env contract and outlived MinIO.
-ensure_secret MINIO_APP_ACCESS_KEY "chartwarden-app"
-ensure_secret MINIO_APP_SECRET_KEY "$(openssl rand -hex 24)"
-# The bearer Fluent Bit presents to the api's access-log receiver with SeaweedFS's audit stream (GAP-141).
-ensure_secret MINIO_ACCESS_LOG_WEBHOOK_TOKEN "$(openssl rand -hex 32)"
+for pair in $OBJECT_STORE_ENV_PAIRS; do
+  new_name=${pair%%:*}
+  old_name=${pair#*:}
+  if env_has "$new_name" && env_has "$old_name"; then
+    :
+  elif env_has "$old_name"; then
+    append_env "$new_name" "$(env_raw "$old_name")"
+    echo "copied $old_name to $new_name in .env.production"
+  elif env_has "$new_name"; then
+    append_env "$old_name" "$(env_raw "$new_name")"
+    echo "copied $new_name to $old_name in .env.production (rollback alias)"
+  else
+    fresh_value=$(object_store_fresh_value "$new_name")
+    [ -n "$fresh_value" ] || { echo "could not generate a value for $new_name" >&2; exit 1; }
+    append_env "$new_name" "$fresh_value"
+    append_env "$old_name" "$fresh_value"
+    echo "generated $new_name and $old_name in .env.production"
+  fi
+done
+unset fresh_value
+
 # The least-privilege destruction login (tenant erase, attachment reaper). compose.yml requires it and the
 # `migrate` one-shot provisions the role with it, so a server whose env file predates it gets one generated.
 ensure_secret CHARTWARDEN_DESTRUCTION_PASSWORD "$(openssl rand -hex 24)"

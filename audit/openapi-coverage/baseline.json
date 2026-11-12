@@ -52,7 +52,7 @@
       "mutatingNoBody": 0
     },
     "12-dosespot": {
-      "routes": 34,
+      "routes": 43,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -102,12 +102,12 @@
       "mutatingNoBody": 0
     },
     "22-documents": {
-      "routes": 58,
+      "routes": 59,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "23-billing-medicare": {
-      "routes": 101,
+      "routes": 110,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -117,7 +117,7 @@
       "mutatingNoBody": 0
     },
     "25-remittance": {
-      "routes": 168,
+      "routes": 177,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -147,7 +147,7 @@
       "mutatingNoBody": 0
     },
     "31-portal": {
-      "routes": 67,
+      "routes": 72,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -162,7 +162,7 @@
       "mutatingNoBody": 0
     },
     "34-saas-tenant-platform": {
-      "routes": 80,
+      "routes": 107,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -197,12 +197,12 @@
       "mutatingNoBody": 0
     },
     "41-billing-commercial": {
-      "routes": 28,
+      "routes": 31,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "bootstrap": {
-      "routes": 12,
+      "routes": 15,
       "deficit": 0,
       "mutatingNoBody": 0
     }
