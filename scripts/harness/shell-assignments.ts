@@ -41,6 +41,15 @@ export function braceVariants(word: string): string[] {
 export const shellWords = (words: readonly string[]): string[] =>
   words.flatMap((w) => braceVariants(w.replace(/\\(.)/gs, "$1")));
 
+/** The shell builtins whose arguments are `NAME=value` words (`env` is a wrapper the word reader already peels). */
+export const VARIABLE_SETTERS: readonly string[] = [
+  "export",
+  "declare",
+  "typeset",
+  "readonly",
+  "local",
+];
+
 /** One variable a word assigns: its name and the text after the operator, as written. */
 export interface Assignment {
   readonly name: string;

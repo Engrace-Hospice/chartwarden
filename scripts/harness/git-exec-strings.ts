@@ -13,7 +13,7 @@
  */
 import { GIT_EXEC_CONFIG, configKey } from "./git-config-rules";
 import { type LongOption, optionValues } from "./option-values";
-import { assignments } from "./shell-assignments";
+import { VARIABLE_SETTERS, assignments } from "./shell-assignments";
 import { shellQuote } from "./wrappers";
 
 /** A string-valued option of one git subcommand: its short letter ("" for none) and its long spellings. */
@@ -231,7 +231,7 @@ const FILE_VARIABLES: ReadonlySet<string> = new Set(["GIT_INDEX_FILE"]);
 const TRACE_NOT_A_FILE = /^(?:[0-9]*|true|false|off|2>&1|af_unix:.*)$/i;
 
 /** Programs whose arguments set variables for the shell that follows: `export NAME=v`. */
-const VARIABLE_SETTER = /^(?:export|declare|typeset|readonly|local)$/;
+const VARIABLE_SETTER = new RegExp(`^(?:${VARIABLE_SETTERS.join("|")})$`);
 
 /** The `NAME=value` words a command sets: its prefix assignments and, for `export` and kin, its arguments. */
 export function assignmentWords(

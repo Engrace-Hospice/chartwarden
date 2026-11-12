@@ -14,7 +14,7 @@
  * because a deny is never reached in this mode.
  */
 import { mcpStrings, withoutOddChars } from "./codex-patch";
-import { FILE_URL, LINE_BREAKS, percentDecoded } from "./mcp-tokens";
+import { FILE_URL, LINE_BREAKS, MAX_PATH_CHARS, percentDecoded } from "./mcp-tokens";
 import { secretPathReason } from "./patterns";
 import { isProtectedPath } from "./protected-paths";
 
@@ -26,8 +26,6 @@ export interface McpFinding {
   readonly reason: string;
 }
 
-/** A line this long is not a path (PATH_MAX is 4096): it is matched as written and never resolved on disk. */
-const MAX_PATH_CHARS = 4096;
 /** Paths resolved on disk in one call; past it the call is asked about (the work must fit the hook's timeout). */
 const MAX_RESOLUTIONS = 20_000;
 const MAX_TOOL_NAME_CHARS = 120;

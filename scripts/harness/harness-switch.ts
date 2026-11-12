@@ -17,7 +17,8 @@
  *
  * Pure: the caller hands over the parsed commands, so this module imports nothing from the classifier.
  */
-import { ASSIGN, shellWords } from "./shell-assignments";
+import { isLongInPlace } from "./option-values";
+import { ASSIGN, VARIABLE_SETTERS, shellWords } from "./shell-assignments";
 
 /** The names of the variables the rule guards. `HOME` moves what `~` and `$HOME` mean. */
 const NAMES =
@@ -32,7 +33,7 @@ const SWITCH_TEXT = new RegExp(`\\b(?:${NAMES})${ASSIGN}`);
 const OBFUSCATION = /[\\'"{},]/g;
 
 /** Programs whose own arguments assign variables (`export NAME=value`, `env NAME=value cmd`). */
-const VARIABLE_SETTER = /^(export|declare|typeset|readonly|local|env)$/;
+const VARIABLE_SETTER = new RegExp(`^(?:${[...VARIABLE_SETTERS, "env"].join("|")})$`);
 /** Programs that take the NAME of a variable (or of an environment entry) to set, with no `=`. */
 const NAMES_A_VARIABLE =
   /^(read|mapfile|readarray|getopts|launchctl|tmux|systemctl|defaults|setenv|for|select)$/;
@@ -55,13 +56,6 @@ const isGitPagerOption = (arg: string): boolean => {
   const given = arg.slice(2, eq < 0 ? undefined : eq);
   return given.length >= 4 && "open-files-in-pager".startsWith(given);
 };
-
-/** GNU sed takes any prefix of `--in-place`: `--i`, `--in-p`. */
-function isLongInPlace(arg: string): boolean {
-  if (!arg.startsWith("--i")) return false;
-  const eq = arg.indexOf("=");
-  return "in-place".startsWith(arg.slice(2, eq < 0 ? undefined : eq));
-}
 
 /** The parts of a parsed command this rule reads. */
 export interface SwitchCommand {

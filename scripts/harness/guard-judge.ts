@@ -38,7 +38,7 @@ import {
 import type { GuardAnswer } from "./hard-deadline";
 import { type HookInput, appendLedger, loadRegistry, projectDir, relPath, sha256 } from "./io";
 import { claudeMcpFinding } from "./mcp-claude";
-import { LINE_BREAKS, mcpPathCandidates } from "./mcp-tokens";
+import { LINE_BREAKS, MAX_PATH_CHARS, mcpPathCandidates } from "./mcp-tokens";
 import {
   type BashVerdict,
   type Decision,
@@ -89,9 +89,6 @@ function refuse(log: Log, reason: string, target?: string, cmd?: string): never 
   log("deny", reason, target, cmd);
   return respond("deny", reason);
 }
-
-/** A line this long is not a path (PATH_MAX is 4096): it is matched as written and never resolved on disk. */
-const MAX_PATH_CHARS = 4096;
 
 /**
  * The real path, or for a path that does not exist yet its nearest existing parent's real path plus the rest.

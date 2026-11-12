@@ -58,7 +58,7 @@ import {
   scriptsHandedToShell,
 } from "./inline-code";
 import { runsLiveSuite } from "./live-suite";
-import { type LongOption, optionValues } from "./option-values";
+import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
 import {
   PROTECTED_FRAGMENT,
@@ -102,6 +102,7 @@ import {
   WRAPPER_VALUE_FLAG,
   containerExec,
   containerRun,
+  shellQuote,
   shellStrings,
   sshHost,
 } from "./wrappers";
@@ -1007,10 +1008,6 @@ export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): Bas
   return work.spent && verdict.decision !== "deny" ? ask(WORK_BUDGET_REASON) : verdict;
 }
 
-/** A word as the shell must read it back as one word. */
-const shellQuote = (w: string): string =>
-  /^[A-Za-z0-9_@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, "'\\''")}'`;
-
 /**
  * The command lines a `find` runs: each `-exec CMD … ;` / `-ok CMD … +`, re-quoted so it reads as one command
  * line. `-execdir` and `-okdir` run in the directory of each file found, which is not one the guard knows.
@@ -1674,21 +1671,12 @@ function clusterHas(arg: string, letters: string, cluster: RegExp = SHORT_FLAGS)
   for (const letter of letters) if (arg.includes(letter)) return true;
   return false;
 }
-/** GNU getopt takes any unambiguous prefix of a long option (`--rec`); `minChars` is the fewest after `--` that is one. */
-const isLongOption = (arg: string, name: string, minChars: number): boolean =>
-  arg.startsWith("--") && arg.length - 2 >= minChars && name.startsWith(arg.slice(2));
 const isRecursive = (arg: string): boolean =>
   clusterHas(arg, "rRa") || isLongOption(arg, "recursive", 3) || isLongOption(arg, "archive", 3);
 const RG_SHORT_FLAGS = /^-[A-Za-z.]+$/;
 /** `-ec`, `-xc`: a short cluster with `c` after its first letter (a bare `-c` is matched on its own). */
 const isShortClusterWithC = (arg: string): boolean =>
   arg.startsWith("-") && !arg.includes("-", 1) && arg.indexOf("c", 2) >= 2;
-/** GNU getopt takes any unambiguous prefix of a long option, and `--in-place` is the only sed option that starts `--i`. */
-function isLongInPlace(arg: string): boolean {
-  if (!arg.startsWith("--i")) return false;
-  const eq = arg.indexOf("=");
-  return "in-place".startsWith(arg.slice(2, eq < 0 ? undefined : eq));
-}
 /** `sed -i`, `-ni`, `-i.bak`, `--in-place`, `--in-p`: edits its files where they are. */
 const isInPlace = (arg: string): boolean =>
   (/^-([A-Za-z]*)/.exec(arg)?.[1] ?? "").includes("i") || isLongInPlace(arg);

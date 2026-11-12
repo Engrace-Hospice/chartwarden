@@ -12,10 +12,7 @@
  * the plain `git stash pop`/`apply` of the top stash (the agent restoring what it just stashed): both are
  * documented gaps, measured at about 0.1% of commands each.
  */
-
-/** `arg` is `--<name>` or an unambiguous abbreviation of it (git accepts any, `--har` for `--hard`). */
-const isLongOption = (arg: string, name: string, minChars: number): boolean =>
-  arg.startsWith("--") && arg.length >= 2 + minChars && `--${name}`.startsWith(arg);
+import { isLongOption } from "./option-values";
 
 /** A short-flag cluster (`-fb`) holding `letter`. */
 const clusterHas = (arg: string, letter: string): boolean =>

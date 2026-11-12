@@ -17,7 +17,8 @@ const SEPARATORS = /[\s,;|:\u0085\u2028\u2029]+/;
 const EDGE_PUNCTUATION = /^[\s"'`()[\]{}<>]+|[\s"'`()[\]{}<>]+$/g;
 /** A `file://` URL prefix. Global: use it with `replace`, never `test` (a global regex keeps its position). */
 export const FILE_URL = /file:\/\/(?:localhost)?/gi;
-const MAX_PATH_CHARS = 4096;
+/** A line this long is not a path (PATH_MAX is 4096): it is matched as written and never resolved on disk. */
+export const MAX_PATH_CHARS = 4096;
 /** Tokens taken from one line; the rest of an enormous line is still judged as a whole. */
 const MAX_TOKENS_PER_LINE = 512;
 

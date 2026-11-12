@@ -8,6 +8,17 @@
  */
 export type LongOption = readonly [name: string, minChars: number];
 
+/** GNU getopt takes any unambiguous prefix of a long option (`--rec`); `minChars` is the fewest after `--` that is one. */
+export const isLongOption = (arg: string, name: string, minChars: number): boolean =>
+  arg.startsWith("--") && arg.length - 2 >= minChars && name.startsWith(arg.slice(2));
+
+/** GNU sed takes any prefix of `--in-place`: `--i`, `--in-p`, and no other sed option starts `--i`. */
+export function isLongInPlace(arg: string): boolean {
+  if (!arg.startsWith("--i")) return false;
+  const eq = arg.indexOf("=");
+  return "in-place".startsWith(arg.slice(2, eq < 0 ? undefined : eq));
+}
+
 /**
  * The values of one option: `-o FILE`, `-oFILE`, `-sSo FILE` (a letter in a cluster takes the rest of the word,
  * or the next word), `--output FILE`, `--output=FILE` and an unambiguous abbreviation of it (`--out FILE`).
