@@ -209,6 +209,13 @@ describe("local docker-compose.yml (RustFS) and CI use the OBJECT_STORE_* contra
     // No CI test verifies the legacy names, so none is kept.
     expect(ciText).not.toMatch(/^\s*MINIO_(ENDPOINT|ACCESS_KEY|SECRET_KEY|REGION)\s*:/m);
   });
+
+  it("the production compose dry run mirrors deploy.sh rollback aliases without changing the template", () => {
+    const gate = read(".github/workflows/pr-image-gate.yml");
+    expect(gate).toContain('export MINIO_ROOT_USER="$SEAWEEDFS_ADMIN_ACCESS_KEY"');
+    expect(gate).toContain('export MINIO_ROOT_PASSWORD="$SEAWEEDFS_ADMIN_SECRET_KEY"');
+    expect(gate).toContain("docker compose --env-file .env.production -f compose.yml config -q");
+  });
 });
 
 describe("deploy/production/README.md documents the contract", () => {
