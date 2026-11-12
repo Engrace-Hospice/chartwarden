@@ -345,12 +345,16 @@ function judgeBash(cmd: string, root: string, cwd: string, workdir: string): Bas
   return VERDICT_RANK[real.decision] > VERDICT_RANK[written.decision] ? real : written;
 }
 
+/** `git rev-parse` answers in about 10 ms; one that has not in this long is hung, and the branch is then unknown. */
+const GIT_BRANCH_TIMEOUT_MS = 2000;
+
 function currentBranch(root: string): string | undefined {
   try {
     return execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
       cwd: root,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
+      timeout: GIT_BRANCH_TIMEOUT_MS,
     }).trim();
   } catch {
     return undefined;

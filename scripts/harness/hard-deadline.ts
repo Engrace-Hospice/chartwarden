@@ -52,12 +52,18 @@ export function denyJson(reason: string): string {
   });
 }
 
-/** Synchronous: `process.stdout.write` then `exit` cut a large write to a pipe off at 64 KB. */
+/**
+ * Synchronous: `process.stdout.write` then `exit` cut a large write to a pipe off at 64 KB. `writeSync` may write
+ * less than it was given (a full pipe), so it is called until every byte is out; if it throws, what is left goes
+ * through the stream.
+ */
 function write(fd: 1 | 2, text: string): void {
+  const bytes = Buffer.from(text);
+  let done = 0;
   try {
-    writeSync(fd, text);
+    while (done < bytes.length) done += writeSync(fd, bytes, done);
   } catch {
-    (fd === 1 ? process.stdout : process.stderr).write(text);
+    (fd === 1 ? process.stdout : process.stderr).write(bytes.subarray(done));
   }
 }
 
@@ -100,8 +106,19 @@ export async function runGuard(worker: URL, codex: boolean): Promise<void> {
   }
 }
 
-/** Print an answer the way the guard always has: JSON for a deny or ask, nothing for an allow; exit 0. */
-function finish(answer: GuardAnswer): never {
+const DECISIONS: ReadonlySet<unknown> = new Set(["allow", "ask", "deny"]);
+const MALFORMED_ANSWER =
+  "The guard's worker answered with something that is not a decision, so this call is refused rather than run unjudged.";
+
+/**
+ * Print an answer the way the guard always has: JSON for a deny or ask, nothing for an allow; exit 0. An answer that is
+ * not an object with a decision of `allow`, `ask` or `deny` prints no decision and would exit 0, which both agents read
+ * as an allow: it is refused instead. Exported for its test.
+ */
+export function finish(answer: GuardAnswer): never {
+  if (typeof answer !== "object" || answer === null || !DECISIONS.has(answer.decision)) {
+    emergencyDeny(MALFORMED_ANSWER);
+  }
   if (answer.stderr) write(2, answer.stderr);
   if (answer.decision !== "allow") {
     write(
