@@ -72,7 +72,9 @@ async function main(): Promise<void> {
   }
   const s3Config = s3ObjectStoreConfigFromEnv(process.env);
   if (!s3Config) {
-    throw new Error("MINIO_ENDPOINT, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY are required");
+    throw new Error(
+      "OBJECT_STORE_ENDPOINT, OBJECT_STORE_ACCESS_KEY, and OBJECT_STORE_SECRET_KEY are required",
+    );
   }
 
   const db = new Client({ connectionString: databaseUrl });

@@ -343,33 +343,41 @@ describe("createS3ObjectStore presign", () => {
 // ── env helper ──────────────────────────────────────────────────────────────────────────────────
 
 describe("s3ObjectStoreConfigFromEnv", () => {
-  it("returns null when the MinIO env contract is absent or partial (refusing adapter stays)", () => {
+  it("returns null when the object-store env contract is absent or partial (refusing adapter stays)", () => {
     expect(s3ObjectStoreConfigFromEnv({})).toBeNull();
-    expect(s3ObjectStoreConfigFromEnv({ MINIO_ENDPOINT: "http://minio:9000" })).toBeNull();
+    expect(s3ObjectStoreConfigFromEnv({ OBJECT_STORE_ENDPOINT: "http://rustfs:9000" })).toBeNull();
     expect(
       s3ObjectStoreConfigFromEnv({
-        MINIO_ENDPOINT: "http://minio:9000",
-        MINIO_ACCESS_KEY: "  ",
-        MINIO_SECRET_KEY: "s",
+        OBJECT_STORE_ENDPOINT: "http://rustfs:9000",
+        OBJECT_STORE_ACCESS_KEY: "  ",
+        OBJECT_STORE_SECRET_KEY: "s",
       }),
     ).toBeNull();
   });
 
-  it("returns a path-style config (region optional, defaulting downstream)", () => {
+  it("prefers the vendor-neutral contract and returns a path-style config", () => {
     expect(
       s3ObjectStoreConfigFromEnv({
-        MINIO_ENDPOINT: "http://minio:9000",
-        MINIO_PUBLIC_ENDPOINT: "https://storage.example.com",
-        MINIO_ACCESS_KEY: "ak",
-        MINIO_SECRET_KEY: "sk",
+        OBJECT_STORE_ENDPOINT: "http://seaweedfs:8333",
+        OBJECT_STORE_PUBLIC_ENDPOINT: "https://storage.example.com",
+        OBJECT_STORE_ACCESS_KEY: "object-ak",
+        OBJECT_STORE_SECRET_KEY: "object-sk",
+        OBJECT_STORE_REGION: "us-west-2",
+        MINIO_ENDPOINT: "http://legacy-minio:9000",
+        MINIO_ACCESS_KEY: "legacy-ak",
+        MINIO_SECRET_KEY: "legacy-sk",
       }),
     ).toEqual({
-      endpoint: "http://minio:9000",
+      endpoint: "http://seaweedfs:8333",
       publicEndpoint: "https://storage.example.com",
-      accessKeyId: "ak",
-      secretAccessKey: "sk",
+      accessKeyId: "object-ak",
+      secretAccessKey: "object-sk",
+      region: "us-west-2",
       forcePathStyle: true,
     });
+  });
+
+  it("accepts the legacy MinIO names for one rollback compatibility window", () => {
     expect(
       s3ObjectStoreConfigFromEnv({
         MINIO_ENDPOINT: "http://minio:9000",
@@ -377,7 +385,13 @@ describe("s3ObjectStoreConfigFromEnv", () => {
         MINIO_SECRET_KEY: "sk",
         MINIO_REGION: "eu-west-1",
       }),
-    ).toMatchObject({ region: "eu-west-1" });
+    ).toEqual({
+      endpoint: "http://minio:9000",
+      accessKeyId: "ak",
+      secretAccessKey: "sk",
+      region: "eu-west-1",
+      forcePathStyle: true,
+    });
   });
 });
 

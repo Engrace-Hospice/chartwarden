@@ -1889,12 +1889,12 @@ jobs:
       # gateway capability gate is on (outside production an unset gate is OFF). Throwaway key, this run only.
       M24_CREDENTIAL_ENCRYPTION_KEY: Y2ktbTI0LWNyZWRlbnRpYWwta2VrLTAxMjM0NTY3ODk=
       M24_LAUNCH_GATEWAY_ENABLED: "true"
-      # Document upload (documents.spec) needs the S3 adapter (RustFS here): without MINIO_* the upload route answers
+      # Document upload (documents.spec) needs the S3 adapter (RustFS here): without OBJECT_STORE_* the upload route answers
       # 503 DEGRADED and the SPA drops to its maintenance page. The adapter creates its own buckets.
-      MINIO_ENDPOINT: http://localhost:9000
-      MINIO_ACCESS_KEY: chartwarden
-      MINIO_SECRET_KEY: chartwarden-object-store-ci-secret
-      MINIO_REGION: us-east-1
+      OBJECT_STORE_ENDPOINT: http://localhost:9000
+      OBJECT_STORE_ACCESS_KEY: chartwarden
+      OBJECT_STORE_SECRET_KEY: chartwarden-object-store-ci-secret
+      OBJECT_STORE_REGION: us-east-1
     steps:
       - uses: actions/checkout@v7
       - name: Install Bun

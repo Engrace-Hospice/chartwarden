@@ -221,7 +221,8 @@ export async function runBuildExportSweepForOrg(
   organizationId: string,
 ): Promise<{ ready: number; failed: number }> {
   const store = deps.objectStore;
-  if (!store) throw new Error("M4_BUILD_EXPORT: no object store bound (MINIO_* env contract)");
+  if (!store)
+    throw new Error("M4_BUILD_EXPORT: no object store bound (OBJECT_STORE_* env contract)");
   const now = deps.now ?? (() => new Date());
   const pending = await withOrgContext(deps.db, { organizationId, ...SYSTEM }, (tx) =>
     tx

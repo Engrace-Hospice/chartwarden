@@ -10,7 +10,7 @@
 # committed. `NODE_ENV=development` throughout, so `bootstrap/env.ts`'s production requirement set
 # (BETTER_AUTH_SECRET length, the base64 KEKs, INTERNAL_SERVICE_TOKEN, …) does not apply; only the
 # handful of vars this repo's real local `.env` actually sets are wired here (DATABASE_URL,
-# REDIS_URL, BETTER_AUTH_SECRET/URL, TRUSTED_ORIGINS, NODE_ENV, PORT/WORKER_PORT), plus the MINIO_*
+# REDIS_URL, BETTER_AUTH_SECRET/URL, TRUSTED_ORIGINS, NODE_ENV, PORT/WORKER_PORT), plus the OBJECT_STORE_*
 # contract (`s3ObjectStoreConfigFromEnv`, apps/backend/src/modules/22-documents/seams/
 # s3-object-store.ts) so M22's real S3 adapter binds instead of its refusing deny-stub.
 
@@ -59,9 +59,10 @@ services:
       retries: 30
 
   # Local object store: RustFS (Apache-2.0, speaks the S3 + MinIO admin APIs). It replaced MinIO here and in CI; production
-  # still runs MinIO until the SeaweedFS cutover (ADR-0050 D6). The backend reaches it through the same `MINIO_*` env
-  # names: they are the S3 adapter's contract, not a MinIO dependency. `bun run test:object-store:conformance:live`
-  # proves the adapter against RustFS (scripts/object-store-conformance/rustfs-up.sh). Console on :9001.
+  # runs SeaweedFS (ADR-0050 D6). The backend reaches it through the vendor-neutral `OBJECT_STORE_*` env names, the S3
+  # adapter's contract (the legacy `MINIO_*` names are still read, for a production rollback window only; these services
+  # are built from this tree, so they need no alias). `bun run test:object-store:conformance:live` proves the adapter
+  # against RustFS (scripts/object-store-conformance/rustfs-up.sh). Console on :9001.
   rustfs:
     image: rustfs/rustfs:1.0.4
     environment:
@@ -131,10 +132,10 @@ services:
       CHARTWARDEN_APP_PASSWORD: chartwarden-app-dev-password
       CHARTWARDEN_PLATFORM_PASSWORD: chartwarden-platform-dev-password
       CHARTWARDEN_DESTRUCTION_PASSWORD: chartwarden-destruction-dev-password
-      MINIO_ENDPOINT: http://rustfs:9000
-      MINIO_ACCESS_KEY: chartwarden
-      MINIO_SECRET_KEY: chartwarden-object-store-dev-secret
-      MINIO_REGION: us-east-1
+      OBJECT_STORE_ENDPOINT: http://rustfs:9000
+      OBJECT_STORE_ACCESS_KEY: chartwarden
+      OBJECT_STORE_SECRET_KEY: chartwarden-object-store-dev-secret
+      OBJECT_STORE_REGION: us-east-1
     depends_on:
       postgres:
         condition: service_healthy
@@ -168,10 +169,10 @@ services:
       DATABASE_PLATFORM_URL: postgres://chartwarden_platform_login:chartwarden-platform-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       DATABASE_DESTRUCTION_URL: postgres://chartwarden_destruction_login:chartwarden-destruction-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       REDIS_URL: redis://redis:6379
-      MINIO_ENDPOINT: http://rustfs:9000
-      MINIO_ACCESS_KEY: chartwarden
-      MINIO_SECRET_KEY: chartwarden-object-store-dev-secret
-      MINIO_REGION: us-east-1
+      OBJECT_STORE_ENDPOINT: http://rustfs:9000
+      OBJECT_STORE_ACCESS_KEY: chartwarden
+      OBJECT_STORE_SECRET_KEY: chartwarden-object-store-dev-secret
+      OBJECT_STORE_REGION: us-east-1
       # M36 attachment scanner: the ClamAV sidecar. The builtin scanner (EICAR + type check, NOT an antivirus) is
       # opt-in only: MESSAGING_ATTACHMENT_SCANNER=builtin ALLOW_BUILTIN_ATTACHMENT_SCANNER=1 in your .env.
       MESSAGING_ATTACHMENT_SCANNER: ${MESSAGING_ATTACHMENT_SCANNER:-clamd}
@@ -253,10 +254,10 @@ services:
       DATABASE_PLATFORM_URL: postgres://chartwarden_platform_login:chartwarden-platform-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       DATABASE_DESTRUCTION_URL: postgres://chartwarden_destruction_login:chartwarden-destruction-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       REDIS_URL: redis://redis:6379
-      MINIO_ENDPOINT: http://rustfs:9000
-      MINIO_ACCESS_KEY: chartwarden
-      MINIO_SECRET_KEY: chartwarden-object-store-dev-secret
-      MINIO_REGION: us-east-1
+      OBJECT_STORE_ENDPOINT: http://rustfs:9000
+      OBJECT_STORE_ACCESS_KEY: chartwarden
+      OBJECT_STORE_SECRET_KEY: chartwarden-object-store-dev-secret
+      OBJECT_STORE_REGION: us-east-1
       # M36 attachment scanner: the ClamAV sidecar. The builtin scanner (EICAR + type check, NOT an antivirus) is
       # opt-in only: MESSAGING_ATTACHMENT_SCANNER=builtin ALLOW_BUILTIN_ATTACHMENT_SCANNER=1 in your .env.
       MESSAGING_ATTACHMENT_SCANNER: ${MESSAGING_ATTACHMENT_SCANNER:-clamd}

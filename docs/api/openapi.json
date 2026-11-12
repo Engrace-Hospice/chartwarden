@@ -396301,7 +396301,81 @@
         "tags": [
           "22-documents"
         ],
-        "summary": "MinIO audit-webhook receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8)",
+        "summary": "Legacy alias for the object-store audit receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "received",
+                    "recorded",
+                    "unattributed",
+                    "duplicates"
+                  ],
+                  "properties": {
+                    "received": {
+                      "type": "integer"
+                    },
+                    "recorded": {
+                      "type": "integer"
+                    },
+                    "unattributed": {
+                      "type": "integer"
+                    },
+                    "duplicates": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {}
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/object-store/access-log": {
+      "post": {
+        "operationId": "postApiV1WebhooksObjectstoreAccesslog",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Object-store audit receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8)",
         "parameters": [],
         "responses": {
           "200": {

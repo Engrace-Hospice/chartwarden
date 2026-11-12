@@ -120,9 +120,9 @@ in place (it adds the `listen 443 ssl` block and the certificate paths), so **ne
   no other container can reach the filer's unauthenticated API. `127.0.0.1:9000` (the storage vhost's upstream) maps
   to it. Health: `GET /healthz`.
 - **`object-store-provision`** — a no-network one-shot that renders SeaweedFS's identities (`s3.json`, in the
-  `seaweedfs-config` volume) with `scripts/storage/seaweedfs-identities.ts`: the admin (`MINIO_ROOT_USER` /
-  `MINIO_ROOT_PASSWORD`, operators and the one-time migration only), the app key the api/worker use (`MINIO_APP_ACCESS_KEY`
-  / `MINIO_APP_SECRET_KEY`, bound to `object-store/app-policy.json`: object and bucket operations on `tenant-*` and
+  `seaweedfs-config` volume) with `scripts/storage/seaweedfs-identities.ts`: the admin (`SEAWEEDFS_ADMIN_ACCESS_KEY` /
+  `SEAWEEDFS_ADMIN_SECRET_KEY`, operators and the one-time migration only), the app key the api/worker use (`SEAWEEDFS_APP_ACCESS_KEY`
+  / `SEAWEEDFS_APP_SECRET_KEY`, bound to `object-store/app-policy.json`: object and bucket operations on `tenant-*` and
   `chartwarden-*`, lifecycle on `tenant-*`, no bucket delete and no versioning or policy change), and read-only keys
   (`object-store/reader-policy.json`) for the backup and the second copy when they are configured. The admin is not an
   application credential.
@@ -163,17 +163,72 @@ in place (it adds the `listen 443 ssl` block and the certificate paths), so **ne
 
 SeaweedFS writes an **audit record per S3 call** over the Fluent forward protocol (`object-store/audit.json`; its
 timeouts are Go nanoseconds, so `3000000000` is 3 s); `fluent-bit` posts each batch as JSON to the api's
-`/api/v1/webhooks/minio/access-log` with the bearer `MINIO_ACCESS_LOG_WEBHOOK_TOKEN` (`object-store/fluent-bit.yaml`). The
-api keeps successful object GETs on `tenant-*` buckets and records them as `signed_url_consumed` in `document_access_log`,
+`/api/v1/webhooks/minio/access-log` with the bearer `OBJECT_STORE_AUDIT_WEBHOOK_TOKEN` (`object-store/fluent-bit.yaml`).
+The api serves the receiver on two paths with the same handler and the same token: `/api/v1/webhooks/object-store/access-log`
+is the new canonical path, and `/api/v1/webhooks/minio/access-log` is the temporary compatibility path. **During this
+compatibility release `fluent-bit` deliberately keeps posting to the legacy `minio` path**, because the previous release,
+the rollback image, serves only that path and a rollback does not recreate `fluent-bit`. The sender switches to the
+canonical path (one `AUDIT_SINK_PATH` line in `compose.yml`) only in a later release, once no rollback target predates
+support for it. The api keeps successful object GETs on `tenant-*` buckets and records them as `signed_url_consumed` in `document_access_log`,
 attributed to the principal the signed URL was issued to (best effort; unattributable fetches are dropped). SeaweedFS
 logs asynchronously: a down `fluent-bit` loses audit records but never blocks an S3 request. The parser also reads
 MinIO's and RustFS's record shapes.
 
-`deploy.sh` generates `DOCLING_WORKER_TOKEN`, `MINIO_APP_ACCESS_KEY`, `MINIO_APP_SECRET_KEY` and `MINIO_ACCESS_LOG_WEBHOOK_TOKEN` into `.env.production`
+`deploy.sh` generates `DOCLING_WORKER_TOKEN` and any missing object-store credential (below) into `.env.production`
 the first time it runs (existing values are never touched, and this happens before the rollback backup is taken).
-To rotate the object store's app secret, edit `MINIO_APP_SECRET_KEY` and deploy: `object-store-provision` rewrites
-`s3.json` and `deploy.sh` recreates `seaweedfs` (it reads its identities at start only; a few seconds of storage
-downtime). The `MINIO_*` names are the adapter's env contract and outlived MinIO.
+To rotate the object store's app secret, set `SEAWEEDFS_APP_SECRET_KEY` **and its rollback alias `MINIO_APP_SECRET_KEY` to
+the same new value** and deploy (changing only one is a mismatch, and the deploy refuses it): `object-store-provision`
+rewrites `s3.json` and `deploy.sh` recreates `seaweedfs` (it reads its identities at start only; a few seconds of storage
+downtime).
+
+## Object store: the environment contract (SeaweedFS primary; additive compatibility release)
+
+Production's object store is **SeaweedFS**. Which variable names mean what:
+
+| Names | Meaning | Who reads them |
+| --- | --- | --- |
+| `OBJECT_STORE_ENDPOINT`, `OBJECT_STORE_PUBLIC_ENDPOINT`, `OBJECT_STORE_ACCESS_KEY`, `OBJECT_STORE_SECRET_KEY`, `OBJECT_STORE_REGION`, `OBJECT_STORE_AUDIT_WEBHOOK_TOKEN` | **The application contract**, vendor-neutral. | api, worker, `tenant-buckets` and `hl7-listener` (the public endpoint where presigned URLs are made); the audit token is the api's, and Fluent Bit presents it |
+| `SEAWEEDFS_ADMIN_ACCESS_KEY` / `_SECRET_KEY`, `SEAWEEDFS_APP_ACCESS_KEY` / `_SECRET_KEY` | **Production provisioning credentials**: what `object-store-provision` renders into `s3.json`. The app pair is also what compose hands the application as `OBJECT_STORE_ACCESS_KEY` / `_SECRET_KEY`; the admin pair is the migration's target. | `.env.production`, `object-store-provision`, `object-store-migrate` (target) |
+| `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `MINIO_APP_ACCESS_KEY`, `MINIO_APP_SECRET_KEY`, `MINIO_ACCESS_LOG_WEBHOOK_TOKEN`; and `MINIO_ENDPOINT`, `MINIO_PUBLIC_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_REGION` in api, worker, `tenant-buckets`, `hl7-listener` | **Temporary rollback aliases**: always the same value as their canonical counterpart, so a release that reads only `MINIO_*` still boots if deploy rolls back to it. No current application code needs them (`MINIO_ROOT_*` is also the real MinIO root, next row). | the previous release only |
+| `minio` service and `legacy-minio` profile, `object-store-migrate`'s `SOURCE_S3_*` (from `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD`), `RESTORE_MINIO_*`, `BACKUP_SOURCE_MINIO_*`, the restore drill's MinIO variables | **Real legacy / restore MinIO**, not aliases: they name an actual MinIO server. They stay. | the one-time cutover, the backup restore and the drills |
+
+**RustFS** is the local and CI object store (`docker-compose.yml`, the CI jobs: both use the `OBJECT_STORE_*` names) and the
+separate-host second copy (`compose.object-copy.yml`, `replica/`); it is never production's primary.
+
+### How `deploy.sh` migrates the names (and never rotates a credential)
+
+Five pairs are reconciled in `.env.production` before the rollback backup is taken, so the backup, and therefore a
+rollback, carries both names:
+
+| Canonical | Legacy alias |
+| --- | --- |
+| `SEAWEEDFS_ADMIN_ACCESS_KEY` | `MINIO_ROOT_USER` |
+| `SEAWEEDFS_ADMIN_SECRET_KEY` | `MINIO_ROOT_PASSWORD` |
+| `SEAWEEDFS_APP_ACCESS_KEY` | `MINIO_APP_ACCESS_KEY` |
+| `SEAWEEDFS_APP_SECRET_KEY` | `MINIO_APP_SECRET_KEY` |
+| `OBJECT_STORE_AUDIT_WEBHOOK_TOKEN` | `MINIO_ACCESS_LOG_WEBHOOK_TOKEN` |
+
+- only the old name is set: its exact value is copied to the new name (an existing host upgrades with no edit);
+- only the new name is set: its exact value is copied to the old name (a fresh host rendered from `.env.production.example`);
+- neither is set: one value is generated and written under both names (the two access keys are the account names
+  `chartwarden-seaweedfs-admin` and `chartwarden-app`; the rest are random);
+- both are set and equal: nothing is written.
+
+An existing value is never changed, and no value is ever printed (the log names variables only).
+
+**Fail closed on a mismatch.** If both names of a pair are set to different values, `deploy.sh` exits 78 right there,
+printing the two variable names and no value. It has not touched a container, applied a migration or taken the backup,
+so the host is exactly as it was. It does not pick a side: decide which value is live (a host that has not yet deployed
+this release provisioned SeaweedFS from the `MINIO_*` values, and while the cutover is still pending `MINIO_ROOT_USER` /
+`MINIO_ROOT_PASSWORD` must be MinIO's real root credential), make both lines identical, and deploy again. Do not add the
+`MINIO_*` aliases to a template by hand with separately generated secrets: that is the mismatch this check exists to stop.
+
+**Rollback and the audit path.** A rollback reuses the new `compose.yml` with the previous images, which is why the aliases
+exist. `fluent-bit` is not part of that recreate, and it keeps posting to `/api/v1/webhooks/minio/access-log`, the path
+the previous release serves, so signed-URL download confirmations (`signed_url_consumed`) keep flowing across a rollback
+with the same token. Retiring the legacy names is a later release, in this order: first `fluent-bit` moves to
+`/api/v1/webhooks/object-store/access-log`, once no rollback target predates support for that path; only after that are
+the `MINIO_*` aliases, the `/api/v1/webhooks/minio/access-log` path and the `MINIO_*` fallbacks in the adapter removed.
 
 ## Object store: the SeaweedFS cutover (ADR-0050 D6 amendment, 2026-11-05)
 
@@ -184,7 +239,8 @@ marker migrates it in a short maintenance window (the api is down for the length
    neither store is written while the copy runs;
 2. recreates `minio` under the `legacy-minio` profile WITHOUT its host port (`127.0.0.1:9000` becomes SeaweedFS's) and
    starts `seaweedfs`;
-3. runs `object-store-migrate` (`scripts/object-store-copy.ts --adopt-unchecksummed`, MinIO root -> SeaweedFS admin): a
+3. runs `object-store-migrate` (`scripts/object-store-copy.ts --adopt-unchecksummed`, source: MinIO root from `MINIO_ROOT_USER` /
+   `MINIO_ROOT_PASSWORD`; target: SeaweedFS admin from `SEAWEEDFS_ADMIN_ACCESS_KEY` / `SEAWEEDFS_ADMIN_SECRET_KEY`): a
    MIRROR, so every `tenant-*` / `chartwarden-*` object is re-put WITH its SHA-256 and read back, and anything a
    failed earlier attempt left in SeaweedFS is removed (the app never writes SeaweedFS before this pass succeeds). A
    generic copier (`mc mirror`, rclone) would drop the stored checksum and leave every upload unverifiable;

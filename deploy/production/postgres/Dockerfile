@@ -34,6 +34,7 @@ RUN glibc_is_pinned() { /lib/libc.so.6 | grep -q "release version ${GLIBC_VERSIO
       "postgresql-18-oci-entrypoint=${PG_VERSION}" \
       "pgvector-18=${PGVECTOR_VERSION}" \
       gosu=1.20-r0 tzdata=2026f-r0 \
+      libxslt=1.1.45-r6 \
       "glibc-${GLIBC_VERSION}-locale-en" "posix-libc-utils-bin-${GLIBC_VERSION}" \
  && glibc_is_pinned \
  && install -d -o postgres -g postgres -m 0755 /var/lib/postgresql \
