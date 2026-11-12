@@ -142,6 +142,13 @@ describe("migration 1486 (support-session hardening)", () => {
   it("makes revoke and close evidence database-owned and immutable", () => {
     expect(sql).toContain('REVOKE INSERT ON "support_session_event" FROM chartwarden_app');
     expect(sql).toContain('CREATE TRIGGER "trg_m34_record_support_session_close"');
+    const closeTriggerFunction = sql.slice(
+      sql.indexOf("CREATE OR REPLACE FUNCTION m34_record_support_session_close()"),
+      sql.indexOf("ALTER FUNCTION m34_record_support_session_close()"),
+    );
+    expect(closeTriggerFunction).toContain("SET search_path = pg_catalog, pg_temp");
+    expect(closeTriggerFunction).toContain("INSERT INTO public.support_session_event");
+    expect(closeTriggerFunction).not.toContain("ON CONFLICT");
     expect(sql).toContain("a revoked support consent grant is immutable");
     expect(sql).toContain("a closed support session is immutable");
   });
@@ -149,6 +156,9 @@ describe("migration 1486 (support-session hardening)", () => {
   it("scrubs operator membership and IP from the generic tenant-visible audit projection", () => {
     expect(sql).toContain("ARRAY['actor_membership_id']::text[]");
     expect(sql).toContain("ARRAY['actor_ip']::text[]");
+    expect(sql.match(/SET search_path = pg_catalog, pg_temp/g)).toHaveLength(3);
+    expect(sql.match(/INSERT INTO public\.audit_event/g)).toHaveLength(2);
+    expect(sql.match(/public\.audit_scrub/g)).toHaveLength(4);
   });
 });
 

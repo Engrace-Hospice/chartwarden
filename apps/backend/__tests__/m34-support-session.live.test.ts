@@ -615,6 +615,12 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
       const grantId = await grantRow(TENANT_ORG, TENANT_ACCOUNT);
       const sessionId = await sessionRow(TENANT_ORG, grantId);
       await asApp(TENANT_ORG, async (c) => {
+        await c.query(
+          "CREATE TEMP TABLE support_session_event (LIKE public.support_session_event INCLUDING DEFAULTS)",
+        );
+        await c.query("CREATE TEMP TABLE audit_event (LIKE public.audit_event INCLUDING DEFAULTS)");
+        await c.query("GRANT INSERT ON pg_temp.support_session_event TO chartwarden_audit_writer");
+        await c.query("GRANT INSERT ON pg_temp.audit_event TO chartwarden_audit_writer");
         await expect(
           c.query(
             "UPDATE support_session SET closed_at = now(), close_reason = 'manual' WHERE id = $1",
@@ -635,6 +641,29 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
             )
           ).rowCount,
         ).toBe(1);
+        expect(
+          (await c.query("SELECT count(*)::int AS count FROM pg_temp.support_session_event"))
+            .rows[0]?.count,
+        ).toBe(0);
+        expect(
+          (await c.query("SELECT count(*)::int AS count FROM pg_temp.audit_event")).rows[0]?.count,
+        ).toBe(0);
+        expect(
+          (
+            await c.query(
+              "SELECT count(*)::int AS count FROM public.support_session_event WHERE support_session_id = $1 AND event_kind = 'session.close'",
+              [sessionId],
+            )
+          ).rows[0]?.count,
+        ).toBe(1);
+        expect(
+          (
+            await c.query(
+              "SELECT count(*)::int AS count FROM public.audit_event WHERE resource_kind = 'support_session' AND resource_id = $1 AND event_type = 'support_session.update'",
+              [sessionId],
+            )
+          ).rows[0]?.count,
+        ).toBe(1);
         // closed: it can no longer be touched, in either direction
         expect(
           (await c.query("UPDATE support_session SET closed_at = NULL WHERE id = $1", [sessionId]))
@@ -643,7 +672,9 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
         // a revoke must carry a reason; then it is final
         await expect(
           c.query("UPDATE support_consent_grant SET revoked_at = now() WHERE id = $1", [grantId]),
-        ).rejects.toThrow(/row-level security/);
+        ).rejects.toThrow(
+          /row-level security|support consent grant revocation is incomplete or has an invalid timestamp/,
+        );
         expect(
           (
             await c.query(

@@ -109,15 +109,15 @@ CREATE TRIGGER "trg_m34_guard_support_session_close"
 CREATE OR REPLACE FUNCTION m34_record_support_session_close() RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = pg_catalog, pg_temp
 AS $$
 BEGIN
-  INSERT INTO support_session_event (
+  INSERT INTO public.support_session_event (
     organization_id, support_session_id, event_kind, occurred_at, context
   ) VALUES (
     NEW.organization_id, NEW.id, 'session.close', NEW.closed_at,
     jsonb_build_object('closeReason', NEW.close_reason)
-  ) ON CONFLICT (organization_id, support_session_id) WHERE event_kind = 'session.close' DO NOTHING;
+  );
   RETURN NEW;
 END $$;--> statement-breakpoint
 ALTER FUNCTION m34_record_support_session_close() OWNER TO chartwarden_audit_writer;--> statement-breakpoint
@@ -154,13 +154,13 @@ REVOKE INSERT ON "support_session_event" FROM chartwarden_app;--> statement-brea
 CREATE OR REPLACE FUNCTION audit_phi_write_support_session() RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v_before jsonb; v_after jsonb;
 BEGIN
-  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), ARRAY['actor_membership_id']::text[]) ELSE NULL END;
-  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), ARRAY['actor_membership_id']::text[]) ELSE NULL END;
-  INSERT INTO audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id,
+  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN public.audit_scrub(to_jsonb(OLD), ARRAY['actor_membership_id']::text[]) ELSE NULL END;
+  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN public.audit_scrub(to_jsonb(NEW), ARRAY['actor_membership_id']::text[]) ELSE NULL END;
+  INSERT INTO public.audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id,
     correlation_id, outcome, severity, before, after, context, retention_class)
   VALUES (COALESCE(NEW.organization_id, OLD.organization_id), NULLIF(current_setting('app.user_id', true), '')::uuid,
     'user', 'support_session.' || lower(TG_OP), 'support_session', COALESCE(NEW.id, OLD.id),
@@ -174,13 +174,13 @@ ALTER FUNCTION audit_phi_write_support_session() OWNER TO chartwarden_audit_writ
 CREATE OR REPLACE FUNCTION audit_phi_write_support_session_event() RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE v_before jsonb; v_after jsonb;
 BEGIN
-  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), ARRAY['actor_ip']::text[]) ELSE NULL END;
-  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), ARRAY['actor_ip']::text[]) ELSE NULL END;
-  INSERT INTO audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id,
+  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN public.audit_scrub(to_jsonb(OLD), ARRAY['actor_ip']::text[]) ELSE NULL END;
+  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN public.audit_scrub(to_jsonb(NEW), ARRAY['actor_ip']::text[]) ELSE NULL END;
+  INSERT INTO public.audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id,
     correlation_id, outcome, severity, before, after, context, retention_class)
   VALUES (COALESCE(NEW.organization_id, OLD.organization_id), NULLIF(current_setting('app.user_id', true), '')::uuid,
     'user', 'support_session_event.' || lower(TG_OP), 'support_session_event', COALESCE(NEW.id, OLD.id),
