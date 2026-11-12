@@ -111,13 +111,20 @@ through the shell is also bound by the 64 KB command cap below, so a larger one 
   tests in `scripts/__tests__/harness-guard-review3.test.ts` run both real pinned commands against a root, a nested
   (`scripts/`, `scripts/harness/`) and an extended (`"extends": "./base.json"`) `tsconfig.json` and `jsconfig.json`,
   and show that without the flag each of them really silences the guard.
-  Each change to the pinned Codex command (the flag, then the walk-up root lookup) needs each developer to re-trust it with `/hooks`. `--no-env-file` is
+  Each change to the pinned Codex command (the flag, then the walk-up root lookup, then the perl environment strip) needs each developer to re-trust it with `/hooks`. `--no-env-file` is
   a silent no-op on bun 1.3.0 to 1.3.2 (verified against each release; 1.3.3 and later honour it), so
   `engines.bun` in `package.json` is `>=1.3.3` (CI and the images pin 1.3.5); `arch:compliance` fails when it names
   an earlier floor, no range, or a version it cannot read.
   `perl -e 'alarm 8; …; exec @ARGV, "$root/scripts/harness/pre-tool-guard.ts", "--codex" or exit 127'`: Codex runs
   the call when a hook times out (10 s here) and when `exec` fails perl would exit 0, an allow; the same perl
-  finds the checkout (above), under the same alarm. `|| exit 2`:
+  finds the checkout (above), under the same alarm. `env -u PERL5OPT -u PERL5LIB -u PERLLIB -u PERL5DB` in front of
+  it: perl is the first process and reads those variables BEFORE the `-e` body, so `PERL5OPT=-Mstrict;BEGIN{exit(0)}`, or
+  a `Cwd.pm` that exits in BEGIN found through `PERL5LIB` or `PERLLIB`, ended the wrapper with exit 0 before bun ran
+  (Codex: allow; `harness-codex-perl-env.test.ts` runs the real command with each poison, and the previous command
+  as the control that really allows). Tested on macOS's perl 5.34; `env -u` is the same on GNU and busybox
+  coreutils, and Linux perl reads the same variables, but this was not run on Linux. `perl -T` ignores the
+  variables too and was rejected: it then refuses the `exec` of bun ("Insecure $ENV{PATH}"). An `env` that cannot start
+  still ends in `|| exit 2`. `|| exit 2`:
   exit 2 with a message blocks in Codex, so a guard that cannot start, crashes or times out blocks the call.
   `perl` and `bun` must be on the hook's PATH; without them every shell call and patch is refused, loudly.
   Claude's own three hooks (guard, ledger, Stop gate) are pinned the same way (`CLAUDE_GUARD_COMMAND`,

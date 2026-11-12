@@ -316,6 +316,13 @@ describe("checkHarness — the 2026-10-28 review hardening", () => {
         "--tsconfig-override=./tsconfig.json",
       ),
       CODEX_GUARD_COMMAND.replace("alarm 8; ", ""),
+      // perl reads these before its `-e` body: dropping the `env -u` or any one of the four lets a poisoned
+      // environment end the wrapper with exit 0 (an allow) before bun runs.
+      CODEX_GUARD_COMMAND.replace("env -u PERL5OPT -u PERL5LIB -u PERLLIB -u PERL5DB ", ""),
+      CODEX_GUARD_COMMAND.replace(" -u PERL5OPT", ""),
+      CODEX_GUARD_COMMAND.replace(" -u PERL5LIB", ""),
+      CODEX_GUARD_COMMAND.replace(" -u PERLLIB", ""),
+      CODEX_GUARD_COMMAND.replace(" -u PERL5DB", ""),
       CODEX_GUARD_COMMAND.replace(" or exit 127", ""),
       CODEX_GUARD_COMMAND.replace("exit 2", "exit 0"),
       CODEX_GUARD_COMMAND.replace("--codex", ""),
@@ -675,7 +682,7 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
       // whatever the constant is, and the 9 s timeout floor below is derived from that same constant.
       expect(CODEX_ALARM_SECONDS).toBe(8);
       expect(CODEX_GUARD_COMMAND).toBe(
-        `perl -e 'alarm 8; use Cwd; defined($_ = getcwd) or exit 127; until (-e "$_/.git" && -f "$_/.codex/hooks.json" && -f "$_/scripts/harness/pre-tool-guard.ts") { exit 127 if $_ eq "/"; s{/[^/]*$}{}; $_ = "/" if $_ eq "" } exec @ARGV, "$_/scripts/harness/pre-tool-guard.ts", "--codex" or exit 127' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`,
+        `env -u PERL5OPT -u PERL5LIB -u PERLLIB -u PERL5DB perl -e 'alarm 8; use Cwd; defined($_ = getcwd) or exit 127; until (-e "$_/.git" && -f "$_/.codex/hooks.json" && -f "$_/scripts/harness/pre-tool-guard.ts") { exit 127 if $_ eq "/"; s{/[^/]*$}{}; $_ = "/" if $_ eq "" } exec @ARGV, "$_/scripts/harness/pre-tool-guard.ts", "--codex" or exit 127' bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`,
       );
       // The script is found without reading git configuration: `core.worktree` redirected `rev-parse --show-toplevel`.
       expect(CODEX_GUARD_COMMAND).not.toMatch(/rev-parse|git -|git config/);

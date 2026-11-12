@@ -29,10 +29,16 @@ export function removeCopies(): void {
   for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
 }
 
+/** An empty temp directory (real path), removed by {@link removeCopies}. */
+export function scratchDir(prefix = "cw-scratch-"): string {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+  made.push(dir);
+  return dir;
+}
+
 /** A directory shaped like the checkout: the guard, the hook configuration, a `.git` marker. */
 export function guardCopy(): string {
-  const dir = realpathSync(mkdtempSync(join(tmpdir(), "cw-guard-copy-")));
-  made.push(dir);
+  const dir = scratchDir("cw-guard-copy-");
   cpSync(join(REPO, "scripts/harness"), join(dir, "scripts/harness"), { recursive: true });
   mkdirSync(join(dir, "compliance"), { recursive: true });
   cpSync(
@@ -63,7 +69,7 @@ function decisionOf(status: number | null, stdout: string): string {
 }
 
 function run(hook: string, dir: string, payload: unknown, env: Record<string, string>): HookRun {
-  const r = spawnSync("sh", ["-c", hook], {
+  const r = spawnSync("/bin/sh", ["-c", hook], {
     cwd: dir,
     input: JSON.stringify(payload),
     encoding: "utf8",

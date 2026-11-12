@@ -333,6 +333,11 @@ const PINNED_CLAUDE_HOOKS = [
  * - `--config=/dev/null --no-env-file --tsconfig-override=/dev/null`: a `bunfig.toml` `preload` in the session
  *   directory would otherwise run before the guard and could silence it, and a `tsconfig.json` `paths` map
  *   would replace the guard's own imports (see {@link BUN_HARDENED});
+ * - `env -u PERL5OPT -u PERL5LIB -u PERLLIB -u PERL5DB perl …`: perl is the first process, and it reads those four
+ *   variables BEFORE the `-e` body: `PERL5OPT=-Mstrict;BEGIN{exit(0)}`, or a `Cwd.pm` that exits in BEGIN found
+ *   through `PERL5LIB`/`PERLLIB`, ended the wrapper with exit 0 before bun ran, which Codex reads as an allow
+ *   (`env -u` rather than `perl -T`: taint mode ignores them too but then refuses to `exec` bun, "Insecure
+ *   $ENV{PATH}"; if `env` itself cannot start, the `|| exit 2` below still refuses the call);
  * - `perl -e 'alarm 8; ...'`: Codex runs the call when a hook times out (its limit here is 10 s, which
  *   {@link checkCodexHooks} requires to exceed the alarm), so the guard is killed first; and a failed `exec` (no
  *   `bun` on the hook's PATH) would otherwise fall off the end of the script and exit 0, which is an ALLOW;
@@ -347,9 +352,10 @@ const PINNED_CLAUDE_HOOKS = [
  *   PATH, a crash, the alarm) is "failed, and the call proceeds".
  */
 export const CODEX_ALARM_SECONDS = 8;
+const CODEX_PERL_ENV_STRIP = "env -u PERL5OPT -u PERL5LIB -u PERLLIB -u PERL5DB";
 const CODEX_FIND_ROOT_AND_EXEC =
   'use Cwd; defined($_ = getcwd) or exit 127; until (-e "$_/.git" && -f "$_/.codex/hooks.json" && -f "$_/scripts/harness/pre-tool-guard.ts") { exit 127 if $_ eq "/"; s{/[^/]*$}{}; $_ = "/" if $_ eq "" } exec @ARGV, "$_/scripts/harness/pre-tool-guard.ts", "--codex" or exit 127';
-export const CODEX_GUARD_COMMAND = `perl -e 'alarm ${CODEX_ALARM_SECONDS}; ${CODEX_FIND_ROOT_AND_EXEC}' ${BUN_HARDENED} || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`;
+export const CODEX_GUARD_COMMAND = `${CODEX_PERL_ENV_STRIP} perl -e 'alarm ${CODEX_ALARM_SECONDS}; ${CODEX_FIND_ROOT_AND_EXEC}' ${BUN_HARDENED} || { echo '[chartwarden-harness] the guard failed or timed out, so the call is refused' >&2; exit 2; }`;
 
 /** PURE — `.codex/hooks.json` must hold exactly the one guard hook, and nothing that could shadow it. */
 export function checkCodexHooks(text: string | undefined): string[] {
