@@ -171,7 +171,7 @@ same constant, because a timeout at or under the alarm fires inside Codex first 
 (`mcp__.*`, `*`, an empty matcher), if one of the three Claude hook commands differs from its pinned form or the Claude guard's timeout is not an integer of
 7 to 30 s (above the guard's own 6.5 s deadline, derived from `DEADLINE_MS`: a hook that Claude Code kills first is an allow), if the ledger's or the Stop gate's timeout (when one is set) is not an integer of 5 to 600 s or the
 Stop gate is `async` (it would no longer hold the turn), if `.claude/settings.json` sets `disableAllHooks`, a
-`bypassPermissions` default mode, or an `env` entry that is not an `ECC_*` or `CLAUDE_CODE_*` variable (the block
+`bypassPermissions` default mode, or an `env` entry that is not an `ECC_*` variable or `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` (the block
 is an ALLOW-list: `PATH`, `BASH_ENV`, `ZDOTDIR`, `NODE_OPTIONS`, `HOME`, `SHELL`, `LD_PRELOAD`,
 `DYLD_INSERT_LIBRARIES`, `CODEX_HOME`, `CLAUDE_CONFIG_DIR` and `BUN_OPTIONS` (a `--preload` there runs before the
 guard) all fail, naming the key), or one of the named switches `CW_HARNESS_FAIL_OPEN`, `CW_AGENT_LEDGER`,

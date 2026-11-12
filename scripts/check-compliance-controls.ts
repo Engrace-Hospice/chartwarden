@@ -265,12 +265,15 @@ export const FORBIDDEN_ENV = [
 ] as const;
 
 /**
- * The only shared-settings `env` variables allowed: ECC's own switches and Claude Code's. A deny-list names what
+ * The only shared-settings `env` variables allowed: ECC's own switches (a prefix: `ECC_GATEGUARD` and the other switches
+ * a human flips are refused by name above) and the one Claude Code variable the repo sets. Claude Code's are NOT a
+ * prefix: `CLAUDE_CODE_SHELL_PREFIX` and kin change what runs around every command. A deny-list names what
  * someone thought of (and the list above still gives those a specific message); everything else a committed `env`
  * entry could set (`ZDOTDIR`, `NODE_OPTIONS`, `HOME`, `SHELL`, an `LD_*` loader variable) changes what runs before
  * the hook, so it fails the gate by default, with its name in the message.
  */
-export const ALLOWED_ENV_PREFIXES = ["ECC_", "CLAUDE_CODE_"] as const;
+export const ALLOWED_ENV_PREFIXES = ["ECC_"] as const;
+export const ALLOWED_ENV_NAMES = ["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] as const;
 
 /**
  * The Claude guard's `timeout` (seconds): an integer in this range. The pinned value is 10. The lower bound is the first
@@ -773,10 +776,11 @@ export function checkHarness(files: HarnessFiles): string[] {
   for (const key of Object.keys(s.env ?? {}))
     if (
       !(FORBIDDEN_ENV as readonly string[]).includes(key) &&
-      !ALLOWED_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))
+      !ALLOWED_ENV_PREFIXES.some((prefix) => key.startsWith(prefix)) &&
+      !(ALLOWED_ENV_NAMES as readonly string[]).includes(key)
     )
       v.push(
-        `.claude/settings.json: env.${key} is not allowed in the shared settings (only ${ALLOWED_ENV_PREFIXES.map((x) => `${x}*`).join(" and ")} variables are: an env entry reaches every developer's session, and one such as PATH, BASH_ENV, ZDOTDIR, NODE_OPTIONS, HOME or SHELL changes what runs before the hook)`,
+        `.claude/settings.json: env.${key} is not allowed in the shared settings (only ${[...ALLOWED_ENV_PREFIXES.map((x) => `${x}*`), ...ALLOWED_ENV_NAMES].join(" and ")} are: an env entry reaches every developer's session, and one such as PATH, BASH_ENV, ZDOTDIR, NODE_OPTIONS, HOME or SHELL changes what runs before the hook)`,
       );
   const disabled = new Set((s.env?.ECC_DISABLED_HOOKS ?? "").split(",").map((x) => x.trim()));
   for (const h of REQUIRED_DISABLED_ECC_HOOKS)

@@ -797,7 +797,7 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
       }).join("\n");
       expect(v).toMatch(new RegExp(`env\\.${key} must not be set`));
     });
-    // The `env` block is an ALLOW-list: ECC_* and Claude Code's own CLAUDE_CODE_* variables, and nothing else. A deny-list
+    // The `env` block is an ALLOW-list: ECC_* and the one CLAUDE_CODE_ variable the repo sets, and nothing else. A deny-list
     // of names only ever holds the ones somebody thought of.
     it.each([
       "ZDOTDIR",
@@ -821,15 +821,29 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
       }).join("\n");
       expect(v).toMatch(/env\.ECC_GATEGUARD must not be set/);
     });
-    it("accepts the env entries the committed settings carry, and other ECC_ and CLAUDE_CODE_ variables", () => {
+    it("accepts the env entries the committed settings carry, and other ECC_ variables", () => {
       expect(Object.keys(JSON.parse(settings).env).length).toBeGreaterThan(0);
       expect(run()).toEqual([]);
       expect(
         withSettings((s) => {
           s.env.ECC_SESSION_RETENTION_DAYS = "7";
-          s.env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE = "1";
+          s.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
         }),
       ).toEqual([]);
+    });
+    // CR-L3 (round 4): `CLAUDE_CODE_` was an allowed PREFIX, which admitted CLAUDE_CODE_SHELL_PREFIX (a command put in front
+    // of every shell command Claude runs) and kin. Only the one variable the repo sets is allowed.
+    it.each([
+      "CLAUDE_CODE_SHELL_PREFIX",
+      "CLAUDE_CODE_USE_BEDROCK",
+      "CLAUDE_CODE_DISABLE_TERMINAL_TITLE",
+      "CLAUDE_CODE_",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC_X",
+    ])("fails %s: only the one Claude Code variable the repo sets is on the allow-list", (key) => {
+      const v = withSettings((s) => {
+        s.env[key] = "x";
+      }).join("\n");
+      expect(v).toMatch(new RegExp(`env\\.${key} is not allowed`));
     });
   });
 
