@@ -26,6 +26,7 @@ const systemActor = (orgId: string): M24Actor => ({
   organizationId: orgId,
   userId: "system",
   roles: [],
+  stepUpRecent: false,
   providerEntityIds: [],
 });
 const cents = (n: number | null | undefined): string => String(n ?? 0);

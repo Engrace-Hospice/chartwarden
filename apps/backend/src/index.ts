@@ -5195,12 +5195,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         usage,
         mode: claimMdAckExecutionMode,
       }),
-      mode: claimMdAckExecutionMode,
       evidenceCipher: createClaimMdEvidenceCipher({
         dekForOrg: (organizationId) => tenantKeys.dekForOrg(organizationId),
         dekForOrgVersion: (organizationId, version) =>
           tenantKeys.dekForOrgVersion(organizationId, version),
       }),
+      mode: claimMdAckExecutionMode === "shadow" ? "shadow" : "apply",
       applyCommercialReceipt: (tx, receipt) =>
         applyCommercialClaimMdReceipt(
           tx,
@@ -8083,8 +8083,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 coverageForRange: (q: Parameters<PatientCoverageReader["coverageForRange"]>[0]) =>
                   getSeam("PatientCoverageReader").coverageForRange(q),
                 coverageSnapshotForRangeInTransaction: (
-                  tx: unknown,
-                  q: Parameters<PatientCoverageReader["coverageForRange"]>[0],
+                  tx: Parameters<PatientCoverageReader["coverageSnapshotForRangeInTransaction"]>[0],
+                  q: Parameters<PatientCoverageReader["coverageSnapshotForRangeInTransaction"]>[1],
                 ) => getSeam("PatientCoverageReader").coverageSnapshotForRangeInTransaction(tx, q),
               },
               admission: m23Seams.admission,

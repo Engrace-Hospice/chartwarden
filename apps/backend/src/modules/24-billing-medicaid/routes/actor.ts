@@ -3,8 +3,12 @@
 import { type ContextCarrier, type RouteActor, actorOf } from "@chartwarden/shared/route-kit";
 
 export interface M24Actor extends Pick<RouteActor, "organizationId" | "userId" | "roles"> {
+  readonly stepUpRecent?: boolean;
   readonly providerEntityIds?: readonly string[];
 }
+
+/** Write-service actor alias retained for the M24 command-service contract. */
+export type M24WriteActor = M24Actor;
 
 export function m24ActorOf(request: ContextCarrier): RouteActor & M24Actor {
   return { ...actorOf(request), providerEntityIds: request.context?.providerEntityIds ?? [] };
