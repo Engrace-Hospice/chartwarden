@@ -13,7 +13,9 @@ import {
   gitCommandStrings,
   gitEnvConfigs,
   gitEnvVerdict,
+  gitSubcommandConfigs,
   isGitRerootOption,
+  usesGitTemplate,
 } from "../harness/git-exec-strings";
 import { classifyBash } from "../harness/patterns";
 
@@ -335,5 +337,47 @@ describe("an `ext::` remote URL, and the config that lets it run", () => {
     "git -c protocol.file.allow=always submodule update --init",
   ])("does not deny the everyday %s", (cmd) => {
     expect(d(cmd), cmd).not.toBe("deny");
+  });
+});
+
+describe("what `git clone` and `git init` write into the new repository", () => {
+  it.each([
+    "git clone -c core.fsmonitor=true /tmp/a /tmp/b",
+    "git clone --config core.hooksPath=/tmp/h /tmp/a /tmp/b",
+    "git clone --config=alias.x='!sh' /tmp/a /tmp/b",
+    "git clone -c color.ui=always -c core.pager=x /tmp/a /tmp/b",
+  ])("denies %s: an exec-capable key in the new repository's config", (cmd) => {
+    expect(d(cmd), cmd).toBe("deny");
+  });
+
+  it.each([
+    "git clone --template=/tmp/t /tmp/a /tmp/b",
+    "git clone --template /tmp/t /tmp/a /tmp/b",
+    "git init --template=/tmp/t x",
+  ])("asks about %s: the template's hooks run from the new repository", (cmd) => {
+    expect(d(cmd), cmd).toBe("ask");
+  });
+
+  it.each([
+    "git clone https://github.com/a/b.git /tmp/b",
+    "git clone --depth 1 https://github.com/a/b.git /tmp/b",
+    "git clone -c color.ui=always https://github.com/a/b.git /tmp/b",
+    "git clone --template= https://github.com/a/b.git /tmp/b",
+    "git init",
+    "git init -q /tmp/x",
+  ])("allows the everyday %s", (cmd) => {
+    expect(v(cmd).decision, `${cmd}: ${v(cmd).reason}`).not.toBe("deny");
+    expect(d(cmd), cmd).not.toBe("ask");
+  });
+
+  it("reads the options the way the table says", () => {
+    expect(gitSubcommandConfigs("clone", ["-c", "a=b", "--config=c=d", "src"])).toEqual([
+      "a=b",
+      "c=d",
+    ]);
+    expect(gitSubcommandConfigs("fetch", ["-c", "a=b"])).toEqual([]);
+    expect(usesGitTemplate("clone", ["--template=/t"])).toBe(true);
+    expect(usesGitTemplate("init", ["--templ", "/t"])).toBe(true);
+    expect(usesGitTemplate("fetch", ["--template=/t"])).toBe(false);
   });
 });

@@ -125,6 +125,22 @@ export function gitCommandStrings(sub: string, rest: readonly string[]): string[
   );
 }
 
+/**
+ * What `git clone` writes into the NEW repository's config (`-c core.fsmonitor=…`, `--config key=value`): the same
+ * `key=value` pairs `git -c` takes, for the same table to judge. A later, allowed `git -C new status` runs them.
+ */
+export const gitSubcommandConfigs = (sub: string, rest: readonly string[]): string[] =>
+  sub === "clone" ? optionValues(rest, "c", [["config", 3]]) : [];
+
+/** `git clone|init --template=DIR`: the template's hooks and config are copied into the new repository. */
+export const usesGitTemplate = (sub: string, rest: readonly string[]): boolean =>
+  (sub === "clone" || sub === "init") && optionValues(rest, "", [["template", 4]]).length > 0;
+
+export const GIT_TEMPLATE_OPTION_REASON =
+  "`--template` copies a template directory's hooks and config into the new repository, where they run outside the guard. A human decides.";
+export const GIT_CLONE_CONFIG_REASON =
+  "`git clone -c` / `--config` writes a key that makes git run a program (core.fsmonitor, core.hooksPath, an alias, a pager, a helper) into the new repository's config, where it runs from a later, allowed git command. A human sets it.";
+
 // ---------------------------------------------------------------------------------------------------
 // Environment
 // ---------------------------------------------------------------------------------------------------

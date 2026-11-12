@@ -24,14 +24,18 @@ import { backupName } from "./backup-names";
 import { execCommandWrites, findActions } from "./find-expr";
 import { GIT_EXEC_CONFIG, configKey, gitConfigDenial, gitFileWrites } from "./git-config-rules";
 import {
+  GIT_CLONE_CONFIG_REASON,
   GIT_EXT_URL_REASON,
   GIT_REROOT_OPTION_REASON,
+  GIT_TEMPLATE_OPTION_REASON,
   assignmentWords,
   envCommandStrings,
   gitCommandStrings,
   gitEnvVerdict,
+  gitSubcommandConfigs,
   isExtUrl,
   isGitRerootOption,
+  usesGitTemplate,
 } from "./git-exec-strings";
 import {
   GIT_GREP_VALUE_LETTERS,
@@ -1079,6 +1083,10 @@ function gitExecVerdicts(
   const git = gitInvocation(parsed.args);
   if (git.rerooted !== null) out.push(ask(GIT_REROOT_OPTION_REASON));
   if (git.rest.some(isExtUrl)) out.push(ask(GIT_EXT_URL_REASON));
+  if (usesGitTemplate(git.sub, git.rest)) out.push(ask(GIT_TEMPLATE_OPTION_REASON));
+  if (gitSubcommandConfigs(git.sub, git.rest).some((kv) => GIT_EXEC_CONFIG.test(configKey(kv)))) {
+    out.push(deny(GIT_CLONE_CONFIG_REASON));
+  }
   // `git -C dir rebase -x 'cmd'` runs `cmd` in `dir`.
   const inside =
     git.dirs.length > MAX_GIT_DIR_OPERANDS
