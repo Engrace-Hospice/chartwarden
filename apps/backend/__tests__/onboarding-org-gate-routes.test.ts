@@ -35,7 +35,6 @@ describe("the onboarding-org allowlist against the registered route table", () =
     ["GET", "/api/v1/tenant/tenant-export-jobs"],
     ["GET", "/api/v1/tenant/tenant-export-jobs/:id/download"],
     ["POST", "/api/v1/tenant/support-consent-grants"],
-    ["POST", "/api/v1/tenant/support-consent-grants/:id/revoke"],
     ["GET", "/api/v1/tenant/feature-flags"],
     ["GET", "/api/v1/orgs/:id/care-team-staff"],
     ["GET", "/api/v1/memberships/:membershipId/credentials"],
@@ -59,6 +58,8 @@ describe("the onboarding-org allowlist against the registered route table", () =
       "/api/v1/tenant/go-live",
       "/api/v1/tenant/account",
       "/api/v1/tenant/baa",
+      "/api/v1/tenant/support-consent-grants",
+      "/api/v1/tenant/support-sessions",
     ];
     const open = routes
       .filter((r) => r.path.startsWith("/api/v1/tenant/"))
@@ -70,6 +71,16 @@ describe("the onboarding-org allowlist against the registered route table", () =
         `${entry} is open but is not a wizard route`,
       ).toBe(true);
     }
+  });
+
+  it.each([
+    ["GET", "/api/v1/tenant/support-consent-grants"],
+    ["POST", "/api/v1/tenant/support-consent-grants/:id/revoke"],
+    ["GET", "/api/v1/tenant/support-sessions"],
+    ["GET", "/api/v1/tenant/support-sessions/:id/events"],
+  ])("%s %s remains available to inspect or terminate support access", (method, path) => {
+    expect(registered.has(`${method} ${path}`)).toBe(true);
+    expect(allowed(method, path)).toBe(true);
   });
 
   it("no clinical, patient, billing, messaging or platform route is on the list", () => {

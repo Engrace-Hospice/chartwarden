@@ -3,11 +3,12 @@
 // The request bodies and response views of the wizard routes on BOTH surfaces (platform `/platform/tenants/:orgSlug/...`
 // and tenant `/tenant/...`). Bodies bound the RAW strings; the trimmed-length rules (evidence note, reason, display name,
 // time zone) are enforced by the service (onboarding/evidence.ts, org-profile.ts), which is the authority.
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { type SchemaOptions, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { COMPLETION_MODES, STEP_OWNERS } from "../onboarding/model";
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
-const Nullable = <T extends TSchema>(t: T) => Type.Union([t, Type.Null()]);
+const Nullable = <T extends TSchema>(t: T, options?: SchemaOptions) =>
+  Type.Union([t, Type.Null()], options);
 const Instant = Type.String({ format: "date-time" });
 
 // ── bodies ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -89,9 +90,17 @@ export const WizardStepViewSchema = Type.Object({
     description:
       "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
   }),
+  skippedBy: Nullable(lit(["system", "tenant", "platform_ops"] as const), {
+    description:
+      "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+  }),
   skippable: Type.Boolean({
     description:
       "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+  }),
+  tenantSkippable: Type.Boolean({
+    description:
+      "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
   }),
   createdAt: Nullable(Instant),
   templateKey: Type.String(),

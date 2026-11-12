@@ -6,6 +6,35 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-11 — Slice 7 support sessions work end to end
+
+No path or schema changes; the support-session routes now implement the previously published contract.
+
+**Reads.** `GET /api/v1/tenant/support-sessions` and `.../{id}/events` are RLS-scoped to the organization; another
+organization's session is `404`. `GET /api/v1/platform/support-consent-grants` returns grant window, scope and state,
+never the grantor or patients in scope.
+
+**Consent.** `scope: "assist"` is non-PHI, lasts 1–24 whole hours, and may be issued only by an `org_admin` or
+`compliance_officer`; other scopes keep their permission-and-step-up rule. A non-active organization may issue only
+`assist`. Revoking a grant ends every open session on it, records the close, and makes a later start return
+`409 SUPPORT_GRANT_INACTIVE`.
+
+**Sessions.** A session is recorded in the consent grant's organization. The operator must be distinct from the grantor
+by membership and person. An `assist` session cannot be elevated (`403 SUPPORT_SESSION_NON_PHI`). Manual close is
+idempotent and records its ledger, audit, outbox event and grantor alert. Successful non-GET requests under
+`/api/v1/platform/tenants/{orgSlug}/` append an `ops.write` ledger row containing only route template, method and status.
+
+---
+
+## 2026-11-09 — Slice 7 contract: help requests, support-session reads and tenant skip
+
+The tenant onboarding wire contract adds tenant help requests and approval, the platform help inbox, tenant-visible
+support-session summaries and ledgers, the non-PHI `assist` consent scope, and tenant skip for the three eligible
+onboarding steps. Mutating routes require their declared permission, step-up and `Idempotency-Key`; free text is screened
+for patient identifiers. Support views never identify the operator.
+
+---
+
 ## 2026-11-10 — Operators can revoke a tenant clearinghouse BAA from the onboarding console
 
 The admin onboarding clearinghouse card now exposes the BAA-revocation contract added on 2026-11-09. An authorized operator chooses one

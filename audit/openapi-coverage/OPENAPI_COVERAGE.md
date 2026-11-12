@@ -5,7 +5,7 @@
 
 `openapi:check` proves openapi.json was regenerated and that no enrichment targets a dead route. It does NOT prove a route carries a request contract — an unenriched route is still emitted, with no `requestBody` and a bare `200: OK`, and the generated client then types its body as `never`. This report is the coverage half.
 
-**Totals:** 2068/2068 routes enriched (100%) · **1/1187 mutating routes read a body they publish none for** · 9/828 GETs carry no response schema
+**Totals:** 2078/2078 routes enriched (100%) · **1/1192 mutating routes read a body they publish none for** · 9/833 GETs carry no response schema
 
 `Deficit` = routes with no enrichment entry; it is the ratcheted number (see `baseline.json`). `Mut. unpublished body` counts a POST/PUT/PATCH whose HANDLER READS a payload and whose contract publishes none — `client:gen` then types that body `never`, so the generated client cannot express the call. It used to count every mutating route with no body schema, which could never honestly reach 0 (an action POST correctly publishes none) and made shipping an empty `{}` schema the cheapest way to move it — 25 routes did exactly that. The reverse direction — a published body no handler reads, which returns 200 and discards the payload — is enforced by `arch:request-body-contract`, not counted here.
 
@@ -43,7 +43,7 @@
 | 31-portal | 72 | 72 (100%) | 0 | 35 | 0 | 37 | 0 |
 | 32-ai-platform | 32 | 32 (100%) | 0 | 11 | 0 | 17 | 0 |
 | 33-reporting | 43 | 43 (100%) | 0 | 22 | 0 | 21 | 0 |
-| 34-saas-tenant-platform | 97 | 97 (100%) | 0 | 63 | 0 | 33 | 0 |
+| 34-saas-tenant-platform | 107 | 107 (100%) | 0 | 68 | 0 | 38 | 0 |
 | 35-subscription | 72 | 72 (100%) | 0 | 40 | 1 | 31 | 0 |
 | 36-messaging | 215 | 215 (100%) | 0 | 107 | 0 | 90 | 1 |
 | 37-ipu | 52 | 52 (100%) | 0 | 34 | 0 | 16 | 0 |

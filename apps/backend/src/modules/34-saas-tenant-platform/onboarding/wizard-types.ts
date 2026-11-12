@@ -136,6 +136,17 @@ export interface OnboardingWizard {
     taskId: string,
     reason: string | undefined,
   ): Promise<WizardStepView>;
+  /**
+   * The tenant's own skip of a step that does not apply to it: only the canonical steps `TENANT_SKIPPABLE_STEP_KEYS` names (MAC
+   * credentials, payer enrollment, DoseSpot kickoff), refused 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE otherwise; the rationale is
+   * PHI-screened (422 EVIDENCE_LOOKS_LIKE_PHI). Piece 7K builds it; until then it answers 501 NOT_IMPLEMENTED.
+   */
+  tenantSkip(
+    actor: TenantActor,
+    organizationId: string,
+    taskId: string,
+    rationale: string,
+  ): Promise<WizardStepView>;
   setOrgProfile(
     actor: TenantActor,
     organizationId: string,

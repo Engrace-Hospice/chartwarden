@@ -52,6 +52,7 @@ export interface OpenSessionRow {
   readonly supportConsentGrantId: string;
   readonly actorMembershipId: string;
   readonly expiresAt: Date;
+  readonly closedAt: Date | null;
 }
 
 /** An onboarding task row, narrowed to the columns the predicates resolve. */
@@ -64,8 +65,7 @@ export interface OnboardingTaskRow {
 /** The tx-bound row reads (a port so the matrix is unit-testable without a database). */
 export interface PlatformFactsReader {
   findGrant(grantId: string): Promise<GrantRow | null>;
-  /** Not-yet-closed sessions for the tenant (expiry is judged by the resolver against `now()`). */
-  listOpenSessions(tenantAccountId: string): Promise<readonly OpenSessionRow[]>;
+  findSession(sessionId: string): Promise<OpenSessionRow | null>;
   findOnboardingTask(taskId: string): Promise<OnboardingTaskRow | null>;
   /** Does `organizationId` belong to a provisioned tenant account? (scope validation for flag creation) */
   organizationHasTenantAccount(organizationId: string): Promise<boolean>;
@@ -95,15 +95,7 @@ function repositoryFactsReader(tx: Tx): PlatformFactsReader {
       return (await tenants.findByOrganizationId(organizationId)) !== null;
     },
     findGrant: (grantId) => support.findConsentGrantById(grantId),
-    async listOpenSessions(tenantAccountId) {
-      const rows = await support.listOpenSessions(tenantAccountId);
-      return rows.map((s) => ({
-        id: s.id,
-        supportConsentGrantId: s.supportConsentGrantId,
-        actorMembershipId: s.actorMembershipId,
-        expiresAt: s.expiresAt,
-      }));
-    },
+    findSession: (sessionId) => support.findSessionById(sessionId),
     async findOnboardingTask(taskId) {
       const row = await onboarding.findTaskById(taskId);
       return row
@@ -132,20 +124,12 @@ export function createDrizzleTenantPlatformAbacResolver(
         const at = now();
         return await deps.runPlatform("m34 abac: active consented support session", async (tx) => {
           const reader = readerOf(tx);
-          const sessions = await reader.listOpenSessions(input.tenantAccountId);
-          for (const session of sessions) {
-            if (session.actorMembershipId !== input.actorMembershipId) continue;
-            if (session.expiresAt.getTime() <= at.getTime()) continue;
-            const grant = await reader.findGrant(session.supportConsentGrantId);
-            if (
-              grant &&
-              grant.tenantAccountId === input.tenantAccountId &&
-              grantActive(grant, at)
-            ) {
-              return true;
-            }
-          }
-          return false;
+          const session = await reader.findSession(input.supportSessionId);
+          if (!session || session.actorMembershipId !== input.actorMembershipId) return false;
+          if (session.closedAt !== null) return false;
+          if (session.expiresAt.getTime() <= at.getTime()) return false;
+          const grant = await reader.findGrant(session.supportConsentGrantId);
+          return grant !== null && grantActive(grant, at);
         });
       } catch {
         return false;

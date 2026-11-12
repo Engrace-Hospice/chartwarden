@@ -226,8 +226,12 @@ const PLATFORM_PROVISION_INSERT_TABLES = [
   // M28 — the validator persists the signed CapabilityStatement once per release (INSERT only: a snapshot
   // is evidence and is never updated or deleted by the platform role).
   "fhir_capability_snapshot",
-  // GAP-163: the support-session close sweep appends the `session.close` ledger row.
+  // GAP-163: the support-session close sweep appends the `session.close` ledger row; slice 7 (7S): the operator's writes while a
+  // session is open append `ops.write` rows, and the carrier is the only role that may (migration 1484 pins the tenant role).
   "support_session_event",
+  // Slice 7 (7S, migration 1484): the platform route that starts a session inserts it (in the TENANT's organization). The carrier had
+  // SELECT and UPDATE here but no INSERT, so an HTTP start answered 42501 even with the ports bound.
+  "support_session",
   // GAP-164: `FeatureFlagAdmin.upsert` runs on the platform pool (a NULL-org global flag is unwritable from a tenant
   // connection by design); without these two grants every platform / tenant flag write was a 42501.
   "feature_flag",
@@ -244,9 +248,8 @@ const PLATFORM_PROVISION_UPDATE_TABLES = [
   "tenant_key_ring",
   "tenant_signup_intent",
   "tenant_invitation",
-  // GAP-164: the platform-ops onboarding skip. GAP-163: the support-session close sweep closes the session.
+  // GAP-164: the platform-ops onboarding skip.
   "onboarding_task",
-  "support_session",
   "feature_flag",
 ] as const;
 
@@ -467,6 +470,18 @@ async function main(): Promise<void> {
       for (const t of PLATFORM_PROVISION_UPDATE_TABLES) {
         await run(`GRANT UPDATE ON "${t}" TO chartwarden_platform;`);
       }
+      // Slice 7 (7S, migration 1484): the support tables are written by COLUMN. A session is closed (the sweep, a manual close, an
+      // operator's Resolve) by two columns, a grant is revoked (Resolve) by three; nothing else on either row is ever rewritten from
+      // the platform side, so a carrier that could (expires_at, actor_membership_id, scope) would hold unused authority over what a
+      // tenant consented to. REVOKE first so a re-provision takes back an older table-wide grant.
+      await run('REVOKE UPDATE ON "support_session" FROM chartwarden_platform;');
+      await run(
+        'GRANT UPDATE ("closed_at", "close_reason") ON "support_session" TO chartwarden_platform;',
+      );
+      await run('REVOKE UPDATE ON "support_consent_grant" FROM chartwarden_platform;');
+      await run(
+        'GRANT UPDATE ("revoked_at", "revoked_by_membership_id", "revocation_reason") ON "support_consent_grant" TO chartwarden_platform;',
+      );
       // destruction_certificate (M34 offboarding files/refuses certificates): COLUMN grant only. Migration 1159 keeps the spend columns
       // (reserved_count, destroyed_count) and data_class out of every login's reach; the definer functions write the spend.
       await run('REVOKE UPDATE ON "destruction_certificate" FROM chartwarden_platform;');

@@ -21971,6 +21971,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/help-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cross-tenant onboarding help inbox */
+        get: operations["getApiV1PlatformHelprequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/help-requests/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve an onboarding help request and revoke its linked support access */
+        post: operations["postApiV1PlatformHelprequestsByIdResolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/onboarding-templates": {
         parameters: {
             query?: never;
@@ -22091,6 +22125,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/support-consent-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Active or historical consent grants available to the support-session picker */
+        get: operations["getApiV1PlatformSupportconsentgrants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/support-sessions": {
         parameters: {
             query?: never;
@@ -22101,7 +22152,7 @@ export interface paths {
         /** Active + recent support sessions across tenants (cursor-paginated) */
         get: operations["getApiV1PlatformSupportsessions"];
         put?: never;
-        /** Start a session against a consent grant (distinct-actor + passkey-5min step-up) */
+        /** Start a session against a consent grant (distinct actor, by membership and by person; passkey-5min step-up). The session, its ledger and its audit are recorded in the grant's (the tenant's) organization, never the operator's. 409 SUPPORT_GRANT_INACTIVE when the grant is revoked or expired */
         post: operations["postApiV1PlatformSupportsessions"];
         delete?: never;
         options?: never;
@@ -22118,7 +22169,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Close a session with reason='manual' (no step-up) */
+        /** Close a session with reason='manual' (no step-up): the close stamp, a session.close ledger row, a critical audit, m34.support_session.expired (closeReason manual_close) and the grantor alert. Repeatable: a session already closed answers its reason and writes nothing more */
         post: operations["postApiV1PlatformSupportsessionsByIdClose"];
         delete?: never;
         options?: never;
@@ -22135,7 +22186,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403) */
+        /** Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403). 403 SUPPORT_SESSION_NON_PHI on a session opened against an assist grant: it has no PHI to read or write */
         post: operations["postApiV1PlatformSupportsessionsByIdElevate"];
         delete?: never;
         options?: never;
@@ -29022,6 +29073,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenant/help-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tenant's current and previous onboarding help requests */
+        get: operations["getApiV1TenantHelprequests"];
+        put?: never;
+        /** File a non-PHI onboarding help request */
+        post: operations["postApiV1TenantHelprequests"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/help-requests/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a help request and issue its time-boxed non-PHI assist grant */
+        post: operations["postApiV1TenantHelprequestsByIdApprove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/help-requests/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close the tenant's help request and revoke any linked support access */
+        post: operations["postApiV1TenantHelprequestsByIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/onboarding": {
         parameters: {
             query?: never;
@@ -29107,6 +29210,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenant/onboarding/{taskId}/skip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Skip an allowlisted tenant onboarding step with step-up and a recorded rationale */
+        post: operations["postApiV1TenantOnboardingByTaskIdSkip"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/onboarding/{taskId}/start": {
         parameters: {
             query?: never;
@@ -29151,7 +29271,7 @@ export interface paths {
         /** Tenant's support-access consent grants (cursor-paginated) */
         get: operations["getApiV1TenantSupportconsentgrants"];
         put?: never;
-        /** Issue a support-access consent grant (≤72h; compliance-officer; step-up) */
+        /** Issue a support-access consent grant (≤72h; step-up). Scopes: organization_scoped and patient_scoped (PHI-bearing) and assist (non-PHI, for help during onboarding: a session on it can never be elevated). 403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED when the grantor may not issue the scope: assist needs the org_admin or compliance_officer role */
         post: operations["postApiV1TenantSupportconsentgrants"];
         delete?: never;
         options?: never;
@@ -29168,8 +29288,42 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke a grant (cascades to any open support_session) */
+        /** Revoke a grant: ends every support_session open on it (ledger row, critical audit, outbox event, grantor alert) and resolves a linked help request, in one transaction. A later start on it is 409 SUPPORT_GRANT_INACTIVE; repeating the revoke answers the same grant and writes nothing more */
         post: operations["postApiV1TenantSupportconsentgrantsByIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/support-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tenant-visible support sessions, with operator identity removed (cursor-paginated) */
+        get: operations["getApiV1TenantSupportsessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/support-sessions/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tenant-visible support-session ledger, with operator identity removed (cursor-paginated) */
+        get: operations["getApiV1TenantSupportsessionsByIdEvents"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -97629,6 +97783,135 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformHelprequests: {
+        parameters: {
+            query?: {
+                status?: string;
+                tenantAccountId?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            tenantAccountId: string;
+                            orgSlug: string;
+                            legalBusinessName: string;
+                            stepKey: string | null;
+                            message: string;
+                            status: "open" | "approved" | "resolved" | "cancelled";
+                            phase: "waiting_for_consent" | "ready_to_start" | "in_session" | "ended";
+                            /** Format: date-time */
+                            requestedAt: string;
+                            requestedByMembershipId: string;
+                            approvedAt: string | null;
+                            supportConsentGrantId: string | null;
+                            grant: {
+                                /** Format: date-time */
+                                expiresAt: string;
+                                status: "active" | "expired" | "revoked";
+                            } | null;
+                            session: {
+                                sessionId: string;
+                                state: "open" | "expired" | "closed";
+                                /** Format: date-time */
+                                startedAt: string;
+                                /** Format: date-time */
+                                expiresAt: string;
+                                closedAt: string | null;
+                                closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                                actionCount: number;
+                                lastActionAt: string | null;
+                            } | null;
+                            closedAt: string | null;
+                            closedByActorKind: ("tenant" | "platform_ops" | "system") | null;
+                            closeNote: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformHelprequestsByIdResolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    note: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        tenantAccountId: string;
+                        orgSlug: string;
+                        legalBusinessName: string;
+                        stepKey: string | null;
+                        message: string;
+                        status: "open" | "approved" | "resolved" | "cancelled";
+                        phase: "waiting_for_consent" | "ready_to_start" | "in_session" | "ended";
+                        /** Format: date-time */
+                        requestedAt: string;
+                        requestedByMembershipId: string;
+                        approvedAt: string | null;
+                        supportConsentGrantId: string | null;
+                        grant: {
+                            /** Format: date-time */
+                            expiresAt: string;
+                            status: "active" | "expired" | "revoked";
+                        } | null;
+                        session: {
+                            sessionId: string;
+                            state: "open" | "expired" | "closed";
+                            /** Format: date-time */
+                            startedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            closedAt: string | null;
+                            closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                            actionCount: number;
+                            lastActionAt: string | null;
+                        } | null;
+                        closedAt: string | null;
+                        closedByActorKind: ("tenant" | "platform_ops" | "system") | null;
+                        closeNote: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PlatformOnboardingtemplates: {
         parameters: {
             query?: {
@@ -97974,6 +98257,47 @@ export interface operations {
                     "application/json": {
                         intentId: string;
                         intentStatus: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformSupportconsentgrants: {
+        parameters: {
+            query?: {
+                tenantAccountId?: string;
+                active?: boolean;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            tenantAccountId: string;
+                            scope: "organization_scoped" | "patient_scoped" | "assist";
+                            /** Format: date-time */
+                            issuedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            revokedAt: string | null;
+                            active: boolean;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
                     };
                 };
             };
@@ -99534,8 +99858,12 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                            skippedBy: ("system" | "tenant" | "platform_ops") | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
+                            /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -99629,8 +99957,12 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                            skippedBy: ("system" | "tenant" | "platform_ops") | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
+                            /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -100237,8 +100569,12 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                            skippedBy: ("system" | "tenant" | "platform_ops") | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
+                            /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -100302,8 +100638,12 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                            skippedBy: ("system" | "tenant" | "platform_ops") | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
+                            /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -100373,8 +100713,12 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -100441,8 +100785,12 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -100509,8 +100857,12 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -119187,8 +119539,12 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                            skippedBy: ("system" | "tenant" | "platform_ops") | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
+                            /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -119216,6 +119572,264 @@ export interface operations {
                             failedGuards: string[];
                             complianceOfficerMembershipId: string | null;
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TenantHelprequests: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        current: {
+                            id: string;
+                            stepKey: string | null;
+                            message: string;
+                            status: "open" | "approved" | "resolved" | "cancelled";
+                            phase: "waiting_for_consent" | "ready_to_start" | "in_session" | "ended";
+                            /** Format: date-time */
+                            requestedAt: string;
+                            approvedAt: string | null;
+                            grant: {
+                                /** Format: date-time */
+                                expiresAt: string;
+                                status: "active" | "expired" | "revoked";
+                            } | null;
+                            session: {
+                                state: "open" | "expired" | "closed";
+                                /** Format: date-time */
+                                startedAt: string;
+                                /** Format: date-time */
+                                expiresAt: string;
+                                closedAt: string | null;
+                                closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                                actionCount: number;
+                                lastActionAt: string | null;
+                            } | null;
+                            closedAt: string | null;
+                            closedBy: ("you" | "your organization" | "ChartWarden operations" | "system") | null;
+                            closeNote: string | null;
+                        } | null;
+                        items: {
+                            id: string;
+                            stepKey: string | null;
+                            message: string;
+                            status: "open" | "approved" | "resolved" | "cancelled";
+                            phase: "waiting_for_consent" | "ready_to_start" | "in_session" | "ended";
+                            /** Format: date-time */
+                            requestedAt: string;
+                            approvedAt: string | null;
+                            grant: {
+                                /** Format: date-time */
+                                expiresAt: string;
+                                status: "active" | "expired" | "revoked";
+                            } | null;
+                            session: {
+                                state: "open" | "expired" | "closed";
+                                /** Format: date-time */
+                                startedAt: string;
+                                /** Format: date-time */
+                                expiresAt: string;
+                                closedAt: string | null;
+                                closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                                actionCount: number;
+                                lastActionAt: string | null;
+                            } | null;
+                            closedAt: string | null;
+                            closedBy: ("you" | "your organization" | "ChartWarden operations" | "system") | null;
+                            closeNote: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantHelprequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    stepKey?: string;
+                    message: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        stepKey: string | null;
+                        message: string;
+                        status: "open" | "approved" | "resolved" | "cancelled";
+                        phase: "waiting_for_consent" | "ready_to_start" | "in_session" | "ended";
+                        /** Format: date-time */
+                        requestedAt: string;
+                        approvedAt: string | null;
+                        grant: {
+                            /** Format: date-time */
+                            expiresAt: string;
+                            status: "active" | "expired" | "revoked";
+                        } | null;
+                        session: {
+                            state: "open" | "expired" | "closed";
+                            /** Format: date-time */
+                            startedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            closedAt: string | null;
+                            closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                            actionCount: number;
+                            lastActionAt: string | null;
+                        } | null;
+                        closedAt: string | null;
+                        closedBy: ("you" | "your organization" | "ChartWarden operations" | "system") | null;
+                        closeNote: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantHelprequestsByIdApprove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Whole hours the consent lasts (1 to 24); 8 when omitted. */
+                    hours?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        stepKey: string | null;
+                        message: string;
+                        status: "open" | "approved" | "resolved" | "cancelled";
+                        phase: "waiting_for_consent" | "ready_to_start" | "in_session" | "ended";
+                        /** Format: date-time */
+                        requestedAt: string;
+                        approvedAt: string | null;
+                        grant: {
+                            /** Format: date-time */
+                            expiresAt: string;
+                            status: "active" | "expired" | "revoked";
+                        } | null;
+                        session: {
+                            state: "open" | "expired" | "closed";
+                            /** Format: date-time */
+                            startedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            closedAt: string | null;
+                            closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                            actionCount: number;
+                            lastActionAt: string | null;
+                        } | null;
+                        closedAt: string | null;
+                        closedBy: ("you" | "your organization" | "ChartWarden operations" | "system") | null;
+                        closeNote: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantHelprequestsByIdClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        stepKey: string | null;
+                        message: string;
+                        status: "open" | "approved" | "resolved" | "cancelled";
+                        phase: "waiting_for_consent" | "ready_to_start" | "in_session" | "ended";
+                        /** Format: date-time */
+                        requestedAt: string;
+                        approvedAt: string | null;
+                        grant: {
+                            /** Format: date-time */
+                            expiresAt: string;
+                            status: "active" | "expired" | "revoked";
+                        } | null;
+                        session: {
+                            state: "open" | "expired" | "closed";
+                            /** Format: date-time */
+                            startedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            closedAt: string | null;
+                            closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                            actionCount: number;
+                            lastActionAt: string | null;
+                        } | null;
+                        closedAt: string | null;
+                        closedBy: ("you" | "your organization" | "ChartWarden operations" | "system") | null;
+                        closeNote: string | null;
                     };
                 };
             };
@@ -119277,8 +119891,12 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                            skippedBy: ("system" | "tenant" | "platform_ops") | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
+                            /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -119341,8 +119959,12 @@ export interface operations {
                             skipRationale: string | null;
                             /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                             systemSkipped: boolean;
+                            /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                            skippedBy: ("system" | "tenant" | "platform_ops") | null;
                             /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                             skippable: boolean;
+                            /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                            tenantSkippable: boolean;
                             createdAt: string | null;
                             templateKey: string;
                             isCanonical: boolean;
@@ -119412,8 +120034,12 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -119479,8 +120105,12 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -119550,8 +120180,12 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -119617,8 +120251,83 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        tenantSkippable: boolean;
+                        createdAt: string | null;
+                        templateKey: string;
+                        isCanonical: boolean;
+                        canonicalOrder: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TenantOnboardingByTaskIdSkip: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    skipRationale: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string | null;
+                        key: string;
+                        title: string;
+                        description: string;
+                        owner: "platform_ops" | "org_admin" | "compliance_officer" | "either";
+                        sequence: number;
+                        optional: boolean;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        locked: boolean;
+                        lockedBy: string | null;
+                        completionMode: "auto" | "attestation" | "either";
+                        evidence: {
+                            note: string;
+                            ref: string | null;
+                        } | null;
+                        attestedBy: {
+                            membershipId: string | null;
+                            actorKind: "platform_ops" | "tenant";
+                            label: string | null;
+                            /** Format: date-time */
+                            at: string;
+                        } | null;
+                        assignedToMembershipId: string | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        skipRationale: string | null;
+                        /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
+                        systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
+                        /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
+                        skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -119682,8 +120391,12 @@ export interface operations {
                         skipRationale: string | null;
                         /** @description True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says. */
                         systemSkipped: boolean;
+                        /** @description Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients. */
+                        skippedBy: ("system" | "tenant" | "platform_ops") | null;
                         /** @description True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE. */
                         skippable: boolean;
+                        /** @description True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. */
+                        tenantSkippable: boolean;
                         createdAt: string | null;
                         templateKey: string;
                         isCanonical: boolean;
@@ -119749,7 +120462,7 @@ export interface operations {
                         items: {
                             id: string;
                             tenantAccountId: string;
-                            scope: "organization_scoped" | "patient_scoped";
+                            scope: "organization_scoped" | "patient_scoped" | "assist";
                             grantReason: string;
                             /** Format: date-time */
                             issuedAt: string;
@@ -119779,7 +120492,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    scope: "organization_scoped" | "patient_scoped";
+                    scope: "organization_scoped" | "patient_scoped" | "assist";
                     patientIdsInScope?: string[];
                     grantReason: string;
                     expiresAtIsoOffsetHours: number;
@@ -119796,7 +120509,7 @@ export interface operations {
                     "application/json": {
                         id: string;
                         tenantAccountId: string;
-                        scope: "organization_scoped" | "patient_scoped";
+                        scope: "organization_scoped" | "patient_scoped" | "assist";
                         grantReason: string;
                         /** Format: date-time */
                         issuedAt: string;
@@ -119839,7 +120552,7 @@ export interface operations {
                     "application/json": {
                         id: string;
                         tenantAccountId: string;
-                        scope: "organization_scoped" | "patient_scoped";
+                        scope: "organization_scoped" | "patient_scoped" | "assist";
                         grantReason: string;
                         /** Format: date-time */
                         issuedAt: string;
@@ -119849,6 +120562,89 @@ export interface operations {
                         active: boolean;
                         /** Format: date-time */
                         createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TenantSupportsessions: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            supportConsentGrantId: string;
+                            state: "open" | "expired" | "closed";
+                            /** Format: date-time */
+                            startedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            closedAt: string | null;
+                            closeReason: ("manual" | "expired" | "grant_revoked" | "forced_terminated") | null;
+                            actionCount: number;
+                            lastActionAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TenantSupportsessionsByIdEvents: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            supportSessionId: string;
+                            eventKind: string;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            detail: {
+                                route: string;
+                                method: string;
+                                status: number;
+                            } | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
                     };
                 };
             };

@@ -69,10 +69,10 @@ export interface OnboardingTaskFacts {
  * Drizzle under RLS in prod). Each returns `null` for an absent / cross-tenant row → fail-closed.
  */
 export interface TenantPlatformAbacResolver {
-  /** Is there an active support session for `tenantAccountId` whose grant + actor match the context? §4.6. */
+  /** Is this exact support session active and bound to the context actor and an active grant? §4.6. */
   hasActiveConsentedSupportSession(input: {
     organizationId: string;
-    tenantAccountId: string;
+    supportSessionId: string;
     actorMembershipId: string;
   }): Promise<boolean>;
   loadConsentGrant(
@@ -134,12 +134,12 @@ export function buildTenantPlatformAbacPredicates(
 
     // PHI-read elevation: an active, consented, actor-bound support session exists for the tenant. §4.6.
     tenant_consented_support_active: async (context, target) => {
-      const tenantAccountId = targetStr(target, "tenantAccountId");
+      const supportSessionId = targetStr(target, "supportSessionId");
       const actorMembershipId = membershipIdOf(context);
-      if (!tenantAccountId || !actorMembershipId) return false; // fail-closed
+      if (!supportSessionId || !actorMembershipId) return false; // fail-closed
       return resolver.hasActiveConsentedSupportSession({
         organizationId: context.organizationId,
-        tenantAccountId,
+        supportSessionId,
         actorMembershipId,
       });
     },

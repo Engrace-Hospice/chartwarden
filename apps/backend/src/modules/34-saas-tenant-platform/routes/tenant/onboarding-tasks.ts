@@ -13,6 +13,7 @@ import {
   type WriteActor,
   actorOf,
   rejectAiActor,
+  requireIdempotencyKey,
   writeActorOf,
 } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
@@ -25,6 +26,7 @@ import {
   TenantCompleteStepRequest,
   TenantReopenStepRequest,
 } from "../onboarding-wizard-typebox";
+import { SkipOnboardingTaskRequest } from "../typebox";
 import {
   OnboardingBlockRequest,
   OnboardingListQuerySchema,
@@ -53,14 +55,15 @@ const ABAC_UPDATE = requireAbac(
 const ABAC_ORG_ADMIN = requireAbac("onboarding.manage_own", "tenant_org_admin_role") as PreHandler;
 const ABAC_OFFICER = requireAbac("go_live.attest", "tenant_compliance_officer_role") as PreHandler;
 
-// §6/D10 step-up on the decisions that decide who may take the tenant live.
-const STEP_UP_OFFICER = requireStepUp("onboarding.manage_own") as PreHandler;
+// §6/D10 step-up on the decisions that decide who may take the tenant live, and on a skip (it removes the operator's check).
+const STEP_UP_MANAGE_OWN = requireStepUp("onboarding.manage_own") as PreHandler;
 const STEP_UP_GO_LIVE = requireStepUp("go_live.attest") as PreHandler;
 
 // Every state change a tenant makes to its onboarding (start, block, attest, re-open, assignment) is a human act.
 const NO_AI = rejectAiActor(
   "AI principals cannot change a tenant's onboarding or go-live",
 ) as PreHandler;
+const IDEMPOTENT = requireIdempotencyKey() as PreHandler;
 
 export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingRouteDeps): void {
   const { wizard } = deps;
@@ -140,6 +143,26 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
     },
   );
 
+  // The tenant's own "this does not apply to us" on MAC credentials, payer enrollment or DoseSpot kickoff (slice 7). Only the
+  // org_admin, under a fresh step-up, as a human, once per Idempotency-Key; the rationale is judged and PHI-screened by the
+  // service, which also refuses any other step with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. Piece 7K builds the service call;
+  // until it lands the wizard answers 501 NOT_IMPLEMENTED.
+  app.post(
+    "/api/v1/tenant/onboarding/:taskId/skip",
+    { preHandler: [MANAGE_OWN, ABAC_ORG_ADMIN, STEP_UP_MANAGE_OWN, NO_AI, IDEMPOTENT] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { taskId } = parse(OnboardingTaskParamsSchema, request.params);
+      const body = parse(SkipOnboardingTaskRequest, request.body);
+      return wizard.tenantSkip(
+        tenantActor(actor),
+        actor.organizationId,
+        taskId,
+        body.skipRationale,
+      );
+    },
+  );
+
   // The org's display name and IANA time zone (org_admin, during onboarding).
   app.patch(
     "/api/v1/tenant/org-profile",
@@ -157,7 +180,7 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
   // Assign the compliance officer (an active member of this org) who will attest go-live readiness.
   app.put(
     "/api/v1/tenant/compliance-officer",
-    { preHandler: [MANAGE_OWN, ABAC_ORG_ADMIN, STEP_UP_OFFICER, NO_AI] },
+    { preHandler: [MANAGE_OWN, ABAC_ORG_ADMIN, STEP_UP_MANAGE_OWN, NO_AI] },
     async (request) => {
       const actor = writeActorOf(request);
       const body = parse(SetComplianceOfficerRequest, request.body);

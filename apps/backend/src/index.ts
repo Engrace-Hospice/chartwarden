@@ -384,6 +384,7 @@ import {
   DEATH_BOARD_ROUTE_RATE_LIMIT,
   DOSESPOT_VERIFY_ROUTE_RATE_LIMIT,
   EMERGENCY_ROUTE_RATE_LIMIT,
+  HELP_REQUEST_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
   TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT,
@@ -1728,12 +1729,15 @@ import {
   createDrizzleM34AlertResolverPorts,
   createDrizzlePlatformOpsService,
   createDrizzleSaasTenantPlatformEraseStore,
+  createDrizzleSupportLedgerRecorder,
   createDrizzleTenantAccountFlagsService,
   createDrizzleWizardRunner,
   createM34ProvisionGateway,
   createOnboardingAdvancer,
   createOnboardingTenantReader,
   createOnboardingWizard,
+  createSupportGrantOperationsOver,
+  createSupportSessionPorts,
   describeM34SweepSchedules,
   enableM34JobCapability,
   getTenantKeyProvider,
@@ -7070,7 +7074,23 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // The cause of an unreadable contract goes to the (redacting) log; the caller is told only the typed 503.
             warn: (message, context) => app.log.warn(context, message),
           });
+          // Slice 7 (7S): the support-session ports (audit, outbox, alerts, member lookup), bound ONCE here and shared by the platform
+          // service (start / elevate / manual close), the tenant service (consent grant issue and the revoke cascade) and, through the
+          // same factory, the close sweep. The platform service used to be built with deny-stubs, so no session could start in prod.
+          // The M36 emitter resolves lazily (the seam registers after this is built), like the lifecycle alerts above.
+          const m34SupportSessionPorts = createSupportSessionPorts({
+            outbox: m34OutboxPublisher,
+            alerts: {
+              emit: (orgId, input) => (getSeam("AlertEmitter") as AlertEmitter).emit(orgId, input),
+            },
+            now: () => new Date(),
+            patientBelongsToOrganization: async (organizationId, patientId) =>
+              (await getSeam("PatientReader").findById({ organizationId, id: patientId })) !== null,
+            warn: (message, context) => app.log.warn(context, message),
+          });
+          const m34SupportOps = createSupportGrantOperationsOver(m34SupportSessionPorts);
           const m34PlatformBackend = buildDrizzlePlatformService({
+            supportSessionPorts: m34SupportSessionPorts,
             // The BAA register links only a signed BAA filed for the record's own tenant (M22's check, on the write's transaction).
             baaDocuments: { isFiled: isTenantBaaDocumentFiled },
             advanceOnboarding: async ({ tenantAccountId, organizationId }) => {
@@ -7272,7 +7292,21 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             tenant: buildDrizzleTenantService({
               db: dbHandle.db,
               enqueue: m34TenantEnqueue.enqueue,
+              // The consent grant's issue and its revoke cascade (sessions closed, ledger, outbox, alerts) run through these.
+              supportOps: m34SupportOps,
+              warn: (message, context) => app.log.warn(context, message),
             }),
+            // Slice 7 (7S): every successful non-GET operator write on /platform/tenants/:orgSlug/* is appended to the ledger of the
+            // operator's open consented session on that tenant (route template, method, status; best effort, after the response).
+            supportLedger: {
+              recorder: createDrizzleSupportLedgerRecorder({
+                platformDb: platformDbHandle?.db ?? dbHandle.db,
+                auditBypass: m34PlatformBypassAuditor,
+                platformJobId: M34_PLATFORM_JOB_ID,
+                now: () => new Date(),
+              }),
+              warn: (message, context) => app.log.warn(context, message),
+            },
             // GAP-164 - the cross-tenant DSAR list + onboarding read/skip (audited platform credential) and the
             // tenant account + feature-flag routes (tenant pool; flags through the same M1 admin seam).
             ...(platformDbHandle
@@ -7290,6 +7324,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               service: createDrizzleTenantAccountFlagsService({
                 db: dbHandle.db,
                 flags: createDrizzleFeatureFlagAdmin(platformDbHandle?.db ?? dbHandle.db),
+              }),
+            },
+            // Slice 7: help requests. The route cap is wired here; the real service is piece 7B's (until it binds one, the routes
+            // answer 501 NOT_IMPLEMENTED). Per member and per organization, fail-closed.
+            help: {
+              fileRateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: HELP_REQUEST_ROUTE_RATE_LIMIT,
+                keyPrefix: "m34-help-request",
               }),
             },
             // A platform operator enters a tenant's provider entities, locations and MAC credential while it is

@@ -1540,6 +1540,8 @@ import {
   OnboardingTemplateViewSchema as M34OnboardingTemplateViewSchema,
   // responses
   BaaRecordViewSchema as M34PlatformBaaRecordViewSchema,
+  PlatformSupportConsentGrantListQuerySchema as M34PlatformSupportConsentGrantListQuerySchema,
+  PlatformSupportConsentGrantListResponseSchema as M34PlatformSupportConsentGrantListResponseSchema,
   TenantExportJobListResponseSchema as M34PlatformTenantExportJobListResponseSchema,
   ProvisionRetryAckSchema as M34ProvisionRetryAckSchema,
   ProvisionStatusViewSchema as M34ProvisionStatusViewSchema,
@@ -1599,7 +1601,23 @@ import {
   TenantExportListQuerySchema as M34TenantExportListQuerySchema,
   TenantExportRequest as M34TenantExportRequest,
   SupportConsentGrantRequest as M34TenantSupportConsentGrantRequest,
+  TenantSupportSessionEventListResponseSchema as M34TenantSupportSessionEventListResponseSchema,
+  TenantSupportSessionListQuerySchema as M34TenantSupportSessionListQuerySchema,
+  TenantSupportSessionListResponseSchema as M34TenantSupportSessionListResponseSchema,
 } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/tenant-typebox";
+
+import {
+  ApproveHelpRequestRequest as M34ApproveHelpRequestRequest,
+  CloseHelpRequestRequest as M34CloseHelpRequestRequest,
+  FileHelpRequestRequest as M34FileHelpRequestRequest,
+  HelpRequestViewSchema as M34HelpRequestViewSchema,
+  PlatformHelpRequestListQuerySchema as M34PlatformHelpRequestListQuerySchema,
+  PlatformHelpRequestListResponseSchema as M34PlatformHelpRequestListResponseSchema,
+  PlatformHelpRequestViewSchema as M34PlatformHelpRequestViewSchema,
+  ResolveHelpRequestRequest as M34ResolveHelpRequestRequest,
+  TenantHelpRequestListQuerySchema as M34TenantHelpRequestListQuerySchema,
+  TenantHelpRequestListResponseSchema as M34TenantHelpRequestListResponseSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/help-request-typebox";
 
 import {
   ComplianceOfficerResponseSchema as M34ComplianceOfficerResponseSchema,
@@ -10875,6 +10893,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M34OnboardingBlockRequest,
     response: M34WizardStepViewSchema,
   },
+  "POST /api/v1/tenant/onboarding/:taskId/skip": {
+    summary: "Skip an allowlisted tenant onboarding step with step-up and a recorded rationale",
+    body: M34SkipOnboardingTaskRequest,
+    response: M34WizardStepViewSchema,
+  },
   "PATCH /api/v1/tenant/org-profile": {
     summary: "Set the organization's display name and IANA time zone during onboarding (org_admin)",
     body: M34OrgProfileRequest,
@@ -10900,14 +10923,47 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34SupportConsentGrantListResponseSchema,
   },
   "POST /api/v1/tenant/support-consent-grants": {
-    summary: "Issue a support-access consent grant (≤72h; compliance-officer; step-up)",
+    summary:
+      "Issue a support-access consent grant (≤72h; step-up). Scopes: organization_scoped and patient_scoped (PHI-bearing) and assist (non-PHI, for help during onboarding: a session on it can never be elevated). 403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED when the grantor may not issue the scope: assist needs the org_admin or compliance_officer role",
     body: M34TenantSupportConsentGrantRequest,
     response: M34SupportConsentGrantViewSchema,
   },
   "POST /api/v1/tenant/support-consent-grants/:id/revoke": {
-    summary: "Revoke a grant (cascades to any open support_session)",
+    summary:
+      "Revoke a grant: ends every support_session open on it (ledger row, critical audit, outbox event, grantor alert) and resolves a linked help request, in one transaction. A later start on it is 409 SUPPORT_GRANT_INACTIVE; repeating the revoke answers the same grant and writes nothing more",
     body: M34RevokeConsentGrantRequest,
     response: M34SupportConsentGrantViewSchema,
+  },
+  "GET /api/v1/tenant/support-sessions": {
+    summary: "Tenant-visible support sessions, with operator identity removed (cursor-paginated)",
+    query: M34TenantSupportSessionListQuerySchema,
+    response: M34TenantSupportSessionListResponseSchema,
+  },
+  "GET /api/v1/tenant/support-sessions/:id/events": {
+    summary:
+      "Tenant-visible support-session ledger, with operator identity removed (cursor-paginated)",
+    query: M34TenantSupportSessionListQuerySchema,
+    response: M34TenantSupportSessionEventListResponseSchema,
+  },
+  "GET /api/v1/tenant/help-requests": {
+    summary: "Tenant's current and previous onboarding help requests",
+    query: M34TenantHelpRequestListQuerySchema,
+    response: M34TenantHelpRequestListResponseSchema,
+  },
+  "POST /api/v1/tenant/help-requests": {
+    summary: "File a non-PHI onboarding help request",
+    body: M34FileHelpRequestRequest,
+    response: M34HelpRequestViewSchema,
+  },
+  "POST /api/v1/tenant/help-requests/:id/approve": {
+    summary: "Approve a help request and issue its time-boxed non-PHI assist grant",
+    body: M34ApproveHelpRequestRequest,
+    response: M34HelpRequestViewSchema,
+  },
+  "POST /api/v1/tenant/help-requests/:id/close": {
+    summary: "Close the tenant's help request and revoke any linked support access",
+    body: M34CloseHelpRequestRequest,
+    response: M34HelpRequestViewSchema,
   },
 
   // ── platform-ops tenant lifecycle (§4.1) ──
@@ -10978,14 +11034,31 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34SupportSessionEventListResponseSchema,
   },
   "POST /api/v1/platform/support-sessions": {
-    summary: "Start a session against a consent grant (distinct-actor + passkey-5min step-up)",
+    summary:
+      "Start a session against a consent grant (distinct actor, by membership and by person; passkey-5min step-up). The session, its ledger and its audit are recorded in the grant's (the tenant's) organization, never the operator's. 409 SUPPORT_GRANT_INACTIVE when the grant is revoked or expired",
     body: M34StartSessionRequest,
     response: M34StartSessionAckSchema,
   },
   "POST /api/v1/platform/support-sessions/:id/close": {
-    summary: "Close a session with reason='manual' (no step-up)",
+    summary:
+      "Close a session with reason='manual' (no step-up): the close stamp, a session.close ledger row, a critical audit, m34.support_session.expired (closeReason manual_close) and the grantor alert. Repeatable: a session already closed answers its reason and writes nothing more",
     body: M34CloseSessionRequest,
     response: M34CloseSessionAckSchema,
+  },
+  "GET /api/v1/platform/support-consent-grants": {
+    summary: "Active or historical consent grants available to the support-session picker",
+    query: M34PlatformSupportConsentGrantListQuerySchema,
+    response: M34PlatformSupportConsentGrantListResponseSchema,
+  },
+  "GET /api/v1/platform/help-requests": {
+    summary: "Cross-tenant onboarding help inbox",
+    query: M34PlatformHelpRequestListQuerySchema,
+    response: M34PlatformHelpRequestListResponseSchema,
+  },
+  "POST /api/v1/platform/help-requests/:id/resolve": {
+    summary: "Resolve an onboarding help request and revoke its linked support access",
+    body: M34ResolveHelpRequestRequest,
+    response: M34PlatformHelpRequestViewSchema,
   },
 
   // ── platform-ops onboarding-template catalog ──
@@ -13264,7 +13337,8 @@ import {
 
 Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/platform/support-sessions/:id/elevate": {
-    summary: "Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403)",
+    summary:
+      "Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403). 403 SUPPORT_SESSION_NON_PHI on a session opened against an assist grant: it has no PHI to read or write",
     body: M34ElevateSessionRequest,
     response: M34ElevateSessionAckSchema,
   },

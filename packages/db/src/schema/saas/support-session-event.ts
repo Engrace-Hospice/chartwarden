@@ -13,7 +13,16 @@
 // (OPS-021). Indexes that omit the partition key are declared plain here. RLS + grants + the M4 write-audit
 // trigger land in 0052/0053.
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
 export const supportSessionEvent = pgTable(
@@ -39,6 +48,14 @@ export const supportSessionEvent = pgTable(
       t.supportSessionId,
       t.occurredAt,
     ),
+    orgSessionOccurredIdx: index("support_session_event_org_session_occurred_idx").on(
+      t.organizationId,
+      t.supportSessionId,
+      t.occurredAt,
+    ),
+    oneCloseIdx: uniqueIndex("support_session_event_one_close_idx")
+      .on(t.organizationId, t.supportSessionId)
+      .where(sql`event_kind = 'session.close'`),
     patientEventIdx: index("support_session_event_patient_idx")
       .on(t.patientId, t.occurredAt)
       .where(sql`patient_id IS NOT NULL`),

@@ -23,24 +23,28 @@ import {
   BaaRegisterRepository,
   type DsarExportJobInput,
   DsarExportRepository,
+  type LinkedHelpRequestPort,
+  type SupportGrantOperations,
   SupportRepository,
   TenantAccountRepository,
   TenantExportRepository,
+  issueSupportConsentGrant,
 } from "@chartwarden/saas-tenant-platform";
 import { getRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
-import { assertPageCursor, paginate } from "../keyset-page";
+import { assertPageCursor, decodeKeyset, encodeKeyset, pageSizeOf, paginate } from "../keyset-page";
 import type {
   BaaRecordView,
   DownloadUrlView,
   DsarExportJobView,
   EnqueuePort,
-  IssueGrantArgs,
   RequestDsarArgs,
   SupportConsentGrantView,
   TenantExportJobView,
   TenantRouteService,
+  TenantSupportSessionEventView,
+  TenantSupportSessionView,
 } from "./service";
 
 /** The structural org-context transaction handle the repos write through. */
@@ -65,9 +69,23 @@ export interface DrizzleTenantRouteDeps {
   readonly presign: PresignDownloadPort;
   /** Injected clock (deterministic timestamps in tests). */
   readonly now: () => Date;
+  /**
+   * The support-grant operations bound to the shared ports (audit / outbox / alerts, `createSupportGrantOperationsOver`): a grant's
+   * issue and its revoke cascade run on the tenant's own transaction through them. REQUIRED: a revoke that cannot close the
+   * sessions it covers must not pretend to have revoked the consent.
+   */
+  readonly supportOps: SupportGrantOperations;
+  /**
+   * The help request linked to a grant, resolved in the revoke's own transaction (piece 7B's table; absent until it is wired:
+   * the cascade then closes sessions only).
+   */
+  readonly linkedHelpRequestsFor?: (tx: TenantTx) => LinkedHelpRequestPort;
+  /** IDs-only warning for best-effort linked-help reconciliation failures. */
+  readonly warn?: (message: string, context: Record<string, unknown>) => void;
 }
 
 const SCG = schema.supportConsentGrant;
+const ORG = schema.organizations;
 const BAA = schema.platformTenantBaaRecord;
 
 const PRESIGN_TTL_SECONDS = 24 * 60 * 60;
@@ -91,18 +109,14 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
       assertPageCursor(organizationId, cursor);
       return inOrgCtx(organizationId, async (tx) => {
         const rows = await tx.select().from(SCG); // RLS scopes to app.org_id
-        const views = rows.map(grantView).sort(byCreatedDesc);
+        const now = deps.now();
+        const views = rows.map((g) => grantView(g, now)).sort(byCreatedDesc);
         return paginate(organizationId, views, cursor, limit);
       });
     },
 
-    async issueConsentGrant(organizationId, actorMembershipId, args: IssueGrantArgs) {
+    async issueConsentGrant(organizationId, actor, args) {
       return inOrgCtx(organizationId, async (tx) => {
-        const repo = new SupportRepository(tx);
-        const now = deps.now();
-        // §4.2 — expires_at = NOW() + min(request, 72h platform-floor).
-        const hours = Math.min(args.expiresAtIsoOffsetHours, 72);
-        const expiresAt = new Date(now.getTime() + hours * 3_600_000);
         // The tenant_account_id is resolved from the org spine (1:1 with organization).
         const account = await tx
           .select()
@@ -111,32 +125,127 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
           .limit(1);
         const tenantAccountId = account[0]?.id;
         if (!tenantAccountId) throw new NotFoundError("tenant account");
-        const row = await repo.createConsentGrant({
+        // An organization that is not active (created, suspended, closed) is confined: it may issue only the non-PHI assist scope.
+        const [org] = await tx
+          .select({ status: ORG.status })
+          .from(ORG)
+          .where(eq(ORG.id, organizationId))
+          .limit(1);
+        // The scope rule, the row, `m34.support_consent_grant.issued` and the operators' alert: one service, one transaction.
+        const row = await issueSupportConsentGrant(deps.supportOps.depsFor(tx), {
           organizationId,
           tenantAccountId,
+          grantorMembershipId: actor.membershipId,
+          grantorRoles: actor.roles,
           scope: args.scope,
-          patientIdsInScope: args.patientIdsInScope ? [...args.patientIdsInScope] : null,
-          grantReason: args.grantReason,
-          grantorMembershipId: actorMembershipId,
-          expiresAt,
+          patientIdsInScope: args.patientIdsInScope,
+          hours: args.expiresAtIsoOffsetHours,
+          reason: args.grantReason,
+          organizationActive: org?.status === "active",
         });
-        return grantView(row);
+        return grantView(row, deps.now());
       });
     },
 
-    async revokeConsentGrant(organizationId, grantId, actorMembershipId, reason) {
+    async revokeConsentGrant(organizationId, grantId, actor, reason) {
+      const result = await inOrgCtx(organizationId, async (tx) => {
+        // The security boundary commits first: revoke the grant and end every covered session atomically.
+        await deps.supportOps.revokeGrantAndCloseSessions(deps.supportOps.depsFor(tx), {
+          grantId,
+          organizationId,
+          revokedByMembershipId: actor.membershipId,
+          reason,
+          source: "tenant",
+          closedByUserId: actor.userId,
+        });
+        const row = await new SupportRepository(tx).findConsentGrantById(grantId);
+        if (!row) throw new NotFoundError("support consent grant");
+        return grantView(row, deps.now());
+      });
+      // Help-request bookkeeping is a collaborator, not part of the consent boundary. Run it after
+      // the revoke commits so its failure can never roll consent back or leave a support window open.
+      if (deps.linkedHelpRequestsFor) {
+        try {
+          await inOrgCtx(organizationId, (tx) =>
+            deps.linkedHelpRequestsFor!(tx).resolveForRevokedGrant({
+              grantId,
+              organizationId,
+              source: "tenant",
+              closedByUserId: actor.userId,
+              note: null,
+            }),
+          );
+        } catch (error) {
+          // The linked request can be reconciled independently; consent revocation remains successful.
+          deps.warn?.("m34.support_grant: linked help reconciliation failed", {
+            organizationId,
+            grantId,
+            errorClass: error instanceof Error ? error.name : "UnknownError",
+          });
+        }
+      }
+      return result;
+    },
+
+    // ── support sessions on this organization (read-only; RLS scopes them; never an operator id, name or address) ──
+    async listSupportSessions(organizationId, cursor, limit) {
+      // judged before the org transaction is opened: a bad cursor reaches no database
+      assertPageCursor(organizationId, cursor);
       return inOrgCtx(organizationId, async (tx) => {
         const repo = new SupportRepository(tx);
-        const existing = await repo.findConsentGrantById(grantId);
-        if (!existing || existing.organizationId !== organizationId) {
-          throw new NotFoundError("support consent grant");
-        }
-        const row = await repo.revokeConsentGrant(grantId, {
-          revokedAt: deps.now(),
-          revokedByMembershipId: actorMembershipId,
-          revocationReason: reason,
+        const size = pageSizeOf(limit);
+        const anchor = decodeKeyset(organizationId, cursor);
+        const sessions = await repo.listSessions({
+          limit: size + 1,
+          ...(anchor ? { cursor: { startedAt: new Date(anchor.createdAt), id: anchor.id } } : {}),
         });
-        return grantView(row);
+        const pageRows = sessions.slice(0, size);
+        const stats = await repo.opsWriteStats(pageRows.map((x) => x.id));
+        const now = deps.now();
+        const views = pageRows
+          .map((x) => ({
+            ...tenantSessionView(x, stats.get(x.id), now),
+            createdAt: isoReq(x.startedAt),
+          }))
+          .sort(byCreatedDesc);
+        const last = views.at(-1);
+        const hasMore = sessions.length > size;
+        return {
+          items: views.map(({ createdAt: _c, ...v }) => v),
+          hasMore,
+          nextCursor: hasMore && last ? encodeKeyset(organizationId, last) : null,
+        };
+      });
+    },
+
+    async listSupportSessionEvents(organizationId, sessionId, cursor, limit) {
+      // judged before the org transaction is opened: a bad cursor reaches no database
+      assertPageCursor(organizationId, cursor);
+      return inOrgCtx(organizationId, async (tx) => {
+        const repo = new SupportRepository(tx);
+        const session = await repo.findSessionById(sessionId);
+        // RLS hides another organization's session: the same non-leaking 404 as a missing one.
+        if (!session || session.organizationId !== organizationId) {
+          throw new NotFoundError("support session");
+        }
+        const size = pageSizeOf(limit);
+        const anchor = decodeKeyset(organizationId, cursor);
+        const rows = await repo.listSessionEvents(sessionId, {
+          limit: size + 1,
+          organizationId,
+          ...(anchor ? { cursor: { occurredAt: new Date(anchor.createdAt), id: anchor.id } } : {}),
+        });
+        const views = rows
+          .slice(0, size)
+          .map((e) => ({ ...tenantEventView(e), createdAt: isoReq(e.occurredAt) }))
+          .sort(byCreatedDesc);
+        const last = views.at(-1);
+        const hasMore = rows.length > size;
+        return {
+          items: views.map(({ createdAt: _c, ...v }) => v),
+          hasMore,
+          nextCursor: hasMore && last ? encodeKeyset(organizationId, last) : null,
+        };
       });
     },
 
@@ -389,7 +498,7 @@ async function loadTenantExport(
 
 // ── projections to the slice's DTO shapes (each carries `createdAt` for keyset pagination) ─────────────
 
-function grantView(g: schema.SupportConsentGrant): SupportConsentGrantView {
+function grantView(g: schema.SupportConsentGrant, now: Date): SupportConsentGrantView {
   return {
     id: g.id,
     tenantAccountId: g.tenantAccountId,
@@ -398,8 +507,49 @@ function grantView(g: schema.SupportConsentGrant): SupportConsentGrantView {
     issuedAt: isoReq(g.issuedAt),
     expiresAt: isoReq(g.expiresAt),
     revokedAt: iso(g.revokedAt),
-    active: g.revokedAt === null,
+    // Unrevoked AND unexpired: the same meaning as the operators' view of the grant.
+    active: g.revokedAt === null && g.expiresAt.getTime() > now.getTime(),
     createdAt: isoReq(g.issuedAt),
+  };
+}
+
+/** A session as the TENANT sees it: when, how long and how it ended; never the operator (the row's actor column is not read). */
+function tenantSessionView(
+  s: schema.SupportSession,
+  stats: { readonly count: number; readonly lastAt: Date | null } | undefined,
+  now: Date,
+): TenantSupportSessionView {
+  return {
+    id: s.id,
+    supportConsentGrantId: s.supportConsentGrantId,
+    state:
+      s.closedAt !== null ? "closed" : s.expiresAt.getTime() <= now.getTime() ? "expired" : "open",
+    startedAt: isoReq(s.startedAt),
+    expiresAt: isoReq(s.expiresAt),
+    closedAt: iso(s.closedAt),
+    closeReason: (s.closeReason as TenantSupportSessionView["closeReason"]) ?? null,
+    actionCount: stats?.count ?? 0,
+    lastActionAt: iso(stats?.lastAt ?? null),
+  };
+}
+
+/** One ledger row as the tenant sees it: an `ops.write` shows its route template, method and status; never an id, a body or an address. */
+function tenantEventView(e: schema.SupportSessionEvent): TenantSupportSessionEventView {
+  const context = (e.context ?? {}) as Record<string, unknown>;
+  const detail =
+    e.eventKind === "ops.write" &&
+    typeof context.route === "string" &&
+    typeof context.method === "string" &&
+    typeof context.status === "number" &&
+    Number.isInteger(context.status)
+      ? { route: context.route, method: context.method, status: context.status }
+      : null;
+  return {
+    id: e.id,
+    supportSessionId: e.supportSessionId,
+    eventKind: e.eventKind,
+    occurredAt: isoReq(e.occurredAt),
+    detail,
   };
 }
 

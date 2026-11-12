@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 // apps/backend/__tests__/m34-alert-rule-seed.test.ts — GAP-098.
 //
 // M34's §4.8 alert rules have been declared since the module was written and NEVER seeded — the file's
@@ -30,6 +32,25 @@ import {
 import { M34_ACTIVATION_STUCK_EVENT } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
 
 describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
+  it("seeds every literal alert key emitted by the M34 service layer", () => {
+    const root = join(__dirname, "../../..");
+    const files = [
+      "packages/saas-tenant-platform/src/services/support-session-service.ts",
+      "packages/saas-tenant-platform/src/services/support-grant-service.ts",
+      "packages/saas-tenant-platform/src/services/lifecycle-transition.ts",
+      "packages/saas-tenant-platform/src/services/onboarding-advance-worker.ts",
+    ];
+    const emitted = new Set<string>();
+    for (const file of files) {
+      const source = readFileSync(join(root, file), "utf8");
+      for (const match of source.matchAll(/alertKey:\s*"([^"]+)"/g)) {
+        if (match[1]) emitted.add(match[1]);
+      }
+    }
+    const seeded = new Set(M34_ALERT_RULES.map((rule) => rule.eventType));
+    for (const eventType of emitted) expect(seeded.has(eventType), eventType).toBe(true);
+  });
+
   it("routes tenant-org rules at the audience role, never platform_ops", () => {
     expect(TENANT_ALERT_AUDIENCE_ROLE_KEY).toBe(PLATFORM_ALERT_AUDIENCE_ROLE_KEY);
     expect(PLATFORM_OPS_ROLE_KEY).toBe(AUTH_OPS_KEY);
@@ -97,6 +118,36 @@ describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
         true,
       );
     }
+  });
+
+  it("slice 7: tells the operators when consent is granted, locked and routed at the zero-authority audience role", () => {
+    const rule = M34_ALERT_RULES.find((r) => r.ruleKey === "support_consent.granted.platform_ops");
+    expect(rule?.eventType).toBe("m34.support_consent_grant.issued");
+    expect(rule?.recipientResolver).toBe("role_set");
+    expect(rule?.resolverArgs).toEqual({ roleKeys: [TENANT_ALERT_AUDIENCE_ROLE_KEY] });
+    // Emitted under the tenant's org: a tenant administrator's override must not redirect or silence it.
+    expect(rule?.systemLocked).toBe(true);
+    expect(rule?.enabled).toBe(true);
+    expect(M34_ALERT_RULE_KEYS).toContain("support_consent.granted.platform_ops");
+  });
+
+  it("slice 7: the session-started notice also reaches the organization's administrators, at a distinct floor", () => {
+    const rules = M34_ALERT_RULES.filter((r) => r.eventType === "m34.support_session.started");
+    const orgAdmin = rules.find((r) => r.ruleKey === "support_session.started.org_admin");
+    expect(orgAdmin?.recipientResolver).toBe("role_set");
+    expect(orgAdmin?.resolverArgs).toEqual({ roleKeys: ["org_admin"] });
+    expect(orgAdmin?.systemLocked).toBe(false);
+    expect(M34_ALERT_RULE_KEYS).toContain("support_session.started.org_admin");
+    // The unique index is (org, event_type, severity_floor): the grantor's rule and this one may not share a floor.
+    expect(new Set(rules.map((r) => r.severityFloor)).size).toBe(rules.length);
+  });
+
+  it("the support rules' (event, floor) pairs are unique (the alert_rule unique index)", () => {
+    const pairs = M34_ALERT_RULES.filter((r) => r.eventType.startsWith("m34.support_")).map(
+      (r) => `${r.eventType}|${r.severityFloor}`,
+    );
+    expect(pairs.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(pairs).size).toBe(pairs.length);
   });
 
   it("keeps the canonical key list in step with the rule table", () => {

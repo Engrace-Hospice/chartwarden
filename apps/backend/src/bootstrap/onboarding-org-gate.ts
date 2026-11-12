@@ -50,6 +50,11 @@ export const PRE_ACTIVATION_ALLOWED_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/v1/tenant/account",
   "GET /api/v1/tenant/baa",
   "POST /api/v1/tenant/baa/:id/attest",
+  // ── consented support safety controls (read/terminate only; no new PHI grant) ───────────────────────────
+  "GET /api/v1/tenant/support-consent-grants",
+  "POST /api/v1/tenant/support-consent-grants/:id/revoke",
+  "GET /api/v1/tenant/support-sessions",
+  "GET /api/v1/tenant/support-sessions/:id/events",
   // ── the identity administration the wizard's staffing steps need ────────────────────────────────────────
   "GET /api/v1/orgs/:id/members",
   "GET /api/v1/orgs/:id/invitations",

@@ -76,6 +76,19 @@ export const CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "closed",
 };
 
+/**
+ * M34 `POST /tenant/help-requests` (a member asks ChartWarden for help during onboarding): 3 an hour per member and 10 an hour per
+ * organization. A request pages operators and one live request per tenant account is already the rule, so the cap only bounds a
+ * member (or an account) that keeps retrying. Fail-CLOSED: with the limiter's store down a flood of operator alerts would be
+ * unbounded, so the route answers a typed 503 (DEGRADED) instead.
+ */
+export const HELP_REQUEST_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 3,
+  perOrg: 10,
+  windowMs: 3_600_000,
+  failMode: "closed",
+};
+
 /** M12 `POST /tenant/dosespot/verify` and the platform copy (a vendor token mint per request): 6/min/user and 30/min/org. Fail-open: an availability control. */
 export const DOSESPOT_VERIFY_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 6,

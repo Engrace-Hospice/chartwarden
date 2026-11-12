@@ -273269,6 +273269,748 @@
         }
       }
     },
+    "/api/v1/platform/help-requests": {
+      "get": {
+        "operationId": "getApiV1PlatformHelprequests",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Cross-tenant onboarding help inbox",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "pattern": "^(open|approved|resolved|cancelled)(,(open|approved|resolved|cancelled))*$",
+              "description": "Comma-separated statuses to include (open, approved, resolved, cancelled); every status when omitted.",
+              "type": "string"
+            }
+          },
+          {
+            "name": "tenantAccountId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "tenantAccountId",
+                          "orgSlug",
+                          "legalBusinessName",
+                          "stepKey",
+                          "message",
+                          "status",
+                          "phase",
+                          "requestedAt",
+                          "requestedByMembershipId",
+                          "approvedAt",
+                          "supportConsentGrantId",
+                          "grant",
+                          "session",
+                          "closedAt",
+                          "closedByActorKind",
+                          "closeNote"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "tenantAccountId": {
+                            "type": "string"
+                          },
+                          "orgSlug": {
+                            "type": "string"
+                          },
+                          "legalBusinessName": {
+                            "type": "string"
+                          },
+                          "stepKey": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "approved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "resolved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "phase": {
+                            "anyOf": [
+                              {
+                                "const": "waiting_for_consent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ready_to_start",
+                                "type": "string"
+                              },
+                              {
+                                "const": "in_session",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ended",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "requestedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "requestedByMembershipId": {
+                            "type": "string"
+                          },
+                          "approvedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "supportConsentGrantId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "grant": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "expiresAt",
+                                  "status"
+                                ],
+                                "properties": {
+                                  "expiresAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "anyOf": [
+                                      {
+                                        "const": "active",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "expired",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "revoked",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "session": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "sessionId",
+                                  "state",
+                                  "startedAt",
+                                  "expiresAt",
+                                  "closedAt",
+                                  "closeReason",
+                                  "actionCount",
+                                  "lastActionAt"
+                                ],
+                                "properties": {
+                                  "sessionId": {
+                                    "type": "string"
+                                  },
+                                  "state": {
+                                    "anyOf": [
+                                      {
+                                        "const": "open",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "expired",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "closed",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "startedAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "expiresAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "closedAt": {
+                                    "anyOf": [
+                                      {
+                                        "format": "date-time",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "closeReason": {
+                                    "anyOf": [
+                                      {
+                                        "anyOf": [
+                                          {
+                                            "const": "manual",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "expired",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "grant_revoked",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "forced_terminated",
+                                            "type": "string"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "actionCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "lastActionAt": {
+                                    "anyOf": [
+                                      {
+                                        "format": "date-time",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "closedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "closedByActorKind": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "tenant",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "platform_ops",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "system",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "closeNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/help-requests/{id}/resolve": {
+      "post": {
+        "operationId": "postApiV1PlatformHelprequestsByIdResolve",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Resolve an onboarding help request and revoke its linked support access",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "tenantAccountId",
+                    "orgSlug",
+                    "legalBusinessName",
+                    "stepKey",
+                    "message",
+                    "status",
+                    "phase",
+                    "requestedAt",
+                    "requestedByMembershipId",
+                    "approvedAt",
+                    "supportConsentGrantId",
+                    "grant",
+                    "session",
+                    "closedAt",
+                    "closedByActorKind",
+                    "closeNote"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "tenantAccountId": {
+                      "type": "string"
+                    },
+                    "orgSlug": {
+                      "type": "string"
+                    },
+                    "legalBusinessName": {
+                      "type": "string"
+                    },
+                    "stepKey": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "resolved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "phase": {
+                      "anyOf": [
+                        {
+                          "const": "waiting_for_consent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready_to_start",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_session",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ended",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requestedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "requestedByMembershipId": {
+                      "type": "string"
+                    },
+                    "approvedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supportConsentGrantId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "grant": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "expiresAt",
+                            "status"
+                          ],
+                          "properties": {
+                            "expiresAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "active",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "expired",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "revoked",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "session": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "sessionId",
+                            "state",
+                            "startedAt",
+                            "expiresAt",
+                            "closedAt",
+                            "closeReason",
+                            "actionCount",
+                            "lastActionAt"
+                          ],
+                          "properties": {
+                            "sessionId": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "open",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "expired",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "closed",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "startedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "closedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "closeReason": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "const": "manual",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "expired",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "grant_revoked",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "forced_terminated",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "actionCount": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "lastActionAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedByActorKind": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "platform_ops",
+                              "type": "string"
+                            },
+                            {
+                              "const": "system",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closeNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "note"
+                ],
+                "properties": {
+                  "note": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/platform/onboarding-templates": {
       "get": {
         "operationId": "getApiV1PlatformOnboardingtemplates",
@@ -274506,6 +275248,153 @@
         }
       }
     },
+    "/api/v1/platform/support-consent-grants": {
+      "get": {
+        "operationId": "getApiV1PlatformSupportconsentgrants",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Active or historical consent grants available to the support-session picker",
+        "parameters": [
+          {
+            "name": "tenantAccountId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "description": "true: only grants that are unrevoked and unexpired; false: only the others.",
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "tenantAccountId",
+                          "scope",
+                          "issuedAt",
+                          "expiresAt",
+                          "revokedAt",
+                          "active"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "tenantAccountId": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "anyOf": [
+                              {
+                                "const": "organization_scoped",
+                                "type": "string"
+                              },
+                              {
+                                "const": "patient_scoped",
+                                "type": "string"
+                              },
+                              {
+                                "const": "assist",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "issuedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "expiresAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "revokedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "active": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/platform/support-sessions": {
       "get": {
         "operationId": "getApiV1PlatformSupportsessions",
@@ -274695,7 +275584,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Start a session against a consent grant (distinct-actor + passkey-5min step-up)",
+        "summary": "Start a session against a consent grant (distinct actor, by membership and by person; passkey-5min step-up). The session, its ledger and its audit are recorded in the grant's (the tenant's) organization, never the operator's. 409 SUPPORT_GRANT_INACTIVE when the grant is revoked or expired",
         "parameters": [],
         "responses": {
           "200": {
@@ -274755,7 +275644,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Close a session with reason='manual' (no step-up)",
+        "summary": "Close a session with reason='manual' (no step-up): the close stamp, a session.close ledger row, a critical audit, m34.support_session.expired (closeReason manual_close) and the grantor alert. Repeatable: a session already closed answers its reason and writes nothing more",
         "parameters": [
           {
             "name": "id",
@@ -274820,7 +275709,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403)",
+        "summary": "Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403). 403 SUPPORT_SESSION_NON_PHI on a session opened against an assist grant: it has no PHI to read or write",
         "parameters": [
           {
             "name": "id",
@@ -280721,7 +281610,9 @@
                           "blockerReason",
                           "skipRationale",
                           "systemSkipped",
+                          "skippedBy",
                           "skippable",
+                          "tenantSkippable",
                           "createdAt",
                           "templateKey",
                           "isCanonical",
@@ -280976,8 +281867,36 @@
                             "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                             "type": "boolean"
                           },
+                          "skippedBy": {
+                            "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "system",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "tenant",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "platform_ops",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "skippable": {
                             "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                            "type": "boolean"
+                          },
+                          "tenantSkippable": {
+                            "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -281322,7 +282241,9 @@
                           "blockerReason",
                           "skipRationale",
                           "systemSkipped",
+                          "skippedBy",
                           "skippable",
+                          "tenantSkippable",
                           "createdAt",
                           "templateKey",
                           "isCanonical",
@@ -281577,8 +282498,36 @@
                             "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                             "type": "boolean"
                           },
+                          "skippedBy": {
+                            "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "system",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "tenant",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "platform_ops",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "skippable": {
                             "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                            "type": "boolean"
+                          },
+                          "tenantSkippable": {
+                            "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -283534,7 +284483,9 @@
                           "blockerReason",
                           "skipRationale",
                           "systemSkipped",
+                          "skippedBy",
                           "skippable",
+                          "tenantSkippable",
                           "createdAt",
                           "templateKey",
                           "isCanonical",
@@ -283789,8 +284740,36 @@
                             "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                             "type": "boolean"
                           },
+                          "skippedBy": {
+                            "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "system",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "tenant",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "platform_ops",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "skippable": {
                             "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                            "type": "boolean"
+                          },
+                          "tenantSkippable": {
+                            "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -284081,7 +285060,9 @@
                           "blockerReason",
                           "skipRationale",
                           "systemSkipped",
+                          "skippedBy",
                           "skippable",
+                          "tenantSkippable",
                           "createdAt",
                           "templateKey",
                           "isCanonical",
@@ -284336,8 +285317,36 @@
                             "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                             "type": "boolean"
                           },
+                          "skippedBy": {
+                            "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "system",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "tenant",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "platform_ops",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "skippable": {
                             "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                            "type": "boolean"
+                          },
+                          "tenantSkippable": {
+                            "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -284430,7 +285439,9 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippedBy",
                     "skippable",
+                    "tenantSkippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -284685,8 +285696,36 @@
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                       "type": "boolean"
                     },
+                    "skippedBy": {
+                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "system",
+                              "type": "string"
+                            },
+                            {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "platform_ops",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "skippable": {
                       "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                      "type": "boolean"
+                    },
+                    "tenantSkippable": {
+                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -284806,7 +285845,9 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippedBy",
                     "skippable",
+                    "tenantSkippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -285061,8 +286102,36 @@
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                       "type": "boolean"
                     },
+                    "skippedBy": {
+                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "system",
+                              "type": "string"
+                            },
+                            {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "platform_ops",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "skippable": {
                       "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                      "type": "boolean"
+                    },
+                    "tenantSkippable": {
+                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -285172,7 +286241,9 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippedBy",
                     "skippable",
+                    "tenantSkippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -285427,8 +286498,36 @@
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                       "type": "boolean"
                     },
+                    "skippedBy": {
+                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "system",
+                              "type": "string"
+                            },
+                            {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "platform_ops",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "skippable": {
                       "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                      "type": "boolean"
+                    },
+                    "tenantSkippable": {
+                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -361653,7 +362752,9 @@
                           "blockerReason",
                           "skipRationale",
                           "systemSkipped",
+                          "skippedBy",
                           "skippable",
+                          "tenantSkippable",
                           "createdAt",
                           "templateKey",
                           "isCanonical",
@@ -361908,8 +363009,36 @@
                             "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                             "type": "boolean"
                           },
+                          "skippedBy": {
+                            "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "system",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "tenant",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "platform_ops",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "skippable": {
                             "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                            "type": "boolean"
+                          },
+                          "tenantSkippable": {
+                            "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -362180,6 +363309,1591 @@
         }
       }
     },
+    "/api/v1/tenant/help-requests": {
+      "get": {
+        "operationId": "getApiV1TenantHelprequests",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Tenant's current and previous onboarding help requests",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "current",
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "current": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "stepKey",
+                            "message",
+                            "status",
+                            "phase",
+                            "requestedAt",
+                            "approvedAt",
+                            "grant",
+                            "session",
+                            "closedAt",
+                            "closedBy",
+                            "closeNote"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "stepKey": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "message": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "open",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "approved",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "resolved",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancelled",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "phase": {
+                              "anyOf": [
+                                {
+                                  "const": "waiting_for_consent",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready_to_start",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "in_session",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ended",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "requestedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "approvedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "grant": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "expiresAt",
+                                    "status"
+                                  ],
+                                  "properties": {
+                                    "expiresAt": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "anyOf": [
+                                        {
+                                          "const": "active",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "expired",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "revoked",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "session": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "state",
+                                    "startedAt",
+                                    "expiresAt",
+                                    "closedAt",
+                                    "closeReason",
+                                    "actionCount",
+                                    "lastActionAt"
+                                  ],
+                                  "properties": {
+                                    "state": {
+                                      "anyOf": [
+                                        {
+                                          "const": "open",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "expired",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "closed",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "startedAt": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    "expiresAt": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    "closedAt": {
+                                      "anyOf": [
+                                        {
+                                          "format": "date-time",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "closeReason": {
+                                      "anyOf": [
+                                        {
+                                          "anyOf": [
+                                            {
+                                              "const": "manual",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "expired",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "grant_revoked",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "forced_terminated",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "actionCount": {
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "lastActionAt": {
+                                      "anyOf": [
+                                        {
+                                          "format": "date-time",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "closedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "closedBy": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "const": "you",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "your organization",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ChartWarden operations",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "system",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "closeNote": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "stepKey",
+                          "message",
+                          "status",
+                          "phase",
+                          "requestedAt",
+                          "approvedAt",
+                          "grant",
+                          "session",
+                          "closedAt",
+                          "closedBy",
+                          "closeNote"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "stepKey": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "approved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "resolved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "phase": {
+                            "anyOf": [
+                              {
+                                "const": "waiting_for_consent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ready_to_start",
+                                "type": "string"
+                              },
+                              {
+                                "const": "in_session",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ended",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "requestedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "approvedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "grant": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "expiresAt",
+                                  "status"
+                                ],
+                                "properties": {
+                                  "expiresAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "anyOf": [
+                                      {
+                                        "const": "active",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "expired",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "revoked",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "session": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "state",
+                                  "startedAt",
+                                  "expiresAt",
+                                  "closedAt",
+                                  "closeReason",
+                                  "actionCount",
+                                  "lastActionAt"
+                                ],
+                                "properties": {
+                                  "state": {
+                                    "anyOf": [
+                                      {
+                                        "const": "open",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "expired",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "closed",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "startedAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "expiresAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "closedAt": {
+                                    "anyOf": [
+                                      {
+                                        "format": "date-time",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "closeReason": {
+                                    "anyOf": [
+                                      {
+                                        "anyOf": [
+                                          {
+                                            "const": "manual",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "expired",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "grant_revoked",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "forced_terminated",
+                                            "type": "string"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "actionCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "lastActionAt": {
+                                    "anyOf": [
+                                      {
+                                        "format": "date-time",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "closedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "closedBy": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "you",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "your organization",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "ChartWarden operations",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "system",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "closeNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1TenantHelprequests",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "File a non-PHI onboarding help request",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "stepKey",
+                    "message",
+                    "status",
+                    "phase",
+                    "requestedAt",
+                    "approvedAt",
+                    "grant",
+                    "session",
+                    "closedAt",
+                    "closedBy",
+                    "closeNote"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "stepKey": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "resolved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "phase": {
+                      "anyOf": [
+                        {
+                          "const": "waiting_for_consent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready_to_start",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_session",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ended",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requestedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "approvedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "grant": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "expiresAt",
+                            "status"
+                          ],
+                          "properties": {
+                            "expiresAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "active",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "expired",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "revoked",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "session": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "state",
+                            "startedAt",
+                            "expiresAt",
+                            "closedAt",
+                            "closeReason",
+                            "actionCount",
+                            "lastActionAt"
+                          ],
+                          "properties": {
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "open",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "expired",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "closed",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "startedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "closedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "closeReason": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "const": "manual",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "expired",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "grant_revoked",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "forced_terminated",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "actionCount": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "lastActionAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedBy": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "you",
+                              "type": "string"
+                            },
+                            {
+                              "const": "your organization",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ChartWarden operations",
+                              "type": "string"
+                            },
+                            {
+                              "const": "system",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closeNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "message"
+                ],
+                "properties": {
+                  "stepKey": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "message": {
+                    "minLength": 8,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/help-requests/{id}/approve": {
+      "post": {
+        "operationId": "postApiV1TenantHelprequestsByIdApprove",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Approve a help request and issue its time-boxed non-PHI assist grant",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "stepKey",
+                    "message",
+                    "status",
+                    "phase",
+                    "requestedAt",
+                    "approvedAt",
+                    "grant",
+                    "session",
+                    "closedAt",
+                    "closedBy",
+                    "closeNote"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "stepKey": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "resolved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "phase": {
+                      "anyOf": [
+                        {
+                          "const": "waiting_for_consent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready_to_start",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_session",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ended",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requestedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "approvedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "grant": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "expiresAt",
+                            "status"
+                          ],
+                          "properties": {
+                            "expiresAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "active",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "expired",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "revoked",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "session": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "state",
+                            "startedAt",
+                            "expiresAt",
+                            "closedAt",
+                            "closeReason",
+                            "actionCount",
+                            "lastActionAt"
+                          ],
+                          "properties": {
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "open",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "expired",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "closed",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "startedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "closedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "closeReason": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "const": "manual",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "expired",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "grant_revoked",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "forced_terminated",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "actionCount": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "lastActionAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedBy": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "you",
+                              "type": "string"
+                            },
+                            {
+                              "const": "your organization",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ChartWarden operations",
+                              "type": "string"
+                            },
+                            {
+                              "const": "system",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closeNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "hours": {
+                    "minimum": 1,
+                    "maximum": 24,
+                    "description": "Whole hours the consent lasts (1 to 24); 8 when omitted.",
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/help-requests/{id}/close": {
+      "post": {
+        "operationId": "postApiV1TenantHelprequestsByIdClose",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Close the tenant's help request and revoke any linked support access",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "stepKey",
+                    "message",
+                    "status",
+                    "phase",
+                    "requestedAt",
+                    "approvedAt",
+                    "grant",
+                    "session",
+                    "closedAt",
+                    "closedBy",
+                    "closeNote"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "stepKey": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "resolved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "phase": {
+                      "anyOf": [
+                        {
+                          "const": "waiting_for_consent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready_to_start",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_session",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ended",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requestedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "approvedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "grant": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "expiresAt",
+                            "status"
+                          ],
+                          "properties": {
+                            "expiresAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "active",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "expired",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "revoked",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "session": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "state",
+                            "startedAt",
+                            "expiresAt",
+                            "closedAt",
+                            "closeReason",
+                            "actionCount",
+                            "lastActionAt"
+                          ],
+                          "properties": {
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "const": "open",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "expired",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "closed",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "startedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "closedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "closeReason": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "const": "manual",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "expired",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "grant_revoked",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "forced_terminated",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "actionCount": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "lastActionAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedBy": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "you",
+                              "type": "string"
+                            },
+                            {
+                              "const": "your organization",
+                              "type": "string"
+                            },
+                            {
+                              "const": "ChartWarden operations",
+                              "type": "string"
+                            },
+                            {
+                              "const": "system",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closeNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/tenant/onboarding": {
       "get": {
         "operationId": "getApiV1TenantOnboarding",
@@ -362272,7 +364986,9 @@
                           "blockerReason",
                           "skipRationale",
                           "systemSkipped",
+                          "skippedBy",
                           "skippable",
+                          "tenantSkippable",
                           "createdAt",
                           "templateKey",
                           "isCanonical",
@@ -362527,8 +365243,36 @@
                             "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                             "type": "boolean"
                           },
+                          "skippedBy": {
+                            "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "system",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "tenant",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "platform_ops",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "skippable": {
                             "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                            "type": "boolean"
+                          },
+                          "tenantSkippable": {
+                            "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -362809,7 +365553,9 @@
                           "blockerReason",
                           "skipRationale",
                           "systemSkipped",
+                          "skippedBy",
                           "skippable",
+                          "tenantSkippable",
                           "createdAt",
                           "templateKey",
                           "isCanonical",
@@ -363064,8 +365810,36 @@
                             "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                             "type": "boolean"
                           },
+                          "skippedBy": {
+                            "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "system",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "tenant",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "platform_ops",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "skippable": {
                             "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                            "type": "boolean"
+                          },
+                          "tenantSkippable": {
+                            "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -363163,7 +365937,9 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippedBy",
                     "skippable",
+                    "tenantSkippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -363418,8 +366194,36 @@
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                       "type": "boolean"
                     },
+                    "skippedBy": {
+                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "system",
+                              "type": "string"
+                            },
+                            {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "platform_ops",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "skippable": {
                       "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                      "type": "boolean"
+                    },
+                    "tenantSkippable": {
+                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -363525,7 +366329,9 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippedBy",
                     "skippable",
+                    "tenantSkippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -363780,8 +366586,36 @@
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                       "type": "boolean"
                     },
+                    "skippedBy": {
+                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "system",
+                              "type": "string"
+                            },
+                            {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "platform_ops",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "skippable": {
                       "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                      "type": "boolean"
+                    },
+                    "tenantSkippable": {
+                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -363883,7 +366717,9 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippedBy",
                     "skippable",
+                    "tenantSkippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -364138,8 +366974,36 @@
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                       "type": "boolean"
                     },
+                    "skippedBy": {
+                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "system",
+                              "type": "string"
+                            },
+                            {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "platform_ops",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "skippable": {
                       "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                      "type": "boolean"
+                    },
+                    "tenantSkippable": {
+                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -364247,7 +367111,9 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippedBy",
                     "skippable",
+                    "tenantSkippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -364502,8 +367368,36 @@
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                       "type": "boolean"
                     },
+                    "skippedBy": {
+                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "system",
+                              "type": "string"
+                            },
+                            {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "platform_ops",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "skippable": {
                       "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                      "type": "boolean"
+                    },
+                    "tenantSkippable": {
+                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -364560,13 +367454,13 @@
         }
       }
     },
-    "/api/v1/tenant/onboarding/{taskId}/start": {
+    "/api/v1/tenant/onboarding/{taskId}/skip": {
       "post": {
-        "operationId": "postApiV1TenantOnboardingByTaskIdStart",
+        "operationId": "postApiV1TenantOnboardingByTaskIdSkip",
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Advance an onboarding step pending → in_progress (strict sequence; the step's owner role)",
+        "summary": "Skip an allowlisted tenant onboarding step with step-up and a recorded rationale",
         "parameters": [
           {
             "name": "taskId",
@@ -364605,7 +367499,9 @@
                     "blockerReason",
                     "skipRationale",
                     "systemSkipped",
+                    "skippedBy",
                     "skippable",
+                    "tenantSkippable",
                     "createdAt",
                     "templateKey",
                     "isCanonical",
@@ -364860,8 +367756,424 @@
                       "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
                       "type": "boolean"
                     },
+                    "skippedBy": {
+                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "system",
+                              "type": "string"
+                            },
+                            {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "platform_ops",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "skippable": {
                       "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                      "type": "boolean"
+                    },
+                    "tenantSkippable": {
+                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                      "type": "boolean"
+                    },
+                    "createdAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "templateKey": {
+                      "type": "string"
+                    },
+                    "isCanonical": {
+                      "type": "boolean"
+                    },
+                    "canonicalOrder": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "skipRationale"
+                ],
+                "properties": {
+                  "skipRationale": {
+                    "minLength": 8,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/onboarding/{taskId}/start": {
+      "post": {
+        "operationId": "postApiV1TenantOnboardingByTaskIdStart",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Advance an onboarding step pending → in_progress (strict sequence; the step's owner role)",
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "key",
+                    "title",
+                    "description",
+                    "owner",
+                    "sequence",
+                    "optional",
+                    "status",
+                    "locked",
+                    "lockedBy",
+                    "completionMode",
+                    "evidence",
+                    "attestedBy",
+                    "assignedToMembershipId",
+                    "dueAt",
+                    "startedAt",
+                    "completedAt",
+                    "blockerReason",
+                    "skipRationale",
+                    "systemSkipped",
+                    "skippedBy",
+                    "skippable",
+                    "tenantSkippable",
+                    "createdAt",
+                    "templateKey",
+                    "isCanonical",
+                    "canonicalOrder"
+                  ],
+                  "properties": {
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "owner": {
+                      "anyOf": [
+                        {
+                          "const": "platform_ops",
+                          "type": "string"
+                        },
+                        {
+                          "const": "org_admin",
+                          "type": "string"
+                        },
+                        {
+                          "const": "compliance_officer",
+                          "type": "string"
+                        },
+                        {
+                          "const": "either",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "sequence": {
+                      "type": "number"
+                    },
+                    "optional": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_progress",
+                          "type": "string"
+                        },
+                        {
+                          "const": "done",
+                          "type": "string"
+                        },
+                        {
+                          "const": "skipped",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "locked": {
+                      "type": "boolean"
+                    },
+                    "lockedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "completionMode": {
+                      "anyOf": [
+                        {
+                          "const": "auto",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attestation",
+                          "type": "string"
+                        },
+                        {
+                          "const": "either",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "evidence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "note",
+                            "ref"
+                          ],
+                          "properties": {
+                            "note": {
+                              "type": "string"
+                            },
+                            "ref": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "attestedBy": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "membershipId",
+                            "actorKind",
+                            "label",
+                            "at"
+                          ],
+                          "properties": {
+                            "membershipId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "actorKind": {
+                              "anyOf": [
+                                {
+                                  "const": "platform_ops",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "tenant",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "label": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "assignedToMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "startedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "completedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "blockerReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "skipRationale": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "systemSkipped": {
+                      "description": "True when the system skipped the step because the tenant bills outside ChartWarden; a person's skip is never flagged, whatever the rationale says.",
+                      "type": "boolean"
+                    },
+                    "skippedBy": {
+                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "system",
+                              "type": "string"
+                            },
+                            {
+                              "const": "tenant",
+                              "type": "string"
+                            },
+                            {
+                              "const": "platform_ops",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "skippable": {
+                      "description": "True when a skip may settle this step (a non-canonical catalog step added by platform ops, or a canonical step on the server's allowlist; never go-live); a skip on any other step is refused with 409 ONBOARDING_STEP_NOT_SKIPPABLE.",
+                      "type": "boolean"
+                    },
+                    "tenantSkippable": {
+                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -365042,6 +368354,10 @@
                               {
                                 "const": "patient_scoped",
                                 "type": "string"
+                              },
+                              {
+                                "const": "assist",
+                                "type": "string"
                               }
                             ]
                           },
@@ -365108,7 +368424,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Issue a support-access consent grant (≤72h; compliance-officer; step-up)",
+        "summary": "Issue a support-access consent grant (≤72h; step-up). Scopes: organization_scoped and patient_scoped (PHI-bearing) and assist (non-PHI, for help during onboarding: a session on it can never be elevated). 403 SUPPORT_GRANT_SCOPE_NOT_ALLOWED when the grantor may not issue the scope: assist needs the org_admin or compliance_officer role",
         "parameters": [],
         "responses": {
           "200": {
@@ -365143,6 +368459,10 @@
                         },
                         {
                           "const": "patient_scoped",
+                          "type": "string"
+                        },
+                        {
+                          "const": "assist",
                           "type": "string"
                         }
                       ]
@@ -365209,6 +368529,10 @@
                       {
                         "const": "patient_scoped",
                         "type": "string"
+                      },
+                      {
+                        "const": "assist",
+                        "type": "string"
                       }
                     ]
                   },
@@ -365244,7 +368568,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Revoke a grant (cascades to any open support_session)",
+        "summary": "Revoke a grant: ends every support_session open on it (ledger row, critical audit, outbox event, grantor alert) and resolves a linked help request, in one transaction. A later start on it is 409 SUPPORT_GRANT_INACTIVE; repeating the revoke answers the same grant and writes nothing more",
         "parameters": [
           {
             "name": "id",
@@ -365288,6 +368612,10 @@
                         },
                         {
                           "const": "patient_scoped",
+                          "type": "string"
+                        },
+                        {
+                          "const": "assist",
                           "type": "string"
                         }
                       ]
@@ -365351,6 +368679,306 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/support-sessions": {
+      "get": {
+        "operationId": "getApiV1TenantSupportsessions",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Tenant-visible support sessions, with operator identity removed (cursor-paginated)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "supportConsentGrantId",
+                          "state",
+                          "startedAt",
+                          "expiresAt",
+                          "closedAt",
+                          "closeReason",
+                          "actionCount",
+                          "lastActionAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "supportConsentGrantId": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "expired",
+                                "type": "string"
+                              },
+                              {
+                                "const": "closed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "startedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "expiresAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "closedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "closeReason": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "manual",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "expired",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "grant_revoked",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "forced_terminated",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "actionCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "lastActionAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/support-sessions/{id}/events": {
+      "get": {
+        "operationId": "getApiV1TenantSupportsessionsByIdEvents",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Tenant-visible support-session ledger, with operator identity removed (cursor-paginated)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "supportSessionId",
+                          "eventKind",
+                          "occurredAt",
+                          "detail"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "supportSessionId": {
+                            "type": "string"
+                          },
+                          "eventKind": {
+                            "type": "string"
+                          },
+                          "occurredAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "detail": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "route",
+                                  "method",
+                                  "status"
+                                ],
+                                "properties": {
+                                  "route": {
+                                    "type": "string"
+                                  },
+                                  "method": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "type": "integer"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

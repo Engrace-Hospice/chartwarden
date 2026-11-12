@@ -71,7 +71,7 @@ export interface OnboardingAdvancePorts {
   publishOutbox(payload: OnboardingOutboxPayload): Promise<void>;
   /** Route an M36 alert (§4.8). Audience + PHI-sanitization are the adapter's job; the worker names the key. */
   routeAlert(input: {
-    alertKey: "tenant.onboarding_step_blocked" | "tenant.onboarding_overdue";
+    alertKey: "m34.tenant.onboarding_step_blocked" | "m34.tenant.onboarding_overdue";
     tenantAccountId: string;
     templateKey?: string;
   }): Promise<void>;
@@ -263,7 +263,7 @@ async function applyEmit(
         blockedSinceIso: now.toISOString(),
       });
       await ports.routeAlert({
-        alertKey: "tenant.onboarding_step_blocked",
+        alertKey: "m34.tenant.onboarding_step_blocked",
         tenantAccountId: cx.tenantAccountId,
         templateKey: emit.templateKey,
       });
@@ -282,7 +282,7 @@ async function applyEmit(
         hoursOverdue: emit.hoursOverdue,
       });
       await ports.routeAlert({
-        alertKey: "tenant.onboarding_overdue",
+        alertKey: "m34.tenant.onboarding_overdue",
         tenantAccountId: cx.tenantAccountId,
         templateKey: emit.templateKey,
       });
