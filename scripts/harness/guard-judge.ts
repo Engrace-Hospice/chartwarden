@@ -37,6 +37,7 @@ import {
 } from "./codex-patch";
 import type { GuardAnswer } from "./hard-deadline";
 import { type HookInput, appendLedger, loadRegistry, projectDir, relPath, sha256 } from "./io";
+import { claudeMcpFinding } from "./mcp-claude";
 import { LINE_BREAKS, mcpPathCandidates } from "./mcp-tokens";
 import {
   type BashVerdict,
@@ -423,6 +424,17 @@ function judge(hook: HookInput): void {
 
   if (CODEX && tool.startsWith("mcp__")) {
     checkMcp(hook.tool_input, root, cwd, log);
+    return;
+  }
+
+  // Claude Code's matcher hands over only the MCP tools that can name a path (`hook-matcher.ts`): path words
+  // only, and an ask, never a deny; no PHI text scan.
+  if (!CODEX && tool.startsWith("mcp__")) {
+    const hit = claudeMcpFinding(tool, hook.tool_input, pathResolver(root, cwd));
+    if (hit) {
+      log("ask", hit.reason);
+      respond("ask", hit.reason);
+    }
     return;
   }
 

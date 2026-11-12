@@ -15,7 +15,8 @@ export const LINE_BREAKS = /[\r\n\0\v\f\u001c-\u001e\u0085\u2028\u2029]/;
 /** Separators between paths in a list: whitespace, `,` `;` `|` `:`, and the brackets and quotes JSON puts around one. */
 const SEPARATORS = /[\s,;|:\u0085\u2028\u2029]+/;
 const EDGE_PUNCTUATION = /^[\s"'`()[\]{}<>]+|[\s"'`()[\]{}<>]+$/g;
-const FILE_URL = /file:\/\/(?:localhost)?/gi;
+/** A `file://` URL prefix. Global: use it with `replace`, never `test` (a global regex keeps its position). */
+export const FILE_URL = /file:\/\/(?:localhost)?/gi;
 const MAX_PATH_CHARS = 4096;
 /** Tokens taken from one line; the rest of an enormous line is still judged as a whole. */
 const MAX_TOKENS_PER_LINE = 512;

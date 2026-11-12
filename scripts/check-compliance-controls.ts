@@ -24,7 +24,10 @@
  *         ignore the local ledger/cache;
  *      9. `AGENTS.md` is a verbatim copy of `CLAUDE.md` (a standing rule in CLAUDE.md, now enforced);
  *     10. the PreToolUse hook covers Bash and every editing tool, is synchronous and has a timeout (an
- *         async or mis-matched hook is a guard that advises nothing);
+ *         async or mis-matched hook is a guard that advises nothing); a second PreToolUse group, with the
+ *         pinned {@link CLAUDE_MCP_GUARD_MATCHER}, runs the same pinned command for the path- and
+ *         exfil-capable MCP tools, and no group may also match a tool with no path in its input (`mcp__.*`,
+ *         `*`);
  *     11. no allow rule is a prefix glob that also matches a mutating sibling (`git diff*` matches
  *         `git difftool`; write `git diff` and `git diff *`);
  *     12. `.gitignore` is an allow-list for `.claude/` (new local state stays out of git) and ignores `.env`;
@@ -65,6 +68,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  CLAUDE_MCP_GUARD_MATCHER,
+  claudeGuardMatcherViolations,
+  matcherCovers,
+} from "./harness/hook-matcher";
 
 export const MAX_REVIEW_DAYS = 180;
 const STATUSES = new Set(["implemented", "partial", "gap", "not-applicable"]);
@@ -280,6 +288,13 @@ const commandsFor = (s: Settings, event: string): string[] =>
  * tools (Codex names them `mcp__<server>__<tool>`; the guard judges every string in their input).
  */
 export const CODEX_GUARD_MATCHER = "Bash|write_stdin|apply_patch|mcp__.*";
+
+/**
+ * The matcher of Claude's second PreToolUse group, for the path- and exfil-capable MCP tools only (file uploads,
+ * `navigate`, page JavaScript, the screenshot and trace tools that write a path); never `mcp__.*`, which would hand
+ * free-text connectors to a guard that reads path words. Pinned byte for byte, like {@link CODEX_GUARD_MATCHER}.
+ */
+export { CLAUDE_MCP_GUARD_MATCHER };
 
 /**
  * Claude's three hook commands, pinned byte for byte like {@link CODEX_GUARD_COMMAND}. `--config=/dev/null
@@ -708,11 +723,19 @@ export function checkHarness(files: HarnessFiles): string[] {
       .filter((x) => (x.command ?? "").includes("scripts/harness/pre-tool-guard.ts"))
       .map((x) => ({ matcher: h.matcher ?? "", ...x })),
   );
+  if (guard.length > 0) {
+    v.push(...claudeGuardMatcherViolations(guard.map((g) => g.matcher)));
+    // The MCP group must not stand in for the group that guards the shell and the editing tools.
+    if (guard.every((g) => g.matcher === CLAUDE_MCP_GUARD_MATCHER))
+      v.push(
+        ".claude/settings.json: PreToolUse does not run scripts/harness/pre-tool-guard.ts for Bash and the editing tools; only the MCP group does",
+      );
+  }
   for (const g of guard) {
-    const tools = new Set(g.matcher.split("|").map((t) => t.trim()));
-    if (!tools.has("*"))
+    // The MCP group covers MCP tools only; every other guard group must cover the shell and the editing tools.
+    if (g.matcher !== CLAUDE_MCP_GUARD_MATCHER)
       for (const t of REQUIRED_GUARD_TOOLS)
-        if (!tools.has(t))
+        if (!matcherCovers(g.matcher, t))
           v.push(`.claude/settings.json: the PreToolUse guard matcher does not cover \`${t}\``);
     if (g.async === true) v.push(".claude/settings.json: the PreToolUse guard must not be async");
     const [minTimeout, maxTimeout] = CLAUDE_GUARD_TIMEOUT_RANGE;

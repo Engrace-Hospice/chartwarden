@@ -158,8 +158,10 @@ the rules did not name used to pass without a word (2026-11-10 review, ADV-H2); 
 root's shared pieces, each AFTER the ignore line (git's last match wins). `arch:compliance` fails if
 `.codex/hooks.json` is missing or differs from the pinned command, matcher (`Bash|write_stdin|apply_patch|mcp__.*`), type
 or timeout (an integer of 9 to 30 s: strictly above the 8 s perl alarm it is pinned with, derived from the
-same constant, because a timeout at or under the alarm fires inside Codex first and the call runs), if one of
-the three Claude hook commands differs from its pinned form or the Claude guard's timeout is not an integer of
+same constant, because a timeout at or under the alarm fires inside Codex first and the call runs), if
+`.claude/settings.json` has no PreToolUse group with the pinned MCP matcher (`CLAUDE_MCP_GUARD_MATCHER`, see
+"MCP tools in Claude Code" below) or any guard group's matcher also matches a tool with no path in its input
+(`mcp__.*`, `*`, an empty matcher), if one of the three Claude hook commands differs from its pinned form or the Claude guard's timeout is not an integer of
 5 to 30 s, if the ledger's or the Stop gate's timeout (when one is set) is not an integer of 5 to 600 s or the
 Stop gate is `async` (it would no longer hold the turn), if `.claude/settings.json` sets `disableAllHooks`, a
 `bypassPermissions` default mode, or an `env` entry that is not an `ECC_*` or `CLAUDE_CODE_*` variable (the block
@@ -180,6 +182,54 @@ template, `scripts/harness/pre-tool-guard.ts`, `compliance/controls.yaml`, `.git
 `!**/.codex/config.toml`, `.agents/rules/*` or `.claude/*` line fails even though every line the text checks
 look for is still there. A CRLF `.gitignore` fails, and so does a git that cannot be run, hangs past 10 s or
 cannot get a temp directory (the probe reports an error and never passes by default).
+
+## MCP tools in Claude Code (a targeted matcher, path words only, ask-only)
+
+Claude Code's PreToolUse guard used to run for `Bash|Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit` only, so
+no MCP tool input was judged in a Claude session (Codex's matcher has always included `mcp__.*`). A second
+PreToolUse group in `.claude/settings.json` now runs the same pinned guard command for the MCP tools whose
+input can name a path, open a local file in a page, run page JavaScript or write a file the agent names:
+
+- Chrome extension: `file_upload`, `upload_image`, `javascript_tool`, `navigate` and `browser_batch` (its items
+  are `{name, input}` and can carry `navigate`, `javascript_tool` and `file_upload`);
+- Chrome DevTools: `upload_file`, `evaluate_script` (code, and a `filePath` its output is saved to),
+  `navigate_page`, `new_page`, and the tools that save to a path the agent names: `take_screenshot`,
+  `take_snapshot`, `take_heapsnapshot`, `performance_start_trace`, `performance_stop_trace`,
+  `get_network_request`, `lighthouse_audit`.
+
+The matcher is an anchored regular expression listing those names (`CLAUDE_MCP_GUARD_MATCHER` in
+`scripts/harness/hook-matcher.ts`), **not** `mcp__.*`: free-text connectors would be stopped for prose that merely
+names `.env`. Claude Code reads a matcher as an exact list of names when it holds only letters, digits, `_` and
+`|`, and as a regular expression otherwise (checked against the 2.1.317 binary); the server names hold `-`, so
+this one is a regular expression and is anchored on both sides.
+
+For one of these tools the guard (`scripts/harness/mcp-claude.ts`) splits every string value AND key of the
+input on every Unicode line break and into words (the Codex split, plus a finer one at quotes, brackets, `=`,
+`+`, `!`, `&` and `?` so a path inside `fetch("file:///x/y")` is a word of its own), judges each word as a
+secret path and as a protected path (as written, and resolved from the session directory with symlinks followed,
+as in Codex), and **asks**, naming the tool and the category (`secret path`, `harness path`, a path hidden behind
+control characters, or an input too big, too deep or not an object to judge), never the value. Only path words
+are judged: there is **no PHI/credential text scan** in Claude mode (Codex still scans text and still turns every
+ask into a deny; `harness-mcp-claude.test.ts` pins both). Two narrowings keep prose and code quiet: a line of
+several words and no slash is judged by its words, not whole, and a dotted identifier with no slash (`e.key`,
+`process.env`) is not a file among them; a line that is one path (a single word, or one with a slash) is judged
+whole. Measured on this repo's sessions: 1,268 of the 3,359 recorded MCP calls are of a guarded tool, and the
+rule asks for none of them (the one false positive before the narrowing was `e.key`); a call takes about 20 ms.
+
+**Not covered, and why.** `computer`, `find`, `read_page`, `get_page_text`, `form_input`, `read_network_requests`,
+`gif_creator` and the other tools that carry coordinates, element references or no path are not judged (the hook
+is not run for them: the matcher is tested against the real tool names, `harness-mcp-claude-hook.test.ts`).
+Free-text connectors (Gmail send, reply and forward, Drive create and download, Calendar, and any other
+claude.ai connector) carry prose and can send it off the machine; whether to guard them is an owner decision, since
+a path-word judge would stop a message that names `.env`. Pencil's `execute` (a `filePath` of a design file and a
+script) and REA's binary tools open files the agent names and are not guarded either: they have no demonstrated
+path to a protected file in this repo's use and are left to an owner decision. The words are text, so a path the
+page code computes (`'.' + 'env'`), reads from a string table or builds from `atob` is not seen. The names are
+the ones this repo's sessions show (`claude-in-chrome`, `plugin_ecc_chrome-devtools`): the same server installed
+under another name (`mcp__chrome-devtools__…`) is not matched until it is added to the list and to the pin. The tools' own
+permission prompts and Claude Code's permission rules are the other layer. `arch:compliance` pins the matcher
+like Codex's: a dropped or edited MCP group, and any guard group that also matches a tool with no path in its input
+(`mcp__.*`, `*`, an empty matcher), fails it.
 
 ## ECC settings applied by the project (`.claude/settings.json` → `env`)
 
