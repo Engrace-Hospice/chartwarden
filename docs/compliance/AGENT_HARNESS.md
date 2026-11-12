@@ -473,6 +473,23 @@ still denied (`harness-hidden-path-budget.test.ts`).
   text:** a name set by `read`, `printf -v`, `launchctl setenv`, `tmux set-environment` or a sourced file, a value built at run
   time (`GIT_TRACE=$LOG`, `GIT_TRACE=$(mktemp)`), and a program path named in one of the command variables (`PAGER=/tmp/x`: the path is
   judged, the program behind it is not read).
+- *Variables bun and perl read at start* (`env-hazards.ts`, `harness-env-hazards.test.ts`). `BUN_OPTIONS=--preload=x.js` or
+  `NODE_OPTIONS=--require=x.js` on a nested `claude`/`codex`, `PERL5OPT=-Mstrict` on the Codex wrapper, `LD_PRELOAD` and `PATH`
+  decide what loads before a hook judges anything; `arch:compliance` already refused them in the shared settings `env`
+  block, and nothing refused them on a command line. Now a command line **asks** when it assigns, anywhere (prefix, `export`,
+  `env`, `+=`, a subshell, a later statement, a nested `bash -c`), `PERL5LIB`, `PERLLIB`, `PERL5DB`, `LD_PRELOAD`,
+  `DYLD_INSERT_LIBRARIES` or any `BUN_CONFIG_*` (a non-empty value), or `BUN_OPTIONS`/`NODE_OPTIONS` with a value that names an
+  option that loads or runs code (`-r`, `--require`, `--import`, `--loader`, `--experimental-loader`, `--preload`, `-e`,
+  `--eval`, `-p`, `--print`), or `PERL5OPT` with a switch that loads a module or a path (`-M`, `-m`, `-I`, `-d`, also bundled:
+  `-wMstrict`). `NODE_OPTIONS=--max-old-space-size=8192 bunx tsc` (the repo's typecheck script) and `PERL5OPT=-w` stay
+  allowed. When the same command line also starts a coding agent (`claude`, `codex`, `bunx claude`, `npx
+  @anthropic-ai/claude-code`), `PATH`, `SHELL`, `BASH_ENV`, `ENV`, `ZDOTDIR`, `LD_LIBRARY_PATH` and every `DYLD_*` ask too, in
+  either order: they are too common to refuse everywhere. Reading is not setting: `echo $NODE_OPTIONS`, `printenv NODE_OPTIONS`
+  and `rg BUN_OPTIONS= docs` assign nothing, and an empty value clears the variable. Codex denies every ask. **Not decided by
+  text:** a variable set by an earlier tool call, a startup file or the human's own shell; `bun`/`node`/`perl` running a harness
+  script directly is not modelled.
+- *The pinned Codex command ignores perl's own variables* (`PERL5OPT`, `PERL5LIB`, `PERLLIB`, `PERL5DB`): see "The hook command is
+  pinned byte for byte" above and `harness-codex-perl-env.test.ts`.
 
 **Shell lexing.** `scripts/harness/shell-lex.ts` reads a command once, in one linear pass, before any rule
 runs; the line splitter, the redirection reader and the substitution scan all use its result, so a quote, an
