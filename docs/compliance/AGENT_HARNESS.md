@@ -416,7 +416,9 @@ the cap was hit still stands. The cut keeps the real name reachable: each group 
 alternative, so `~/.aws/{x,}` repeated nine times and then `credentials` is a deny, not a silent allow. A spent brace or resolution budget does not
 stop the rest of the command from being judged: a secret file name is still found, even one that a single brace
 group builds from a stem and an optional suffix, because each word is also read one group at a time, linearly;
-only the clock and the judged-text budget stop judging. `baseName` and `trimSlashes` are linear (a regular
+only the clock and the judged-text budget stop judging. The per-command budget (`work`), the judged-lines counter and the Codex flag are module state, refilled by `classifyBash`
+at depth 0: correct because the worker judges one hook per process (a long-lived embedding must not share them; passing a
+`Work` object through is a mechanical refactor left for later, CR-L1). `baseName` and `trimSlashes` are linear (a regular
 expression for them was quadratic on a run of `/`). Reading a protected file does not ask; only a command that writes one does.
 A budget spent while paths are resolved no longer answers for the whole command: the command asks (as above) unless a
 later check in the same command line denies it, so a `psql` to a production host with thousands of redirect targets is
