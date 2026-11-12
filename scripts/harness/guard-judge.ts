@@ -204,9 +204,11 @@ const nameOf = (s: string): string | undefined =>
  * A line that reads as a secret or protected path only once its control, format and non-ASCII-space characters
  * are taken out (a trailing U+0085: a Rust `trim` strips it, a JS one keeps it) is refused, as the same path in
  * an `apply_patch` header is. Free text with such characters in it stays allowed: only a line that BECOMES a
- * secret or protected path is refused, and the reason echoes that path, never the odd characters.
+ * secret or protected path is refused, and the reason echoes that path, never the odd characters. A line with none
+ * of them (`bare === written`) was judged as written by the caller already, so it is not resolved a second time.
+ * Exported for its test.
  */
-function refuseHiddenPath(
+export function refuseHiddenPath(
   line: string,
   written: string,
   rel: (p: string) => string,

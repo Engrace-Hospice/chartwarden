@@ -20,8 +20,24 @@
  */
 import { userInfo } from "node:os";
 
+import { backupName } from "./backup-names";
 import { execCommandWrites, findActions } from "./find-expr";
 import { GIT_EXEC_CONFIG, configKey, gitConfigDenial, gitFileWrites } from "./git-config-rules";
+import {
+  GIT_EXT_URL_REASON,
+  GIT_REROOT_OPTION_REASON,
+  assignmentWords,
+  envCommandStrings,
+  gitCommandStrings,
+  gitEnvVerdict,
+  isExtUrl,
+  isGitRerootOption,
+} from "./git-exec-strings";
+import {
+  GIT_GREP_VALUE_LETTERS,
+  GIT_GREP_VALUE_LONG,
+  gitGrepIgnoresGitignore,
+} from "./git-grep-sweep";
 import { hasWildcard, isMagicPathspec, wholeTreeWriterReason } from "./git-tree-rules";
 import { globMatches, globTokens } from "./glob";
 import { switchesHarness } from "./harness-switch";
@@ -35,6 +51,7 @@ import {
   runsInlineCode,
   scriptsHandedToShell,
 } from "./inline-code";
+import { runsLiveSuite } from "./live-suite";
 import { type LongOption, optionValues } from "./option-values";
 import { relativeTo } from "./path-alias";
 import {
@@ -76,6 +93,7 @@ import {
   sshHost,
 } from "./wrappers";
 import { extraOutputFiles, localPath } from "./writers";
+import { fileRuns, heredocCount, isScriptText, writtenTexts } from "./written-scripts";
 
 export interface SyntheticRegistry {
   readonly ssn: ReadonlySet<string>;
@@ -125,8 +143,13 @@ const SECRET_PATH_RULES: ReadonlyArray<readonly [RegExp, string]> = [
   ],
   // A secrets/ directory — but source files that merely live under a `secrets/` module are code.
   [/(^|\/)\.?secrets?\/(?!.*\.(ts|tsx|js|mjs|cjs|md)$)/i, "a secrets directory"],
-  [/\.(dump|sql\.gz|sql\.zst|backup|bak)$/i, "a database dump or backup (may hold PHI)"],
+  // `.bak` and the other copy suffixes are judged by the file they copy (`backup-names.ts`).
+  [/\.(dump|sql\.gz|sql\.zst|backup)$/i, "a database dump or backup (may hold PHI)"],
   [/(^|\/)(pgbackrest|backups?)\/.*\.(gz|zst|lz4|tar)$/i, "a backup archive (may hold PHI)"],
+  [
+    /(^|\/)[^/]*backups?[^/]*\.(tar(\.[a-z0-9]+)?|tgz|zip|gz|zst|lz4)$/i,
+    "a backup archive (may hold PHI)",
+  ],
   [/\.env\.bak(\.|$)/i, "a backup of a live environment file"],
 ];
 
@@ -134,8 +157,15 @@ const SECRET_PATH_RULES: ReadonlyArray<readonly [RegExp, string]> = [
 export function secretPathReason(path: string): string | null {
   const p = path.replace(/\\/g, "/");
   if (TEMPLATE_SUFFIX.test(p)) return null;
-  for (const [re, why] of SECRET_PATH_RULES) if (re.test(p)) return why;
-  return null;
+  const copy = backupName(p);
+  // A copy of a template is a template.
+  if (copy.isCopy && TEMPLATE_SUFFIX.test(copy.original)) return null;
+  const named = (name: string): string | null =>
+    SECRET_PATH_RULES.find(([re]) => re.test(name))?.[1] ?? null;
+  const why = named(p) ?? (copy.isCopy ? named(copy.original) : null);
+  if (why !== null) return why;
+  // A copy of a source file is not a database backup; a `.bak` of something unnamed may be one.
+  return copy.mayBeDatabaseBackup ? "a database dump or backup (may hold PHI)" : null;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -547,6 +577,8 @@ const CHDIR_ATTACHED: ReadonlyMap<string, RegExp> = new Map([
  */
 function program(seg: string): {
   prog: string;
+  /** The program as typed, before its directory is dropped (`./x.sh`, `/tmp/x.sh`). */
+  word: string;
   args: string[];
   assigns: string[];
   chdir?: string;
@@ -615,6 +647,7 @@ function program(seg: string): {
     k >= w.length && lastWrapper === "env" ? "env" : unescapeWord(w[k] ?? "").replace(/^.*\//, "");
   return {
     prog,
+    word: unescapeWord(w[k] ?? ""),
     args: prog === "env" && k >= w.length ? [] : w.slice(k + 1),
     assigns: w.slice(0, k).filter((x) => ASSIGNMENT.test(x)),
     ...(chdir === undefined ? {} : { chdir }),
@@ -702,6 +735,8 @@ function splitRedirects(seg: string): Redirects {
 
 interface Parsed {
   readonly prog: string;
+  /** The program as typed (`./x.sh`), where `prog` is only its last component. */
+  readonly word: string;
   /** The directory a wrapper (`env -C`, `sudo -D`) runs the command in, as written. */
   readonly chdir?: string;
   readonly args: string[];
@@ -854,12 +889,16 @@ function gitInvocation(args: readonly string[]): {
   configs: string[];
   dirs: string[];
   unknownGlobal: string | null;
+  /** The first global option that re-points git at another repository or helper directory, as written. */
+  rerooted: string | null;
 } {
   const configs: string[] = [];
   const dirs: string[] = [];
   let unknownGlobal: string | null = null;
+  let rerooted: string | null = null;
   for (let k = 0; k < args.length; k++) {
     const a = args[k] ?? "";
+    if (isGitRerootOption(a)) rerooted ??= a;
     if (GIT_GLOBAL_VALUE.test(a)) {
       if (a === "-c" || a === "--config-env") configs.push(args[k + 1] ?? "");
       if (a === "-C" || a === "--work-tree") dirs.push(args[k + 1] ?? "");
@@ -874,9 +913,9 @@ function gitInvocation(args: readonly string[]): {
       unknownGlobal ??= a;
       continue;
     }
-    return { sub: a, rest: args.slice(k + 1), configs, dirs, unknownGlobal };
+    return { sub: a, rest: args.slice(k + 1), configs, dirs, unknownGlobal, rerooted };
   }
-  return { sub: "", rest: [], configs, dirs, unknownGlobal };
+  return { sub: "", rest: [], configs, dirs, unknownGlobal, rerooted };
 }
 
 /** `-c` keys that only change presentation. Any other key is a decision for the human. */
@@ -1020,6 +1059,95 @@ function handedScriptVerdicts(
   return out;
 }
 
+/**
+ * Command lines git and the variables it honours hand to a shell (`git rebase -x '…'`, `git bisect run …`,
+ * `EDITOR='…' git commit`), each judged as a command line; and what the git-related variables set, or a global
+ * option that re-points git, call for (`git-exec-strings.ts`).
+ */
+function gitExecVerdicts(
+  parsed: Parsed,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const words = assignmentWords(parsed.prog, parsed.args, parsed.assigns);
+  const out: BashVerdict[] = [];
+  const env = gitEnvVerdict(words);
+  if (env) out.push(env.decision === "deny" ? deny(env.reason) : ask(env.reason));
+  for (const text of envCommandStrings(words)) out.push(judge(text, ctx, depth + 1, here));
+  if (parsed.prog !== "git") return out;
+  const git = gitInvocation(parsed.args);
+  if (git.rerooted !== null) out.push(ask(GIT_REROOT_OPTION_REASON));
+  if (git.rest.some(isExtUrl)) out.push(ask(GIT_EXT_URL_REASON));
+  // `git -C dir rebase -x 'cmd'` runs `cmd` in `dir`.
+  const inside =
+    git.dirs.length > MAX_GIT_DIR_OPERANDS
+      ? here
+      : git.dirs.reduce((dirs, dir) => runIn(dirs, dir, ctx), here);
+  for (const text of gitCommandStrings(git.sub, git.rest)) {
+    if (text.trim() !== "") out.push(judge(text, ctx, depth + 1, inside));
+  }
+  return out;
+}
+
+/** Each command's own here-doc bodies: the lexer lists the bodies in order, each command says how many it opens. */
+function heredocBodiesByPart(cmd: string, parsed: readonly Parsed[]): string[][] {
+  if (!parsed.some((p) => heredocCount(p) > 0)) return parsed.map(() => []);
+  const bodies = scanShell(cmd)
+    .docs.filter((doc) => !doc.nested)
+    .map((doc) => doc.body);
+  let next = 0;
+  return parsed.map((p) => {
+    const mine = bodies.slice(next, next + heredocCount(p));
+    next += heredocCount(p);
+    return mine;
+  });
+}
+
+/** Where a path is, from each directory the command may run in: the same normalisation every path check uses. */
+const pathKeys = (raw: string, here: readonly Cwd[], ctx: BashContext): string[] =>
+  here.map((dir) => resolvePath(raw, dir, ctx) ?? `?${dir ?? ""}|${raw}`);
+
+/**
+ * `cat > F <<'EOF' … EOF; bash F`: the text this command line wrote to a file, by file (see `written-scripts.ts`).
+ * One entry per path key; a file written twice reads as both texts.
+ */
+type WrittenScripts = Map<string, string>;
+
+/** Judge what the command at `index` runs from a file this line wrote earlier, then record what it writes itself. */
+function writeThenRun(
+  parts: readonly Segment[],
+  parsed: readonly Parsed[],
+  index: number,
+  bodies: readonly string[],
+  written: WrittenScripts,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const p = parsed[index] as Parsed;
+  const out: BashVerdict[] = [];
+  const texts = new Set<string>();
+  for (const run of fileRuns(p.prog, p.word, p.args, p.ins)) {
+    for (const key of pathKeys(run.path, here, ctx)) {
+      const text = written.get(key);
+      if (text === undefined || texts.has(`${run.kind}|${text}`)) continue;
+      texts.add(`${run.kind}|${text}`);
+      const asScript = run.kind === "script" || (run.kind === "direct" && isScriptText(text));
+      const verdict = asScript ? scriptTextVerdict(text) : judge(text, ctx, depth + 1, here);
+      if (verdict) out.push(verdict);
+    }
+  }
+  const previous = parts[index]?.joiner === "|" ? parsed[index - 1] : undefined;
+  const piped = previous === undefined ? null : printedText(previous.prog, previous.args);
+  for (const file of writtenTexts(p, bodies, piped)) {
+    for (const key of pathKeys(file.target, here, ctx)) {
+      written.set(key, `${written.get(key) ?? ""}\n${file.text}`);
+    }
+  }
+  return out;
+}
+
 function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd[]): BashVerdict {
   const c = cmd.trim();
   if (depth > MAX_NESTING || --judgeBudget < 0) {
@@ -1061,6 +1189,8 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   let after = start; // where the next command runs when the one before it succeeded
   let anywhere = start; // everywhere any later command could run
   const scriptTexts: string[] = []; // what an interpreter or a shell is handed on stdin
+  const bodiesByPart = heredocBodiesByPart(c, parsedParts);
+  const written: WrittenScripts = new Map();
   // `CDPATH` makes `cd harness` land in a directory the guard cannot see, so no `cd` is trusted once it is named.
   const cdpath = /\bCDPATH\b/.test(c);
   parts.forEach((part, index) => {
@@ -1100,6 +1230,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     for (const text of shellStrings(parsed.prog, parsed.args, isLocalHost)) {
       if (text.trim() !== "") verdicts.push(judge(text, ctx, depth + 1, here));
     }
+    verdicts.push(...gitExecVerdicts(parsed, ctx, depth, here));
     const inContainer = containerExec(parsed.prog, parsed.args);
     if (inContainer !== null) verdicts.push(judge(inContainer, ctx, depth + 1, here));
     const container = containerRun(parsed.prog, parsed.args);
@@ -1111,6 +1242,19 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a
     // command line; a script piped in from anything else cannot be read.
     verdicts.push(...handedScriptVerdicts(parts, parsedParts, index, ctx, depth, here));
+    // A script this line wrote (a heredoc, `echo '…' > F`) and runs: the text is judged as the script it is.
+    verdicts.push(
+      ...writeThenRun(
+        parts,
+        parsedParts,
+        index,
+        bodiesByPart[index] ?? [],
+        written,
+        ctx,
+        depth,
+        here,
+      ),
+    );
     const moved = nextDirs(shellIn, parsed, part.text, ctx, cdpath);
     // `A || cd X && W`: the `cd` runs only when A failed. When A succeeds W runs where A did, so after a `cd`
     // that follows `||` the next `&&` command may be in the old directory as well as in X.
@@ -1754,7 +1898,9 @@ function writesProtectedPath(p: Parsed, dirs: readonly Cwd[], ctx: BashContext):
   ];
   let unknownDir = false;
   for (const t of targets) {
-    if (work.spent) return { path: null };
+    // The budget is spent: stop resolving. The command asks (`classifyBash`) unless something in it is denied, so
+    // answering here would only hide a deny that a later check in this same command line finds.
+    if (work.spent) break;
     for (const dir of dirs) {
       const rel = resolvePath(t.raw, dir, ctx);
       if (rel === null) unknownDir = true;
@@ -1768,7 +1914,8 @@ function writesProtectedPath(p: Parsed, dirs: readonly Cwd[], ctx: BashContext):
       if (found) return { path: found };
     }
   }
-  return unknownDir ? { path: null } : null;
+  // An "unknown directory" that the spent budget made (a resolution answers null once it is out) is no finding.
+  return unknownDir && !work.spent ? { path: null } : null;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -2180,9 +2327,18 @@ function recursiveSearchVerdict(
   cwd: Cwd,
   ctx: BashContext,
 ): BashVerdict | null {
+  // `git grep --no-index` (and `--untracked --no-exclude-standard`) apply no .gitignore either.
+  const git = prog === "git" ? gitInvocation(args) : null;
+  const gitGrep = git?.sub === "grep" && gitGrepIgnoresGitignore(git.rest) ? git : null;
   const grep = /^(grep|egrep|fgrep)$/.test(prog);
-  if (!grep && prog !== "rg") return null;
-  if (grep) {
+  if (!grep && prog !== "rg" && gitGrep === null) return null;
+  // `git -C dir grep …` searches from `dir`.
+  let base: Cwd = cwd;
+  if (gitGrep !== null) {
+    for (const d of gitGrep.dirs.slice(0, MAX_GIT_DIR_OPERANDS)) {
+      base = base === null ? null : capLength(resolvePath(d, base, ctx, true));
+    }
+  } else if (grep) {
     const recursive = args.some(
       (a, k) =>
         clusterHas(a, "rR") ||
@@ -2207,21 +2363,25 @@ function recursiveSearchVerdict(
   ) {
     return null;
   }
-  const paths = grep
-    ? searchPaths(args, GREP_VALUE_LETTERS, GREP_VALUE_LONG)
-    : searchPaths(args, RG_VALUE_LETTERS, RG_VALUE_LONG);
+  const paths = gitGrep
+    ? searchPaths(gitGrep.rest, GIT_GREP_VALUE_LETTERS, GIT_GREP_VALUE_LONG)
+    : grep
+      ? searchPaths(args, GREP_VALUE_LETTERS, GREP_VALUE_LONG)
+      : searchPaths(args, RG_VALUE_LETTERS, RG_VALUE_LONG);
   // The root, a directory the guard cannot place, or one that holds a live env file (`deploy/production`, `apps`).
   const sweepsSecrets = (rel: string | null): boolean =>
     rel === null || rel === "" || reachesLiveEnv(rel, liveEnvExists(ctx));
   const atRoot =
     paths.length === 0
-      ? sweepsSecrets(cwd)
-      : paths.some((p) => sweepsSecrets(resolvePath(p, cwd, ctx)));
+      ? sweepsSecrets(base)
+      : paths.some((p) => sweepsSecrets(resolvePath(p, base, ctx)));
   if (!atRoot) return null;
   return ask(
-    grep
-      ? "`grep -r` ignores .gitignore, so over the repo root it reads every live .env file under it. Search the directory you need, or use `rg` (which skips ignored files)."
-      : "`rg` with -u, --no-ignore or --hidden stops skipping ignored files, so over the repo root it reads every live .env file under it. Search the directory you need, or drop the flag.",
+    gitGrep
+      ? "`git grep --no-index` (or `--untracked --no-exclude-standard`) applies no .gitignore, so over the repo root it reads every live .env file under it. Search the directory you need, or add --exclude-standard."
+      : grep
+        ? "`grep -r` ignores .gitignore, so over the repo root it reads every live .env file under it. Search the directory you need, or use `rg` (which skips ignored files)."
+        : "`rg` with -u, --no-ignore or --hidden stops skipping ignored files, so over the repo root it reads every live .env file under it. Search the directory you need, or drop the flag.",
   );
 }
 
@@ -2398,9 +2558,9 @@ function classifySegment(
         (a, k) => !a.startsWith("-") && !/^-/.test(args[k - 1] ?? "") && a !== "compose",
       )[0] ?? "";
     if (/(^|\s)--env-file\b/.test(argline) && !COMPOSE_SAFE.test(sub)) {
-      return deny(
-        `\`docker compose ${echo(sub)}\` with --env-file can print resolved secrets (\`config\` does). Lifecycle commands (up, down, run, exec, logs…) are fine.`,
-      );
+      const reason = `\`docker compose ${echo(sub)}\` with --env-file can print resolved secrets (\`config\` does). Lifecycle commands (up, down, run, exec, logs…) are fine.`;
+      // `"$@"`: a wrapper script's own arguments name the subcommand, so it is not known here: a human decides.
+      return /[$`]/.test(sub) ? ask(reason) : deny(reason);
     }
     // `config` prints the file with every ${VAR} resolved, secrets included; the name-only forms do not.
     const namesOnly = /^(-q|--quiet|--services|--images|--profiles|--volumes|--hash)(=|$)/;
@@ -2567,10 +2727,7 @@ function classifySegment(
   }
 
   // --- Live suites drop cluster roles: they must run against a private container (CLAUDE.md).
-  if (
-    (prog === "bun" && /^run\s+test:[^\s]*:live\b/.test(argline)) ||
-    (/^(vitest|bunx|npx)$/.test(prog) && /\.live\.test/.test(argline))
-  ) {
+  if (runsLiveSuite(prog, args)) {
     return ask(
       "Live suites DROP ROLE chartwarden_app. Confirm DATABASE_URL points at a private chartwarden-postgres:dev container (own port, fresh database), never the shared Docker cluster.",
     );

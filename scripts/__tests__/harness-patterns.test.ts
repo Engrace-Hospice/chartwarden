@@ -241,11 +241,12 @@ describe("classifyBash — review regressions (2026-10-27)", () => {
   });
   it("asks when a GIT_* environment override precedes git", () => {
     expect(d("GIT_SSH_COMMAND='sh x' git fetch")).toBe("ask");
+    // Wave 4: an exec-capable key injected through the environment is denied, exactly as `git -c` is.
     expect(
       d(
         "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x",
       ),
-    ).toBe("ask");
+    ).toBe("deny");
     expect(d("GIT_EXTERNAL_DIFF=./x git diff")).toBe("ask");
     expect(d("FOO=1 git status")).toBe("allow");
   });
