@@ -2275,8 +2275,9 @@ See §10 for capability inventory, discipline rules, and §10.7 for model backen
 
 ## 12. Worker Services (Python sidecars)
 
-> **STATUS: TARGET — NOT BUILT.** There are no Python sidecars: zero `.py` files, no `services/`
-> directory, no `infra/`. X12 and cost-report processing are TypeScript
+> **STATUS: TARGET — NOT BUILT, except `docling-worker`.** The one Python service that exists is the
+> DocLens `docling-worker` (`services/docling-worker`, a compose service and a `deploy.sh` argument);
+> the other sidecars below are not built, and there is no `infra/` directory. X12 and cost-report processing are TypeScript
 > (`packages/x12-837-client`, `packages/x12-835-client`, `packages/cost-report`). The fail-closed
 > `X12_WORKER_NOT_WIRED` port fronts the sidecar this section describes. Read as target state.
 

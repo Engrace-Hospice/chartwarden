@@ -401,7 +401,8 @@ export function parseBridgeRoutes(configSource: string): BridgeRoute[] {
     const [key, method, path] = groups(m, 3, "bridge route");
     return { key, method, path };
   });
-  const declared = (block.match(/\bmethod:/g) ?? []).length;
+  // Count entries by their quoted `method: "…"` property, so a comment that merely says "method:" cannot trip it.
+  const declared = (block.match(/\bmethod:\s*["']/g) ?? []).length;
   if (declared !== routes.length) {
     throw new Error(
       `RUST_BRIDGE_ROUTES declares ${declared} route(s) but only ${routes.length} parse; update parseBridgeRoutes in scripts/lib/architecture-sync.ts`,
@@ -410,14 +411,26 @@ export function parseBridgeRoutes(configSource: string): BridgeRoute[] {
   return routes;
 }
 
+/** One service's block in a compose file: from its 2-space key to the next service or top-level key; null if absent. */
+function serviceBlock(composeSource: string, name: string): string | null {
+  const start = composeSource.search(new RegExp(`^ {2}${name}:\\s*$`, "m"));
+  if (start < 0) return null;
+  const rest = composeSource.slice(composeSource.indexOf("\n", start) + 1);
+  const end = rest.search(/^(?: {2}[A-Za-z0-9_-]+:\s*$|[A-Za-z#])/m);
+  return end < 0 ? rest : rest.slice(0, end);
+}
+
 /**
- * The literal Rust bridge env on `api` in production compose. Null when any of the three is not a plain literal (a
- * `${VAR}` interpolation is NOT a literal: its value is decided elsewhere), so the mode cannot be verified.
+ * The literal Rust bridge env on the `api` service in production compose (only `api`: another service's value is
+ * never picked up). Null when any of the three is not a plain literal (a `${VAR}` interpolation is NOT a literal: its
+ * value is decided elsewhere), so the mode cannot be verified. A trailing YAML comment is tolerated.
  */
 export function parseProductionRust(composeSource: string): ProductionRustState | null {
-  const routes = composeSource.match(/^\s+RUST_ROUTES:\s*"([^"$]*)"/m);
-  const mode = composeSource.match(/^\s+RUST_ROUTE_MODE:\s*(shadow|serve)\b/m);
-  const sweep = composeSource.match(/^\s+RUST_PARITY_SWEEP:\s*"?(on|off)"?\s*$/m);
+  const api = serviceBlock(composeSource, "api");
+  if (api === null) return null;
+  const routes = api.match(/^\s+RUST_ROUTES:\s*"([^"$]*)"\s*(?:#.*)?$/m);
+  const mode = api.match(/^\s+RUST_ROUTE_MODE:\s*"?(shadow|serve)"?\s*(?:#.*)?$/m);
+  const sweep = api.match(/^\s+RUST_PARITY_SWEEP:\s*"?(on|off)"?\s*(?:#.*)?$/m);
   if (!routes || !mode || !sweep) return null;
   return {
     routes: group(routes, 1, "RUST_ROUTES")
@@ -559,12 +572,26 @@ export function checkRustMatrix(
   const byKey = new Map(rows.map((r) => [r.key, r]));
 
   const out: Finding[] = [];
+  const candidates = [...section.matchAll(/^\|\s*`[a-z0-9-]+`\s*\|/gm)].length;
+  if (candidates !== rows.length) {
+    // A row with an extra column (or a reflowed one) would otherwise vanish from every check below.
+    out.push(
+      finding(
+        where,
+        "RUST",
+        `${candidates} matrix rows start with a route key but only ${rows.length} have the 4-column shape (route | request | status | mode)`,
+      ),
+    );
+  }
+  if (byKey.size !== rows.length) {
+    out.push(finding(where, "RUST", "the matrix lists the same route key more than once"));
+  }
   if (production === null) {
     out.push(
       finding(
         where,
         "RUST",
-        "RUST_ROUTES / RUST_ROUTE_MODE / RUST_PARITY_SWEEP in deploy/production/compose.yml are not plain literals; the production mode cannot be verified",
+        "RUST_ROUTES / RUST_ROUTE_MODE / RUST_PARITY_SWEEP are not plain literals on the `api` service in deploy/production/compose.yml (a quoted RUST_ROUTES, shadow|serve, on|off); the production mode cannot be verified",
       ),
     );
   } else {

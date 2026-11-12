@@ -186,8 +186,10 @@ describe("checkAdrReflection", () => {
 const CONFIG = `export const RUST_BRIDGE_ROUTES = {
   "me-permissions": { method: "GET", path: "/api/v1/me/permissions" },
 } as const;`;
-const compose = (routes: string, sweep = "off"): string =>
+const apiEnv = (routes: string, sweep = "off"): string =>
   `      RUST_ROUTES: ${routes}\n      RUST_ROUTE_MODE: shadow\n      RUST_PARITY_SWEEP: "${sweep}"\n`;
+const compose = (routes: string, sweep = "off"): string =>
+  `services:\n  api:\n    environment:\n${apiEnv(routes, sweep)}  worker:\n    image: x\n`;
 const COMPOSE_OFF = compose('""');
 const COMPOSE_SHADOW = compose('"me-permissions"');
 const SWEEP_OFF = "Parity sweep in production: `off`.";
@@ -217,10 +219,30 @@ describe("parseBridgeRoutes / parseProductionRust", () => {
     expect(() => parseBridgeRoutes(singleQuoted)).toThrow(/declares 1 route\(s\) but only 0 parse/);
   });
 
+  it("reads only the api service, never another service's decoy literal", () => {
+    const decoyFirst = `services:\n  seed-api:\n    environment:\n${apiEnv('"me-permissions"', "on")}  api:\n    environment:\n${apiEnv('""')}  worker:\n    image: x\n`;
+    expect(parseProductionRust(decoyFirst)).toEqual({ routes: [], mode: "shadow", sweep: "off" });
+    const apiInterpolated = `services:\n  api:\n    environment:\n      RUST_ROUTES: "\${X}"\n      RUST_ROUTE_MODE: shadow\n      RUST_PARITY_SWEEP: "off"\n  worker:\n    environment:\n${apiEnv('""')}`;
+    expect(parseProductionRust(apiInterpolated)).toBeNull();
+  });
+
+  it("tolerates a trailing comment and a quoted mode", () => {
+    const env = `      RUST_ROUTES: "" # none yet\n      RUST_ROUTE_MODE: "shadow"\n      RUST_PARITY_SWEEP: "off" # note\n`;
+    const text = `services:\n  api:\n    environment:\n${env}  worker:\n    image: x\n`;
+    expect(parseProductionRust(text)).toEqual({ routes: [], mode: "shadow", sweep: "off" });
+  });
+
+  it("ignores a comment that merely says 'method:' when counting bridge entries", () => {
+    const withComment = `export const RUST_BRIDGE_ROUTES = {\n  // each route needs a method: and a path\n  "a-b": { method: "GET", path: "/x" },\n} as const;`;
+    expect(parseBridgeRoutes(withComment)).toEqual([{ key: "a-b", method: "GET", path: "/x" }]);
+  });
+
   it("treats an interpolation or a missing variable as not-a-literal", () => {
     expect(parseProductionRust(compose('"${RUST_ROUTES:-me-permissions}"'))).toBeNull();
     expect(
-      parseProductionRust(`      RUST_ROUTES: ""\n      RUST_ROUTE_MODE: shadow\n`),
+      parseProductionRust(
+        `services:\n  api:\n    environment:\n      RUST_ROUTES: ""\n      RUST_ROUTE_MODE: shadow\n  worker:\n    image: x\n`,
+      ),
     ).toBeNull();
   });
 });
@@ -228,6 +250,14 @@ describe("parseBridgeRoutes / parseProductionRust", () => {
 describe("Rust ownership matrix", () => {
   it("passes when the matrix mirrors the bridge and production", () => {
     expect(checkRustMatrix(matrix(ROW_OFF), routes(), off())).toEqual([]);
+  });
+
+  it("flags a duplicate route key and a row that lost its 4-column shape", () => {
+    const dup = matrix(`${ROW_OFF}\n${ROW_OFF}`);
+    expect(messages(checkRustMatrix(dup, routes(), off()))).toContain("more than once");
+    const fiveColumns = "| `orders-list` | GET /api/v1/orders | planned | off | extra |";
+    const out = checkRustMatrix(matrix(`${ROW_OFF}\n${fiveColumns}`), routes(), off());
+    expect(messages(out)).toContain("only 1 have the 4-column shape");
   });
 
   it("flags a bridge route the matrix lacks", () => {

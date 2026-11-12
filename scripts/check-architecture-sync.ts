@@ -79,18 +79,32 @@ if (process.argv.includes("--print-baseline")) {
   process.exit(0);
 }
 
-const findings: Finding[] = [
-  ...checkModuleCounts(claimDocs, MODULES.length),
-  ...checkModuleIds(mainArch, new Set(MODULES.map((m) => m.id))),
-  ...checkBuildOrderDeps(mainArch, MODULES),
-  ...checkTableOwnership(claimDocs, MODULES),
-  ...checkAdrReflection(adrs, archDocs, UNCITED_ACCEPTED_ADRS),
-  ...checkRustMatrix(
-    doc(SYSTEM_DESIGN),
-    parseBridgeRoutes(read(BRIDGE_CONFIG)),
-    parseProductionRust(read(PROD_COMPOSE)),
-  ),
-];
+function collectFindings(): Finding[] {
+  return [
+    ...checkModuleCounts(claimDocs, MODULES.length),
+    ...checkModuleIds(mainArch, new Set(MODULES.map((m) => m.id))),
+    ...checkBuildOrderDeps(mainArch, MODULES),
+    ...checkTableOwnership(claimDocs, MODULES),
+    ...checkAdrReflection(adrs, archDocs, UNCITED_ACCEPTED_ADRS),
+    ...checkRustMatrix(
+      doc(SYSTEM_DESIGN),
+      parseBridgeRoutes(read(BRIDGE_CONFIG)),
+      parseProductionRust(read(PROD_COMPOSE)),
+    ),
+  ];
+}
+
+// A parser that cannot read its source (the route table moved, say) throws; report it as a failure of this gate,
+// in the same shape as a finding, not as a raw stack.
+let findings: Finding[];
+try {
+  findings = collectFindings();
+} catch (error) {
+  console.error(
+    `FAIL architecture-sync: ${error instanceof Error ? error.message : String(error)}`,
+  );
+  process.exit(1);
+}
 
 if (findings.length === 0) {
   const accepted = adrs.filter((a) => a.accepted).length;

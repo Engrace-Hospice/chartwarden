@@ -65,7 +65,7 @@ flowchart TB
     sentry["Sentry self-hosted"]
   end
 
-  subgraph external["External services (over BAA)"]
+  subgraph external["External services (BAA status per INTEGRATIONS §5)"]
     dosespot["DoseSpot"]
     anthropic["Anthropic API"]
     twilio["Twilio (SMS/Voice)"]
@@ -95,8 +95,10 @@ flowchart TB
 ```
 
 > **Target topology, not a deployment inventory (2026-11-11).** Not every node above is built: the Python
-> sidecars in the worker tier are marked TARGET — NOT BUILT in ARCHITECTURE §12. The dashed Rust API is
-> built and merged **off** (§1.4). Deployed services are defined by `deploy/production/compose.yml`.
+> sidecars in the worker tier other than `docling-worker` are marked TARGET — NOT BUILT in ARCHITECTURE §12
+> (`docling-worker` is built: `services/docling-worker`, a compose service). The dashed Rust API is drawn
+> because its bridge is merged here, off by default (§1.4); compose pins no Rust image. Deployed services
+> are defined by `deploy/production/compose.yml`.
 
 ### 1.2 Trust Boundaries
 
@@ -406,7 +408,7 @@ The backend is a Bun/TypeScript service (`apps/backend`). A Rust API (`cw-server
 
 Parity sweep in production: `off`. (The daily sweep calls Rust even with no routes bridged, so it is part of the shipped state, and the gate checks it against `RUST_PARITY_SWEEP`.)
 
-**Trust boundary.** The bridge runs inside the route handler, after authentication, so Rust only sees requests Bun has already authenticated. Bun signs an Ed25519 actor assertion (`X-CW-Actor-Assertion`) per call; Rust verifies it against `CW_ACTOR_PUBLIC_KEYS` (that verification is enforced in `chartwarden-rust`, not provable from this repository). The bridge reads the signing key from `CW_ACTOR_SIGNING_KEY_FILE`, and production refuses the inline `CW_ACTOR_SIGNING_KEY`; provisioning the key as a compose secret on `api` only is a P2 prerequisite that is **not yet in `compose.yml`** (control `CW-AC-07`, open gap). Bun deletes the assertion header from inbound requests and nginx blanks it, so a client can never supply one. The `rust` compose service is behind a profile and defaults to an all-zero image digest that cannot be pulled; `deploy.sh` rolls it only by a digest verified with cosign against the `chartwarden-rust` image workflow, and never under `CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED`.
+**Trust boundary.** The bridge runs inside the route handler, after authentication, so Rust only sees requests Bun has already authenticated. Bun signs an Ed25519 actor assertion (`X-CW-Actor-Assertion`) per call; Rust verifies it against `CW_ACTOR_PUBLIC_KEYS` (that verification is enforced in `chartwarden-rust`, not provable from this repository). The bridge reads the signing key from `CW_ACTOR_SIGNING_KEY_FILE`, and production refuses the inline `CW_ACTOR_SIGNING_KEY`; provisioning the key as a compose secret on `api` only is a P2 prerequisite that is **not yet in `compose.yml`** (control `CW-AC-07`, open gap). Bun deletes the assertion header from inbound requests and nginx blanks it, so a client can never supply one. The `rust` compose service is behind a profile and defaults to an all-zero image digest that cannot be pulled; `deploy.sh` records it only as a digest verified with cosign against the `chartwarden-rust` image workflow (never under `CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED`) and never pulls or starts the service.
 
 Adding a bridged route is a reviewed change in four places: `RUST_BRIDGE_ROUTES`, this table, the `RUST_ROUTES` literal in `deploy/production/compose.yml` (when it goes live), and the Rust spec in `chartwarden-rust`.
 
