@@ -25,14 +25,15 @@ describe("backupName", () => {
     ["patients.sql.bak", "patients.sql", true, true],
     ["x.ts.bak~", "x.ts", true, false],
     ["x.ts", "x.ts", false, false],
-    ["x.bak.2", "x.bak.2", false, false],
+    // A rotation number is a suffix too (CR-L4): `x.bak.2` is a copy of `x`, and only a trailing `.bak` marks a database backup.
+    ["x.bak.2", "x", true, false],
   ])("%s -> %s (copy %s, may be a database backup %s)", (name, original, isCopy, db) => {
     expect(backupName(name)).toEqual({ original, isCopy, mayBeDatabaseBackup: db });
   });
 
   it("takes off a bounded number of suffixes", () => {
     expect(backupName(`x${".bak".repeat(50)}`).isCopy).toBe(true);
-    expect(backupName(`x${".bak".repeat(50)}`).original).toBe(`x${".bak".repeat(47)}`);
+    expect(backupName(`x${".bak".repeat(50)}`).original).toBe(`x${".bak".repeat(42)}`);
   });
 });
 

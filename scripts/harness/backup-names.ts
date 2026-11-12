@@ -7,11 +7,15 @@
  * says nothing (`prod.bak`, `patients.sql.bak`) is judged a database backup. A text heuristic over names. Pure.
  */
 
-/** Suffixes that mark a copy: `.bak`, `.orig`, `.old`, `.save`, `.swp` and an editor's trailing `~`. */
-const BACKUP_SUFFIX = /(?:\.(?:bak|orig|old|save|swp)|~)$/i;
+/**
+ * Suffixes that mark a copy: `.bak`, `.orig`, `.old`, `.save`, `.swp`, `.tmp`, `.temp`, `.copy`, `.prev`, an editor's
+ * trailing `~`, a rotation number (`server.pem.1`) and a dated or numbered one (`server.pem-2024`). A suffix only changes
+ * an answer when the ORIGINAL it uncovers is a secret or a template, so `src/x.ts.1` is as allowed as `src/x.ts`.
+ */
+const BACKUP_SUFFIX = /(?:\.(?:bak|orig|old|save|swp|tmp|temp|copy|prev)|\.\d{1,8}|-\d{2,8}|~)$/i;
 
-/** The most suffixes taken off (`x.ts.bak~`): a name is not scanned without bound. */
-const MAX_SUFFIXES = 3;
+/** The most suffixes taken off (`tls.key.bak.swp.orig.old`): a name is not scanned without bound. */
+const MAX_SUFFIXES = 8;
 
 /** Extensions of source, configuration and prose files: a copy of one is not a database backup. */
 const SOURCE_EXTENSION =
