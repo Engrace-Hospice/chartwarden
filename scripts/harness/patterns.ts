@@ -66,7 +66,13 @@ import {
   isProtectedPath,
   protectedPathPattern,
 } from "./protected-paths";
-import { environmentLeak, reachesLiveEnv, storedSecretVerdict } from "./secret-reads";
+import {
+  environmentLeak,
+  globReachesLiveEnv,
+  holdsLiveEnvDirectly,
+  reachesLiveEnv,
+  storedSecretVerdict,
+} from "./secret-reads";
 import {
   BARE,
   COMMENT,
@@ -78,6 +84,7 @@ import {
   splitCommand,
 } from "./shell-lex";
 import { isToolchainPath } from "./toolchain-paths";
+import { type SweepDepth, diffSweepOperands, gitDiffSweepOperands } from "./tree-sweep";
 import {
   MAX_COMMAND_JUDGE_MS,
   baseName,
@@ -2376,6 +2383,82 @@ function findReadVerdict(
     : null;
 }
 
+/**
+ * Can this wildcard operand reach a live env file? A repo-relative one by what it can match; one above the repo or
+ * in the home directory by its literal directory part (`/Users/*` holds the repo, `/tmp/*` does not).
+ */
+function wildcardReachesLiveEnv(rel: string, ctx: BashContext): boolean {
+  if (!rel.startsWith("/") && !rel.startsWith("~") && !rel.startsWith("..")) {
+    return globReachesLiveEnv(rel, liveEnvExists(ctx));
+  }
+  const dir = rel.slice(0, Math.max(rel.search(/[*?[]/), 0)).replace(/\/[^/]*$/, "");
+  return isRootAncestor(dir === "" ? "/" : dir, ctx);
+}
+
+/**
+ * Does a command that reads the tree (`tree`) or the direct children (`children`) of the directory this operand names,
+ * run from `cwd`, reach a live env file? Yes for the repo root, a directory above it, a directory that holds an existing
+ * one, a wildcard that can match such a directory, and an operand that cannot be placed (an unresolvable `cd`, git
+ * pathspec magic such as `:/apps` or `:(glob)**`). A `children` read of an operand that cannot be placed is not asked
+ * about: it names no more than two files in most uses.
+ */
+function treeOperandReaches(
+  raw: string,
+  cwd: Cwd,
+  ctx: BashContext,
+  depth: SweepDepth,
+  pathspec = false,
+): boolean {
+  if (pathspec && isMagicPathspec(raw)) return true;
+  const rel = resolvePath(raw, cwd, ctx);
+  if (rel === null) return depth === "tree";
+  if (hasWildcard(rel)) return wildcardReachesLiveEnv(rel, ctx);
+  if (depth === "children") return holdsLiveEnvDirectly(rel, liveEnvExists(ctx));
+  // `~` is the whole home directory (`~/.aws`, `~/.ssh` too), whether or not the repo is under it.
+  if (rel === "" || rel === "~" || isRootAncestor(rel, ctx)) return true;
+  return !rel.startsWith("/") && !rel.startsWith("~") && reachesLiveEnv(rel, liveEnvExists(ctx));
+}
+
+const DIFF_SWEEP_REASON =
+  "`diff -r`, `colordiff -r` and `git diff --no-index` print every file under a directory, ignoring .gitignore, and a plain `diff DIR DIR` compares the files directly under both, so over the repo root, a directory above it or one that holds a live .env file they print that file. Compare the files you need.";
+
+/** `git diff A B` is `--no-index` when one of the two paths is outside the working tree. */
+const outsideTree = (rel: string | null): boolean =>
+  rel !== null && (rel.startsWith("/") || rel.startsWith("~") || /^\.\.(?:\/|$)/.test(rel));
+
+/** `git diff --no-index`, `diff -r`, `colordiff -r`, a plain `diff DIR DIR`: the directories they print the files of. */
+function diffSweepVerdict(
+  prog: string,
+  args: readonly string[],
+  cwd: Cwd,
+  ctx: BashContext,
+): BashVerdict | null {
+  let base: Cwd = cwd;
+  let operands: readonly string[];
+  let depth: SweepDepth = "tree";
+  if (prog === "git") {
+    const git = gitInvocation(args);
+    const found = git.sub === "diff" ? gitDiffSweepOperands(git.rest) : null;
+    if (found === null) return null;
+    for (const d of git.dirs.slice(0, MAX_GIT_DIR_OPERANDS)) {
+      base = base === null ? null : capLength(resolvePath(d, base, ctx, true));
+    }
+    // Two operands and no `--no-index`: a plain pathspec diff, unless one of them is outside the working tree.
+    if (!found.noIndex && !found.operands.some((o) => outsideTree(resolvePath(o, base, ctx)))) {
+      return null;
+    }
+    operands = found.operands;
+  } else {
+    const found = diffSweepOperands(prog, args);
+    if (found === null) return null;
+    operands = found.operands;
+    depth = found.mode;
+  }
+  return operands.some((o) => treeOperandReaches(o, base, ctx, depth))
+    ? ask(DIFF_SWEEP_REASON)
+    : null;
+}
+
 function recursiveSearchVerdict(
   prog: string,
   args: readonly string[],
@@ -2423,13 +2506,12 @@ function recursiveSearchVerdict(
     : grep
       ? searchPaths(args, GREP_VALUE_LETTERS, GREP_VALUE_LONG)
       : searchPaths(args, RG_VALUE_LETTERS, RG_VALUE_LONG);
-  // The root, a directory the guard cannot place, or one that holds a live env file (`deploy/production`, `apps`).
-  const sweepsSecrets = (rel: string | null): boolean =>
-    rel === null || rel === "" || reachesLiveEnv(rel, liveEnvExists(ctx));
+  // The root, a directory above it, one the guard cannot place (a glob, pathspec magic, an unresolvable `cd`), or one
+  // that holds a live env file (`deploy/production`, `apps`).
   const atRoot =
     paths.length === 0
-      ? sweepsSecrets(base)
-      : paths.some((p) => sweepsSecrets(resolvePath(p, base, ctx)));
+      ? base === null || base === "" || reachesLiveEnv(base, liveEnvExists(ctx))
+      : paths.some((p) => treeOperandReaches(p, base, ctx, "tree", gitGrep !== null));
   if (!atRoot) return null;
   return ask(
     gitGrep
@@ -2663,6 +2745,7 @@ function classifySegment(
   for (const dir of here) {
     const sweep =
       recursiveSearchVerdict(prog, args, dir, ctx) ??
+      diffSweepVerdict(prog, args, dir, ctx) ??
       archiveRootVerdict(prog, args, dir, ctx) ??
       copyOutVerdict(prog, args, dir, ctx) ??
       findReadVerdict(prog, args, dir, ctx);

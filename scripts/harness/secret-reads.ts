@@ -5,6 +5,7 @@
  * `grep -r x deploy/production` reads every live .env under it (grep -r ignores .gitignore). A text heuristic over
  * a few known locations and commands; what it does not name it cannot see. Pure.
  */
+import { globMatches, globTokens } from "./glob";
 
 /** Where live environment files sit in this repo (their `.example` templates are tracked beside them). */
 const LIVE_ENV_FILES: readonly string[] = [
@@ -24,6 +25,37 @@ const LIVE_ENV_FILES: readonly string[] = [
 export function reachesLiveEnv(dir: string, exists: (file: string) => boolean): boolean {
   const d = dir.replace(/\/+$/, "").replace(/^\.$/, "");
   return LIVE_ENV_FILES.some((f) => (d === "" || f === d || f.startsWith(`${d}/`)) && exists(f));
+}
+
+/** The existing live env files, each with every directory above it: what a recursive read of a tree can land on. */
+function liveEnvPaths(exists: (file: string) => boolean): string[] {
+  const out: string[] = [];
+  for (const file of LIVE_ENV_FILES) {
+    if (!exists(file)) continue;
+    out.push(file);
+    for (let slash = file.lastIndexOf("/"); slash > 0; slash = file.lastIndexOf("/", slash - 1)) {
+      out.push(file.slice(0, slash));
+    }
+  }
+  return out;
+}
+
+/**
+ * Can this wildcard (a pathspec or a shell glob, repo-relative) match a directory that holds an existing live env
+ * file, or the file itself? `*` is taken to cross `/`, as a git pathspec does, which is the wider reading.
+ */
+export function globReachesLiveEnv(glob: string, exists: (file: string) => boolean): boolean {
+  const tokens = globTokens(glob.replace(/\/+$/, ""));
+  return liveEnvPaths(exists).some((path) => globMatches(tokens, path));
+}
+
+/**
+ * Does the repo-relative directory `dir` (`""` is the root) hold an existing live env file as a DIRECT child? That is
+ * all a non-recursive `diff DIR DIR` compares.
+ */
+export function holdsLiveEnvDirectly(dir: string, exists: (file: string) => boolean): boolean {
+  const d = dir.replace(/\/+$/, "").replace(/^\.$/, "");
+  return LIVE_ENV_FILES.some((f) => f.slice(0, Math.max(f.lastIndexOf("/"), 0)) === d && exists(f));
 }
 
 /** The name of an environment variable that holds a secret. */
