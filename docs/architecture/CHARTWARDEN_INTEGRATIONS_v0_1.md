@@ -22,17 +22,14 @@
 > - **S3/MinIO** — the zero-dependency SigV4 adapter (`22-documents/seams/s3-object-store.ts`).
 > - **Better Auth** — the only installed third-party SDK. **It has no inventory row below**, which
 >   is an INT-002 violation by this document's own rule; add one.
+> - **Claim submission through the clearinghouse transport** (re-verified 2026-11-11, replacing the
+>   earlier "no outbound claim transport" statement). `ClearinghouseTransport` in
+>   `packages/x12-837-client/src/clearinghouse/` is the only submission path for Medicare (M23) and
+>   commercial (M41) claims ([ADR-0053](../adr/ADR-0053-clearinghouse-transport-port.md); inventory row
+>   35, §6.26). It is bound per organization, and an organization with no live clearinghouse sends
+>   nothing (`CH_NOT_WIRED`).
 >
 > **NOT wired (partial list — treat every other row as unproven):**
-> - **Claim submission is the clearinghouse transport, not a MAC transport** (re-verified
->   2026-11-11). `ClearinghouseTransport` in `packages/x12-837-client/src/clearinghouse/` is the only
->   submission path for Medicare (M23) and commercial (M41) claims
->   ([ADR-0053](../adr/ADR-0053-clearinghouse-transport-port.md); inventory row 35, §6.26). It is bound
->   per organization, and an organization with no live clearinghouse sends nothing (`CH_NOT_WIRED`).
->
-> > **Re-verification status (2026-11-11):** only the claim-transport statement above was re-checked
-> > against the code. The rest of this banner is the original audit snapshot and has **not** been
-> > re-verified: treat its "not wired" lists and its fetch-file count as unproven.
 > - DoseSpot HTTP · iQIES submission · web-push · local/on-prem AI backends · terminology loaders ·
 >   external triage vendors — **absent**.
 > - **HETS 270/271** — the codec + CORE MIME transport exist (`packages/x12-837-client/src/eligibility/`,
@@ -42,6 +39,10 @@
 > - **M28 FHIR** reads return hardcoded 404 / empty Bundle with no data path; bulk `$export` has
 >   neither a route nor a worker.
 > - **Outbound email is a no-op in production.**
+>
+> **Re-verification status (2026-11-11):** only the claim-submission bullet above was re-checked
+> against the code. The rest of this banner is the original audit snapshot and has **not** been
+> re-verified: treat its "not wired" list and its fetch-file count as unproven.
 >
 > **Adapter paths:** 15 of the 33 cited package paths are wrong, superseded by ADR-0028/0029 (which
 > post-date this document by one day), and **eight of the cited packages were never created**.
@@ -166,7 +167,7 @@ The master list. Every external connection appears here exactly once. New integr
 |32|HaveIBeenPwned (HIBP) breach check|Outbound query|REST (k-anonymity, SHA-1 prefix)|**No**|**No** (no PHI)|platform|2|`packages/auth` (hibp adapter)|Tier 4|
 |33|Outbound HL7 ORM (lab orders)|Outbound|HL7 v2 over MLLP / SFTP|Yes|**Yes** (with lab)|per-tenant / per-feed|11, 29|`apps/backend/src/modules/29-external-interfaces` (see row 18; `packages/hl7-worker` deferred)|Tier 3|
 |34|MAC / esMD / QIC filing channels (ADR responses, appeals, reopenings, OMHA escalation requests; M25 milestone 6)|None today (the filing is made by a person outside ChartWarden)|manual / guided only. esMD and fax adapters exist as UNBOUND shells; no portal, gateway or QIC code, endpoint or credential exists|Yes (the filed packet; ChartWarden stores only the confirmation reference, receipt time and an optional receipt copy)|n/a today; **Yes (vendor)** before any fax or intermediary is bound|per-tenant (6b)|25|`apps/backend/src/modules/25-remittance/submission/` (`FilingChannelAdapter` port; manual adapter always bound; esMD and fax shells report `bound:false`, fail closed to `needs_manual`, and have no transmit)|Tier 3|
-|35|Claims clearinghouse (per-tenant choice of Stedi or Claim.MD; a platform account serves only the demo tenants)|Outbound + ack|Vendor API carrying EDI X12 (837I, 270/271, 999, 277CA, 835)|Yes|**Yes** (the tenant's own vendor BAA)|per-tenant (sealed in `tenant_clearinghouse_config`)|23, 25, 41|`packages/x12-837-client/src/clearinghouse/` (transports) + `apps/backend/src/modules/23-billing-medicare/clearinghouse-binding.ts` (per-organization resolver)|Tier 3 (as M23/M25)|
+|35|Claims clearinghouse (per-tenant choice of Stedi or Claim.MD; a platform account serves only the demo tenants)|Outbound + ack|Vendor API carrying EDI X12 (837I, 270/271, 999, 277CA, 835)|Yes|**Yes** (the tenant's own vendor BAA; a platform-account demo tenant sends under ChartWarden's own vendor BAA)|per-tenant (sealed in `tenant_clearinghouse_config`)|23, 25, 41|`packages/x12-837-client/src/clearinghouse/` (transports) + `apps/backend/src/modules/23-billing-medicare/clearinghouse-binding.ts` (per-organization resolver)|Tier 3 (the tier of M23/M25, which it serves; M41 declares none of its own — open, ADR-0009)|
 
 > **Counts:** **35** catalogued surfaces. Surface 35 (the clearinghouse, ADR-0053) was catalogued in the
 > 2026-11-11 reconciliation: it had shipped as the submission path for M23 and M41 without the INT-002 addition. Surfaces **26–33 were added in the Phase-5 remediation
@@ -281,6 +282,7 @@ The compliance-facing summary. Surveyors and customer security reviewers receive
 |Hospital ADT feed|Yes|BAA / data-sharing agreement|Sending hospital/HIE|Per-feed; TBD at feed setup|Counterparty is the data source|
 |Lab feed|Yes|BAA|Reference lab|Per-feed; TBD at feed setup||
 |Medicare MAC (NGS)|Yes|EDI Trading Partner Agreement + enrollment (not a BAA)|CMS / NGS|Per-ProviderEntity enrollment|CMS is regulator/contractor|
+|Claims clearinghouse (Stedi or Claim.MD)|Yes|BAA: the tenant's own vendor BAA, recorded by the tenant and verified by a platform operator before the account goes `active`; ChartWarden's own BAA for platform-account demo tenants|Stedi or Claim.MD, per tenant|Per-tenant; must read EXECUTED before that tenant's clearinghouse goes `active`|Inventory row 35, §6.26; the tenant's credential is sealed per tenant|
 |HETS|Yes|HETS submitter agreement|CMS|Per-ProviderEntity|Eligibility 270/271|
 |State Medicaid|Yes|State trading-partner agreement|State Medicaid agency|Per-ProviderEntity per state|Varies by state|
 |CMS iQIES|Yes|iQIES access / submitter setup|CMS|Per-ProviderEntity||
@@ -661,6 +663,7 @@ The per-integration input to CHARTWARDEN_DR_BCP §2 vendor-outage response. "Deg
 |-----------|-------|---------------------|-----------------|-----------------------|
 |DoseSpot|2|New/refill prescriptions to pharmacy|Orders draft + queue locally; refill inbox shows last sync|"E-prescribe temporarily unavailable — prescriptions are saved and will send on reconnect"|
 |MAC / Medicaid|2|Claim submission|Claims sit in READY/outbox; validation still runs|"Claim submission paused — claims are validated and queued"|
+|Claims clearinghouse (Medicare + commercial)|3|Claim submission, 270/271 eligibility, acknowledgment and 835 pulls|The work is held and nothing is sent; an organization with no live clearinghouse answers `CH_NOT_WIRED`; an ambiguous send ends `in_doubt` and is never resent automatically|"Claim submission paused — claims are validated and held"|
 |HETS|3|Eligibility verification|Validation rule → `warn`, override available; use cached result|"Eligibility check unavailable — using last known status"|
 |iQIES (HOPE)|3|HOPE batch submission|Queue; deadline-approaching alert escalates|"HOPE submission delayed — assessments are saved" (compliance-watched)|
 |MCReF|4|Cost report upload|Retry within filing window|(internal only — annual task)|

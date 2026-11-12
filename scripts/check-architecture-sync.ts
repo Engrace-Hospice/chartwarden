@@ -4,15 +4,17 @@
  * `check-architecture-docs` keeps docs/architecture/ well-formed; this gate keeps it TRUE. Each rule compares a
  * claim the corpus makes with the source that decides it (rules live in scripts/lib/architecture-sync.ts):
  *
- *   COUNT      every "N modules" total claim equals the manifest's module count.
+ *   COUNT      every "N modules" TOTAL claim, in the phrasings the rule knows, equals the manifest's count.
  *   IDS        the §11 catalog and the §20 build sequence list exactly the manifest's module ids.
- *   DEPS       every §20 dependency row equals the manifest's `dependsOn`, unless the doc's own "known
- *              deliberate divergences" table records it (and that table may not carry a stale row).
+ *   DEPS       every §20 row with a numeric dependency list equals the manifest's `dependsOn` (free-text rows
+ *              such as 32 and 33 are skipped), unless the doc's own divergences table records it with a reason
+ *              (and that table may not carry a stale row).
  *   OWNERSHIP  a "`table` owned by Module N" statement matches the manifest's `ownedTables`.
  *   ADRS       every Accepted ADR is cited by the architecture corpus. Ratchet: the pre-existing uncited set is
  *              frozen in scripts/architecture-adr-baseline.ts and may only shrink.
- *   RUST       the Bun/Rust API ownership matrix (SYSTEM_DESIGN §1.4) lists exactly the bridge's routes, with the
- *              production mode the compose file really sets, and a status that agrees with it.
+ *   RUST       the Bun/Rust API ownership matrix (SYSTEM_DESIGN §1.4) lists exactly the bridge's routes (a
+ *              `planned` row may name one the bridge lacks), with the production mode and parity sweep the compose
+ *              file really sets, and a status that agrees with the mode. The `tested` attestation is not verified.
  *
  * Not covered, on purpose: whether prose diagrams match deployed services, or whether an ADR CONFLICTS with the
  * architecture (both need a reader); the generated implementation-status matrix owns per-module status.

@@ -8,8 +8,6 @@
  * `bun run scripts/check-architecture-sync.ts --print-baseline`.
  */
 export const UNCITED_ACCEPTED_ADRS: readonly string[] = [
-  "0012",
-  "0013",
   "0015",
   "0016",
   "0017",
@@ -42,13 +40,11 @@ export const UNCITED_ACCEPTED_ADRS: readonly string[] = [
   "0070",
   "0071",
   "0073",
-  "0074",
   "0075",
   "0077",
   "0078",
   "0080",
   "0081",
   "0088",
-  "0090",
   "0105",
 ];

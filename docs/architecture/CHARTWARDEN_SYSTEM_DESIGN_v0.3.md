@@ -36,6 +36,7 @@ flowchart TB
 
   subgraph app["Application tier"]
     backend["Backend (apps/backend)<br/>Fastify 5 — REST + Socket.IO<br/>(N instances, stateless)"]
+    rust["Rust API (cw-server)<br/>CW-RUST-M02 — merged off, §1.4"]
   end
 
   subgraph workers["Worker tier (Python sidecars)"]
@@ -89,7 +90,13 @@ flowchart TB
   workers --> external
   backend & workers --> otel --> grafana
   backend & workers --> sentry
+  backend -.->|"Unix socket + signed actor assertion"| rust
+  rust -.-> pg
 ```
+
+> **Target topology, not a deployment inventory (2026-11-11).** Not every node above is built: the Python
+> sidecars in the worker tier are marked TARGET — NOT BUILT in ARCHITECTURE §12. The dashed Rust API is
+> built and merged **off** (§1.4). Deployed services are defined by `deploy/production/compose.yml`.
 
 ### 1.2 Trust Boundaries
 
@@ -380,9 +387,9 @@ sequenceDiagram
 
 ### 1.4 Bun/Rust API ownership matrix (CW-RUST-M02)
 
-The backend is a Bun/TypeScript service (`apps/backend`). A Rust API (`cw-server`) is being introduced beside it. Its source, and the image build and signing, live in the separate `chartwarden-rust` repository; this repository holds only the **bridge** that can forward to it (`apps/backend/src/bootstrap/rust-bridge/`) and the deployment wiring (`deploy/production/compose.yml`, `deploy.sh`). This section is the versioned record of which endpoints each runtime serves. `arch:architecture-sync` checks it against the bridge's `RUST_BRIDGE_ROUTES` and the production compose file, so it cannot drift silently.
+The backend is a Bun/TypeScript service (`apps/backend`). A Rust API (`cw-server`) is being introduced beside it. Its source, and the image build and signing, live in the separate `chartwarden-rust` repository; this repository holds only the **bridge** that can forward to it (`apps/backend/src/bootstrap/rust-bridge/`) and the deployment wiring (`deploy/production/compose.yml`, `deploy.sh`). This section is the versioned record of which endpoints each runtime serves. `arch:architecture-sync` checks it against the bridge's `RUST_BRIDGE_ROUTES` and the production compose file: a change to the route set, the production mode or the parity sweep in either place fails the gate until this section is updated. The `tested` status is an attestation (the named suites exist) that the gate does not verify.
 
-**Default owner: Bun.** Every route not in the table below is served by Bun, always. nginx sends all client traffic to Bun (`127.0.0.1:3000`); Rust publishes no port and sits on the internal `rust-db` network with Postgres only (no default network, no egress, read-only filesystem, non-root user), reached by Bun over a Unix socket.
+**Default owner: Bun.** Every route not in the table below is served by Bun, always. nginx sends all API traffic to Bun (`127.0.0.1:3000`; the web and storage vhosts are separate); Rust publishes no port and sits on the internal `rust-db` network with Postgres only (no default network, no egress, read-only filesystem, non-root user), reached by Bun over a Unix socket.
 
 | Route key | Request | Status | Production mode |
 |---|---|---|---|
@@ -390,14 +397,16 @@ The backend is a Bun/TypeScript service (`apps/backend`). A Rust API (`cw-server
 
 **Status** (one word per route, so a reader cannot mistake "built" for "live"):
 
-- `planned` — named in the Rust spec; no bridge code.
+- `planned` — named in the Rust spec; no bridge code (the only status that may name a route absent from `RUST_BRIDGE_ROUTES`).
 - `implemented` — the route is in `RUST_BRIDGE_ROUTES` and the forwarder handles it.
 - `tested` — implemented, with unit tests (`m02-rust-bridge-route.test.ts`, the forwarder and parity-sweep suites) and the live DB-cancel suite (`test:rust-bridge-db-cancel:live`).
 - `production-active` — named in `RUST_ROUTES` in the production compose file, in `shadow` or `serve` mode.
 
 **Production mode** is `off` (not in `RUST_ROUTES`, the shipped state: `RUST_ROUTES: ""` and `RUST_PARITY_SWEEP: "off"` on `api`), `shadow` or `serve`. In `shadow`, Bun answers exactly as before and the same request is sent to Rust in the background (bounded in flight, aborted at 300 ms); a difference is re-resolved on Bun without cache and counted as `explained:stale-cache` or `unexplained`. In `serve`, Rust answers only when it returns a valid 200; any other outcome is answered by Bun and counted as a fallback, and a run of consecutive failures opens a circuit so Bun answers meanwhile. A Rust error never reaches a client.
 
-**Trust boundary.** The bridge runs inside the route handler, after authentication, so Rust only sees requests Bun has already authenticated. Bun signs an Ed25519 actor assertion (`X-CW-Actor-Assertion`) per call; Rust verifies it against `CW_ACTOR_PUBLIC_KEYS`. The signing key is a compose secret mounted on `api` only, and nginx blanks the assertion header on inbound requests so a client can never supply one. The `rust` compose service is behind a profile and defaults to an all-zero image digest that cannot be pulled; `deploy.sh` rolls it only by a digest verified with cosign against the `chartwarden-rust` image workflow, and never under `CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED`.
+Parity sweep in production: `off`. (The daily sweep calls Rust even with no routes bridged, so it is part of the shipped state, and the gate checks it against `RUST_PARITY_SWEEP`.)
+
+**Trust boundary.** The bridge runs inside the route handler, after authentication, so Rust only sees requests Bun has already authenticated. Bun signs an Ed25519 actor assertion (`X-CW-Actor-Assertion`) per call; Rust verifies it against `CW_ACTOR_PUBLIC_KEYS` (that verification is enforced in `chartwarden-rust`, not provable from this repository). The bridge reads the signing key from `CW_ACTOR_SIGNING_KEY_FILE`, and production refuses the inline `CW_ACTOR_SIGNING_KEY`; provisioning the key as a compose secret on `api` only is a P2 prerequisite that is **not yet in `compose.yml`** (control `CW-AC-07`, open gap). Bun deletes the assertion header from inbound requests and nginx blanks it, so a client can never supply one. The `rust` compose service is behind a profile and defaults to an all-zero image digest that cannot be pulled; `deploy.sh` rolls it only by a digest verified with cosign against the `chartwarden-rust` image workflow, and never under `CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED`.
 
 Adding a bridged route is a reviewed change in four places: `RUST_BRIDGE_ROUTES`, this table, the `RUST_ROUTES` literal in `deploy/production/compose.yml` (when it goes live), and the Rust spec in `chartwarden-rust`.
 

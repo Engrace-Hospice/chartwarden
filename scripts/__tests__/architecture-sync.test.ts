@@ -40,6 +40,18 @@ describe("checkModuleCounts", () => {
     expect(checkModuleCounts([doc(text)], 41)).toEqual([]);
   });
 
+  it("does not mistake a subset count for the total", () => {
+    const text = "all 12 modules that touch PHI\n(5 modules, one owner each)";
+    expect(checkModuleCounts([doc(text)], 41)).toEqual([]);
+  });
+
+  it("catches the other phrasings of a stale total", () => {
+    const text = ["the 40 logical modules", "the 40-module catalog", "40 modules in total"].join(
+      "\n",
+    );
+    expect(rules(checkModuleCounts([doc(text)], 41))).toEqual(["COUNT", "COUNT", "COUNT"]);
+  });
+
   it("flags a stale README heading", () => {
     expect(rules(checkModuleCounts([doc("## Modules (40)")], 41))).toEqual(["COUNT"]);
   });
@@ -103,6 +115,18 @@ describe("checkBuildOrderDeps", () => {
     expect(messages(out)).toContain("cites manifest deps");
   });
 
+  it("flags a divergence row that gives no reason", () => {
+    const div = "> | 9 Assessments | 8, 38 | 1, 38 |  |";
+    const out = checkBuildOrderDeps(withRows("|9 |A|8, 38|", div), [mod(9, [1, 38])]);
+    expect(messages(out)).toContain("has no reason");
+  });
+
+  it("flags a §20 table whose rows stopped matching the 3-column shape", () => {
+    const fourColumns = "|5 |P|2, 3|extra|";
+    const out = checkBuildOrderDeps(withRows(fourColumns), [mod(5, [1, 2, 3])]);
+    expect(messages(out)).toContain("only 0 have the 3-column shape");
+  });
+
   it("accepts a '(see manifest)' divergence and skips free-text cells", () => {
     const rows = "|35|B|34|\n|33|R|all clinical modules|";
     const div = "> | 35 Billing | 34 | (see manifest) | reason |";
@@ -117,6 +141,15 @@ describe("checkTableOwnership", () => {
   it("flags a table attributed to the wrong module", () => {
     const text = "`state_retention_override` is owned by Module 39.";
     expect(rules(checkTableOwnership([doc(text)], modules))).toEqual(["OWNERSHIP"]);
+  });
+
+  it("attributes each claim to the table named just before it", () => {
+    const two = "`state_retention_override` owned by Module 4; `consent_record` owned by Module 39";
+    expect(checkTableOwnership([doc(two)], modules)).toEqual([]);
+    const readBy = "`consent_record` is read by `state_retention_override` (owned by Module 4)";
+    expect(checkTableOwnership([doc(readBy)], modules)).toEqual([]);
+    const wrong = "`consent_record` is read by `state_retention_override` (owned by Module 39)";
+    expect(rules(checkTableOwnership([doc(wrong)], modules))).toEqual(["OWNERSHIP"]);
   });
 
   it("accepts the manifest owner and ignores tables the manifest does not list", () => {
@@ -153,17 +186,20 @@ describe("checkAdrReflection", () => {
 const CONFIG = `export const RUST_BRIDGE_ROUTES = {
   "me-permissions": { method: "GET", path: "/api/v1/me/permissions" },
 } as const;`;
-const COMPOSE_OFF = `      RUST_ROUTES: ""\n      RUST_ROUTE_MODE: shadow\n`;
-const COMPOSE_SHADOW = `      RUST_ROUTES: "me-permissions"\n      RUST_ROUTE_MODE: shadow\n`;
-const matrix = (row: string): Doc =>
+const compose = (routes: string, sweep = "off"): string =>
+  `      RUST_ROUTES: ${routes}\n      RUST_ROUTE_MODE: shadow\n      RUST_PARITY_SWEEP: "${sweep}"\n`;
+const COMPOSE_OFF = compose('""');
+const COMPOSE_SHADOW = compose('"me-permissions"');
+const SWEEP_OFF = "Parity sweep in production: `off`.";
+const matrix = (row: string, sweepLine = SWEEP_OFF): Doc =>
   doc(
-    `### 1.4 Bun/Rust API ownership matrix (CW-RUST-M02)\n\n| Route key | Request | Status | Production mode |\n|---|---|---|---|\n${row}\n\n---\n## 2. Next`,
+    `### 1.4 Bun/Rust API ownership matrix (CW-RUST-M02)\n\n| Route key | Request | Status | Production mode |\n|---|---|---|---|\n${row}\n\n${sweepLine}\n\n---\n## 2. Next`,
   );
 const ROW_OFF = "| `me-permissions` | GET /api/v1/me/permissions | tested | off |";
 const routes = (): BridgeRoute[] => parseBridgeRoutes(CONFIG);
 const off = () => parseProductionRust(COMPOSE_OFF);
 
-describe("Rust ownership matrix", () => {
+describe("parseBridgeRoutes / parseProductionRust", () => {
   it("reads the bridge's route table and the production literals", () => {
     expect(routes()).toEqual([
       { key: "me-permissions", method: "GET", path: "/api/v1/me/permissions" },
@@ -171,20 +207,45 @@ describe("Rust ownership matrix", () => {
     expect(parseProductionRust(COMPOSE_SHADOW)).toEqual({
       routes: ["me-permissions"],
       mode: "shadow",
+      sweep: "off",
     });
-    expect(parseProductionRust("RUST_ROUTES: ${X}\n")).toBeNull();
   });
 
+  it("throws, never returns an empty list, when the route table moves or an entry stops parsing", () => {
+    expect(() => parseBridgeRoutes("export const SOMETHING_ELSE = {};")).toThrow(/not found/);
+    const singleQuoted = `export const RUST_BRIDGE_ROUTES = {\n  'a-b': { method: 'GET', path: '/x' },\n} as const;`;
+    expect(() => parseBridgeRoutes(singleQuoted)).toThrow(/declares 1 route\(s\) but only 0 parse/);
+  });
+
+  it("treats an interpolation or a missing variable as not-a-literal", () => {
+    expect(parseProductionRust(compose('"${RUST_ROUTES:-me-permissions}"'))).toBeNull();
+    expect(
+      parseProductionRust(`      RUST_ROUTES: ""\n      RUST_ROUTE_MODE: shadow\n`),
+    ).toBeNull();
+  });
+});
+
+describe("Rust ownership matrix", () => {
   it("passes when the matrix mirrors the bridge and production", () => {
     expect(checkRustMatrix(matrix(ROW_OFF), routes(), off())).toEqual([]);
   });
 
-  it("flags a bridge route the matrix lacks, and a matrix row the bridge lacks", () => {
+  it("flags a bridge route the matrix lacks", () => {
     expect(messages(checkRustMatrix(matrix(""), routes(), off()))).toContain("has no row");
-    const extra = matrix(`${ROW_OFF}\n| \`orders-list\` | GET /api/v1/orders | planned | off |`);
-    expect(messages(checkRustMatrix(extra, routes(), off()))).toContain(
-      "orders-list is not a route",
-    );
+  });
+
+  it("lets a planned row be absent from the bridge, and nothing else", () => {
+    const planned = "| `orders-list` | GET /api/v1/orders | planned | off |";
+    expect(checkRustMatrix(matrix(`${ROW_OFF}\n${planned}`), routes(), off())).toEqual([]);
+    const implemented = "| `orders-list` | GET /api/v1/orders | implemented | off |";
+    expect(
+      messages(checkRustMatrix(matrix(`${ROW_OFF}\n${implemented}`), routes(), off())),
+    ).toContain("is implemented but is not a route in RUST_BRIDGE_ROUTES");
+  });
+
+  it("flags a planned row for a route that already exists in the bridge", () => {
+    const stale = "| `me-permissions` | GET /api/v1/me/permissions | planned | off |";
+    expect(messages(checkRustMatrix(matrix(stale), routes(), off()))).toContain("not planned");
   });
 
   it("flags a matrix that understates production (live in compose, matrix says off)", () => {
@@ -203,8 +264,20 @@ describe("Rust ownership matrix", () => {
     );
   });
 
+  it("checks the parity sweep: a missing line, and a stale one", () => {
+    expect(messages(checkRustMatrix(matrix(ROW_OFF, ""), routes(), off()))).toContain(
+      'no "Parity sweep in production',
+    );
+    const sweepOn = parseProductionRust(compose('""', "on"));
+    expect(messages(checkRustMatrix(matrix(ROW_OFF), routes(), sweepOn))).toContain(
+      "RUST_PARITY_SWEEP on",
+    );
+  });
+
   it("fails closed without the section, or when compose is not a literal", () => {
     expect(rules(checkRustMatrix(doc("nothing"), routes(), null))).toEqual(["RUST"]);
-    expect(messages(checkRustMatrix(matrix(ROW_OFF), routes(), null))).toContain("not literals");
+    expect(messages(checkRustMatrix(matrix(ROW_OFF), routes(), null))).toContain(
+      "not plain literals",
+    );
   });
 });
