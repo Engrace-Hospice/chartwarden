@@ -151,6 +151,24 @@ describe("CR-C1 (round 4): a brace word longer than a path is not a way past the
     expect(timed(cmd).ms).toBeLessThan(FAST_MS);
   });
 
+  it("a long inline script that holds object literals is not a brace word: the shell leaves a quoted string alone", () => {
+    // Real shapes from a developer's sessions: `python3 -c`, `bun -e` and `node -e` programs over 4 KB with JSON in them.
+    const json = `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject"]}]}`;
+    const script = `const p = ${json};\n${"// padding line\n".repeat(400)}console.log(p);`;
+    for (const cmd of [`bun -e '${script}'`, `python3 -c "${script}"`, `node -e '${script}'`]) {
+      expect(script.length).toBeGreaterThan(4096);
+      expect(d(cmd), cmd.slice(0, 20)).toBe("allow");
+    }
+    // Over the alternatives cap, not over the length cap: nine object literals in one quoted program.
+    const nine = Array.from({ length: 9 }, (_, i) => `{"a${i}":1,"b${i}":2}`).join(", ");
+    expect(d(`bun -e 'console.log([${nine}])'`)).toBe("allow");
+  });
+
+  it("an unquoted brace word with no whitespace is a path the shell expands, so the same sizes ask", () => {
+    expect(d(`echo ${"{a,b}".repeat(9)}`)).toBe("ask");
+    expect(d(`echo {a,b}${"z".repeat(4100)}`)).toBe("ask");
+  });
+
   it("a 60 KB word of alternatives is cheap: the fallback reading is bounded in size and time", () => {
     const body = Array.from({ length: 12000 }, (_, i) => `a${i}`).join(",");
     const { verdict, ms } = timed(`cat {${body},${ENV}}`);

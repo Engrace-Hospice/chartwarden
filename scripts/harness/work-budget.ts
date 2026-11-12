@@ -171,13 +171,23 @@ const cheapAlternatives = (word: string): string[] => [
   ...edgeAlternatives(word),
 ];
 
+/**
+ * A word the budget could not expand fully spends it (the command asks) when the shell would really have expanded it:
+ * a word with whitespace in it was quoted (`python3 -c '… {"a":1,"b":2} …'`, `bun -e '…'`), and the shell leaves the
+ * braces of a quoted string alone, so an inline script that holds a few object literals is not a finding. The cheap
+ * reading (each group alone, all-first, all-last) still runs for it, and a protected name it finds is still a deny or an ask.
+ */
+function spendIfShellWouldExpand(word: string): void {
+  if (!/\s/.test(word)) work.spent = true;
+}
+
 /** Bash brace expansion of one word: `.en{v,}` is `.env` and `.en`. Bounded, so it cannot be made to blow up. */
 export function expandBraces(word: string): string[] {
   if (word.length > MAX_BRACE_WORD_CHARS) {
     // Not a file name, so not expanded; but a group in it may still read as a protected name through one alternative
     // (`cat {<secret>,<4,100 characters>}`), so the command asks and the cheap reading below can still deny.
     if (firstBraceGroup(word) === null) return [word];
-    work.spent = true;
+    spendIfShellWouldExpand(word);
     return [word, ...cheapAlternatives(word)];
   }
   let out = [word];
@@ -214,7 +224,7 @@ export function expandBraces(word: string): string[] {
     if (!changed) break;
   }
   if (!cut) return out;
-  work.spent = true;
+  spendIfShellWouldExpand(word);
   return [...out, ...cheapAlternatives(word)];
 }
 
