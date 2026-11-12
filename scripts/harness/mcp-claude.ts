@@ -13,7 +13,7 @@
  * because a deny is never reached in this mode.
  */
 import { mcpStrings, withoutOddChars } from "./codex-patch";
-import { FILE_URL, LINE_BREAKS, mcpPathCandidates, percentDecoded } from "./mcp-tokens";
+import { FILE_URL, LINE_BREAKS, percentDecoded } from "./mcp-tokens";
 import { secretPathReason } from "./patterns";
 import { isProtectedPath } from "./protected-paths";
 
@@ -68,26 +68,53 @@ function finding(tool: string, category: McpCategory, why: string): McpFinding {
  * What separates words in code and in a URL query: whitespace, quotes, brackets, `< >`, `, ; | :`, `=`, `+`,
  * `!`, `&` and `?`. The Codex word split stops at whitespace and `, ; | :` and trims quotes and brackets only at
  * a word's edges, so a `fetch("file:///x/y").then(r)` call stays one word that does not end in the file's
- * name; page JavaScript is the tool's input here, so a path inside a call is a word of its own.
+ * name; page JavaScript is the tool's input here, so a path inside a call is a word of its own. A path with a
+ * quote or bracket inside it is cut there, and its tail (the file name) is the word that is judged; when the
+ * line is one path it is also judged whole. Limit: the words are text, so a name the code computes is not seen.
  */
 const CODE_DELIMITERS = /[\s"'`()[\]{}<>,;|:=+!&?\u0085\u2028\u2029]+/;
 
-/** The words of one line split at {@link CODE_DELIMITERS}, `file://` removed and percent-decoded. */
-function codeWords(written: string): string[] {
-  return written
+/** The words of `text` split at {@link CODE_DELIMITERS}, `file://` removed and each percent-decoded. */
+function codeWords(text: string): string[] {
+  return text
     .replace(FILE_URL, " ")
     .split(CODE_DELIMITERS)
     .map(percentDecoded)
     .filter((word) => word.length >= 2 && word.length <= MAX_PATH_CHARS);
 }
 
-/** The candidate paths of one trimmed line: as written, resolved, and each word of it, as written and resolved. */
+/**
+ * `e.key`, `process.env`, `row.dump`: dotted identifiers with no slash. Among the words of a line they are
+ * property accesses, not files (the one false positive in 1,268 real calls was `e.key`); a path the tool could
+ * open has a slash or a leading dot. A line that IS such a word is still judged whole.
+ */
+const PROPERTY_ACCESS = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/;
+
+/**
+ * A line is judged whole only when it can be one path: a single word, or one with a slash (a path may hold
+ * spaces). A line of several words and no slash is code or prose (`const k = e.key`); its words are judged.
+ */
+const looksLikeOnePath = (line: string): boolean => !/\s/.test(line) || /[\\/]/.test(line);
+
+/**
+ * The candidate paths of one trimmed line: the line as written and percent-decoded when it can be one path,
+ * and each word of it (also of the decoded line), each resolved when it holds a slash (the line always).
+ */
 function* pathWords(written: string, resolve: ResolvePath): Generator<string> {
-  yield written;
-  if (written.length <= MAX_PATH_CHARS) yield resolve(written);
-  for (const token of [...mcpPathCandidates(written), ...codeWords(written)]) {
-    yield token;
-    if (token.includes("/")) yield resolve(token);
+  const decoded = percentDecoded(written);
+  const lines = looksLikeOnePath(written) ? new Set([written, decoded]) : new Set<string>();
+  for (const line of lines) {
+    yield line;
+    if (line.length <= MAX_PATH_CHARS) yield resolve(line);
+  }
+  const words = new Set([
+    ...codeWords(written),
+    ...(decoded === written ? [] : codeWords(decoded)),
+  ]);
+  for (const word of words) {
+    if (lines.has(word) || PROPERTY_ACCESS.test(word)) continue;
+    yield word;
+    if (word.includes("/")) yield resolve(word);
   }
 }
 

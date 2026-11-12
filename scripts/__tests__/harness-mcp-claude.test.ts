@@ -117,6 +117,26 @@ describe("Claude mode asks for a path word that is secret or protected", () => {
       { text: `const a = 1;\n${LIVE_ENV}\nconst b = 2;` },
     ],
     [
+      "a bare dotfile name among other words of a list",
+      `${CHROME}javascript_tool`,
+      { text: "upload a.txt, .npmrc now" },
+    ],
+    [
+      "a single percent-encoded name that is a database dump",
+      `${CHROME}file_upload`,
+      { paths: ["backup%2Edump"], ref: "r", tabId: 1 },
+    ],
+    [
+      "a path with spaces in it, judged whole",
+      `${CHROME}file_upload`,
+      { paths: ["/Users/me/My Docs/server key.pem"], ref: "r", tabId: 1 },
+    ],
+    [
+      "a path with a slash inside code, even one that ends like a property",
+      `${CHROME}javascript_tool`,
+      { text: "const k = await fetch('/srv/certs/server.pem')" },
+    ],
+    [
       "a path after a Unicode line break (U+2028)",
       `${CHROME}javascript_tool`,
       { text: `ok\u2028${LIVE_ENV}` },
@@ -232,6 +252,25 @@ describe("Claude mode allows everyday MCP calls", () => {
       { text: `document.body.innerText = 'SSN ${ISSUED_SSN}'` },
     ],
     ["an empty input", `${CHROME}navigate`, {}],
+    [
+      "a property access that ends like a key file (the one real false positive in 1,268 calls)",
+      `${CHROME}browser_batch`,
+      {
+        actions: [
+          {
+            name: "javascript_tool",
+            input: {
+              text: "document.addEventListener('keydown', (e) => { if (e.key === 'Enter') go() })",
+            },
+          },
+        ],
+      },
+    ],
+    [
+      "dotted identifiers that end like a live env file, a dump or a backup",
+      `${CHROME}javascript_tool`,
+      { text: "const mode = process.env\nconsole.log(config.env, row.dump, backup.bak)" },
+    ],
   ];
   it.each(cases)("%s", (_name, tool, input) => {
     expect(claude(tool, input)).toEqual({ decision: "allow", reason: "" });
