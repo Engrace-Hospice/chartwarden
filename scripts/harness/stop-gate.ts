@@ -25,9 +25,15 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { join } from "node:path";
 import { appendLedger, loadRegistry, projectDir, readHookInput, sha256 } from "./io";
 import { describeFindings, isScannable, scanLarge } from "./patterns";
+import { isProtectedPath } from "./protected-paths";
+
+/** What decides whether a path is read by a gate: a pattern, or a predicate (`{ test }`, as a RegExp has). */
+interface PathMatcher {
+  test(path: string): boolean;
+}
 
 /** Path pattern → the fast gates that read it. Exported for the tests. */
-export const GATE_MAP: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
+export const GATE_MAP: ReadonlyArray<readonly [PathMatcher, readonly string[]]> = [
   [
     /^packages\/db\/migrations\//,
     ["arch:tenancy", "arch:ddl", "arch:migration-numbering", "arch:org-indexes"],
@@ -53,10 +59,8 @@ export const GATE_MAP: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
   [/(^|\/)(outbox|events?)[^/]*\.ts$|event-catalog/, ["arch:outbox-bindings"]],
   [/\.test\.tsx?$|^tsconfig|\/tsconfig/, ["arch:test-typecheck"]],
   [/^package\.json$|\.github\/workflows\/ci\.yml$/, ["arch:live-suites"]],
-  [
-    /^(compliance\/|\.claude\/|\.agents\/|\.codex\/|scripts\/harness\/|\.githooks\/|\.gitleaks\.toml$|\.gitignore$|CLAUDE\.md$|AGENTS\.md$)/,
-    ["arch:compliance"],
-  ],
+  // What the harness protects (one definition: `protected-paths.ts`) is what `arch:compliance` checks, plus `.gitignore`.
+  [{ test: (p: string) => isProtectedPath(p) || p === ".gitignore" }, ["arch:compliance"]],
 ];
 
 export function gatesFor(paths: readonly string[]): string[] {

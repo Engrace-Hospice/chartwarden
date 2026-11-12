@@ -109,6 +109,8 @@ export const PROTECTED_SAMPLES: readonly string[] = [
   "docs/codeowners",
   "deploy/production/x",
   ".trivyignore.yaml",
+  ".gitleaks.toml",
+  "codeowners",
   ".mcp.json",
   ".git/config",
   ".git/hooks/x",
@@ -128,8 +130,10 @@ export const PROTECTED_SAMPLES: readonly string[] = [
  */
 export const PROTECTED_FRAGMENT = new RegExp(
   [
-    String.raw`(?<![A-Za-z0-9_.-])(?<![A-Za-z0-9_-]\/)(?:\.claude\/(?:audit|\.cache|rules|agents|skills|commands|hooks|plugins|launch\.json)|\.agents\/(?!plans|prds)|scripts\/harness|compliance\/|\.githooks|\.github\/workflows|deploy\/production|\.gitleaks\.toml|\.trivyignore\.yaml|scripts\/check-compliance-controls|\.github\/codeowners)`,
+    String.raw`(?<![A-Za-z0-9_.-])(?<![A-Za-z0-9_-]\/)(?:\.claude\/(?:audit|\.cache|rules|agents|skills|commands|hooks|plugins|launch\.json)|\.agents\/(?!plans|prds)|scripts\/harness|compliance\/|\.githooks|\.github\/workflows|deploy\/production|\.gitleaks\.toml|\.trivyignore\.yaml|scripts\/check-compliance-controls|\.github\/codeowners|docs\/codeowners)`,
     String.raw`(?<![A-Za-z0-9_-])(?:\.claude\/settings(?:\.local)?\.json|\.codex\/(?!sessions)|\.?bunfig\.toml|agents\.override\.md|(?:agents|claude)(?:\.local)?\.md|\.mcp\.json|\.git\/(?:config|hooks|modules|worktrees))`,
+    // A bare CODEOWNERS only as a quoted word: the squashed copy of prose ("code owners") must not match.
+    String.raw`(?<=['"\x60])codeowners(?=['"\x60])`,
   ].join("|"),
   "i",
 );
