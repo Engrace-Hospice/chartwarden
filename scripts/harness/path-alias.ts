@@ -11,7 +11,7 @@ const FIRMLINK = /^\/system\/volumes\/data(?=\/|$)/i;
 const PRIVATE_LINK = /^\/private(?=\/(?:tmp|var|etc)(?:\/|$))/i;
 
 /** A path with the firmlink prefix removed and `/private` taken off `/tmp`, `/var` and `/etc`, lower case. */
-function fold(path: string): string {
+export function fold(path: string): string {
   const unlinked = path.replace(FIRMLINK, "").replace(PRIVATE_LINK, "");
   return (unlinked === "" ? "/" : unlinked).toLowerCase();
 }

@@ -59,7 +59,7 @@ import {
 } from "./inline-code";
 import { runsLiveSuite } from "./live-suite";
 import { type LongOption, optionValues } from "./option-values";
-import { relativeTo } from "./path-alias";
+import { fold, relativeTo } from "./path-alias";
 import {
   PROTECTED_FRAGMENT,
   PROTECTED_SAMPLES,
@@ -1142,7 +1142,11 @@ function heredocBodiesByPart(cmd: string, parsed: readonly Parsed[]): string[][]
 
 /** Where a path is, from each directory the command may run in: the same normalisation every path check uses. */
 const pathKeys = (raw: string, here: readonly Cwd[], ctx: BashContext): string[] =>
-  here.map((dir) => resolvePath(raw, dir, ctx) ?? `?${dir ?? ""}|${raw}`);
+  here.map((dir) => {
+    const rel = resolvePath(raw, dir, ctx);
+    // Folded, so `/tmp/x.sh`, `/private/tmp/x.sh`, `/TMP/x.sh` and the firmlink spelling are one file.
+    return rel === null ? `?${dir ?? ""}|${raw}` : fold(rel);
+  });
 
 /**
  * `cat > F <<'EOF' … EOF; bash F`: the text this command line wrote to a file, by file (see `written-scripts.ts`).
