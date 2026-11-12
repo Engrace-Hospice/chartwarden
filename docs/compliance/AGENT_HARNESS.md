@@ -289,12 +289,12 @@ over the whole repo root asks as well. The writers it understands are redirectio
 `git apply/am/checkout/restore/rm/mv/clean/format-patch -o/config --file/archive -o/bundle create`. It judges the commands inside `$( )`,
 backticks and `<( )`/`>( )` as command lines, and sees through `sudo`, `env`, `builtin` and `--`. It reads
 inline interpreter code and heredoc or stdin script bodies as text, with quotes and `+` removed. It cannot
-read a script file (`python3 /tmp/w.py`), computed or encoded names, glob targets, symlinked shell targets inside command text (a path it reads in the text is not followed), a `$VAR` path
+read a script file written by an earlier tool call (`python3 /tmp/w.py`; one written and run by the same command line is read, see Wave 4 below), computed or encoded names, glob targets, symlinked shell targets inside command text (a path it reads in the text is not followed), a `$VAR` path
 prefix, a path piped into `xargs`, `curl -O` or a bare `wget URL` (they write the URL's file name into the
 current directory; they are judged only when that directory is itself protected), a `$VAR` or computed program
 name (`${X:-git} push`, an array run as a command), or the writers it has no model for (`split`, `cpio -p`,
-compilers and bundlers with an output option such as `cc -o` or `tsc --outFile`, `git init --template`,
-`git clone --template`, and any program that writes where its own configuration says). Wave 3 added, each with a test file under `scripts/__tests__/harness-*.test.ts`:
+compilers and bundlers with an output option such as `cc -o` or `tsc --outFile`,
+and any program that writes where its own configuration says). Wave 3 added, each with a test file under `scripts/__tests__/harness-*.test.ts`:
 the `&&` trust of a `cd` is per command (only a group, a pipe or a `&` at or before a command cancels it, and the
 lines of a script a shell reads do; a later pipe does not); another spelling of the root or home (upper case,
 the `/System/Volumes/Data` firmlink, `/tmp` for `/private/tmp`) names the same protected file; a write to the bun
@@ -355,6 +355,44 @@ stop the rest of the command from being judged: a secret file name is still foun
 group builds from a stem and an optional suffix, because each word is also read one group at a time, linearly;
 only the clock and the judged-text budget stop judging. `baseName` and `trimSlashes` are linear (a regular
 expression for them was quadratic on a run of `/`). Reading a protected file does not ask; only a command that writes one does.
+A budget spent while paths are resolved no longer answers for the whole command: the command asks (as above) unless a
+later check in the same command line denies it, so a `psql` to a production host with thousands of redirect targets is
+still denied (`harness-hidden-path-budget.test.ts`).
+
+**Wave 4.** Each item has a test file under `scripts/__tests__/harness-*.test.ts`.
+- *Command lines git hands to a shell* (`git-exec-strings.ts`, `harness-git-exec-strings.test.ts`) are judged as
+  command lines: `git rebase -x|--exec`, `submodule foreach`, `bisect run`, `difftool -x|--extcmd`, `filter-branch
+  --*-filter`, `grep -O|--open-files-in-pager`, `instaweb --httpd|-b`, and `--upload-pack|--receive-pack|--exec` (and
+  `clone -u`) of fetch, pull, push, clone, ls-remote and archive, run where `git -C` puts them; so are the values of
+  `EDITOR`, `VISUAL`, `PAGER`, `GIT_EDITOR`, `GIT_PAGER`, `GIT_SEQUENCE_EDITOR`, `GIT_ASKPASS`, `SSH_ASKPASS`,
+  `GIT_SSH_COMMAND`, `GIT_PROXY_COMMAND` and `GIT_EXTERNAL_DIFF` (as a prefix, after `env`, or in `export`). A harmless string
+  (`git rebase -x 'bun run test'`) still allows. An exec-capable config key injected through `GIT_CONFIG_KEY_n` or
+  `GIT_CONFIG_PARAMETERS` is **denied** exactly as `git -c` is (one table, `git-config-rules.ts`); `GIT_DIR`,
+  `GIT_WORK_TREE`, `GIT_EXEC_PATH`, `GIT_TEMPLATE_DIR`, `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_ALLOW_PROTOCOL`, the global
+  options `--git-dir` and `--exec-path=`, an `ext::` remote URL, and `--template` of `git clone`/`git init` **ask**; `git clone -c|--config` of an
+  exec-capable key is **denied**; `protocol.allow` (the default policy that lets `ext::`
+  run) joins `protocol.ext.*` among the config keys that are denied. **Not decided by text:** a program named instead of a command line
+  (`GIT_ASKPASS=/tmp/x`, `git rebase -x ./run.sh`: the path is judged, the script behind it is not read), and `git -C <another
+  repository>`, whose own `.git/config` can name a `core.fsmonitor`.
+- *`git grep --no-index` and `--untracked --no-exclude-standard`* apply no .gitignore, so they ask over a directory that holds
+  a live env file that exists, as `grep -r` does (`git-grep-sweep.ts`, `harness-git-grep-sweep.test.ts`); `--exclude-standard`
+  (the last of the two wins), a plain `git grep`, and a directory without one stay allowed.
+- *A script written and run by one command line* (`written-scripts.ts`, `harness-written-scripts.test.ts`). A heredoc body is
+  data, so `cat > /tmp/x.sh <<'EOF' … EOF` and `bash /tmp/x.sh` hid the script. The text a command writes with a heredoc, a
+  here-string, a printed literal (`echo`/`printf`) or an `echo`/`printf` piped into `tee` is now matched, by the same path
+  normalisation as every other path (each directory a `cd` may have left it in), with a later command that runs the file: a shell
+  (`bash|sh|zsh|dash|ksh F`, `source F`, `. F`, `bash < F`), an interpreter (`python3|node|bun [run]|deno run|perl|ruby|php F`) or the
+  file itself (`./F`, `/tmp/F`), and judged as the script it is (shell text as a command line, other languages as inline code). **A
+  file written by an earlier tool call, built from a variable or a command's output (`cat a b > F`, `sed -i`), or edited in place stays
+  unread**: the guard sees one command line at a time. Heredoc data that nothing runs stays allowed.
+- *The live-suite ask* is for a command that RUNS a live suite (`bun run test:*:live`, `vitest` directly or through `bunx`, `npx`
+  or `bun x`, over a `.live.test` file); `bunx biome check x.live.test.ts` and the text of a script that only names a suite are not
+  one (`live-suite.ts`, `harness-live-suite.test.ts`). No rule that judges a command line (a push to main, a production
+  database host, `docker compose config`, an upload) is applied to the text of an inline script that only names it.
+- *A backup copy of a file* (`.bak`, `~`, `.orig`, `.old`, `.save`, `.swp`) is judged by the file it copies (`backup-names.ts`,
+  `harness-backup-names.test.ts`): `.env.bak`, `tls.key.orig`, `server.pem.save` and `.env~` are refused, `src/x.ts.bak` and
+  `.gitleaks.toml.bak` are not, and a `.bak` of an original with no source extension (`prod.sql.bak`, `prod.bak`) is still a database
+  backup. A file named `*backup*` with an archive extension (`backup.tar.gz`) is refused.
 
 **Shell lexing.** `scripts/harness/shell-lex.ts` reads a command once, in one linear pass, before any rule
 runs; the line splitter, the redirection reader and the substitution scan all use its result, so a quote, an
@@ -411,7 +449,7 @@ Cannot cover:
 - A nested repo (below the Codex session directory) that plants the hook config, a guard script and `.git` by a
   means the shell text does not show (see "The root is where the guard script lives"), plain `merge`/`rebase`/
   `pull`/branch switching (above), the same writers through an interpreter script file or a `$VAR` path, and
-  `git init --template`/`git clone --template` (a template directory carries hooks).
+  a template directory handed to `git init`/`git clone` by a means other than `--template` (it carries hooks).
 - A program that reads a file through a construct the rules do not anticipate (a script it just wrote,
   a path piped into `xargs`, a compiled binary). Shell text is not a security boundary. The real fixes are a
   filesystem sandbox (Claude Code's sandbox read-deny for `.env*`, keys and dumps) or keeping live secret
