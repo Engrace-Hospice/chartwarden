@@ -276,7 +276,7 @@ export function ReferralDetail({
                         data-intake-primary-action="review"
                         disabled={busy === "review"}
                         onClick={() =>
-                          void run("review", async () => {
+                          void run("start-review", async () => {
                             await referralCommand(client, r.id, "review", {
                               ifVersion: r.version,
                             });
@@ -410,6 +410,7 @@ export function ReferralDetail({
                       <Button
                         size="sm"
                         tone="secondary"
+                        data-intake-primary-action="match"
                         disabled={
                           busy === "matches" ||
                           !["under_review", "pending_information"].includes(r.status)
@@ -688,6 +689,7 @@ export function ReferralDetail({
                     void run("save-info", async () => {
                       await patchReferral(client, r.id, {
                         ...edit,
+                        patientDobAtReceipt: edit.patientDobAtReceipt || undefined,
                         ifVersion: r.version,
                       });
                     })

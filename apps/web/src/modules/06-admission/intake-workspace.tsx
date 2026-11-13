@@ -43,6 +43,7 @@ export function IntakeWorkspace(): JSX.Element {
   const [referral, setReferral] = useState<ReferralView | null>(null);
   const [viewedStepId, setViewedStepId] = useState<IntakeStepId | null>(null);
   const [reviewingEarlierStep, setReviewingEarlierStep] = useState(false);
+  const [focusStepId, setFocusStepId] = useState<IntakeStepId | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,12 +77,18 @@ export function IntakeWorkspace(): JSX.Element {
           ? step.id === presentation.activeStepId && presentation.activeStepBlocked
             ? "blocked"
             : "in_progress"
-          : stepIndex(step.id) < activeIndex
+          : presentation.completedStepIds.includes(step.id)
             ? "complete"
             : "not_started",
       disabled: stepIndex(step.id) > activeIndex,
     }));
   }, [displayedStepId, presentation]);
+
+  useEffect(() => {
+    if (!focusStepId) return;
+    focusTask(focusStepId);
+    setFocusStepId(null);
+  }, [focusStepId]);
 
   if (loading) return <LoadingSpinner />;
   if (!referral || !presentation) {
@@ -100,6 +107,7 @@ export function IntakeWorkspace(): JSX.Element {
   const owner = referral.assignedToUserId
     ? referral.assignedToDisplayName || "Staff member"
     : "Unassigned";
+  const currentReferral = referral;
   const currentPresentation = presentation;
   const displayedCopy = stepCopy(displayedStepId, currentPresentation);
   const activeIndex = stepIndex(currentPresentation.activeStepId);
@@ -111,7 +119,7 @@ export function IntakeWorkspace(): JSX.Element {
     if (stepIndex(nextStepId) > activeIndex) return;
     setViewedStepId(nextStepId === currentPresentation.activeStepId ? null : nextStepId);
     setReviewingEarlierStep(stepIndex(nextStepId) < activeIndex);
-    focusTask(nextStepId);
+    setFocusStepId(nextStepId);
   }
 
   function focusTask(stepId: IntakeStepId): void {
@@ -121,6 +129,22 @@ export function IntakeWorkspace(): JSX.Element {
   }
 
   function runPrimaryAction(): void {
+    if (
+      displayedStepId === "verify" &&
+      currentReferral.status === "pending_information" &&
+      !isReviewingEarlierStep
+    ) {
+      const resume = document.querySelector<HTMLButtonElement>(
+        '[data-intake-primary-action="review"]',
+      );
+      if (resume && !resume.disabled) {
+        resume.click();
+        return;
+      }
+      focusTask("verify");
+      return;
+    }
+
     if (displayedStepId === "verify") {
       const save = document.querySelector<HTMLButtonElement>(
         '[data-intake-primary-action="save-info"]',
@@ -148,11 +172,15 @@ export function IntakeWorkspace(): JSX.Element {
     if (isReviewingEarlierStep) {
       setViewedStepId(null);
       setReviewingEarlierStep(false);
-      focusTask(currentPresentation.activeStepId);
+      setFocusStepId(currentPresentation.activeStepId);
       return;
     }
 
-    if (currentPresentation.primaryAction.href.startsWith("/admissions/")) {
+    if (
+      currentPresentation.primaryAction.href.startsWith("/admissions/") ||
+      (currentPresentation.primaryAction.href.startsWith("/referrals/") &&
+        ["declined", "duplicate", "withdrawn", "converted"].includes(currentReferral.status))
+    ) {
       navigate(currentPresentation.primaryAction.href);
       return;
     }
@@ -173,7 +201,7 @@ export function IntakeWorkspace(): JSX.Element {
   }
 
   function handleActionComplete(action: string): void {
-    setViewedStepId(action === "review" ? "verify" : null);
+    setViewedStepId(action === "start-review" ? "verify" : null);
     setReviewingEarlierStep(false);
   }
 

@@ -2890,9 +2890,15 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async updateReferral(organizationId, id, input, ifVersion): Promise<MutationResult> {
+    async updateReferral(
+      organizationId,
+      id,
+      input,
+      ifVersion,
+      actorUserId,
+    ): Promise<MutationResult> {
       // Metadata edit — no state change; still optimistic-locked (§7.1 concurrency).
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
         if (!["received", "under_review", "pending_information"].includes(cur.status)) {

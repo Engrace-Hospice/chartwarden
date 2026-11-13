@@ -258,6 +258,16 @@ export function ReferralInbox(): JSX.Element {
                 Clear filters
               </button>
             ) : null}
+            {nextCursor ? (
+              <button
+                type="button"
+                className="wx-btn-secondary"
+                onClick={() => void load(nextCursor)}
+                disabled={loading}
+              >
+                Load more
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="wx-list-table-wrap">

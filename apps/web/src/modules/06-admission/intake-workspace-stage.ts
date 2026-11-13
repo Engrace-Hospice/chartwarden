@@ -83,7 +83,7 @@ export function deriveIntakeWorkspace(
     ) {
       return {
         activeStepId: "match",
-        completedStepIds: ["receive"],
+        completedStepIds: ["receive", "verify"],
         activeStepBlocked: true,
         queueLabel,
         heading: "Resolve the patient identity",
@@ -98,7 +98,7 @@ export function deriveIntakeWorkspace(
 
     return {
       activeStepId: "review",
-      completedStepIds: ["receive", "match"],
+      completedStepIds: ["receive", "verify", "match"],
       activeStepBlocked: blockers.length > 0,
       queueLabel,
       heading: blockers.length > 0 ? "Address referral blockers" : "Complete referral review",
@@ -117,7 +117,7 @@ export function deriveIntakeWorkspace(
   if (referral.status === "qualified") {
     return {
       activeStepId: "handoff",
-      completedStepIds: ["receive", "match", "review"],
+      completedStepIds: ["receive", "verify", "match", "review"],
       activeStepBlocked: false,
       queueLabel,
       heading: "Review and start the admission",
@@ -134,7 +134,7 @@ export function deriveIntakeWorkspace(
   if (referral.status === "converted" && referral.convertedAdmissionId) {
     return {
       activeStepId: "requirements",
-      completedStepIds: ["receive", "match", "review", "handoff"],
+      completedStepIds: ["receive", "verify", "match", "review", "handoff"],
       activeStepBlocked: false,
       queueLabel,
       heading: "Admission started",

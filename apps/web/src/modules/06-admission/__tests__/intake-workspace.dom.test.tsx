@@ -115,10 +115,11 @@ function clientFor(value: ReferralView = referral): ApiClient {
   } as unknown as ApiClient;
 }
 
-function renderWorkspace(value?: ReferralView): void {
+function renderWorkspace(value?: ReferralView): ApiClient {
+  const client = clientFor(value);
   render(
     <MemoryRouter initialEntries={[`/referrals/${referral.id}/intake`]}>
-      <ApiClientProvider client={clientFor(value)}>
+      <ApiClientProvider client={client}>
         <SessionProvider session={session}>
           <Routes>
             <Route path="/referrals/:id/intake" element={<IntakeWorkspace />} />
@@ -129,6 +130,7 @@ function renderWorkspace(value?: ReferralView): void {
       </ApiClientProvider>
     </MemoryRouter>,
   );
+  return client;
 }
 
 describe("IntakeWorkspace", () => {
@@ -168,7 +170,7 @@ describe("IntakeWorkspace", () => {
     renderWorkspace({ ...referral, state: "received", status: "received" });
 
     const review = await screen.findByRole("button", { name: "Start review & continue" });
-    expect(screen.getByRole("button", { name: "Start review" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Start review" })).toBeTruthy();
     fireEvent.click(review);
 
     expect(screen.getByRole("navigation", { name: "Intake progress" })).toBeTruthy();
@@ -219,10 +221,11 @@ describe("IntakeWorkspace", () => {
   });
 
   it("shows the exact review fields that block progress and saves them before qualification", async () => {
-    renderWorkspace({
+    const client = renderWorkspace({
       ...referral,
       patientId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       patientResolutionStatus: "created",
+      patientDobAtReceipt: null,
       referringDxText: "",
       referrerName: null,
       referrerOrganization: null,
@@ -254,10 +257,46 @@ describe("IntakeWorkspace", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save review information" }));
 
+    expect(client.PATCH).toHaveBeenCalledWith(
+      "/api/v1/referrals/{id}",
+      expect.objectContaining({
+        body: expect.objectContaining({ patientDobAtReceipt: undefined }),
+      }),
+    );
+
     const complete = await screen.findByRole("button", { name: "Complete referral review" });
     fireEvent.click(complete);
     expect(
       await screen.findByRole("heading", { name: "Review and start the admission" }),
     ).toBeTruthy();
+  });
+
+  it("returns a pending-information referral to review from the primary action", async () => {
+    renderWorkspace({
+      ...referral,
+      state: "pending_information",
+      status: "pending_information",
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Return to referral review" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Resolve the patient identity" }),
+    ).toBeTruthy();
+  });
+
+  it("opens history for a terminal referral without marking intermediate steps complete", async () => {
+    renderWorkspace({
+      ...referral,
+      state: "declined",
+      status: "declined",
+      qualificationBlockers: [],
+    });
+
+    const verifyStep = await screen.findByRole("button", { name: /verify information/i });
+    expect(verifyStep.textContent).not.toContain("✓");
+    fireEvent.click(screen.getByRole("button", { name: "View referral history" }));
+
+    expect(await screen.findByText("Referral detail opened")).toBeTruthy();
   });
 });

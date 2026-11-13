@@ -909,6 +909,7 @@ export interface AdmissionRouteService {
     id: string,
     input: ReferralUpdateInput,
     ifVersion: number,
+    actorUserId: string,
   ): Promise<MutationResult>;
   triageReferral(
     organizationId: string,
@@ -1987,7 +1988,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = get(organizationId, id, "referral");
       return rec ? referralView(rec) : null;
     },
-    async updateReferral(organizationId, id, input, ifVersion) {
+    async updateReferral(organizationId, id, input, ifVersion, _actorUserId) {
       const rec = get(organizationId, id, "referral") ?? notFound(id);
       if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
       if (!["received", "under_review", "pending_information"].includes(rec.state)) {

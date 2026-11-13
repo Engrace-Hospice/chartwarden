@@ -57,6 +57,7 @@ describe("deriveIntakeWorkspace", () => {
   it("directs an unresolved referral to explicit patient matching", () => {
     expect(deriveIntakeWorkspace(referral())).toMatchObject({
       activeStepId: "match",
+      completedStepIds: ["receive", "verify"],
       primaryAction: {
         label: "Resolve patient match",
         href: "/referrals/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa#patient-resolution",
@@ -73,6 +74,7 @@ describe("deriveIntakeWorkspace", () => {
     );
 
     expect(presentation.activeStepId).toBe("review");
+    expect(presentation.completedStepIds).toEqual(["receive", "verify", "match"]);
     expect(presentation.primaryAction.label).toBe("Address review blockers");
     expect(presentation.blockers).toEqual(["Add admission details."]);
   });
@@ -85,6 +87,13 @@ describe("deriveIntakeWorkspace", () => {
       }),
     );
     expect(presentation.activeStepId).toBe("requirements");
+    expect(presentation.completedStepIds).toEqual([
+      "receive",
+      "verify",
+      "match",
+      "review",
+      "handoff",
+    ]);
     expect(presentation.completedStepIds).not.toContain("requirements");
     expect(presentation.primaryAction).toEqual({
       label: "View admission",
