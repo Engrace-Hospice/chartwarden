@@ -3211,6 +3211,8 @@ export interface RouteEnrichment {
   headers?: Record<string, { required?: boolean; description?: string }>;
   /** The route's actual success status code (`reply.code(...)`). Default 200 when omitted. */
   status?: 200 | 201 | 202 | 204;
+  /** Other success codes returning the same response schema (for routes whose create/update paths differ). */
+  additionalSuccessStatuses?: readonly (200 | 201 | 202 | 204)[];
   /** Human summary for the operation. */
   summary?: string;
 }
@@ -4071,12 +4073,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
   },
-  // ── MAC credentials (mac-credentials.routes.ts, §3.6) ──
-  "POST /api/v1/billing/mac-credentials": {
-    summary:
-      "Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35)",
-    body: UpsertMacCredentialBodySchema,
-  },
+  // ── MAC credentials (mac-credentials.routes.ts, §3.6): the POST upsert is enriched beside its view schema, near the GETs ──
   // ── EDI profile (edi-profile.routes.ts; migration 1268) ──
   "PUT /api/v1/billing/edi-profiles/:providerEntityId/:routeKey": {
     summary:
@@ -10894,8 +10891,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34WizardStepViewSchema,
   },
   "POST /api/v1/tenant/onboarding/:taskId/skip": {
-    summary: "Skip an allowlisted tenant onboarding step with step-up and a recorded rationale",
+    summary:
+      "The organization's own \"this does not apply to us\" for MAC credentials, payer enrollment or DoseSpot kickoff (org_admin only; a fresh step-up; no AI actor; Idempotency-Key required). The rationale is screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE for any other step (sample data and a step an operator added stay operator-only), 409 ONBOARDING_STEP_OUT_OF_ORDER, 409 ONBOARDING_STEP_ALREADY_SETTLED. Recorded as the tenant's (the step's `skippedBy` says tenant, with the rationale, which the go-live approver sees) and, like any onboarding-data change, voids a pending go-live attestation. Reversible by re-opening",
     body: M34SkipOnboardingTaskRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34WizardStepViewSchema,
   },
   "PATCH /api/v1/tenant/org-profile": {
@@ -10935,13 +10934,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34SupportConsentGrantViewSchema,
   },
   "GET /api/v1/tenant/support-sessions": {
-    summary: "Tenant-visible support sessions, with operator identity removed (cursor-paginated)",
+    summary:
+      "ChartWarden support sessions on the organization, newest first: when each started, when it expires or ended and why, and how many actions it took (never an operator's id, name or address). Requires the support-consent-grant list key; a list read, audited",
     query: M34TenantSupportSessionListQuerySchema,
     response: M34TenantSupportSessionListResponseSchema,
   },
   "GET /api/v1/tenant/support-sessions/:id/events": {
     summary:
-      "Tenant-visible support-session ledger, with operator identity removed (cursor-paginated)",
+      "A support session's ledger on the organization, newest first: its start, close and every write the operator made under it, as the route template, method and status (never a body, an id from it, or the operator's address). Requires the support-consent-grant list key; a list read, audited",
     query: M34TenantSupportSessionListQuerySchema,
     response: M34TenantSupportSessionEventListResponseSchema,
   },
@@ -10953,16 +10953,19 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/tenant/help-requests": {
     summary: "File a non-PHI onboarding help request",
     body: M34FileHelpRequestRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34HelpRequestViewSchema,
   },
   "POST /api/v1/tenant/help-requests/:id/approve": {
     summary: "Approve a help request and issue its time-boxed non-PHI assist grant",
     body: M34ApproveHelpRequestRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34HelpRequestViewSchema,
   },
   "POST /api/v1/tenant/help-requests/:id/close": {
     summary: "Close the tenant's help request and revoke any linked support access",
     body: M34CloseHelpRequestRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34HelpRequestViewSchema,
   },
 
@@ -11037,12 +11040,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Start a session against a consent grant (distinct actor, by membership and by person; passkey-5min step-up). The session, its ledger and its audit are recorded in the grant's (the tenant's) organization, never the operator's. 409 SUPPORT_GRANT_INACTIVE when the grant is revoked or expired",
     body: M34StartSessionRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34StartSessionAckSchema,
+    status: 201,
   },
   "POST /api/v1/platform/support-sessions/:id/close": {
     summary:
       "Close a session with reason='manual' (no step-up): the close stamp, a session.close ledger row, a critical audit, m34.support_session.expired (closeReason manual_close) and the grantor alert. Repeatable: a session already closed answers its reason and writes nothing more",
     body: M34CloseSessionRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34CloseSessionAckSchema,
   },
   "GET /api/v1/platform/support-consent-grants": {
@@ -11051,13 +11057,16 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34PlatformSupportConsentGrantListResponseSchema,
   },
   "GET /api/v1/platform/help-requests": {
-    summary: "Cross-tenant onboarding help inbox",
+    summary:
+      "The operators' help inbox across tenants (platform ops; audited list read): each row's phase (waiting_for_consent, ready_to_start, in_session, ended), the step, the tenant, the consent grant id to start a support session against, and the session summary. `status` filters by a comma-separated list and defaults to open,approved (the live requests; ask for resolved or cancelled by name; the nav badge asks open,approved with limit 1). A page is at most 50 rows",
     query: M34PlatformHelpRequestListQuerySchema,
     response: M34PlatformHelpRequestListResponseSchema,
   },
   "POST /api/v1/platform/help-requests/:id/resolve": {
-    summary: "Resolve an onboarding help request and revoke its linked support access",
+    summary:
+      "End help from ChartWarden's side with a tenant-visible note of 8 to 500 characters (platform ops; no AI actor; Idempotency-Key required): revokes its consent grant and closes the request's open support sessions with it (close reason grant_revoked), and resolves the request (an open request, which has no grant, is resolved with the note alone). It ends the consent and the session, not ChartWarden's contractual access to onboard the tenant",
     body: M34ResolveHelpRequestRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34PlatformHelpRequestViewSchema,
   },
 
@@ -13340,7 +13349,9 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403). 403 SUPPORT_SESSION_NON_PHI on a session opened against an assist grant: it has no PHI to read or write",
     body: M34ElevateSessionRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M34ElevateSessionAckSchema,
+    status: 201,
   },
   "POST /api/v1/tenant/dsar-export-jobs/:id/fulfill": {
     summary: "Flip a DSAR job to fulfilled + trigger presigned-URL email (step-up)",
@@ -13904,6 +13915,13 @@ const M23RuleConfigListResponse = Type.Object({
   hasMore: Type.Boolean(),
 });
 
+/**
+ * What `lastSandboxTestAt` and the test route's `ok` mean. The probe is the launch gateway's portal health check for the credential's
+ * jurisdiction: it sends neither the secret nor the client id, so it cannot say the credential works (the secret is first used by the
+ * first real submission). The names stay; the words must not promise more than the check does.
+ */
+const M23_MAC_PORTAL_CHECK_NOTE =
+  "It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used)";
 const M23MacCredentialView = Type.Object({
   credentialId: Type.String(),
   organizationId: Type.String(),
@@ -13915,7 +13933,9 @@ const M23MacCredentialView = Type.Object({
   hasSecret: Type.Boolean(),
   baaRecordRef: Type.Union([Type.String(), Type.Null()]),
   credentialExpiresAt: Type.Union([Type.String(), Type.Null()]),
-  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()]),
+  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()], {
+    description: `When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. ${M23_MAC_PORTAL_CHECK_NOTE}.`,
+  }),
   version: Type.Integer(),
   createdAt: Type.String(),
   updatedAt: Type.String(),
@@ -13928,11 +13948,21 @@ const M23MacCredentialListResponse = Type.Object({
 const M23MacCredentialTestResponse = Type.Object({
   providerEntityId: Type.String(),
   macJurisdiction: Type.String(),
-  ok: Type.Boolean(),
-  method: Type.Literal("portal_health_probe"),
-  detail: Type.String(),
+  ok: Type.Boolean({
+    description: `True when the MAC portal for the credential's jurisdiction answered. ${M23_MAC_PORTAL_CHECK_NOTE}.`,
+  }),
+  method: Type.Literal("portal_health_probe", {
+    description:
+      "Always portal_health_probe: the check calls the jurisdiction's MAC portal health endpoint. It does not submit a test claim and does not use the stored credential.",
+  }),
+  detail: Type.String({
+    description:
+      "What the check saw (the portal answered or did not). It is never about the credential itself.",
+  }),
   checkedAt: Type.String(),
-  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()]),
+  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()], {
+    description: `The time the credential now records for this check: set when the portal answered, null when it did not. ${M23_MAC_PORTAL_CHECK_NOTE}.`,
+  }),
 });
 const M23ValidationOverrideAuditPage = Type.Object({
   items: Type.Array(
@@ -13952,6 +13982,15 @@ const M23ValidationOverrideAuditPage = Type.Object({
   hasMore: Type.Boolean(),
 });
 const M23MacCredentialByProviderResponse = Type.Union([M23MacCredentialView, Type.Null()]);
+/** The upsert pins the version it changes: absent on a first save, required on a change (428 / 409). */
+const M23_MAC_CREDENTIAL_WRITE_HEADERS = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  "If-Match": {
+    required: false,
+    description:
+      "The credential's current integer version; required to change an existing credential (428 IF_MATCH_REQUIRED without one, 409 STALE_VERSION when stale), absent on a first save.",
+  },
+};
 
 const M23ArAgingDto = Type.Object({
   bucket0to30Cents: Type.Integer(),
@@ -14038,8 +14077,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/billing/mac-credentials/:providerEntityId/test": {
     summary:
-      "Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up (§4.1 #36)",
+      "Check that the MAC portal for this credential's jurisdiction answers (a portal health probe) and, when it does, record the time as lastSandboxTestAt. It does not validate the credential: the secret, client id and submitter id are not sent, and the first real submission is the first time they are used. billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; 503 when no MAC gateway is configured (§4.1 #36)",
+    headers: IDEMPOTENCY_KEY_HEADER,
     response: M23MacCredentialTestResponse,
+  },
+  "POST /api/v1/billing/mac-credentials": {
+    summary:
+      "Upsert a MAC credential: create (201) or version-checked change (200, If-Match). clientSecret is write-only and encrypted at the boundary, never returned; billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; an AI actor is refused (§4.1 #35)",
+    body: UpsertMacCredentialBodySchema,
+    headers: M23_MAC_CREDENTIAL_WRITE_HEADERS,
+    status: 201,
+    additionalSuccessStatuses: [200],
+    response: M23MacCredentialView,
   },
   "GET /api/v1/billing/validation-overrides": {
     summary:
@@ -16218,16 +16267,16 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/tenant/clearinghouse/baa": {
     summary:
-      "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. Recording a BAA also clears a revocation by a platform operator (it is a new agreement, so it starts again at unverified; re-recording the same document counts, but the operator must then acknowledge that the document was revoked before). Leaving the vendor (a vendor change, or outside) clears it too. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+      "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information), pinned by If-Match to the clearinghouse version the administrator read. A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. Recording a BAA also clears a revocation by a platform operator (it is a new agreement, so it starts again at unverified; re-recording the same document counts, but the operator must then acknowledge that the document was revoked before). Leaving the vendor (a vendor change, or outside) clears it too. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key and If-Match required; an AI actor is refused",
     body: M23RecordBaaBodySchema,
-    headers: IDEMPOTENCY_KEY_HEADER,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
     response: M23ClearinghouseConfigViewSchema,
   },
   "POST /api/v1/tenant/clearinghouse/verify": {
     summary:
-      "Verify the vendor connection: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note and the confirmation that it names no patient information where it has none (Stedi). The vendor probe runs with no transaction open (409 CLEARINGHOUSE_CHANGED_DURING_VERIFY if the config moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome and leaves the config at draft. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
+      "Verify the vendor connection, pinned by If-Match to the clearinghouse version the administrator read: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note and the confirmation that it names no patient information where it has none (Stedi). The vendor probe runs with no transaction open (409 CLEARINGHOUSE_CHANGED_DURING_VERIFY if the config moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome and leaves the config at draft. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key and If-Match required",
     body: M23VerifyClearinghouseBodySchema,
-    headers: IDEMPOTENCY_KEY_HEADER,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
     response: M23VerifyClearinghouseResponseSchema,
   },
   "POST /api/v1/tenant/clearinghouse/activate": {

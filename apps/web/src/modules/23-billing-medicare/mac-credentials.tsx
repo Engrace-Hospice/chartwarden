@@ -25,8 +25,8 @@ import {
 // challenge). The first insert omits If-Match; an update carries the §2.5 version (409 STALE_VERSION on stale). Every
 // mutation carries an Idempotency-Key (§4.1.1). The server is the only authz point (ADR-0030): a 401/403
 // surfaces inline as "step-up required", a 409 as "reopen to retry", a 503 as a seam notice — never a toast.
-// Identifiers render through MaskedIdentifier (read-only mask; no reveal seam is exposed). The Test-Sandbox
-// affordance is shown but inert — no sandbox-test route is exposed by the M23 API (no backend changes here).
+// Identifiers render through MaskedIdentifier (read-only mask; no reveal seam is exposed). The portal-health
+// timestamp says only when the jurisdiction's MAC portal last answered; it never validates the stored credential.
 // Lantern: AdminSplitLayout, No-Line rail, §6.6 StatusPills, CSS-var tokens only. openapi emits no billing
 // schemas → reads cast, inits `as never`.
 import { useCallback, useEffect, useState } from "react";
@@ -85,6 +85,12 @@ interface UpsertDraft {
   credentialExpiresAt: string;
   /** Present only when editing an existing credential (drives the If-Match version on PUT-like upsert). */
   version: number | null;
+}
+
+function validationMessage(error: unknown): string | null {
+  const detail = (error as { error?: { details?: Array<{ message?: unknown }> } } | null)?.error
+    ?.details?.[0]?.message;
+  return typeof detail === "string" && detail.length > 0 ? detail : null;
 }
 
 function emptyDraft(): UpsertDraft {
@@ -497,7 +503,7 @@ function CredentialDetail({
             "—"
           )}
         </Desc>
-        <Term label="Last sandbox test" />
+        <Term label="MAC portal last answered" />
         <Desc>
           <span style={{ fontVariantNumeric: "tabular-nums", color: t.onSurfaceVariant }}>
             {credential.lastSandboxTestAt
@@ -509,12 +515,8 @@ function CredentialDetail({
 
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
         <Button onClick={onEdit}>Edit credential</Button>
-        <Button
-          disabled
-          title="No sandbox-test route is exposed by the billing API."
-          tone="secondary"
-        >
-          Test sandbox
+        <Button disabled title="Portal checks are run by the onboarding workflow." tone="secondary">
+          Check portal
         </Button>
       </div>
     </section>
@@ -591,7 +593,7 @@ function UpsertCeremony({
           : s === 409
             ? "This credential changed since you opened it — reopen to retry."
             : s === 422
-              ? "The credential was rejected — review the fields."
+              ? (validationMessage(err) ?? "The credential was rejected — review the fields.")
               : s === 503
                 ? "Billing write seam unavailable — try again shortly."
                 : "The credential could not be saved.",

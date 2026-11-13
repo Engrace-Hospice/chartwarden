@@ -122,6 +122,8 @@ export interface NpiVerificationChange {
 export interface NpiVerificationDeps {
   readonly runner?: NpiVerificationRunner;
   readonly now?: () => Date;
+  /** Serialize the readiness-changing write with M34 go-live approval before any verification row changes. */
+  readonly beforeVerificationChanged: (tx: DbClient, organizationId: string) => Promise<void>;
   /**
    * Runs in the SAME platform transaction as every verify and revoke. The verification is the `ccn_registered` step's data (the
    * entity's NPI verified against the registry): M34 revokes a pending go-live attestation it makes stale there (M23 does not
@@ -190,6 +192,7 @@ export function buildDrizzleNpiVerificationService(
       assertNoPatientIdentifier("evidence", args.evidence);
       return platform(async (tx) => {
         const entity = await entityOrThrow(tx, providerEntityId);
+        await deps.beforeVerificationChanged(tx, entity.organizationId);
         if (entity.npi !== args.npi) {
           throw new ChartWardenError(
             "NPI_CHANGED",
@@ -228,6 +231,7 @@ export function buildDrizzleNpiVerificationService(
     revoke: (actor, providerEntityId) =>
       platform(async (tx) => {
         const entity = await entityOrThrow(tx, providerEntityId);
+        await deps.beforeVerificationChanged(tx, entity.organizationId);
         const live = await liveRow(tx, entity.id);
         if (!live) {
           throw new ChartWardenError(

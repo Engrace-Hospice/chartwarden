@@ -195,6 +195,7 @@ export type SupportSessionRepository = Pick<
   | "markConsentGrantRevoked"
   | "createSession"
   | "findSessionById"
+  | "findSessionByIdForUpdate"
   | "closeSessionIfOpen"
   | "listOpenSessionsByGrant"
   | "listSessionIdsClosedAs"
@@ -349,10 +350,20 @@ export async function elevateSupportSession(
   deps: SupportSessionServiceDeps,
   input: ElevateSupportSessionInput,
 ): Promise<{ elevationExpiresAt: Date }> {
-  const session = await deps.repo.findSessionById(input.supportSessionId);
-  require_(session !== null, "SUPPORT_SESSION_NOT_OPEN", "support_session not found");
-  const grant = await deps.repo.findConsentGrantById(session.supportConsentGrantId);
+  // Resolve the grant id without taking the session lock, then lock in the same order as revoke:
+  // grant first, session second. That avoids a session↔grant deadlock and makes consent revocation
+  // serialize before the elevation decision and every effect it records.
+  const candidate = await deps.repo.findSessionById(input.supportSessionId);
+  require_(candidate !== null, "SUPPORT_SESSION_NOT_OPEN", "support_session not found");
+  const grant = await deps.repo.findConsentGrantByIdForShare(candidate.supportConsentGrantId);
   require_(grant !== null, "SUPPORT_GRANT_NOT_FOUND", "support_consent_grant not found");
+  const session = await deps.repo.findSessionByIdForUpdate(input.supportSessionId);
+  require_(session !== null, "SUPPORT_SESSION_NOT_OPEN", "support_session not found");
+  require_(
+    session.supportConsentGrantId === grant.id,
+    "SUPPORT_SESSION_NOT_OPEN",
+    "the support session consent changed while elevation was being authorized",
+  );
   require_(
     session.actorMembershipId === input.actorMembershipId,
     "SUPPORT_SESSION_NOT_OPEN",
@@ -368,6 +379,11 @@ export async function elevateSupportSession(
   );
 
   const now = deps.now();
+  require_(
+    grant.revokedAt === null && grant.expiresAt.getTime() > now.getTime(),
+    "SUPPORT_GRANT_INACTIVE",
+    "the consent grant is revoked or expired",
+  );
   const open = session.closedAt === null && session.expiresAt.getTime() > now.getTime();
   require_(open, "SUPPORT_SESSION_NOT_OPEN", "the support session is closed or expired");
 

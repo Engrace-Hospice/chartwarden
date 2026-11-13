@@ -24,7 +24,11 @@ export type Script = Array<"throw" | number>;
  * A fetch stub for createApiClient: GETs answer `getBody(path)` (200); each write consumes the next script entry ("throw"
  * rejects like a dropped connection, a number is the HTTP status, default 201) and records its Idempotency-Key.
  */
-export function scriptedFetch(script: Script, getBody: (path: string) => unknown = () => ({})) {
+export function scriptedFetch(
+  script: Script,
+  getBody: (path: string) => unknown = () => ({}),
+  errorBody: (status: number) => unknown = () => ({ error: { code: "X", message: "refused" } }),
+) {
   const keys: string[] = [];
   const reply = (code: number, body: unknown) =>
     new Response(JSON.stringify(body), {
@@ -42,9 +46,7 @@ export function scriptedFetch(script: Script, getBody: (path: string) => unknown
     keys.push(req?.headers.get("Idempotency-Key") ?? "");
     const next = script.shift() ?? 201;
     if (next === "throw") throw new TypeError("network down");
-    return next < 300
-      ? reply(next, { id: "x", ok: true })
-      : reply(next, { error: { code: "X", message: "refused" } });
+    return next < 300 ? reply(next, { id: "x", ok: true }) : reply(next, errorBody(next));
   };
   return { keys, fetchStub };
 }

@@ -8,9 +8,10 @@ import {
   InlineAlert,
   LoadingSpinner,
   StepRail,
+  type operations,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ProvisioningCard } from "../provisioning-card";
@@ -31,6 +32,36 @@ import {
 const tenantPath = (orgSlug: string): string => `/tenants/${encodeURIComponent(orgSlug)}`;
 const stepPath = (orgSlug: string, key: string): string =>
   `${tenantPath(orgSlug)}/onboarding/${encodeURIComponent(key)}`;
+
+type HelpPage =
+  operations["getApiV1PlatformHelprequests"]["responses"][200]["content"]["application/json"];
+
+function HelpRequestBanner({ tenantAccountId }: { tenantAccountId: string }): JSX.Element | null {
+  const client = useApiClient();
+  const [request, setRequest] = useState<HelpPage["items"][number] | null>(null);
+  useEffect(() => {
+    let live = true;
+    const load = async (): Promise<void> => {
+      const { data } = await client.GET("/api/v1/platform/help-requests", {
+        params: { query: { tenantAccountId, status: "open,approved", limit: 1 } },
+      });
+      if (live) setRequest(data?.items[0] ?? null);
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 60_000);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+    };
+  }, [client, tenantAccountId]);
+  if (!request) return null;
+  return (
+    <InlineAlert tone="info">
+      This tenant asked ChartWarden for onboarding help.{" "}
+      <Link to="/support/help-requests">Open the help request inbox</Link>.
+    </InlineAlert>
+  );
+}
 
 /** The shared list-screen frame (padding and width), as tenant-overview.tsx uses it. */
 function Frame({ children }: { children: ReactNode }): JSX.Element {
@@ -138,6 +169,8 @@ function WizardFor(): JSX.Element {
         </header>
 
         <StaleNotice stale={wizard.stale} onReload={() => void wizard.reload()} />
+
+        <HelpRequestBanner tenantAccountId={view.tenantAccountId} />
 
         {view.tenantStatus === "provisioning" ? (
           <ProvisioningCard

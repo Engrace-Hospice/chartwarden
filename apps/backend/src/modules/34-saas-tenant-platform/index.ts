@@ -305,7 +305,7 @@ const SLICE_M34_SIGNUP_SERVICE: _SignupIntentRouteService = {
  * `registerTenantPlatformAbacPredicates`.
  */
 import type { HelpRequestService } from "./help/help-request-contract";
-import { createUnbuiltHelpRequestService } from "./help/help-request-unbuilt";
+import { createUnboundHelpRequestService } from "./help/help-request-factory";
 import { type OnboardingWizard, createOnboardingWizard } from "./onboarding/wizard-service";
 import {
   createMemoryOrgProfile,
@@ -355,8 +355,8 @@ export function mountTenantPlatformRoutes(
      */
     supportLedger?: SupportLedgerHookDeps;
     /**
-     * Slice 7 - help requests, both surfaces. `service` absent => the stand-in that answers 501 NOT_IMPLEMENTED until piece 7B binds
-     * the real one; `fileRateLimit` is the per-member and per-organization cap on filing (absent => uncapped: tests, no-db boot).
+     * Slice 7 - help requests, both surfaces. `service` absent => a fail-closed 501 binding; route tests that need behavior inject the
+     * exported in-memory service explicitly. `fileRateLimit` is the per-member and per-organization cap on filing (absent => uncapped).
      */
     help?: { service?: HelpRequestService; fileRateLimit?: HelpRequestRateLimit };
     /** Operator-entered tenant onboarding data (provider entities, locations, MAC credential); absent => not mounted. */
@@ -400,7 +400,7 @@ export function mountTenantPlatformRoutes(
   _registerTenantKeyRingRoutes(app, { service: platformService });
   _registerOnboardingTemplateRoutes(app, { service: platformService });
   _registerSupportSessionRoutes(app, { service: platformService });
-  const helpService = services?.help?.service ?? createUnbuiltHelpRequestService();
+  const helpService = services?.help?.service ?? createUnboundHelpRequestService();
   registerPlatformHelpRequestRoutes(app, { service: helpService });
   _registerSignupIntentRoutes(app, { service: platformService });
   _registerBaaRegisterRoutes(app, { service: platformService });
@@ -520,6 +520,10 @@ export {
   createOnboardingTenantReader,
 } from "./onboarding/onboarding-tenant-reader";
 export { voidPendingGoLiveForDataChange } from "./onboarding/go-live-void";
+export {
+  ONBOARDING_WRITABLE_STATUSES,
+  lockTenantOnboardingShared,
+} from "./routes/platform/tenant-onboarding-lock";
 
 // Slice 7 - help requests: the service contract piece 7B implements, its failure codes and the filing cap's type.
 export type {
@@ -528,6 +532,27 @@ export type {
   PlatformHelpRequestView,
   TenantHelpRequestListView,
 } from "./help/help-request-contract";
+export {
+  type DrizzleHelpRequestServiceDeps,
+  buildDrizzleHelpRequestService,
+  createInMemoryHelpRequestService,
+  createUnboundHelpRequestService,
+} from "./help/help-request-factory";
+export {
+  createDrizzleHelpRequestRunner,
+  createLinkedHelpRequestPort,
+} from "./help/help-request-store-drizzle";
+export {
+  HELP_REQUEST_REQUESTED_EVENT,
+  type HelpOutboxPort,
+} from "./help/help-request-service";
+export {
+  HELP_REQUEST_SWEEP_QUEUE,
+  registerM34HelpRequestSweepWorker,
+  runHelpRequestSweep,
+  scheduleM34HelpRequestSweepJob,
+} from "./help/help-request-sweep";
+export { createUnboundSupportGrantOperations } from "./help/support-grant-operations-unbound";
 export {
   HELP_REQUEST_ID_DETAIL_FIELD,
   HelpRequestError,
