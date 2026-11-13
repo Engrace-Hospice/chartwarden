@@ -79,7 +79,7 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         label: "Admissions",
         icon: "user-plus",
         to: "/admissions",
-        // Referrals are the Admissions area's "Pending Referrals" tab, so the inbox, new referral,
+        // Referrals are the Admissions area's "Intake" tab, so the inbox, new referral,
         // referral detail and Intake review (DocLens faxes start with the referral) live here too —
         // switching between the area's tabs never moves the sidebar highlight.
         claims: ["/admissions", "/compliance/admissions", "/ipu", "/referrals", "/intake"],

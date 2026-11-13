@@ -322,6 +322,9 @@ describe("Referral Phase 2 workflow screens", () => {
     fireEvent.change(screen.getByLabelText("Organization"), {
       target: { value: "St. Mary's Hospital" },
     });
+    fireEvent.change(screen.getByLabelText("Date of birth"), {
+      target: { value: "1955-06-09" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /save referral information/i }));
 
     await waitFor(() =>
@@ -329,6 +332,7 @@ describe("Referral Phase 2 workflow screens", () => {
         "/api/v1/referrals/{id}",
         expect.objectContaining({
           body: expect.objectContaining({
+            patientDobAtReceipt: "1955-06-09",
             referrerOrganization: "St. Mary's Hospital",
             ifVersion: referral.version,
           }),

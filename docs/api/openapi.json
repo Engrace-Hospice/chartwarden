@@ -306646,6 +306646,10 @@
                   "ifVersion"
                 ],
                 "properties": {
+                  "patientDobAtReceipt": {
+                    "format": "date",
+                    "type": "string"
+                  },
                   "medicareNumberAtReceipt": {
                     "maxLength": 20,
                     "type": "string"

@@ -2901,6 +2901,7 @@ export function createDbAdmissionRouteService(
         const [r] = await tx
           .update(REF)
           .set({
+            patientDobAtReceipt: input.patientDobAtReceipt,
             medicareNumberAtReceipt:
               input.medicareNumberAtReceipt === undefined
                 ? undefined

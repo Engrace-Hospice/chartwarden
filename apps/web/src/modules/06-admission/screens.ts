@@ -38,6 +38,9 @@ const ReferralDetail = lazy(() =>
 const ReferralInbox = lazy(() =>
   import("./referral-inbox").then((m) => ({ default: m.ReferralInbox })),
 );
+const IntakeWorkspace = lazy(() =>
+  import("./intake-workspace").then((m) => ({ default: m.IntakeWorkspace })),
+);
 const DeathPronouncement = lazy(() =>
   import("./death-pronouncement").then((m) => ({ default: m.DeathPronouncement })),
 );
@@ -62,7 +65,7 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
     {
       id: "admission.referrals",
       path: "/referrals",
-      title: "Referral Inbox",
+      title: "Intake",
       navGroup: "Admissions",
       requiredPermission: "referral.read",
       screen: ReferralInbox,
@@ -117,6 +120,15 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       title: "Referral",
       requiredPermission: "referral.read",
       screen: ReferralDetail,
+    },
+    {
+      // Derived orientation shell over the existing M6 referral workflow. It owns no transitions:
+      // every primary action returns to the existing guarded referral/admission route.
+      id: "admission.intake-workspace",
+      path: "/referrals/:id/intake",
+      title: "Intake workspace",
+      requiredPermission: "referral.read",
+      screen: IntakeWorkspace,
     },
     {
       // Direct-intake create — also linked from the census header's "New admission" button.

@@ -107368,6 +107368,8 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: date */
+                    patientDobAtReceipt?: string;
                     medicareNumberAtReceipt?: string;
                     medicaidNumberAtReceipt?: string;
                     referringDxText?: string;

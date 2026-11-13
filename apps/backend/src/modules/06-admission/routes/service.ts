@@ -398,6 +398,7 @@ export interface AcceptReferralInput extends FirstBenefitPeriodInput {
 }
 
 export interface ReferralUpdateInput {
+  readonly patientDobAtReceipt?: string;
   readonly medicareNumberAtReceipt?: string;
   readonly medicaidNumberAtReceipt?: string;
   readonly referringDxText?: string;
@@ -1991,6 +1992,9 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
       if (!["received", "under_review", "pending_information"].includes(rec.state)) {
         throw new InvalidReferralStateError(id, rec.state, "update referral information");
+      }
+      if (input.patientDobAtReceipt !== undefined) {
+        rec.patientDobAtReceipt = input.patientDobAtReceipt;
       }
       if (input.sexAssignedAtBirth) rec.sexAssignedAtBirth = input.sexAssignedAtBirth;
       return transition(rec, rec.state, ifVersion);

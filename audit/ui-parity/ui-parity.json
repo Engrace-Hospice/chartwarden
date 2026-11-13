@@ -320,6 +320,14 @@
       "app": "web",
       "module": "06-admission",
       "moduleId": 6,
+      "id": "admission.intake-workspace",
+      "path": "/referrals/:id/intake",
+      "permission": "referral.read"
+    },
+    {
+      "app": "web",
+      "module": "06-admission",
+      "moduleId": 6,
       "id": "admission.create",
       "path": "/admissions/new",
       "permission": "admission.create"
