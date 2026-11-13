@@ -115,10 +115,13 @@ function clientFor(value: ReferralView = referral): ApiClient {
   } as unknown as ApiClient;
 }
 
-function renderWorkspace(value?: ReferralView): ApiClient {
+function renderWorkspace(
+  value?: ReferralView,
+  entry = `/referrals/${referral.id}/intake`,
+): ApiClient {
   const client = clientFor(value);
   render(
-    <MemoryRouter initialEntries={[`/referrals/${referral.id}/intake`]}>
+    <MemoryRouter initialEntries={[entry]}>
       <ApiClientProvider client={client}>
         <SessionProvider session={session}>
           <Routes>
@@ -174,9 +177,11 @@ describe("IntakeWorkspace", () => {
     fireEvent.click(review);
 
     expect(screen.getByRole("navigation", { name: "Intake progress" })).toBeTruthy();
-    expect(await screen.findByRole("button", { name: /verify information/i })).toHaveProperty(
-      "ariaCurrent",
-      "step",
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /verify information/i })).toHaveProperty(
+        "ariaCurrent",
+        "step",
+      ),
     );
     expect(screen.getByRole("heading", { name: "Verify the referral information" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Overview" })).toBeNull();
@@ -211,6 +216,18 @@ describe("IntakeWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Return to Match patient" }));
     expect(await screen.findByRole("heading", { name: "Patient Resolution" })).toBeTruthy();
+  });
+
+  it("restores the document-capture step from a DocLens return link", async () => {
+    renderWorkspace(referral, `/referrals/${referral.id}/intake?step=receive`);
+
+    expect(
+      await screen.findByRole("heading", { name: "Review the received referral" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Records" })).toBeTruthy();
+    expect(screen.getByText("No records yet")).toBeTruthy();
+    expect(screen.getAllByText(/continue with manual review/i)).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Return to Match patient" })).toBeTruthy();
   });
 
   it("keeps View full referral as the distinct full-record route", async () => {

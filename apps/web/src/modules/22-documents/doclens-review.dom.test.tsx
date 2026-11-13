@@ -142,12 +142,12 @@ const SESSION = {
   isAdmin: false,
 };
 
-function mount() {
+function mount(entry = `/intake/${BATCH}/review`) {
   return render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <SessionProvider session={SESSION}>
         <ToastProvider>
-          <MemoryRouter initialEntries={[`/intake/${BATCH}/review`]}>
+          <MemoryRouter initialEntries={[entry]}>
             <Routes>
               <Route path="/intake/:batchId/review" element={<DocLensReviewWorkspace />} />
             </Routes>
@@ -173,6 +173,15 @@ afterEach(() => {
 });
 
 describe("DocLens review workspace", () => {
+  it("returns to the same referral intake context without trusting an arbitrary target", async () => {
+    const referral = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const target = `/referrals/${referral}/intake?step=receive`;
+    mount(`/intake/${BATCH}/review?returnTo=${encodeURIComponent(target)}`);
+
+    const back = await screen.findByRole("link", { name: "Back to referral intake" });
+    expect(back.getAttribute("href")).toBe(target);
+  });
+
   it("(a) keeps Accept disabled until the source-view confirmation is ticked", async () => {
     mount();
     fireEvent.click(await waitFor(() => fieldRow(/^Home phone/)));

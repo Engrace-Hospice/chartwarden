@@ -453,6 +453,22 @@ describe("Referral Records tab (F-238 — intake starts with the referral)", () 
   it("shows an empty state when nothing has been filed", async () => {
     renderWithShell(<ReferralDetail />, recordsClient([]), `/referrals/${referral.id}?tab=records`);
     expect(await screen.findByText("No records yet")).toBeTruthy();
+    expect(screen.getByText(/continue with manual review/i)).toBeTruthy();
+  });
+
+  it("preserves an unreadable record and directs intake staff to continue manually", async () => {
+    const failedBatch = { ...batch, status: "parse_failed", review: null };
+    renderWithShell(
+      <ReferralDetail />,
+      recordsClient([failedBatch]),
+      `/referrals/${referral.id}?tab=records`,
+    );
+
+    expect(await screen.findByText("Could not read")).toBeTruthy();
+    expect(
+      screen.getByText(/keep the original record and continue the referral manually/i),
+    ).toBeTruthy();
+    expect(screen.getByRole("link", { name: /^View Fax received/ })).toBeTruthy();
   });
 
   it("Add records uploads the file, files it against the referral and starts DocLens", async () => {
@@ -520,5 +536,79 @@ describe("Referral Records tab (F-238 — intake starts with the referral)", () 
       }),
     );
     expect(await screen.findByText(/Records filed\. WardenLens is reading them/)).toBeTruthy();
+  });
+
+  it("reuses a verified document when filing fails, and guards a double submit", async () => {
+    const cryptoValue = { subtle: { digest: vi.fn(async () => new Uint8Array(32).buffer) } };
+    Object.defineProperty(globalThis, "crypto", { configurable: true, value: cryptoValue });
+    Object.defineProperty(window, "crypto", { configurable: true, value: cryptoValue });
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: vi.fn(async () => new Response(null, { status: 200 })),
+    });
+    let filingAttempts = 0;
+    const post = vi.fn(async (path: string) => {
+      if (path === "/api/v1/document-uploads")
+        return ok({
+          uploadId: "66666666-6666-4666-8666-666666666666",
+          uploadUrl: "https://storage.example/upload",
+          requiredHeaders: {},
+          expiresAt: "2026-10-04T10:05:00.000Z",
+        });
+      if (path === "/api/v1/document-uploads/{id}/complete")
+        return ok({
+          documentId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+          versionId: "v1",
+          versionNumber: 1,
+        });
+      if (path === "/api/v1/intake/uploads") {
+        filingAttempts += 1;
+        if (filingAttempts === 1) {
+          return {
+            data: undefined,
+            error: { message: "The filing service was temporarily unavailable." },
+            response: new Response(null, { status: 503 }),
+          };
+        }
+        return ok({ id: batch.id, status: "uploaded" });
+      }
+      if (path === "/api/v1/intake/uploads/{id}/extraction/run")
+        return ok({ batchId: batch.id, status: "queued" });
+      return ok({});
+    });
+    const client = recordsClient([], post as unknown as ApiClient["POST"]);
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}?tab=records`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add records" }));
+    const dialog = screen.getByRole("dialog");
+    const file = new File(["%PDF-1.7"], "hospital-records.pdf", { type: "application/pdf" });
+    fireEvent.change(within(dialog).getByLabelText("Records file"), { target: { files: [file] } });
+    const submit = within(dialog).getByRole("button", { name: "Upload and file" });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+
+    expect((await within(dialog).findByRole("alert")).textContent).toMatch(
+      /verified file is preserved/i,
+    );
+    expect(post.mock.calls.filter(([path]) => path === "/api/v1/document-uploads")).toHaveLength(1);
+    expect(
+      post.mock.calls.filter(([path]) => path === "/api/v1/document-uploads/{id}/complete"),
+    ).toHaveLength(1);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add records" }));
+    const reopenedDialog = screen.getByRole("dialog");
+    expect(within(reopenedDialog).getByRole("button", { name: "Retry filing" })).toBeTruthy();
+    fireEvent.click(within(reopenedDialog).getByRole("button", { name: "Retry filing" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        "/api/v1/intake/uploads/{id}/extraction/run",
+        expect.objectContaining({ params: { path: { id: batch.id } } }),
+      ),
+    );
+    expect(post.mock.calls.filter(([path]) => path === "/api/v1/document-uploads")).toHaveLength(1);
+    expect(post.mock.calls.filter(([path]) => path === "/api/v1/intake/uploads")).toHaveLength(2);
   });
 });

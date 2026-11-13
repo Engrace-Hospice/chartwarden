@@ -27,6 +27,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import { lifecycleTone } from "../../shell/document-lifecycle-tone";
+import { withIntakeReturnTo } from "../../shell/intake-return";
 import { IntakeUploadDialog } from "../../shell/intake-upload-dialog";
 import { ReferralRecordsRequests } from "./referral-records-requests";
 
@@ -114,9 +115,12 @@ const errorText = (err: unknown, fallback: string): string => {
 export function ReferralRecords({
   referralId,
   patientId,
+  reviewReturnTo,
 }: {
   referralId: string;
   patientId: string | null;
+  /** Guided-workspace context restored after M22 review. IDs only; never patient data. */
+  reviewReturnTo?: string;
 }): JSX.Element {
   const client = useApiClient();
   const [items, setItems] = useState<ReferralBatch[] | null>(null);
@@ -188,12 +192,12 @@ export function ReferralRecords({
         ) : items.length === 0 ? (
           <EmptyState
             title="No records yet"
-            description="Nothing has been filed against this referral. Add the faxed, emailed or scanned records the referral source sent."
+            description="Nothing has been filed against this referral. Add the faxed, emailed or scanned records the referral source sent, or continue with manual review when no document is available."
           />
         ) : (
           <ul style={list} aria-label="Intake batches">
             {items.map((b) => (
-              <BatchRow key={b.id} batch={b} />
+              <BatchRow key={b.id} batch={b} reviewReturnTo={reviewReturnTo} />
             ))}
           </ul>
         )}
@@ -224,7 +228,13 @@ export function ReferralRecords({
   );
 }
 
-function BatchRow({ batch: b }: { batch: ReferralBatch }): JSX.Element {
+function BatchRow({
+  batch: b,
+  reviewReturnTo,
+}: {
+  batch: ReferralBatch;
+  reviewReturnTo?: string;
+}): JSX.Element {
   const identity = b.identityStatus ? IDENTITY[b.identityStatus] : undefined;
   const sud = SUD_PILL[b.sudStatus];
   const conflict = b.recordsRequestConflict;
@@ -253,9 +263,18 @@ function BatchRow({ batch: b }: { batch: ReferralBatch }): JSX.Element {
             />
           ) : null}
         </div>
+        {b.status === "parse_failed" ? (
+          <span style={manualFallback}>
+            WardenLens could not read this file. Keep the original record and continue the referral
+            manually.
+          </span>
+        ) : null}
       </div>
       <Link
-        to={reviewable ? `/intake/${b.id}/review` : `/intake/${b.id}`}
+        to={withIntakeReturnTo(
+          reviewable ? `/intake/${b.id}/review` : `/intake/${b.id}`,
+          reviewReturnTo,
+        )}
         className={reviewable ? "wx-btn-primary" : undefined}
         aria-label={`${reviewable ? "Review" : "View"} ${channelLabel(b.sourceChannel)} received ${receivedAt(b.uploadedAt)}`}
       >
@@ -311,5 +330,9 @@ const noticeBox: CSSProperties = {
   border: "1px solid var(--color-outline-variant)",
   borderRadius: "8px",
   padding: "0.6rem 0.8rem",
+  fontSize: "0.875rem",
+};
+const manualFallback: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
   fontSize: "0.875rem",
 };

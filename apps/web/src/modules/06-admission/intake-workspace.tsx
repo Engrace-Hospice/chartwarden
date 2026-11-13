@@ -12,7 +12,7 @@ import {
 } from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { REFERRAL_TONE, stateLabel } from "./admission-status";
 import { AdmissionsTabs } from "./admissions-chrome";
 import { type IntakeStepId, deriveIntakeWorkspace } from "./intake-workspace-stage";
@@ -40,10 +40,10 @@ export function IntakeWorkspace(): JSX.Element {
   const { id = "" } = useParams();
   const client = useApiClient();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [referral, setReferral] = useState<ReferralView | null>(null);
-  const [viewedStepId, setViewedStepId] = useState<IntakeStepId | null>(null);
-  const [reviewingEarlierStep, setReviewingEarlierStep] = useState(false);
   const [focusStepId, setFocusStepId] = useState<IntakeStepId | null>(null);
+  const [advancingFromReview, setAdvancingFromReview] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,13 +60,18 @@ export function IntakeWorkspace(): JSX.Element {
   }, [client, id]);
 
   useEffect(() => {
-    setViewedStepId(null);
-    setReviewingEarlierStep(false);
+    setAdvancingFromReview(false);
     void load();
   }, [load]);
 
   const presentation = referral ? deriveIntakeWorkspace(referral) : null;
-  const displayedStepId = viewedStepId ?? presentation?.activeStepId ?? "receive";
+  const requestedStep = intakeStep(searchParams.get("step"));
+  const displayedStepId =
+    requestedStep &&
+    presentation &&
+    stepIndex(requestedStep) <= stepIndex(presentation.activeStepId)
+      ? requestedStep
+      : (presentation?.activeStepId ?? "receive");
   const steps = useMemo<readonly WorkflowStep[]>(() => {
     if (!presentation) return [];
     const activeIndex = stepIndex(presentation.activeStepId);
@@ -112,13 +117,13 @@ export function IntakeWorkspace(): JSX.Element {
   const displayedCopy = stepCopy(displayedStepId, currentPresentation);
   const activeIndex = stepIndex(currentPresentation.activeStepId);
   const displayedIndex = stepIndex(displayedStepId);
-  const isReviewingEarlierStep = reviewingEarlierStep && displayedIndex < activeIndex;
+  const isReviewingEarlierStep = displayedIndex < activeIndex && !advancingFromReview;
 
   function selectStep(stepId: string): void {
     const nextStepId = stepId as IntakeStepId;
     if (stepIndex(nextStepId) > activeIndex) return;
-    setViewedStepId(nextStepId === currentPresentation.activeStepId ? null : nextStepId);
-    setReviewingEarlierStep(stepIndex(nextStepId) < activeIndex);
+    setAdvancingFromReview(false);
+    setSearchParams(nextStepId === currentPresentation.activeStepId ? {} : { step: nextStepId });
     setFocusStepId(nextStepId);
   }
 
@@ -170,8 +175,8 @@ export function IntakeWorkspace(): JSX.Element {
     }
 
     if (isReviewingEarlierStep) {
-      setViewedStepId(null);
-      setReviewingEarlierStep(false);
+      setAdvancingFromReview(false);
+      setSearchParams({});
       setFocusStepId(currentPresentation.activeStepId);
       return;
     }
@@ -201,8 +206,8 @@ export function IntakeWorkspace(): JSX.Element {
   }
 
   function handleActionComplete(action: string): void {
-    setViewedStepId(action === "start-review" ? "verify" : null);
-    setReviewingEarlierStep(false);
+    setAdvancingFromReview(action === "start-review");
+    setSearchParams(action === "start-review" ? { step: "verify" } : {});
   }
 
   return (
@@ -322,6 +327,12 @@ function stepIndex(step: IntakeStepId): number {
   return STEP_DEFINITIONS.findIndex((definition) => definition.id === step);
 }
 
+function intakeStep(value: string | null): IntakeStepId | null {
+  return STEP_DEFINITIONS.some((definition) => definition.id === value)
+    ? (value as IntakeStepId)
+    : null;
+}
+
 function stepCopy(
   step: IntakeStepId,
   presentation: ReturnType<typeof deriveIntakeWorkspace>,
@@ -332,7 +343,8 @@ function stepCopy(
   const copy: Record<IntakeStepId, { heading: string; guidance: string }> = {
     receive: {
       heading: "Review the received referral",
-      guidance: "Review the referral summary, ownership, priority, and source details.",
+      guidance:
+        "Review the referral and add its source records. If no document is available, continue with manual review.",
     },
     verify: {
       heading: "Verify the referral information",

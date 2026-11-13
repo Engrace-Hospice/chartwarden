@@ -116,8 +116,10 @@ test.describe("Documents", () => {
 
     await page.goto(`/referrals/${referralId}/intake`);
     await expect(page.getByRole("heading", { name: "Review the received referral" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Records" })).toBeVisible();
+    await expect(page.getByText("No records yet")).toBeVisible();
     await page.getByRole("button", { name: "Start review & continue" }).click();
-    await expect(page).toHaveURL(new RegExp(`/referrals/${referralId}/intake$`));
+    await expect(page).toHaveURL(new RegExp(`/referrals/${referralId}/intake\\?step=verify$`));
     await expect(page.getByRole("navigation", { name: "Intake progress" })).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Verify the referral information" }),

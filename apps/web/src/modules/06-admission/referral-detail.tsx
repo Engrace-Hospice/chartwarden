@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ReferralDocumentsPanel } from "../../shell/document-workflows";
 import { PatientLookupField } from "../../shell/entity-lookups";
+import { intakeWorkspaceReturnTo } from "../../shell/intake-return";
 import { useSession } from "../../shell/session";
 import {
   PATIENT_RESOLUTION_LABEL,
@@ -167,6 +168,7 @@ export function ReferralDetail({
   );
   const showAll = !embedded || !activeStage;
   const showOverview = showAll || activeStage === "receive";
+  const showRecords = embedded && activeStage === "receive";
   const showPatientResolution = showAll || activeStage === "match";
   const showVerification = showAll || activeStage === "verify" || activeStage === "review";
   const showPatientInformation = showAll || activeStage === "review";
@@ -378,6 +380,14 @@ export function ReferralDetail({
                   </div>
                 ) : null}
               </section>
+            ) : null}
+
+            {showRecords ? (
+              <ReferralRecords
+                referralId={r.id}
+                patientId={r.patientId}
+                reviewReturnTo={intakeWorkspaceReturnTo(r.id, "receive")}
+              />
             ) : null}
 
             {showPatientResolution ? (
