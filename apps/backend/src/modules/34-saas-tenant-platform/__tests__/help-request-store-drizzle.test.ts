@@ -1,4 +1,4 @@
-import type { DbClient } from "@chartwarden/db";
+import { type DbClient, schema } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { createDrizzleHelpRequestStore } from "../help/help-request-store-drizzle";
 
@@ -30,6 +30,30 @@ const record = (status: "open" | "approved") => ({
 });
 
 describe("the help-request store lock order", () => {
+  it("locks the consent grant before its request", async () => {
+    const locks: { readonly table: unknown; readonly mode: unknown }[] = [];
+    const tx = {
+      select: () => ({
+        from: (table: unknown) => ({
+          where: () => ({
+            limit: async () => [record("approved")],
+            for: async (mode: unknown) => {
+              locks.push({ table, mode });
+              return [];
+            },
+          }),
+        }),
+      }),
+    } as unknown as DbClient;
+
+    await createDrizzleHelpRequestStore(tx).findForUpdate(ID);
+
+    expect(locks).toEqual([
+      { table: schema.supportConsentGrant, mode: "update" },
+      { table: schema.tenantHelpRequest, mode: "update" },
+    ]);
+  });
+
   it("retries when an open request becomes approved while waiting for its row lock", async () => {
     const snapshots = [record("open"), record("approved")];
     const tx = {

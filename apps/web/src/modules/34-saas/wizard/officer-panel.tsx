@@ -8,6 +8,7 @@ import {
   type Fact,
   FactList,
   InlineAlert,
+  PendingAttestationWarning,
   TextField,
   useApiClient,
   useLoad,
@@ -18,7 +19,6 @@ import type { JSX } from "react";
 import { useSession } from "../../../shell/session";
 import { FailureNotice } from "./failure-notice";
 import { ORG_ADMIN_ROLE, type StepPanelProps, isStepOpenForWork } from "./panel-props";
-import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { ONBOARDING_KEYS } from "./permissions";
 import { RoleCannot } from "./role-cannot";
 import { useOpsWrite } from "./use-ops-write";
@@ -185,7 +185,7 @@ export function OfficerPanel({ step, view, held, roles, onChanged }: StepPanelPr
           <strong>{current ? labelOf(current) : "a member of your organization"}</strong>
         </p>
       ) : null}
-      <PendingAttestationWarning view={view} />
+      <PendingAttestationWarning view={view} audience="tenant" />
       {staff.failure ? (
         <div className="wx-form-stack">
           <InlineAlert tone="error">Could not load your staff.</InlineAlert>

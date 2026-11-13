@@ -7,6 +7,7 @@ import {
   FactList,
   InlineAlert,
   LoadingSpinner,
+  PendingAttestationWarning,
   useApiClient,
   useLoad,
 } from "@chartwarden/ui";
@@ -14,7 +15,6 @@ import type { operations } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { statusLabel } from "../saas-status";
 import { type StepPanelProps, isStepOpenForWork } from "./panel-props";
-import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { ONBOARDING_KEYS } from "./permissions";
 import { ProviderEntityForm } from "./provider-entity-form";
 import { RoleCannot } from "./role-cannot";
@@ -115,7 +115,7 @@ export function ProviderEntityPanel({ step, view, held, onChanged }: StepPanelPr
           <div className="wx-drawer-card-head">
             <h3>Add a provider entity</h3>
           </div>
-          <PendingAttestationWarning view={view} />
+          <PendingAttestationWarning view={view} audience="tenant" />
           <InlineAlert tone="info">
             The CCN, NPI, EIN and fiscal year end cannot be changed after saving. Check them before
             you save.

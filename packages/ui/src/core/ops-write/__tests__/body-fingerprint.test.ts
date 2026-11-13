@@ -28,14 +28,26 @@ describe("without crypto.subtle (a non-secure origin)", () => {
     await expect(sha256HexOfText("x")).rejects.toThrow(/crypto\.subtle/);
   });
 
-  it("bodyFingerprint falls back to a digest that holds nothing of the body, is stable, and changes with the body", async () => {
+  it("fails closed when secure randomness is unavailable", async () => {
     vi.stubGlobal("crypto", {});
+    await expect(bodyFingerprint({ secret: "write-only-credential-for-test" })).rejects.toThrow(
+      /crypto\.getRandomValues is unavailable/,
+    );
+  });
+
+  it("uses secure random salt for a secret-free fallback digest", async () => {
+    const getRandomValues = vi.fn((bytes: Uint8Array) => {
+      bytes.fill(37);
+      return bytes;
+    });
+    vi.stubGlobal("crypto", { getRandomValues });
     const secret = "write-only-credential-for-test";
     const first = await bodyFingerprint({ secret });
-    expect(first).toMatch(/^weak:[0-9a-f]+:\d+$/);
+    expect(first).toMatch(/^weak:[a-z0-9]+\.[a-z0-9]+$/);
     expect(first).not.toContain(secret);
     expect(await bodyFingerprint({ secret })).toBe(first);
     expect(await bodyFingerprint({ secret: `${secret}!` })).not.toBe(first);
     expect(await bodyFingerprint({ a: 1, secret })).not.toBe(first);
+    expect(getRandomValues).toHaveBeenCalledWith(expect.any(Uint8Array));
   });
 });

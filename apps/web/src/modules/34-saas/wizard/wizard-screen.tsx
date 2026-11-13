@@ -8,6 +8,7 @@ import {
   EmptyState,
   InlineAlert,
   LoadingSpinner,
+  StaleNotice,
   StepRail,
   defaultStepKey,
   gatingProgress,
@@ -24,7 +25,6 @@ import { WizardHelp } from "../help/help-center";
 import { StepTitlesContext, stepHref } from "./failure-notice";
 import { panelFor } from "./panels";
 import { usePermissions, useRoles } from "./permissions";
-import { StaleNotice } from "./stale-notice";
 import { StepFrame } from "./step-frame";
 import { WIZARD_ERROR_COPY } from "./wizard-errors";
 import { WizardHelpSlot } from "./wizard-help-slot";

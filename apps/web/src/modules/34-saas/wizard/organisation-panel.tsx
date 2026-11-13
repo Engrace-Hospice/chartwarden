@@ -1,12 +1,18 @@
 // apps/web/src/modules/34-saas/wizard — step 1, Organisation: the display name and IANA time zone the organization carries. The
 // administrator saves them (PATCH /api/v1/tenant/org-profile); ChartWarden then confirms the step. The legal business name is fixed at
 // setup and is not edited here.
-import { Button, type Fact, FactList, TextField, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  type Fact,
+  FactList,
+  PendingAttestationWarning,
+  TextField,
+  useApiClient,
+} from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { FailureNotice } from "./failure-notice";
 import { ORG_ADMIN_ROLE, type StepPanelProps, isStepOpenForWork } from "./panel-props";
-import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { ONBOARDING_KEYS } from "./permissions";
 import { RoleCannot } from "./role-cannot";
 import { useOpsWrite } from "./use-ops-write";
@@ -91,7 +97,7 @@ export function OrganisationPanel({
         <h3>Profile</h3>
       </div>
       <FactList facts={facts} ariaLabel="What settles this step" />
-      <PendingAttestationWarning view={view} />
+      <PendingAttestationWarning view={view} audience="tenant" />
       <form
         className="wx-form-stack"
         aria-label="Organisation profile form"

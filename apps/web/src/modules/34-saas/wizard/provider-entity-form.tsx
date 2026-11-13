@@ -2,10 +2,9 @@
 // the wizard's step 5 and the Agency setup screen. POST /api/v1/provider-entities (`org.manage`); the CCN, NPI, EIN and fiscal year end
 // cannot be changed afterwards (a change is a re-enrolment ChartWarden handles). The EIN is write-once and sealed server-side: it is never
 // shown again and never stashed. One Idempotency-Key per attempt (a retry after no answer replays instead of creating twice).
-import { Button, InlineAlert, TextField, useApiClient } from "@chartwarden/ui";
+import { Button, InlineAlert, TextField, bodyFingerprint, useApiClient } from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
-import { bodyDigest } from "./body-digest";
 import { FailureNotice } from "./failure-notice";
 import { useOpsWrite } from "./use-ops-write";
 import { useWizardDraft } from "./wizard-drafts";
@@ -57,7 +56,7 @@ export function ProviderEntityForm({
     submitting.current = true;
     try {
       const outcome = await write.run(
-        await bodyDigest(body),
+        await bodyFingerprint(body),
         (key) =>
           client.POST("/api/v1/provider-entities", { body, headers: { "Idempotency-Key": key } }),
         onCreated,

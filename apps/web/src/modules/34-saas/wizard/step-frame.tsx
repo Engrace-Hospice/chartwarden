@@ -10,6 +10,7 @@ import {
   StatusPill,
   type StatusTone,
   useApiClient,
+  useEditorFocus,
 } from "@chartwarden/ui";
 import { useId, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -20,7 +21,6 @@ import type { StepPanelProps } from "./panel-props";
 import type { PanelComponent } from "./panels";
 import { ReasonPrompt } from "./reason-prompt";
 import { SettledCard } from "./settled-card";
-import { useEditorFocus } from "./use-editor-focus";
 import { useOpsWrite } from "./use-ops-write";
 import { useWizardDraft } from "./wizard-drafts";
 import { viewHasMoved } from "./wizard-errors";
