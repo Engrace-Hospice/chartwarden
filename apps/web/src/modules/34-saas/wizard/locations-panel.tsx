@@ -6,6 +6,7 @@ import {
   FactList,
   InlineAlert,
   LoadingSpinner,
+  PendingAttestationWarning,
   useApiClient,
   useLoad,
 } from "@chartwarden/ui";
@@ -14,7 +15,6 @@ import type { JSX } from "react";
 import { statusLabel } from "../saas-status";
 import { LocationForm } from "./location-form";
 import { type StepPanelProps, isStepOpenForWork } from "./panel-props";
-import { PendingAttestationWarning } from "./pending-attestation-warning";
 import { ONBOARDING_KEYS } from "./permissions";
 import { RoleCannot } from "./role-cannot";
 import { WIZARD_ERROR_COPY } from "./wizard-errors";
@@ -118,7 +118,7 @@ export function LocationsPanel({ step, view, held, onChanged }: StepPanelProps):
           <div className="wx-drawer-card-head">
             <h3>Add a location</h3>
           </div>
-          <PendingAttestationWarning view={view} />
+          <PendingAttestationWarning view={view} audience="tenant" />
           {entities.length === 0 ? (
             <p>Add a provider entity first (step 5); a location belongs to one.</p>
           ) : null}

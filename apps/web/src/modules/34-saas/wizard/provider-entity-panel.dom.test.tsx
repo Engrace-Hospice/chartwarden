@@ -246,7 +246,13 @@ describe("ProviderEntityPanel", () => {
 
 describe("ProviderEntityPanel: the idempotency fingerprint", () => {
   it("still submits, with a key, on an origin without SubtleCrypto (plain-HTTP staging)", async () => {
-    vi.stubGlobal("crypto", { randomUUID: () => "11111111-1111-4111-8111-111111111111" });
+    vi.stubGlobal("crypto", {
+      randomUUID: () => "11111111-1111-4111-8111-111111111111",
+      getRandomValues: (bytes: Uint8Array) => {
+        bytes.fill(37);
+        return bytes;
+      },
+    });
     try {
       const client = stubClient({
         GET: { [LIST]: () => page() },
