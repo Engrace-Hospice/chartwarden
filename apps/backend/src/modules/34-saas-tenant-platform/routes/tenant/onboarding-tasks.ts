@@ -3,7 +3,8 @@
 // The TENANT-scoped onboarding routes (the tenant's own org, via the wizard service's `withOrgContext`). The wizard is
 // data-driven off the platform-shared `onboarding_task_template` catalog; this surface lets the tenant read its ordered
 // wizard and act on the steps IT owns: start, block, attest (a human marks a step done with required evidence), re-open,
-// and - for the org_admin - set the org profile and assign the compliance officer, who attests go-live readiness (the
+// and - for the org_admin - skip MAC credentials, payer enrollment or DoseSpot kickoff when they do not apply (step-up), set
+// the org profile and assign the compliance officer, who attests go-live readiness (the
 // first party of the two-party go-live). The strict sequence, owner-role, evidence and go-live rules live in the service
 // (onboarding/wizard-service.ts), not here; these routes compose the §4.5 keys, the §4.6 ABAC predicates, step-up where a
 // decision is security-relevant, and the human-actor (no AI) block.
@@ -75,9 +76,9 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
     "/api/v1/tenant/onboarding",
     { preHandler: [READ], config: { auditRead: { resourceKind: "onboarding_task", list: true } } },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, roles } = actorOf(request);
       parse(OnboardingListQuerySchema, request.query);
-      const view = await wizard.getTenant(organizationId);
+      const view = await wizard.getTenant(organizationId, { roles });
       return { ...view, items: view.steps, nextCursor: null, hasMore: false };
     },
   );
@@ -145,8 +146,8 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
 
   // The tenant's own "this does not apply to us" on MAC credentials, payer enrollment or DoseSpot kickoff (slice 7). Only the
   // org_admin, under a fresh step-up, as a human, once per Idempotency-Key; the rationale is judged and PHI-screened by the
-  // service, which also refuses any other step with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE. Piece 7K builds the service call;
-  // until it lands the wizard answers 501 NOT_IMPLEMENTED.
+  // service, which also refuses any other step with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, records the skip as the tenant's
+  // and voids a pending go-live attestation. The operator's check on these steps is gone, so the go-live approver sees the skip.
   app.post(
     "/api/v1/tenant/onboarding/:taskId/skip",
     { preHandler: [MANAGE_OWN, ABAC_ORG_ADMIN, STEP_UP_MANAGE_OWN, NO_AI, IDEMPOTENT] },

@@ -2,12 +2,13 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 218 statically-routable `web` screen(s) — 205/218 E2E-reached, 205/218 axe-reached.
+**Coverage:** 219 statically-routable `web` screen(s) — 205/219 E2E-reached, 205/219 axe-reached.
 
 ## Zero E2E coverage
 
 | Screen id | Module | Path | Permission |
 |---|---|---|---|
+| `saas.help` | 34-saas | `/admin/help` | (none) |
 | `identity.auditor-enrolment` | 02-identity | `/auditor/enrol` | (none) |
 | `identity.auditor-redeem` | 02-identity | `/auditor/redeem` | (none) |
 | `billing.operations` | 23-billing-medicare | `/billing/operations` | (none) |
@@ -26,6 +27,7 @@
 
 | Screen id | Module | Path | Permission |
 |---|---|---|---|
+| `saas.help` | 34-saas | `/admin/help` | (none) |
 | `identity.auditor-enrolment` | 02-identity | `/auditor/enrol` | (none) |
 | `identity.auditor-redeem` | 02-identity | `/auditor/redeem` | (none) |
 | `billing.operations` | 23-billing-medicare | `/billing/operations` | (none) |
@@ -42,11 +44,12 @@
 
 ## Dynamic web screens (#852)
 
-42/118 registered `web` screens carrying a `:param` segment are axe-walked in `axe-route-walk.spec.ts`: patient-only paths plus seeded admission, Medicaid-claim and medication-order paths. Every id is resolved at run time through the signed-in app; none is copied from a seed constant. The rest are excluded, each with its reason:
+42/119 registered `web` screens carrying a `:param` segment are axe-walked in `axe-route-walk.spec.ts`: patient-only paths plus seeded admission, Medicaid-claim and medication-order paths. Every id is resolved at run time through the signed-in app; none is copied from a seed constant. The rest are excluded, each with its reason:
 
 | Screen id | Path | Permission | Why not walked |
 |---|---|---|---|
 | `medicaid.surveyor-read` | `/admin/medicaid-billing-audit/:claimId` | medicaid.claim.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `saas.onboarding-step` | `/admin/onboarding/:stepKey` | onboarding.read_own | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `hope.sfv-capture` | `/admissions/:admissionId/hope/sfv/:sfvId` | hope.timepoint.write | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `hope.timepoint-capture` | `/admissions/:admissionId/hope/timepoints/:kind` | hope.timepoint.write | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `bereavement.groups.detail` | `/bereavement/groups/:groupId` | bereavement.group.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
@@ -126,7 +129,7 @@
 ## Viewports, admin/portal, authorization (#852)
 
 - **Six viewports** (320, 375, 768, 1024, 1440, 1920 wide) — `viewport-matrix.spec.ts`, run only by the `viewport-*` Playwright projects (`bun run test:e2e:viewports`): Home, census and a patient chart, axe plus a no-horizontal-document-scroll (WCAG 1.4.10) check. Not multiplied across the other specs.
-- **`admin`/`portal` apps** (43 + 19 registered screens) — `admin-console-smoke.spec.ts` and `portal-smoke.spec.ts` (`bun run test:e2e:apps`): pre-auth plus authenticated platform-ops and patient-self surfaces. CI starts all three SPAs and supplies `E2E_ADMIN_URL` / `E2E_PORTAL_URL`; local runs skip unless those URLs point at running servers. Credentials come from the synthetic seed, and portal password sign-in avoids a mail sink.
+- **`admin`/`portal` apps** (44 + 19 registered screens) — `admin-console-smoke.spec.ts` and `portal-smoke.spec.ts` (`bun run test:e2e:apps`): pre-auth plus authenticated platform-ops and patient-self surfaces. CI starts all three SPAs and supplies `E2E_ADMIN_URL` / `E2E_PORTAL_URL`; local runs skip unless those URLs point at running servers. Credentials come from the synthetic seed, and portal password sign-in avoids a mail sink.
 - **Cross-role authorization** — `role-authorization-matrix.spec.ts`: the clinical-only Clinician is denied on billing, agency-setup, audit and staff reads; the Compliance Auditor is denied on billing and agency setup but allowed to read audit events; the Administrator is allowed across the matrix.
 
 ## Not measured here (by design)

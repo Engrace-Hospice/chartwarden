@@ -2320,6 +2320,22 @@
       "app": "web",
       "module": "34-saas",
       "moduleId": 34,
+      "id": "saas.onboarding-step",
+      "path": "/admin/onboarding/:stepKey",
+      "permission": "onboarding.read_own"
+    },
+    {
+      "app": "web",
+      "module": "34-saas",
+      "moduleId": 34,
+      "id": "saas.help",
+      "path": "/admin/help",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "34-saas",
+      "moduleId": 34,
       "id": "saas.support-grants",
       "path": "/admin/support-grants",
       "permission": "support_consent_grant.list_own"
@@ -2883,6 +2899,14 @@
       "id": "saas.tenant-onboarding-step",
       "path": "/tenants/:orgSlug/onboarding/:stepKey",
       "permission": "onboarding.read_platform"
+    },
+    {
+      "app": "admin",
+      "module": "34-saas-platform",
+      "moduleId": 34,
+      "id": "saas.help-requests",
+      "path": "/support/help-requests",
+      "permission": "support_session.list_platform"
     },
     {
       "app": "admin",

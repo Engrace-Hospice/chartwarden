@@ -14,6 +14,7 @@ import type { repositories } from "@chartwarden/billing";
 import type { BillsOutsidePort } from "../services/external-notice-filing";
 import type { PriorLiveEndedStayPort } from "../services/prior-election-closure";
 import type { M23WriteActor } from "./actor";
+import type { OnboardingDataChangeGuard } from "./onboarding-data-change";
 import type {
   ClaimDetailView,
   ClaimSubmissionKind,
@@ -157,12 +158,25 @@ export interface M23WriteServicePorts {
    * Absent (no launch gateway configured) the route answers a typed 503 rather than a fabricated "ok".
    */
   readonly macSandbox?: MacSandboxProbePort;
+  /**
+   * Runs on the SAME transaction before a tenant-lane MAC credential save and returns its post-write finalizer. The guard holds the
+   * shared go-live lock across the save; the finalizer revokes a pending attestation after the successful write. The operator lane's
+   * `upsertMacCredentialOnTx` does NOT run it: that route voids on its own transaction.
+   */
+  readonly onOnboardingDataChanging?: OnboardingDataChangeGuard;
+  /** Post-commit, best-effort wizard settle after a tenant MAC credential save. */
+  readonly onMacCredentialChanged?: (organizationId: string) => Promise<void>;
+  /** The post-commit settle failed; the credential remains committed and the failure is logged without credential data. */
+  readonly logMacCredentialSettleError?: (
+    cause: unknown,
+    context: { readonly organizationId: string },
+  ) => void;
   /** Injected clock (deterministic timestamps in tests). */
   readonly now?: () => Date;
 }
 
 /**
- * Probes a MAC jurisdiction's sandbox/portal for a configured credential. The shipped binding is the launch
+ * Probes a MAC jurisdiction's portal (the probe takes the jurisdiction only: it never reads or sends the credential). The shipped binding is the launch
  * gateway's portal health probe (`MacPortalPort.probeHealth`): it proves the MAC portal for that jurisdiction is
  * reachable from this deployment. It does NOT submit a synthetic test claim — the gateway contract has no
  * "test interchange" flag (ISA15=T) and no MAC sandbox credentials flow yet, so a credential's secret is first
@@ -176,7 +190,12 @@ export interface MacSandboxProbePort {
   }): Promise<{ readonly ok: boolean; readonly detail: string }>;
 }
 
-/** The outcome of a MAC credential sandbox test (PHI-free; the secret is never involved). */
+/**
+ * The outcome of the MAC portal check behind `POST /billing/mac-credentials/:providerEntityId/test` (PHI-free; the secret is never
+ * involved). `ok` means the MAC portal for the jurisdiction answered. It does NOT validate the credential: the check sends no secret,
+ * client id or submitter id, so the credential is first exercised by the first real submission. The names (`ok`, `lastSandboxTestAt`)
+ * are the wire contract; the words must not promise more than the check does.
+ */
 export interface MacCredentialTestView {
   readonly providerEntityId: string;
   readonly macJurisdiction: string;
@@ -184,7 +203,7 @@ export interface MacCredentialTestView {
   readonly method: "portal_health_probe";
   readonly detail: string;
   readonly checkedAt: string;
-  /** Present after a successful probe (the new `last_sandbox_test_at`); null when the probe failed. */
+  /** Present after the portal answered (the new `last_sandbox_test_at`, a portal-check time, not a credential-validity time); null when it did not. */
   readonly lastSandboxTestAt: string | null;
 }
 
@@ -468,6 +487,9 @@ export interface M23WriteRouteService {
     actor: M23WriteActor,
     args: UpsertMacCredentialArgs,
   ): Promise<MacCredentialView>;
-  /** GAP-144 (spec #36) — probe the MAC sandbox for a PE's credential; stamps `last_sandbox_test_at` on success. */
+  /**
+   * GAP-144 (spec #36) — check that the MAC portal for a PE's credential's jurisdiction answers; stamps `last_sandbox_test_at` when it
+   * does. It does NOT validate the credential (nothing of it is sent).
+   */
   testMacCredential(actor: M23WriteActor, providerEntityId: string): Promise<MacCredentialTestView>;
 }

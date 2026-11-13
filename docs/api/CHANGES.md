@@ -6,7 +6,117 @@ its full description there. Newest first.
 
 ---
 
-## 2026-11-11 — Slice 7 support sessions work end to end
+## 2026-11-10 — Support-session commands are idempotent and the go-live review shows commercial choices
+
+`POST /api/v1/platform/support-sessions`, `POST /api/v1/platform/support-sessions/{id}/elevate`, and
+`POST /api/v1/platform/support-sessions/{id}/close` now require `Idempotency-Key`. Start and elevate are documented as `201` responses.
+The service also rejects an elevation by a platform operator other than the one who opened the session.
+
+The admin go-live review now loads the tenant's clearinghouse choice and subscription billing-service mode before enabling approval. A
+failed or incomplete commercial read is shown as an error/loading state and keeps approval disabled; it is not presented as “Not chosen”
+or “No contract.” The same view lists any onboarding steps the tenant skipped and their recorded rationale.
+
+---
+
+## 2026-11-10 — Help requests are live (slice 7, piece 7B)
+
+The six help-request routes are live over the integrated support-grant operation bundle; their shapes did not change. What an
+integrator can rely on:
+
+- **Who may use them.** Only a human on a `staff` session who is an active member of the organization: an AI principal, an auditor or
+  family session and ChartWarden's own operators (who are members of every tenant) get `403` on all four tenant routes. Approve and
+  close are checked against the member's roles in the service: `org_admin` or `compliance_officer` (close also by the member who
+  filed it). There is deliberately no permission key on file, read and close.
+- **One live request per tenant account.** A second `POST /tenant/help-requests` while one is `open` or `approved` is
+  `409 HELP_REQUEST_ALREADY_OPEN` with the live request's id in `details[0].message` (also for two members filing at once). New
+  codes: `409 HELP_REQUEST_NOT_OPEN` (approve of a request that is not open), `409 HELP_REQUEST_ENDED` (an operator's Resolve of one
+  that has ended), `422 HELP_REQUEST_STEP_UNKNOWN` (`stepKey` names no onboarding step). A message or note that looks like a
+  patient identifier (SSN, MBI, labelled MRN or date of birth shape) is `422 EVIDENCE_LOOKS_LIKE_PHI`; it is never echoed, logged,
+  audited or put in an event. Mutating responses are excluded from the idempotency response cache so the text is not copied there.
+- **End help is idempotent.** Ending an ended request answers it. An `open` request ends `cancelled`, an `approved` one `resolved`
+  (its consent grant is revoked and its open sessions closed). An operator's Resolve of an `open` request (answered without
+  consent) also ends it `resolved`, with no grant.
+- **It ends and ages out by itself.** A request nobody answered for 14 days is cancelled and one whose consent grant expired or was
+  revoked is resolved, both with `closedBy: "system"` (every five minutes). Ninety days after close, the message and operator note
+  are nulled at rest; reads project a fixed retention placeholder for the removed message.
+- **Operators.** `GET /platform/help-requests` is an audited cross-tenant read; a row's `supportConsentGrantId` is what Start posts.
+  A tenant is told `ChartWarden operations`, never an operator id, name or organization.
+- **Ledger.** Filing emits `m34.help_request.requested` (ids and the step key only) and, after the filing commits, calls the M36 alert
+  seam to raise `tenant.help_requested` to the operators. While the organization is still onboarding the four tenant routes are on
+  the pre-activation allowlist.
+
+---
+
+## 2026-11-10 — Operators can revoke a tenant clearinghouse BAA from the onboarding console
+
+The admin onboarding clearinghouse card now exposes the BAA-revocation contract added on 2026-11-09. An authorized operator chooses one
+of the closed reason codes and supplies an operator ticket; the console sends no free-text reason and pins the request to the BAA's
+`recordedAt`. The card shows current and previous revocation facts. When a tenant re-records the same document that was revoked, verification
+requires the operator to review that history and send `acknowledgePreviousRevocation: true` explicitly. Revocation rate limits answer 429;
+stale records and the BAA-specific conflict codes are shown as actionable failures and the current record is reloaded.
+
+The hourly M35 repair for “outside means billing mode none” now enumerates every current, not-canceled contract before statement generation.
+That includes onboarding and paused tenants, which may not have a statement run and therefore could previously miss the repair.
+
+---
+
+## 2026-11-09 — The tenant's own skip is live (MAC credentials, payer enrollment, DoseSpot kickoff)
+
+`POST /api/v1/tenant/onboarding/{taskId}/skip` no longer answers `501`. The org_admin (the literal `org_admin` role, a fresh step-up,
+`Idempotency-Key`, no AI actor) settles MAC credentials, payer enrollment or DoseSpot kickoff with a `skipRationale` of 8-2000
+characters, screened for patient identifiers (`422 EVIDENCE_LOOKS_LIKE_PHI`). Any other step, sample data, go-live and a step an operator
+added included, is `409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE`; the order, already-settled and owner rules are the operator skip's
+(`409 ONBOARDING_STEP_OUT_OF_ORDER`, `409 ONBOARDING_STEP_ALREADY_SETTLED`, `403 ONBOARDING_STEP_OWNER_MISMATCH`). The tenant's skip is
+onboarding data the officer did not see, so it revokes a pending go-live attestation; an operator's skip and the system's do not. The
+route is on the not-yet-live organization's allowlist. Re-open of the tenant's
+own skip is unchanged (`409 GO_LIVE_PENDING` while an attestation is pending).
+
+The step view reads who skipped from what the skip recorded: `skippedBy` is `tenant`, `platform_ops` or `system` (a skip recorded before
+the kind existed reads as `platform_ops`, or `system` for the clearinghouse sync's); `systemSkipped` is unchanged. New `skippedByLabel`
+on the tenant surface: `Your organization` for the tenant's own skip, `ChartWarden operations` for an operator's, never a person or a
+membership (null on the platform surface and for a system skip). `tenantSkippable` is now true only for the three steps while they are
+not done or skipped, no earlier step still locks them (`locked` is false) and, on the tenant surface, only for an org_admin viewer. The platform view lists a tenant's skip with its rationale
+(`skippedBy: "tenant"`, `skipRationale`), which the go-live approver reads; the approval guards are unchanged.
+
+---
+
+## 2026-11-09 — A not-yet-live organization reaches its billing steps; `auth/context` says which stage it is in
+
+**Reachable during onboarding.** A session on an organization that is not live yet (go-live not approved) may now call the routes
+the clearinghouse and MAC credential steps need, and nothing else beside them: `GET|PUT /api/v1/tenant/clearinghouse`,
+`POST /api/v1/tenant/clearinghouse/baa|verify|activate`, `GET /api/v1/subscription/pricing`, `GET /api/v1/billing/mac-credentials`,
+`GET /api/v1/billing/mac-credentials/{providerEntityId}`, `POST /api/v1/billing/mac-credentials` and
+`POST /api/v1/billing/mac-credentials/{providerEntityId}/test`. Before, each answered `403 ORGANIZATION_ONBOARDING`. Every other
+billing route, the support-consent grant and support-session routes, and the DSAR and export downloads still do. Each route keeps
+its own guards (permission, fresh step-up, AI-actor block, `Idempotency-Key`).
+
+**Stage signal.** `GET /api/v1/auth/context` gains `organizationStage`: `onboarding` while the organization is confined to the
+onboarding routes, `live` otherwise (also for a session that is not bound to an organization yet).
+
+**A billing write voids a pending go-live attestation.** The tenant's own clearinghouse writes (choice, BAA record, verify,
+activate) and a MAC credential save now revoke a pending go-live attestation in the write's own transaction, with the reason
+`onboarding data changed after attestation`, as the operator's writes and the org-profile write already did. The compliance
+officer attests again. A refused write voids nothing.
+
+**MAC credential routes typed.** `POST /api/v1/billing/mac-credentials` now documents its `Idempotency-Key` and optional `If-Match`
+(a first save omits it, a change sends the credential's `version`), answers `201` on a first save and `200` on a change, and returns the
+credential view (never the secret). `POST /api/v1/billing/mac-credentials/{providerEntityId}/test` documents its `Idempotency-Key`.
+
+**`baaRecordRef` is screened.** The MAC credential's BAA reference (also on the operator's `POST /api/v1/platform/tenants/{orgSlug}/mac-credentials`)
+is folded to one line (1-256 characters) and refused with `422 EVIDENCE_LOOKS_LIKE_PHI` when it looks like a social security number or an MBI,
+the same screen the clearinghouse BAA reference has; the error never echoes the text, and nothing is stored. A blank value is
+`422 MAC_BAA_RECORD_REF_INVALID` (omit the field to leave it unset). `submitterId`, `tradingPartnerId` and `clientId` are identifiers the
+MAC issues and are not screened.
+
+**What the MAC "test" says.** `POST /api/v1/billing/mac-credentials/{providerEntityId}/test` checks that the MAC portal for the credential's
+jurisdiction answers; it does not validate the credential. It sends no secret, client id or submitter id, and the first real submission is
+the first time they are used. The response (`ok`, `method: "portal_health_probe"`, `detail`, `lastSandboxTestAt`) and the credential's
+`lastSandboxTestAt` keep their names; their descriptions now say so, and `detail` reads "The MAC portal for this jurisdiction answered. This
+does not validate the credential." or "... did not answer." A client should label `lastSandboxTestAt` as the last portal check, not as a
+credential test.
+---
+
+## 2026-11-09 — Slice 7 (7S): the support session works end to end (support-session reads, the `assist` scope, revoke and close are real)
 
 No path or schema changes; the support-session routes now implement the previously published contract.
 
@@ -25,7 +135,6 @@ idempotent and records its ledger, audit, outbox event and grantor alert. Succes
 `/api/v1/platform/tenants/{orgSlug}/` append an `ops.write` ledger row containing only route template, method and status.
 
 ---
-
 ## 2026-11-09 — Slice 7 contract: help requests, support-session reads and tenant skip
 
 The tenant onboarding wire contract adds tenant help requests and approval, the platform help inbox, tenant-visible
@@ -45,6 +154,8 @@ stale records and the BAA-specific conflict codes are shown as actionable failur
 
 The hourly M35 repair for “outside means billing mode none” now enumerates every current, not-canceled contract before statement generation.
 That includes onboarding and paused tenants, which may not have a statement run and therefore could previously miss the repair.
+
+---
 
 ## 2026-11-09 — A paused subscription whose end date has passed is resumed automatically
 
@@ -84,6 +195,8 @@ claims-billing entitlement) until an operator remembered to resume it.
   higher `id`. Subscription readers and writers use that ordering, so the tenant's view, the resume routes, the lifecycle consumer and the
   sweep agree on which subscription is current. Contract selection retains its separate `createdAt`, `id` ordering.
 - No request or response shape changes.
+---
+
 ## 2026-11-09 — Onboarding-step catalog writes name their operator; the notice list moves behind the notice key
 
 - `POST /api/v1/platform/onboarding-templates` now requires an `Idempotency-Key` header and a `reason` (8-500 characters after

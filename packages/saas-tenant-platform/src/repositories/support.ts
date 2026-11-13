@@ -127,6 +127,12 @@ export class SupportRepository {
     return row ?? null;
   }
 
+  /** Lock the session row while an elevation decision and its effects are committed. */
+  async findSessionByIdForUpdate(id: string): Promise<schema.SupportSession | null> {
+    const [row] = await this.db.select().from(S).where(eq(S.id, id)).limit(1).for("update");
+    return row ?? null;
+  }
+
   /** Close a session that is still open: `null` when it was already closed (idempotent, race-safe, never overwrites a close). */
   async closeSessionIfOpen(
     id: string,

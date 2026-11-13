@@ -111,6 +111,7 @@ import type {
   UpdateBaaRecordArgs,
   UpsertFeatureFlagArgs,
 } from "./service";
+import { lockTenantOnboardingShared } from "./tenant-onboarding-lock";
 import {
   ONBOARDING_WRITABLE_STATUSES,
   lockTenantOnboardingExclusive,
@@ -1407,6 +1408,10 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       const view = await inPlatformCtx("platform-ops create BAA record", async (tx) => {
         await actingAs(tx, actorUserId);
         const repo = new BaaRegisterRepository(tx);
+        // Resolve the tenant first, then serialize this readiness-changing write with go-live approval.
+        const account = await new TenantAccountRepository(tx).findById(args.tenantAccountId);
+        if (!account) throw new NotFoundError("tenant account");
+        await lockTenantOnboardingShared(tx, account.organizationId);
         const existing = await repo.listByTenantAccountId(args.tenantAccountId);
         if (existing.some((b) => b.addendumVersion === args.addendumVersion)) {
           throw new ChartWardenError(
@@ -1415,9 +1420,6 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             409,
           );
         }
-        // organizationId is resolved from the tenant_account spine.
-        const account = await new TenantAccountRepository(tx).findById(args.tenantAccountId);
-        if (!account) throw new NotFoundError("tenant account");
         await assertBaaDocumentFiled(boundTo(tx), {
           organizationId: account.organizationId,
           documentId: args.documentId,
@@ -1453,6 +1455,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const repo = new BaaRegisterRepository(tx);
         const existing = await repo.findById(baaId);
         if (!existing) throw new NotFoundError("platform-tenant BAA record");
+        await lockTenantOnboardingShared(tx, existing.organizationId);
         // Judged only when the link changes or the record becomes executed (see baaLinkNeedsJudging), on the row as it will be.
         if (baaLinkNeedsJudging(existing, args)) {
           const documentId = args.documentId ?? existing.documentId;
