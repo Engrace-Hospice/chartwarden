@@ -96,6 +96,12 @@ describe("tenant refusals (ADR-0049)", () => {
     });
   });
 
+  it("maps 403 ORGANIZATION_ONBOARDING (a route outside onboarding on an organization not live yet) to its own signal", async () => {
+    expect(await tenantSignalFromResponse(json(403, "ORGANIZATION_ONBOARDING"))).toEqual({
+      kind: "organization-onboarding",
+    });
+  });
+
   it("leaves an ordinary 403 / 404 alone, and reads a clone so the caller still gets the body", async () => {
     const forbidden = json(403, "FORBIDDEN");
     expect(await tenantSignalFromResponse(forbidden)).toBeNull();

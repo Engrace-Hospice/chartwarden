@@ -3,7 +3,11 @@ import type { DbClient } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import { buildServer } from "../../../bootstrap/index";
 import { MAX_RECORDS_PER_DELIVERY, parseConsumptions } from "./minio-access-log";
-import { bearerMatches, registerMinioAccessLogRoute } from "./minio-access-log-routes";
+import {
+  bearerMatches,
+  objectStoreAuditWebhookTokenFromEnv,
+  registerMinioAccessLogRoute,
+} from "./minio-access-log-routes";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const NOW = new Date("2026-10-06T12:00:00.000Z");
@@ -138,7 +142,21 @@ describe("bearerMatches", () => {
   });
 });
 
-describe("POST /api/v1/webhooks/minio/access-log", () => {
+describe("objectStoreAuditWebhookTokenFromEnv", () => {
+  it("prefers the vendor-neutral token and accepts the legacy token during rollback compatibility", () => {
+    expect(
+      objectStoreAuditWebhookTokenFromEnv({
+        OBJECT_STORE_AUDIT_WEBHOOK_TOKEN: "object-token",
+        MINIO_ACCESS_LOG_WEBHOOK_TOKEN: "legacy-token",
+      }),
+    ).toBe("object-token");
+    expect(
+      objectStoreAuditWebhookTokenFromEnv({ MINIO_ACCESS_LOG_WEBHOOK_TOKEN: "legacy-token" }),
+    ).toBe("legacy-token");
+  });
+});
+
+describe("POST /api/v1/webhooks/object-store/access-log", () => {
   // The database is a Proxy that throws on use: every path below must be decided BEFORE touching it.
   const untouchedDb = new Proxy(
     {},
@@ -153,10 +171,15 @@ describe("POST /api/v1/webhooks/minio/access-log", () => {
     registerMinioAccessLogRoute(app, { db: untouchedDb, token, now: () => NOW });
     return app;
   };
-  const post = (app: ReturnType<typeof make>, authorization?: string, payload: unknown = get()) =>
+  const post = (
+    app: ReturnType<typeof make>,
+    authorization?: string,
+    payload: unknown = get(),
+    url = "/api/v1/webhooks/object-store/access-log",
+  ) =>
     app.inject({
       method: "POST",
-      url: "/api/v1/webhooks/minio/access-log",
+      url,
       headers: authorization ? { authorization } : {},
       payload: payload as object,
     });
@@ -176,5 +199,15 @@ describe("POST /api/v1/webhooks/minio/access-log", () => {
     const res = await post(app, "Bearer s3cret", get({ name: "HeadObject" }));
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ received: 0, recorded: 0 });
+  });
+
+  it("keeps the legacy MinIO path as a compatibility alias", async () => {
+    const res = await post(
+      make("s3cret"),
+      "Bearer s3cret",
+      get({ name: "HeadObject" }),
+      "/api/v1/webhooks/minio/access-log",
+    );
+    expect(res.statusCode).toBe(200);
   });
 });

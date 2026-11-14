@@ -37,6 +37,7 @@
 // The credential is write-only: no view carries it (a `hasSecret` flag is derived). Nothing here logs or audits a value; the
 // row's M4 write-audit trigger records that the secret changed, never what it was.
 import { medicareReceiptDay } from "@chartwarden/billing";
+import { assertVersion } from "@chartwarden/shared/route-kit";
 import {
   ChartWardenError,
   type TenantClearinghouseMode,
@@ -710,7 +711,7 @@ export function createTenantClearinghouseService(
         : createFirst(store, actor, input, expectedVersion);
     },
 
-    async recordBaa(store, actor, input) {
+    async recordBaa(store, actor, input, expectedVersion) {
       // The tenant records the BAA it holds with its own vendor; a platform operator only verifies it (separate keys, one role). The
       // route lane already enforces this: the service says it too, so a new caller cannot record a BAA on the tenant's behalf.
       if (!isTenant(actor)) {
@@ -722,6 +723,13 @@ export function createTenantClearinghouseService(
       }
       const record = normalizeBaaInput(input, medicareReceiptDay(now()));
       const row = await lockedRow(store, actor.organizationId);
+      if (expectedVersion !== undefined) {
+        assertVersion(
+          row.version,
+          expectedVersion,
+          "the clearinghouse settings changed before the BAA was recorded; reload and try again",
+        );
+      }
       requireVendorAccount(row);
       if (sameBaa(row, record)) {
         return { view: viewOf(row, actor.organizationId, isOperator(actor)), changedFields: [] };
@@ -852,13 +860,20 @@ export function createTenantClearinghouseService(
       };
     },
 
-    async prepareVerify(store, actor, input) {
+    async prepareVerify(store, actor, input, expectedVersion) {
       const { organizationId } = actor;
       const row = await store.find(organizationId);
       if (!row) {
         throw conflict(
           "CLEARINGHOUSE_NOT_CONFIGURED",
           "no clearinghouse has been chosen for this organization yet",
+        );
+      }
+      if (expectedVersion !== undefined) {
+        assertVersion(
+          row.version,
+          expectedVersion,
+          "the clearinghouse settings changed before verification began; reload and try again",
         );
       }
       if (!isTransmitting(row.vendor)) {

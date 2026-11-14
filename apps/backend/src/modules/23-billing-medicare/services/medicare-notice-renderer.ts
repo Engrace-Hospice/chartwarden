@@ -46,8 +46,17 @@ export interface MedicareNoticeRenderIdentityStore {
 }
 
 export interface MedicareNoticeArtifactStore {
-  recover(input: { organizationId: string; noticeId: string; submissionId: string; kind: MedicareNoticeKind }): Promise<RenderedMedicareNotice | null>;
-  persist(input: { reservation: MedicareNoticeRenderReservation; sourceFingerprint: string; x12: string }): Promise<RenderedMedicareNotice>;
+  recover(input: {
+    organizationId: string;
+    noticeId: string;
+    submissionId: string;
+    kind: MedicareNoticeKind;
+  }): Promise<RenderedMedicareNotice | null>;
+  persist(input: {
+    reservation: MedicareNoticeRenderReservation;
+    sourceFingerprint: string;
+    x12: string;
+  }): Promise<RenderedMedicareNotice>;
 }
 
 export interface MedicareNoticeSourceFacts {
@@ -64,10 +73,26 @@ export interface MedicareTransferSourceFacts {
 }
 
 export interface MedicareNoticeSourceLoader {
-  loadNoe(input: { organizationId: string; noticeId: string; submissionId: string }): Promise<MedicareNoticeSourceFacts>;
-  loadNotr(input: { organizationId: string; noticeId: string; submissionId: string }): Promise<MedicareNoticeSourceFacts>;
-  loadTransfer(input: { organizationId: string; noticeId: string; submissionId: string }): Promise<MedicareTransferSourceFacts>;
-  loadCancellation(input: { organizationId: string; noticeId: string; submissionId: string }): Promise<MedicareTransferSourceFacts>;
+  loadNoe(input: {
+    organizationId: string;
+    noticeId: string;
+    submissionId: string;
+  }): Promise<MedicareNoticeSourceFacts>;
+  loadNotr(input: {
+    organizationId: string;
+    noticeId: string;
+    submissionId: string;
+  }): Promise<MedicareNoticeSourceFacts>;
+  loadTransfer(input: {
+    organizationId: string;
+    noticeId: string;
+    submissionId: string;
+  }): Promise<MedicareTransferSourceFacts>;
+  loadCancellation(input: {
+    organizationId: string;
+    noticeId: string;
+    submissionId: string;
+  }): Promise<MedicareTransferSourceFacts>;
 }
 
 export type MedicareNoticeRenderHoldCode =
@@ -114,19 +139,41 @@ export interface RenderedMedicareNotice {
 
 /** Production composition contract for the four internal notice render paths. */
 export interface MedicareNoticeRenderer {
-  renderNoe(request: { organizationId: string; noticeId: string; submissionId: string }): Promise<RenderedMedicareNotice>;
-  renderNotr(request: { organizationId: string; noticeId: string; submissionId: string }): Promise<RenderedMedicareNotice>;
-  renderTransfer(request: { organizationId: string; noticeId: string; submissionId: string }): Promise<RenderedMedicareNotice>;
-  renderCancellation(request: { organizationId: string; noticeId: string; submissionId: string }): Promise<RenderedMedicareNotice>;
+  renderNoe(request: {
+    organizationId: string;
+    noticeId: string;
+    submissionId: string;
+  }): Promise<RenderedMedicareNotice>;
+  renderNotr(request: {
+    organizationId: string;
+    noticeId: string;
+    submissionId: string;
+  }): Promise<RenderedMedicareNotice>;
+  renderTransfer(request: {
+    organizationId: string;
+    noticeId: string;
+    submissionId: string;
+  }): Promise<RenderedMedicareNotice>;
+  renderCancellation(request: {
+    organizationId: string;
+    noticeId: string;
+    submissionId: string;
+  }): Promise<RenderedMedicareNotice>;
 }
 
-const fingerprint = (value: unknown, key: string): string => createHmac("sha256", key)
-  .update("chartwarden:m23:notice-render:fingerprint:v1\0")
-  .update(JSON.stringify(value))
-  .digest("hex");
+const fingerprint = (value: unknown, key: string): string =>
+  createHmac("sha256", key)
+    .update("chartwarden:m23:notice-render:fingerprint:v1\0")
+    .update(JSON.stringify(value))
+    .digest("hex");
 
 function validateIdentity(
-  expected: { organizationId: string; noticeId: string; submissionId: string; kind: MedicareNoticeKind },
+  expected: {
+    organizationId: string;
+    noticeId: string;
+    submissionId: string;
+    kind: MedicareNoticeKind;
+  },
   actual: MedicareNoticeRenderIdentity,
 ): void {
   if (
@@ -137,7 +184,12 @@ function validateIdentity(
   ) {
     throw new MedicareNoticeRenderHold("NOTICE_SOURCE_INVALID");
   }
-  if (!actual.routeFingerprint || !actual.sourceVersion || !actual.controlNumber || !actual.accountReference) {
+  if (
+    !actual.routeFingerprint ||
+    !actual.sourceVersion ||
+    !actual.controlNumber ||
+    !actual.accountReference
+  ) {
     throw new MedicareNoticeRenderHold("NOTICE_ROUTE_NOT_READY");
   }
 }
@@ -159,13 +211,14 @@ export function createMedicareNoticeRenderer(deps: {
   ): Promise<RenderedMedicareNotice> {
     const recovered = await deps.artifacts?.recover({ ...request, kind });
     if (recovered) return recovered;
-    const source = kind === "noe"
-      ? await deps.sources.loadNoe(request)
-      : kind === "notr"
-        ? await deps.sources.loadNotr(request)
-        : kind === "transfer_notice"
-          ? await deps.sources.loadTransfer(request)
-          : await deps.sources.loadCancellation(request);
+    const source =
+      kind === "noe"
+        ? await deps.sources.loadNoe(request)
+        : kind === "notr"
+          ? await deps.sources.loadNotr(request)
+          : kind === "transfer_notice"
+            ? await deps.sources.loadTransfer(request)
+            : await deps.sources.loadCancellation(request);
     const identity = source.identity;
     validateIdentity({ ...request, kind }, identity);
     const x12Input = source.input;
@@ -194,16 +247,22 @@ export function createMedicareNoticeRenderer(deps: {
       receiverId: x12Input.envelope.receiverId,
       applicationReceiverCode: x12Input.envelope.applicationReceiverCode,
       interchangeControlNumber: reservation.interchangeNumber,
-      usage: identity.usage === "test" ? "T" as const : "P" as const,
+      usage: identity.usage === "test" ? ("T" as const) : ("P" as const),
       createdAt: reservation.renderedAt,
     };
     let x12: string;
     try {
-      x12 = kind === "transfer_notice" || kind === "cancellation_notice"
-        ? build837iTransferNotice({ ...(source.input as TransferNotice837iInput), envelope })
-        : build837iNotice({ ...(source.input as Notice837iInput), envelope });
+      x12 =
+        kind === "transfer_notice" || kind === "cancellation_notice"
+          ? build837iTransferNotice({ ...(source.input as TransferNotice837iInput), envelope })
+          : build837iNotice({ ...(source.input as Notice837iInput), envelope });
     } catch (error) {
-      if (error && typeof error === "object" && "field" in error && typeof error.field === "string") {
+      if (
+        error &&
+        typeof error === "object" &&
+        "field" in error &&
+        typeof error.field === "string"
+      ) {
         throw new MedicareNoticeRenderHold("NOTICE_BUILD_REJECTED", error.field);
       }
       throw error;
@@ -226,9 +285,16 @@ export function createMedicareNoticeRenderer(deps: {
       : rendered;
   }
   return {
-    renderNoe: (request: { organizationId: string; noticeId: string; submissionId: string }) => render("noe", request),
-    renderNotr: (request: { organizationId: string; noticeId: string; submissionId: string }) => render("notr", request),
-    renderTransfer: (request: { organizationId: string; noticeId: string; submissionId: string }) => render("transfer_notice", request),
-    renderCancellation: (request: { organizationId: string; noticeId: string; submissionId: string }) => render("cancellation_notice", request),
+    renderNoe: (request: { organizationId: string; noticeId: string; submissionId: string }) =>
+      render("noe", request),
+    renderNotr: (request: { organizationId: string; noticeId: string; submissionId: string }) =>
+      render("notr", request),
+    renderTransfer: (request: { organizationId: string; noticeId: string; submissionId: string }) =>
+      render("transfer_notice", request),
+    renderCancellation: (request: {
+      organizationId: string;
+      noticeId: string;
+      submissionId: string;
+    }) => render("cancellation_notice", request),
   };
 }

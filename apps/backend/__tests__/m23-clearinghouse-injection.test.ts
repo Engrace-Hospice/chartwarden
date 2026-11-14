@@ -144,16 +144,16 @@ describe("transportUpload (claim / NOE / NOTR submit + retry go through the vend
       controlNumber: n,
     });
 
-  it("files each kind with the vendor and answers in the legacy shape", async () => {
+  it("files claims but fails closed for notices on a non-direct-MAC vendor", async () => {
+    const claim = await upload("claim_837i", "CCN1");
+    expect(claim.accepted).toBe(true);
+    expect(claim.generatedFileUri).toMatch(/^clearinghouse:in_memory:/);
     for (const [kind, n] of [
-      ["claim_837i", "CCN1"],
       ["noe", "NOE1"],
       ["notr", "NOTR1"],
       ["transfer_notice", "TN1"],
     ] as const) {
-      const r = await upload(kind, n);
-      expect(r.accepted).toBe(true);
-      expect(r.generatedFileUri).toMatch(/^clearinghouse:in_memory:/);
+      await expect(upload(kind, n)).rejects.toThrow(CH.NOT_WIRED);
     }
   });
 
@@ -184,11 +184,11 @@ describe("transportUpload (claim / NOE / NOTR submit + retry go through the vend
     expect(worker.macPortal?.upload).toBe(unboundPortal); // the legacy port is only bypassed inside macPortalOf
   });
 
-  it("a transfer notice rides submitNotice; a vendor that cannot carry it refuses with a typed error, never the legacy portal", async () => {
+  it("a transfer notice is refused before an unverified vendor transport is called", async () => {
     const inMemory = new InMemoryClearinghouse();
     await inMemory.control.setOutage(true);
     await expect(upload("transfer_notice", "TN2", transportDeps(inMemory))).rejects.toThrow(
-      CH.UNAVAILABLE,
+      CH.NOT_WIRED,
     );
     const refusing = transportDeps();
     const refuse = async () => ({
@@ -207,7 +207,7 @@ describe("transportUpload (claim / NOE / NOTR submit + retry go through the vend
         }),
       },
     };
-    await expect(upload("transfer_notice", "TN3", t)).rejects.toThrow(CH.INVALID_REQUEST);
+    await expect(upload("transfer_notice", "TN3", t)).rejects.toThrow(CH.NOT_WIRED);
     await expect(upload("bogus" as never, "TN4")).rejects.toThrow(CH.INVALID_REQUEST);
   });
 });

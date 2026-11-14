@@ -2,7 +2,7 @@ import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import type { Session } from "../../../shell/session";
@@ -98,7 +98,10 @@ function baseReadiness(): ReadinessFixture {
   };
 }
 
-function clientFor(readinessResponse = readiness()): ApiClient {
+function clientFor(
+  readinessResponse = readiness(),
+  admissionOverrides: Record<string, unknown> = {},
+): ApiClient {
   return {
     GET: vi.fn(async (path: string) => {
       if (path === "/api/v1/admissions/{id}") {
@@ -117,6 +120,7 @@ function clientFor(readinessResponse = readiness()): ApiClient {
           hospicePhysicianId,
           hospicePhysician: { displayName: "Dr. Amara Okafor" },
           activationGate: { ready: false, missing: ["election_signed", "nor_acknowledged"] },
+          ...admissionOverrides,
         });
       }
       if (path === "/api/v1/admissions/{id}/readiness") {
@@ -215,10 +219,35 @@ function renderWithShell(
               path="/admissions/:id"
               element={<AdmissionDetail {...(initialUpload ? { initialUpload } : {})} />}
             />
+            <Route
+              path="/patients/:patientId/election-certification"
+              element={<ElectionCertificationDestination />}
+            />
+            <Route path="/referrals/:referralId/intake" element={<ReferralMatchDestination />} />
           </Routes>
         </SessionProvider>
       </ApiClientProvider>
     </MemoryRouter>,
+  );
+}
+
+function ElectionCertificationDestination(): JSX.Element {
+  const location = useLocation();
+  return (
+    <>
+      <h1>Election certification destination</h1>
+      <span>{location.hash}</span>
+    </>
+  );
+}
+
+function ReferralMatchDestination(): JSX.Element {
+  const location = useLocation();
+  return (
+    <>
+      <h1>Referral patient matching</h1>
+      <span>{location.search}</span>
+    </>
   );
 }
 
@@ -235,6 +264,11 @@ describe("Admission intake workspace", () => {
       screen.getAllByText("Notice of Rights acknowledgment is required.").length,
     ).toBeGreaterThan(0);
     expect(screen.getAllByText("Election Statement must be signed.").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "Admission setup and privacy" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Notices, election, and certification" }),
+    ).toBeTruthy();
+    expect(screen.getAllByText("Intake coordinator").length).toBeGreaterThan(0);
     // The admission is still "pending" (not yet active) — `HopeEntry` gates HOPE assessment access
     // behind activation (`active={admission.state === "active"}`), so it shows this message rather
     // than the "HOPE Admission Assessment" mini-widget + "Open HOPE" button, which only render once
@@ -255,6 +289,93 @@ describe("Admission intake workspace", () => {
       "/api/v1/admissions/{id}/readiness",
       expect.objectContaining({ params: { path: { id: admissionId } } }),
     );
+  });
+
+  it("routes a referral-backed patient identity blocker to patient matching", async () => {
+    renderWithShell(
+      clientFor(
+        readiness({
+          completed: 0,
+          blockingRemaining: 1,
+          requirements: [
+            {
+              code: "patient_identity",
+              label: "Patient identity",
+              status: "blocked",
+              blocking: true,
+              message: "A canonical patient must be resolved before activation.",
+              action: "RESOLVE_PATIENT",
+            },
+          ],
+        }),
+      ),
+    );
+
+    const action = await screen.findAllByRole("button", { name: "Resolve patient identity" });
+    fireEvent.click(action[0]!);
+
+    expect(await screen.findByRole("heading", { name: "Referral patient matching" })).toBeTruthy();
+    expect(screen.getByText("?step=match")).toBeTruthy();
+  });
+
+  it("fails closed when a patient identity blocker has no referral workflow", async () => {
+    renderWithShell(
+      clientFor(
+        readiness({
+          completed: 0,
+          blockingRemaining: 1,
+          requirements: [
+            {
+              code: "patient_identity",
+              label: "Patient identity",
+              status: "blocked",
+              blocking: true,
+              message: "A canonical patient must be resolved before activation.",
+              action: "RESOLVE_PATIENT",
+            },
+          ],
+        }),
+        { referralId: null },
+      ),
+    );
+
+    const actions = await screen.findAllByRole("button", { name: "Resolve patient identity" });
+    expect(actions[0]?.getAttribute("aria-disabled")).toBe("true");
+    expect(screen.getAllByText("This step can't be completed from this screen yet.").length).toBe(
+      2,
+    );
+  });
+
+  it("does not list a not-applicable requirement as an activation blocker", async () => {
+    renderWithShell(
+      clientFor(
+        readiness({
+          completed: 1,
+          blockingRemaining: 1,
+          requirements: [
+            {
+              code: "notice_of_rights",
+              label: "Notice of Rights",
+              status: "action_required",
+              blocking: true,
+              message: "Notice of Rights acknowledgment is required.",
+              action: "ACKNOWLEDGE_NOR",
+            },
+            {
+              code: "f2f",
+              label: "Face-to-Face",
+              status: "not_applicable",
+              blocking: true,
+              message: "Face-to-Face does not apply.",
+            },
+          ],
+        }),
+      ),
+    );
+
+    const blocker = (await screen.findByText("Admission cannot be activated")).parentElement!;
+    expect(blocker.textContent).toContain("Notice of Rights acknowledgment is required.");
+    expect(blocker.textContent).not.toContain("Face-to-Face does not apply.");
   });
 
   it("surfaces guided actions for admission details, election, and CTI blockers", async () => {
@@ -1027,7 +1148,7 @@ describe("Patient privacy review (REVIEW_PRIVACY)", () => {
     );
   });
 
-  it("never renders a requirement action this screen can't perform as a live button", async () => {
+  it("opens Face-to-Face corrective work in the patient's certification workflow", async () => {
     const client = clientFor(
       readiness({
         requirements: [
@@ -1036,7 +1157,7 @@ describe("Patient privacy review (REVIEW_PRIVACY)", () => {
             label: "Face-to-Face",
             status: "action_required",
             blocking: true,
-            message: "Face-to-face encounter is required.",
+            message: "Face-to-face encounter is overdue and needs an exception review.",
             action: "REVIEW_F2F",
           },
         ],
@@ -1046,9 +1167,51 @@ describe("Patient privacy review (REVIEW_PRIVACY)", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
     );
-    const buttons = screen.getAllByRole("button", { name: /review f2f/i });
+    expect(screen.getByRole("heading", { name: "Timing and clinical follow-up" })).toBeTruthy();
+    expect(
+      screen.getAllByText("Face-to-face encounter is overdue and needs an exception review.")
+        .length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("Hospice physician or nurse practitioner").length).toBeGreaterThan(
+      0,
+    );
+    const buttons = screen.getAllByRole("button", { name: /review face-to-face requirements/i });
     expect(buttons.length).toBeGreaterThan(0);
-    for (const b of buttons) expect((b as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(buttons[0]!);
+    expect(
+      await screen.findByRole("heading", { name: "Election certification destination" }),
+    ).toBeTruthy();
+    expect(screen.getByText("#face-to-face-requirements")).toBeTruthy();
+  });
+
+  it("keeps an unknown future corrective action visible but disabled", async () => {
+    renderWithShell(
+      clientFor(
+        readiness({
+          requirements: [
+            {
+              code: "future_requirement",
+              label: "Future requirement",
+              status: "action_required",
+              blocking: true,
+              message: "A future server requirement needs review.",
+              action: "REVIEW_FUTURE_REQUIREMENT",
+            },
+          ],
+        }),
+      ),
+    );
+
+    const actions = await screen.findAllByRole("button", { name: /review future requirement/i });
+    expect(actions.length).toBeGreaterThan(0);
+    for (const action of actions) {
+      expect((action as HTMLButtonElement).disabled).toBe(false);
+      expect(action.getAttribute("aria-disabled")).toBe("true");
+      expect(action.getAttribute("aria-describedby")).toBeTruthy();
+    }
+    expect(
+      screen.getAllByText("This step can't be completed from this screen yet.").length,
+    ).toBeGreaterThan(0);
   });
 });
 

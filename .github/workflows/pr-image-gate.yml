@@ -46,14 +46,20 @@ jobs:
             deploy/production/smoke.sh \
             deploy/production/bootstrap-vps.sh \
             deploy/production/reseed-demo.sh
-      # `compose.yml` reads `.env.production` (env_file) and interpolates the template's variables; the
-      # example file is the contract for what a real one must define, so `config` fails here when a
-      # service needs a variable the template does not list (the class of break the env-template test
-      # caught for MinIO).
+      # compose.yml still requires the legacy MINIO_ROOT_USER / MINIO_ROOT_PASSWORD (the legacy-minio profile and the
+      # one-time migration's source), but the canonical template deliberately does not define them: deploy.sh derives
+      # them, identical to SEAWEEDFS_ADMIN_ACCESS_KEY / _SECRET_KEY, before any compose call (its rollback-alias
+      # reconciliation). This step mirrors that by exporting them from the canonical names after sourcing the template,
+      # so the dry run keeps proving every other required variable is listed without adding legacy names to the template.
       - name: Compose config against the env template
         working-directory: deploy/production
         run: |
           cp .env.production.example .env.production
+          set -a
+          . ./.env.production
+          set +a
+          export MINIO_ROOT_USER="$SEAWEEDFS_ADMIN_ACCESS_KEY"
+          export MINIO_ROOT_PASSWORD="$SEAWEEDFS_ADMIN_SECRET_KEY"
           docker compose --env-file .env.production -f compose.yml config -q
 
   # #854: behaviour gate before the image is built or scanned (ci.yml runs the same suite in its main job, #853, so `release` is gated too).

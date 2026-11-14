@@ -13,7 +13,6 @@ import {
   repositories,
 } from "@chartwarden/billing";
 import type { DbClient } from "@chartwarden/db";
-import { claimMdEvidenceAccountMatches, claimMdEvidenceFor } from "../claimmd-evidence/store";
 // apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts — M23 LIVE BullMQ wiring for the §4.8 jobs.
 //
 // The thin, infra-touching adapter that turns the @chartwarden/billing PURE domain (the claim/noe/notr lifecycle
@@ -61,11 +60,12 @@ import {
   holdUnlessClaimsBillingEntitled,
 } from "../../../bootstrap/claims-billing-gate";
 import { isPlatformClaimMdAccount, shouldRunLegacyClaimMdAckPoll } from "../claimmd-capture/config";
+import { claimMdEvidenceAccountMatches, claimMdEvidenceFor } from "../claimmd-evidence/store";
 import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/claim-837i-submit";
-import type { MedicareNoticeRenderer } from "../services/medicare-notice-renderer";
-import type { MedicareNoticeDispatchStateMachine } from "../services/medicare-notice-dispatch";
 import { reviewedClaimSourceIsStale } from "../services/claim-preview-integrity";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
+import type { MedicareNoticeDispatchStateMachine } from "../services/medicare-notice-dispatch";
+import type { MedicareNoticeRenderer } from "../services/medicare-notice-renderer";
 import { reportRevokedResponsesPending } from "../tenant-clearinghouse/revoked-responses-alert";
 import { isVoidM23Claim } from "../void-claim";
 import { CLAIMMD_M23_PAYER_ROUTES_ENV, CLEARINGHOUSE_PAYER_ID_ENV } from "./clearinghouse-context";
@@ -1630,12 +1630,24 @@ export async function runClaimSubmit(
     const transport = orgTransport?.binding.vendor ? orgTransport : null;
     if (!transport) return;
     if (transport.binding.vendor === "claimmd") {
-      const recoveryContext = await transport.contexts.contextFor(job.organizationId, prepared.claim.providerEntityId, {
-        payerRoute: "skip", effectiveDate: prepared.claim.serviceFrom,
-      });
-      const evidence = claimMdEvidenceFor(transport, job.organizationId, recoveryContext.usage).submission;
+      const recoveryContext = await transport.contexts.contextFor(
+        job.organizationId,
+        prepared.claim.providerEntityId,
+        {
+          payerRoute: "skip",
+          effectiveDate: prepared.claim.serviceFrom,
+        },
+      );
+      const evidence = claimMdEvidenceFor(
+        transport,
+        job.organizationId,
+        recoveryContext.usage,
+      ).submission;
       if (!evidence?.lookupSubmissionIdentity) return;
-      const original = await evidence.lookupSubmissionIdentity(job.organizationId, job.submissionId);
+      const original = await evidence.lookupSubmissionIdentity(
+        job.organizationId,
+        job.submissionId,
+      );
       // Routing/enrollment may have changed after dispatch started. Reconcile only with the original account/mode;
       // if ownership changed, retain the in-doubt state for an authorized recovery path and never query the new account.
       if (!claimMdEvidenceAccountMatches(original, evidence)) return;
@@ -3580,7 +3592,9 @@ export function registerM23NoticeSubmissionWorkers(deps: M23WorkerDeps): Worker[
 /** Transport-native ack polling uses each clearinghouse's API and never requires raw X12 or a MAC portal. */
 export function registerM23TransportAckWorkers(deps: M23WorkerDeps): Worker[] {
   if (!deps.transport || (!deps.transport.binding.vendor && !hasPerOrgTransport(deps))) {
-    throw new Error("M23TransportAckCapabilityIncomplete: no platform or organization transport is bound");
+    throw new Error(
+      "M23TransportAckCapabilityIncomplete: no platform or organization transport is bound",
+    );
   }
   const cron = (queue: string, run: () => Promise<void>) =>
     new Worker(queue, async () => run(), {
@@ -3597,7 +3611,9 @@ export function registerM23TransportAckWorkers(deps: M23WorkerDeps): Worker[] {
 /** Raw-file acknowledgment polling is available only when the complete legacy X12/MAC gateway is present. */
 export function registerM23LegacyAckWorkers(deps: M23WorkerDeps): Worker[] {
   if (!deps.x12 || !deps.macPortal || !deps.jurisdictions) {
-    throw new Error("M23MacAckCapabilityIncomplete: x12, macPortal, and jurisdictions are required");
+    throw new Error(
+      "M23MacAckCapabilityIncomplete: x12, macPortal, and jurisdictions are required",
+    );
   }
   if (activeTransport(deps) || hasPerOrgTransport(deps)) {
     throw new Error("M23MacAckCapabilityIncomplete: transport-native ack workers own these queues");
@@ -3625,9 +3641,10 @@ export function registerM23LaunchWorkers(
     );
   }
   assertTransportInjected(env, deps);
-  const ackWorkers = activeTransport(deps) || hasPerOrgTransport(deps)
-    ? registerM23TransportAckWorkers(deps)
-    : registerM23LegacyAckWorkers(deps);
+  const ackWorkers =
+    activeTransport(deps) || hasPerOrgTransport(deps)
+      ? registerM23TransportAckWorkers(deps)
+      : registerM23LegacyAckWorkers(deps);
   return [
     ...registerM23ClaimSubmissionWorkers(deps, env),
     ...registerM23NoticeSubmissionWorkers(deps),
@@ -3850,8 +3867,7 @@ export function buildM23WorkerDeps(deps: {
     transport: deps.transport,
     claimMdResponseCaptureActive: deps.claimMdResponseCaptureActive,
     claimMdAckDispatcherActive: deps.claimMdAckDispatcherActive,
-    claimMdPlatformResponseReconciliationReady:
-      deps.claimMdPlatformResponseReconciliationReady,
+    claimMdPlatformResponseReconciliationReady: deps.claimMdPlatformResponseReconciliationReady,
     claim837i: deps.claim837i,
     noticeRenderer: deps.noticeRenderer,
     noticeDispatch: deps.noticeDispatch,

@@ -58,6 +58,7 @@ describe("M23 NPI verification evidence", () => {
     });
     const service = buildDrizzleNpiVerificationService({
       runner: runner as never,
+      beforeVerificationChanged: async () => undefined,
       onVerificationChanged: async () => undefined,
     });
     return { runner, service };

@@ -56,6 +56,14 @@ function ok(data: unknown) {
   return { data, error: undefined, response: new Response(null, { status: 200 }) };
 }
 
+function fail(code: string, message: string, status = 409) {
+  return {
+    data: undefined,
+    error: { error: { code, message } },
+    response: new Response(null, { status }),
+  };
+}
+
 function clientFor(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     GET: vi.fn(async (path: string) => {
@@ -280,7 +288,7 @@ describe("Referral Phase 2 workflow screens", () => {
       expect(screen.getByRole("heading", { name: "Robert Johnson" })).toBeTruthy(),
     );
     expect(
-      screen.getByText("A patient must be confirmed or created before qualification."),
+      screen.getAllByText("A patient must be confirmed or created before qualification.").length,
     ).toBeTruthy();
     expect(screen.getByText("Packet requested.")).toBeTruthy();
     expect(screen.getByText("Review started")).toBeTruthy();
@@ -322,6 +330,9 @@ describe("Referral Phase 2 workflow screens", () => {
     fireEvent.change(screen.getByLabelText("Organization"), {
       target: { value: "St. Mary's Hospital" },
     });
+    fireEvent.change(screen.getByLabelText("Date of birth"), {
+      target: { value: "1955-06-09" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /save referral information/i }));
 
     await waitFor(() =>
@@ -329,12 +340,79 @@ describe("Referral Phase 2 workflow screens", () => {
         "/api/v1/referrals/{id}",
         expect.objectContaining({
           body: expect.objectContaining({
+            patientDobAtReceipt: "1955-06-09",
             referrerOrganization: "St. Mary's Hospital",
             ifVersion: referral.version,
           }),
         }),
       ),
     );
+  });
+
+  it("requires a separate confirmation after a patient-match candidate is selected", async () => {
+    const candidateId = "22222222-2222-4222-8222-222222222222";
+    const post = vi.fn(async (path: string) => {
+      if (path.endsWith("/patient-matches")) {
+        return ok({
+          id: referral.id,
+          state: "under_review",
+          version: 5,
+          candidates: [
+            {
+              patientId: candidateId,
+              displayName: "Robert J. Johnson",
+              dob: "1954-05-08",
+              mrn: "MRN-004812",
+              phoneLast4: "0198",
+              confidence: "Strong demographic match",
+            },
+          ],
+        });
+      }
+      return ok({ id: referral.id, state: "under_review", version: 5 });
+    });
+    const client = clientFor({ POST: post as unknown as ApiClient["POST"] });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Find patient matches" }));
+    expect(await screen.findByText("Robert J. Johnson")).toBeTruthy();
+    expect(screen.getByText("Strong demographic match")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select Robert J. Johnson" }));
+    expect(screen.getByRole("heading", { name: "Selected patient" })).toBeTruthy();
+    expect(document.body.textContent).toContain("MRN ending 4812");
+    expect(document.body.textContent).not.toContain("MRN-004812");
+    expect(post.mock.calls.some(([path]) => String(path).endsWith("/confirm-patient"))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm selected patient" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        `/api/v1/referrals/${referral.id}/confirm-patient`,
+        expect.objectContaining({
+          body: expect.objectContaining({ patientId: candidateId, ifVersion: referral.version }),
+        }),
+      ),
+    );
+  });
+
+  it("turns a duplicate create-patient conflict into an explicit matching recovery path", async () => {
+    const client = clientFor({
+      POST: vi.fn(async (path: string) =>
+        path.endsWith("/create-patient")
+          ? fail(
+              "CONFLICT",
+              "A patient with this Medicare number already exists in your organization.",
+            )
+          : ok({ id: referral.id, state: "under_review", version: 5 }),
+      ) as unknown as ApiClient["POST"],
+    });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Create new patient" }));
+
+    expect(await screen.findByText(/patient may already exist/i)).toBeTruthy();
+    expect(screen.getByText(/find patient matches or search the chart/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Find patient matches" })).toBeTruthy();
   });
 
   it("uses the canonical referral conversion endpoint once a referral is qualified", async () => {
@@ -375,6 +453,152 @@ describe("Referral Phase 2 workflow screens", () => {
           body: expect.objectContaining({ primaryDiagnosisIcd10: "C34.90", ifVersion: 4 }),
         }),
       ),
+    );
+    expect(await screen.findByText("Admission opened")).toBeTruthy();
+  });
+
+  it("shows a deliberate handoff summary before conversion", async () => {
+    const qualified = {
+      ...referral,
+      status: "qualified" as const,
+      state: "qualified" as const,
+      patientId: "22222222-2222-4222-8222-222222222222",
+      patientResolutionStatus: "matched" as const,
+      qualificationBlockers: [],
+    };
+    const client = clientFor({
+      GET: vi.fn(async (path: string) =>
+        path === "/api/v1/referrals/{id}" ? ok(qualified) : ok({ items: [] }),
+      ) as unknown as ApiClient["GET"],
+    });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    const summary = await screen.findByRole("region", { name: "Admission handoff summary" });
+    expect(within(summary).getByText("Robert Johnson")).toBeTruthy();
+    expect(within(summary).getByText("Matched")).toBeTruthy();
+    expect(within(summary).getByText("C34.90")).toBeTruthy();
+    expect(within(summary).getByText(/referral qualification checks are complete/i)).toBeTruthy();
+  });
+
+  it("does not overstate handoff readiness when an unresolved referral has no blockers", async () => {
+    const unresolved = { ...referral, qualificationBlockers: [] };
+    const client = clientFor({
+      GET: vi.fn(async (path: string) =>
+        path === "/api/v1/referrals/{id}" ? ok(unresolved) : ok({ items: [] }),
+      ) as unknown as ApiClient["GET"],
+    });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    const summary = await screen.findByRole("region", { name: "Admission handoff summary" });
+    expect(within(summary).getByText(/confirm or create the patient/i)).toBeTruthy();
+    expect(within(summary).queryByText(/checks are complete/i)).toBeNull();
+  });
+
+  it("shows server-reported qualification blocker reasons in the handoff summary", async () => {
+    renderWithShell(<ReferralDetail />, clientFor(), `/referrals/${referral.id}`);
+
+    const summary = await screen.findByRole("region", { name: "Admission handoff summary" });
+    expect(
+      within(summary).getByText("A patient must be confirmed or created before qualification."),
+    ).toBeTruthy();
+  });
+
+  it("reloads server truth after a stale conversion and keeps the refusal in the handoff step", async () => {
+    const qualified = {
+      ...referral,
+      status: "qualified" as const,
+      state: "qualified" as const,
+      patientId: "22222222-2222-4222-8222-222222222222",
+      patientResolutionStatus: "matched" as const,
+      qualificationBlockers: [],
+    };
+    let referralReads = 0;
+    const get = vi.fn(async (path: string) => {
+      if (path !== "/api/v1/referrals/{id}") return ok({ items: [] });
+      referralReads += 1;
+      return ok(
+        referralReads === 1 ? qualified : { ...qualified, version: 5, priority: "routine" },
+      );
+    });
+    const client = clientFor({
+      GET: get as unknown as ApiClient["GET"],
+      POST: vi.fn(async (path: string) =>
+        path.endsWith("/convert")
+          ? fail("VERSION_MISMATCH", "stale write on referral")
+          : ok({ id: referral.id, state: "qualified", version: 5 }),
+      ) as unknown as ApiClient["POST"],
+    });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Start Admission" }));
+
+    expect(await screen.findByText(/referral changed while you were reviewing it/i)).toBeTruthy();
+    await waitFor(() =>
+      expect(get.mock.calls.filter(([path]) => path === "/api/v1/referrals/{id}")).toHaveLength(2),
+    );
+    expect(screen.getAllByText("Routine").length).toBeGreaterThan(0);
+  });
+
+  it("keeps an authorization refusal in place without suggesting step-up", async () => {
+    const qualified = {
+      ...referral,
+      status: "qualified" as const,
+      state: "qualified" as const,
+      patientId: "22222222-2222-4222-8222-222222222222",
+      patientResolutionStatus: "matched" as const,
+      qualificationBlockers: [],
+    };
+    const client = clientFor({
+      GET: vi.fn(async (path: string) =>
+        path === "/api/v1/referrals/{id}" ? ok(qualified) : ok({ items: [] }),
+      ) as unknown as ApiClient["GET"],
+      POST: vi.fn(async (path: string) =>
+        path.endsWith("/convert")
+          ? fail("FORBIDDEN", "forbidden", 403)
+          : ok({ id: referral.id, state: "qualified", version: 5 }),
+      ) as unknown as ApiClient["POST"],
+    });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Start Admission" }));
+
+    expect(await screen.findByText(/do not have permission to start this admission/i)).toBeTruthy();
+    expect(screen.queryByText(/step-up/i)).toBeNull();
+  });
+
+  it("allows only one conversion request while the first submission is unresolved", async () => {
+    const qualified = {
+      ...referral,
+      status: "qualified" as const,
+      state: "qualified" as const,
+      patientId: "22222222-2222-4222-8222-222222222222",
+      patientResolutionStatus: "matched" as const,
+      qualificationBlockers: [],
+    };
+    let resolveConversion: ((value: ReturnType<typeof ok>) => void) | undefined;
+    const conversion = new Promise<ReturnType<typeof ok>>((resolve) => {
+      resolveConversion = resolve;
+    });
+    const post = vi.fn(async (path: string) =>
+      path.endsWith("/convert")
+        ? conversion
+        : ok({ id: referral.id, state: "qualified", version: 5 }),
+    );
+    const client = clientFor({
+      GET: vi.fn(async (path: string) =>
+        path === "/api/v1/referrals/{id}" ? ok(qualified) : ok({ items: [] }),
+      ) as unknown as ApiClient["GET"],
+      POST: post as unknown as ApiClient["POST"],
+    });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    const start = await screen.findByRole("button", { name: "Start Admission" });
+    fireEvent.click(start);
+    fireEvent.click(start);
+
+    expect(post.mock.calls.filter(([path]) => String(path).endsWith("/convert"))).toHaveLength(1);
+    resolveConversion?.(
+      ok({ id: referral.id, state: "converted", version: 5, admissionId: "adm-1" }),
     );
     expect(await screen.findByText("Admission opened")).toBeTruthy();
   });
@@ -449,6 +673,34 @@ describe("Referral Records tab (F-238 — intake starts with the referral)", () 
   it("shows an empty state when nothing has been filed", async () => {
     renderWithShell(<ReferralDetail />, recordsClient([]), `/referrals/${referral.id}?tab=records`);
     expect(await screen.findByText("No records yet")).toBeTruthy();
+    expect(screen.getByText(/continue with manual review/i)).toBeTruthy();
+  });
+
+  it("preserves an unreadable record and directs intake staff to continue manually", async () => {
+    const failedBatch = { ...batch, status: "parse_failed", review: null };
+    renderWithShell(
+      <ReferralDetail />,
+      recordsClient([failedBatch]),
+      `/referrals/${referral.id}?tab=records`,
+    );
+
+    expect(await screen.findByText("Could not read")).toBeTruthy();
+    expect(
+      screen.getByText(/keep the original record and continue the referral manually/i),
+    ).toBeTruthy();
+    expect(screen.getByRole("link", { name: /^View Fax received/ })).toBeTruthy();
+  });
+
+  it("keeps a failed original visible and directs staff to the manual path", async () => {
+    renderWithShell(
+      <ReferralDetail />,
+      recordsClient([{ ...batch, status: "parse_failed", pages: 0, candidates: 0, review: null }]),
+      `/referrals/${referral.id}?tab=records`,
+    );
+
+    expect(await screen.findByText("Could not read")).toBeTruthy();
+    expect(screen.getByText(/keep the original record/i)).toBeTruthy();
+    expect(screen.getByText(/continue the referral manually/i)).toBeTruthy();
   });
 
   it("Add records uploads the file, files it against the referral and starts DocLens", async () => {
@@ -516,5 +768,79 @@ describe("Referral Records tab (F-238 — intake starts with the referral)", () 
       }),
     );
     expect(await screen.findByText(/Records filed\. WardenLens is reading them/)).toBeTruthy();
+  });
+
+  it("reuses a verified document when filing fails, and guards a double submit", async () => {
+    const cryptoValue = { subtle: { digest: vi.fn(async () => new Uint8Array(32).buffer) } };
+    Object.defineProperty(globalThis, "crypto", { configurable: true, value: cryptoValue });
+    Object.defineProperty(window, "crypto", { configurable: true, value: cryptoValue });
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: vi.fn(async () => new Response(null, { status: 200 })),
+    });
+    let filingAttempts = 0;
+    const post = vi.fn(async (path: string) => {
+      if (path === "/api/v1/document-uploads")
+        return ok({
+          uploadId: "66666666-6666-4666-8666-666666666666",
+          uploadUrl: "https://storage.example/upload",
+          requiredHeaders: {},
+          expiresAt: "2026-10-04T10:05:00.000Z",
+        });
+      if (path === "/api/v1/document-uploads/{id}/complete")
+        return ok({
+          documentId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+          versionId: "v1",
+          versionNumber: 1,
+        });
+      if (path === "/api/v1/intake/uploads") {
+        filingAttempts += 1;
+        if (filingAttempts === 1) {
+          return {
+            data: undefined,
+            error: { message: "The filing service was temporarily unavailable." },
+            response: new Response(null, { status: 503 }),
+          };
+        }
+        return ok({ id: batch.id, status: "uploaded" });
+      }
+      if (path === "/api/v1/intake/uploads/{id}/extraction/run")
+        return ok({ batchId: batch.id, status: "queued" });
+      return ok({});
+    });
+    const client = recordsClient([], post as unknown as ApiClient["POST"]);
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}?tab=records`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add records" }));
+    const dialog = screen.getByRole("dialog");
+    const file = new File(["%PDF-1.7"], "hospital-records.pdf", { type: "application/pdf" });
+    fireEvent.change(within(dialog).getByLabelText("Records file"), { target: { files: [file] } });
+    const submit = within(dialog).getByRole("button", { name: "Upload and file" });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+
+    expect((await within(dialog).findByRole("alert")).textContent).toMatch(
+      /verified file is preserved/i,
+    );
+    expect(post.mock.calls.filter(([path]) => path === "/api/v1/document-uploads")).toHaveLength(1);
+    expect(
+      post.mock.calls.filter(([path]) => path === "/api/v1/document-uploads/{id}/complete"),
+    ).toHaveLength(1);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add records" }));
+    const reopenedDialog = screen.getByRole("dialog");
+    expect(within(reopenedDialog).getByRole("button", { name: "Retry filing" })).toBeTruthy();
+    fireEvent.click(within(reopenedDialog).getByRole("button", { name: "Retry filing" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        "/api/v1/intake/uploads/{id}/extraction/run",
+        expect.objectContaining({ params: { path: { id: batch.id } } }),
+      ),
+    );
+    expect(post.mock.calls.filter(([path]) => path === "/api/v1/document-uploads")).toHaveLength(1);
+    expect(post.mock.calls.filter(([path]) => path === "/api/v1/intake/uploads")).toHaveLength(2);
   });
 });

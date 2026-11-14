@@ -7,6 +7,7 @@ import { FeatureFlagProvider, useApiClient } from "@chartwarden/ui";
 import type { FeatureFlags } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
+import { isOnboardingSession } from "./onboarding-stage";
 import { useSession } from "./session";
 
 const NO_FLAGS: FeatureFlags = {};
@@ -22,12 +23,15 @@ export function LiveFeatureFlagProvider({
   children,
 }: LiveFeatureFlagProviderProps): JSX.Element {
   const client = useApiClient();
-  const organizationId = useSession()?.organizationId ?? "";
+  const session = useSession();
+  const organizationId = session?.organizationId ?? "";
+  // Confined while onboarding: the flags route answers 403 ORGANIZATION_ONBOARDING, so no read is made (every flag reads false).
+  const confined = isOnboardingSession(session);
   const [loaded, setLoaded] = useState<{ org: string; flags: FeatureFlags } | null>(null);
   const fixed = flags !== undefined;
 
   useEffect(() => {
-    if (fixed || organizationId === "") return;
+    if (fixed || confined || organizationId === "") return;
     let current = true;
     Promise.resolve()
       .then(() => client.GET("/api/v1/system/feature-flags"))
@@ -41,7 +45,7 @@ export function LiveFeatureFlagProvider({
     return () => {
       current = false;
     };
-  }, [client, fixed, organizationId]);
+  }, [client, fixed, confined, organizationId]);
 
   const resolved = flags ?? (loaded?.org === organizationId ? loaded.flags : NO_FLAGS);
   return <FeatureFlagProvider flags={resolved}>{children}</FeatureFlagProvider>;

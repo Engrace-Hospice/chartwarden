@@ -1,7 +1,7 @@
 import { schema } from "@chartwarden/db";
 import { describe, expect, it } from "vitest";
 import {
-  MedicareNoticeDispatchHold,
+  type MedicareNoticeDispatchHold,
   buildMedicareNoticeDispatchStateMachine,
 } from "./medicare-notice-dispatch";
 import type { RenderedMedicareNotice } from "./medicare-notice-renderer";
@@ -97,11 +97,12 @@ function fakeDb(rows: ReturnType<typeof fixture>) {
     select: () => ({
       from: (table: unknown) => ({
         where: () => ({
-          limit: async () => table === schema.claimSubmission
-            ? [rows.submission]
-            : table === schema.medicareNoticeRenderIdentity
-              ? [rows.identity]
-              : [rows.artifact],
+          limit: async () =>
+            table === schema.claimSubmission
+              ? [rows.submission]
+              : table === schema.medicareNoticeRenderIdentity
+                ? [rows.identity]
+                : [rows.artifact],
         }),
       }),
     }),
@@ -158,10 +159,11 @@ describe("Medicare notice dispatch state machine", () => {
   it("refuses an artifact digest that is not the finalized artifact bound to the submission", async () => {
     const rows = fixture();
     const machine = buildMedicareNoticeDispatchStateMachine(fakeDb(rows) as never);
-    await expect(machine.reserve({ ...rows.rendered, artifactSha256: "b".repeat(64) }))
-      .rejects.toMatchObject({
-        code: "NOTICE_DISPATCH_ARTIFACT_MISMATCH",
-      } satisfies Partial<MedicareNoticeDispatchHold>);
+    await expect(
+      machine.reserve({ ...rows.rendered, artifactSha256: "b".repeat(64) }),
+    ).rejects.toMatchObject({
+      code: "NOTICE_DISPATCH_ARTIFACT_MISMATCH",
+    } satisfies Partial<MedicareNoticeDispatchHold>);
     expect(rows.submission.dispatchState).toBe("pending");
   });
 
@@ -183,7 +185,9 @@ describe("Medicare notice dispatch state machine", () => {
     });
     expect(first.dispatchState).toBe("in_doubt");
     expect(replay.dispatchState).toBe("in_doubt");
-    await expect(machine.reserve(rows.rendered)).resolves.toMatchObject({ kind: "already_started" });
+    await expect(machine.reserve(rows.rendered)).resolves.toMatchObject({
+      kind: "already_started",
+    });
   });
 
   it("records a known non-send as terminal and does not make the same attempt retryable", async () => {
@@ -227,14 +231,16 @@ describe("Medicare notice dispatch state machine", () => {
     const rows = fixture();
     const machine = buildMedicareNoticeDispatchStateMachine(fakeDb(rows) as never);
     const reserved = await machine.reserve(rows.rendered);
-    await expect(machine.finishTransportReceipt({
-      organizationId: ORG,
-      submissionId: SUBMISSION,
-      dispatchToken: reserved.identity.dispatchToken,
-      receiptReference: "patient response text is not a safe receipt",
-      correlationId: "synthetic-correlation-1",
-      receivedAt: new Date(),
-    })).rejects.toMatchObject({ code: "NOTICE_DISPATCH_IDENTITY_INVALID" });
+    await expect(
+      machine.finishTransportReceipt({
+        organizationId: ORG,
+        submissionId: SUBMISSION,
+        dispatchToken: reserved.identity.dispatchToken,
+        receiptReference: "patient response text is not a safe receipt",
+        correlationId: "synthetic-correlation-1",
+        receivedAt: new Date(),
+      }),
+    ).rejects.toMatchObject({ code: "NOTICE_DISPATCH_IDENTITY_INVALID" });
     expect(rows.submission.dispatchState).toBe("sending");
   });
 
@@ -248,14 +254,16 @@ describe("Medicare notice dispatch state machine", () => {
       dispatchToken: reserved.identity.dispatchToken,
       reasonCode: "GATEWAY_OUTCOME_UNKNOWN",
     });
-    await expect(machine.finishTransportReceipt({
-      organizationId: ORG,
-      submissionId: SUBMISSION,
-      dispatchToken: reserved.identity.dispatchToken,
-      receiptReference: "gateway-receipt:synthetic-1",
-      correlationId: "synthetic-correlation-1",
-      receivedAt: new Date(),
-    })).rejects.toMatchObject({ code: "NOTICE_DISPATCH_FENCING_CONFLICT" });
+    await expect(
+      machine.finishTransportReceipt({
+        organizationId: ORG,
+        submissionId: SUBMISSION,
+        dispatchToken: reserved.identity.dispatchToken,
+        receiptReference: "gateway-receipt:synthetic-1",
+        correlationId: "synthetic-correlation-1",
+        receivedAt: new Date(),
+      }),
+    ).rejects.toMatchObject({ code: "NOTICE_DISPATCH_FENCING_CONFLICT" });
     expect(rows.submission.dispatchState).toBe("in_doubt");
   });
 });

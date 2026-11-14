@@ -2,7 +2,7 @@
 // This module has no transport port. MBI and street-address values exist only in the returned in-memory
 // builder input and must never be logged, queued, or exposed through an API.
 import { createHash } from "node:crypto";
-import { repositories } from "@chartwarden/billing";
+import type { repositories } from "@chartwarden/billing";
 import type { MdmEntityProvider } from "@chartwarden/mdm";
 import type {
   MbiUnlockReader,
@@ -18,11 +18,11 @@ import type {
 } from "@chartwarden/x12-837-client";
 import type { Claim837iPartiesPort } from "./claim-837i-loader";
 import {
+  MedicareNoticeRenderHold,
   type MedicareNoticeRenderIdentity,
   type MedicareNoticeSourceFacts,
   type MedicareNoticeSourceLoader,
   type MedicareTransferSourceFacts,
-  MedicareNoticeRenderHold,
 } from "./medicare-notice-renderer";
 
 export const MEDICARE_NOTICE_MBI_DISCLOSURE_PURPOSE = "medicare_notice_render" as const;
@@ -145,7 +145,10 @@ type Transfer = repositories.TransferNoticeRecord;
 const sha256 = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
-function hold(code: ConstructorParameters<typeof MedicareNoticeRenderHold>[0], field?: string): never {
+function hold(
+  code: ConstructorParameters<typeof MedicareNoticeRenderHold>[0],
+  field?: string,
+): never {
   throw new MedicareNoticeRenderHold(code, field);
 }
 
@@ -174,7 +177,8 @@ function sameIdentity(
     clinical.organizationId !== record.organizationId ||
     clinical.providerEntityId !== record.providerEntityId ||
     clinical.patientId !== record.patientId
-  ) hold("NOTICE_SOURCE_INVALID", "sourceOwnership");
+  )
+    hold("NOTICE_SOURCE_INVALID", "sourceOwnership");
 }
 
 function attemptMatches(
@@ -187,11 +191,12 @@ function attemptMatches(
     noticeId: string;
   },
 ): void {
-  const subjectId = input.kind === "noe"
-    ? attempt?.noeId
-    : input.kind === "notr"
-      ? attempt?.notrId
-      : attempt?.transferNoticeId;
+  const subjectId =
+    input.kind === "noe"
+      ? attempt?.noeId
+      : input.kind === "notr"
+        ? attempt?.notrId
+        : attempt?.transferNoticeId;
   if (
     !attempt ||
     attempt.id !== input.submissionId ||
@@ -201,7 +206,8 @@ function attemptMatches(
     subjectId !== input.noticeId ||
     attempt.outcome !== "queued" ||
     attempt.dispatchState !== "pending"
-  ) hold("NOTICE_SOURCE_INVALID", "submissionAttempt");
+  )
+    hold("NOTICE_SOURCE_INVALID", "submissionAttempt");
 }
 
 async function beneficiaryAndRoute(
@@ -222,7 +228,10 @@ async function beneficiaryAndRoute(
     onDate: input.effectiveDate,
   });
   if (!coverage) hold("NOTICE_FACTS_INCOMPLETE", "coverage.medicareFfs");
-  const patient = await deps.patients.findById({ organizationId: input.organizationId, id: input.patientId });
+  const patient = await deps.patients.findById({
+    organizationId: input.organizationId,
+    id: input.patientId,
+  });
   if (!patient) hold("NOTICE_SOURCE_NOT_FOUND", "patient");
   if (patient.administrativeSex !== "M" && patient.administrativeSex !== "F") {
     hold("NOTICE_FACTS_INCOMPLETE", "subscriber.sex");
@@ -248,7 +257,8 @@ async function beneficiaryAndRoute(
     },
   });
   if (!identity) hold("NOTICE_FACTS_INCOMPLETE", "subscriber.mbi");
-  if (identity.patientPayerId !== coverage.id) hold("NOTICE_SOURCE_INVALID", "subscriber.mbiCoverage");
+  if (identity.patientPayerId !== coverage.id)
+    hold("NOTICE_SOURCE_INVALID", "subscriber.mbiCoverage");
   return {
     coverage: coverage as PatientCoverage,
     route,
@@ -299,7 +309,12 @@ async function commonBuilderFacts(
 ) {
   const [beneficiary, attendingPhysician, certifyingPhysician, providerCcn] = await Promise.all([
     beneficiaryAndRoute(deps, input),
-    physician(deps, input.organizationId, input.clinical.attendingPhysicianId, "attendingPhysician"),
+    physician(
+      deps,
+      input.organizationId,
+      input.clinical.attendingPhysicianId,
+      "attendingPhysician",
+    ),
     physician(deps, input.organizationId, input.clinical.certifyingPhysicianId, "otherPhysician"),
     deps.provider.ccnFor(input.organizationId, input.providerEntityId),
   ]);
@@ -367,17 +382,20 @@ async function loadNoe(
     deps.persistence.noeById(request.organizationId, request.noticeId),
     deps.persistence.submissionById(request.organizationId, request.submissionId),
   ]);
-  if (!notice || notice.organizationId !== request.organizationId) hold("NOTICE_SOURCE_NOT_FOUND", "noe");
+  if (!notice || notice.organizationId !== request.organizationId)
+    hold("NOTICE_SOURCE_NOT_FOUND", "noe");
   ensureReadyState(notice.state);
   attemptMatches(attempt, { ...request, providerEntityId: notice.providerEntityId, kind: "noe" });
-  const clinical = await clinicalFacts(() => deps.clinical.loadNoe({
-    organizationId: request.organizationId,
-    admissionId: notice.admissionId,
-    electionPeriodId: notice.electionPeriodId,
-    patientId: notice.patientId,
-    providerEntityId: notice.providerEntityId,
-    electionEffectiveDate: notice.electionEffectiveDate,
-  }));
+  const clinical = await clinicalFacts(() =>
+    deps.clinical.loadNoe({
+      organizationId: request.organizationId,
+      admissionId: notice.admissionId,
+      electionPeriodId: notice.electionPeriodId,
+      patientId: notice.patientId,
+      providerEntityId: notice.providerEntityId,
+      electionEffectiveDate: notice.electionEffectiveDate,
+    }),
+  );
   sameIdentity(notice, clinical);
   const common = await commonBuilderFacts(deps, {
     ...request,
@@ -397,7 +415,11 @@ async function loadNoe(
       usage: common.beneficiary.route.usage === "test" ? "T" : "P",
       createdAt: new Date(0),
     },
-    notice: { kind: "NOE", controlNumber: notice.noeControlNumber, admissionDate: clinical.statementFromDate },
+    notice: {
+      kind: "NOE",
+      controlNumber: notice.noeControlNumber,
+      admissionDate: clinical.statementFromDate,
+    },
     principalDiagnosis: clinical.principalDiagnosis,
     attendingPhysician: common.attendingPhysician,
     otherPhysician: common.certifyingPhysician,
@@ -425,31 +447,34 @@ async function loadNotr(
     deps.persistence.notrById(request.organizationId, request.noticeId),
     deps.persistence.submissionById(request.organizationId, request.submissionId),
   ]);
-  if (!notice || notice.organizationId !== request.organizationId) hold("NOTICE_SOURCE_NOT_FOUND", "notr");
+  if (!notice || notice.organizationId !== request.organizationId)
+    hold("NOTICE_SOURCE_NOT_FOUND", "notr");
   ensureReadyState(notice.state);
   attemptMatches(attempt, { ...request, providerEntityId: notice.providerEntityId, kind: "notr" });
   if (notice.triggerKind === "transfer_out") hold("NOTICE_SOURCE_INVALID", "notr.triggerKind");
   if (
     notice.triggerKind === "discharge" &&
-    await deps.persistence.finalClaimFiledForAdmission(
+    (await deps.persistence.finalClaimFiledForAdmission(
       request.organizationId,
       notice.admissionId,
       notice.effectiveEndDate,
-    )
+    ))
   ) {
     hold("NOTICE_SOURCE_INVALID", "notr.finalClaimAlreadyFiled");
   }
-  const clinical = await clinicalFacts(() => deps.clinical.loadNotr({
-    organizationId: request.organizationId,
-    admissionId: notice.admissionId,
-    patientId: notice.patientId,
-    providerEntityId: notice.providerEntityId,
-    triggerKind: notice.triggerKind,
-    revocationEventId: notice.revocationEventId,
-    transferEventId: notice.transferEventId,
-    dischargeEventId: notice.dischargeEventId,
-    effectiveEndDate: notice.effectiveEndDate,
-  }));
+  const clinical = await clinicalFacts(() =>
+    deps.clinical.loadNotr({
+      organizationId: request.organizationId,
+      admissionId: notice.admissionId,
+      patientId: notice.patientId,
+      providerEntityId: notice.providerEntityId,
+      triggerKind: notice.triggerKind,
+      revocationEventId: notice.revocationEventId,
+      transferEventId: notice.transferEventId,
+      dischargeEventId: notice.dischargeEventId,
+      effectiveEndDate: notice.effectiveEndDate,
+    }),
+  );
   sameIdentity(notice, clinical);
   if (!clinical.terminationDate) hold("NOTICE_FACTS_INCOMPLETE", "notice.terminationDate");
   const common = await commonBuilderFacts(deps, {
@@ -504,9 +529,14 @@ async function loadTransferLike(
     deps.persistence.transferById(request.organizationId, request.noticeId),
     deps.persistence.submissionById(request.organizationId, request.submissionId),
   ]);
-  if (!notice || notice.organizationId !== request.organizationId) hold("NOTICE_SOURCE_NOT_FOUND", "transferNotice");
+  if (!notice || notice.organizationId !== request.organizationId)
+    hold("NOTICE_SOURCE_NOT_FOUND", "transferNotice");
   ensureReadyState(notice.state);
-  attemptMatches(attempt, { ...request, providerEntityId: notice.providerEntityId, kind: "transfer_notice" });
+  attemptMatches(attempt, {
+    ...request,
+    providerEntityId: notice.providerEntityId,
+    kind: "transfer_notice",
+  });
   if ((expected === "cancellation") !== (notice.action === "void")) {
     hold("NOTICE_SOURCE_INVALID", "transferNotice.action");
   }
@@ -516,8 +546,12 @@ async function loadTransferLike(
   const electionPeriodId = notice.electionPeriodId;
   let superseded: Transfer | null = null;
   if (notice.action === "correction" || notice.action === "void") {
-    if (!notice.supersedesNoticeId) hold("NOTICE_FACTS_INCOMPLETE", "transferNotice.supersedesNoticeId");
-    superseded = await deps.persistence.transferById(request.organizationId, notice.supersedesNoticeId);
+    if (!notice.supersedesNoticeId)
+      hold("NOTICE_FACTS_INCOMPLETE", "transferNotice.supersedesNoticeId");
+    superseded = await deps.persistence.transferById(
+      request.organizationId,
+      notice.supersedesNoticeId,
+    );
     if (
       !superseded ||
       superseded.organizationId !== notice.organizationId ||
@@ -525,7 +559,8 @@ async function loadTransferLike(
       superseded.patientId !== notice.patientId ||
       superseded.transferEventId !== notice.transferEventId ||
       superseded.action === "void"
-    ) hold("NOTICE_SOURCE_INVALID", "transferNotice.superseded");
+    )
+      hold("NOTICE_SOURCE_INVALID", "transferNotice.superseded");
   }
   if (notice.action === "correction" && !notice.originalTransferDate) {
     hold("NOTICE_FACTS_INCOMPLETE", "transferNotice.originalTransferDate");
@@ -545,16 +580,18 @@ async function loadTransferLike(
   ) {
     hold("NOTICE_FACTS_INCOMPLETE", "transferNotice.priorBillingConfirmation");
   }
-  const clinical = await clinicalFacts(() => deps.clinical.loadTransferOrCancellation({
-    organizationId: request.organizationId,
-    admissionId: notice.admissionId,
-    electionPeriodId,
-    transferEventId: notice.transferEventId,
-    patientId: notice.patientId,
-    providerEntityId: notice.providerEntityId,
-    statementFromDate: notice.statementFromDate,
-    action: notice.action,
-  }));
+  const clinical = await clinicalFacts(() =>
+    deps.clinical.loadTransferOrCancellation({
+      organizationId: request.organizationId,
+      admissionId: notice.admissionId,
+      electionPeriodId,
+      transferEventId: notice.transferEventId,
+      patientId: notice.patientId,
+      providerEntityId: notice.providerEntityId,
+      statementFromDate: notice.statementFromDate,
+      action: notice.action,
+    }),
+  );
   sameIdentity(notice, clinical);
   const common = await commonBuilderFacts(deps, {
     ...request,

@@ -402,7 +402,12 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       const actor = actorOf(request);
       const { id } = parse(ClaimIdParamsSchema, request.params);
       const claim = await readService.getClaim(actor, id);
-      const route = await payerRouteStatus(actor.organizationId, claim.providerEntityId, claim.serviceFrom, claim.claimId);
+      const route = await payerRouteStatus(
+        actor.organizationId,
+        claim.providerEntityId,
+        claim.serviceFrom,
+        claim.claimId,
+      );
       const now = (deps.now ?? Date.now)();
       const boundRouteFingerprint = routeFingerprintFor(
         route,
@@ -574,7 +579,12 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
         );
       }
       const claim = await readService.getClaim(actor, id);
-      const route = await payerRouteStatus(actor.organizationId, claim.providerEntityId, claim.serviceFrom, claim.claimId);
+      const route = await payerRouteStatus(
+        actor.organizationId,
+        claim.providerEntityId,
+        claim.serviceFrom,
+        claim.claimId,
+      );
       if (route.status === "not_configured") {
         throw new ChartWardenError(
           route.reasonCode ?? "PAYER_ROUTE_NOT_VERIFIED",

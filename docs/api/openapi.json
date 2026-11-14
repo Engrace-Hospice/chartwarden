@@ -54241,7 +54241,8 @@
                     "locationIds",
                     "orgWidePatientScope",
                     "isAdmin",
-                    "permissions"
+                    "permissions",
+                    "organizationStage"
                   ],
                   "properties": {
                     "userId": {
@@ -54316,6 +54317,18 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "organizationStage": {
+                      "anyOf": [
+                        {
+                          "const": "onboarding",
+                          "type": "string"
+                        },
+                        {
+                          "const": "live",
+                          "type": "string"
+                        }
+                      ]
                     }
                   }
                 }
@@ -81577,6 +81590,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Read Claim.MD Medicare payer routes and enrollment evidence",
         "parameters": [
           {
             "name": "providerEntityId",
@@ -81589,7 +81603,229 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "routes",
+                    "enrollments"
+                  ],
+                  "properties": {
+                    "routes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "providerEntityId",
+                          "payerId",
+                          "macJurisdiction",
+                          "accountReference",
+                          "usage",
+                          "externalPayerId",
+                          "transactionType",
+                          "effectiveFrom",
+                          "effectiveTo",
+                          "status",
+                          "provenance",
+                          "createdByMembershipId",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "payerId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "macJurisdiction": {
+                            "type": "string"
+                          },
+                          "accountReference": {
+                            "type": "string"
+                          },
+                          "usage": {
+                            "type": "string"
+                          },
+                          "externalPayerId": {
+                            "type": "string"
+                          },
+                          "transactionType": {
+                            "type": "string"
+                          },
+                          "effectiveFrom": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "effectiveTo": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "provenance": {
+                            "type": "string"
+                          },
+                          "createdByMembershipId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "enrollments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "providerEntityId",
+                          "payerId",
+                          "accountReference",
+                          "usage",
+                          "transactionType",
+                          "status",
+                          "verificationSource",
+                          "verificationRef",
+                          "verifiedByMembershipId",
+                          "verifiedAt",
+                          "effectiveFrom",
+                          "effectiveTo",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "payerId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "accountReference": {
+                            "type": "string"
+                          },
+                          "usage": {
+                            "type": "string"
+                          },
+                          "transactionType": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "verificationSource": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "verificationRef": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "verifiedByMembershipId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "verifiedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "effectiveFrom": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "effectiveTo": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -81606,7 +81842,18 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "Record transaction-specific Claim.MD Medicare enrollment evidence",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -81616,6 +81863,97 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "payerId",
+                  "status",
+                  "effectiveFrom"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "payerId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "pending",
+                        "type": "string"
+                      },
+                      {
+                        "const": "verified",
+                        "type": "string"
+                      },
+                      {
+                        "const": "not_required",
+                        "type": "string"
+                      },
+                      {
+                        "const": "rejected",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suspended",
+                        "type": "string"
+                      },
+                      {
+                        "const": "expired",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "anyOf": [
+                      {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "verificationSource": {
+                    "anyOf": [
+                      {
+                        "const": "vendor_portal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "vendor_written_confirmation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "documented_policy",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "verificationRef": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "pattern": "^[A-Za-z0-9._:/#-]+$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -81626,7 +81964,18 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "Create an effective-dated Claim.MD Medicare payer route",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -81637,6 +81986,53 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "payerId",
+                  "externalPayerId",
+                  "effectiveFrom"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "payerId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "externalPayerId": {
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "pattern": "^[A-Za-z0-9._-]+$",
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "anyOf": [
+                      {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -81646,7 +82042,18 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "Close an active Claim.MD Medicare payer route interval",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -81656,6 +82063,35 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "routeId",
+                  "effectiveTo"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "routeId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -98091,6 +98527,7 @@
                             ]
                           },
                           "lastSandboxTestAt": {
+                            "description": "When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used).",
                             "anyOf": [
                               {
                                 "type": "string"
@@ -98143,11 +98580,211 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35)",
-        "parameters": [],
+        "summary": "Upsert a MAC credential: create (201) or version-checked change (200, If-Match). clientSecret is write-only and encrypted at the boundary, never returned; billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; an AI actor is refused (§4.1 #35)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "description": "The credential's current integer version; required to change an existing credential (428 IF_MATCH_REQUIRED without one, 409 STALE_VERSION when stale), absent on a first save.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "credentialId",
+                    "organizationId",
+                    "providerEntityId",
+                    "macJurisdiction",
+                    "submitterId",
+                    "tradingPartnerId",
+                    "clientId",
+                    "hasSecret",
+                    "baaRecordRef",
+                    "credentialExpiresAt",
+                    "lastSandboxTestAt",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "credentialId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "macJurisdiction": {
+                      "type": "string"
+                    },
+                    "submitterId": {
+                      "type": "string"
+                    },
+                    "tradingPartnerId": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": "string"
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "baaRecordRef": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "credentialExpiresAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastSandboxTestAt": {
+                      "description": "When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used).",
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "credentialId",
+                    "organizationId",
+                    "providerEntityId",
+                    "macJurisdiction",
+                    "submitterId",
+                    "tradingPartnerId",
+                    "clientId",
+                    "hasSecret",
+                    "baaRecordRef",
+                    "credentialExpiresAt",
+                    "lastSandboxTestAt",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "credentialId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "macJurisdiction": {
+                      "type": "string"
+                    },
+                    "submitterId": {
+                      "type": "string"
+                    },
+                    "tradingPartnerId": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": "string"
+                    },
+                    "hasSecret": {
+                      "type": "boolean"
+                    },
+                    "baaRecordRef": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "credentialExpiresAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastSandboxTestAt": {
+                      "description": "When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used).",
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -98210,16 +98847,22 @@
                   "submitterId": {
                     "minLength": 1,
                     "maxLength": 64,
+                    "pattern": "^(?![\\s\\S]*(?<![0-9\\uFF10-\\uFF19])[0-9\\uFF10-\\uFF19]{3}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{2}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{4}(?![0-9\\uFF10-\\uFF19]))",
+                    "description": "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.",
                     "type": "string"
                   },
                   "tradingPartnerId": {
                     "minLength": 1,
                     "maxLength": 64,
+                    "pattern": "^(?![\\s\\S]*(?<![0-9\\uFF10-\\uFF19])[0-9\\uFF10-\\uFF19]{3}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{2}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{4}(?![0-9\\uFF10-\\uFF19]))",
+                    "description": "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.",
                     "type": "string"
                   },
                   "clientId": {
                     "minLength": 1,
                     "maxLength": 256,
+                    "pattern": "^(?![\\s\\S]*(?<![0-9\\uFF10-\\uFF19])[0-9\\uFF10-\\uFF19]{3}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{2}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{4}(?![0-9\\uFF10-\\uFF19]))",
+                    "description": "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.",
                     "type": "string"
                   },
                   "clientSecret": {
@@ -98229,6 +98872,7 @@
                   },
                   "baaRecordRef": {
                     "maxLength": 256,
+                    "description": "Where the MAC BAA is kept (a title, folder or document id; 1-256 characters after whitespace is collapsed; omit it to leave it unset). Never patient information: a social-security-number or MBI shape is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error.",
                     "type": "string"
                   },
                   "credentialExpiresAt": {
@@ -98330,6 +98974,7 @@
                           ]
                         },
                         "lastSandboxTestAt": {
+                          "description": "When the MAC portal for this credential's jurisdiction last answered the portal check (POST .../test), or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used).",
                           "anyOf": [
                             {
                               "type": "string"
@@ -98373,12 +99018,21 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up (§4.1 #36)",
+        "summary": "Check that the MAC portal for this credential's jurisdiction answers (a portal health probe) and, when it does, record the time as lastSandboxTestAt. It does not validate the credential: the secret, client id and submitter id are not sent, and the first real submission is the first time they are used. billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; 503 when no MAC gateway is configured (§4.1 #36)",
         "parameters": [
           {
             "name": "providerEntityId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
             "schema": {
               "type": "string"
             }
@@ -98408,19 +99062,23 @@
                       "type": "string"
                     },
                     "ok": {
+                      "description": "True when the MAC portal for the credential's jurisdiction answered. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used).",
                       "type": "boolean"
                     },
                     "method": {
+                      "description": "Always portal_health_probe: the check calls the jurisdiction's MAC portal health endpoint. It does not submit a test claim and does not use the stored credential.",
                       "const": "portal_health_probe",
                       "type": "string"
                     },
                     "detail": {
+                      "description": "What the check saw (the portal answered or did not). It is never about the credential itself.",
                       "type": "string"
                     },
                     "checkedAt": {
                       "type": "string"
                     },
                     "lastSandboxTestAt": {
+                      "description": "The time the credential now records for this check: set when the portal answered, null when it did not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used).",
                       "anyOf": [
                         {
                           "type": "string"
@@ -98505,7 +99163,7 @@
           {
             "name": "providerEntityId",
             "in": "query",
-            "required": false,
+            "required": true,
             "schema": {
               "format": "uuid",
               "type": "string"
@@ -99034,7 +99692,18 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "parameters": [],
+        "summary": "Create an effective-dated Medicare provider-to-MAC jurisdiction route",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -99045,6 +99714,95 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "macJurisdiction",
+                  "effectiveFrom",
+                  "reason"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "macJurisdiction": {
+                    "anyOf": [
+                      {
+                        "const": "ngs_j6",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ngs_jk",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cgs_j15",
+                        "type": "string"
+                      },
+                      {
+                        "const": "palmetto_jj",
+                        "type": "string"
+                      },
+                      {
+                        "const": "palmetto_jm",
+                        "type": "string"
+                      },
+                      {
+                        "const": "noridian_jf",
+                        "type": "string"
+                      },
+                      {
+                        "const": "noridian_je",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "anyOf": [
+                      {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "const": "provider_documentation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cms_notice",
+                        "type": "string"
+                      },
+                      {
+                        "const": "legacy_review",
+                        "type": "string"
+                      },
+                      {
+                        "const": "correction",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -99054,6 +99812,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Read effective-dated Medicare provider routing and legacy migration issues",
         "parameters": [
           {
             "name": "providerEntityId",
@@ -99066,7 +99825,104 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "migrationIssues"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "macJurisdiction",
+                          "effectiveFrom",
+                          "effectiveTo",
+                          "provenance",
+                          "setReason",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "macJurisdiction": {
+                            "type": "string"
+                          },
+                          "effectiveFrom": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "effectiveTo": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "provenance": {
+                            "anyOf": [
+                              {
+                                "const": "manual",
+                                "type": "string"
+                              },
+                              {
+                                "const": "legacy_mac_credential",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "setReason": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "migrationIssues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "reasonCode",
+                          "candidateJurisdictions",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "reasonCode": {
+                            "type": "string"
+                          },
+                          "candidateJurisdictions": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -239343,6 +240199,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "List auditable NOE late-filing exception reviews",
         "parameters": [
           {
             "name": "id",
@@ -239355,7 +240212,216 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "noeId",
+                          "category",
+                          "justificationDocumentId",
+                          "status",
+                          "evidenceDocumentIds",
+                          "externalRequestReference",
+                          "externalRequestDate",
+                          "externalAuthority",
+                          "externalDecision",
+                          "externalDecisionProvenance",
+                          "externalDecisionDate",
+                          "externalDecisionDocumentId",
+                          "version",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "noeId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "category": {
+                            "anyOf": [
+                              {
+                                "const": "operations_disruption",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cms_mac_system_issue",
+                                "type": "string"
+                              },
+                              {
+                                "const": "new_hospice_access_delay",
+                                "type": "string"
+                              },
+                              {
+                                "const": "other_external_determination",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "justificationDocumentId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "draft",
+                                "type": "string"
+                              },
+                              {
+                                "const": "evidence_required",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ready_for_external_request",
+                                "type": "string"
+                              },
+                              {
+                                "const": "request_recorded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "awaiting_external_determination",
+                                "type": "string"
+                              },
+                              {
+                                "const": "external_approved_recorded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "external_denied_recorded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "withdrawn",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "evidenceDocumentIds": {
+                            "type": "array",
+                            "items": {
+                              "format": "uuid",
+                              "type": "string"
+                            }
+                          },
+                          "externalRequestReference": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalRequestDate": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalAuthority": {
+                            "anyOf": [
+                              {
+                                "const": "a_b_mac",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cms",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalDecision": {
+                            "anyOf": [
+                              {
+                                "const": "approved",
+                                "type": "string"
+                              },
+                              {
+                                "const": "denied",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalDecisionProvenance": {
+                            "anyOf": [
+                              {
+                                "const": "operator_attested_document",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalDecisionDate": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalDecisionDocumentId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -239370,6 +240436,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Create an auditable NOE late-filing exception review backed by protected evidence",
         "parameters": [
           {
             "name": "id",
@@ -239378,10 +240445,19 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK"
           },
           "4XX": {
@@ -239389,6 +240465,55 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "category",
+                  "justificationDocumentId",
+                  "evidenceDocumentIds"
+                ],
+                "properties": {
+                  "category": {
+                    "anyOf": [
+                      {
+                        "const": "operations_disruption",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cms_mac_system_issue",
+                        "type": "string"
+                      },
+                      {
+                        "const": "new_hospice_access_delay",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other_external_determination",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "justificationDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "evidenceDocumentIds": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -239399,6 +240524,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Attach protected evidence to an existing NOE exception review",
         "parameters": [
           {
             "name": "id",
@@ -239412,6 +240538,15 @@
             "name": "reviewId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
             "schema": {
               "type": "string"
             }
@@ -239427,6 +240562,35 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "evidenceDocumentIds"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "evidenceDocumentIds": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -239436,6 +240600,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Read the immutable event history for an NOE exception review",
         "parameters": [
           {
             "name": "id",
@@ -239456,7 +240621,61 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "eventType",
+                          "fromStatus",
+                          "toStatus",
+                          "occurredAt",
+                          "evidenceDocumentIds"
+                        ],
+                        "properties": {
+                          "eventType": {
+                            "type": "string"
+                          },
+                          "fromStatus": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "toStatus": {
+                            "type": "string"
+                          },
+                          "occurredAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "evidenceDocumentIds": {
+                            "type": "array",
+                            "items": {
+                              "format": "uuid",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -239473,6 +240692,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Record a MAC or CMS NOE exception decision with protected evidence",
         "parameters": [
           {
             "name": "id",
@@ -239489,6 +240709,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -239500,6 +240729,61 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "decision",
+                  "authority",
+                  "decisionDate",
+                  "evidenceDocumentId"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "decision": {
+                    "anyOf": [
+                      {
+                        "const": "approved",
+                        "type": "string"
+                      },
+                      {
+                        "const": "denied",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "authority": {
+                    "anyOf": [
+                      {
+                        "const": "a_b_mac",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cms",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "decisionDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -239510,6 +240794,7 @@
         "tags": [
           "23-billing-medicare"
         ],
+        "summary": "Record the externally submitted NOE exception request and its evidence",
         "parameters": [
           {
             "name": "id",
@@ -239526,6 +240811,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -239537,6 +240831,39 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "requestDate",
+                  "evidenceDocumentId"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "requestDate": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "requestReference": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -274278,7 +275605,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Cross-tenant onboarding help inbox",
+        "summary": "The operators' help inbox across tenants (platform ops; audited list read): each row's phase (waiting_for_consent, ready_to_start, in_session, ended), the step, the tenant, the consent grant id to start a support session against, and the session summary. `status` filters by a comma-separated list and defaults to open,approved (the live requests; ask for resolved or cancelled by name; the nav badge asks open,approved with limit 1). A page is at most 50 rows",
         "parameters": [
           {
             "name": "status",
@@ -274286,7 +275613,7 @@
             "required": false,
             "schema": {
               "pattern": "^(open|approved|resolved|cancelled)(,(open|approved|resolved|cancelled))*$",
-              "description": "Comma-separated statuses to include (open, approved, resolved, cancelled); every status when omitted.",
+              "description": "Comma-separated statuses to include (open, approved, resolved, cancelled); open and approved when omitted.",
               "type": "string"
             }
           },
@@ -274667,12 +275994,21 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Resolve an onboarding help request and revoke its linked support access",
+        "summary": "End help from ChartWarden's side with a tenant-visible note of 8 to 500 characters (platform ops; no AI actor; Idempotency-Key required): revokes its consent grant and closes the request's open support sessions with it (close reason grant_revoked), and resolves the request (an open request, which has no grant, is resolved with the note alone). It ends the consent and the session, not ChartWarden's contractual access to onboard the tenant",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
             "schema": {
               "type": "string"
             }
@@ -276588,9 +277924,19 @@
           "34-saas-tenant-platform"
         ],
         "summary": "Start a session against a consent grant (distinct actor, by membership and by person; passkey-5min step-up). The session, its ledger and its audit are recorded in the grant's (the tenant's) organization, never the operator's. 409 SUPPORT_GRANT_INACTIVE when the grant is revoked or expired",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {
@@ -276653,6 +277999,15 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
             "schema": {
               "type": "string"
             }
@@ -276721,10 +278076,19 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {
@@ -282614,6 +283978,7 @@
                           "skipRationale",
                           "systemSkipped",
                           "skippedBy",
+                          "skippedByLabel",
                           "skippable",
                           "tenantSkippable",
                           "createdAt",
@@ -282871,14 +284236,10 @@
                             "type": "boolean"
                           },
                           "skippedBy": {
-                            "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                            "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                             "anyOf": [
                               {
                                 "anyOf": [
-                                  {
-                                    "const": "system",
-                                    "type": "string"
-                                  },
                                   {
                                     "const": "tenant",
                                     "type": "string"
@@ -282886,8 +284247,23 @@
                                   {
                                     "const": "platform_ops",
                                     "type": "string"
+                                  },
+                                  {
+                                    "const": "system",
+                                    "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "skippedByLabel": {
+                            "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -282899,7 +284275,7 @@
                             "type": "boolean"
                           },
                           "tenantSkippable": {
-                            "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                            "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -283245,6 +284621,7 @@
                           "skipRationale",
                           "systemSkipped",
                           "skippedBy",
+                          "skippedByLabel",
                           "skippable",
                           "tenantSkippable",
                           "createdAt",
@@ -283502,14 +284879,10 @@
                             "type": "boolean"
                           },
                           "skippedBy": {
-                            "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                            "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                             "anyOf": [
                               {
                                 "anyOf": [
-                                  {
-                                    "const": "system",
-                                    "type": "string"
-                                  },
                                   {
                                     "const": "tenant",
                                     "type": "string"
@@ -283517,8 +284890,23 @@
                                   {
                                     "const": "platform_ops",
                                     "type": "string"
+                                  },
+                                  {
+                                    "const": "system",
+                                    "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "skippedByLabel": {
+                            "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -283530,7 +284918,7 @@
                             "type": "boolean"
                           },
                           "tenantSkippable": {
-                            "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                            "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -284592,6 +285980,7 @@
                             ]
                           },
                           "lastSandboxTestAt": {
+                            "description": "When the MAC portal for this credential's jurisdiction last answered the portal check, or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used).",
                             "anyOf": [
                               {
                                 "format": "date-time",
@@ -284734,6 +286123,7 @@
                       ]
                     },
                     "lastSandboxTestAt": {
+                      "description": "When the MAC portal for this credential's jurisdiction last answered the portal check, or null if it has not. It does not validate the credential: the secret, client id and submitter id are not sent (the first real submission is the first time they are used).",
                       "anyOf": [
                         {
                           "format": "date-time",
@@ -284796,16 +286186,22 @@
                   "submitterId": {
                     "minLength": 1,
                     "maxLength": 64,
+                    "pattern": "^(?![\\s\\S]*(?<![0-9\\uFF10-\\uFF19])[0-9\\uFF10-\\uFF19]{3}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{2}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{4}(?![0-9\\uFF10-\\uFF19]))",
+                    "description": "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.",
                     "type": "string"
                   },
                   "tradingPartnerId": {
                     "minLength": 1,
                     "maxLength": 64,
+                    "pattern": "^(?![\\s\\S]*(?<![0-9\\uFF10-\\uFF19])[0-9\\uFF10-\\uFF19]{3}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{2}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{4}(?![0-9\\uFF10-\\uFF19]))",
+                    "description": "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.",
                     "type": "string"
                   },
                   "clientId": {
                     "minLength": 1,
                     "maxLength": 256,
+                    "pattern": "^(?![\\s\\S]*(?<![0-9\\uFF10-\\uFF19])[0-9\\uFF10-\\uFF19]{3}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{2}[\\s.\\-\\u2010-\\u2015\\u2212\\uFF0D\\uFF0E][0-9\\uFF10-\\uFF19]{4}(?![0-9\\uFF10-\\uFF19]))",
+                    "description": "The identifier the MAC issued. Never a social security number: a ###-##-#### shape (any separator) is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error; a plain digit string is accepted.",
                     "type": "string"
                   },
                   "clientSecret": {
@@ -284816,6 +286212,7 @@
                   },
                   "baaRecordRef": {
                     "maxLength": 256,
+                    "description": "Where the MAC BAA is kept (a title, folder or document id; 1-256 characters after whitespace is collapsed; omit it to leave it unset). Never patient information: a social-security-number or MBI shape is refused with 422 EVIDENCE_LOOKS_LIKE_PHI, and the value is never echoed in the error.",
                     "type": "string"
                   },
                   "credentialExpiresAt": {
@@ -285487,6 +286884,7 @@
                           "skipRationale",
                           "systemSkipped",
                           "skippedBy",
+                          "skippedByLabel",
                           "skippable",
                           "tenantSkippable",
                           "createdAt",
@@ -285744,14 +287142,10 @@
                             "type": "boolean"
                           },
                           "skippedBy": {
-                            "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                            "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                             "anyOf": [
                               {
                                 "anyOf": [
-                                  {
-                                    "const": "system",
-                                    "type": "string"
-                                  },
                                   {
                                     "const": "tenant",
                                     "type": "string"
@@ -285759,8 +287153,23 @@
                                   {
                                     "const": "platform_ops",
                                     "type": "string"
+                                  },
+                                  {
+                                    "const": "system",
+                                    "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "skippedByLabel": {
+                            "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -285772,7 +287181,7 @@
                             "type": "boolean"
                           },
                           "tenantSkippable": {
-                            "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                            "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -286064,6 +287473,7 @@
                           "skipRationale",
                           "systemSkipped",
                           "skippedBy",
+                          "skippedByLabel",
                           "skippable",
                           "tenantSkippable",
                           "createdAt",
@@ -286321,14 +287731,10 @@
                             "type": "boolean"
                           },
                           "skippedBy": {
-                            "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                            "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                             "anyOf": [
                               {
                                 "anyOf": [
-                                  {
-                                    "const": "system",
-                                    "type": "string"
-                                  },
                                   {
                                     "const": "tenant",
                                     "type": "string"
@@ -286336,8 +287742,23 @@
                                   {
                                     "const": "platform_ops",
                                     "type": "string"
+                                  },
+                                  {
+                                    "const": "system",
+                                    "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "skippedByLabel": {
+                            "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -286349,7 +287770,7 @@
                             "type": "boolean"
                           },
                           "tenantSkippable": {
-                            "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                            "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -286443,6 +287864,7 @@
                     "skipRationale",
                     "systemSkipped",
                     "skippedBy",
+                    "skippedByLabel",
                     "skippable",
                     "tenantSkippable",
                     "createdAt",
@@ -286700,14 +288122,10 @@
                       "type": "boolean"
                     },
                     "skippedBy": {
-                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                       "anyOf": [
                         {
                           "anyOf": [
-                            {
-                              "const": "system",
-                              "type": "string"
-                            },
                             {
                               "const": "tenant",
                               "type": "string"
@@ -286715,8 +288133,23 @@
                             {
                               "const": "platform_ops",
                               "type": "string"
+                            },
+                            {
+                              "const": "system",
+                              "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "skippedByLabel": {
+                      "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -286728,7 +288161,7 @@
                       "type": "boolean"
                     },
                     "tenantSkippable": {
-                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                      "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -286849,6 +288282,7 @@
                     "skipRationale",
                     "systemSkipped",
                     "skippedBy",
+                    "skippedByLabel",
                     "skippable",
                     "tenantSkippable",
                     "createdAt",
@@ -287106,14 +288540,10 @@
                       "type": "boolean"
                     },
                     "skippedBy": {
-                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                       "anyOf": [
                         {
                           "anyOf": [
-                            {
-                              "const": "system",
-                              "type": "string"
-                            },
                             {
                               "const": "tenant",
                               "type": "string"
@@ -287121,8 +288551,23 @@
                             {
                               "const": "platform_ops",
                               "type": "string"
+                            },
+                            {
+                              "const": "system",
+                              "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "skippedByLabel": {
+                      "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -287134,7 +288579,7 @@
                       "type": "boolean"
                     },
                     "tenantSkippable": {
-                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                      "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -287245,6 +288690,7 @@
                     "skipRationale",
                     "systemSkipped",
                     "skippedBy",
+                    "skippedByLabel",
                     "skippable",
                     "tenantSkippable",
                     "createdAt",
@@ -287502,14 +288948,10 @@
                       "type": "boolean"
                     },
                     "skippedBy": {
-                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                       "anyOf": [
                         {
                           "anyOf": [
-                            {
-                              "const": "system",
-                              "type": "string"
-                            },
                             {
                               "const": "tenant",
                               "type": "string"
@@ -287517,8 +288959,23 @@
                             {
                               "const": "platform_ops",
                               "type": "string"
+                            },
+                            {
+                              "const": "system",
+                              "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "skippedByLabel": {
+                      "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -287530,7 +288987,7 @@
                       "type": "boolean"
                     },
                     "tenantSkippable": {
-                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                      "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -307649,6 +309106,10 @@
                   "ifVersion"
                 ],
                 "properties": {
+                  "patientDobAtReceipt": {
+                    "format": "date",
+                    "type": "string"
+                  },
                   "medicareNumberAtReceipt": {
                     "maxLength": 20,
                     "type": "string"
@@ -360196,13 +361657,22 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information). A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. Recording a BAA also clears a revocation by a platform operator (it is a new agreement, so it starts again at unverified; re-recording the same document counts, but the operator must then acknowledge that the document was revoked before). Leaving the vendor (a vendor change, or outside) clears it too. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required; an AI actor is refused",
+        "summary": "Record the BAA the tenant holds with its own vendor account (held by the tenant, the effective date, a screened document reference; never patient information), pinned by If-Match to the clearinghouse version the administrator read. A platform operator verifies it; activation is refused (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then. Re-recording a changed BAA voids its verification. Recording a BAA also clears a revocation by a platform operator (it is a new agreement, so it starts again at unverified; re-recording the same document counts, but the operator must then acknowledge that the document was revoked before). Leaving the vendor (a vendor change, or outside) clears it too. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key and If-Match required; an AI actor is refused",
         "parameters": [
           {
             "name": "Idempotency-Key",
             "in": "header",
             "required": true,
             "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -360601,13 +362071,22 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Verify the vendor connection: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note and the confirmation that it names no patient information where it has none (Stedi). The vendor probe runs with no transaction open (409 CLEARINGHOUSE_CHANGED_DURING_VERIFY if the config moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome and leaves the config at draft. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key required",
+        "summary": "Verify the vendor connection, pinned by If-Match to the clearinghouse version the administrator read: a no-PHI connection test where the vendor has a safe probe (Claim.MD), an attestation with an evidence note and the confirmation that it names no patient information where it has none (Stedi). The vendor probe runs with no transaction open (409 CLEARINGHOUSE_CHANGED_DURING_VERIFY if the config moved meanwhile); 6 requests/min/user. A failed test is a 200 with the outcome and leaves the config at draft. billing.clearinghouse.admin (org-level) + a fresh step-up; Idempotency-Key and If-Match required",
         "parameters": [
           {
             "name": "Idempotency-Key",
             "in": "header",
             "required": true,
             "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version the caller last read. Missing fails with 428 IF_MATCH_REQUIRED; a stale value with 409 STALE_VERSION (System Design §6.2).",
             "schema": {
               "type": "string"
             }
@@ -363756,6 +365235,7 @@
                           "skipRationale",
                           "systemSkipped",
                           "skippedBy",
+                          "skippedByLabel",
                           "skippable",
                           "tenantSkippable",
                           "createdAt",
@@ -364013,14 +365493,10 @@
                             "type": "boolean"
                           },
                           "skippedBy": {
-                            "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                            "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                             "anyOf": [
                               {
                                 "anyOf": [
-                                  {
-                                    "const": "system",
-                                    "type": "string"
-                                  },
                                   {
                                     "const": "tenant",
                                     "type": "string"
@@ -364028,8 +365504,23 @@
                                   {
                                     "const": "platform_ops",
                                     "type": "string"
+                                  },
+                                  {
+                                    "const": "system",
+                                    "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "skippedByLabel": {
+                            "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -364041,7 +365532,7 @@
                             "type": "boolean"
                           },
                           "tenantSkippable": {
-                            "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                            "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -364940,7 +366431,17 @@
           "34-saas-tenant-platform"
         ],
         "summary": "File a non-PHI onboarding help request",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -365270,6 +366771,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -365591,6 +367101,15 @@
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
             "schema": {
               "type": "string"
             }
@@ -365990,6 +367509,7 @@
                           "skipRationale",
                           "systemSkipped",
                           "skippedBy",
+                          "skippedByLabel",
                           "skippable",
                           "tenantSkippable",
                           "createdAt",
@@ -366247,14 +367767,10 @@
                             "type": "boolean"
                           },
                           "skippedBy": {
-                            "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                            "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                             "anyOf": [
                               {
                                 "anyOf": [
-                                  {
-                                    "const": "system",
-                                    "type": "string"
-                                  },
                                   {
                                     "const": "tenant",
                                     "type": "string"
@@ -366262,8 +367778,23 @@
                                   {
                                     "const": "platform_ops",
                                     "type": "string"
+                                  },
+                                  {
+                                    "const": "system",
+                                    "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "skippedByLabel": {
+                            "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -366275,7 +367806,7 @@
                             "type": "boolean"
                           },
                           "tenantSkippable": {
-                            "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                            "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -366557,6 +368088,7 @@
                           "skipRationale",
                           "systemSkipped",
                           "skippedBy",
+                          "skippedByLabel",
                           "skippable",
                           "tenantSkippable",
                           "createdAt",
@@ -366814,14 +368346,10 @@
                             "type": "boolean"
                           },
                           "skippedBy": {
-                            "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                            "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                             "anyOf": [
                               {
                                 "anyOf": [
-                                  {
-                                    "const": "system",
-                                    "type": "string"
-                                  },
                                   {
                                     "const": "tenant",
                                     "type": "string"
@@ -366829,8 +368357,23 @@
                                   {
                                     "const": "platform_ops",
                                     "type": "string"
+                                  },
+                                  {
+                                    "const": "system",
+                                    "type": "string"
                                   }
                                 ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "skippedByLabel": {
+                            "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                            "anyOf": [
+                              {
+                                "type": "string"
                               },
                               {
                                 "type": "null"
@@ -366842,7 +368385,7 @@
                             "type": "boolean"
                           },
                           "tenantSkippable": {
-                            "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                            "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                             "type": "boolean"
                           },
                           "createdAt": {
@@ -366941,6 +368484,7 @@
                     "skipRationale",
                     "systemSkipped",
                     "skippedBy",
+                    "skippedByLabel",
                     "skippable",
                     "tenantSkippable",
                     "createdAt",
@@ -367198,14 +368742,10 @@
                       "type": "boolean"
                     },
                     "skippedBy": {
-                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                       "anyOf": [
                         {
                           "anyOf": [
-                            {
-                              "const": "system",
-                              "type": "string"
-                            },
                             {
                               "const": "tenant",
                               "type": "string"
@@ -367213,8 +368753,23 @@
                             {
                               "const": "platform_ops",
                               "type": "string"
+                            },
+                            {
+                              "const": "system",
+                              "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "skippedByLabel": {
+                      "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -367226,7 +368781,7 @@
                       "type": "boolean"
                     },
                     "tenantSkippable": {
-                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                      "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -367333,6 +368888,7 @@
                     "skipRationale",
                     "systemSkipped",
                     "skippedBy",
+                    "skippedByLabel",
                     "skippable",
                     "tenantSkippable",
                     "createdAt",
@@ -367590,14 +369146,10 @@
                       "type": "boolean"
                     },
                     "skippedBy": {
-                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                       "anyOf": [
                         {
                           "anyOf": [
-                            {
-                              "const": "system",
-                              "type": "string"
-                            },
                             {
                               "const": "tenant",
                               "type": "string"
@@ -367605,8 +369157,23 @@
                             {
                               "const": "platform_ops",
                               "type": "string"
+                            },
+                            {
+                              "const": "system",
+                              "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "skippedByLabel": {
+                      "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -367618,7 +369185,7 @@
                       "type": "boolean"
                     },
                     "tenantSkippable": {
-                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                      "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -367721,6 +369288,7 @@
                     "skipRationale",
                     "systemSkipped",
                     "skippedBy",
+                    "skippedByLabel",
                     "skippable",
                     "tenantSkippable",
                     "createdAt",
@@ -367978,14 +369546,10 @@
                       "type": "boolean"
                     },
                     "skippedBy": {
-                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                       "anyOf": [
                         {
                           "anyOf": [
-                            {
-                              "const": "system",
-                              "type": "string"
-                            },
                             {
                               "const": "tenant",
                               "type": "string"
@@ -367993,8 +369557,23 @@
                             {
                               "const": "platform_ops",
                               "type": "string"
+                            },
+                            {
+                              "const": "system",
+                              "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "skippedByLabel": {
+                      "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -368006,7 +369585,7 @@
                       "type": "boolean"
                     },
                     "tenantSkippable": {
-                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                      "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -368115,6 +369694,7 @@
                     "skipRationale",
                     "systemSkipped",
                     "skippedBy",
+                    "skippedByLabel",
                     "skippable",
                     "tenantSkippable",
                     "createdAt",
@@ -368372,14 +369952,10 @@
                       "type": "boolean"
                     },
                     "skippedBy": {
-                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                       "anyOf": [
                         {
                           "anyOf": [
-                            {
-                              "const": "system",
-                              "type": "string"
-                            },
                             {
                               "const": "tenant",
                               "type": "string"
@@ -368387,8 +369963,23 @@
                             {
                               "const": "platform_ops",
                               "type": "string"
+                            },
+                            {
+                              "const": "system",
+                              "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "skippedByLabel": {
+                      "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -368400,7 +369991,7 @@
                       "type": "boolean"
                     },
                     "tenantSkippable": {
-                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                      "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -368463,12 +370054,21 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Skip an allowlisted tenant onboarding step with step-up and a recorded rationale",
+        "summary": "The organization's own \"this does not apply to us\" for MAC credentials, payer enrollment or DoseSpot kickoff (org_admin only; a fresh step-up; no AI actor; Idempotency-Key required). The rationale is screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE for any other step (sample data and a step an operator added stay operator-only), 409 ONBOARDING_STEP_OUT_OF_ORDER, 409 ONBOARDING_STEP_ALREADY_SETTLED. Recorded as the tenant's (the step's `skippedBy` says tenant, with the rationale, which the go-live approver sees) and, like any onboarding-data change, voids a pending go-live attestation. Reversible by re-opening",
         "parameters": [
           {
             "name": "taskId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
             "schema": {
               "type": "string"
             }
@@ -368503,6 +370103,7 @@
                     "skipRationale",
                     "systemSkipped",
                     "skippedBy",
+                    "skippedByLabel",
                     "skippable",
                     "tenantSkippable",
                     "createdAt",
@@ -368760,14 +370361,10 @@
                       "type": "boolean"
                     },
                     "skippedBy": {
-                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                       "anyOf": [
                         {
                           "anyOf": [
-                            {
-                              "const": "system",
-                              "type": "string"
-                            },
                             {
                               "const": "tenant",
                               "type": "string"
@@ -368775,8 +370372,23 @@
                             {
                               "const": "platform_ops",
                               "type": "string"
+                            },
+                            {
+                              "const": "system",
+                              "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "skippedByLabel": {
+                      "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -368788,7 +370400,7 @@
                       "type": "boolean"
                     },
                     "tenantSkippable": {
-                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                      "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -368891,6 +370503,7 @@
                     "skipRationale",
                     "systemSkipped",
                     "skippedBy",
+                    "skippedByLabel",
                     "skippable",
                     "tenantSkippable",
                     "createdAt",
@@ -369148,14 +370761,10 @@
                       "type": "boolean"
                     },
                     "skippedBy": {
-                      "description": "Who settled the step by skipping it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. On the tenant surface an operator's skip is still platform_ops (the operator is never named). systemSkipped stays for older clients.",
+                      "description": "Who settled the step by skipping it, as the skip recorded it: the system (billing outside ChartWarden), the tenant's own org_admin, or a platform operator; null when the step is not skipped. A skip recorded before the kind existed reads as platform_ops (or system, for the clearinghouse sync's). On the tenant surface an operator's skip is still platform_ops (the operator is never named: see skippedByLabel). systemSkipped stays for older clients.",
                       "anyOf": [
                         {
                           "anyOf": [
-                            {
-                              "const": "system",
-                              "type": "string"
-                            },
                             {
                               "const": "tenant",
                               "type": "string"
@@ -369163,8 +370772,23 @@
                             {
                               "const": "platform_ops",
                               "type": "string"
+                            },
+                            {
+                              "const": "system",
+                              "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "skippedByLabel": {
+                      "description": "The tenant surface's words for who skipped: 'Your organization' for the tenant's own skip, 'ChartWarden operations' for an operator's, never a person or a membership. Null on the platform surface, for a system skip and for a step that is not skipped.",
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -369176,7 +370800,7 @@
                       "type": "boolean"
                     },
                     "tenantSkippable": {
-                      "description": "True when the tenant's own org_admin may skip this step (MAC credentials, payer enrollment, DoseSpot kickoff); a tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE.",
+                      "description": "True when the tenant's own org_admin may skip this step now: it is MAC credentials, payer enrollment or DoseSpot kickoff, it is not done or skipped yet, no earlier gating step still locks it (`locked` is false), and (on the tenant surface) the viewer is an org_admin; the platform surface reports the step alone. A tenant skip on any other step is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE, and on a locked one with 409 ONBOARDING_STEP_OUT_OF_ORDER.",
                       "type": "boolean"
                     },
                     "createdAt": {
@@ -369692,7 +371316,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Tenant-visible support sessions, with operator identity removed (cursor-paginated)",
+        "summary": "ChartWarden support sessions on the organization, newest first: when each started, when it expires or ended and why, and how many actions it took (never an operator's id, name or address). Requires the support-consent-grant list key; a list read, audited",
         "parameters": [
           {
             "name": "cursor",
@@ -369862,7 +371486,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Tenant-visible support-session ledger, with operator identity removed (cursor-paginated)",
+        "summary": "A support session's ledger on the organization, newest first: its start, close and every write the operator made under it, as the route template, method and status (never a body, an id from it, or the operator's address). Requires the support-consent-grant list key; a list read, audited",
         "parameters": [
           {
             "name": "id",
@@ -397304,7 +398928,81 @@
         "tags": [
           "22-documents"
         ],
-        "summary": "MinIO audit-webhook receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8)",
+        "summary": "Legacy alias for the object-store audit receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "received",
+                    "recorded",
+                    "unattributed",
+                    "duplicates"
+                  ],
+                  "properties": {
+                    "received": {
+                      "type": "integer"
+                    },
+                    "recorded": {
+                      "type": "integer"
+                    },
+                    "unattributed": {
+                      "type": "integer"
+                    },
+                    "duplicates": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {}
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/object-store/access-log": {
+      "post": {
+        "operationId": "postApiV1WebhooksObjectstoreAccesslog",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Object-store audit receiver: records successful GetObject calls on tenant buckets as signed_url_consumed (bearer-token authenticated; M22 §4.8)",
         "parameters": [],
         "responses": {
           "200": {

@@ -55,6 +55,7 @@ describe("claim preview parties under a per-organization clearinghouse", () => {
     attempts: {} as never,
     platformBinding: UNBOUND_BINDING,
     fallbackOrgIds: new Set(),
+    isOrganizationLive: async () => true,
   });
 
   it("the tenant runtime's top-level vendor names no route, so it cannot key the EDI profile", async () => {
@@ -83,16 +84,32 @@ describe("the composition root builds every clearinghouse port from the per-org 
   });
 
   it("every clearinghouse context port resolves the org's own binding and mode", () => {
-    const calls = index.match(/buildClearinghouseContextPort\(\{[^}]*\}\)/g) ?? [];
-    expect(calls.length).toBeGreaterThanOrEqual(3);
-    for (const call of calls) {
-      expect(call).toContain("binding: clearinghouseBinding");
-      expect(call).toContain("...clearinghouseUsageFor");
+    const starts = [...index.matchAll(/buildClearinghouseContextPort\(\{/g)].map(
+      (match) => match.index,
+    );
+    expect(starts.length).toBeGreaterThanOrEqual(3);
+    for (const start of starts) {
+      const callWindow = index.slice(start, start + 2_500);
+      expect(callWindow).toContain("binding: clearinghouseBinding");
+      expect(callWindow).toContain("...clearinghouseUsageFor");
     }
   });
 
   it("the claim payer-route readiness is the binding-driven builder, not an env vendor check", () => {
     expect(index).toMatch(/payerRouteStatus:\s*buildClaimPayerRouteStatus\(/);
     expect(index).not.toMatch(/CLEARINGHOUSE_VENDOR\?\.trim\(\) !== "claimmd"/);
+  });
+
+  it("uses an authoritative uncached lifecycle read to gate every worker transport", () => {
+    expect(index).toMatch(
+      /const readOrganizationStatus = dbHandle\s*\?\s*createOrganizationStatusReader\(dbHandle\.db\)/,
+    );
+    expect(index).toMatch(
+      /createTenantClearinghouseRuntime\(\{[\s\S]*?isOrganizationLive: async \(organizationId: string\) => \{[\s\S]*?readOrganizationStatus\(organizationId\)/,
+    );
+    expect(index).not.toMatch(/isOrganizationLive:[\s\S]{0,300}organizationStage\.isConfined/);
+    expect(
+      index.match(/organizationStage\?\.invalidate\(organizationId\)/g)?.length,
+    ).toBeGreaterThan(0);
   });
 });

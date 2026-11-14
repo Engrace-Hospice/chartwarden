@@ -41,15 +41,19 @@ describe("build837iNotice — goldens from the Stedi sandbox", () => {
   });
 
   it("emits the distinct certifying physician in Loop 2310F and omits a duplicate", () => {
-    const distinct = lines(build837iNotice({
-      ...NOE_INPUT,
-      otherPhysician: { firstName: "Test", lastName: "Certifier", npi: "1234567893" },
-    }));
+    const distinct = lines(
+      build837iNotice({
+        ...NOE_INPUT,
+        otherPhysician: { firstName: "Test", lastName: "Certifier", npi: "1234567893" },
+      }),
+    );
     expect(distinct).toContain("NM1*DN*1*CERTIFIER*TEST****XX*1234567893");
-    const duplicate = lines(build837iNotice({
-      ...NOE_INPUT,
-      otherPhysician: NOE_INPUT.attendingPhysician,
-    }));
+    const duplicate = lines(
+      build837iNotice({
+        ...NOE_INPUT,
+        otherPhysician: NOE_INPUT.attendingPhysician,
+      }),
+    );
     expect(duplicate.some((segment) => segment.startsWith("NM1*DN*"))).toBe(false);
   });
 });

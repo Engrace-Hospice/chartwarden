@@ -24,7 +24,10 @@ import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../bootstrap/index";
 import { siteDisplayForOrg } from "../../bootstrap/site-display-for-org";
 import { registerDocumentAbacPredicates as _registerM22Abac } from "./abac-predicates";
-import { registerMinioAccessLogRoute } from "./access-log/minio-access-log-routes";
+import {
+  objectStoreAuditWebhookTokenFromEnv,
+  registerMinioAccessLogRoute,
+} from "./access-log/minio-access-log-routes";
 import { createDbDocumentBackend } from "./documents-route-service-db";
 import { createIdentityTargetPorts } from "./extraction/batch-identity";
 import { createHttpDoclingClient, doclingConfigFromEnv } from "./extraction/docling-client";
@@ -108,7 +111,7 @@ export function mountDocumentRoutes(
             presignDownload: () => {
               throw new DegradedError(
                 "document-storage",
-                "no object-storage presigner is bound (MINIO_* is not configured)",
+                "no object-storage presigner is bound (OBJECT_STORE_* is not configured)",
               );
             },
           },
@@ -125,11 +128,11 @@ export function mountDocumentRoutes(
     },
     recordsRequests,
   });
-  // GAP-141 — the MinIO audit-webhook receiver (download confirmation -> `signed_url_consumed`); fail-closed 503
-  // until MINIO_ACCESS_LOG_WEBHOOK_TOKEN is set.
+  // GAP-141 — the object-store audit receiver (download confirmation -> `signed_url_consumed`); fail-closed 503
+  // until its bearer is set. MINIO_* remains a rollback-compatible alias for one release window.
   registerMinioAccessLogRoute(app, {
     db,
-    token: process.env.MINIO_ACCESS_LOG_WEBHOOK_TOKEN,
+    token: objectStoreAuditWebhookTokenFromEnv(process.env),
   });
   registerRecordsRequestRoutes(app, {
     service: recordsRequests,

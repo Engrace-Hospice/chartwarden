@@ -580,14 +580,14 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       const pe = await seedProviderEntity(ORG_A, "381234");
       await seedMacCredential(ORG_A, pe, "ngs_j6");
       const adapter = buildM23MdmProviderEntityAdapter(handle.db, testProviderCcnPort);
-      const resolved = await adapter.resolveProviderEntity(ORG_A, pe);
+      const resolved = await adapter.resolveProviderEntity(ORG_A, pe, "2026-01-01");
       expect(resolved).toEqual({ ccn: "381234", macJurisdiction: "ngs_j6", cbsaCode: null });
     });
 
     it("names the missing MAC submitter credential (422) instead of reporting the provider entity unresolved", async () => {
       const pe = await seedProviderEntity(ORG_A, "381235");
       const adapter = buildM23MdmProviderEntityAdapter(handle.db, testProviderCcnPort);
-      await expect(adapter.resolveProviderEntity(ORG_A, pe)).rejects.toMatchObject({
+      await expect(adapter.resolveProviderEntity(ORG_A, pe, "2026-01-01")).rejects.toMatchObject({
         code: "MAC_SUBMITTER_CREDENTIAL_MISSING",
         statusCode: 422,
       });
@@ -597,7 +597,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       const peOrgB = await seedProviderEntity(ORG_B, "381236");
       await seedMacCredential(ORG_B, peOrgB, "cgs_j15");
       const adapter = buildM23MdmProviderEntityAdapter(handle.db, testProviderCcnPort);
-      expect(await adapter.resolveProviderEntity(ORG_A, peOrgB)).toBeNull();
+      expect(await adapter.resolveProviderEntity(ORG_A, peOrgB, "2026-01-01")).toBeNull();
     });
   });
 

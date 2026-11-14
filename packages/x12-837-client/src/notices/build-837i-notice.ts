@@ -113,7 +113,8 @@ function buildNotice(input: Notice837iInput): string {
     ["HI", `ABK:${dx}`],
     ...hi("BH", [`27:D8:${admission}`]),
     physicianName(input.attendingPhysician, "71", "attendingPhysician"),
-    ...(input.otherPhysician === null || input.otherPhysician === undefined ||
+    ...(input.otherPhysician === null ||
+    input.otherPhysician === undefined ||
     input.otherPhysician.npi === input.attendingPhysician.npi
       ? []
       : [physicianName(input.otherPhysician, "DN", "otherPhysician")]),

@@ -97,7 +97,9 @@ export async function priorClaimAttempt(
   controlNumber: string,
 ): Promise<SubmissionAttempt | null> {
   if (!transport.attempts) return null;
-  const ctx = await transport.contexts.contextFor(organizationId, providerEntityId, { payerRoute: "skip" });
+  const ctx = await transport.contexts.contextFor(organizationId, providerEntityId, {
+    payerRoute: "skip",
+  });
   return transport.attempts.find(
     organizationId,
     scopeKey(ctx),

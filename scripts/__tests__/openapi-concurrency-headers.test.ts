@@ -89,4 +89,10 @@ describe("openapi.json declares If-Match / Idempotency-Key on every guarded rout
   it("a claim delete is documented as 204 (no body)", () => {
     expect(statusKeys("delete", "/api/v1/billing/claims/{id}")).toContain("204");
   });
+
+  it("the MAC credential upsert documents both create and update success codes", () => {
+    expect(statusKeys("post", "/api/v1/billing/mac-credentials")).toEqual(
+      expect.arrayContaining(["200", "201"]),
+    );
+  });
 });

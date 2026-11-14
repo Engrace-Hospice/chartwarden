@@ -85,6 +85,10 @@ class FakeRepo implements SupportSessionRepository {
   async findSessionById(id: string): Promise<Session | null> {
     return this.sessions.get(id) ?? null;
   }
+  async findSessionByIdForUpdate(id: string): Promise<Session | null> {
+    this.calls.push(`session-update:${id}`);
+    return this.sessions.get(id) ?? null;
+  }
   async closeSessionIfOpen(
     id: string,
     patch: Pick<schema.NewSupportSession, "closedAt" | "closeReason">,
@@ -312,6 +316,28 @@ describe("startSupportSession — the organization is the grant's", () => {
 });
 
 describe("elevateSupportSession", () => {
+  it("locks consent before the session and refuses a revoked grant without recording elevation", async () => {
+    const h = harness();
+    const grant = await grantOf(h);
+    const started = await startSupportSession(h.deps, startInput(grant.id));
+    h.repo.grants.set(grant.id, {
+      ...grant,
+      revokedAt: new Date(T0),
+      revokedByMembershipId: GRANTOR,
+      revocationReason: "tenant request",
+    });
+    h.repo.calls.length = 0;
+
+    await expect(
+      elevateSupportSession(h.deps, {
+        supportSessionId: started.sessionId,
+        actorMembershipId: OPERATOR,
+      }),
+    ).rejects.toMatchObject({ code: "SUPPORT_GRANT_INACTIVE" });
+    expect(h.repo.calls).toEqual([`share:${grant.id}`, `session-update:${started.sessionId}`]);
+    expect(h.repo.events.some((event) => event.eventKind === "session.elevate")).toBe(false);
+  });
+
   it("refuses a session on an assist grant, open or not (403 SUPPORT_SESSION_NON_PHI)", async () => {
     const h = harness();
     const assist = await issueAssistGrant(h.deps, {
@@ -638,6 +664,8 @@ describe("the grant authority matrix", () => {
       reason: `help request ${helpRequestId}`,
       helpRequestId,
     });
+    expect(res.afterCommit).toBeTypeOf("function");
+    await res.afterCommit?.();
     expect(h.log.outbox.at(-1)).toMatchObject({
       event: "m34.support_consent_grant.issued",
       organizationId: TENANT_ORG,
@@ -750,12 +778,13 @@ describe("revokeGrantAndCloseSessions — the cascade", () => {
     await startSupportSession(h.deps, startInput(grant.id));
     h.order.length = 0;
     h.repo.calls.length = 0;
-    await revokeGrantAndCloseSessions(h.deps, revokeInput(grant.id));
+    const result = await revokeGrantAndCloseSessions(h.deps, revokeInput(grant.id));
     expect(h.repo.calls[0]).toBe("grant-revoked");
     const lastWrite = Math.max(
       h.order.lastIndexOf("outbox:m34.support_consent_grant.revoked"),
       h.order.lastIndexOf("audit:support_session.grant_revoked"),
     );
+    await result.afterCommit?.();
     expect(h.order.indexOf("alert:m34.support_session.expired")).toBeGreaterThan(lastWrite);
   });
 

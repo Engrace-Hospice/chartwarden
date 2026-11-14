@@ -6,6 +6,7 @@ import type { ApiClient } from "@chartwarden/ui";
 // `locations_seeded`) read exactly these rows, so a tenant could not finish onboarding on its own. This screen
 // creates both through the existing M2 org-admin routes.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AgencySetup } from "./agency-setup";
 
@@ -47,9 +48,12 @@ function client(over: {
 
 function mount(c: unknown): void {
   render(
-    <ApiClientProvider client={c as ApiClient}>
-      <AgencySetup />
-    </ApiClientProvider>,
+    // The forms keep a draft through a step-up round trip, which reads the router location.
+    <MemoryRouter>
+      <ApiClientProvider client={c as ApiClient}>
+        <AgencySetup />
+      </ApiClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -92,6 +96,8 @@ describe("AgencySetup", () => {
           taxId: "12-3456789",
           fiscalYearEnd: "1231",
         },
+        // one Idempotency-Key per attempt, so a double submit or a retry never creates the entity twice
+        headers: { "Idempotency-Key": expect.any(String) },
       }),
     );
     await waitFor(() => expect(c.GET.mock.calls.length).toBeGreaterThan(2));
@@ -111,7 +117,7 @@ describe("AgencySetup", () => {
     expect(c.POST).not.toHaveBeenCalled();
   });
 
-  it("shows the server's reason, e.g. the unbound tax-id cipher", async () => {
+  it("says in the tenant's words when the tax ID cannot be stored", async () => {
     const c = client({
       post: vi.fn(async () => ({
         error: {
@@ -120,6 +126,7 @@ describe("AgencySetup", () => {
             message: "the tax-id envelope cipher is not bound",
           },
         },
+        response: { status: 503 },
       })),
     });
     mount(c);
@@ -128,7 +135,33 @@ describe("AgencySetup", () => {
     fillEntity();
     fireEvent.click(screen.getByRole("button", { name: /add provider entity/i }));
 
-    expect((await screen.findByRole("alert")).textContent).toMatch(/cipher is not bound/);
+    const alert = (await screen.findByRole("alert")).textContent ?? "";
+    expect(alert).toMatch(/your tax id cannot be stored right now/i);
+    expect(alert).not.toMatch(/envelope cipher/);
+  });
+
+  it("never shows a server error's own sentence, only a plain line and its reference", async () => {
+    const c = client({
+      post: vi.fn(async () => ({
+        error: {
+          error: {
+            code: "INTERNAL",
+            message: "connection to 10.0.0.5 refused",
+            correlationId: "corr-9",
+          },
+        },
+        response: { status: 500 },
+      })),
+    });
+    mount(c);
+
+    await screen.findByRole("button", { name: /add provider entity/i });
+    fillEntity();
+    fireEvent.click(screen.getByRole("button", { name: /add provider entity/i }));
+
+    const alert = (await screen.findByRole("alert")).textContent ?? "";
+    expect(alert).toMatch(/could not do that right now.*Reference: corr-9/i);
+    expect(alert).not.toMatch(/10\.0\.0\.5/);
   });
 
   it("creates a location under a chosen provider entity", async () => {
@@ -156,6 +189,7 @@ describe("AgencySetup", () => {
           postalCode: "93701",
           timezone: "America/Los_Angeles",
         },
+        headers: { "Idempotency-Key": expect.any(String) },
       }),
     );
   });
@@ -199,5 +233,19 @@ describe("AgencySetup", () => {
     expect(
       (screen.getByRole("button", { name: /add provider entity/i }) as HTMLButtonElement).disabled,
     ).toBe(false);
+  });
+
+  it("keeps the page's layout: sections spaced apart, section titles, and forms held to a readable width", async () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ApiClientProvider client={client({ entities: [ENTITY] }) as unknown as ApiClient}>
+          <AgencySetup />
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByRole("region", { name: "Provider entities" });
+    expect(container.querySelector(".wx-page-sections")).toBeTruthy();
+    expect(container.querySelectorAll("h2.wx-section-title")).toHaveLength(2);
+    expect(container.querySelectorAll("form.wx-form-stack.wx-form-narrow")).toHaveLength(2);
   });
 });

@@ -22,7 +22,12 @@ const fakes = vi.hoisted(() => ({
   notrs: new Map<string, Record<string, unknown>>(),
   processors: new Map<string, (job: unknown, token?: string) => Promise<unknown>>(),
   registrations: [] as string[],
-  queueAdds: [] as { queue: string; name: string; data: unknown; options: Record<string, unknown> }[],
+  queueAdds: [] as {
+    queue: string;
+    name: string;
+    data: unknown;
+    options: Record<string, unknown>;
+  }[],
   /** The `claim_submission` attempt log (append-only: a row only ever leaves `queued`). */
   attempts: [] as Record<string, unknown>[],
   /** The ids a submit worker read WITH the row lock (`findByIdForUpdate`). */
@@ -123,10 +128,10 @@ import { configureClaimsBillingGate } from "../src/bootstrap/claims-billing-gate
 import type { M23TransportDeps } from "../src/modules/23-billing-medicare/jobs/clearinghouse-submission";
 import {
   type M23WorkerDeps,
+  buildM23SubmissionQueuePort,
   holdBeforeRun,
   registerM23ClaimSubmissionWorkers,
   registerM23LaunchWorkers,
-  buildM23SubmissionQueuePort,
   registerM23TransportAckWorkers,
   runNoeSubmit,
   runNotrSubmit,
@@ -281,10 +286,7 @@ describe("capability-specific M23 worker registration", () => {
 
   it("registers the common Stedi claim workers independently of gateway ports", () => {
     const { deps } = depsFor(LIVE);
-    registerM23ClaimSubmissionWorkers(
-      { ...deps, x12: undefined, macPortal: undefined, jurisdictions: undefined },
-      {},
-    );
+    registerM23ClaimSubmissionWorkers({ ...deps, x12: undefined, macPortal: undefined }, {});
 
     expect(fakes.registrations).toEqual([M23_QUEUES.claimSubmit, M23_QUEUES.claimSubmitRetry]);
   });
@@ -506,9 +508,9 @@ describe("transfer-notice job pre-flight", () => {
 
   it("holds the job when the org's vendor is live but the authoritative renderer is absent", async () => {
     const { deps } = depsFor(LIVE);
-    await expect(pre(deps, M23_QUEUES.transferNoticeSubmit, data, jobOf().job)).rejects.toBeInstanceOf(
-      DelayedError,
-    );
+    await expect(
+      pre(deps, M23_QUEUES.transferNoticeSubmit, data, jobOf().job),
+    ).rejects.toBeInstanceOf(DelayedError);
   });
 });
 
@@ -672,11 +674,13 @@ describe("runNoeSubmit / runNotrSubmit: the defensive guard (the org may switch 
       seedAttempt(make(), { id: "att-0", outcome: "failed_worker", outcomeReason: "PARKED" });
       seedAttempt(make(), { id: "att-1", attemptIndex: 1 });
       const { deps, generated } = depsFor(LIVE, { transmits: true });
-      await expect(run({} as never, deps, {
-        organizationId: ORG,
-        ...data,
-        submissionId: "att-1",
-      } as never)).rejects.toThrow("M23_NOTICE_DISPATCH_NOT_AUTHORIZED");
+      await expect(
+        run({} as never, deps, {
+          organizationId: ORG,
+          ...data,
+          submissionId: "att-1",
+        } as never),
+      ).rejects.toThrow("M23_NOTICE_DISPATCH_NOT_AUTHORIZED");
       expect(generated).toEqual([]);
       expect(attemptById("att-1")).toMatchObject({ outcome: "queued" });
       expect(attemptById("att-0")).toMatchObject({

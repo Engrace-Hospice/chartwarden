@@ -27,6 +27,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import { lifecycleTone } from "../../shell/document-lifecycle-tone";
+import { withIntakeReturnTo } from "../../shell/intake-return";
 import { IntakeUploadDialog } from "../../shell/intake-upload-dialog";
 import { ReferralRecordsRequests } from "./referral-records-requests";
 
@@ -114,9 +115,15 @@ const errorText = (err: unknown, fallback: string): string => {
 export function ReferralRecords({
   referralId,
   patientId,
+  reviewReturnTo,
+  embedded = false,
 }: {
   referralId: string;
   patientId: string | null;
+  /** Guided-workspace context restored after M22 review. IDs only; never patient data. */
+  reviewReturnTo?: string;
+  /** Compact capture/status surface used by Step 1 of the guided intake workspace. */
+  embedded?: boolean;
 }): JSX.Element {
   const client = useApiClient();
   const [items, setItems] = useState<ReferralBatch[] | null>(null);
@@ -158,11 +165,16 @@ export function ReferralRecords({
       <section style={section} aria-label="Intake records">
         <div style={sectionHead}>
           <div>
-            <h2 style={heading}>Records</h2>
+            <h2 style={heading}>{embedded ? "Received records" : "Records"}</h2>
             <p style={muted}>
               Faxes, emailed and scanned records for this referral. WardenLens reads them; a
               reviewer checks every field against the page before anything reaches the chart.
             </p>
+            {embedded ? (
+              <p style={muted}>
+                No records yet? You can continue intake manually and add them when they arrive.
+              </p>
+            ) : null}
           </div>
           <Button onClick={() => setUploadOpen(true)}>Add records</Button>
         </div>
@@ -188,12 +200,12 @@ export function ReferralRecords({
         ) : items.length === 0 ? (
           <EmptyState
             title="No records yet"
-            description="Nothing has been filed against this referral. Add the faxed, emailed or scanned records the referral source sent."
+            description="Nothing has been filed against this referral. Add the faxed, emailed or scanned records the referral source sent, or continue with manual review when no document is available."
           />
         ) : (
           <ul style={list} aria-label="Intake batches">
             {items.map((b) => (
-              <BatchRow key={b.id} batch={b} />
+              <BatchRow key={b.id} batch={b} reviewReturnTo={reviewReturnTo} />
             ))}
           </ul>
         )}
@@ -206,7 +218,7 @@ export function ReferralRecords({
         ) : null}
       </section>
 
-      <ReferralRecordsRequests referralId={referralId} />
+      {!embedded ? <ReferralRecordsRequests referralId={referralId} /> : null}
 
       <IntakeUploadDialog
         open={uploadOpen}
@@ -224,7 +236,13 @@ export function ReferralRecords({
   );
 }
 
-function BatchRow({ batch: b }: { batch: ReferralBatch }): JSX.Element {
+function BatchRow({
+  batch: b,
+  reviewReturnTo,
+}: {
+  batch: ReferralBatch;
+  reviewReturnTo?: string;
+}): JSX.Element {
   const identity = b.identityStatus ? IDENTITY[b.identityStatus] : undefined;
   const sud = SUD_PILL[b.sudStatus];
   const conflict = b.recordsRequestConflict;
@@ -253,9 +271,18 @@ function BatchRow({ batch: b }: { batch: ReferralBatch }): JSX.Element {
             />
           ) : null}
         </div>
+        {b.status === "parse_failed" ? (
+          <span style={failureHelp}>
+            WardenLens could not read this file. Keep the original record and continue the referral
+            manually, or open it for details while the source is corrected.
+          </span>
+        ) : null}
       </div>
       <Link
-        to={reviewable ? `/intake/${b.id}/review` : `/intake/${b.id}`}
+        to={withIntakeReturnTo(
+          reviewable ? `/intake/${b.id}/review` : `/intake/${b.id}`,
+          reviewReturnTo,
+        )}
         className={reviewable ? "wx-btn-primary" : undefined}
         aria-label={`${reviewable ? "Review" : "View"} ${channelLabel(b.sourceChannel)} received ${receivedAt(b.uploadedAt)}`}
       >
@@ -266,6 +293,10 @@ function BatchRow({ batch: b }: { batch: ReferralBatch }): JSX.Element {
 }
 
 const stack: CSSProperties = { display: "grid", gap: "1rem", minWidth: 0 };
+const failureHelp: CSSProperties = {
+  color: "var(--color-error)",
+  fontSize: "0.8125rem",
+};
 const section: CSSProperties = {
   border: "1px solid var(--color-outline-variant)",
   borderRadius: "8px",

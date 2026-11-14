@@ -124,6 +124,19 @@ const ADMISSION = "99999999-9999-4999-8999-999999999999";
 const LOC_PERIOD = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const MEMBERSHIP = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const NOW = "2026-08-01T12:00:00.000Z";
+const NOTICE_DEADLINE = {
+  applies: true,
+  basis: "CMS verified policy",
+  policyVersion: "CMS-100-04-Ch11-20.1.1-20.1.2-2024-06-03" as const,
+  triggerDate: "2026-01-01",
+  dueDate: "2026-01-06",
+  risk: "overdue" as const,
+  lifecycle: "ready" as const,
+  acceptance: "not_verified" as const,
+  acceptedAt: null,
+  timeliness: "unknown" as const,
+  followUp: "Review the persisted filing evidence.",
+};
 
 function page<T>(items: readonly T[]): {
   items: readonly T[];
@@ -295,6 +308,8 @@ function createM23TestBackend(): {
         electionEffectiveDate: "2026-01-01",
         windowTargetAt: NOW,
         windowBreachedAt: null,
+        deadline: NOTICE_DEADLINE,
+        evidenceTimeline: [],
         externalFiling: null,
         noeControlNumber: "NOE0000001",
         payerNoeControlNumber: null,
@@ -309,6 +324,7 @@ function createM23TestBackend(): {
         correctionReason: null,
         correctedBy: null,
         latestSubmissionId: null,
+        latestAttempt: null,
         latestAcknowledgmentId: null,
         confirmationDocumentId: null,
         version: 1,
@@ -334,6 +350,8 @@ function createM23TestBackend(): {
         effectiveEndDate: "2026-02-01",
         windowTargetAt: NOW,
         windowBreachedAt: null,
+        deadline: NOTICE_DEADLINE,
+        evidenceTimeline: [],
         externalFiling: null,
         state: "ready",
         notrControlNumber: "NOTR0000001",
@@ -349,6 +367,7 @@ function createM23TestBackend(): {
         correctionReason: null,
         correctedBy: null,
         latestSubmissionId: null,
+        latestAttempt: null,
         latestAcknowledgmentId: null,
         confirmationDocumentId: null,
         version: 1,

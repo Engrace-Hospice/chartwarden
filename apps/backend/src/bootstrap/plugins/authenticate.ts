@@ -15,6 +15,7 @@ import { ChartWardenError, type OrgScope, type SessionContextResolver } from "@c
 import type { FastifyRequest } from "fastify";
 import {
   type OrganizationStageReader,
+  isCreatedOnlyRoute,
   organizationOnboardingRefusal,
   preActivationMayCall,
 } from "../onboarding-org-gate";
@@ -282,15 +283,23 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
         }
       }
     }
-    if (
-      (await deps.organizationStage.isConfined(actor.organizationId)) &&
-      !preActivationMayCall({
-        method: request.method,
-        routeTemplate: request.routeOptions?.url,
-        rawUrl: request.url,
-      })
-    ) {
-      throw organizationOnboardingRefusal();
+    if (await deps.organizationStage.isConfined(actor.organizationId)) {
+      const routeTemplate = request.routeOptions?.url;
+      // The billing steps are open to a `created` organization only: ask the reader just for those pairs, and a reader that cannot
+      // say (no `isCreated`) answers false, so they stay refused.
+      const organizationCreated = isCreatedOnlyRoute(request.method, routeTemplate)
+        ? ((await deps.organizationStage.isCreated?.(actor.organizationId)) ?? false)
+        : false;
+      if (
+        !preActivationMayCall({
+          method: request.method,
+          routeTemplate,
+          rawUrl: request.url,
+          organizationCreated,
+        })
+      ) {
+        throw organizationOnboardingRefusal();
+      }
     }
     request.context.organizationId = actor.organizationId;
     request.context.roles = [...actor.roles];

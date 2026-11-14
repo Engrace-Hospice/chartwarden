@@ -55,8 +55,8 @@ import {
   bodyEnvelopeScheme,
   computeRoomSet,
   createAlertPayloadRegistry,
-  setOutOfBandFallbackObserver,
   ringEnvelopeVersion,
+  setOutOfBandFallbackObserver,
   userRoom,
 } from "@chartwarden/messaging";
 import {
@@ -392,6 +392,7 @@ import {
   EMERGENCY_ROUTE_RATE_LIMIT,
   HELP_REQUEST_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
+  MAC_CREDENTIAL_TEST_ROUTE_RATE_LIMIT,
   MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
   TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
@@ -570,10 +571,10 @@ import {
   buildM6CoverageAddendumConsumer,
   buildM6DocumentBackrefConsumer,
   buildM6LevelOfCareChangeSignedConsumer,
+  buildM6MedicareNoticeSource,
   buildM6ProposalAcceptedConsumer,
   buildM6RecertificationSignedConsumer,
   buildM6WorkerDeps,
-  buildM6MedicareNoticeSource,
   claimAssemblyRangeContextForOrg,
   claimStayEndFactsForOrg,
   composeNonCoveredItemsReaders,
@@ -1191,15 +1192,13 @@ import {
   M23_OUTBOX_EVENTS,
   M23_PLATFORM_JOB_ID,
   M23_QUEUES,
+  MedicareNoticeArtifactKeyUnavailableError,
   ORG_WIDE_BILLING_SCOPE_ROLES,
   type ProviderCcnPort,
   buildClaim837iPartiesPortFactory,
   buildClaim837iProviderReader,
-  buildClaimPayerRouteStatus,
   buildClaimMdMedicareRoutingService,
-  buildNoeExceptionReviewService,
-  buildMedicareNoticeWorklistService,
-  buildDrizzleArtifactReadinessReader,
+  buildClaimPayerRouteStatus,
   buildClaimStateService,
   buildClaimValidationContextPort,
   buildClaimValidationRunner,
@@ -1209,16 +1208,16 @@ import {
   buildDdeQueueService,
   buildDdeWatchdog,
   buildDirectMacGateway,
+  buildDrizzleArtifactReadinessReader,
   buildDrizzleEdiProfileReader,
   buildDrizzleEdiProfileService,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
-  buildDrizzleMedicareProviderRoutingService,
   buildDrizzleMedicareNoticePersistence,
   buildDrizzleMedicareNoticeRenderArtifactStore,
-  MedicareNoticeArtifactKeyUnavailableError,
   buildDrizzleMedicareNoticeRenderIdentityStore,
   buildDrizzleMedicareNoticeRoutePort,
+  buildDrizzleMedicareProviderRoutingService,
   buildDrizzleNpiVerificationService,
   buildDrizzleOrgMacJurisdictionReader,
   buildDrizzlePlatformAdminService,
@@ -1232,7 +1231,6 @@ import {
   buildM23BootAssemblySeams,
   buildM23BootAssemblyService,
   buildM23LateCheckResolvedConsumer,
-  buildMedicareNoticeDispatchStateMachine,
   buildM23NoeDraftConsumer,
   buildM23NoticeFiledLateConsumer,
   buildM23NotrDraftConsumer,
@@ -1252,18 +1250,21 @@ import {
   buildMacJurisdictionLister,
   buildMacOnboardingCredentialPort,
   buildMacSecretCipherFromEnv,
+  buildMedicareNoticeDispatchStateMachine,
+  buildMedicareNoticeWorklistService,
+  buildNoeExceptionReviewService,
   buildNoticeWindowPort,
   buildSubmissionControlNumberReader,
   buildTransferNoticeService,
   claimAccountReferenceFor,
-  createClaimMdOperationalReader,
   createAuthoritativeMedicareNoticeSourceLoader,
-  createMedicareNoticeRenderer,
+  createClaimMdOperationalReader,
   createDrizzleBillingEraseStore,
   createDrizzleDdeAgingStore,
   createDrizzleDdeChangeStore,
   createM23HetsTransport,
   createM23LaunchGateway,
+  createMedicareNoticeRenderer,
   m23HetsConfigFromEnv,
   m23LaunchGatewayConfigFromEnv,
   mountM23Routes,
@@ -1275,23 +1276,24 @@ import {
   registerDdeAgingAlertWorker,
   registerDdeDailyChangeWorker,
   registerM23AbacPredicates,
-  registerM23DomainWorkers,
   registerM23ClaimSubmissionWorkers,
-  registerM23NoticeSubmissionWorkers,
-  registerM23TransportAckWorkers,
+  registerM23DomainWorkers,
   registerM23LegacyAckWorkers,
+  registerM23NoticeSubmissionWorkers,
   registerM23PortalHealthWorker,
   registerM23PublishedSeams,
+  registerM23TransportAckWorkers,
   registerM23WatchCronWorkers,
   scheduleDdeAgingAlert,
   scheduleDdeDailyChange,
   scheduleM23Jobs,
-  scheduleM23WatchJobs,
   scheduleM23TransportAckJobs,
+  scheduleM23WatchJobs,
   sweepLegacyValidationRunQueue,
   validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
+import type { OnboardingDataChangeGuard } from "./modules/23-billing-medicare/routes/onboarding-data-change";
 import { m23RouteClasses } from "./modules/23-billing-medicare/routes/route-classes";
 import {
   buildClaim837iPersistencePort,
@@ -1736,9 +1738,11 @@ import {
   type BootstrapModule34Deps,
   M34_OUTBOX_EVENTS,
   M34_PLATFORM_JOB_ID,
+  ONBOARDING_WRITABLE_STATUSES,
   type SignupIntentRouteService,
   type TenantPlatformAbacResolver,
   bootstrapModule34,
+  buildDrizzleHelpRequestService,
   buildDrizzleOnboardingDataService,
   buildDrizzlePlatformService,
   buildDrizzleTenantPlatformAbacResolver,
@@ -1750,6 +1754,7 @@ import {
   buildPlatformEnqueue,
   buildPlatformTenantResolver,
   buildTenantEnqueue,
+  createDrizzleHelpRequestRunner,
   createDrizzleM34AlertResolverPorts,
   createDrizzlePlatformOpsService,
   createDrizzleSaasTenantPlatformEraseStore,
@@ -1765,6 +1770,7 @@ import {
   describeM34SweepSchedules,
   enableM34JobCapability,
   getTenantKeyProvider,
+  lockTenantOnboardingShared,
   m34ProvisionGatewayConfigFromEnv,
   m34ResolverExtension,
   mountTenantPlatformRoutes,
@@ -1773,6 +1779,7 @@ import {
   registerM34BundleExpiryWorker,
   registerM34DekRotateWorker,
   registerM34DsarExportWorker,
+  registerM34HelpRequestSweepWorker,
   registerM34OnboardingAdvanceWorker,
   registerM34ProvisionWorker,
   registerM34ShredWorker,
@@ -1781,6 +1788,7 @@ import {
   registerSaasTenantPlatformErasers,
   registerTenantPlatformAbacPredicates,
   scheduleM34BundleExpiryJob,
+  scheduleM34HelpRequestSweepJob,
   scheduleM34PlatformSweepJobs,
   targetTenantScopeOf,
   validateModule34Seams,
@@ -2069,9 +2077,9 @@ import {
   type M40AlertPort,
   M40_OUTBOX_EVENTS,
   M40_PLATFORM_JOB_ID,
+  buildActiveMedicarePayerByIdReader,
   buildM29NppesPlatformConsumers,
   buildPayerNameByX12IdReader,
-  buildActiveMedicarePayerByIdReader,
   createDbBaaStore,
   createDbMdmStore,
   createDbNppesNpiSource,
@@ -3252,6 +3260,32 @@ export const m34PlatformBypassAuditor: PlatformBypassAuditor<DbClient> = async (
 };
 
 /**
+ * A tenant-lane billing write (the clearinghouse choice, its BAA record, verify and activate; the MAC credential) is onboarding
+ * data: a pending go-live attestation said that data was ready, so the write revokes it IN THE WRITE'S OWN TRANSACTION (M23 may
+ * not import M34, so it takes this as `onOnboardingDataChanging`). The guard acquires the shared lock and decides whether the
+ * organization is still onboarding before the mutation. Its returned finalizer runs only after an accepted write, so approval
+ * cannot overtake it; refused writes and unchanged choice/BAA writes revoke nothing, while accepted verify/activate may revoke again.
+ */
+export const guardGoLiveOnBillingWrite: OnboardingDataChangeGuard = async (tx, change) => {
+  await lockTenantOnboardingShared(tx, change.organizationId);
+  const [account] = await tx
+    .select({ status: schema.tenantAccount.status })
+    .from(schema.tenantAccount)
+    .where(eq(schema.tenantAccount.organizationId, change.organizationId))
+    .limit(1);
+  // A live/suspended/closing tenant may still maintain billing configuration. There is no pending onboarding
+  // attestation to invalidate there, and the shared lock makes this status decision atomic with go-live approval.
+  if (!account || !ONBOARDING_WRITABLE_STATUSES.has(account.status)) return async () => undefined;
+  return async () => {
+    await voidPendingGoLiveForDataChange(tx, {
+      organizationId: change.organizationId,
+      revokedByUserId: change.userId,
+      revokedByMembershipId: change.membershipId,
+    });
+  };
+};
+
+/**
  * Fail-closed slice `TenantKeyProvider` (D5) so `validateModule34Seams()` passes at boot before the real
  * KMS-backed key provider lands. Every method THROWS — the platform has no live PHI ciphertext to key in the
  * slice/local boot, so a resolve is a programming error, not a silent fail-open. This satisfies the mandatory
@@ -4282,10 +4316,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       "Claim.MD hospice notice transaction support is unverified: this organization's NOE / NOTR remains held; the rollout flag cannot authorize transmission",
     );
   };
+  const readOrganizationStatus = dbHandle ? createOrganizationStatusReader(dbHandle.db) : undefined;
+  // Request confinement is briefly cached for request-path cost. The decisive worker transport check below deliberately uses the
+  // authoritative reader on every resolution: process-local invalidation cannot stop another replica from using a stale active entry.
+  const organizationStage = dbHandle
+    ? createOrganizationStageReader(readOrganizationStatus!)
+    : undefined;
   const tenantClearinghouse = dbHandle
     ? createTenantClearinghouseRuntime({
         db: dbHandle.db,
         cipher: clearinghouseSecretCipher,
+        isOrganizationLive: async (organizationId: string) => {
+          if (!readOrganizationStatus) throw new Error("organization status reader is not bound");
+          return (await readOrganizationStatus(organizationId)) === "active";
+        },
         attempts: createDrizzleAttemptStore(dbHandle.db),
         platformBinding: platformClearinghouseBinding,
         fallbackOrgIds: clearinghouseFallback.orgIds,
@@ -5393,7 +5437,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   );
   if (s3ObjectStoreConfigFromEnv(process.env) && !destructionDbHandle) {
     console.warn(
-      "⚠️  M36 attachments are enabled (MINIO_* is set) but DATABASE_DESTRUCTION_URL is not: the attachment orphan reaper is off and a tenant erase will refuse (chartwarden_app cannot DELETE message_attachment). Provision chartwarden_destruction_login (db:provision-roles) and set it.",
+      "⚠️  M36 attachments are enabled (OBJECT_STORE_* is set) but DATABASE_DESTRUCTION_URL is not: the attachment orphan reaper is off and a tenant erase will refuse (chartwarden_app cannot DELETE message_attachment). Provision chartwarden_destruction_login (db:provision-roles) and set it.",
     );
   }
   // GAP-099 — M40's first publisher. It had none until now because nothing could WRITE a canonical
@@ -5673,9 +5717,6 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // A new tenant's first admin signs in while its organization is still `created` (go-live not yet approved): the authenticate
   // hook confines such a session to the onboarding allowlist (bootstrap/onboarding-org-gate.ts), and go-live approval activates
   // the organization. Cached briefly; evicted by every organization transition below.
-  const organizationStage = dbHandle
-    ? createOrganizationStageReader(createOrganizationStatusReader(dbHandle.db))
-    : undefined;
   const tenantOrigins = tenantHostResolver
     ? createTenantOriginMatcher({ baseDomain: tenantBaseDomain, resolver: tenantHostResolver })
     : undefined;
@@ -6303,6 +6344,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ...(mfaGate ? { mfaGate } : {}),
             // `select-organization` admits a `created` organization whose tenant is still onboarding (its first admin).
             onboardingTenants: createOnboardingTenantReader(dbHandle.db),
+            // `GET /auth/context` tells the shell whether the organization is still being onboarded: the authenticate hook's own
+            // cached stage reader, so the signal and the gate cannot disagree.
+            ...(organizationStage ? { organizationStage } : {}),
             funeralCases: {
               read: (organizationId, patientId) =>
                 funeralCaseForOrg(dbHandle.db, organizationId, patientId),
@@ -6325,13 +6369,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             taxIdCipher,
             // A provider-entity, location or organization-name write also voids a pending go-live attestation in the SAME
             // transaction (the attestation said the data was ready; this write makes that stale). M34's helper, M2's routes.
-            orgWriteScope: createOrgDataWriteScope(dbHandle.db, async (tx, scope) => {
-              await voidPendingGoLiveForDataChange(tx, {
-                organizationId: scope.organizationId,
-                revokedByUserId: scope.userId,
-                revokedByMembershipId: scope.membershipId,
-              });
-            }),
+            orgWriteScope: createOrgDataWriteScope(
+              dbHandle.db,
+              async (tx, scope) => {
+                await voidPendingGoLiveForDataChange(tx, {
+                  organizationId: scope.organizationId,
+                  revokedByUserId: scope.userId,
+                  revokedByMembershipId: scope.membershipId,
+                });
+              },
+              async (tx, scope) => {
+                await lockTenantOnboardingShared(tx, scope.organizationId);
+              },
+            ),
           });
           // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — the device-attestation write path. This is what
           // puts rows in `device_attestation`, which is what lets the authenticate hook stamp
@@ -7312,6 +7362,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // a claim that cannot be released after a definitive refusal ages out; this is the only place that says so
             warn: (fields, message) => app.log.warn(fields, message),
           });
+          if (!rateLimitStore) {
+            app.log.warn(
+              "M34 help-request filing limits use a per-replica in-memory store (no REDIS_URL): member and organization budgets are not shared across replicas or restarts",
+            );
+          }
           mountTenantPlatformRoutes(app, dbHandle.db, {
             tenantBaseDomain,
             // Each slug probe is an audited platform read: 30/min/user, 300/min/org, fail-open (an availability control).
@@ -7359,9 +7414,24 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 flags: createDrizzleFeatureFlagAdmin(platformDbHandle?.db ?? dbHandle.db),
               }),
             },
-            // Slice 7: help requests. The route cap is wired here; the real service is piece 7B's (until it binds one, the routes
-            // answer 501 NOT_IMPLEMENTED). Per member and per organization, fail-closed.
+            // Slice 7: help requests. The real service over the tenant pool (a member's own RLS) and the audited platform credential
+            // (the operators' inbox and Resolve) shares 7S's consent-grant operation bundle, so approve, End help and Resolve update the
+            // request, grant and sessions through the same transaction. The filing cap is per member and per organization, fail-closed.
             help: {
+              service: buildDrizzleHelpRequestService({
+                db: dbHandle.db,
+                platformDb: platformDbHandle?.db ?? dbHandle.db,
+                auditBypass: m34PlatformBypassAuditor,
+                platformJobId: M34_PLATFORM_JOB_ID,
+                outbox: m34OutboxPublisher,
+                grants: m34SupportOps,
+                // Resolve lazily: M36 registers the seam during boot, after this module's imports are evaluated.
+                alerts: {
+                  emit: (organizationId, input) =>
+                    (getSeam("AlertEmitter") as AlertEmitter).emit(organizationId, input),
+                },
+                warn: (message, context) => app.log.warn(context, message),
+              }),
               fileRateLimit: createRouteRateLimit({
                 store: rateLimitStore ?? createInMemoryRateLimitStore(),
                 limit: HELP_REQUEST_ROUTE_RATE_LIMIT,
@@ -7807,13 +7877,24 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           });
           const m23PayerNameByX12Id = buildPayerNameByX12IdReader();
           const m23ActiveMedicarePayerById = buildActiveMedicarePayerByIdReader();
-          const m23CoveragePayerFacts = async (input: { organizationId: string; patientId: string; patientPayerId: string }) => {
+          const m23CoveragePayerFacts = async (input: {
+            organizationId: string;
+            patientId: string;
+            patientPayerId: string;
+          }) => {
             const rows = await getSeam("PatientCoverageReader").coveragesForPatient({
-              organizationId: input.organizationId, patientId: input.patientId,
+              organizationId: input.organizationId,
+              patientId: input.patientId,
             });
             const row = rows.find((coverage) => coverage.id === input.patientPayerId);
-            return row ? { payerId: row.payerId, coverageKind: row.coverageKind,
-              effectiveFrom: row.effectiveFrom, effectiveTo: row.effectiveTo } : null;
+            return row
+              ? {
+                  payerId: row.payerId,
+                  coverageKind: row.coverageKind,
+                  effectiveFrom: row.effectiveFrom,
+                  effectiveTo: row.effectiveTo,
+                }
+              : null;
           };
           const m23ClaimPreviewParties = buildClaim837iPartiesPortFactory({
             routeKey: claimPartiesRouteKey,
@@ -7852,7 +7933,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   transferNoticeService: buildTransferNoticeService(dbHandle.db, {
                     outbox: m23OutboxPublisher,
                     billsOutside: m23BillsOutside,
-                    jobs: buildM23OutboxBackedSubmissionGate({ "transfer_notice.submit": m23SubmissionQueues !== null }),
+                    jobs: buildM23OutboxBackedSubmissionGate({
+                      "transfer_notice.submit": m23SubmissionQueues !== null,
+                    }),
                     transferInFacts: (organizationId, transferEventId) =>
                       transferInNoticeContextForOrg(dbHandle.db, organizationId, transferEventId),
                   }),
@@ -7951,12 +8034,23 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 // F-211 — the tenant-entered CMS wage index (`/billing/wage-indexes`), read by the same boot assembly.
                 wageIndexService: buildDrizzleWageIndexService(dbHandle.db),
                 platformAdminService: buildDrizzlePlatformAdminService(dbHandle.db),
-                medicareProviderRoutingService: buildDrizzleMedicareProviderRoutingService(dbHandle.db, m23ProviderCcn),
-                claimMdMedicareRoutingService: buildClaimMdMedicareRoutingService(dbHandle.db, m23ProviderCcn, process.env, m23ActiveMedicarePayerById),
+                medicareProviderRoutingService: buildDrizzleMedicareProviderRoutingService(
+                  dbHandle.db,
+                  m23ProviderCcn,
+                ),
+                claimMdMedicareRoutingService: buildClaimMdMedicareRoutingService(
+                  dbHandle.db,
+                  m23ProviderCcn,
+                  process.env,
+                  m23ActiveMedicarePayerById,
+                ),
                 // ADR-0053 amendment precondition 2 — platform-verified NPI ownership. Cross-tenant list and platform-only
                 // writes, so one allowlisted, audited withPlatformContext per call; no platform pool => 503, never a
                 // tenant-pool read.
                 npiVerificationService: buildDrizzleNpiVerificationService({
+                  beforeVerificationChanged: async (tx, organizationId) => {
+                    await lockTenantOnboardingShared(tx, organizationId);
+                  },
                   // A verify or revoke is the `ccn_registered` step's data: it also voids a pending go-live attestation, in the
                   // SAME platform transaction (M34's helper; M23 does not import M34).
                   onVerificationChanged: async (tx, change) => {
@@ -7999,10 +8093,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   limit: CLEARINGHOUSE_PUT_ROUTE_RATE_LIMIT,
                   keyPrefix: "m23-clearinghouse-put",
                 }),
+                // The MAC portal check is a gateway call per request and a created organization can reach it: capped, and closed.
+                macCredentialTestRateLimit: createRouteRateLimit({
+                  store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                  limit: MAC_CREDENTIAL_TEST_ROUTE_RATE_LIMIT,
+                  keyPrefix: "m23-mac-credential-test",
+                }),
                 tenantClearinghouseService: buildDrizzleTenantClearinghouseRouteService({
                   db: dbHandle.db,
                   service: tenantClearinghouseService,
                   audit: buildClearinghouseAuditPort(),
+                  // Each write voids a pending go-live attestation in its own transaction (step 7's data changed).
+                  onOnboardingDataChanging: guardGoLiveOnBillingWrite,
                   onChanged: settleOnboardingForOrg,
                   logError: (cause, context) =>
                     app.log.error(
@@ -8041,6 +8143,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 }),
                 writeService: buildDrizzleM23WriteService(dbHandle.db, {
                   outbox: m23OutboxPublisher,
+                  // The tenant's own MAC credential save voids a pending go-live attestation in the same transaction (step 8's data).
+                  onOnboardingDataChanging: guardGoLiveOnBillingWrite,
+                  // Once that transaction commits, settle the credential step immediately; a failure is observable but never rolls back the save.
+                  onMacCredentialChanged: settleOnboardingForOrg,
+                  logMacCredentialSettleError: (cause, context) =>
+                    app.log.error(
+                      { err: cause, ...context },
+                      "tenant MAC credential: onboarding settle failed",
+                    ),
                   // Owner decision D4: an org that bills outside ChartWarden files its NOE / NOTR itself, so submit parks the
                   // notice and the tenant records the date. Read lazily per call (the reader seam registers after this is built);
                   // a throw fails closed with a typed 503, never a transmission.
@@ -8073,7 +8184,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   ...(m23MacSecretCipher ? { secretCipher: m23MacSecretCipher } : {}),
                   // §4.5 validation override: one prominent audit_event per override, in the override's own transaction.
                   audit: buildM23OverrideAuditPort(),
-                  // GAP-144 — the MAC sandbox probe (portal health) when the launch gateway is configured.
+                  // GAP-144 — the MAC portal check (portal health) when the launch gateway is configured. It takes the jurisdiction only:
+                  // the credential's secret, client id and submitter id are never sent, so an answer proves the portal is up and says nothing
+                  // about the credential (the first real submission is its first use). The `detail` is what a person is told.
                   ...(m23LaunchGateway
                     ? {
                         macSandbox: {
@@ -8082,7 +8195,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                               await m23LaunchGateway.macPortal.probeHealth(macJurisdiction);
                             return {
                               ok: up,
-                              detail: up ? "MAC portal reachable" : "MAC portal unavailable",
+                              detail: up
+                                ? "The MAC portal for this jurisdiction answered. This does not validate the credential."
+                                : "The MAC portal for this jurisdiction did not answer.",
                             };
                           },
                         },
@@ -10246,7 +10361,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         );
       } else {
         app.log.warn(
-          "M34 tenant.bundle_expiry_sweep NOT started: MINIO_* object-store configuration is absent, so DSAR / " +
+          "M34 tenant.bundle_expiry_sweep NOT started: OBJECT_STORE_* configuration is absent, so DSAR / " +
             "tenant-export bundle objects will not be reaped after their 7-day TTL until it is configured",
         );
       }
@@ -10318,8 +10433,30 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       );
     } else {
       app.log.warn(
-        "M34 tenant provisioning disabled: platform DB, provision gateway, and MINIO_* configuration are required",
+        "M34 tenant provisioning disabled: platform DB, provision gateway, and OBJECT_STORE_* configuration are required",
       );
+    }
+
+    // Help-request text can be accepted without the provisioning gateway or object storage. Its expiry and retention sweep therefore
+    // depends only on the two database lanes it actually uses, and must remain live when optional provisioning integrations are off.
+    if (platformDbHandle) {
+      const m34HelpRequestSweep = registerM34HelpRequestSweepWorker({
+        connection: queueConnection,
+        runner: createDrizzleHelpRequestRunner({
+          db: dbHandle.db,
+          platformDb: platformDbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+          platformJobId: M34_PLATFORM_JOB_ID,
+        }),
+      });
+      m34Workers.push(m34HelpRequestSweep);
+      attachDlqAlertsToAll([m34HelpRequestSweep], "m34");
+      const m34HelpRequestSweepSchedule = await scheduleM34HelpRequestSweepJob(queueConnection);
+      app.addHook("onClose", () =>
+        Promise.all([m34HelpRequestSweep.close(), m34HelpRequestSweepSchedule.close()]),
+      );
+    } else {
+      app.log.warn("M34 help-request retention/expiry sweep is disabled: platform DB is required");
     }
 
     // ── GAP-059 — M35 worker set: dunning engine, usage aggregator, payment-method expiry watch, revenue
@@ -10738,7 +10875,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               bucketConfigured: auditArchiveSetup !== null,
               objectStoreConfigured: m34DsarObjectStore !== null,
             },
-            "audit.archive skipped: AUDIT_ARCHIVE_BUCKET and the MINIO_* credentials are both required",
+            "audit.archive skipped: AUDIT_ARCHIVE_BUCKET and the OBJECT_STORE_* credentials are both required",
           );
           return { skipped: "unconfigured" };
         }
@@ -11287,9 +11424,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           binding: clearinghouseBinding,
           providerNpi: m25PayeeNpi,
           coveragePayerFacts: async (input) => {
-            const rows = await getSeam("PatientCoverageReader").coveragesForPatient({ organizationId: input.organizationId, patientId: input.patientId });
+            const rows = await getSeam("PatientCoverageReader").coveragesForPatient({
+              organizationId: input.organizationId,
+              patientId: input.patientId,
+            });
             const row = rows.find((coverage) => coverage.id === input.patientPayerId);
-            return row ? { payerId: row.payerId, coverageKind: row.coverageKind, effectiveFrom: row.effectiveFrom, effectiveTo: row.effectiveTo } : null;
+            return row
+              ? {
+                  payerId: row.payerId,
+                  coverageKind: row.coverageKind,
+                  effectiveFrom: row.effectiveFrom,
+                  effectiveTo: row.effectiveTo,
+                }
+              : null;
           },
           activeMedicarePayerById: buildActiveMedicarePayerByIdReader(),
           ...clearinghouseUsageFor,
@@ -11311,7 +11458,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       profile: buildDrizzleEdiProfileReader(),
       provider: buildClaim837iProviderReader({
         sealedFacts: (tx, organizationId, providerEntityId) =>
-          buildFoundationSiteReader().providerEntityBillingFacts(tx, organizationId, providerEntityId),
+          buildFoundationSiteReader().providerEntityBillingFacts(
+            tx,
+            organizationId,
+            providerEntityId,
+          ),
         decryptTaxId: (input) =>
           createTaxIdCipher({
             dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
@@ -11330,7 +11481,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           ? clearinghouseBinding.forOrg(organizationId)
           : clearinghouseBinding,
       usageForOrg: async (organizationId) =>
-        (await tenantClearinghouse?.usageFor(organizationId)) ?? clearinghouseUsageFromEnv(process.env),
+        (await tenantClearinghouse?.usageFor(organizationId)) ??
+        clearinghouseUsageFromEnv(process.env),
       accountReferenceFor: async (organizationId, binding) => {
         if (binding.vendor === "claimmd") {
           return claimAccountReferenceFor(
@@ -11350,12 +11502,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           patientId: input.patientId,
         });
         const row = rows.find((candidate) => candidate.id === input.patientPayerId);
-        return row ? {
-          payerId: row.payerId,
-          coverageKind: row.coverageKind,
-          effectiveFrom: row.effectiveFrom,
-          effectiveTo: row.effectiveTo,
-        } : null;
+        return row
+          ? {
+              payerId: row.payerId,
+              coverageKind: row.coverageKind,
+              effectiveFrom: row.effectiveFrom,
+              effectiveTo: row.effectiveTo,
+            }
+          : null;
       },
       activeMedicarePayerById: buildActiveMedicarePayerByIdReader(),
     });
@@ -11367,48 +11521,58 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       patients: lazyPatientReader(),
       addresses: lazyPatientAddressReader(),
       physicians: getMdmEntityProvider(),
-      provider: m23ClaimSeamPorts.providerCcn,
+      provider: buildProviderEntityCcnResolver(dbHandle.db),
       route: m23NoticeRoute,
       partiesFor: () => ({
-        partiesFor: (input) => withOrgContext(
-          dbHandle.db,
-          { organizationId: input.organizationId, userId: "" },
-          (tx) => m23NoticePartiesFactory(tx as DbClient).partiesFor(input),
-        ),
+        partiesFor: (input) =>
+          withOrgContext(dbHandle.db, { organizationId: input.organizationId, userId: "" }, (tx) =>
+            m23NoticePartiesFactory(tx as DbClient).partiesFor(input),
+          ),
       }),
     });
     const m23ArtifactCipher = createMessageBodyCipher({ sealScheme: "ring" });
     const m23InternalNoticeRenderer = createMedicareNoticeRenderer({
       sources: m23NoticeSources,
       identities: buildDrizzleMedicareNoticeRenderIdentityStore(dbHandle.db, m23NoticeAttempts),
-      artifacts: buildDrizzleMedicareNoticeRenderArtifactStore(dbHandle.db, {
-        async sealRing(organizationId, plaintext, aadContext) {
-          const sealed = await m23ArtifactCipher.sealRing(organizationId, plaintext, aadContext);
-          return { ...sealed, keyVersion: ringEnvelopeVersion(sealed.cipher) };
+      artifacts: buildDrizzleMedicareNoticeRenderArtifactStore(
+        dbHandle.db,
+        {
+          async sealRing(organizationId, plaintext, aadContext) {
+            const sealed = await m23ArtifactCipher.sealRing(organizationId, plaintext, aadContext);
+            return { ...sealed, keyVersion: ringEnvelopeVersion(sealed.cipher) };
+          },
+          async open(organizationId, ciphertext, aadContext, expectedKeyVersion) {
+            if (
+              bodyEnvelopeScheme(ciphertext) !== "ring" ||
+              ringEnvelopeVersion(ciphertext) !== expectedKeyVersion
+            ) {
+              throw new Error("Unsupported or mismatched artifact key version");
+            }
+            try {
+              return await m23ArtifactCipher.open(organizationId, ciphertext, aadContext);
+            } catch (error) {
+              if (error instanceof BodyKeyUnavailableError)
+                throw new MedicareNoticeArtifactKeyUnavailableError();
+              throw error;
+            }
+          },
         },
-        async open(organizationId, ciphertext, aadContext, expectedKeyVersion) {
-          if (bodyEnvelopeScheme(ciphertext) !== "ring" || ringEnvelopeVersion(ciphertext) !== expectedKeyVersion) {
-            throw new Error("Unsupported or mismatched artifact key version");
-          }
+        async ({ organizationId, renderIdentityId }) => {
           try {
-            return await m23ArtifactCipher.open(organizationId, ciphertext, aadContext);
-          } catch (error) {
-            if (error instanceof BodyKeyUnavailableError) throw new MedicareNoticeArtifactKeyUnavailableError();
-            throw error;
+            await m23AlertPort.dispatch({
+              alertCode: "m23.notice.render_artifact_integrity_failure",
+              severity: "critical",
+              organizationId,
+              payload: { renderIdentityId },
+            });
+          } catch {
+            app.log.error(
+              { organizationId, renderIdentityId },
+              "M23 notice artifact integrity alert delivery failed",
+            );
           }
         },
-      }, async ({ organizationId, renderIdentityId }) => {
-        try {
-          await m23AlertPort.dispatch({
-            alertCode: "m23.notice.render_artifact_integrity_failure",
-            severity: "critical",
-            organizationId,
-            payload: { renderIdentityId },
-          });
-        } catch {
-          app.log.error({ organizationId, renderIdentityId }, "M23 notice artifact integrity alert delivery failed");
-        }
-      }),
+      ),
       fingerprintKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY ?? "",
     });
     const m23NoticeDispatch = buildMedicareNoticeDispatchStateMachine(dbHandle.db);
@@ -11479,9 +11643,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         ? await scheduleM23Jobs(queueConnection)
         : [
             ...(await scheduleM23WatchJobs(queueConnection)),
-            ...(transportAckAvailable
-              ? await scheduleM23TransportAckJobs(queueConnection)
-              : []),
+            ...(transportAckAvailable ? await scheduleM23TransportAckJobs(queueConnection) : []),
           ];
       app.addHook("onClose", async () => {
         await Promise.all(m23ScheduleQueues.map((queue) => queue.close()));
@@ -12548,10 +12710,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           )
         : {
             async read(): Promise<Uint8Array> {
-              throw new Error("platform object storage is not configured (MINIO_* unset)");
+              throw new Error("platform object storage is not configured (OBJECT_STORE_* unset)");
             },
             async write(): Promise<void> {
-              throw new Error("platform object storage is not configured (MINIO_* unset)");
+              throw new Error("platform object storage is not configured (OBJECT_STORE_* unset)");
             },
           };
       const m38Embeddings = embedderUnavailable;
@@ -14443,7 +14605,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           if (!intakeObjects) {
             throw new DegradedError(
               "document-storage",
-              "no object store is bound (MINIO_* is not configured)",
+              "no object store is bound (OBJECT_STORE_* is not configured)",
             );
           }
           const { url } = await intakeObjects.presign({

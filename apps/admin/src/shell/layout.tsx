@@ -4,6 +4,7 @@ import {
   InlineAlert,
   SkipLink,
   discardStepUpDrafts,
+  useApiClient,
   useDisclosureDismiss,
   useOffCanvasNav,
   useTheme,
@@ -40,6 +41,40 @@ export function AdminLayout({
   screens: readonly AdminScreenDescriptor[];
 }): JSX.Element {
   const session = useSession();
+  const client = useApiClient();
+  const [helpRequestCount, setHelpRequestCount] = useState(0);
+  const canReadHelpRequests = sections.some((section) =>
+    section.entries.some((entry) => entry.key === "saas.help-requests"),
+  );
+  useEffect(() => {
+    if (!canReadHelpRequests) return undefined;
+    let live = true;
+    let loadSequence = 0;
+    const load = async (): Promise<void> => {
+      const sequence = ++loadSequence;
+      try {
+        let count = 0;
+        let cursor: string | undefined;
+        do {
+          const { data, error } = await client.GET("/api/v1/platform/help-requests", {
+            params: { query: { status: "open,approved", limit: 100, cursor } },
+          });
+          if (!data || error) return;
+          count += data.items.length;
+          cursor = data.hasMore && data.nextCursor ? data.nextCursor : undefined;
+        } while (cursor);
+        if (live && sequence === loadSequence) setHelpRequestCount(count);
+      } catch {
+        // The count is advisory; navigation and the inbox retain their own error handling.
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 5 * 60_000);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+    };
+  }, [canReadHelpRequests, client]);
   // Below 768px the sidebar is an off-canvas drawer toggled by the header's menu button (app-shell.css).
   const { navOpen, setNavOpen, closeForNavigation, sidebarRef, toggleRef } = useOffCanvasNav(
     () => mainRef.current,
@@ -97,6 +132,14 @@ export function AdminLayout({
                     >
                       <Glyph name={entry.icon} size={18} strokeWidth={1.75} />
                       <span>{entry.label}</span>
+                      {entry.key === "saas.help-requests" && helpRequestCount > 0 ? (
+                        <span
+                          className="wx-nav-count"
+                          aria-label={`${helpRequestCount} open help requests`}
+                        >
+                          {helpRequestCount > 99 ? "99+" : helpRequestCount}
+                        </span>
+                      ) : null}
                     </Link>
                   </div>
                 );

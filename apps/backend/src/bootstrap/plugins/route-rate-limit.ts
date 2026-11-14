@@ -89,6 +89,18 @@ export const HELP_REQUEST_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "closed",
 };
 
+/**
+ * M23 `POST /tenant/billing/mac-credentials/:providerEntityId/test` (the portal-health probe available to a
+ * not-yet-live organization): 6/min/user and 30/min/org. Fail-closed so an unavailable limiter cannot expose an
+ * unmetered gateway call.
+ */
+export const MAC_CREDENTIAL_TEST_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 6,
+  perOrg: 30,
+  windowMs: 60_000,
+  failMode: "closed",
+};
+
 /** M12 `POST /tenant/dosespot/verify` and the platform copy (a vendor token mint per request): 6/min/user and 30/min/org. Fail-open: an availability control. */
 export const DOSESPOT_VERIFY_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 6,

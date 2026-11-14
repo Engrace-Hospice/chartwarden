@@ -88,9 +88,17 @@ export function bodySealSchemeFromEnv(env: NodeJS.ProcessEnv = process.env): Bod
  */
 export interface MessageBodyCipher {
   /** Seal a plaintext under the configured scheme + compute the pre-encryption integrity digest. */
-  seal(orgId: string, plaintext: string, aadContext?: string): Promise<{ cipher: Buffer; sha256: string }>;
+  seal(
+    orgId: string,
+    plaintext: string,
+    aadContext?: string,
+  ): Promise<{ cipher: Buffer; sha256: string }>;
   /** Seal under the tenant ring DEK regardless of the configured scheme (backfill; the digest is of the plaintext). */
-  sealRing(orgId: string, plaintext: string, aadContext?: string): Promise<{ cipher: Buffer; sha256: string }>;
+  sealRing(
+    orgId: string,
+    plaintext: string,
+    aadContext?: string,
+  ): Promise<{ cipher: Buffer; sha256: string }>;
   /** Decrypt a `body_cipher` bytea, either scheme (entitled-reader path only). */
   open(orgId: string, cipher: Buffer, aadContext?: string): Promise<string>;
 }
@@ -143,7 +151,8 @@ export function createMessageBodyCipher(
     async seal(orgId, plaintext, aadContext) {
       if ((opts.sealScheme ?? bodySealSchemeFromEnv()) === "ring")
         return sealRing(orgId, plaintext, aadContext);
-      if (aadContext !== undefined) throw new Error("message body crypto: context binding requires ring encryption");
+      if (aadContext !== undefined)
+        throw new Error("message body crypto: context binding requires ring encryption");
       return {
         cipher: sealMessageBody(plaintext, legacyDek(orgId)),
         sha256: messageBodySha256(plaintext),
@@ -153,7 +162,8 @@ export function createMessageBodyCipher(
       const scheme = bodyEnvelopeScheme(cipher);
       // Key lookup failures are infrastructure (BodyKeyUnavailableError); only the GCM open below is a statement about the bytes.
       if (scheme === "legacy") {
-        if (aadContext !== undefined) throw new Error("message body crypto: identity-bound context requires ring envelope");
+        if (aadContext !== undefined)
+          throw new Error("message body crypto: identity-bound context requires ring envelope");
         let dek: Buffer;
         try {
           dek = legacyDek(orgId);

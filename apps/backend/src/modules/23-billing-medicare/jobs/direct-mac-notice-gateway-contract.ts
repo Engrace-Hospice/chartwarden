@@ -11,7 +11,8 @@ import type {
 
 /** Proposed WardenX ↔ Direct-MAC gateway notice protocol. No deployed server is qualified for it. */
 export const DIRECT_MAC_NOTICE_GATEWAY_CONTRACT_VERSION = "m23-direct-mac-notice.v1" as const;
-export const DIRECT_MAC_NOTICE_GATEWAY_CONFORMANCE_SUITE = "m23-direct-mac-notice-conformance.v1" as const;
+export const DIRECT_MAC_NOTICE_GATEWAY_CONFORMANCE_SUITE =
+  "m23-direct-mac-notice-conformance.v1" as const;
 
 export const DIRECT_MAC_NOTICE_GATEWAY_PATHS = {
   capabilities: "/v1/medicare-notice/capabilities",
@@ -101,7 +102,11 @@ export interface DirectMacNoticeGatewayLookupV1 {
   readonly receipt: DirectMacGatewayReceiptV1;
   readonly lastVerifiedAt: string;
   readonly downstreamEvidence?: {
-    readonly kind: "known_not_transmitted" | "transport_receipt" | "transport_rejection" | "outcome_unknown";
+    readonly kind:
+      | "known_not_transmitted"
+      | "transport_receipt"
+      | "transport_rejection"
+      | "outcome_unknown";
     readonly evidenceReference: string;
     readonly verifiedAt: string;
   };
@@ -215,7 +220,9 @@ export interface DirectMacNoticeGatewayHttpRequest {
 }
 
 export interface DirectMacNoticeGatewayHttpPort {
-  request(input: DirectMacNoticeGatewayHttpRequest): Promise<{ readonly status: number; readonly body: unknown }>;
+  request(
+    input: DirectMacNoticeGatewayHttpRequest,
+  ): Promise<{ readonly status: number; readonly body: unknown }>;
 }
 
 export interface VersionedDirectMacNoticeGatewayClient {
@@ -284,12 +291,21 @@ function controlIdentity(x12: string, expected: MedicareNoticeDispatchIdentity) 
   const groupControlNumber = gs?.[6];
   const transactionSetControlNumber = st?.[2];
   const businessControlNumber = bht?.[3];
-  if (!isa || !gs || !st || !bht || !clm || isa[13] !== expected.interchangeControlNumber ||
-      !Number.isSafeInteger(numericInterchange) || numericInterchange < 0 ||
-      groupControlNumber !== String(numericInterchange) ||
-      transactionSetControlNumber !== String(numericInterchange).padStart(4, "0") ||
-      businessControlNumber !== expected.controlNumber || clm[1] !== expected.controlNumber ||
-      bht[3] !== clm[1]) {
+  if (
+    !isa ||
+    !gs ||
+    !st ||
+    !bht ||
+    !clm ||
+    isa[13] !== expected.interchangeControlNumber ||
+    !Number.isSafeInteger(numericInterchange) ||
+    numericInterchange < 0 ||
+    groupControlNumber !== String(numericInterchange) ||
+    transactionSetControlNumber !== String(numericInterchange).padStart(4, "0") ||
+    businessControlNumber !== expected.controlNumber ||
+    clm[1] !== expected.controlNumber ||
+    bht[3] !== clm[1]
+  ) {
     throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_REQUEST");
   }
   return {
@@ -308,14 +324,22 @@ export function buildDirectMacNoticeGatewayRequest(
   const actualDigest = createHash("sha256").update(bytes).digest("hex");
   const controls = controlIdentity(x12, identity);
   if (
-    identity.vendor !== "direct_mac" || !UUID.test(identity.organizationId) ||
-    !UUID.test(identity.providerEntityId) || !UUID.test(identity.submissionId) ||
-    !UUID.test(identity.renderIdentityId) || !UUID.test(identity.artifactId) ||
-    !UUID.test(identity.dispatchToken) || !digest(identity.artifactSha256) ||
-    identity.artifactSha256 !== actualDigest || !JURISDICTION.test(identity.jurisdiction) ||
-    !account(identity.accountReference) || !opaque(identity.controlNumber) ||
-    !ISA13.test(identity.interchangeControlNumber) || bytes.length === 0 ||
-    bytes.length > MAX_X12_BYTES || !x12.startsWith("ISA")
+    identity.vendor !== "direct_mac" ||
+    !UUID.test(identity.organizationId) ||
+    !UUID.test(identity.providerEntityId) ||
+    !UUID.test(identity.submissionId) ||
+    !UUID.test(identity.renderIdentityId) ||
+    !UUID.test(identity.artifactId) ||
+    !UUID.test(identity.dispatchToken) ||
+    !digest(identity.artifactSha256) ||
+    identity.artifactSha256 !== actualDigest ||
+    !JURISDICTION.test(identity.jurisdiction) ||
+    !account(identity.accountReference) ||
+    !opaque(identity.controlNumber) ||
+    !ISA13.test(identity.interchangeControlNumber) ||
+    bytes.length === 0 ||
+    bytes.length > MAX_X12_BYTES ||
+    !x12.startsWith("ISA")
   ) {
     throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_REQUEST");
   }
@@ -339,17 +363,38 @@ export function buildDirectMacNoticeGatewayRequest(
 
 function parseReceipt(value: unknown): DirectMacGatewayReceiptV1 {
   if (!record(value)) throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_RESPONSE");
-  const allowed = ["receiptId", "gatewayOperationId", "clientDispatchId", "artifactSha256", "accountReference", "jurisdiction", "stage", "recordedAt"];
+  const allowed = [
+    "receiptId",
+    "gatewayOperationId",
+    "clientDispatchId",
+    "artifactSha256",
+    "accountReference",
+    "jurisdiction",
+    "stage",
+    "recordedAt",
+  ];
   const keys = value.evidenceReference === undefined ? allowed : [...allowed, "evidenceReference"];
   const stages: readonly DirectMacGatewayReceiptStage[] = [
-    "gateway_durable_acceptance", "mac_delivery_started", "mac_transport_received",
-    "mac_transport_rejected", "downstream_outcome_unknown",
+    "gateway_durable_acceptance",
+    "mac_delivery_started",
+    "mac_transport_received",
+    "mac_transport_rejected",
+    "downstream_outcome_unknown",
   ];
-  if (!exactKeys(value, keys) || !opaque(value.receiptId) || !opaque(value.gatewayOperationId) ||
-      !UUID.test(String(value.clientDispatchId)) || !digest(value.artifactSha256) ||
-      !account(value.accountReference) || !text(value.jurisdiction) || !JURISDICTION.test(value.jurisdiction) ||
-      !text(value.stage) || !stages.includes(value.stage as DirectMacGatewayReceiptStage) ||
-      !isoInstant(value.recordedAt) || (value.evidenceReference !== undefined && !opaque(value.evidenceReference))) {
+  if (
+    !exactKeys(value, keys) ||
+    !opaque(value.receiptId) ||
+    !opaque(value.gatewayOperationId) ||
+    !UUID.test(String(value.clientDispatchId)) ||
+    !digest(value.artifactSha256) ||
+    !account(value.accountReference) ||
+    !text(value.jurisdiction) ||
+    !JURISDICTION.test(value.jurisdiction) ||
+    !text(value.stage) ||
+    !stages.includes(value.stage as DirectMacGatewayReceiptStage) ||
+    !isoInstant(value.recordedAt) ||
+    (value.evidenceReference !== undefined && !opaque(value.evidenceReference))
+  ) {
     throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_RESPONSE");
   }
   return value as unknown as DirectMacGatewayReceiptV1;
@@ -357,18 +402,27 @@ function parseReceipt(value: unknown): DirectMacGatewayReceiptV1 {
 
 function assertReceiptCorrelation(
   receipt: DirectMacGatewayReceiptV1,
-  expected: Pick<DirectMacNoticeGatewayRequestV1, "clientDispatchId" | "artifactSha256" | "accountReference" | "jurisdiction">,
+  expected: Pick<
+    DirectMacNoticeGatewayRequestV1,
+    "clientDispatchId" | "artifactSha256" | "accountReference" | "jurisdiction"
+  >,
 ) {
-  if (receipt.clientDispatchId !== expected.clientDispatchId ||
-      receipt.artifactSha256 !== expected.artifactSha256 ||
-      receipt.accountReference !== expected.accountReference ||
-      receipt.jurisdiction !== expected.jurisdiction) {
+  if (
+    receipt.clientDispatchId !== expected.clientDispatchId ||
+    receipt.artifactSha256 !== expected.artifactSha256 ||
+    receipt.accountReference !== expected.accountReference ||
+    receipt.jurisdiction !== expected.jurisdiction
+  ) {
     throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_CORRELATION_MISMATCH");
   }
 }
 
-function receiptMatchesOperationState(state: DirectMacGatewayOperationState, stage: DirectMacGatewayReceiptStage): boolean {
-  if (state === "durably_accepted" || state === "queued") return stage === "gateway_durable_acceptance";
+function receiptMatchesOperationState(
+  state: DirectMacGatewayOperationState,
+  stage: DirectMacGatewayReceiptStage,
+): boolean {
+  if (state === "durably_accepted" || state === "queued")
+    return stage === "gateway_durable_acceptance";
   if (state === "mac_delivery_started") return stage === "mac_delivery_started";
   if (state === "mac_transport_received") return stage === "mac_transport_received";
   if (state === "mac_transport_rejected") return stage === "mac_transport_rejected";
@@ -390,20 +444,31 @@ export function parseDirectMacNoticeGatewayResponse(
     );
   }
   if (value.state === "rejected_before_acceptance") {
-    if (!exactKeys(value, ["contractVersion", "state", "clientDispatchId", "reasonCode"]) ||
-        value.clientDispatchId !== expected.clientDispatchId || !text(value.reasonCode) ||
-        !SAFE_CODE.test(value.reasonCode)) {
+    if (
+      !exactKeys(value, ["contractVersion", "state", "clientDispatchId", "reasonCode"]) ||
+      value.clientDispatchId !== expected.clientDispatchId ||
+      !text(value.reasonCode) ||
+      !SAFE_CODE.test(value.reasonCode)
+    ) {
       throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_RESPONSE");
     }
     return value as unknown as DirectMacNoticeGatewayResponseV1;
   }
   const states: readonly DirectMacGatewayOperationState[] = [
-    "durably_accepted", "queued", "mac_delivery_started", "mac_transport_received",
-    "mac_transport_rejected", "downstream_outcome_unknown", "reconciliation_required",
+    "durably_accepted",
+    "queued",
+    "mac_delivery_started",
+    "mac_transport_received",
+    "mac_transport_rejected",
+    "downstream_outcome_unknown",
+    "reconciliation_required",
   ];
-  if (!exactKeys(value, ["contractVersion", "state", "replayed", "receipt"]) ||
-      !text(value.state) || !states.includes(value.state as DirectMacGatewayOperationState) ||
-      !boolean(value.replayed)) {
+  if (
+    !exactKeys(value, ["contractVersion", "state", "replayed", "receipt"]) ||
+    !text(value.state) ||
+    !states.includes(value.state as DirectMacGatewayOperationState) ||
+    !boolean(value.replayed)
+  ) {
     throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_RESPONSE");
   }
   const receipt = parseReceipt(value.receipt);
@@ -414,17 +479,33 @@ export function parseDirectMacNoticeGatewayResponse(
   return { ...value, receipt } as DirectMacNoticeGatewayResponseV1;
 }
 
-export function parseDirectMacNoticeGatewayCapabilities(value: unknown): DirectMacNoticeGatewayCapabilitiesV1 {
-  if (!record(value) || !exactKeys(value, ["contractVersion", "gatewayInstanceId", "capabilities", "conformance"]) ||
-      value.contractVersion !== DIRECT_MAC_NOTICE_GATEWAY_CONTRACT_VERSION || !opaque(value.gatewayInstanceId) ||
-      !record(value.capabilities) || !exactKeys(value.capabilities, [
-        "inlineX12", "artifactDigestBinding", "historicalRouteBinding", "serverEnforcedIdempotency",
-        "durableReceipt", "operationLookup", "acknowledgmentCorrelation",
-      ]) || !Object.values(value.capabilities).every(boolean) || !record(value.conformance) ||
-      !exactKeys(value.conformance, ["recordId", "suiteVersion", "verifiedAt", "expiresAt"]) ||
-      !opaque(value.conformance.recordId) || value.conformance.suiteVersion !== DIRECT_MAC_NOTICE_GATEWAY_CONFORMANCE_SUITE ||
-      !isoInstant(value.conformance.verifiedAt) || !isoInstant(value.conformance.expiresAt) ||
-      Date.parse(value.conformance.expiresAt) <= Date.parse(value.conformance.verifiedAt)) {
+export function parseDirectMacNoticeGatewayCapabilities(
+  value: unknown,
+): DirectMacNoticeGatewayCapabilitiesV1 {
+  if (
+    !record(value) ||
+    !exactKeys(value, ["contractVersion", "gatewayInstanceId", "capabilities", "conformance"]) ||
+    value.contractVersion !== DIRECT_MAC_NOTICE_GATEWAY_CONTRACT_VERSION ||
+    !opaque(value.gatewayInstanceId) ||
+    !record(value.capabilities) ||
+    !exactKeys(value.capabilities, [
+      "inlineX12",
+      "artifactDigestBinding",
+      "historicalRouteBinding",
+      "serverEnforcedIdempotency",
+      "durableReceipt",
+      "operationLookup",
+      "acknowledgmentCorrelation",
+    ]) ||
+    !Object.values(value.capabilities).every(boolean) ||
+    !record(value.conformance) ||
+    !exactKeys(value.conformance, ["recordId", "suiteVersion", "verifiedAt", "expiresAt"]) ||
+    !opaque(value.conformance.recordId) ||
+    value.conformance.suiteVersion !== DIRECT_MAC_NOTICE_GATEWAY_CONFORMANCE_SUITE ||
+    !isoInstant(value.conformance.verifiedAt) ||
+    !isoInstant(value.conformance.expiresAt) ||
+    Date.parse(value.conformance.expiresAt) <= Date.parse(value.conformance.verifiedAt)
+  ) {
     throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_RESPONSE");
   }
   return value as unknown as DirectMacNoticeGatewayCapabilitiesV1;
@@ -432,29 +513,48 @@ export function parseDirectMacNoticeGatewayCapabilities(value: unknown): DirectM
 
 export function parseDirectMacNoticeAcknowledgmentProvenance(
   value: unknown,
-  expected: Pick<DirectMacNoticeGatewayRequestV1,
-    "clientDispatchId" | "artifactSha256" | "accountReference" | "providerReference"> &
-    { readonly interchangeControlNumber: string; readonly gatewayOperationId: string },
+  expected: Pick<
+    DirectMacNoticeGatewayRequestV1,
+    "clientDispatchId" | "artifactSha256" | "accountReference" | "providerReference"
+  > & { readonly interchangeControlNumber: string; readonly gatewayOperationId: string },
 ): DirectMacNoticeAcknowledgmentProvenanceV1 {
-  if (!record(value) || !exactKeys(value, [
-    "contractVersion", "acknowledgmentId", "gatewayOperationId", "clientDispatchId",
-    "artifactSha256", "accountReference", "providerReference", "interchangeControlNumber",
-    "acknowledgmentType", "stage", "disposition", "receivedAt", "evidenceReference",
-  ]) || value.contractVersion !== DIRECT_MAC_NOTICE_GATEWAY_CONTRACT_VERSION ||
-      !opaque(value.acknowledgmentId) || !opaque(value.gatewayOperationId) ||
-      value.gatewayOperationId !== expected.gatewayOperationId ||
-      value.clientDispatchId !== expected.clientDispatchId ||
-      value.artifactSha256 !== expected.artifactSha256 ||
-      value.accountReference !== expected.accountReference ||
-      value.providerReference !== expected.providerReference ||
-      value.interchangeControlNumber !== expected.interchangeControlNumber ||
-      (value.acknowledgmentType !== "999" && value.acknowledgmentType !== "277CA") ||
-      (value.stage !== "x12_processing" && value.stage !== "payer_processing") ||
-      (value.acknowledgmentType === "999" && value.stage !== "x12_processing") ||
-      (value.acknowledgmentType === "277CA" && value.stage !== "payer_processing") ||
-      (value.disposition !== "accepted" && value.disposition !== "rejected" && value.disposition !== "partial") ||
-      (value.acknowledgmentType === "999" && value.disposition === "partial") ||
-      !isoInstant(value.receivedAt) || !opaque(value.evidenceReference)) {
+  if (
+    !record(value) ||
+    !exactKeys(value, [
+      "contractVersion",
+      "acknowledgmentId",
+      "gatewayOperationId",
+      "clientDispatchId",
+      "artifactSha256",
+      "accountReference",
+      "providerReference",
+      "interchangeControlNumber",
+      "acknowledgmentType",
+      "stage",
+      "disposition",
+      "receivedAt",
+      "evidenceReference",
+    ]) ||
+    value.contractVersion !== DIRECT_MAC_NOTICE_GATEWAY_CONTRACT_VERSION ||
+    !opaque(value.acknowledgmentId) ||
+    !opaque(value.gatewayOperationId) ||
+    value.gatewayOperationId !== expected.gatewayOperationId ||
+    value.clientDispatchId !== expected.clientDispatchId ||
+    value.artifactSha256 !== expected.artifactSha256 ||
+    value.accountReference !== expected.accountReference ||
+    value.providerReference !== expected.providerReference ||
+    value.interchangeControlNumber !== expected.interchangeControlNumber ||
+    (value.acknowledgmentType !== "999" && value.acknowledgmentType !== "277CA") ||
+    (value.stage !== "x12_processing" && value.stage !== "payer_processing") ||
+    (value.acknowledgmentType === "999" && value.stage !== "x12_processing") ||
+    (value.acknowledgmentType === "277CA" && value.stage !== "payer_processing") ||
+    (value.disposition !== "accepted" &&
+      value.disposition !== "rejected" &&
+      value.disposition !== "partial") ||
+    (value.acknowledgmentType === "999" && value.disposition === "partial") ||
+    !isoInstant(value.receivedAt) ||
+    !opaque(value.evidenceReference)
+  ) {
     throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_CORRELATION_MISMATCH");
   }
   return value as unknown as DirectMacNoticeAcknowledgmentProvenanceV1;
@@ -469,25 +569,38 @@ export function qualifyDirectMacNoticeGateway(input: {
   const required = declared.capabilities;
   const attestedExpiry = Date.parse(attestation.expiresAt);
   const now = (input.now ?? new Date()).getTime();
-  if (declared.gatewayInstanceId !== attestation.gatewayInstanceId ||
-      attestation.contractVersion !== DIRECT_MAC_NOTICE_GATEWAY_CONTRACT_VERSION ||
-      attestation.suiteVersion !== DIRECT_MAC_NOTICE_GATEWAY_CONFORMANCE_SUITE ||
-      declared.conformance.recordId !== attestation.conformanceRecordId ||
-      declared.conformance.verifiedAt !== attestation.verifiedAt ||
-      declared.conformance.expiresAt !== attestation.expiresAt || !digest(attestation.suiteResultSha256) ||
-      !opaque(attestation.approvedBy) || !isoInstant(attestation.verifiedAt) ||
-      !isoInstant(attestation.expiresAt) || attestedExpiry <= now || Date.parse(attestation.verifiedAt) > now ||
-      !required.inlineX12 || !required.artifactDigestBinding || !required.historicalRouteBinding ||
-      !required.serverEnforcedIdempotency || !required.durableReceipt || !required.operationLookup ||
-      !required.acknowledgmentCorrelation) {
+  if (
+    declared.gatewayInstanceId !== attestation.gatewayInstanceId ||
+    attestation.contractVersion !== DIRECT_MAC_NOTICE_GATEWAY_CONTRACT_VERSION ||
+    attestation.suiteVersion !== DIRECT_MAC_NOTICE_GATEWAY_CONFORMANCE_SUITE ||
+    declared.conformance.recordId !== attestation.conformanceRecordId ||
+    declared.conformance.verifiedAt !== attestation.verifiedAt ||
+    declared.conformance.expiresAt !== attestation.expiresAt ||
+    !digest(attestation.suiteResultSha256) ||
+    !opaque(attestation.approvedBy) ||
+    !isoInstant(attestation.verifiedAt) ||
+    !isoInstant(attestation.expiresAt) ||
+    attestedExpiry <= now ||
+    Date.parse(attestation.verifiedAt) > now ||
+    !required.inlineX12 ||
+    !required.artifactDigestBinding ||
+    !required.historicalRouteBinding ||
+    !required.serverEnforcedIdempotency ||
+    !required.durableReceipt ||
+    !required.operationLookup ||
+    !required.acknowledgmentCorrelation
+  ) {
     throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_NOT_QUALIFIED");
   }
   return { capabilities: declared, attestation };
 }
 
 const currentEvidence = (evidence: DirectMacNoticeReadinessEvidence | undefined, now: Date) =>
-  evidence !== undefined && opaque(evidence.evidenceReference) && isoInstant(evidence.verifiedAt) &&
-  (evidence.expiresAt === undefined || (isoInstant(evidence.expiresAt) && Date.parse(evidence.expiresAt) > now.getTime()));
+  evidence !== undefined &&
+  opaque(evidence.evidenceReference) &&
+  isoInstant(evidence.verifiedAt) &&
+  (evidence.expiresAt === undefined ||
+    (isoInstant(evidence.expiresAt) && Date.parse(evidence.expiresAt) > now.getTime()));
 
 /** PHI-free operational report. Every `verified` field is backed by qualification/evidence, not URL or health. */
 export function directMacNoticeGatewayReadiness(input: {
@@ -501,7 +614,9 @@ export function directMacNoticeGatewayReadiness(input: {
 }): DirectMacNoticeGatewayReadiness {
   const now = input.now ?? new Date();
   const server = currentEvidence(input.serverIdentity, now);
-  const qualified = server && input.qualification !== undefined &&
+  const qualified =
+    server &&
+    input.qualification !== undefined &&
     Date.parse(input.qualification.attestation.expiresAt) > now.getTime();
   const capabilities = input.qualification?.capabilities.capabilities;
   const connector = currentEvidence(input.macConnector, now);
@@ -515,7 +630,8 @@ export function directMacNoticeGatewayReadiness(input: {
     remoteIdempotencyVerified: qualified && capabilities?.serverEnforcedIdempotency === true,
     durableReceiptVerified: qualified && capabilities?.durableReceipt === true,
     outcomeLookupVerified: qualified && capabilities?.operationLookup === true,
-    acknowledgmentCorrelationVerified: qualified && capabilities?.acknowledgmentCorrelation === true,
+    acknowledgmentCorrelationVerified:
+      qualified && capabilities?.acknowledgmentCorrelation === true,
     macConnectorConfigured: connector,
     ediEnrollmentConfirmed: enrollment,
     appRoleRlsValidated: rls,
@@ -523,9 +639,11 @@ export function directMacNoticeGatewayReadiness(input: {
   };
   return {
     ...result,
-    transportEnabled: authorized && Object.entries(result)
-      .filter(([key]) => key !== "gatewayClientImplemented" && key !== "transportEnabled")
-      .every(([, value]) => value === true),
+    transportEnabled:
+      authorized &&
+      Object.entries(result)
+        .filter(([key]) => key !== "gatewayClientImplemented" && key !== "transportEnabled")
+        .every(([, value]) => value === true),
   };
 }
 
@@ -556,25 +674,62 @@ function parseLookup(
   expected: Parameters<VersionedDirectMacNoticeGatewayClient["lookupByClientDispatch"]>[0],
 ): DirectMacNoticeGatewayLookupV1 {
   if (!record(value)) throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_RESPONSE");
-  const baseKeys = ["contractVersion", "clientDispatchId", "artifactSha256", "accountReference", "jurisdiction", "organizationReference", "providerReference", "submissionReference", "renderReference", "artifactReference", "usage", "control", "state", "receipt", "lastVerifiedAt"];
-  const keys = value.downstreamEvidence === undefined ? baseKeys : [...baseKeys, "downstreamEvidence"];
-  const states: readonly DirectMacGatewayOperationState[] = [
-    "durably_accepted", "queued", "mac_delivery_started", "mac_transport_received",
-    "mac_transport_rejected", "downstream_outcome_unknown", "reconciliation_required",
+  const baseKeys = [
+    "contractVersion",
+    "clientDispatchId",
+    "artifactSha256",
+    "accountReference",
+    "jurisdiction",
+    "organizationReference",
+    "providerReference",
+    "submissionReference",
+    "renderReference",
+    "artifactReference",
+    "usage",
+    "control",
+    "state",
+    "receipt",
+    "lastVerifiedAt",
   ];
-  if (!exactKeys(value, keys) || value.contractVersion !== DIRECT_MAC_NOTICE_GATEWAY_CONTRACT_VERSION ||
-      value.clientDispatchId !== expected.clientDispatchId || value.artifactSha256 !== expected.artifactSha256 ||
-      value.accountReference !== expected.accountReference || value.jurisdiction !== expected.jurisdiction ||
-      value.organizationReference !== expected.organizationReference || value.providerReference !== expected.providerReference ||
-      value.submissionReference !== expected.submissionReference || value.renderReference !== expected.renderReference ||
-      value.artifactReference !== expected.artifactReference || value.usage !== expected.usage ||
-      !record(value.control) || !exactKeys(value.control, ["interchangeControlNumber", "functionalGroupControlNumber", "transactionSetControlNumber", "businessControlNumber"]) ||
-      value.control.interchangeControlNumber !== expected.control.interchangeControlNumber ||
-      value.control.functionalGroupControlNumber !== expected.control.functionalGroupControlNumber ||
-      value.control.transactionSetControlNumber !== expected.control.transactionSetControlNumber ||
-      value.control.businessControlNumber !== expected.control.businessControlNumber ||
-      !text(value.state) || !states.includes(value.state as DirectMacGatewayOperationState) ||
-      !isoInstant(value.lastVerifiedAt)) {
+  const keys =
+    value.downstreamEvidence === undefined ? baseKeys : [...baseKeys, "downstreamEvidence"];
+  const states: readonly DirectMacGatewayOperationState[] = [
+    "durably_accepted",
+    "queued",
+    "mac_delivery_started",
+    "mac_transport_received",
+    "mac_transport_rejected",
+    "downstream_outcome_unknown",
+    "reconciliation_required",
+  ];
+  if (
+    !exactKeys(value, keys) ||
+    value.contractVersion !== DIRECT_MAC_NOTICE_GATEWAY_CONTRACT_VERSION ||
+    value.clientDispatchId !== expected.clientDispatchId ||
+    value.artifactSha256 !== expected.artifactSha256 ||
+    value.accountReference !== expected.accountReference ||
+    value.jurisdiction !== expected.jurisdiction ||
+    value.organizationReference !== expected.organizationReference ||
+    value.providerReference !== expected.providerReference ||
+    value.submissionReference !== expected.submissionReference ||
+    value.renderReference !== expected.renderReference ||
+    value.artifactReference !== expected.artifactReference ||
+    value.usage !== expected.usage ||
+    !record(value.control) ||
+    !exactKeys(value.control, [
+      "interchangeControlNumber",
+      "functionalGroupControlNumber",
+      "transactionSetControlNumber",
+      "businessControlNumber",
+    ]) ||
+    value.control.interchangeControlNumber !== expected.control.interchangeControlNumber ||
+    value.control.functionalGroupControlNumber !== expected.control.functionalGroupControlNumber ||
+    value.control.transactionSetControlNumber !== expected.control.transactionSetControlNumber ||
+    value.control.businessControlNumber !== expected.control.businessControlNumber ||
+    !text(value.state) ||
+    !states.includes(value.state as DirectMacGatewayOperationState) ||
+    !isoInstant(value.lastVerifiedAt)
+  ) {
     throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_CORRELATION_MISMATCH");
   }
   const receipt = parseReceipt(value.receipt);
@@ -584,10 +739,20 @@ function parseLookup(
   assertReceiptCorrelation(receipt, expected);
   if (value.downstreamEvidence !== undefined) {
     const evidence = value.downstreamEvidence;
-    const kinds = ["known_not_transmitted", "transport_receipt", "transport_rejection", "outcome_unknown"];
-    if (!record(evidence) || !exactKeys(evidence, ["kind", "evidenceReference", "verifiedAt"]) ||
-        !text(evidence.kind) || !kinds.includes(evidence.kind) || !opaque(evidence.evidenceReference) ||
-        !isoInstant(evidence.verifiedAt)) {
+    const kinds = [
+      "known_not_transmitted",
+      "transport_receipt",
+      "transport_rejection",
+      "outcome_unknown",
+    ];
+    if (
+      !record(evidence) ||
+      !exactKeys(evidence, ["kind", "evidenceReference", "verifiedAt"]) ||
+      !text(evidence.kind) ||
+      !kinds.includes(evidence.kind) ||
+      !opaque(evidence.evidenceReference) ||
+      !isoInstant(evidence.verifiedAt)
+    ) {
       throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_RESPONSE");
     }
   }
@@ -608,11 +773,17 @@ const safeFetch: DirectMacNoticeGatewayHttpPort = {
       signal: AbortSignal.timeout(input.timeoutMs),
     });
     const declaredLength = Number(response.headers.get("content-length") ?? "0");
-    if (declaredLength > input.maxResponseBytes) throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_RESPONSE");
+    if (declaredLength > input.maxResponseBytes)
+      throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_RESPONSE");
     const raw = await response.text();
-    if (Buffer.byteLength(raw, "utf8") > input.maxResponseBytes) throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_RESPONSE");
+    if (Buffer.byteLength(raw, "utf8") > input.maxResponseBytes)
+      throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_RESPONSE");
     let body: unknown = null;
-    try { body = raw.length ? JSON.parse(raw) : null; } catch { /* validated below without echoing content */ }
+    try {
+      body = raw.length ? JSON.parse(raw) : null;
+    } catch {
+      /* validated below without echoing content */
+    }
     return { status: response.status, body };
   },
 };
@@ -622,17 +793,32 @@ export function createVersionedDirectMacNoticeGatewayClient(
   http: DirectMacNoticeGatewayHttpPort = safeFetch,
 ): VersionedDirectMacNoticeGatewayClient {
   let url: URL;
-  try { url = new URL(config.baseUrl); } catch { throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_REQUEST"); }
-  if (url.protocol !== "https:" || url.username || url.password || !config.bearerToken ||
-      config.timeoutMs < 1000 || config.timeoutMs > 120_000) {
+  try {
+    url = new URL(config.baseUrl);
+  } catch {
+    throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_REQUEST");
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    !config.bearerToken ||
+    config.timeoutMs < 1000 ||
+    config.timeoutMs > 120_000
+  ) {
     throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_REQUEST");
   }
   const request = async (method: "GET" | "POST", path: string, body?: unknown) => {
     let response: { readonly status: number; readonly body: unknown };
     try {
       response = await http.request({
-        method, path, body, baseUrl: url.toString(), bearerToken: config.bearerToken,
-        timeoutMs: config.timeoutMs, maxResponseBytes: config.maxResponseBytes ?? 64 * 1024,
+        method,
+        path,
+        body,
+        baseUrl: url.toString(),
+        bearerToken: config.bearerToken,
+        timeoutMs: config.timeoutMs,
+        maxResponseBytes: config.maxResponseBytes ?? 64 * 1024,
       });
     } catch (error) {
       if (error instanceof DirectMacNoticeGatewayError) throw error;
@@ -645,7 +831,9 @@ export function createVersionedDirectMacNoticeGatewayClient(
   };
   return {
     async declaredCapabilities() {
-      return parseDirectMacNoticeGatewayCapabilities(await request("GET", DIRECT_MAC_NOTICE_GATEWAY_PATHS.capabilities));
+      return parseDirectMacNoticeGatewayCapabilities(
+        await request("GET", DIRECT_MAC_NOTICE_GATEWAY_PATHS.capabilities),
+      );
     },
     async submit(input) {
       return parseDirectMacNoticeGatewayResponse(
@@ -654,14 +842,21 @@ export function createVersionedDirectMacNoticeGatewayClient(
       );
     },
     async lookupByClientDispatch(input) {
-      if (!UUID.test(input.clientDispatchId) || !digest(input.artifactSha256) ||
-          !account(input.accountReference) || !JURISDICTION.test(input.jurisdiction) ||
-          !UUID.test(input.organizationReference) || !UUID.test(input.providerReference) ||
-          !UUID.test(input.submissionReference) || !UUID.test(input.renderReference) ||
-          !UUID.test(input.artifactReference) || !ISA13.test(input.control.interchangeControlNumber) ||
-          !opaque(input.control.functionalGroupControlNumber) ||
-          !opaque(input.control.transactionSetControlNumber) ||
-          !opaque(input.control.businessControlNumber)) {
+      if (
+        !UUID.test(input.clientDispatchId) ||
+        !digest(input.artifactSha256) ||
+        !account(input.accountReference) ||
+        !JURISDICTION.test(input.jurisdiction) ||
+        !UUID.test(input.organizationReference) ||
+        !UUID.test(input.providerReference) ||
+        !UUID.test(input.submissionReference) ||
+        !UUID.test(input.renderReference) ||
+        !UUID.test(input.artifactReference) ||
+        !ISA13.test(input.control.interchangeControlNumber) ||
+        !opaque(input.control.functionalGroupControlNumber) ||
+        !opaque(input.control.transactionSetControlNumber) ||
+        !opaque(input.control.businessControlNumber)
+      ) {
         throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_INVALID_REQUEST");
       }
       // Correlation fields stay in the authenticated JSON body rather than proxy/access-log URLs.
@@ -682,7 +877,12 @@ export function buildQualifiedDirectMacNoticeDispatchAdapter(deps: {
   qualification: QualifiedDirectMacNoticeGateway;
 }) {
   return {
-    async dispatch(input: { organizationId: string; noticeId: string; submissionId: string; kind: MedicareNoticeKind }) {
+    async dispatch(input: {
+      organizationId: string;
+      noticeId: string;
+      submissionId: string;
+      kind: MedicareNoticeKind;
+    }) {
       // Recheck the authenticated server declaration against the local attestation before artifact recovery,
       // sensitive payload handling, or dispatch reservation. Self-report alone never qualifies the server.
       const currentCapabilities = await deps.gateway.declaredCapabilities();
@@ -690,7 +890,10 @@ export function buildQualifiedDirectMacNoticeDispatchAdapter(deps: {
         declared: currentCapabilities,
         attestation: deps.qualification.attestation,
       });
-      if (currentQualification.capabilities.gatewayInstanceId !== deps.qualification.capabilities.gatewayInstanceId) {
+      if (
+        currentQualification.capabilities.gatewayInstanceId !==
+        deps.qualification.capabilities.gatewayInstanceId
+      ) {
         throw new DirectMacNoticeGatewayError("NOTICE_GATEWAY_NOT_QUALIFIED");
       }
       const artifact = await deps.artifacts.recover(input);
@@ -732,7 +935,10 @@ export function buildQualifiedDirectMacNoticeDispatchAdapter(deps: {
         });
         return response;
       }
-      if (response.state === "downstream_outcome_unknown" || response.state === "reconciliation_required") {
+      if (
+        response.state === "downstream_outcome_unknown" ||
+        response.state === "reconciliation_required"
+      ) {
         await deps.dispatch.markInDoubt({
           organizationId: reservation.identity.organizationId,
           submissionId: reservation.identity.submissionId,
@@ -777,7 +983,10 @@ export function buildQualifiedDirectMacNoticeDispatchAdapter(deps: {
         control: {
           interchangeControlNumber: identity.interchangeControlNumber,
           functionalGroupControlNumber: String(Number(identity.interchangeControlNumber)),
-          transactionSetControlNumber: String(Number(identity.interchangeControlNumber)).padStart(4, "0"),
+          transactionSetControlNumber: String(Number(identity.interchangeControlNumber)).padStart(
+            4,
+            "0",
+          ),
           businessControlNumber: identity.controlNumber,
         },
       });

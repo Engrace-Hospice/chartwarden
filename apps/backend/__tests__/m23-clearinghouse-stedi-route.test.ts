@@ -1,6 +1,6 @@
 // M23 — a Stedi claim is sent as JSON (no ISA13 to match), after the JSON is proven to agree with the X12; any other
 // vendor or kind keeps the raw X12. The agreement check itself is covered in @chartwarden/x12-837-client.
-import type { ClearinghouseContext, StediClaimJson } from "@chartwarden/x12-837-client";
+import { CH, type ClearinghouseContext, type StediClaimJson } from "@chartwarden/x12-837-client";
 import { describe, expect, it, vi } from "vitest";
 
 const disagreements = vi.hoisted(() => ({ value: [] as string[], calls: [] as unknown[][] }));
@@ -80,15 +80,15 @@ describe("transportUpload payload by vendor", () => {
     expect(r.sent).toEqual([]);
   });
 
-  it("keeps raw X12 for a Stedi notice, a claim without JSON (the credential-guard suites) and another vendor", async () => {
+  it("refuses a Stedi notice and keeps raw X12 for claims without a verified JSON path", async () => {
     disagreements.value = [];
     const stedi = rig("stedi");
-    await stedi.upload("noe", JSON_DOC);
+    await expect(stedi.upload("noe", JSON_DOC)).rejects.toThrow(CH.NOT_WIRED);
     await stedi.upload("claim_837i");
     const other = rig("in_memory");
     await other.upload("claim_837i", JSON_DOC);
     expect([...stedi.sent, ...other.sent]).toEqual(
-      Array(3).fill({ format: "x12", x12: "ISA*raw~" }),
+      Array(2).fill({ format: "x12", x12: "ISA*raw~" }),
     );
   });
 });

@@ -515,6 +515,15 @@
     display: grid;
     gap: 0.75rem;
   }
+  /* A single-column form that stays readable on a wide page (Agency setup's forms and the wizard's). */
+  .wx-form-narrow {
+    max-width: 28rem;
+  }
+  /* The blocks of a page that is a plain stack (Agency setup): more air between them than inside a form. */
+  .wx-page-sections {
+    display: grid;
+    gap: 1.5rem;
+  }
   /* Form and worklist composition shared by intake, scheduling and admission work queues. */
   .wx-work-page {
     display: grid;

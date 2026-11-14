@@ -109,13 +109,21 @@ export function bodyEnvelopeScheme(cipher: Buffer): BodyEnvelopeScheme {
 
 function ringAad(prefix: string, orgId: string, version: string, context?: string): Buffer {
   // Preserve the established message AAD byte-for-byte when no context is supplied.
-  return Buffer.from(context === undefined
-    ? `${prefix}${orgId}:${version}`
-    : `${prefix}${orgId}:${version}:${context}`, "utf8");
+  return Buffer.from(
+    context === undefined
+      ? `${prefix}${orgId}:${version}`
+      : `${prefix}${orgId}:${version}:${context}`,
+    "utf8",
+  );
 }
 
 /** Seal a plaintext under a tenant ring DEK → v2 envelope that records the ring version. */
-export function sealMessageBodyRing(plaintext: string, dek: RingBodyDek, orgId: string, aadContext?: string): Buffer {
+export function sealMessageBodyRing(
+  plaintext: string,
+  dek: RingBodyDek,
+  orgId: string,
+  aadContext?: string,
+): Buffer {
   if (!RING_LABEL.test(dek.version)) throw new Error("message body-crypto: bad ring version label");
   if (dek.key.length !== KEY_LEN)
     throw new Error(`message body-crypto: DEK must be ${KEY_LEN} bytes`);
@@ -151,7 +159,12 @@ export function ringEnvelopeVersion(cipher: Buffer): string {
 }
 
 /** Open a v2 envelope under the ring DEK of that version. Throws on a wrong key/org, tamper or bad format. */
-export function openMessageBodyRing(cipher: Buffer, key: Buffer, orgId: string, aadContext?: string): string {
+export function openMessageBodyRing(
+  cipher: Buffer,
+  key: Buffer,
+  orgId: string,
+  aadContext?: string,
+): string {
   const { version, body } = parseRing(cipher);
   const nonce = cipher.subarray(body, body + NONCE_LEN);
   const tag = cipher.subarray(cipher.length - TAG_LEN);

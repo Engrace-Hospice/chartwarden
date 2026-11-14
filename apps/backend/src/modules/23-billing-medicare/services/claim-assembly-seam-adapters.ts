@@ -39,8 +39,8 @@ import { getSeam } from "../../../bootstrap/index";
 import { hospiceRateTableEffectiveForOrg } from "../routes/rate-table-service";
 import { visitChargeVersionsForOrg } from "../routes/visit-charge-service";
 import { resolveWageIndexForOrg } from "../routes/wage-index-service";
-import { resolveMedicareProviderRouting } from "./medicare-provider-routing";
 import type { ProviderCcnPort } from "../routes/write-service";
+import { resolveMedicareProviderRouting } from "./medicare-provider-routing";
 import { type PlaceOfServicePorts, resolvePlaceOfService } from "./place-of-service-resolver";
 
 type BillingDb = repositories.BillingDb;
@@ -158,7 +158,9 @@ export function buildM23MdmProviderEntityAdapter(
         }
 
         const routing = await resolveMedicareProviderRouting(db, {
-          organizationId: orgId, providerEntityId, effectiveDate,
+          organizationId: orgId,
+          providerEntityId,
+          effectiveDate,
         });
 
         const entry: ProviderEntityDirectoryEntry = {

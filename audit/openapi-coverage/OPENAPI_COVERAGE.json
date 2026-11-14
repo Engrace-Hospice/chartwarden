@@ -1,12 +1,12 @@
 {
   "totals": {
-    "routes": 2091,
-    "enriched": 2079,
-    "deficit": 12,
-    "mutating": 1200,
-    "mutatingNoBody": 9,
+    "routes": 2092,
+    "enriched": 2092,
+    "deficit": 0,
+    "mutating": 1201,
+    "mutatingNoBody": 1,
     "gets": 838,
-    "getsNoResponse": 13
+    "getsNoResponse": 9
   },
   "modules": [
     {
@@ -211,10 +211,10 @@
     },
     {
       "module": "22-documents",
-      "routes": 58,
-      "enriched": 58,
+      "routes": 59,
+      "enriched": 59,
       "deficit": 0,
-      "mutating": 31,
+      "mutating": 32,
       "mutatingNoBody": 0,
       "gets": 25,
       "getsNoResponse": 2
@@ -222,12 +222,12 @@
     {
       "module": "23-billing-medicare",
       "routes": 123,
-      "enriched": 111,
-      "deficit": 12,
+      "enriched": 123,
+      "deficit": 0,
       "mutating": 67,
-      "mutatingNoBody": 8,
+      "mutatingNoBody": 0,
       "gets": 54,
-      "getsNoResponse": 4
+      "getsNoResponse": 0
     },
     {
       "module": "24-billing-medicaid",

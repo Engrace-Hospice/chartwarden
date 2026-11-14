@@ -10,6 +10,7 @@ export * from "./tenant-invitation";
 export * from "./onboarding-task-template";
 export * from "./onboarding-task";
 export * from "./tenant-go-live-attestation";
+export * from "./tenant-help-request";
 export * from "./tenant-key-ring";
 export * from "./tenant-key-destruction-log";
 export * from "./support-consent-grant";

@@ -57,7 +57,7 @@ function perOrgDeps() {
 const upload = (organizationId: string, control: string) => ({
   organizationId,
   providerEntityId: PE,
-  kind: "noe" as const,
+  kind: "claim_837i" as const,
   x12: X12(control),
   controlNumber: control,
 });

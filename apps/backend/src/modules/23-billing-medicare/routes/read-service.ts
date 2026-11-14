@@ -22,13 +22,13 @@ import type {
 } from "@chartwarden/billing";
 import { canonicalSegments } from "@chartwarden/billing";
 import type { ClaimAttentionFlag, ClaimAttentionView } from "../services/claim-attention";
+import type { NoticeDeadlineAssessment } from "../services/notice-deadline-policy";
 import {
   type StoredRhcCarryOverContext,
   normalizeStoredRhcCarryOver,
 } from "../services/rhc-carry-over-stored";
 import type { RhcCarryOverView } from "../services/rhc-carry-over-view";
 import type { M23ReadActor } from "./actor";
-import type { NoticeDeadlineAssessment } from "../services/notice-deadline-policy";
 
 type Json = Readonly<Record<string, unknown>>;
 
@@ -399,8 +399,19 @@ export interface NoticeExternalFilingView {
 }
 
 export interface NoticeEvidenceEventView {
-  readonly kind: "notice_created" | "submission_requested" | "dispatch_started" | "transport_receipt_recorded" | "external_filing_recorded" | "mac_accepted" | "mac_rejected";
-  readonly source: "m23_notice_record" | "m23_submission_attempt" | "tenant_recorded_external_filing" | "verified_mac_acknowledgment";
+  readonly kind:
+    | "notice_created"
+    | "submission_requested"
+    | "dispatch_started"
+    | "transport_receipt_recorded"
+    | "external_filing_recorded"
+    | "mac_accepted"
+    | "mac_rejected";
+  readonly source:
+    | "m23_notice_record"
+    | "m23_submission_attempt"
+    | "tenant_recorded_external_filing"
+    | "verified_mac_acknowledgment";
   readonly at: string;
   readonly referenceId: string;
   readonly submissionId: string | null;
@@ -582,6 +593,7 @@ export interface MacCredentialView {
   readonly hasSecret: boolean;
   readonly baaRecordRef: string | null;
   readonly credentialExpiresAt: string | null;
+  /** When the MAC portal for the jurisdiction last answered the portal check. NOT a credential-validity time (nothing of the credential is sent). */
   readonly lastSandboxTestAt: string | null;
   readonly version: number;
   readonly createdAt: string;

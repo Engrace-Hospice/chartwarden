@@ -21,46 +21,52 @@ export function buildPatientAddressReader(db: DbClient): PatientAddressReader {
     organizationId: string,
     patientId: string,
     asOfDate: string | null,
-  ) => withOrgContext(db, { organizationId, userId: "system" }, async (tx) => {
-    const effective = asOfDate === null
-      ? isNull(ADDRESS.effectiveTo)
-      : and(
-          lte(ADDRESS.effectiveFrom, asOfDate),
-          or(isNull(ADDRESS.effectiveTo), gte(ADDRESS.effectiveTo, asOfDate)),
-        );
-    const [row] = await tx
-      .select({
-        kind: ADDRESS.kind,
-        facilityId: ADDRESS.facilityId,
-        line1: ADDRESS.line1,
-        line2: ADDRESS.line2,
-        city: ADDRESS.city,
-        state: ADDRESS.state,
-        postalCode: ADDRESS.postalCode,
-        country: ADDRESS.country,
-        county: ADDRESS.county,
-      })
-      .from(ADDRESS)
-      .where(and(
-        eq(ADDRESS.organizationId, organizationId),
-        eq(ADDRESS.patientId, patientId),
-        eq(ADDRESS.isPrimary, true),
-        effective,
-      ))
-      .orderBy(desc(ADDRESS.effectiveFrom), desc(ADDRESS.createdAt))
-      .limit(1);
-    return row ? {
-      kind: row.kind,
-      facilityId: row.facilityId ?? null,
-      line1: row.line1,
-      line2: row.line2 ?? null,
-      city: row.city,
-      state: row.state ?? null,
-      postalCode: row.postalCode,
-      country: row.country,
-      county: row.county ?? null,
-    } : null;
-  });
+  ) =>
+    withOrgContext(db, { organizationId, userId: "system" }, async (tx) => {
+      const effective =
+        asOfDate === null
+          ? isNull(ADDRESS.effectiveTo)
+          : and(
+              lte(ADDRESS.effectiveFrom, asOfDate),
+              or(isNull(ADDRESS.effectiveTo), gte(ADDRESS.effectiveTo, asOfDate)),
+            );
+      const [row] = await tx
+        .select({
+          kind: ADDRESS.kind,
+          facilityId: ADDRESS.facilityId,
+          line1: ADDRESS.line1,
+          line2: ADDRESS.line2,
+          city: ADDRESS.city,
+          state: ADDRESS.state,
+          postalCode: ADDRESS.postalCode,
+          country: ADDRESS.country,
+          county: ADDRESS.county,
+        })
+        .from(ADDRESS)
+        .where(
+          and(
+            eq(ADDRESS.organizationId, organizationId),
+            eq(ADDRESS.patientId, patientId),
+            eq(ADDRESS.isPrimary, true),
+            effective,
+          ),
+        )
+        .orderBy(desc(ADDRESS.effectiveFrom), desc(ADDRESS.createdAt))
+        .limit(1);
+      return row
+        ? {
+            kind: row.kind,
+            facilityId: row.facilityId ?? null,
+            line1: row.line1,
+            line2: row.line2 ?? null,
+            city: row.city,
+            state: row.state ?? null,
+            postalCode: row.postalCode,
+            country: row.country,
+            county: row.county ?? null,
+          }
+        : null;
+    });
 
   return {
     async primaryAddress(organizationId, patientId) {

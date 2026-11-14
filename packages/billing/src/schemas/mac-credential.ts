@@ -1,9 +1,9 @@
 // @chartwarden/billing — MAC-credential schemas: route #34 `GET /mac-credentials` (list, secrets masked),
 // route #35 `POST /mac-credentials` (upsert — M34 wizard; step-up), route #36 `POST /mac-credentials/:id:test`
-// (synthetic claim to MAC sandbox) — §4.1.
+// (as built: a MAC portal health check, not a synthetic claim, and not a credential validation) — §4.1.
 //
 // The client secret is WRITE-ONLY: carried inbound only, encrypted at rest, redacted from audit
-// value-capture (§3.6), and NEVER projected on read (only its presence + last-test status). Mirrors the
+// value-capture (§3.6), and NEVER projected on read (only its presence + the last portal-check time). Mirrors the
 // `UpsertMacCredentialsDto` / `MacCredentialSummaryDto` contracts.
 import { type Static, Type } from "@sinclair/typebox";
 import { IfVersion, IsoDateTimeSchema, MacJurisdictionApi, Uuid } from "./common";
@@ -50,7 +50,7 @@ export const MacCredentialListResponse = Type.Object({
 });
 export type MacCredentialListResponse = Static<typeof MacCredentialListResponse>;
 
-// ── route #36: test against MAC sandbox ─────────────────────────────────────────────────────────────────
+// ── route #36: the MAC portal check (it does not validate the credential: no secret, client id or submitter id is sent) ──
 export const MacCredentialTestResponse = Type.Object({
   ok: Type.Boolean(),
   lastSandboxTestAt: IsoDateTimeSchema,

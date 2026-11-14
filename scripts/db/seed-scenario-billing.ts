@@ -245,7 +245,8 @@ async function seedMacSubmitterCredential(
 ): Promise<void> {
   await stepUpSession(admin.userId);
   const res = await admin.client.POST("/api/v1/billing/mac-credentials", {
-    headers: { "Idempotency-Key": crypto.randomUUID() },
+    // The route's Idempotency-Key is a documented header now, so the typed client takes it as a parameter.
+    params: { header: { "Idempotency-Key": crypto.randomUUID() } },
     body: {
       providerEntityId: PROVIDER_ENTITY_ID,
       macJurisdiction: "cgs_j15",

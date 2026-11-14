@@ -1,16 +1,20 @@
 // M23-CM-4A: immutable, non-PHI identity for an internally rendered notice attempt. The X12 payload
 // is never stored here; MBI and other beneficiary data remain transient in the renderer.
-import { pgTable, text, timestamp, uuid, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
 export const medicareNoticeRenderIdentity = pgTable(
   "medicare_notice_render_identity",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "restrict" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
     noticeId: uuid("notice_id").notNull(),
     submissionId: uuid("submission_id").notNull(),
-    noticeKind: text("notice_kind").$type<"noe" | "notr" | "transfer_notice" | "cancellation_notice">().notNull(),
+    noticeKind: text("notice_kind")
+      .$type<"noe" | "notr" | "transfer_notice" | "cancellation_notice">()
+      .notNull(),
     relatedSourceId: uuid("related_source_id").notNull(),
     providerEntityId: uuid("provider_entity_id").notNull(),
     jurisdiction: text("jurisdiction").notNull(),

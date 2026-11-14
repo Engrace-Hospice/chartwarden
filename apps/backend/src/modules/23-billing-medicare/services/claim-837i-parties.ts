@@ -149,9 +149,10 @@ export function buildClaim837iPartiesPortFactory(
         ? await deps.profile(tx, organizationId, providerEntityId, routeKey)
         : null;
       const provider = await deps.provider(tx, organizationId, providerEntityId);
-      const payerName = canonicalPayerId && deps.payerNameByCanonicalId
-        ? await deps.payerNameByCanonicalId(tx, canonicalPayerId)
-        : await deps.payerName(tx, payerId);
+      const payerName =
+        canonicalPayerId && deps.payerNameByCanonicalId
+          ? await deps.payerNameByCanonicalId(tx, canonicalPayerId)
+          : await deps.payerName(tx, payerId);
       return {
         submitter: profile?.submitter ?? null,
         receiver: profile?.receiver ?? null,

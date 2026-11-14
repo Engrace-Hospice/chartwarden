@@ -41,7 +41,7 @@ function defaultOnError(message: string, error: unknown): void {
 function degraded(): DegradedError {
   return new DegradedError(
     "attachment-storage",
-    "message attachments need the configured MinIO/S3 object store (MINIO_* is not set)",
+    "message attachments need the configured S3-compatible object store (OBJECT_STORE_* is not set)",
   );
 }
 
@@ -66,7 +66,7 @@ export function createM22BackedAttachmentStorage(stores: {
       await stores.ensureTenantBucket(organizationId);
     } catch (error) {
       logError(
-        `attachment storage: tenant bucket ${deriveTenantBucket(organizationId as never)} is missing and could not be created: check MINIO_* credentials allow CreateBucket on tenant-* buckets, or run \`bun run scripts/backfill-tenant-buckets.ts\``,
+        `attachment storage: tenant bucket ${deriveTenantBucket(organizationId as never)} is missing and could not be created: check OBJECT_STORE_* credentials allow CreateBucket on tenant-* buckets, or run \`bun run scripts/backfill-tenant-buckets.ts\``,
         error,
       );
       throw new DegradedError(
@@ -174,7 +174,7 @@ async function readCapped(res: Response, maxBytes: number): Promise<Uint8Array> 
   return Buffer.concat(parts);
 }
 
-/** The refusing storage port: every call is a typed 503 (MINIO_* unset). */
+/** The refusing storage port: every call is a typed 503 (OBJECT_STORE_* unset). */
 export function createRefusingAttachmentStorage(): AttachmentStoragePort {
   return {
     presignUpload: () => Promise.reject(degraded()),
@@ -225,7 +225,7 @@ export interface M36AttachmentBinding {
   readonly scanner: ScanPort | undefined;
 }
 
-/** The storage port from MINIO_* (the refusing port when unset). Shared by the routes, the sweep and the eraser. */
+/** The storage port from OBJECT_STORE_* (the refusing port when unset). Shared by routes, sweeps and erasers. */
 export function buildM36AttachmentStorage(
   env: Record<string, string | undefined>,
 ): AttachmentStoragePort {

@@ -398,6 +398,7 @@ export interface AcceptReferralInput extends FirstBenefitPeriodInput {
 }
 
 export interface ReferralUpdateInput {
+  readonly patientDobAtReceipt?: string;
   readonly medicareNumberAtReceipt?: string;
   readonly medicaidNumberAtReceipt?: string;
   readonly referringDxText?: string;
@@ -908,6 +909,7 @@ export interface AdmissionRouteService {
     id: string,
     input: ReferralUpdateInput,
     ifVersion: number,
+    actorUserId: string,
   ): Promise<MutationResult>;
   triageReferral(
     organizationId: string,
@@ -1986,11 +1988,14 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = get(organizationId, id, "referral");
       return rec ? referralView(rec) : null;
     },
-    async updateReferral(organizationId, id, input, ifVersion) {
+    async updateReferral(organizationId, id, input, ifVersion, _actorUserId) {
       const rec = get(organizationId, id, "referral") ?? notFound(id);
       if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
       if (!["received", "under_review", "pending_information"].includes(rec.state)) {
         throw new InvalidReferralStateError(id, rec.state, "update referral information");
+      }
+      if (input.patientDobAtReceipt !== undefined) {
+        rec.patientDobAtReceipt = input.patientDobAtReceipt;
       }
       if (input.sexAssignedAtBirth) rec.sexAssignedAtBirth = input.sexAssignedAtBirth;
       return transition(rec, rec.state, ifVersion);

@@ -64,8 +64,12 @@ export interface ClaimMdReceiptIdentifier {
 export interface ClaimMdSubmissionEvidencePort {
   readonly accountReference: string;
   readonly usage: "test" | "production";
-  lookupSubmissionIdentity?(organizationId: string, submissionId: string): Promise<{
-    readonly accountReference: string; readonly usage: "test" | "production";
+  lookupSubmissionIdentity?(
+    organizationId: string,
+    submissionId: string,
+  ): Promise<{
+    readonly accountReference: string;
+    readonly usage: "test" | "production";
   } | null>;
   reserve(evidence: ClaimMdEvidenceInput): Promise<string>;
   observe(input: {
@@ -89,7 +93,11 @@ export function claimMdEvidenceAccountMatches(
   original: { readonly accountReference: string; readonly usage: "test" | "production" } | null,
   current: { readonly accountReference: string; readonly usage: "test" | "production" },
 ): boolean {
-  return original !== null && original.accountReference === current.accountReference && original.usage === current.usage;
+  return (
+    original !== null &&
+    original.accountReference === current.accountReference &&
+    original.usage === current.usage
+  );
 }
 
 export function createClaimMdSubmissionEvidenceStore(input: {
@@ -103,9 +111,17 @@ export function createClaimMdSubmissionEvidenceStore(input: {
     usage: input.usage,
     async lookupSubmissionIdentity(organizationId: string, submissionId: string) {
       return withOrgContext(input.db, { organizationId, userId: "" }, async (tx) => {
-        const [row] = await tx.select({ accountReference: E.accountReference, usage: E.usage })
-          .from(E).where(and(eq(E.organizationId, organizationId), eq(E.billingModule, "M23"),
-            eq(E.submissionId, submissionId))).limit(1);
+        const [row] = await tx
+          .select({ accountReference: E.accountReference, usage: E.usage })
+          .from(E)
+          .where(
+            and(
+              eq(E.organizationId, organizationId),
+              eq(E.billingModule, "M23"),
+              eq(E.submissionId, submissionId),
+            ),
+          )
+          .limit(1);
         return row ?? null;
       });
     },

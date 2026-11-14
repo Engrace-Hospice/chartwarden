@@ -9,10 +9,12 @@ import {
 } from "./evidence";
 import {
   GO_LIVE_TEMPLATE_KEY,
-  type PlatformActor,
+  SYSTEM_MEMBERSHIP_ID,
+  type SkipActorKind,
   type StepTask,
   type WizardActor,
   isSkippableStep,
+  isTenantSkippableStep,
 } from "./model";
 import { assertStepActionable, isSettled } from "./sequence";
 import {
@@ -21,6 +23,7 @@ import {
   conflict,
   refuse,
   requireOnboarding,
+  stepOf,
   targetOf,
 } from "./wizard-core";
 import type { AttestInput } from "./wizard-types";
@@ -82,13 +85,36 @@ export function createStepOperations(now: () => Date) {
     return updated;
   }
 
+  /** Who is skipping: the tenant's org_admin, a platform operator, or the system (the clearinghouse sync acts under the system membership). */
+  const skipKindOf = (actor: WizardActor): SkipActorKind => {
+    if (actor.kind === "tenant") return "tenant";
+    return actor.membershipId === SYSTEM_MEMBERSHIP_ID ? "system" : "platform_ops";
+  };
+
+  /**
+   * Settles a step that does not apply, with a recorded rationale and the kind of actor who said so. A platform operator may skip any
+   * step `isSkippableStep` names; the tenant's own org_admin only those `isTenantSkippableStep` names (409
+   * ONBOARDING_STEP_NOT_TENANT_SKIPPABLE otherwise, before the owner rule and the sequence: that answer is final whatever is open).
+   * A TENANT's skip is onboarding data the officer's attestation did not see, so it voids a pending go-live attestation in the same
+   * transaction (the three steps it may skip are gating, so an open one already rules a pending attestation out and the void is a
+   * guarantee, not a path a normal wizard walks). An operator's skip does not void, as an operator's attestation of the same step does
+   * not (the officer attests with an optional step such as sample data still open, and an operator settling it must not undo that);
+   * the system's clearinghouse skip never does either.
+   */
   async function skip(
     ctx: Loaded,
-    actor: PlatformActor,
+    actor: WizardActor,
     taskId: string,
     rationale: string,
   ): Promise<StepTask> {
     requireOnboarding(ctx.tenant);
+    if (actor.kind === "tenant" && !isTenantSkippableStep(stepOf(ctx, taskId).template)) {
+      throw refuse(
+        "ONBOARDING_STEP_NOT_TENANT_SKIPPABLE",
+        "the organization may skip only MAC credentials, payer enrollment and DoseSpot kickoff; ask ChartWarden about any other step",
+        409,
+      );
+    }
     const { task, template } = targetOf(ctx, taskId, actor);
     if (template.key === GO_LIVE_TEMPLATE_KEY) {
       throw refuse(
@@ -114,6 +140,7 @@ export function createStepOperations(now: () => Date) {
       );
     assertStepActionable(ctx.templates, ctx.tasks, template.key);
     const at = now();
+    const kind = skipKindOf(actor);
     const updated = await ctx.store.updateTask(task.id, task.status, {
       status: "skipped",
       blockerReason: null,
@@ -123,11 +150,19 @@ export function createStepOperations(now: () => Date) {
           rationale: why,
           skippedByMembershipId: actor.membershipId,
           skippedByUserId: actor.userId,
+          skippedByActorKind: kind,
           skippedAt: at.toISOString(),
         },
       },
     });
     if (!updated) throw conflict();
+    if (kind === "tenant") {
+      await ctx.store.voidPendingGoLiveForDataChange({
+        organizationId: ctx.tenant.organizationId,
+        revokedByUserId: actor.userId,
+        revokedByMembershipId: actor.membershipId,
+      });
+    }
     return updated;
   }
 
@@ -156,8 +191,11 @@ export function createStepOperations(now: () => Date) {
     }
     const at = now();
     const bag = await ctx.store.getCompletionEvidence(task.id);
-    const { attestation: _a, skip: _s, ...rest } = bag as Record<string, unknown>;
+    const { attestation: _a, skip: skipRecord, ...rest } = bag as Record<string, unknown>;
     const history = Array.isArray(rest.reopened) ? (rest.reopened as unknown[]) : [];
+    // What the skip record said about who and when goes into the history with the rationale and the actor kind, as an attestation's
+    // attester and time do: the record itself is dropped with the re-open.
+    const skipped = (skipRecord ?? {}) as { skippedByMembershipId?: unknown; skippedAt?: unknown };
     const updated = await ctx.store.updateTask(task.id, task.status, {
       status: "in_progress",
       completedAt: null,
@@ -182,7 +220,14 @@ export function createStepOperations(now: () => Date) {
               evidenceRef: task.evidenceRef,
               attestedByMembershipId: task.attestedByMembershipId,
               attestedAt: task.attestedAt?.toISOString() ?? null,
-              ...(task.skipRationale ? { skipRationale: task.skipRationale } : {}),
+              ...(task.skipRationale
+                ? {
+                    skipRationale: task.skipRationale,
+                    skippedByActorKind: task.skippedByActorKind,
+                    skippedByMembershipId: skipped.skippedByMembershipId,
+                    skippedAt: skipped.skippedAt,
+                  }
+                : {}),
             },
           },
         ],

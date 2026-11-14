@@ -21,6 +21,9 @@ dependencies = [
   "jaraco.context>=6.1.0",
   "certifi>=2026.10.19",
   "filelock>=4.2.1",
+  # Beautiful Soup pulls Soup Sieve into the document parser. 3.0.4 is vulnerable to polynomial-time
+  # selector denial of service (CVE-2026-126190); Trivy reports 4.0.0 as the fixed floor.
+  "soupsieve>=4.0.0",
 ]
 
 [project.optional-dependencies]

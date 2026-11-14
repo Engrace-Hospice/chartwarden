@@ -54,20 +54,26 @@ describe("NOE / NOTR acknowledgment outcome", () => {
         timeliness: "unknown",
         followUp: "Complete prerequisites and obtain verified MAC acceptance by the due date.",
       },
-      evidenceTimeline: [{
-        kind: "notice_created",
-        source: "m23_notice_record",
-        at: "2026-10-03T12:00:00.000Z",
-        referenceId: NOE_ID,
-        submissionId: null,
-        verification: "recorded",
-        safeSummary: "Notice record created.",
-      }],
+      evidenceTimeline: [
+        {
+          kind: "notice_created",
+          source: "m23_notice_record",
+          at: "2026-10-03T12:00:00.000Z",
+          referenceId: NOE_ID,
+          submissionId: null,
+          verification: "recorded",
+          safeSummary: "Notice record created.",
+        },
+      ],
     });
     renderDetail(NOE_CONFIG, view);
     expect(await screen.findByText("Due today — acceptance required")).toBeTruthy();
     expect(screen.getByText(/no supported external filing pathway is enabled/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "External submission unavailable" }).hasAttribute("disabled")).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "External submission unavailable" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
     expect(screen.getByRole("heading", { name: "Evidence timeline" })).toBeTruthy();
     expect(screen.getByText("Notice record created.")).toBeTruthy();
   });

@@ -26,6 +26,9 @@ const Signups = lazy(() => import("./signups").then((m) => ({ default: m.Signups
 const SupportSessions = lazy(() =>
   import("./support-sessions").then((m) => ({ default: m.SupportSessions })),
 );
+const HelpRequests = lazy(() =>
+  import("./help-requests").then((m) => ({ default: m.HelpRequests })),
+);
 const TenantExportQueue = lazy(() =>
   import("./tenant-export-queue").then((m) => ({ default: m.TenantExportQueue })),
 );
@@ -76,6 +79,14 @@ export const saasPlatformAdminScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Platform",
       requiredPermission: "onboarding.read_platform",
       screen: TenantOnboardingWizard,
+    },
+    {
+      id: "saas.help-requests",
+      path: "/support/help-requests",
+      title: "Help requests",
+      navGroup: "Platform",
+      requiredPermission: "support_session.list_platform",
+      screen: HelpRequests,
     },
     {
       id: "saas.support-sessions",

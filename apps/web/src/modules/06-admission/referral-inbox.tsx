@@ -12,7 +12,6 @@ import {
 import type { CSSProperties, JSX } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useSession } from "../../shell/session";
 import {
   PATIENT_RESOLUTION_LABEL,
   PATIENT_RESOLUTION_TONE,
@@ -21,23 +20,24 @@ import {
   stateLabel,
 } from "./admission-status";
 import { AdmissionsTabs, Avatar, Filter, Stat } from "./admissions-chrome";
+import { INTAKE_WORKLIST_LABEL, deriveIntakeWorkspace } from "./intake-workspace-stage";
 import { type ReferralListQuery, type ReferralView, listReferrals } from "./referrals-api";
 
 const FILTERS = [
   ["", "All"],
-  ["received", "New"],
-  ["mine", "My referrals"],
+  ["needs_review", "Needs review"],
+  ["waiting", "Waiting on information"],
+  ["ready", "Ready to start admission"],
+  ["in_progress", "In progress"],
+  ["closed", "Completed / closed"],
+  ["mine", "Assigned to me"],
   ["unassigned", "Unassigned"],
-  ["pending_information", "Pending information"],
-  ["qualified", "Ready"],
-  ["declined", "Declined"],
 ] as const;
 
 const PAGE_SIZES = [10, 15, 20, 30, 50] as const;
 
 export function ReferralInbox(): JSX.Element {
   const client = useApiClient();
-  const session = useSession();
   const navigate = useNavigate();
   const [items, setItems] = useState<ReferralView[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -56,12 +56,15 @@ export function ReferralInbox(): JSX.Element {
     const q: ReferralListQuery = { limit: 100 };
     if (filter === "mine") q.assigned = "mine";
     else if (filter === "unassigned") q.assigned = "unassigned";
-    else if (filter) q.status = filter;
+    else if (filter === "needs_review") q.status = "received";
+    else if (filter === "waiting") q.status = "pending_information";
+    else if (filter === "ready") q.status = "qualified";
+    else if (filter === "in_progress") q.status = "under_review";
     if (search.trim()) q.q = search.trim();
     if (priority) q.priority = priority;
     if (resolution) q.patientResolutionStatus = resolution;
     if (source) q.source = source;
-    if (includeConverted) q.includeConverted = true;
+    if (includeConverted || filter === "closed") q.includeConverted = true;
     return q;
   }, [filter, includeConverted, priority, resolution, search, source]);
 
@@ -89,17 +92,21 @@ export function ReferralInbox(): JSX.Element {
 
   const counts = useMemo(
     () => ({
-      received: items.filter((r) => r.status === "received").length,
-      unassigned: items.filter((r) => !r.assignedToUserId).length,
-      mine: items.filter((r) => r.assignedToUserId === session?.userId).length,
-      pending: items.filter((r) => r.status === "pending_information").length,
+      needsReview: items.filter((r) => r.status === "received").length,
+      waiting: items.filter((r) => r.status === "pending_information").length,
       ready: items.filter((r) => r.status === "qualified").length,
+      inProgress: items.filter((r) => r.status === "under_review").length,
+      closed: items.filter((r) => isClosed(r.status)).length,
     }),
-    [items, session?.userId],
+    [items],
   );
-  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+  const visibleItems = useMemo(
+    () => (filter === "closed" ? items.filter((item) => isClosed(item.status)) : items),
+    [filter, items],
+  );
+  const pageCount = Math.max(1, Math.ceil(visibleItems.length / pageSize));
   const activePage = Math.min(page, pageCount);
-  const paged = items.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const paged = visibleItems.slice((activePage - 1) * pageSize, activePage * pageSize);
   const filtered = filter || search || priority || resolution || source || includeConverted;
 
   function clearFilters(): void {
@@ -117,45 +124,52 @@ export function ReferralInbox(): JSX.Element {
       <div className="wx-admissions-main">
         <header className="wx-page-head">
           <div>
-            <h1 style={{ fontSize: "1.875rem" }}>Admissions</h1>
-            <p>Review and manage incoming referrals before admission.</p>
+            <h1 style={{ fontSize: "1.875rem" }}>Intake</h1>
+            <p>Review incoming referrals and continue the next required intake task.</p>
           </div>
           <Link to="/referrals/new" className="wx-btn-primary">
-            <Glyph name="plus" size={16} /> New Referral
+            <Glyph name="plus" size={16} /> New intake
           </Link>
         </header>
 
         <AdmissionsTabs current="/referrals" />
 
-        <div className="wx-stat-grid wx-stat-grid-5" aria-label="Referral summary">
-          <Stat icon="file-text" value={counts.received} label="New" hint="Awaiting review" />
+        <p className="wx-row-sub" style={{ margin: "0 0 0.5rem" }}>
+          Counts reflect referrals currently loaded in this view.
+        </p>
+        <div className="wx-stat-grid wx-stat-grid-5" aria-label="Loaded intake summary">
           <Stat
-            icon="user"
-            value={counts.unassigned}
-            label="Unassigned"
-            hint="Needs owner"
-            color="var(--color-viz-amber)"
-          />
-          <Stat
-            icon="users"
-            value={counts.mine}
-            label="My Referrals"
-            hint="Assigned to you"
-            color="var(--color-viz-violet)"
+            icon="file-text"
+            value={counts.needsReview}
+            label="Needs review"
+            hint="In loaded results"
           />
           <Stat
             icon="clock"
-            value={counts.pending}
-            label="Pending Information"
-            hint="Waiting on source"
+            value={counts.waiting}
+            label="Waiting on information"
+            hint="In loaded results"
             color="var(--color-viz-amber)"
           />
           <Stat
             icon="check-circle"
             value={counts.ready}
-            label="Ready"
-            hint="Qualified for admission"
+            label="Ready to start admission"
+            hint="In loaded results"
             color={t.success}
+          />
+          <Stat
+            icon="users"
+            value={counts.inProgress}
+            label="In progress"
+            hint="In loaded results"
+            color="var(--color-viz-violet)"
+          />
+          <Stat
+            icon="file-check"
+            value={counts.closed}
+            label="Completed / closed"
+            hint="In loaded results"
           />
         </div>
 
@@ -229,7 +243,7 @@ export function ReferralInbox(): JSX.Element {
           </div>
         ) : loading && items.length === 0 ? (
           <LoadingSpinner />
-        ) : items.length === 0 ? (
+        ) : visibleItems.length === 0 ? (
           <div className="wx-list-state">
             <EmptyState
               title={filtered ? "No referrals match these filters." : "No referrals yet."}
@@ -244,15 +258,25 @@ export function ReferralInbox(): JSX.Element {
                 Clear filters
               </button>
             ) : null}
+            {nextCursor ? (
+              <button
+                type="button"
+                className="wx-btn-secondary"
+                onClick={() => void load(nextCursor)}
+                disabled={loading}
+              >
+                Load more
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="wx-list-table-wrap">
-            <ReferralTable items={paged} onOpen={(id) => navigate(`/referrals/${id}`)} />
+            <ReferralTable items={paged} onOpen={(id) => navigate(`/referrals/${id}/intake`)} />
             <OffsetPagination
               page={activePage}
               pageSize={pageSize}
               pageSizeOptions={[...PAGE_SIZES]}
-              totalItems={items.length}
+              totalItems={visibleItems.length}
               noun="referrals"
               onPageChange={setPage}
               onPageSizeChange={(size) => {
@@ -296,6 +320,7 @@ function ReferralTable({
           <th scope="col">Owner</th>
           <th scope="col">Status</th>
           <th scope="col">Patient match</th>
+          <th scope="col">Next action</th>
         </tr>
       </thead>
       <tbody>
@@ -342,9 +367,10 @@ function ReferralTable({
             </td>
             <td>
               <StatusPill
-                label={stateLabel(r.status)}
+                label={INTAKE_WORKLIST_LABEL[r.status]}
                 tone={REFERRAL_TONE[r.status] ?? "neutral"}
               />
+              <span className="wx-row-sub">{stateLabel(r.status)}</span>
             </td>
             <td>
               <StatusPill
@@ -353,6 +379,11 @@ function ReferralTable({
                 }
                 tone={PATIENT_RESOLUTION_TONE[r.patientResolutionStatus] ?? "neutral"}
               />
+            </td>
+            <td>
+              <Link className="wx-row-title" to={`/referrals/${r.id}/intake`}>
+                {deriveIntakeWorkspace(r).primaryAction.label}
+              </Link>
             </td>
           </tr>
         ))}
@@ -378,6 +409,10 @@ function firstLast(name: string): string {
 
 function sourceLabel(value: string): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function isClosed(status: ReferralView["status"]): boolean {
+  return ["converted", "declined", "duplicate", "withdrawn"].includes(status);
 }
 
 function formatDateTime(value: string): string {

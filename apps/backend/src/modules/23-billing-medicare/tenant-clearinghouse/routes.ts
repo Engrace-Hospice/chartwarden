@@ -14,6 +14,7 @@
 // also clears a revocation: a new agreement, unverified again); a platform operator verifies it, and activation refuses until then.
 import {
   actorOf,
+  ifMatchVersionOf,
   optionalIfMatchVersionOf,
   parse,
   rejectAiActor,
@@ -82,14 +83,14 @@ export function registerTenantClearinghouseRoutes(
   app.post("/api/v1/tenant/clearinghouse/baa", { preHandler: WRITE }, async (request) => {
     const actor = writeActorOf(request);
     const body = parse(RecordBaaBodySchema, request.body);
-    return service.recordBaa(actor, body);
+    return service.recordBaa(actor, body, ifMatchVersionOf(request));
   });
 
   // POST verify — a connection test where the vendor has a safe probe (Claim.MD), an attestation with evidence where it has none (Stedi).
   app.post("/api/v1/tenant/clearinghouse/verify", { preHandler: VERIFY }, async (request) => {
     const actor = writeActorOf(request);
     const body = parse(VerifyClearinghouseBodySchema, request.body);
-    const { view, test } = await service.verify(actor, body);
+    const { view, test } = await service.verify(actor, body, ifMatchVersionOf(request));
     return { config: view, test };
   });
 

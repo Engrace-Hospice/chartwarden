@@ -205,8 +205,9 @@ export interface MacCredentialSummaryDto {
   readonly providerEntityId: ProviderEntityId;
   readonly macJurisdiction: string;
   readonly clientId: string;
-  /** The secret is NEVER projected — only its presence + last-test status. */
+  /** The secret is NEVER projected — only its presence. */
   readonly hasSecret: boolean;
+  /** When the MAC portal for the jurisdiction last answered the portal check; NOT a credential-validity time. */
   readonly lastSandboxTestAt: IsoDateTime | null;
   readonly version: number;
 }

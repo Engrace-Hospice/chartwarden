@@ -175,33 +175,45 @@ describe("holdBeforeRun", () => {
     [M23_QUEUES.noeSubmit, "noeId"],
     [M23_QUEUES.notrSubmit, "notrId"],
     [M23_QUEUES.transferNoticeSubmit, "transferNoticeId"],
-  ] as const)("does not render or disclose MBI for %s when the gateway contract guarantees a hold", async (queue, idField) => {
-    __resetClearinghouseAlertMemoryForTest();
-    const { deps, alerts } = depsFor({
-      vendor: "direct_mac",
-      transport: new InMemoryClearinghouse(),
-    } as unknown as ClearinghouseBinding);
-    Object.assign(deps, { x12: {} as never, macPortal: {} as never });
-    const calls: unknown[] = [];
-    Object.assign(deps, {
-      noticeRenderer: Object.fromEntries(["renderNoe", "renderNotr", "renderTransfer", "renderCancellation"].map((name) => [
-        name,
-        async (input: unknown) => { calls.push({ method: name, input }); return {}; },
-      ])),
-    });
-    const { job, moved } = jobOf();
-    await expect(holdBeforeRun(deps as never, job, "tok", queue, {
-      organizationId: ORG,
-      [idField]: "notice-id",
-      submissionId: "submission-id",
-    })).rejects.toBeInstanceOf(DelayedError);
-    expect(calls).toEqual([]);
-    expect(moved).toHaveLength(1);
-    expect(alerts).toEqual([expect.objectContaining({
-      severity: "critical",
-      payload: { queue, reason: "M23_NOTICE_GATEWAY_ARTIFACT_CONTRACT_UNSUPPORTED" },
-    })]);
-  });
+  ] as const)(
+    "does not render or disclose MBI for %s when the gateway contract guarantees a hold",
+    async (queue, idField) => {
+      __resetClearinghouseAlertMemoryForTest();
+      const { deps, alerts } = depsFor({
+        vendor: "direct_mac",
+        transport: new InMemoryClearinghouse(),
+      } as unknown as ClearinghouseBinding);
+      Object.assign(deps, { x12: {} as never, macPortal: {} as never });
+      const calls: unknown[] = [];
+      Object.assign(deps, {
+        noticeRenderer: Object.fromEntries(
+          ["renderNoe", "renderNotr", "renderTransfer", "renderCancellation"].map((name) => [
+            name,
+            async (input: unknown) => {
+              calls.push({ method: name, input });
+              return {};
+            },
+          ]),
+        ),
+      });
+      const { job, moved } = jobOf();
+      await expect(
+        holdBeforeRun(deps as never, job, "tok", queue, {
+          organizationId: ORG,
+          [idField]: "notice-id",
+          submissionId: "submission-id",
+        }),
+      ).rejects.toBeInstanceOf(DelayedError);
+      expect(calls).toEqual([]);
+      expect(moved).toHaveLength(1);
+      expect(alerts).toEqual([
+        expect.objectContaining({
+          severity: "critical",
+          payload: { queue, reason: "M23_NOTICE_GATEWAY_ARTIFACT_CONTRACT_UNSUPPORTED" },
+        }),
+      ]);
+    },
+  );
 
   it("does not hold the queues that never touch the clearinghouse", async () => {
     const { deps } = depsFor(UNBOUND_NOT_ACTIVE);

@@ -12,6 +12,7 @@ const PARENTS: Readonly<Record<string, string>> = {
   "/admissions/:id/discharge": "/admissions/:id",
   "/referrals/new": "/referrals",
   "/referrals/:id": "/referrals",
+  "/referrals/:id/intake": "/referrals",
 };
 
 const LABELS: Readonly<Record<string, string>> = {

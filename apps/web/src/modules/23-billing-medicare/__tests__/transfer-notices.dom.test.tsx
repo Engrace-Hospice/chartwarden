@@ -104,7 +104,9 @@ function mount(el: JSX.Element, client: object, path = "/billing/transfer-notice
 describe("transfer-notice model", () => {
   it("names the prior-hospice hold before the raw state", () => {
     expect(statusOf(notice())).toEqual({ label: "Held for prior hospice", tone: "warning" });
-    expect(statusOf(notice({ blockers: [], state: "ready" })).label).toBe("Internally ready · dispatch held");
+    expect(statusOf(notice({ blockers: [], state: "ready" })).label).toBe(
+      "Internally ready · dispatch held",
+    );
     expect(
       statusOf(
         notice({

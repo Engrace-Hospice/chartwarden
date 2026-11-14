@@ -1524,7 +1524,7 @@ All routes live under `apps/backend/src/modules/23-billing-medicare/routes/` and
 | 33 | POST | `/api/v1/billing/sequestration-policies` | `billing.sequestration_policy.edit` | `provider_entity_billing_scope` | Forward-date a new policy row |
 | 34 | GET | `/api/v1/billing/mac-credentials` | `billing.mac_credential.read` | `provider_entity_billing_scope` | List per-PE credentials (secrets masked) |
 | 35 | POST | `/api/v1/billing/mac-credentials` | `billing.mac_credential.admin` | `provider_entity_billing_scope` + step-up | Upsert MAC credentials (M34 wizard) |
-| 36 | POST | `/api/v1/billing/mac-credentials/:id:test` | `billing.mac_credential.admin` | `provider_entity_billing_scope` | Send a synthetic claim through to MAC sandbox; record `last_sandbox_test_at` **DEFERRED (unbuilt):** no sandbox-test route; `last_sandbox_test_at` is not written. As-built read: `GET /api/v1/billing/mac-credentials/:providerEntityId`. |
+| 36 | POST | `/api/v1/billing/mac-credentials/:providerEntityId/test` | `billing.mac_credential.admin` | `provider_entity_billing_scope` | Check whether the configured jurisdiction's MAC portal answers; record `last_sandbox_test_at` on success. This sends no credential and does not validate it; the first real submission is the credential's first use. |
 | 37 | GET | `/api/v1/billing/ar-dashboard` | `billing.claim.read_ar_dashboard` | `provider_entity_billing_scope` | AR aging buckets, denial rate, NOE/NOTR window state |
 | 38 | GET | `/api/v1/billing/metrics` | `billing.claim.read_metrics` | `provider_entity_billing_scope` | Per-window aggregate metrics for the M33 reporting consumer |
 | 39 | GET | `/api/v1/internal/billing/claim-day-projection` | `system_principal` (M26 service-to-service) | system-scope | `ClaimDayProjectionProvider` seam endpoint |
@@ -2270,7 +2270,7 @@ All M23 screens live under `apps/web/src/modules/23-billing-medicare/`, built on
 | 15 | Validation Rule Config | `/app/billing/rule-config` | Compliance, Org Admin | Tenant overlay editor: full rule list with regulatory-required badges; toggle non-regulatory rules off; parameterize configurable rules; add custom rules (DSL editor) |
 | 16 | Eligibility Center | `/app/billing/eligibility` | Biller, Billing Manager | Per-patient eligibility history with "Refresh" action (route 22); staleness highlight |
 | 17 | Sequestration Policy | `/app/billing/sequestration-policy` | Compliance, Org Admin | Effective-dated policy timeline; forward-date a new row |
-| 18 | MAC Credentials | `/app/billing/mac-credentials` | Billing Manager, Org Admin | Per-PE credential list with masked secrets; upsert flow with step-up; "Test Sandbox" action (route 36) |
+| 18 | MAC Credentials | `/app/billing/mac-credentials` | Billing Manager, Org Admin | Per-PE credential list with masked secrets; upsert flow with step-up; MAC portal health status from route 36 (not a credential test) |
 | 19 | Override Audit View | `/app/billing/overrides` | Compliance, Surveyor | Org-wide override audit: every override row across all claims with rule key, actor, reason, timestamp; export for survey response |
 | 20 | Metrics Surface | `/app/billing/metrics` | Billing Manager, Compliance, Org Admin | Per-window aggregate metrics drill-down (the M33-feeding view exposed here for ops self-service) |
 | 21 | Surveyor Read View | `/app/admin/billing-audit` | Compliance, Surveyor (engagement-scoped) | Read-only denylist-aware projection: claim state timeline, all validation runs, all overrides, all submissions, all acknowledgments; redacts internal worker-correlation ids |

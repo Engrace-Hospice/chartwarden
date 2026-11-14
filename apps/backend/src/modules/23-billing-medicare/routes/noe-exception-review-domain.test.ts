@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { initialNoeExceptionReviewStatus, recordedExternalDecisionStatus } from "./noe-exception-review-domain";
+import {
+  initialNoeExceptionReviewStatus,
+  recordedExternalDecisionStatus,
+} from "./noe-exception-review-domain";
 
 describe("NOE exception review state labels", () => {
   it("requires protected evidence and does not treat a late filing as approval", () => {

@@ -1,5 +1,5 @@
-import { Type } from "@sinclair/typebox";
 import { pageQuery } from "@chartwarden/shared/route-kit";
+import { Type } from "@sinclair/typebox";
 
 const uuid = () => Type.String({ format: "uuid" });
 const date = () => Type.String({ format: "date" });
@@ -8,17 +8,78 @@ export const NoeExceptionReviewPathSchema = Type.Object({ id: uuid(), reviewId: 
 export const NoeExceptionListQuerySchema = Type.Object({ ...pageQuery() });
 export const CreateNoeExceptionReviewSchema = Type.Object({
   category: Type.Union([
-    Type.Literal("operations_disruption"), Type.Literal("cms_mac_system_issue"),
-    Type.Literal("new_hospice_access_delay"), Type.Literal("other_external_determination"),
+    Type.Literal("operations_disruption"),
+    Type.Literal("cms_mac_system_issue"),
+    Type.Literal("new_hospice_access_delay"),
+    Type.Literal("other_external_determination"),
   ]),
   justificationDocumentId: uuid(),
   evidenceDocumentIds: Type.Array(uuid(), { maxItems: 20 }),
 });
 export const RecordNoeExceptionRequestSchema = Type.Object({
-  expectedVersion: Type.Integer({ minimum: 1 }), requestDate: date(), requestReference: Type.Optional(Type.String({ maxLength: 200 })), evidenceDocumentId: uuid(),
+  expectedVersion: Type.Integer({ minimum: 1 }),
+  requestDate: date(),
+  requestReference: Type.Optional(Type.String({ maxLength: 200 })),
+  evidenceDocumentId: uuid(),
 });
 export const RecordNoeExceptionDecisionSchema = Type.Object({
-  expectedVersion: Type.Integer({ minimum: 1 }), decision: Type.Union([Type.Literal("approved"), Type.Literal("denied")]),
-  authority: Type.Union([Type.Literal("a_b_mac"), Type.Literal("cms")]), decisionDate: date(), evidenceDocumentId: uuid(),
+  expectedVersion: Type.Integer({ minimum: 1 }),
+  decision: Type.Union([Type.Literal("approved"), Type.Literal("denied")]),
+  authority: Type.Union([Type.Literal("a_b_mac"), Type.Literal("cms")]),
+  decisionDate: date(),
+  evidenceDocumentId: uuid(),
 });
-export const AddNoeExceptionEvidenceSchema = Type.Object({ expectedVersion: Type.Integer({ minimum: 1 }), evidenceDocumentIds: Type.Array(uuid(), { minItems: 1, maxItems: 20 }) });
+export const AddNoeExceptionEvidenceSchema = Type.Object({
+  expectedVersion: Type.Integer({ minimum: 1 }),
+  evidenceDocumentIds: Type.Array(uuid(), { minItems: 1, maxItems: 20 }),
+});
+
+const nullableString = Type.Union([Type.String(), Type.Null()]);
+export const NoeExceptionReviewViewSchema = Type.Object({
+  id: uuid(),
+  noeId: uuid(),
+  category: Type.Union([
+    Type.Literal("operations_disruption"),
+    Type.Literal("cms_mac_system_issue"),
+    Type.Literal("new_hospice_access_delay"),
+    Type.Literal("other_external_determination"),
+  ]),
+  justificationDocumentId: uuid(),
+  status: Type.Union(
+    [
+      "draft",
+      "evidence_required",
+      "ready_for_external_request",
+      "request_recorded",
+      "awaiting_external_determination",
+      "external_approved_recorded",
+      "external_denied_recorded",
+      "withdrawn",
+    ].map((value) => Type.Literal(value)),
+  ),
+  evidenceDocumentIds: Type.Array(uuid()),
+  externalRequestReference: nullableString,
+  externalRequestDate: Type.Union([date(), Type.Null()]),
+  externalAuthority: Type.Union([Type.Literal("a_b_mac"), Type.Literal("cms"), Type.Null()]),
+  externalDecision: Type.Union([Type.Literal("approved"), Type.Literal("denied"), Type.Null()]),
+  externalDecisionProvenance: Type.Union([Type.Literal("operator_attested_document"), Type.Null()]),
+  externalDecisionDate: Type.Union([date(), Type.Null()]),
+  externalDecisionDocumentId: Type.Union([uuid(), Type.Null()]),
+  version: Type.Integer({ minimum: 1 }),
+  createdAt: Type.String({ format: "date-time" }),
+  updatedAt: Type.String({ format: "date-time" }),
+});
+export const NoeExceptionReviewListResponseSchema = Type.Object({
+  items: Type.Array(NoeExceptionReviewViewSchema),
+});
+export const NoeExceptionReviewHistoryResponseSchema = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      eventType: Type.String(),
+      fromStatus: nullableString,
+      toStatus: Type.String(),
+      occurredAt: Type.String({ format: "date-time" }),
+      evidenceDocumentIds: Type.Array(uuid()),
+    }),
+  ),
+});

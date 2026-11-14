@@ -360,7 +360,6 @@ describe.skipIf(!DB_URL)("M34 tenant hub reads, LIVE Postgres on the real roles"
       } as AlertEmitter,
       supportSessionPorts: {
         now: () => new Date(),
-        // This suite never opens or closes a support session.
         bind() {
           throw new Error("support-session ports are not bound in this suite");
         },

@@ -1,9 +1,9 @@
-// apps/backend/src/modules/22-documents/access-log/minio-access-log-routes.ts — `POST /api/v1/webhooks/minio/access-log`
-// (GAP-141): the MinIO audit-webhook receiver. MinIO posts its API audit records here (configured through
-// `MINIO_AUDIT_WEBHOOK_*` on the minio service in production compose).
+// apps/backend/src/modules/22-documents/access-log/minio-access-log-routes.ts — object-store audit webhooks
+// (GAP-141): the S3-compatible object-store audit receiver. SeaweedFS posts its API audit records here through
+// Fluent Bit; the parser also accepts RustFS and legacy MinIO records.
 //
-// AUTH. Server-to-server, no session: the shared bearer token MinIO is configured with
-// (`MINIO_AUDIT_WEBHOOK_AUTH_TOKEN_*`) is compared in CONSTANT TIME against `MINIO_ACCESS_LOG_WEBHOOK_TOKEN`
+// AUTH. Server-to-server, no session: the audit sink bearer is compared in CONSTANT TIME against
+// `OBJECT_STORE_AUDIT_WEBHOOK_TOKEN`
 // before the body is read. Unset token => 503 (never "open"). The path sits under `/api/v1/webhooks/`, which is
 // exempt from the browser CSRF check by design.
 //
@@ -13,14 +13,21 @@
 import { timingSafeEqual } from "node:crypto";
 import type { DbClient } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { ingestConsumptions, parseConsumptions } from "./minio-access-log";
 
 export interface MinioAccessLogRouteDeps {
   readonly db: DbClient;
-  /** `MINIO_ACCESS_LOG_WEBHOOK_TOKEN`; undefined/empty => the route answers 503. */
+  /** Object-store audit bearer; undefined/empty => the route answers 503. */
   readonly token: string | undefined;
   readonly now?: () => Date;
+}
+
+/** Prefer the vendor-neutral name while an old release can still roll back on MINIO_*. */
+export function objectStoreAuditWebhookTokenFromEnv(
+  env: Record<string, string | undefined>,
+): string | undefined {
+  return env.OBJECT_STORE_AUDIT_WEBHOOK_TOKEN ?? env.MINIO_ACCESS_LOG_WEBHOOK_TOKEN;
 }
 
 /** Constant-time bearer compare that never throws on a length mismatch. */
@@ -42,22 +49,30 @@ export function registerMinioAccessLogRoute(
   if (!token) {
     app.log.warn(
       { event: "m22.minio_access_log.unconfigured" },
-      "MINIO_ACCESS_LOG_WEBHOOK_TOKEN is not set: the MinIO access-log webhook answers 503 and records nothing.",
+      "OBJECT_STORE_AUDIT_WEBHOOK_TOKEN is not set: the object-store access-log webhook answers 503 and records nothing.",
     );
   }
-  app.post("/api/v1/webhooks/minio/access-log", async (request, reply) => {
+  const handleAccessLog = async (body: unknown, authorization: unknown, reply: FastifyReply) => {
     if (!token) {
       throw new ChartWardenError(
         "WEBHOOK_UNCONFIGURED",
-        "the MinIO access-log webhook is not configured",
+        "the object-store access-log webhook is not configured",
         503,
       );
     }
-    if (!bearerMatches(request.headers.authorization, token)) {
+    if (!bearerMatches(authorization, token)) {
       throw new ChartWardenError("UNAUTHENTICATED", "invalid webhook credentials", 401);
     }
-    const consumptions = parseConsumptions(request.body, (deps.now ?? (() => new Date()))());
+    const consumptions = parseConsumptions(body, (deps.now ?? (() => new Date()))());
     const result = await ingestConsumptions(deps.db, consumptions);
     return reply.code(200).send({ received: consumptions.length, ...result });
-  });
+  };
+
+  // Literal registrations are deliberate: the route/OpenAPI fitness scanners treat these as the source of truth.
+  app.post("/api/v1/webhooks/object-store/access-log", async (request, reply) =>
+    handleAccessLog(request.body, request.headers.authorization, reply),
+  );
+  app.post("/api/v1/webhooks/minio/access-log", async (request, reply) =>
+    handleAccessLog(request.body, request.headers.authorization, reply),
+  );
 }

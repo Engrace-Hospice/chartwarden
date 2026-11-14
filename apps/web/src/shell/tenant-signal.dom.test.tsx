@@ -9,6 +9,7 @@ import {
   getGlobalResponseSignal,
   handleObservedResponse,
   setGlobalResponseSignal,
+  subscribeGlobalResponseSignal,
 } from "./global-response-signal";
 import { createScreenRegistry } from "./screen-registry";
 import { systemScreens } from "./system-pages";
@@ -27,7 +28,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function mount(fetch: () => Promise<Response>, at: string) {
+function mount(
+  fetch: () => Promise<Response>,
+  at: string,
+  sessionOver: { organizationStage?: "onboarding" | "live" } = {},
+) {
   const registry = createScreenRegistry();
   registry.register(systemScreens);
   window.history.pushState({}, "", at);
@@ -49,6 +54,7 @@ function mount(fetch: () => Promise<Response>, at: string) {
         roles: ["administrator"],
         isAdmin: true,
         permissions: [],
+        ...sessionOver,
       }}
     />,
   );
@@ -97,5 +103,57 @@ describe("org-less 401 end to end", () => {
     await client.GET("/api/v1/patients" as never, {} as never);
     await waitFor(() => expect(getGlobalResponseSignal()).toBeNull());
     expect(window.location.pathname).toBe("/expired");
+  });
+});
+
+// A generous wait: the first test mounts the whole shell and the suite runs beside many others.
+const SETTLE = { timeout: 5000 };
+
+/**
+ * Starts listening for a signal of `kind` and returns a function that resolves once one has been raised AND consumed by the shell.
+ * "The signal is null" alone would pass whether the signal never fired or was consumed; this proves it fired.
+ */
+function expectSignalHandled(kind: string): () => Promise<void> {
+  let raised = false;
+  const stop = subscribeGlobalResponseSignal(() => {
+    if (getGlobalResponseSignal()?.kind === kind) raised = true;
+  });
+  return async () => {
+    await waitFor(() => expect(raised).toBe(true), SETTLE);
+    await waitFor(() => expect(getGlobalResponseSignal()).toBeNull(), SETTLE);
+    stop();
+  };
+}
+
+describe("organization onboarding refusal end to end", () => {
+  it("routes a 403 ORGANIZATION_ONBOARDING (stage unknown) to /admin/onboarding, and not again once there", async () => {
+    const client = mount(refusal("ORGANIZATION_ONBOARDING", 403), "/");
+    const first = expectSignalHandled("organization-onboarding");
+    await client.GET("/api/v1/patients" as never, {} as never);
+    await first();
+    await waitFor(() => expect(window.location.pathname).toBe("/admin/onboarding"), SETTLE);
+    // The wizard's own refused call must not bounce it: there is nowhere further to go.
+    const second = expectSignalHandled("organization-onboarding");
+    await client.GET("/api/v1/patients" as never, {} as never);
+    await second();
+    expect(window.location.pathname).toBe("/admin/onboarding");
+  });
+
+  it("leaves the person where they are when the session already says onboarding (the screen guard routes; a refused background call is noise)", async () => {
+    const client = mount(refusal("ORGANIZATION_ONBOARDING", 403), "/admin/setup", {
+      organizationStage: "onboarding",
+    });
+    const handled = expectSignalHandled("organization-onboarding");
+    await client.GET("/api/v1/alerts/inbox" as never, {} as never);
+    await handled();
+    expect(window.location.pathname).toBe("/admin/setup");
+  });
+
+  it("leaves a screen that works while onboarding alone, even when the stage is unknown", async () => {
+    const client = mount(refusal("ORGANIZATION_ONBOARDING", 403), "/admin/account");
+    const handled = expectSignalHandled("organization-onboarding");
+    await client.GET("/api/v1/alerts/inbox" as never, {} as never);
+    await handled();
+    expect(window.location.pathname).toBe("/admin/account");
   });
 });

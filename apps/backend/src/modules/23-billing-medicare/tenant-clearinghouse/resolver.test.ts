@@ -65,6 +65,7 @@ async function setup(extra: Partial<Parameters<typeof createTenantClearinghouseR
     attempts: new InMemoryAttemptStore(),
     platformBinding,
     fallbackOrgIds: new Set([ORG_C]),
+    isOrganizationLive: async () => true,
     readRow: async (org) => rows.get(org) ?? null,
     ...extra,
   });
@@ -309,5 +310,48 @@ describe("bindTransportToOrg usage guard", () => {
     const refused = await bound.fetchClaimStatus(ctx("production"), "CTRL1").catch(() => undefined);
     expect(reached).toEqual(["test"]);
     expect(refused && !refused.ok && refused.degraded.code).toBe(CH.UNAVAILABLE);
+  });
+});
+
+describe("an organization that is not live gets no transport (7A security review L1)", () => {
+  it("an active config on an organization that is not live is UNBOUND_NOT_ACTIVE, and its cached transport is dropped", async () => {
+    let live = true;
+    const { runtime, put, decrypts } = await setup({ isOrganizationLive: async () => live });
+    await put(ORG_A, { vendor: "stedi", mode: "production", secret: KEY });
+
+    expect((await runtime.binding.forOrg?.(ORG_A))?.vendor).toBe("stedi");
+    live = false; // e.g. the organization was suspended, or has not gone live yet
+    expect(await runtime.binding.forOrg?.(ORG_A)).toBe(UNBOUND_NOT_ACTIVE);
+    live = true;
+    expect((await runtime.binding.forOrg?.(ORG_A))?.vendor).toBe("stedi");
+    expect(decrypts()).toBe(2); // the transport was rebuilt: nothing stayed cached while the organization was not live
+  });
+
+  it("the platform env fallback org is held too (nothing is sent for an organization that is not live)", async () => {
+    const { runtime } = await setup({ isOrganizationLive: async () => false });
+    expect(await runtime.binding.forOrg?.(ORG_C)).toBe(UNBOUND_NOT_ACTIVE);
+  });
+
+  it("an organization that is not live has no live usage either (one rule behind both)", async () => {
+    const { runtime, put } = await setup({ isOrganizationLive: async () => false });
+    await put(ORG_A, { vendor: "claimmd", mode: "production", secret: KEY });
+    expect(await runtime.usageFor(ORG_A)).toBeNull();
+  });
+
+  it("a live organization is unchanged", async () => {
+    const { runtime, put } = await setup({ isOrganizationLive: async () => true });
+    await put(ORG_A, { vendor: "claimmd", mode: "production", secret: KEY });
+    expect((await runtime.binding.forOrg?.(ORG_A))?.vendor).toBe("claimmd");
+    expect(await runtime.usageFor(ORG_A)).toBe("production");
+  });
+
+  it("a read that cannot say whether the organization is live fails the call (the job retries, loudly); it never sends", async () => {
+    const { runtime, put } = await setup({
+      isOrganizationLive: async () => {
+        throw new Error("organization status unavailable");
+      },
+    });
+    await put(ORG_A, { vendor: "claimmd", mode: "production", secret: KEY });
+    await expect(runtime.binding.forOrg?.(ORG_A)).rejects.toThrow(/status unavailable/);
   });
 });

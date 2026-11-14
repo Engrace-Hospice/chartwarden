@@ -33,11 +33,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
-import {
-  dollars,
-  noeNotrStateTone,
-  statusLabel,
-} from "./billing-status";
+import { dollars, noeNotrStateTone, statusLabel } from "./billing-status";
 import { DdeFileAction, noticeDdeOptions } from "./dde-file-action";
 import {
   type CorrectableNotice,
@@ -202,27 +198,53 @@ function payerControlNumberOf(rec: NoticeRecord): string | null {
 }
 
 const DEADLINE_RANK: Record<string, number> = {
-  overdue: 0, rejected: 0, transport_rejected: 0, accepted_after_deadline: 1, due_today: 1, approaching: 2,
-  submitted_awaiting_verification: 2, filing_timeliness_unknown: 2, on_track: 3,
-  accepted_within_deadline: 4, not_applicable: 5, not_determinable: 6,
+  overdue: 0,
+  rejected: 0,
+  transport_rejected: 0,
+  accepted_after_deadline: 1,
+  due_today: 1,
+  approaching: 2,
+  submitted_awaiting_verification: 2,
+  filing_timeliness_unknown: 2,
+  on_track: 3,
+  accepted_within_deadline: 4,
+  not_applicable: 5,
+  not_determinable: 6,
 };
 const DEADLINE_TONE: Record<string, "neutral" | "progress" | "success" | "warning" | "error"> = {
-  overdue: "error", rejected: "error", transport_rejected: "error", accepted_after_deadline: "error", due_today: "error",
-  approaching: "warning", submitted_awaiting_verification: "progress", filing_timeliness_unknown: "warning",
-  on_track: "warning", accepted_within_deadline: "success", not_applicable: "neutral", not_determinable: "warning",
+  overdue: "error",
+  rejected: "error",
+  transport_rejected: "error",
+  accepted_after_deadline: "error",
+  due_today: "error",
+  approaching: "warning",
+  submitted_awaiting_verification: "progress",
+  filing_timeliness_unknown: "warning",
+  on_track: "warning",
+  accepted_within_deadline: "success",
+  not_applicable: "neutral",
+  not_determinable: "warning",
 };
 const DEADLINE_LABEL: Record<string, string> = {
-  overdue: "Overdue — acceptance unverified", rejected: "MAC rejected — correction needed", transport_rejected: "Transport rejected — filing unverified",
-  accepted_after_deadline: "Accepted after deadline", due_today: "Due today — acceptance required",
-  approaching: "Approaching — acceptance required", submitted_awaiting_verification: "Submitted — awaiting MAC verification",
-  filing_timeliness_unknown: "Timeliness unknown", on_track: "On track — MAC acceptance required",
-  accepted_within_deadline: "Accepted within deadline", not_applicable: "No five-day deadline",
+  overdue: "Overdue — acceptance unverified",
+  rejected: "MAC rejected — correction needed",
+  transport_rejected: "Transport rejected — filing unverified",
+  accepted_after_deadline: "Accepted after deadline",
+  due_today: "Due today — acceptance required",
+  approaching: "Approaching — acceptance required",
+  submitted_awaiting_verification: "Submitted — awaiting MAC verification",
+  filing_timeliness_unknown: "Timeliness unknown",
+  on_track: "On track — MAC acceptance required",
+  accepted_within_deadline: "Accepted within deadline",
+  not_applicable: "No five-day deadline",
   not_determinable: "Deadline not determinable",
 };
 function riskKey(rec: NoticeRecord): string {
   return rec.deadline?.risk ?? "not_determinable";
 }
-function riskLabel(rec: NoticeRecord): string { return DEADLINE_LABEL[riskKey(rec)] ?? "Deadline status unavailable"; }
+function riskLabel(rec: NoticeRecord): string {
+  return DEADLINE_LABEL[riskKey(rec)] ?? "Deadline status unavailable";
+}
 function riskTone(rec: NoticeRecord): "neutral" | "progress" | "success" | "warning" | "error" {
   return DEADLINE_TONE[riskKey(rec)] ?? "neutral";
 }
@@ -243,18 +265,34 @@ const LIFECYCLE_LABEL: Record<string, string> = {
   unknown: "Lifecycle evidence incomplete",
 };
 const LIFECYCLE_TONE: Record<string, "neutral" | "progress" | "success" | "warning" | "error"> = {
-  draft: "neutral", ready: "warning", submission_requested: "progress", dispatch_started: "warning",
-  transport_receipt_confirmed: "progress", transport_rejected: "error", known_not_sent: "warning",
-  outcome_unknown: "error", awaiting_mac_acknowledgment: "progress", mac_accepted_verified: "success",
-  mac_rejected_verified: "error", external_filing_recorded: "warning", cancelled: "neutral", unknown: "neutral",
+  draft: "neutral",
+  ready: "warning",
+  submission_requested: "progress",
+  dispatch_started: "warning",
+  transport_receipt_confirmed: "progress",
+  transport_rejected: "error",
+  known_not_sent: "warning",
+  outcome_unknown: "error",
+  awaiting_mac_acknowledgment: "progress",
+  mac_accepted_verified: "success",
+  mac_rejected_verified: "error",
+  external_filing_recorded: "warning",
+  cancelled: "neutral",
+  unknown: "neutral",
 };
 function lifecycleLabel(rec: NoticeRecord): string {
-  return LIFECYCLE_LABEL[rec.deadline?.lifecycle ?? ""] ?? (rec.deadline ? "Lifecycle evidence incomplete" : statusLabel(rec.state));
+  return (
+    LIFECYCLE_LABEL[rec.deadline?.lifecycle ?? ""] ??
+    (rec.deadline ? "Lifecycle evidence incomplete" : statusLabel(rec.state))
+  );
 }
 function lifecycleTone(
   rec: NoticeRecord,
 ): "neutral" | "progress" | "success" | "warning" | "error" | "critical" {
-  return LIFECYCLE_TONE[rec.deadline?.lifecycle ?? ""] ?? (rec.deadline ? "neutral" : noeNotrStateTone(rec.state));
+  return (
+    LIFECYCLE_TONE[rec.deadline?.lifecycle ?? ""] ??
+    (rec.deadline ? "neutral" : noeNotrStateTone(rec.state))
+  );
 }
 
 function isActive(rec: NoticeRecord): boolean {
@@ -275,8 +313,22 @@ function summarize(records: NoticeRecord[]): WindowPosture {
   for (const r of records) {
     if (!isActive(r)) continue;
     const risk = riskKey(r);
-    if (risk === "overdue" || risk === "rejected" || risk === "transport_rejected" || risk === "accepted_after_deadline") breached += 1;
-    else if (["approaching", "due_today", "submitted_awaiting_verification", "filing_timeliness_unknown"].includes(risk)) atRisk += 1;
+    if (
+      risk === "overdue" ||
+      risk === "rejected" ||
+      risk === "transport_rejected" ||
+      risk === "accepted_after_deadline"
+    )
+      breached += 1;
+    else if (
+      [
+        "approaching",
+        "due_today",
+        "submitted_awaiting_verification",
+        "filing_timeliness_unknown",
+      ].includes(risk)
+    )
+      atRisk += 1;
     else if (risk === "on_track") inWindow += 1;
   }
   return { inWindow, atRisk, breached, total: records.length };
@@ -384,7 +436,9 @@ export function NoticeWindowQueue({ config }: { config: NoticeWindowConfig }): J
             Review notice lifecycle, Medicare acceptance evidence, and regulatory deadline risk.
           </div>
           <InlineAlert tone="warning">
-            <strong>External notice transmission is unavailable.</strong> Direct MAC notice dispatch is awaiting gateway contract qualification. Claim.MD and Stedi hospice notice transaction support is not verified. A prepared notice is not a filed notice.
+            <strong>External notice transmission is unavailable.</strong> Direct MAC notice dispatch
+            is awaiting gateway contract qualification. Claim.MD and Stedi hospice notice
+            transaction support is not verified. A prepared notice is not a filed notice.
           </InlineAlert>
           <div style={{ marginTop: "0.75rem" }}>
             <BillingTabs />
@@ -520,7 +574,8 @@ function NoticeTable({
     bucket.push(r);
     groups.set(r.state, bucket);
   }
-  for (const bucket of groups.values()) bucket.sort((a, b) => (DEADLINE_RANK[riskKey(a)] ?? 99) - (DEADLINE_RANK[riskKey(b)] ?? 99));
+  for (const bucket of groups.values())
+    bucket.sort((a, b) => (DEADLINE_RANK[riskKey(a)] ?? 99) - (DEADLINE_RANK[riskKey(b)] ?? 99));
   const orderedStates = Array.from(groups.keys()).sort();
 
   return (
@@ -601,7 +656,9 @@ function NoticeTable({
                 </td>
                 <td style={tdStyle}>
                   {r.deadline?.dueDate && isActive(r) ? (
-                    <span aria-label={`${riskLabel(r)}; due ${r.deadline.dueDate}`}>{r.deadline.dueDate}</span>
+                    <span aria-label={`${riskLabel(r)}; due ${r.deadline.dueDate}`}>
+                      {r.deadline.dueDate}
+                    </span>
                   ) : (
                     <span style={{ color: "var(--color-on-surface-variant)" }}>—</span>
                   )}
@@ -635,9 +692,7 @@ function NoticePreview({
       <Field label="Record" value={id || "—"} mono />
       <Field
         label="State"
-        value={
-          <StatusPill label={lifecycleLabel(record)} tone={lifecycleTone(record)} />
-        }
+        value={<StatusPill label={lifecycleLabel(record)} tone={lifecycleTone(record)} />}
       />
       <NoticeAckOutcome record={record} config={config} />
       <NoticeCorrectionLinks notice={correctable(record)} config={config} />
@@ -654,7 +709,11 @@ function NoticePreview({
           }
         />
       ) : null}
-      {record.deadline?.followUp ? <p role="note" style={{ margin: 0, color: "var(--color-on-surface-variant)" }}>{record.deadline.followUp}</p> : null}
+      {record.deadline?.followUp ? (
+        <p role="note" style={{ margin: 0, color: "var(--color-on-surface-variant)" }}>
+          {record.deadline.followUp}
+        </p>
+      ) : null}
       {record.patientId ? <Field label="Patient" value={record.patientId} mono /> : null}
       {record.providerEntityId ? (
         <Field label="Provider entity" value={record.providerEntityId} mono />
@@ -713,7 +772,9 @@ export function NoticeWindowDetail({
   if (error || !record)
     return <EmptyState title="Unavailable" description={error ?? "No record."} />;
 
-  const liveTone: "assertive" | "polite" = ["overdue", "rejected"].includes(riskKey(record)) ? "assertive" : "polite";
+  const liveTone: "assertive" | "polite" = ["overdue", "rejected"].includes(riskKey(record))
+    ? "assertive"
+    : "polite";
   const liveMessage = `${config.acronym}: ${riskLabel(record)}${record.deadline?.dueDate ? `; due ${record.deadline.dueDate}` : "."}`;
 
   return (
@@ -727,7 +788,12 @@ export function NoticeWindowDetail({
               <StatusPill label={riskLabel(record)} tone={riskTone(record)} />
               <p>Due: {record.deadline.dueDate ?? "not determinable"}</p>
               <p>{record.deadline.followUp}</p>
-              <p>Acceptance evidence: {record.deadline.acceptance === "verified" ? "verified MAC acknowledgment" : "not verified"}</p>
+              <p>
+                Acceptance evidence:{" "}
+                {record.deadline.acceptance === "verified"
+                  ? "verified MAC acknowledgment"
+                  : "not verified"}
+              </p>
             </>
           ) : (
             <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
@@ -742,19 +808,30 @@ export function NoticeWindowDetail({
         <Field label="Record" value={recordId(record) || "—"} mono />
         <Field
           label="State"
-          value={
-            <StatusPill label={lifecycleLabel(record)} tone={lifecycleTone(record)} />
-          }
+          value={<StatusPill label={lifecycleLabel(record)} tone={lifecycleTone(record)} />}
         />
         <NoticeAckOutcome record={record} config={config} />
         <NoticeEvidenceTimeline record={record} />
         {record.latestAttempt ? (
           <section aria-label="Latest submission attempt">
             <h2 style={{ fontSize: "1rem" }}>Latest attempt</h2>
-            <Field label="Submission" value={`${record.latestAttempt.submissionId} · attempt ${record.latestAttempt.attemptIndex}`} mono />
-            <Field label="Durable state" value={`${record.latestAttempt.dispatchState} · ${record.latestAttempt.outcome}`} />
-            <Field label="Dispatch started" value={record.latestAttempt.dispatchStartedAt ?? "Not recorded"} />
-            <Field label="Transport response time" value={record.latestAttempt.submittedAt ?? "Not recorded"} />
+            <Field
+              label="Submission"
+              value={`${record.latestAttempt.submissionId} · attempt ${record.latestAttempt.attemptIndex}`}
+              mono
+            />
+            <Field
+              label="Durable state"
+              value={`${record.latestAttempt.dispatchState} · ${record.latestAttempt.outcome}`}
+            />
+            <Field
+              label="Dispatch started"
+              value={record.latestAttempt.dispatchStartedAt ?? "Not recorded"}
+            />
+            <Field
+              label="Transport response time"
+              value={record.latestAttempt.submittedAt ?? "Not recorded"}
+            />
           </section>
         ) : null}
         <NoticeCorrectionLinks notice={correctable(record)} config={config} />
@@ -787,7 +864,9 @@ export function NoticeWindowDetail({
         {record.windowTargetAt ? (
           <Field label="Window target" value={record.windowTargetAt} />
         ) : null}
-        {record.deadline?.basis ? <Field label="Regulatory basis" value={record.deadline.basis} /> : null}
+        {record.deadline?.basis ? (
+          <Field label="Regulatory basis" value={record.deadline.basis} />
+        ) : null}
         {record.submittedAt ? <Field label="Submitted at" value={record.submittedAt} /> : null}
         {payerControlNumberOf(record) ? (
           <Field label="Payer control #" value={payerControlNumberOf(record)} mono />
@@ -890,8 +969,14 @@ function NoticeActions({
           Cancel {config.acronym}
         </button>
       </div>
-      <p id={`notice-submit-hold-${id}`} role="note" style={{ margin: 0, fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-        The notice may be reviewed or prepared internally, but no supported external filing pathway is enabled. Use the authorized external-filing record workflow only when filing through your organization’s biller.
+      <p
+        id={`notice-submit-hold-${id}`}
+        role="note"
+        style={{ margin: 0, fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}
+      >
+        The notice may be reviewed or prepared internally, but no supported external filing pathway
+        is enabled. Use the authorized external-filing record workflow only when filing through your
+        organization’s biller.
       </p>
 
       {showCancel ? (
@@ -933,8 +1018,13 @@ function NoticeActions({
 function NoticeEvidenceTimeline({ record }: { record: NoticeRecord }): JSX.Element {
   const events = record.evidenceTimeline ?? [];
   return (
-    <section aria-labelledby="notice-evidence-heading" style={{ borderTop: "1px solid var(--color-outline-variant)", paddingTop: "0.75rem" }}>
-      <h2 id="notice-evidence-heading" style={{ fontSize: "1rem", margin: "0 0 0.5rem" }}>Evidence timeline</h2>
+    <section
+      aria-labelledby="notice-evidence-heading"
+      style={{ borderTop: "1px solid var(--color-outline-variant)", paddingTop: "0.75rem" }}
+    >
+      <h2 id="notice-evidence-heading" style={{ fontSize: "1rem", margin: "0 0 0.5rem" }}>
+        Evidence timeline
+      </h2>
       {events.length === 0 ? (
         <p>No timestamped lifecycle evidence is available from the current read model.</p>
       ) : (
@@ -943,7 +1033,8 @@ function NoticeEvidenceTimeline({ record }: { record: NoticeRecord }): JSX.Eleme
             <li key={`${event.kind}:${event.at}:${index}`} style={{ marginBottom: "0.5rem" }}>
               <strong>{event.safeSummary}</strong>
               <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.8rem" }}>
-                {new Date(event.at).toLocaleString()} · {event.verification === "verified" ? "Verified evidence" : "Recorded event"}
+                {new Date(event.at).toLocaleString()} ·{" "}
+                {event.verification === "verified" ? "Verified evidence" : "Recorded event"}
                 {event.submissionId ? ` · Submission ${event.submissionId}` : ""}
               </div>
             </li>

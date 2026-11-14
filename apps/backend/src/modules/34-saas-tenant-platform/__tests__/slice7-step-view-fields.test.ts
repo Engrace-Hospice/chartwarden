@@ -1,6 +1,6 @@
-// Slice 7 wave 0 - the step view's two additive fields, as the read model derives them until piece 7K records the actor kind on a
-// skip: `skippedBy` (system / platform_ops for a skipped step, null otherwise) and `tenantSkippable` (a skippable canonical step
-// whose owner is `either`). `systemSkipped` and `skippable` keep their meaning.
+// Slice 7 - the step view's additive fields: `skippedBy` (the actor kind the skip recorded; null for a step that is not skipped) and
+// `tenantSkippable` (one of the three tenant-skippable steps, owned by `either`, not settled yet; the tenant surface narrows it to the
+// viewer in wizard-view's redactStepForTenant, tested in onboarding-wizard-view.test.ts). `systemSkipped` and `skippable` keep their meaning.
 import { describe, expect, it } from "vitest";
 import type { StepTask, StepTemplate } from "../onboarding/model";
 import { toWizardStepView } from "../onboarding/wizard-view";
@@ -44,6 +44,25 @@ describe("tenantSkippable", () => {
     },
   );
 
+  it("is false while an earlier gating step still locks the step (a skip there is refused 409 ONBOARDING_STEP_OUT_OF_ORDER)", () => {
+    const locked = toWizardStepView(template("mac_configured"), task(), "ccn_registered");
+    expect(locked).toMatchObject({ locked: true, tenantSkippable: false, skippable: true });
+    expect(toWizardStepView(template("mac_configured"), task(), null).tenantSkippable).toBe(true);
+  });
+
+  it("is false once the step is done or skipped", () => {
+    for (const status of ["done", "skipped"] as const) {
+      expect(
+        toWizardStepView(template("mac_configured"), task({ status }), null).tenantSkippable,
+      ).toBe(false);
+    }
+    for (const status of ["pending", "in_progress", "blocked"] as const) {
+      expect(
+        toWizardStepView(template("mac_configured"), task({ status }), null).tenantSkippable,
+      ).toBe(true);
+    }
+  });
+
   it("is false for sample data (operator-owned), go-live, a non-skippable step and an operator-added step", () => {
     const view = (t: StepTemplate) => toWizardStepView(t, task(), null);
     expect(view(template("sample_data_loaded", { owner: "platform_ops" })).tenantSkippable).toBe(
@@ -73,11 +92,22 @@ describe("skippedBy", () => {
     }
   });
 
-  it("is system for the clearinghouse sync's skip and platform_ops for a person's, keeping systemSkipped", () => {
-    expect(skipped({ skippedBySystem: true })).toMatchObject({
+  it("is the actor kind the store read off the skip, keeping systemSkipped true for the system's alone", () => {
+    expect(skipped({ skippedByActorKind: "system" })).toMatchObject({
       skippedBy: "system",
       systemSkipped: true,
     });
+    expect(skipped({ skippedByActorKind: "tenant" })).toMatchObject({
+      skippedBy: "tenant",
+      systemSkipped: false,
+    });
+    expect(skipped({ skippedByActorKind: "platform_ops" })).toMatchObject({
+      skippedBy: "platform_ops",
+      systemSkipped: false,
+    });
+  });
+
+  it("reads as platform_ops when the store did not say (a task read before the actor kind existed)", () => {
     expect(skipped({ skipRationale: "bills outside ChartWarden" })).toMatchObject({
       skippedBy: "platform_ops",
       systemSkipped: false,

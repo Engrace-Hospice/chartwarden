@@ -2,15 +2,15 @@
 // by the read and write services (one mapper, so a column added to the notice cannot reach one surface only). The
 // optional `corrections` are the rows filed against this notice (`corrects_notice_id`), for the "corrected by" link.
 import type { repositories } from "@chartwarden/billing";
+import { assessNoticeDeadline } from "../services/notice-deadline-policy";
 import { noticeAckOutcomeView, noticeCorrectionLinkView } from "./notice-ack-view";
 import type {
   NoeView,
-  NoticeEvidenceEventView,
   NoticeAttemptSummaryView,
+  NoticeEvidenceEventView,
   NoticeExternalFilingView,
   NotrView,
 } from "./read-service";
-import { assessNoticeDeadline } from "../services/notice-deadline-policy";
 
 const isoReq = (d: Date): string => d.toISOString();
 
@@ -25,30 +25,48 @@ function noticeEvidenceTimeline(input: {
   readonly filedExternallyRecordedAt: Date | null;
   readonly attempt: NoticeAttemptSummaryView | null;
 }): NoticeEvidenceEventView[] {
-  const events: NoticeEvidenceEventView[] = [{
-    kind: "notice_created",
-    source: "m23_notice_record",
-    at: input.createdAt.toISOString(),
-    referenceId: input.id,
-    submissionId: null,
-    verification: "recorded",
-    safeSummary: "Notice record created.",
-  }];
-  if (input.attempt) events.push({
-    kind: "submission_requested", source: "m23_submission_attempt", at: input.attempt.createdAt,
-    referenceId: input.attempt.submissionId, submissionId: input.attempt.submissionId,
-    verification: "recorded", safeSummary: "Durable submission attempt recorded; this is not proof of transport dispatch.",
-  });
-  if (input.attempt?.dispatchStartedAt) events.push({
-    kind: "dispatch_started", source: "m23_submission_attempt", at: input.attempt.dispatchStartedAt,
-    referenceId: input.attempt.submissionId, submissionId: input.attempt.submissionId,
-    verification: "recorded", safeSummary: "Dispatch-started boundary recorded; remote receipt is not established by this event.",
-  });
-  if (input.attempt?.outcome === "submitted" && input.attempt.submittedAt) events.push({
-    kind: "transport_receipt_recorded", source: "m23_submission_attempt", at: input.attempt.submittedAt,
-    referenceId: input.attempt.submissionId, submissionId: input.attempt.submissionId,
-    verification: "recorded", safeSummary: "Transport response recorded; this is not Medicare acceptance evidence.",
-  });
+  const events: NoticeEvidenceEventView[] = [
+    {
+      kind: "notice_created",
+      source: "m23_notice_record",
+      at: input.createdAt.toISOString(),
+      referenceId: input.id,
+      submissionId: null,
+      verification: "recorded",
+      safeSummary: "Notice record created.",
+    },
+  ];
+  if (input.attempt)
+    events.push({
+      kind: "submission_requested",
+      source: "m23_submission_attempt",
+      at: input.attempt.createdAt,
+      referenceId: input.attempt.submissionId,
+      submissionId: input.attempt.submissionId,
+      verification: "recorded",
+      safeSummary: "Durable submission attempt recorded; this is not proof of transport dispatch.",
+    });
+  if (input.attempt?.dispatchStartedAt)
+    events.push({
+      kind: "dispatch_started",
+      source: "m23_submission_attempt",
+      at: input.attempt.dispatchStartedAt,
+      referenceId: input.attempt.submissionId,
+      submissionId: input.attempt.submissionId,
+      verification: "recorded",
+      safeSummary:
+        "Dispatch-started boundary recorded; remote receipt is not established by this event.",
+    });
+  if (input.attempt?.outcome === "submitted" && input.attempt.submittedAt)
+    events.push({
+      kind: "transport_receipt_recorded",
+      source: "m23_submission_attempt",
+      at: input.attempt.submittedAt,
+      referenceId: input.attempt.submissionId,
+      submissionId: input.attempt.submissionId,
+      verification: "recorded",
+      safeSummary: "Transport response recorded; this is not Medicare acceptance evidence.",
+    });
   if (input.externalFilingStatus === "filed" && input.filedExternallyRecordedAt) {
     events.push({
       kind: "external_filing_recorded",
@@ -60,16 +78,26 @@ function noticeEvidenceTimeline(input: {
       safeSummary: `Tenant recorded external filing${input.filedExternallyOn ? ` on ${input.filedExternallyOn}` : ""}; this is not MAC acceptance evidence.`,
     });
   }
-  if (input.acceptedAt) events.push({
-    kind: "mac_accepted", source: "verified_mac_acknowledgment", at: input.acceptedAt.toISOString(),
-    referenceId: input.id, submissionId: input.latestSubmissionId, verification: "verified",
-    safeSummary: "MAC acceptance recorded from acknowledgment evidence.",
-  });
-  if (input.rejectedAt) events.push({
-    kind: "mac_rejected", source: "verified_mac_acknowledgment", at: input.rejectedAt.toISOString(),
-    referenceId: input.id, submissionId: input.latestSubmissionId, verification: "verified",
-    safeSummary: "MAC rejection recorded from acknowledgment evidence.",
-  });
+  if (input.acceptedAt)
+    events.push({
+      kind: "mac_accepted",
+      source: "verified_mac_acknowledgment",
+      at: input.acceptedAt.toISOString(),
+      referenceId: input.id,
+      submissionId: input.latestSubmissionId,
+      verification: "verified",
+      safeSummary: "MAC acceptance recorded from acknowledgment evidence.",
+    });
+  if (input.rejectedAt)
+    events.push({
+      kind: "mac_rejected",
+      source: "verified_mac_acknowledgment",
+      at: input.rejectedAt.toISOString(),
+      referenceId: input.id,
+      submissionId: input.latestSubmissionId,
+      verification: "verified",
+      safeSummary: "MAC rejection recorded from acknowledgment evidence.",
+    });
   return events.sort((a, b) => a.at.localeCompare(b.at));
 }
 
@@ -113,15 +141,23 @@ export function mapNoe(
     windowTargetAt: row.windowTargetAt,
     windowBreachedAt: row.windowBreachedAt ?? null,
     deadline: assessNoticeDeadline({
-      kind: "noe", state: row.state, triggerDate: row.electionEffectiveDate,
-      persistedDueDate: row.windowTargetAt, acceptedAt: ack.acceptedAt,
-      rejectedAt: ack.rejectedAt, now,
-      externalFilingOn: row.externalFilingStatus === "filed" ? row.filedExternallyOn ?? null : null,
+      kind: "noe",
+      state: row.state,
+      triggerDate: row.electionEffectiveDate,
+      persistedDueDate: row.windowTargetAt,
+      acceptedAt: ack.acceptedAt,
+      rejectedAt: ack.rejectedAt,
+      now,
+      externalFilingOn:
+        row.externalFilingStatus === "filed" ? (row.filedExternallyOn ?? null) : null,
       attempt,
     }),
     evidenceTimeline: noticeEvidenceTimeline({
-      id: row.id, createdAt: row.createdAt, latestSubmissionId: row.latestSubmissionId ?? null,
-      acceptedAt: row.acceptedAt ?? null, rejectedAt: row.rejectedAt ?? null,
+      id: row.id,
+      createdAt: row.createdAt,
+      latestSubmissionId: row.latestSubmissionId ?? null,
+      acceptedAt: row.acceptedAt ?? null,
+      rejectedAt: row.rejectedAt ?? null,
       externalFilingStatus: row.externalFilingStatus ?? null,
       filedExternallyOn: row.filedExternallyOn ?? null,
       filedExternallyRecordedAt: row.filedExternallyRecordedAt ?? null,
@@ -165,15 +201,23 @@ export function mapNotr(
     windowBreachedAt: row.windowBreachedAt ?? null,
     deadline: assessNoticeDeadline({
       kind: row.triggerKind === "transfer_out" ? "transfer_8xc" : "notr",
-      state: row.state, triggerDate: row.effectiveEndDate,
-      persistedDueDate: row.windowTargetAt, acceptedAt: ack.acceptedAt,
-      rejectedAt: ack.rejectedAt, now, finalClaimFiled,
-      externalFilingOn: row.externalFilingStatus === "filed" ? row.filedExternallyOn ?? null : null,
+      state: row.state,
+      triggerDate: row.effectiveEndDate,
+      persistedDueDate: row.windowTargetAt,
+      acceptedAt: ack.acceptedAt,
+      rejectedAt: ack.rejectedAt,
+      now,
+      finalClaimFiled,
+      externalFilingOn:
+        row.externalFilingStatus === "filed" ? (row.filedExternallyOn ?? null) : null,
       attempt,
     }),
     evidenceTimeline: noticeEvidenceTimeline({
-      id: row.id, createdAt: row.createdAt, latestSubmissionId: row.latestSubmissionId ?? null,
-      acceptedAt: row.acceptedAt ?? null, rejectedAt: row.rejectedAt ?? null,
+      id: row.id,
+      createdAt: row.createdAt,
+      latestSubmissionId: row.latestSubmissionId ?? null,
+      acceptedAt: row.acceptedAt ?? null,
+      rejectedAt: row.rejectedAt ?? null,
       externalFilingStatus: row.externalFilingStatus ?? null,
       filedExternallyOn: row.filedExternallyOn ?? null,
       filedExternallyRecordedAt: row.filedExternallyRecordedAt ?? null,

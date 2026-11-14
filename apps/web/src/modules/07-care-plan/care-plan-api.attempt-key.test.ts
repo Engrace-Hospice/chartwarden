@@ -1,9 +1,6 @@
 // The care-plan PATCH writes: the route DECLARES the Idempotency-Key header, so each holds one key per intent (see
-// ../__tests__/declared-key-contract).
-import {
-  type WriteSite,
-  describeDeclaredKeyContract,
-} from "../../../../../packages/ui/src/testing/declared-key-contract";
+// @chartwarden/ui/testing's shared declared-key contract).
+import { type WriteSite, describeDeclaredKeyContract } from "@chartwarden/ui/testing";
 import { patchGoal, patchIntervention, patchProblem } from "./care-plan-api";
 
 const PLAN = "11111111-1111-4111-8111-111111111111";

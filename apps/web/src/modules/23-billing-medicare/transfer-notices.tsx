@@ -148,7 +148,9 @@ export function TransferNotices(): JSX.Element {
         </header>
 
         <InlineAlert tone="warning">
-          <strong>External notice transmission is unavailable.</strong> Direct MAC notice dispatch is awaiting gateway contract qualification. Claim.MD and Stedi notice transaction support is not verified. Internal readiness does not mean the 8xC/8xD was filed.
+          <strong>External notice transmission is unavailable.</strong> Direct MAC notice dispatch
+          is awaiting gateway contract qualification. Claim.MD and Stedi notice transaction support
+          is not verified. Internal readiness does not mean the 8xC/8xD was filed.
         </InlineAlert>
 
         <BillingTabs />
@@ -494,7 +496,8 @@ function NoticeRail({
               <div className="wx-action-row">
                 {can("submit") ? (
                   <p role="note" className="wx-row-sub">
-                    This notice is internally ready, but external dispatch is held until the gateway contract is qualified. No filing action is available here.
+                    This notice is internally ready, but external dispatch is held until the gateway
+                    contract is qualified. No filing action is available here.
                   </p>
                 ) : null}
                 {can("confirm_prior_billing") ? (

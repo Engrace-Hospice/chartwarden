@@ -24,6 +24,7 @@ export function screenedText(raw: unknown, spec: ScreenSpec): string {
   const text =
     typeof raw === "string"
       ? raw
+          .normalize("NFKC")
           .replace(/\s+/gu, " ")
           .replace(/\p{C}+/gu, "")
           .trim()

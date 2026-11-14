@@ -502,6 +502,8 @@ export function mountIdentityRoutes(
     mfaGate?: IdentityRouteDeps["mfaGate"];
     /** M34's "tenant still onboarding" fact: lets `select-organization` admit a `created` organization's first admin. */
     onboardingTenants?: IdentityRouteDeps["onboardingTenants"];
+    /** The cached organization stage reader behind `GET /auth/context`'s `organizationStage` (the one the authenticate hook uses). */
+    organizationStage?: IdentityRouteDeps["organizationStage"];
     /** Better Auth credential lifecycle port (server-only extension). */
     credentialAdmin?: import("@chartwarden/auth").IdentityCredentialAdmin;
     /** M3 role-id resolver; M2 keeps the structural port to preserve module boundaries. */
@@ -549,6 +551,7 @@ export function mountIdentityRoutes(
     ...(invite?.funeralCases ? { funeralCases: invite.funeralCases } : {}),
     ...(invite?.mfaGate ? { mfaGate: invite.mfaGate } : {}),
     ...(invite?.onboardingTenants ? { onboardingTenants: invite.onboardingTenants } : {}),
+    ...(invite?.organizationStage ? { organizationStage: invite.organizationStage } : {}),
     ...(invite?.outbox ? { outbox: _orgScopedIdentityOutbox(db, invite.outbox) } : {}),
     // §11 D19 — real auth-time enforcement: `select-organization` refuses to bind a fresh session to a
     // non-active org. The reader needs no outbox (it never writes); see organization-lifecycle.ts.

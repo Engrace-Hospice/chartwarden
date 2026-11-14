@@ -90,12 +90,16 @@ describe.each([
 
 describe("notice lifecycle projections", () => {
   it("uses verified MAC acceptance rather than submission state and records only available timeline evidence", () => {
-    const view = mapNoe({
-      ...noeRow,
-      state: "ack_pending",
-      acceptedAt: null,
-      latestSubmissionId: "00000000-0000-4000-8000-000000000099",
-    } as repositories.NoeRecord, [], new Date("2026-11-04T12:00:00Z"));
+    const view = mapNoe(
+      {
+        ...noeRow,
+        state: "ack_pending",
+        acceptedAt: null,
+        latestSubmissionId: "00000000-0000-4000-8000-000000000099",
+      } as repositories.NoeRecord,
+      [],
+      new Date("2026-11-04T12:00:00Z"),
+    );
     expect(view.deadline).toMatchObject({
       risk: "submitted_awaiting_verification",
       acceptance: "not_verified",

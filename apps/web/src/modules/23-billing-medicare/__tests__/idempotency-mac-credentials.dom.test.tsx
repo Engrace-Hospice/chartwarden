@@ -1,6 +1,6 @@
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // #821: the MAC credential upsert keeps its Idempotency-Key only after a thrown fetch.
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../../shell/session";
@@ -27,8 +27,16 @@ function getBody(path: string): unknown {
   return { items: [], nextCursor: null, hasMore: false };
 }
 
-function mount(script: Script): string[] {
-  const { keys, fetchStub } = scriptedFetch(script, getBody);
+function mount(script: Script, validationMessage?: string): string[] {
+  const { keys, fetchStub } = scriptedFetch(script, getBody, () => ({
+    error: {
+      code: "VALIDATION_FAILED",
+      message: "request validation failed",
+      ...(validationMessage
+        ? { details: [{ field: "baaRecordRef", message: validationMessage }] }
+        : {}),
+    },
+  }));
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: fetchStub })}>
       <SessionProvider session={SESSION}>
@@ -48,7 +56,8 @@ const type = (label: string, value: string) =>
 
 async function fillForm(): Promise<void> {
   fireEvent.click(await screen.findByRole("button", { name: "Add credential" }));
-  const box = await screen.findByRole("combobox", { name: /Provider entity/ });
+  const dialog = await screen.findByRole("dialog", { name: "MAC credential upsert" });
+  const box = within(dialog).getByRole("combobox", { name: /Provider entity/ });
   fireEvent.focus(box);
   fireEvent.change(box, { target: { value: "Eng" } });
   fireEvent.click(await screen.findByRole("option", { name: /Engrace Hospice/ }));
@@ -58,18 +67,14 @@ async function fillForm(): Promise<void> {
   type("Client secret (write-only)", "s3cret");
 }
 
-/** Open the step-up ceremony, sign, and wait for the single write to land and the ceremony to close. */
+/** Open the attestation ceremony and wait for the single write to land and the ceremony to close. */
 const sign = async (expected: number, keys: string[]) => {
   fireEvent.click(screen.getByRole("button", { name: "Save with step-up" }));
-  const stepUp = await screen.findByLabelText("Re-enter your password to continue");
-  fireEvent.change(stepUp, { target: { value: "pw" } });
   const affirm = screen.getByRole("checkbox") as HTMLInputElement;
   if (!affirm.checked) fireEvent.click(affirm);
   fireEvent.click(screen.getByRole("button", { name: "Sign & save" }));
   await waitFor(() => expect(keys.length).toBe(expected));
-  await waitFor(() =>
-    expect(screen.queryByLabelText("Re-enter your password to continue")).toBeNull(),
-  );
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Sign & save" })).toBeNull());
 };
 
 afterEach(() => cleanup());
@@ -98,5 +103,13 @@ describe("MAC credential Idempotency-Key (#821)", () => {
     type("Submitter id", "SUB2");
     await sign(2, keys);
     expect(keys[1]).not.toBe(keys[0]);
+  });
+
+  it("shows the server's first field detail for a 422", async () => {
+    const message = "BAA reference must not contain a patient identifier.";
+    const keys = mount([422], message);
+    await fillForm();
+    await sign(1, keys);
+    expect(await screen.findByText(message)).toBeTruthy();
   });
 });

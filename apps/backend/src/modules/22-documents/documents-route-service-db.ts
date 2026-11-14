@@ -162,7 +162,7 @@ export function createDbDocumentRouteService(
     if (!uploads) {
       throw new DegradedError(
         "document-storage",
-        "document upload is unavailable: no object-storage adapter is bound (MINIO_* is not configured)",
+        "document upload is unavailable: no object-storage adapter is bound (OBJECT_STORE_* is not configured)",
       );
     }
     return uploads;

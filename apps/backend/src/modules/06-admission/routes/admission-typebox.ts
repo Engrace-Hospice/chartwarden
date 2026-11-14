@@ -224,6 +224,7 @@ export const ReferralTerminalSchema = Type.Object({
 });
 
 export const ReferralUpdateSchema = Type.Object({
+  patientDobAtReceipt: Type.Optional(Type.String({ format: "date" })),
   // "" clears either number. Dashes/spaces allowed; normalized server-side.
   medicareNumberAtReceipt: Type.Optional(Type.String({ maxLength: 20 })),
   medicaidNumberAtReceipt: Type.Optional(Type.String({ maxLength: 24 })),

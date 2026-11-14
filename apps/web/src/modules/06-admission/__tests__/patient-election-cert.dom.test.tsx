@@ -207,9 +207,12 @@ function clientFor(
   } as unknown as ApiClient;
 }
 
-function renderWorkspace(client: ApiClient): void {
+function renderWorkspace(
+  client: ApiClient,
+  initialEntry = "/patients/patient-1/election-certification",
+): void {
   render(
-    <MemoryRouter initialEntries={["/patients/patient-1/election-certification"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <ApiClientProvider client={client}>
         <ToastProvider>
           <SessionProvider session={session}>
@@ -227,6 +230,18 @@ function renderWorkspace(client: ApiClient): void {
 }
 
 describe("Patient Election & Certification workspace", () => {
+  it("focuses the Face-to-Face requirements target when opened from readiness", async () => {
+    renderWorkspace(
+      clientFor(),
+      "/patients/patient-1/election-certification#face-to-face-requirements",
+    );
+
+    const target = await screen.findByRole("heading", {
+      name: "Benefit periods and Face-to-Face requirements",
+    });
+    await waitFor(() => expect(document.activeElement).toBe(target));
+  });
+
   it("separates the hospice election from period-specific CTI and F2F requirements", async () => {
     renderWorkspace(clientFor());
 
