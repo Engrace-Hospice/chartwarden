@@ -46,6 +46,8 @@ export interface NavEntrySpec {
   icon: GlyphName;
   /** Preferred landing route; the first visible claimed screen is used when this one is not visible. */
   to: string;
+  /** Ordered permission-aware fallbacks when the preferred landing route is not visible. */
+  fallbackTo?: string[];
   /** Path prefixes whose screens belong under this entry. Longest matching prefix wins across entries. */
   claims: string[];
   /** Extra route prefixes that mark this entry current without being nav children (e.g. /patients/:id). */
@@ -78,7 +80,10 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         key: "admissions",
         label: "Admissions",
         icon: "user-plus",
-        to: "/admissions",
+        // Intake is the approved production-default landing. Admission-only actors still land on
+        // the census; the screen registry has already permission-filtered both destinations.
+        to: "/referrals",
+        fallbackTo: ["/admissions"],
         // Referrals are the Admissions area's "Intake" tab, so the inbox, new referral,
         // referral detail and Intake review (DocLens faxes start with the referral) live here too —
         // switching between the area's tabs never moves the sidebar highlight.
@@ -374,10 +379,13 @@ export function buildPrimaryNav(
             ...sortChildren(owned.get(entry.key) ?? [], entry.childOrder),
             ...subsections.flatMap((sub) => sub.screens),
           ];
+          const preferredLandings = [entry.to, ...(entry.fallbackTo ?? [])];
           const landing =
             entry.key === "home"
               ? "/"
-              : (children.find((c) => c.path === entry.to)?.path ?? children[0]?.path ?? null);
+              : (preferredLandings.find((path) => children.some((child) => child.path === path)) ??
+                children[0]?.path ??
+                null);
           const landingScreen = children.find((child) => child.path === landing);
           const orderedScreens = landingScreen
             ? [landingScreen, ...children.filter((child) => child.path !== landing)]
@@ -398,6 +406,7 @@ export function buildPrimaryNav(
             // broad `/telehealth` claim of its own.
             matchPrefixes: [
               entry.to,
+              ...(entry.fallbackTo ?? []),
               ...entry.claims,
               ...(entry.subsections ?? []).flatMap((sub) => sub.claims),
               ...(entry.activeOn ?? []),

@@ -74,7 +74,7 @@ describe("buildPrimaryNav", () => {
       screen("/intake"),
     ]);
     const byKey = new Map(nav.flatMap((s) => s.entries).map((e) => [e.key, e]));
-    expect(byKey.get("admissions")?.children.map((c) => c.path)).toEqual(
+    expect(byKey.get("admissions")?.screens.map((c) => c.path)).toEqual(
       expect.arrayContaining(["/referrals", "/intake"]),
     );
     expect(byKey.has("referrals")).toBe(false);
@@ -82,6 +82,22 @@ describe("buildPrimaryNav", () => {
     expect(activeEntryKey(nav, "/intake/abc/review")).toBe("admissions");
     expect(activeEntryKey(nav, "/referrals")).toBe("admissions");
     expect(activeEntryKey(nav, "/referrals/r-1")).toBe("admissions");
+  });
+
+  it("uses Intake as the Admissions landing and falls back to the census by permission", () => {
+    const withIntake = buildPrimaryNav([screen("/admissions"), screen("/referrals")]);
+    const intakeEntry = withIntake
+      .flatMap((section) => section.entries)
+      .find((entry) => entry.key === "admissions");
+    expect(intakeEntry?.href).toBe("/referrals");
+    expect(intakeEntry?.children.map((child) => child.path)).toEqual(["/admissions"]);
+
+    const admissionOnly = buildPrimaryNav([screen("/admissions"), screen("/admissions/new")]);
+    const admissionEntry = admissionOnly
+      .flatMap((section) => section.entries)
+      .find((entry) => entry.key === "admissions");
+    expect(admissionEntry?.href).toBe("/admissions");
+    expect(admissionEntry?.children.map((child) => child.path)).toEqual(["/admissions/new"]);
   });
 
   it("groups the Admissions submenu: admission pages, then referral pages, then IPU", () => {
@@ -103,8 +119,9 @@ describe("buildPrimaryNav", () => {
       "/admissions/discharges",
       // Readmit — the readmission candidates list — right after Discharge / transfer.
       "/admissions/readmit",
+      // Intake is now the entry-row landing; All Admissions remains directly available.
+      "/admissions",
       "/compliance/admissions",
-      "/referrals",
       "/referrals/new",
       "/intake",
       "/ipu/units",

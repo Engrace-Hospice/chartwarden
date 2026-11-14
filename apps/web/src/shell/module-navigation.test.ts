@@ -115,14 +115,14 @@ describe("resolveModuleNavigation", () => {
     expect(navigation?.items.map((item) => item.path)).toEqual(["/hope", "/hope/sfv"]);
     expect(navigation?.activePath).toBe("/hope/sfv");
   });
-  it("uses the exact curated Admissions order and reuses Pending Referrals as Referral Inbox", () => {
+  it("uses Intake as the first Admissions destination", () => {
     const visible = admissions.filter((item) => canSeeScreen(item, fullSession));
     const navigation = resolveModuleNavigation(buildPrimaryNav(visible), "/referrals");
 
     expect(navigation?.items.map(({ label, path }) => [label, path])).toEqual([
+      ["Intake", "/referrals"],
       ["All Admissions", "/admissions"],
       ["New Admission", "/admissions/new"],
-      ["Referral Inbox", "/referrals"],
       ["New Referral", "/referrals/new"],
       ["Readmit", "/admissions/readmit"],
       ["Discharge/Transfer", "/admissions/discharges"],
@@ -140,7 +140,7 @@ describe("resolveModuleNavigation", () => {
       .find((entry) => entry.key === "admissions");
     const navigation = resolveModuleNavigation(sections, "/admissions");
 
-    expect(navigation?.items.map((item) => item.path)).toEqual(["/admissions", "/referrals"]);
+    expect(navigation?.items.map((item) => item.path)).toEqual(["/referrals", "/admissions"]);
     expect(
       navigation?.items.every((item) => sidebar?.screens.some((screen) => screen.id === item.id)),
     ).toBe(true);
