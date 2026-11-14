@@ -49,6 +49,8 @@ export interface ReferralDetailProps {
   activeStage?: IntakeStepId;
   /** Tell the workspace when a server-backed action has completed and the referral was reloaded. */
   onActionComplete?: (action: string, referral: ReferralView) => void;
+  /** Keep the guided footer aligned with validation inside the verification form. */
+  onVerificationValidityChange?: (valid: boolean) => void;
 }
 
 export function ReferralDetail({
@@ -56,6 +58,7 @@ export function ReferralDetail({
   onReferralLoaded,
   activeStage,
   onActionComplete,
+  onVerificationValidityChange,
 }: ReferralDetailProps = {}): JSX.Element {
   const client = useApiClient();
   const session = useSession();
@@ -87,11 +90,13 @@ export function ReferralDetail({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [actionErrorStage, setActionErrorStage] = useState<IntakeStepId | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return null;
     setLoading(true);
     setError(null);
+    setActionErrorStage(null);
     try {
       const [ref, noteRows, activityRows] = await Promise.all([
         getReferral(client, id),
@@ -126,15 +131,32 @@ export function ReferralDetail({
     void load();
   }, [load]);
 
+  const mbiValid =
+    edit.medicareNumberAtReceipt.trim() === "" ||
+    isValidMedicareNumber(edit.medicareNumberAtReceipt);
+  const medicaidValid =
+    edit.medicaidNumberAtReceipt.trim() === "" ||
+    isValidMedicaidNumber(edit.medicaidNumberAtReceipt);
+  const mbiChanged = edit.medicareNumberAtReceipt !== (referral?.medicareNumberAtReceipt ?? "");
+  const medicaidChanged =
+    edit.medicaidNumberAtReceipt !== (referral?.medicaidNumberAtReceipt ?? "");
+  const verificationValid = (!mbiChanged || mbiValid) && (!medicaidChanged || medicaidValid);
+
+  useEffect(() => {
+    onVerificationValidityChange?.(verificationValid);
+  }, [onVerificationValidityChange, verificationValid]);
+
   async function run(label: string, fn: () => Promise<void>): Promise<void> {
     setBusy(label);
     setError(null);
+    setActionErrorStage(null);
     try {
       await fn();
       const refreshed = await load();
       if (refreshed) onActionComplete?.(label, refreshed);
     } catch (err) {
       setError(errorMessage(err, "The action could not be completed."));
+      setActionErrorStage(activeStage ?? null);
     } finally {
       setBusy(null);
     }
@@ -149,17 +171,14 @@ export function ReferralDetail({
     r.patientResolutionStatus === "matched" || r.patientResolutionStatus === "created";
   const terminal = ["declined", "duplicate", "withdrawn", "converted"].includes(r.status);
   const canEditReferral = ["received", "under_review", "pending_information"].includes(r.status);
-  const mbiValid =
-    edit.medicareNumberAtReceipt.trim() === "" ||
-    isValidMedicareNumber(edit.medicareNumberAtReceipt);
-  const medicaidValid =
-    edit.medicaidNumberAtReceipt.trim() === "" ||
-    isValidMedicaidNumber(edit.medicaidNumberAtReceipt);
   const canReview = r.status === "received" || r.status === "pending_information";
   const canPending = r.status === "under_review";
   const canQualify = r.status === "under_review" && r.qualificationBlockers.length === 0;
   const canConvert = r.status === "qualified" && resolved;
-  const dobRequiredError = error && /date of birth is required/i.test(error) ? error : null;
+  const visibleError =
+    !embedded || actionErrorStage === null || actionErrorStage === activeStage ? error : null;
+  const dobRequiredError =
+    visibleError && /date of birth is required/i.test(visibleError) ? visibleError : null;
   const clinicalIndicationMissing = r.qualificationBlockers.some(
     (blocker) => blocker.code === "CLINICAL_INDICATION_MISSING",
   );
@@ -206,9 +225,9 @@ export function ReferralDetail({
 
   const content = (
     <>
-      {error && (!dobRequiredError || !showVerification) ? (
+      {visibleError && (!dobRequiredError || !showVerification) ? (
         <div role="alert" style={alert}>
-          {error}
+          {visibleError}
         </div>
       ) : null}
       {!embedded ? (
@@ -387,6 +406,7 @@ export function ReferralDetail({
                 referralId={r.id}
                 patientId={r.patientId}
                 reviewReturnTo={intakeWorkspaceReturnTo(r.id, "receive")}
+                embedded
               />
             ) : null}
 
@@ -554,7 +574,10 @@ export function ReferralDetail({
                       disabled={!canEditReferral}
                       aria-invalid={Boolean(dobRequiredError)}
                       aria-describedby={dobRequiredError ? "referral-dob-error" : undefined}
-                      onChange={(ev) => setEdit({ ...edit, patientDobAtReceipt: ev.target.value })}
+                      onChange={(ev) => {
+                        setEdit({ ...edit, patientDobAtReceipt: ev.target.value });
+                        if (dobRequiredError) setError(null);
+                      }}
                     />
                     {dobRequiredError ? (
                       <span id="referral-dob-error" role="alert" style={fieldError}>
@@ -583,14 +606,19 @@ export function ReferralDetail({
                       placeholder="1EG4-TE5-MK73"
                       maxLength={20}
                       autoComplete="off"
-                      aria-invalid={!mbiValid}
+                      aria-invalid={mbiChanged && !mbiValid}
                       onChange={(ev) =>
                         setEdit({ ...edit, medicareNumberAtReceipt: ev.target.value })
                       }
                     />
-                    {!mbiValid ? (
+                    {mbiChanged && !mbiValid ? (
                       <span role="alert" style={fieldError}>
                         Enter the 11-character MBI (e.g. 1EG4-TE5-MK73).
+                      </span>
+                    ) : !mbiValid ? (
+                      <span style={fieldHint}>
+                        The received MBI is invalid and will not be copied to the patient unless you
+                        correct it.
                       </span>
                     ) : null}
                   </label>
@@ -601,12 +629,12 @@ export function ReferralDetail({
                       disabled={!canEditReferral}
                       maxLength={24}
                       autoComplete="off"
-                      aria-invalid={!medicaidValid}
+                      aria-invalid={medicaidChanged && !medicaidValid}
                       onChange={(ev) =>
                         setEdit({ ...edit, medicaidNumberAtReceipt: ev.target.value })
                       }
                     />
-                    {!medicaidValid ? (
+                    {medicaidChanged && !medicaidValid ? (
                       <span role="alert" style={fieldError}>
                         Enter up to 14 letters and digits.
                       </span>
@@ -694,11 +722,15 @@ export function ReferralDetail({
                   size="sm"
                   tone="secondary"
                   data-intake-primary-action="save-info"
-                  disabled={!canEditReferral || !mbiValid || !medicaidValid || busy === "save-info"}
+                  disabled={!canEditReferral || !verificationValid || busy === "save-info"}
                   onClick={() =>
                     void run("save-info", async () => {
+                      const { medicareNumberAtReceipt, medicaidNumberAtReceipt, ...otherEdits } =
+                        edit;
                       await patchReferral(client, r.id, {
-                        ...edit,
+                        ...otherEdits,
+                        ...(mbiChanged ? { medicareNumberAtReceipt } : {}),
+                        ...(medicaidChanged ? { medicaidNumberAtReceipt } : {}),
                         patientDobAtReceipt: edit.patientDobAtReceipt || undefined,
                         ifVersion: r.version,
                       });

@@ -46,7 +46,10 @@ const referral: ReferralView = {
   ],
 };
 
-function clientFor(value: ReferralView = referral): ApiClient {
+function clientFor(
+  value: ReferralView = referral,
+  options: { failCreatePatientForMissingDob?: boolean } = {},
+): ApiClient {
   let current = value;
   return {
     GET: vi.fn(async (path: string) => ({
@@ -55,6 +58,16 @@ function clientFor(value: ReferralView = referral): ApiClient {
       response: new Response(null, { status: 200 }),
     })),
     POST: vi.fn(async (path: string) => {
+      if (path.endsWith("/create-patient") && options.failCreatePatientForMissingDob) {
+        return {
+          data: undefined,
+          error: {
+            message:
+              "Patient date of birth is required before creating a patient from referral intake.",
+          },
+          response: new Response(null, { status: 422 }),
+        };
+      }
       if (path.endsWith("/review")) {
         current = {
           ...current,
@@ -118,8 +131,9 @@ function clientFor(value: ReferralView = referral): ApiClient {
 function renderWorkspace(
   value?: ReferralView,
   entry = `/referrals/${referral.id}/intake`,
+  options?: { failCreatePatientForMissingDob?: boolean },
 ): ApiClient {
-  const client = clientFor(value);
+  const client = clientFor(value, options);
   render(
     <MemoryRouter initialEntries={[entry]}>
       <ApiClientProvider client={client}>
@@ -224,10 +238,83 @@ describe("IntakeWorkspace", () => {
     expect(
       await screen.findByRole("heading", { name: "Review the received referral" }),
     ).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Records" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Received records" })).toBeTruthy();
     expect(screen.getByText("No records yet")).toBeTruthy();
+    expect(screen.getByText(/continue intake manually/i)).toBeTruthy();
     expect(screen.getAllByText(/continue with manual review/i)).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Return to Match patient" })).toBeTruthy();
+  });
+
+  it("clears a failed create-patient DOB error when staff return to verification", async () => {
+    renderWorkspace(undefined, undefined, { failCreatePatientForMissingDob: true });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Create new patient" }));
+    expect(
+      await screen.findByText(
+        "Patient date of birth is required before creating a patient from referral intake.",
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /verify information/i }));
+    expect(await screen.findByLabelText(/Date of birth/)).toHaveProperty("value", "1954-05-08");
+    expect(
+      screen.queryByText(
+        "Patient date of birth is required before creating a patient from referral intake.",
+      ),
+    ).toBeNull();
+  });
+
+  it("does not block another edit because an optional received MBI is invalid", async () => {
+    const client = renderWorkspace({ ...referral, medicareNumberAtReceipt: "E2E0-YU0-JY58" });
+
+    fireEvent.click(await screen.findByRole("button", { name: /verify information/i }));
+    expect(screen.getByText(/received MBI is invalid/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Fix highlighted fields" })).toBeNull();
+    fireEvent.change(screen.getByLabelText(/Date of birth/), {
+      target: { value: "1958-06-24" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save & return to Match patient" }));
+
+    await waitFor(() => expect(client.PATCH).toHaveBeenCalled());
+    const request = (client.PATCH as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as {
+      body?: Record<string, unknown>;
+    };
+    expect(request.body).not.toHaveProperty("medicareNumberAtReceipt");
+  });
+
+  it("focuses an invalid verification field after staff edit it", async () => {
+    renderWorkspace();
+
+    fireEvent.click(await screen.findByRole("button", { name: /verify information/i }));
+    fireEvent.change(screen.getByLabelText(/Medicare number/), {
+      target: { value: "E2E0-YU0-JY58" },
+    });
+    expect(screen.getByText(/Enter the 11-character MBI/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Fix highlighted fields" }));
+    expect(document.activeElement).toBe(screen.getByLabelText(/Medicare number/));
+  });
+
+  it("puts received-record capture in Step 1 while preserving a manual intake path", async () => {
+    renderWorkspace();
+
+    await screen.findByRole("heading", { name: "Patient Resolution" });
+    fireEvent.click(screen.getByRole("button", { name: /receive referral/i }));
+
+    expect(await screen.findByRole("heading", { name: "Received records" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add records" })).toBeTruthy();
+    expect(screen.getByText(/continue intake manually/i)).toBeTruthy();
+  });
+
+  it("restores a trusted DocLens return to the verification step", async () => {
+    renderWorkspace(undefined, `/referrals/${referral.id}/intake?step=verify`);
+
+    expect(
+      await screen.findByRole("heading", { name: "Verify the referral information" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /verify information/i })).toHaveProperty(
+      "ariaCurrent",
+      "step",
+    );
   });
 
   it("keeps View full referral as the distinct full-record route", async () => {

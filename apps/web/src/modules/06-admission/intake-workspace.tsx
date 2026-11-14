@@ -11,7 +11,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { REFERRAL_TONE, stateLabel } from "./admission-status";
 import { AdmissionsTabs } from "./admissions-chrome";
@@ -44,8 +44,10 @@ export function IntakeWorkspace(): JSX.Element {
   const [referral, setReferral] = useState<ReferralView | null>(null);
   const [focusStepId, setFocusStepId] = useState<IntakeStepId | null>(null);
   const [advancingFromReview, setAdvancingFromReview] = useState(false);
+  const [verificationValid, setVerificationValid] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -128,18 +130,28 @@ export function IntakeWorkspace(): JSX.Element {
   }
 
   function focusTask(stepId: IntakeStepId): void {
-    const target = document.getElementById(taskTargetId(stepId));
+    const target = workspaceRef.current?.querySelector<HTMLElement>(`#${taskTargetId(stepId)}`);
     if (typeof target?.scrollIntoView === "function") target.scrollIntoView({ block: "start" });
     target?.focus({ preventScroll: true });
   }
 
   function runPrimaryAction(): void {
+    if (displayedStepId === "verify" && !verificationValid) {
+      const invalidField =
+        workspaceRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+      if (typeof invalidField?.scrollIntoView === "function") {
+        invalidField.scrollIntoView({ block: "center" });
+      }
+      invalidField?.focus({ preventScroll: true });
+      return;
+    }
+
     if (
       displayedStepId === "verify" &&
       currentReferral.status === "pending_information" &&
       !isReviewingEarlierStep
     ) {
-      const resume = document.querySelector<HTMLButtonElement>(
+      const resume = workspaceRef.current?.querySelector<HTMLButtonElement>(
         '[data-intake-primary-action="review"]',
       );
       if (resume && !resume.disabled) {
@@ -151,7 +163,7 @@ export function IntakeWorkspace(): JSX.Element {
     }
 
     if (displayedStepId === "verify") {
-      const save = document.querySelector<HTMLButtonElement>(
+      const save = workspaceRef.current?.querySelector<HTMLButtonElement>(
         '[data-intake-primary-action="save-info"]',
       );
       if (save && !save.disabled) {
@@ -163,7 +175,7 @@ export function IntakeWorkspace(): JSX.Element {
     }
 
     if (displayedStepId === "review" && currentPresentation.blockers.length > 0) {
-      const save = document.querySelector<HTMLButtonElement>(
+      const save = workspaceRef.current?.querySelector<HTMLButtonElement>(
         '[data-intake-primary-action="save-info"]',
       );
       if (save && !save.disabled) {
@@ -190,7 +202,7 @@ export function IntakeWorkspace(): JSX.Element {
       return;
     }
 
-    const action = document.querySelector<HTMLButtonElement>(
+    const action = workspaceRef.current?.querySelector<HTMLButtonElement>(
       `[data-intake-primary-action="${primaryActionName(displayedStepId)}"]`,
     );
     if (action && !action.disabled) {
@@ -232,7 +244,7 @@ export function IntakeWorkspace(): JSX.Element {
 
       <AdmissionsTabs current="/referrals" />
 
-      <div className="wx-intake-workspace" style={workspace}>
+      <div ref={workspaceRef} className="wx-intake-workspace" style={workspace}>
         <nav className="wx-intake-progress" aria-label="Intake progress" style={progress}>
           <WorkflowStepper
             steps={steps}
@@ -262,6 +274,7 @@ export function IntakeWorkspace(): JSX.Element {
               activeStage={displayedStepId}
               onReferralLoaded={setReferral}
               onActionComplete={handleActionComplete}
+              onVerificationValidityChange={setVerificationValid}
             />
           </section>
 
@@ -299,11 +312,13 @@ export function IntakeWorkspace(): JSX.Element {
           View full referral
         </Button>
         <Button tone="primary" onClick={runPrimaryAction}>
-          {isReviewingEarlierStep && displayedStepId === "verify"
-            ? `Save & return to ${STEP_DEFINITIONS[activeIndex]?.label ?? "current step"}`
-            : isReviewingEarlierStep
-              ? `Return to ${STEP_DEFINITIONS[activeIndex]?.label ?? "current step"}`
-              : primaryLabel(displayedStepId, presentation)}
+          {displayedStepId === "verify" && !verificationValid
+            ? "Fix highlighted fields"
+            : isReviewingEarlierStep && displayedStepId === "verify"
+              ? `Save & return to ${STEP_DEFINITIONS[activeIndex]?.label ?? "current step"}`
+              : isReviewingEarlierStep
+                ? `Return to ${STEP_DEFINITIONS[activeIndex]?.label ?? "current step"}`
+                : primaryLabel(displayedStepId, presentation)}
         </Button>
       </StickyFooterActions>
     </div>

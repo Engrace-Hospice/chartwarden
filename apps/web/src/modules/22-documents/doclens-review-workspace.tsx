@@ -41,7 +41,7 @@ import {
 // silently. Reads GET /api/v1/intake/uploads/:id/workspace; writes via ./doclens-api.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX, KeyboardEvent, ReactNode } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { PatientLookupField, ReferralLookupField } from "../../shell/entity-lookups";
 import { safeIntakeReturnTo } from "../../shell/intake-return";
 import {
@@ -123,9 +123,10 @@ const typing = (el: EventTarget | null): boolean =>
 
 export function DocLensReviewWorkspace(): JSX.Element {
   const client = useApiClient();
+  const navigate = useNavigate();
   const { batchId = "" } = useParams<{ batchId: string }>();
   const [searchParams] = useSearchParams();
-  const returnTo = safeIntakeReturnTo(searchParams.get("returnTo"));
+  const requestedReturnTo = safeIntakeReturnTo(searchParams.get("returnTo"));
   const [ws, setWs] = useState<Workspace | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [viewerPage, setViewerPage] = useState<number | null>(null);
@@ -345,8 +346,8 @@ export function DocLensReviewWorkspace(): JSX.Element {
       <div className="wx-reports">
         <div className="wx-list-state">
           <EmptyState title="Review unavailable" description={loadError} />
-          <Link to={returnTo ?? "/intake"} className="wx-btn-secondary">
-            {returnTo ? "Back to referral intake" : "Back to intake review"}
+          <Link to={requestedReturnTo ?? "/intake"} className="wx-btn-secondary">
+            {requestedReturnTo ? "Back to referral intake" : "Back to intake review"}
           </Link>
         </div>
       </div>
@@ -379,6 +380,11 @@ export function DocLensReviewWorkspace(): JSX.Element {
   const pageNumbers = ws.pages.length
     ? ws.pages.map((p) => p.page)
     : [...new Set(ws.candidates.map((c) => c.page))].sort((a, b) => a - b);
+  const returnTo =
+    requestedReturnTo ??
+    (ws.batch.referralId ? `/referrals/${ws.batch.referralId}/intake?step=verify` : "/intake");
+  const returnLabel =
+    requestedReturnTo || ws.batch.referralId ? "Back to referral intake" : "Back to intake review";
 
   return (
     <div className="wx-reports wx-doclens">
@@ -405,11 +411,9 @@ export function DocLensReviewWorkspace(): JSX.Element {
           className="wx-page-actions"
           style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
         >
-          {returnTo ? (
-            <Link to={returnTo} className="wx-btn-secondary">
-              Back to referral intake
-            </Link>
-          ) : null}
+          <Link to={returnTo} className="wx-btn-secondary">
+            {returnLabel}
+          </Link>
           {!isComplete && !lockedByOther ? (
             <button
               type="button"
@@ -771,12 +775,17 @@ export function DocLensReviewWorkspace(): JSX.Element {
       {completeOpen && review ? (
         <CompleteDialog
           ws={ws}
-          returnTo={returnTo}
           onClose={() => {
             setCompleteOpen(false);
             void refresh();
           }}
           onComplete={() => completeReview(client, review.id)}
+          doneLabel={
+            requestedReturnTo || ws.batch.referralId
+              ? "Return to referral intake"
+              : "Back to intake review"
+          }
+          onDone={() => navigate(returnTo)}
         />
       ) : null}
     </div>
@@ -1647,14 +1656,16 @@ function SudPanel({
 
 function CompleteDialog({
   ws,
-  returnTo,
   onClose,
   onComplete,
+  doneLabel,
+  onDone,
 }: {
   ws: Workspace;
-  returnTo: string | null;
   onClose: () => void;
   onComplete: () => Promise<{ ok: true; value: CompleteResult } | { ok: false; message: string }>;
+  doneLabel: string;
+  onDone: () => void;
 }): JSX.Element {
   const [attested, setAttested] = useState(false);
   const [pending, setPending] = useState(false);
@@ -1756,15 +1767,9 @@ function CompleteDialog({
               </>
             ) : null}
             <div className="wx-doclens-buttons" style={{ justifyContent: "flex-end" }}>
-              {returnTo ? (
-                <Link to={returnTo} className="wx-btn-primary">
-                  Return to referral intake
-                </Link>
-              ) : (
-                <button type="button" className="wx-btn-primary" onClick={onClose}>
-                  Done
-                </button>
-              )}
+              <button type="button" className="wx-btn-primary" onClick={onDone}>
+                {doneLabel}
+              </button>
             </div>
           </>
         ) : (

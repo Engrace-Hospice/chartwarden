@@ -150,6 +150,7 @@ function mount(entry = `/intake/${BATCH}/review`) {
           <MemoryRouter initialEntries={[entry]}>
             <Routes>
               <Route path="/intake/:batchId/review" element={<DocLensReviewWorkspace />} />
+              <Route path="/referrals/:id/intake" element={<div>Referral intake restored</div>} />
             </Routes>
           </MemoryRouter>
         </ToastProvider>
@@ -180,6 +181,43 @@ describe("DocLens review workspace", () => {
 
     const back = await screen.findByRole("link", { name: "Back to referral intake" });
     expect(back.getAttribute("href")).toBe(target);
+  });
+
+  it("derives the referral-intake return target from the authorized workspace", async () => {
+    workspace = {
+      ...fixture("not_detected"),
+      batch: {
+        ...fixture("not_detected").batch,
+        referralId: "ffffffff-6666-4666-8666-ffffffffffff",
+      },
+    };
+    mount();
+
+    expect(
+      (await screen.findByRole("link", { name: "Back to referral intake" })).getAttribute("href"),
+    ).toBe("/referrals/ffffffff-6666-4666-8666-ffffffffffff/intake?step=verify");
+  });
+
+  it("returns to the referral verification step after completing review", async () => {
+    workspace = {
+      ...fixture("not_detected"),
+      batch: {
+        ...fixture("not_detected").batch,
+        referralId: "ffffffff-6666-4666-8666-ffffffffffff",
+      },
+    };
+    mount();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Complete review" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(
+      within(dialog).getByRole("checkbox", { name: /I reviewed each accepted field/ }),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Complete review" }));
+    expect(await screen.findByRole("heading", { name: "Review complete" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Return to referral intake" }));
+
+    expect(await screen.findByText("Referral intake restored")).toBeTruthy();
   });
 
   it("(a) keeps Accept disabled until the source-view confirmation is ticked", async () => {

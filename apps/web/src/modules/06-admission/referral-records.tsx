@@ -116,11 +116,14 @@ export function ReferralRecords({
   referralId,
   patientId,
   reviewReturnTo,
+  embedded = false,
 }: {
   referralId: string;
   patientId: string | null;
   /** Guided-workspace context restored after M22 review. IDs only; never patient data. */
   reviewReturnTo?: string;
+  /** Compact capture/status surface used by Step 1 of the guided intake workspace. */
+  embedded?: boolean;
 }): JSX.Element {
   const client = useApiClient();
   const [items, setItems] = useState<ReferralBatch[] | null>(null);
@@ -162,11 +165,16 @@ export function ReferralRecords({
       <section style={section} aria-label="Intake records">
         <div style={sectionHead}>
           <div>
-            <h2 style={heading}>Records</h2>
+            <h2 style={heading}>{embedded ? "Received records" : "Records"}</h2>
             <p style={muted}>
               Faxes, emailed and scanned records for this referral. WardenLens reads them; a
               reviewer checks every field against the page before anything reaches the chart.
             </p>
+            {embedded ? (
+              <p style={muted}>
+                No records yet? You can continue intake manually and add them when they arrive.
+              </p>
+            ) : null}
           </div>
           <Button onClick={() => setUploadOpen(true)}>Add records</Button>
         </div>
@@ -210,7 +218,7 @@ export function ReferralRecords({
         ) : null}
       </section>
 
-      <ReferralRecordsRequests referralId={referralId} />
+      {!embedded ? <ReferralRecordsRequests referralId={referralId} /> : null}
 
       <IntakeUploadDialog
         open={uploadOpen}
@@ -264,9 +272,9 @@ function BatchRow({
           ) : null}
         </div>
         {b.status === "parse_failed" ? (
-          <span style={manualFallback}>
+          <span style={failureHelp}>
             WardenLens could not read this file. Keep the original record and continue the referral
-            manually.
+            manually, or open it for details while the source is corrected.
           </span>
         ) : null}
       </div>
@@ -285,6 +293,10 @@ function BatchRow({
 }
 
 const stack: CSSProperties = { display: "grid", gap: "1rem", minWidth: 0 };
+const failureHelp: CSSProperties = {
+  color: "var(--color-error)",
+  fontSize: "0.8125rem",
+};
 const section: CSSProperties = {
   border: "1px solid var(--color-outline-variant)",
   borderRadius: "8px",
@@ -330,9 +342,5 @@ const noticeBox: CSSProperties = {
   border: "1px solid var(--color-outline-variant)",
   borderRadius: "8px",
   padding: "0.6rem 0.8rem",
-  fontSize: "0.875rem",
-};
-const manualFallback: CSSProperties = {
-  color: "var(--color-on-surface-variant)",
   fontSize: "0.875rem",
 };

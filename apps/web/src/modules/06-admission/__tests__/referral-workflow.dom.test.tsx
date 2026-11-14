@@ -471,6 +471,18 @@ describe("Referral Records tab (F-238 — intake starts with the referral)", () 
     expect(screen.getByRole("link", { name: /^View Fax received/ })).toBeTruthy();
   });
 
+  it("keeps a failed original visible and directs staff to the manual path", async () => {
+    renderWithShell(
+      <ReferralDetail />,
+      recordsClient([{ ...batch, status: "parse_failed", pages: 0, candidates: 0, review: null }]),
+      `/referrals/${referral.id}?tab=records`,
+    );
+
+    expect(await screen.findByText("Could not read")).toBeTruthy();
+    expect(screen.getByText(/keep the original record/i)).toBeTruthy();
+    expect(screen.getByText(/continue the referral manually/i)).toBeTruthy();
+  });
+
   it("Add records uploads the file, files it against the referral and starts DocLens", async () => {
     const cryptoValue = { subtle: { digest: vi.fn(async () => new Uint8Array(32).buffer) } };
     Object.defineProperty(globalThis, "crypto", { configurable: true, value: cryptoValue });
