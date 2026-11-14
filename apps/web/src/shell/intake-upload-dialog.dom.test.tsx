@@ -226,6 +226,25 @@ describe("IntakeUploadDialog — referral context", () => {
     );
     expect(onFiled).not.toHaveBeenCalled();
     expect(within(dialog).queryByText(/Uploading|Filing|Starting/)).toBeNull();
+
+    view.rerender(
+      <IntakeUploadDialog
+        open
+        client={{ POST: post } as unknown as ApiClient}
+        referralId="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        patientId="11111111-1111-4111-8111-111111111111"
+        onClose={onClose}
+        onFiled={onFiled}
+      />,
+    );
+    dialog = screen.getByRole("dialog", { name: "Add records" });
+    const retry = await within(dialog).findByRole("button", { name: "Retry filing" });
+    expect((retry as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(retry);
+    await waitFor(() => expect(onFiled).toHaveBeenCalledOnce());
+    expect(post.mock.calls.filter(([path]) => path === "/api/v1/document-uploads")).toHaveLength(
+      1,
+    );
   });
 
   it("never exposes or files a preserved document after the referral changes", async () => {
@@ -314,6 +333,35 @@ describe("IntakeUploadDialog — referral context", () => {
       "disabled",
       true,
     );
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    view.rerender(
+      <IntakeUploadDialog
+        open
+        client={client}
+        referralId={referralA}
+        patientId={patientA}
+        onClose={() => undefined}
+        onFiled={onFiled}
+      />,
+    );
+    dialog = screen.getByRole("dialog", { name: "Add records" });
+    expect(within(dialog).getByRole("button", { name: "Retry filing" })).toHaveProperty(
+      "disabled",
+      false,
+    );
+
+    view.rerender(
+      <IntakeUploadDialog
+        open
+        client={client}
+        referralId={referralB}
+        patientId={patientB}
+        onClose={() => undefined}
+        onFiled={onFiled}
+      />,
+    );
+    dialog = screen.getByRole("dialog", { name: "Add records" });
 
     fireEvent.change(within(dialog).getByLabelText("Records file"), {
       target: { files: [new File(["B"], "referral-b.pdf", { type: "application/pdf" })] },

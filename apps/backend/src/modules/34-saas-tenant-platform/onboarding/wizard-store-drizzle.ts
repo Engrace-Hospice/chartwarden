@@ -7,7 +7,6 @@ import { randomUUID } from "node:crypto";
 // every table touched here except the M1 spine reads (`organization` for the slug, `membership` for the officer check),
 // which the table-ownership gate sanctions.
 import { auditPlatformEvent } from "@chartwarden/audit";
-import { PLATFORM_GRANTABLE_ROLE_KEYS } from "@chartwarden/auth";
 import { type DbClient, schema } from "@chartwarden/db";
 import { BaaRegisterRepository, OnboardingRepository } from "@chartwarden/saas-tenant-platform";
 import {
@@ -23,7 +22,7 @@ import {
   lockTenantOnboardingShared,
 } from "../routes/platform/tenant-onboarding-lock";
 import { voidPendingGoLiveForDataChange as voidPendingGoLive } from "./go-live-void";
-import { SYSTEM_MEMBERSHIP_ID } from "./model";
+import { skipActorKindOf } from "./model";
 import type {
   CompletionMode,
   GoLiveAttestation,
@@ -36,6 +35,7 @@ import type {
   WizardMember,
 } from "./model";
 import type { OrgProfilePort } from "./org-profile";
+import { readIsPlatformStaff } from "./platform-staff-reader";
 import type { TaskPatch, WizardRunner, WizardStore } from "./wizard-store";
 
 /** onboarding -> active inside the caller's transaction (built by the platform backend: it owns the lifecycle machine). */
@@ -69,31 +69,38 @@ export const toTemplate = (row: schema.OnboardingTaskTemplate): StepTemplate => 
   canonical: row.isCanonical,
 });
 
-export const toTask = (row: schema.OnboardingTask): StepTask => ({
-  id: row.id,
-  templateKey: row.templateKey,
-  status: row.status as TaskStatus,
-  assignedToMembershipId: row.assignedToMembershipId,
-  createdAt: row.createdAt,
-  dueAt: row.dueAt,
-  startedAt: row.startedAt,
-  completedAt: row.completedAt,
-  blockerReason: row.blockerReason,
-  evidenceNote: row.evidenceNote,
-  evidenceRef: row.evidenceRef,
-  attestedByMembershipId: row.attestedByMembershipId,
-  attestedByActorKind: row.attestedByActorKind as StepTask["attestedByActorKind"],
-  attestedAt: row.attestedAt,
-  skipRationale:
+export const toTask = (row: schema.OnboardingTask): StepTask => {
+  const skip =
     row.status === "skipped"
-      ? ((row.completionEvidence as { skip?: { rationale?: string } } | null)?.skip?.rationale ??
-        null)
-      : null,
-  skippedBySystem:
-    row.status === "skipped" &&
-    (row.completionEvidence as { skip?: { skippedByMembershipId?: string } } | null)?.skip
-      ?.skippedByMembershipId === SYSTEM_MEMBERSHIP_ID,
-});
+      ? (
+          row.completionEvidence as {
+            skip?: {
+              rationale?: string;
+              skippedByMembershipId?: string;
+              skippedByActorKind?: string;
+            };
+          } | null
+        )?.skip
+      : undefined;
+  return {
+    id: row.id,
+    templateKey: row.templateKey,
+    status: row.status as TaskStatus,
+    assignedToMembershipId: row.assignedToMembershipId,
+    createdAt: row.createdAt,
+    dueAt: row.dueAt,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt,
+    blockerReason: row.blockerReason,
+    evidenceNote: row.evidenceNote,
+    evidenceRef: row.evidenceRef,
+    attestedByMembershipId: row.attestedByMembershipId,
+    attestedByActorKind: row.attestedByActorKind as StepTask["attestedByActorKind"],
+    attestedAt: row.attestedAt,
+    skipRationale: row.status === "skipped" ? (skip?.rationale ?? null) : null,
+    skippedByActorKind: row.status === "skipped" ? skipActorKindOf(skip) : null,
+  };
+};
 
 export const toGoLive = (row: schema.TenantGoLiveAttestation): GoLiveAttestation => ({
   id: row.id,
@@ -349,15 +356,7 @@ export function createDrizzleWizardStore(
       return orgProfileFor(tx).update(organizationId, patch, actorUserId);
     },
     voidPendingGoLiveForDataChange: (input) => voidPendingGoLive(tx, input),
-    async isPlatformStaff(userId) {
-      const holders = await tx.execute<{ user_id: string }>(
-        sql`SELECT user_id FROM m34_platform_role_holders(ARRAY[${sql.join(
-          PLATFORM_GRANTABLE_ROLE_KEYS.map((key) => sql`${key}`),
-          sql`, `,
-        )}]::text[]) WHERE user_id = ${userId}::uuid`,
-      );
-      return holders.rows.length > 0;
-    },
+    isPlatformStaff: (userId) => readIsPlatformStaff(tx, userId),
     async activate(input) {
       if (!activation) throw new Error("a tenant-scoped wizard store cannot activate a tenant");
       await activation(tx, input);

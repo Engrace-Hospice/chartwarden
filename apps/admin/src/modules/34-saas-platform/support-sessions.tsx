@@ -10,9 +10,12 @@ import {
   type StatusTone,
   TableScroll,
   UnstyledList,
+  WriteFailureNotice,
   interactiveRowProps,
+  type operations,
   useApiClient,
   useDrawerA11y,
+  useOpsWrite,
   useRequestGuard,
   useSelectionParam,
   useStaleSelection,
@@ -63,6 +66,10 @@ interface CursorPage<T> {
   hasMore: boolean;
 }
 
+type GrantPage =
+  operations["getApiV1PlatformSupportconsentgrants"]["responses"][200]["content"]["application/json"];
+type SupportGrant = GrantPage["items"][number];
+
 // `open` is the live consented window → critical (gold); fall back to the Foundation map otherwise.
 function sessionTone(status: string): StatusTone {
   if (status === "open") return "critical";
@@ -97,6 +104,14 @@ export function SupportSessions(): JSX.Element {
   const [statusFilter, setStatusFilter] = useState<SupportSessionStatus | "all">("all");
   const [ceremonyOpen, setCeremonyOpen] = useState(false);
   const [banner, setBanner] = useState<Banner | null>(null);
+  const [grants, setGrants] = useState<SupportGrant[]>([]);
+  const [selectedGrantId, setSelectedGrantId] = useState("");
+  const [grantError, setGrantError] = useState<string | null>(null);
+  const grantGuard = useRequestGuard();
+  const start = useOpsWrite({
+    SUPPORT_GRANT_INACTIVE:
+      "That consent grant is no longer active. Reload the grants and choose another.",
+  });
 
   const load = useCallback(async () => {
     const isCurrent = guard();
@@ -120,32 +135,62 @@ export function SupportSessions(): JSX.Element {
     void load();
   }, [load]);
 
-  // The Start-session ceremony attests the §7.4 step-3 act: a DISTINCT platform-ops actor opens a
-  // session against a `support_consent_grant` under a fresh passkey step-up (D16). The grant id +
-  // step-up credential ride the POST; the route enforces distinct-actor + freshness server-side.
-  async function startSession(stepUpValue?: string): Promise<void> {
-    setCeremonyOpen(false);
-    // TODO(M34 web): this stub screen should pass the selected support_consent_grant id.
-    const { error: err } = await client.POST("/api/v1/platform/support-sessions", {
-      body: { supportConsentGrantId: "" },
-    });
-    if (err) {
-      setBanner({
-        tone: "error",
-        text: "Start session failed — the step-up or consent grant was rejected.",
-      });
-      return;
+  const loadGrants = useCallback(async () => {
+    const isCurrent = grantGuard();
+    try {
+      const allGrants: SupportGrant[] = [];
+      let cursor: string | undefined;
+      do {
+        const { data, error: failed } = await client.GET(
+          "/api/v1/platform/support-consent-grants",
+          { params: { query: { active: true, limit: 100, cursor } } },
+        );
+        if (!data || failed) throw new Error("active grants unavailable");
+        allGrants.push(...data.items);
+        cursor = data.hasMore && data.nextCursor ? data.nextCursor : undefined;
+      } while (cursor);
+      if (!isCurrent()) return;
+      setGrantError(null);
+      setGrants(allGrants);
+      setSelectedGrantId((current) =>
+        allGrants.some((grant) => grant.id === current) ? current : "",
+      );
+    } catch {
+      if (!isCurrent()) return;
+      setGrantError("Could not load active tenant consent grants.");
+      setGrants([]);
+      setSelectedGrantId("");
     }
-    setBanner({
-      tone: "success",
-      text: stepUpValue ? "Support session started." : "Support session started.",
-    });
-    void load();
+  }, [client, grantGuard]);
+
+  useEffect(() => {
+    void loadGrants();
+  }, [loadGrants]);
+
+  // The Start-session ceremony attests the §7.4 step-3 act: a DISTINCT platform-ops actor opens a
+  // session against a `support_consent_grant` under a fresh server-verified step-up (D16).
+  async function startSession(): Promise<void> {
+    setCeremonyOpen(false);
+    if (!selectedGrantId) return;
+    const outcome = await start.run(
+      `support-session:${selectedGrantId}`,
+      (key) =>
+        client.POST("/api/v1/platform/support-sessions", {
+          params: { header: { "Idempotency-Key": key } },
+          body: { supportConsentGrantId: selectedGrantId },
+        }),
+      async () => {
+        await Promise.all([load(), loadGrants()]);
+      },
+    );
+    if (!outcome.ok) return;
+    setBanner({ tone: "success", text: "Support session started." });
   }
 
   const visible =
     statusFilter === "all" ? sessions : sessions.filter((s) => s.status === statusFilter);
   const selected = selectedId ? sessions.find((s) => s.id === selectedId) : undefined;
+  const selectedGrant = grants.find((grant) => grant.id === selectedGrantId);
   useStaleSelection({
     param: "session",
     ready: loaded,
@@ -160,16 +205,16 @@ export function SupportSessions(): JSX.Element {
         title="Start support session"
         attestation={
           <span>
-            Opening a tenant-consented support session against an authorizing{" "}
-            <strong>support consent grant</strong>. You must be a platform-ops actor distinct from
-            the grantor (D16). All actions inside the session are audited on the surveyor ledger.
+            Opening a {selectedGrant?.scope ?? "selected"} support session for tenant{" "}
+            <strong>{selectedGrant?.tenantAccountId ?? "(choose a grant)"}</strong>, expiring{" "}
+            {selectedGrant ? new Date(selectedGrant.expiresAt).toLocaleString() : "—"}. You must be
+            distinct from the grantor (D16). All actions are audited on the surveyor ledger.
           </span>
         }
         legalText="I affirm this access is authorized by an active tenant consent grant and limited to its scope (§7.4)."
         signer={{ name: "Platform Operator", role: "platform_ops" }}
-        stepUp={{ label: "Passkey step-up (recent 5 min)", type: "password" }}
         commitLabel="Start session"
-        onCommit={(v) => void startSession(v)}
+        onCommit={() => void startSession()}
         onCancel={() => setCeremonyOpen(false)}
       />
       <div className="wx-list-drawer-main">
@@ -179,7 +224,9 @@ export function SupportSessions(): JSX.Element {
             <p>Tenant-consented break-glass sessions, with every action on the surveyor ledger.</p>
           </div>
           <div className="wx-list-toolbar-end">
-            <Button onClick={() => setCeremonyOpen(true)}>Start session</Button>
+            <Button disabled={!selectedGrantId} onClick={() => setCeremonyOpen(true)}>
+              Start session
+            </Button>
           </div>
         </header>
 
@@ -190,9 +237,26 @@ export function SupportSessions(): JSX.Element {
             options={STATUS_OPTIONS}
             onChange={(e) => setStatusFilter(e.target.value as SupportSessionStatus | "all")}
           />
+          <SelectField
+            label="Active tenant consent grant"
+            value={selectedGrantId}
+            options={[
+              {
+                value: "",
+                label: grants.length === 0 ? "No active grants" : "Choose an active grant…",
+              },
+              ...grants.map((grant) => ({
+                value: grant.id,
+                label: `${grant.tenantAccountId} · ${grant.scope} · expires ${new Date(grant.expiresAt).toLocaleString()}`,
+              })),
+            ]}
+            onChange={(event) => setSelectedGrantId(event.target.value)}
+          />
         </div>
 
         {banner ? <InlineAlert tone={banner.tone}>{banner.text}</InlineAlert> : null}
+        {grantError ? <InlineAlert tone="error">{grantError}</InlineAlert> : null}
+        {start.failure ? <WriteFailureNotice failure={start.failure} /> : null}
 
         <SessionTable
           items={visible}

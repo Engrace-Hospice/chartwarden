@@ -1086,6 +1086,11 @@ jobs:
           # INSERT, the tenant role boxed to the revoke cascade, the issue matrix, the cascade through the real outbox publisher, the
           # ledger hook, the expiry sweep and a start racing a revoke.
           - { name: "M34 support session", scripts: "test:m34:support-session:live" }
+          # Slice 7 (piece 7B): onboarding help requests as the real chartwarden_app and platform carrier roles. Isolation, the forged
+          # organization and the pinned INSERT, the column-limited UPDATE and the guard trigger, the state CHECKs, one live request
+          # per tenant account (and the race), approve -> End help and the operator's Resolve through the service, ChartWarden staff
+          # refused, the real publisher's requested event, audit rows without the message or the note, the sweep, and the eraser.
+          - { name: "M34 help requests", scripts: "test:m34:help-request:live" }
           # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
           # this chain was executed before: the consumer did not exist and neither emitter fired.

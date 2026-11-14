@@ -48,7 +48,7 @@ const referral: ReferralView = {
 
 function clientFor(
   value: ReferralView = referral,
-  options: { failCreatePatientForMissingDob?: boolean } = {},
+  options: { failCreatePatientForMissingDob?: boolean; reviewGate?: Promise<void> } = {},
 ): ApiClient {
   let current = value;
   return {
@@ -69,6 +69,7 @@ function clientFor(
         };
       }
       if (path.endsWith("/review")) {
+        await options.reviewGate;
         current = {
           ...current,
           state: "under_review",
@@ -131,7 +132,7 @@ function clientFor(
 function renderWorkspace(
   value?: ReferralView,
   entry = `/referrals/${referral.id}/intake`,
-  options?: { failCreatePatientForMissingDob?: boolean },
+  options?: { failCreatePatientForMissingDob?: boolean; reviewGate?: Promise<void> },
 ): ApiClient {
   const client = clientFor(value, options);
   render(
@@ -204,6 +205,28 @@ describe("IntakeWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Save & continue to patient matching" }));
     expect(await screen.findByRole("heading", { name: "Patient Resolution" })).toBeTruthy();
+  });
+
+  it("disables Start review while its transition is in flight", async () => {
+    let releaseReview = (): void => undefined;
+    const reviewGate = new Promise<void>((resolve) => {
+      releaseReview = resolve;
+    });
+    const client = renderWorkspace(
+      { ...referral, state: "received", status: "received" },
+      undefined,
+      { reviewGate },
+    );
+
+    const startReview = await screen.findByRole("button", { name: "Start review" });
+    fireEvent.click(startReview);
+
+    await waitFor(() => expect((startReview as HTMLButtonElement).disabled).toBe(true));
+    fireEvent.click(startReview);
+    expect(client.POST).toHaveBeenCalledTimes(1);
+
+    releaseReview();
+    await screen.findByRole("heading", { name: "Verify the referral information" });
   });
 
   it("lets staff reopen completed steps, go back, and return to the current required step", async () => {

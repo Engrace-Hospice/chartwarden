@@ -295,7 +295,7 @@ export function ReferralDetail({
                         size="sm"
                         tone="secondary"
                         data-intake-primary-action="review"
-                        disabled={busy === "review"}
+                        disabled={busy === "start-review"}
                         onClick={() =>
                           void run("start-review", async () => {
                             await referralCommand(client, r.id, "review", {

@@ -116,7 +116,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
     },
 
     async issueConsentGrant(organizationId, actor, args) {
-      return inOrgCtx(organizationId, async (tx) => {
+      const issued = await inOrgCtx(organizationId, async (tx) => {
         // The tenant_account_id is resolved from the org spine (1:1 with organization).
         const account = await tx
           .select()
@@ -143,25 +143,47 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
           reason: args.grantReason,
           organizationActive: org?.status === "active",
         });
-        return grantView(row, deps.now());
+        return { view: grantView(row, deps.now()), afterCommit: row.afterCommit };
       });
+      try {
+        await issued.afterCommit?.();
+      } catch (error) {
+        deps.warn?.("m34.support_grant: issue alert delivery failed after commit", {
+          organizationId,
+          grantId: issued.view.id,
+          errorClass: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
+      return issued.view;
     },
 
     async revokeConsentGrant(organizationId, grantId, actor, reason) {
-      const result = await inOrgCtx(organizationId, async (tx) => {
+      const revoked = await inOrgCtx(organizationId, async (tx) => {
         // The security boundary commits first: revoke the grant and end every covered session atomically.
-        await deps.supportOps.revokeGrantAndCloseSessions(deps.supportOps.depsFor(tx), {
-          grantId,
-          organizationId,
-          revokedByMembershipId: actor.membershipId,
-          reason,
-          source: "tenant",
-          closedByUserId: actor.userId,
-        });
+        const cascade = await deps.supportOps.revokeGrantAndCloseSessions(
+          deps.supportOps.depsFor(tx),
+          {
+            grantId,
+            organizationId,
+            revokedByMembershipId: actor.membershipId,
+            reason,
+            source: "tenant",
+            closedByUserId: actor.userId,
+          },
+        );
         const row = await new SupportRepository(tx).findConsentGrantById(grantId);
         if (!row) throw new NotFoundError("support consent grant");
-        return grantView(row, deps.now());
+        return { view: grantView(row, deps.now()), afterCommit: cascade.afterCommit };
       });
+      try {
+        await revoked.afterCommit?.();
+      } catch (error) {
+        deps.warn?.("m34.support_grant: revoke alert delivery failed after commit", {
+          organizationId,
+          grantId,
+          errorClass: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
       // Help-request bookkeeping is a collaborator, not part of the consent boundary. Run it after
       // the revoke commits so its failure can never roll consent back or leave a support window open.
       if (deps.linkedHelpRequestsFor) {
@@ -184,7 +206,7 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
           });
         }
       }
-      return result;
+      return revoked.view;
     },
 
     // ── support sessions on this organization (read-only; RLS scopes them; never an operator id, name or address) ──

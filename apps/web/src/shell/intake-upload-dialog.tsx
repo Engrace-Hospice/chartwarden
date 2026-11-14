@@ -13,7 +13,7 @@ import {
 } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 import { useLayoutEffect, useRef, useState } from "react";
-import type { CSSProperties, JSX } from "react";
+import type { CSSProperties, Dispatch, JSX, SetStateAction } from "react";
 import { verifiedUpload } from "./document-workflows";
 import type { SourceChannel as DocumentSourceChannel } from "./document-workflows";
 
@@ -55,30 +55,21 @@ export function IntakeUploadDialog({
   onClose: () => void;
   onFiled: (message: string) => void;
 }): JSX.Element {
-  const [fileState, setFileState] = useState<{ contextKey: string; file: File } | null>(null);
-  const [channelState, setChannelState] = useState<{
-    contextKey: string;
-    value: ChannelKey;
-  } | null>(null);
+  const [files, setFiles] = useState<Record<string, File>>({});
+  const [channels, setChannels] = useState<Record<string, ChannelKey>>({});
   const [stages, setStages] = useState<Record<string, string>>({});
-  const [errorState, setErrorState] = useState<{
-    contextKey: string;
-    message: string;
-  } | null>(null);
-  const [uploadedState, setUploadedState] = useState<{
-    contextKey: string;
-    documentId: string;
-  } | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [uploadedDocuments, setUploadedDocuments] = useState<Record<string, string>>({});
   const submissionsInFlight = useRef(new Set<string>());
   const contextKey = `${referralId ?? "unfiled"}:${patientId ?? "none"}`;
   const currentContextKey = useRef(contextKey);
   useLayoutEffect(() => {
     currentContextKey.current = contextKey;
   }, [contextKey]);
-  const file = fileState?.contextKey === contextKey ? fileState.file : null;
-  const channel = channelState?.contextKey === contextKey ? channelState.value : "fax";
-  const error = errorState?.contextKey === contextKey ? errorState.message : null;
-  const uploaded = uploadedState?.contextKey === contextKey ? uploadedState : null;
+  const file = files[contextKey] ?? null;
+  const channel = channels[contextKey] ?? "fax";
+  const error = errors[contextKey] ?? null;
+  const uploadedDocumentId = uploadedDocuments[contextKey] ?? null;
   const stage = stages[contextKey] ?? null;
   const busy = stage !== null;
 
@@ -91,11 +82,23 @@ export function IntakeUploadDialog({
     });
   }
 
+  function clearContextValue<T>(
+    setter: Dispatch<SetStateAction<Record<string, T>>>,
+    key: string,
+  ): void {
+    setter((current) => {
+      if (!(key in current)) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
+
   function closeDialog(): void {
-    if (!uploaded) {
-      setFileState(null);
-      setChannelState(null);
-      setErrorState(null);
+    if (!uploadedDocumentId) {
+      clearContextValue(setFiles, contextKey);
+      clearContextValue(setChannels, contextKey);
+      clearContextValue(setErrors, contextKey);
     }
     setContextStage(contextKey, null);
     submissionsInFlight.current.delete(contextKey);
@@ -107,8 +110,8 @@ export function IntakeUploadDialog({
     submissionsInFlight.current.add(contextKey);
     const submissionContextKey = contextKey;
     const ch = CHANNELS.find((c) => c.value === channel) ?? CHANNELS[0];
-    setErrorState(null);
-    let completedDocumentId = uploaded?.documentId ?? null;
+    clearContextValue(setErrors, submissionContextKey);
+    let completedDocumentId = uploadedDocumentId;
     try {
       // 1 — the checksum-verified upload, filed as an intake document of this referral.
       if (!completedDocumentId) {
@@ -131,9 +134,13 @@ export function IntakeUploadDialog({
           },
           onStage: () => undefined,
         });
+        const documentId = completedUpload.documentId;
+        completedDocumentId = documentId;
+        setUploadedDocuments((current) => ({
+          ...current,
+          [submissionContextKey]: documentId,
+        }));
         if (currentContextKey.current !== submissionContextKey) return;
-        completedDocumentId = completedUpload.documentId;
-        setUploadedState({ contextKey: submissionContextKey, documentId: completedDocumentId });
       }
       // 2 — the intake batch, filed against the referral (the server gives it the referral's patient).
       setContextStage(submissionContextKey, "Filing");
@@ -164,12 +171,10 @@ export function IntakeUploadDialog({
           headers: freshIdempotencyKeyHeaders(),
         })
         .catch((err: unknown) => ({ error: err }));
-      setFileState((current) => (current?.contextKey === submissionContextKey ? null : current));
-      setChannelState((current) => (current?.contextKey === submissionContextKey ? null : current));
-      setErrorState((current) => (current?.contextKey === submissionContextKey ? null : current));
-      setUploadedState((current) =>
-        current?.contextKey === submissionContextKey ? null : current,
-      );
+      clearContextValue(setFiles, submissionContextKey);
+      clearContextValue(setChannels, submissionContextKey);
+      clearContextValue(setErrors, submissionContextKey);
+      clearContextValue(setUploadedDocuments, submissionContextKey);
       if (currentContextKey.current !== submissionContextKey) return;
       setContextStage(submissionContextKey, null);
       onFiled(
@@ -181,14 +186,12 @@ export function IntakeUploadDialog({
       );
     } catch (err) {
       const message = errorText(err, "The records could not be uploaded.");
-      if (currentContextKey.current === submissionContextKey) {
-        setErrorState({
-          contextKey: submissionContextKey,
-          message: completedDocumentId
-            ? `${message} The verified file is preserved; Retry filing reuses it and will not upload a duplicate.`
-            : message,
-        });
-      }
+      setErrors((current) => ({
+        ...current,
+        [submissionContextKey]: completedDocumentId
+          ? `${message} The verified file is preserved; Retry filing reuses it and will not upload a duplicate.`
+          : message,
+      }));
     } finally {
       setContextStage(submissionContextKey, null);
       submissionsInFlight.current.delete(submissionContextKey);
@@ -216,20 +219,26 @@ export function IntakeUploadDialog({
           <input
             type="file"
             accept={ACCEPT}
-            disabled={busy || uploaded !== null}
+            disabled={busy || uploadedDocumentId !== null}
             aria-label="Records file"
             onChange={(e) => {
               const nextFile = e.target.files?.[0] ?? null;
-              setFileState(nextFile ? { contextKey, file: nextFile } : null);
-              setErrorState(null);
+              if (nextFile) setFiles((current) => ({ ...current, [contextKey]: nextFile }));
+              else clearContextValue(setFiles, contextKey);
+              clearContextValue(setErrors, contextKey);
             }}
           />
         </label>
         <SelectField
           label="Received by"
           value={channel}
-          disabled={busy || uploaded !== null}
-          onChange={(e) => setChannelState({ contextKey, value: e.target.value as ChannelKey })}
+          disabled={busy || uploadedDocumentId !== null}
+          onChange={(e) =>
+            setChannels((current) => ({
+              ...current,
+              [contextKey]: e.target.value as ChannelKey,
+            }))
+          }
           options={CHANNELS.map((c) => ({ value: c.value, label: c.label }))}
         />
         {stage ? (
@@ -244,12 +253,12 @@ export function IntakeUploadDialog({
         ) : null}
         <div style={dialogActions}>
           <Button tone="tertiary" onClick={closeDialog} disabled={busy}>
-            {uploaded ? "Close" : "Cancel"}
+            {uploadedDocumentId ? "Close" : "Cancel"}
           </Button>
           <Button onClick={() => void submit()} disabled={busy || file === null}>
             {busy
               ? `${stage}…`
-              : uploaded
+              : uploadedDocumentId
                 ? "Retry filing"
                 : referralId
                   ? "Upload and file"

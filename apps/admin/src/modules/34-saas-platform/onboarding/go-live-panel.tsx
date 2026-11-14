@@ -16,11 +16,14 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { type ClearinghouseView, VENDOR_LABEL } from "./clearinghouse-model";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
 import { ONBOARDING_KEYS, useCan } from "./permissions";
+import type { PlatformContract } from "./plan-contract-panel";
 import { RecordSaveDialog } from "./record-save-dialog";
 import { StepFrame } from "./step-frame";
+import { useLoad } from "./use-load";
 import { useOpsWrite } from "./use-ops-write";
 import { guardLabel, viewHasMoved } from "./wizard-errors";
 import { GO_LIVE_STEP_KEY, type WizardStep } from "./wizard-model";
@@ -41,6 +44,57 @@ interface DecideDraft {
   readonly reason: string;
 }
 const decideDraftKey = (orgSlug: string): string => `wizard:${orgSlug}:go-live:decide`;
+const BILLING_MODE_LABEL: Record<PlatformContract["billingServiceMode"], string> = {
+  none: "None",
+  billing_software: "Billing software",
+  managed_billing: "Managed billing service",
+};
+
+function CommercialReadiness({
+  orgSlug,
+  onReadyChange,
+}: {
+  orgSlug: string;
+  onReadyChange: (ready: boolean) => void;
+}): JSX.Element {
+  const client = useApiClient();
+  const clearinghouse = useLoad<ClearinghouseView>(`go-live-clearinghouse:${orgSlug}`, () =>
+    client.GET("/api/v1/platform/tenants/{orgSlug}/clearinghouse", {
+      params: { path: { orgSlug } },
+    }),
+  );
+  const subscription = useLoad<{ contract: PlatformContract | null }>(
+    `go-live-subscription:${orgSlug}`,
+    () =>
+      client.GET("/api/v1/platform/tenants/{orgSlug}/subscription", {
+        params: { path: { orgSlug } },
+      }),
+  );
+  const failed = Boolean(clearinghouse.failure || subscription.failure);
+  const ready = !failed && clearinghouse.data != null && subscription.data != null;
+  useEffect(() => {
+    onReadyChange(ready);
+    return () => onReadyChange(false);
+  }, [onReadyChange, ready]);
+  if (failed) {
+    return (
+      <InlineAlert tone="error">
+        Commercial readiness could not be loaded. Reload before approving go-live.
+      </InlineAlert>
+    );
+  }
+  if (!ready) return <p className="wx-row-sub">Loading commercial readiness…</p>;
+  const vendor = clearinghouse.data?.vendor;
+  const contract = subscription.data?.contract;
+  return (
+    <dl className="wx-kv" aria-label="Commercial readiness">
+      <dt>Clearinghouse choice</dt>
+      <dd>{vendor ? (VENDOR_LABEL[vendor] ?? vendor) : "Not chosen"}</dd>
+      <dt>Billing service mode</dt>
+      <dd>{contract ? BILLING_MODE_LABEL[contract.billingServiceMode] : "No contract"}</dd>
+    </dl>
+  );
+}
 
 export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const client = useApiClient();
@@ -52,6 +106,7 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
     restored && goLive.state === "awaiting_approval" ? restored.dialog : null,
   );
   const [seedReason, setSeedReason] = useState(restored?.reason ?? "");
+  const [commercialReady, setCommercialReady] = useState(false);
   // What is in the prompt's reason box right now (a Re-verify keeps an edit made after a refusal, not only the last submitted text).
   const typedReason = useRef(restored?.reason ?? "");
   // The outcome banner belongs to the state its action leads to (and the one it was written in, until the wizard reloads): any other
@@ -85,6 +140,7 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   const daysLeft =
     expiresAt === null ? null : Math.max(Math.ceil((expiresAt - Date.now()) / DAY_MS), 0);
   const failing = goLive.failedGuards;
+  const tenantSkipped = view.steps.filter((candidate) => candidate.skippedBy === "tenant");
 
   /** The props an approve / revoke prompt shares: the typed reason survives a Re-verify, and is dropped with the prompt. */
   const reasonKeeping = (kind: "approve" | "revoke") => ({
@@ -180,6 +236,24 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         </div>
         <FactList facts={facts} ariaLabel="What settles this step" />
 
+        {tenantSkipped.length > 0 ? (
+          <section aria-label="Steps skipped by the tenant">
+            <h4>Steps the tenant skipped</h4>
+            <UnstyledList>
+              {tenantSkipped.map((skipped) => (
+                <li key={skipped.key}>
+                  <strong>{skipped.title}</strong>
+                  {skipped.skipRationale ? ` — ${skipped.skipRationale}` : ""}
+                </li>
+              ))}
+            </UnstyledList>
+          </section>
+        ) : null}
+
+        {goLive.state === "awaiting_approval" || goLive.state === "live" ? (
+          <CommercialReadiness orgSlug={orgSlug} onReadyChange={setCommercialReady} />
+        ) : null}
+
         {goLive.state === "not_ready" ? (
           <>
             <p>Go-live opens once every earlier step is settled.</p>
@@ -233,7 +307,7 @@ export function GoLivePanel({ ctx }: { ctx: PanelContext }): JSX.Element {
             {mayDecide ? (
               <div className="wx-drawer-actions">
                 <Button
-                  disabled={expired}
+                  disabled={expired || !commercialReady}
                   onClick={() => {
                     write.clear();
                     setDialog("approve");

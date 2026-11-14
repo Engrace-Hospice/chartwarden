@@ -138,6 +138,18 @@ function build(routes: ScannedRoute[]): BuildResult {
 
     const enrich = ROUTE_ENRICHMENTS[routeKey(route)];
     const successStatus = String(enrich?.status ?? 200);
+    const successResponse = enrich?.response
+      ? {
+          description: "OK",
+          content: { "application/json": { schema: toJsonSchema(enrich.response) } },
+        }
+      : { description: "OK" };
+    const successResponses = Object.fromEntries(
+      [successStatus, ...(enrich?.additionalSuccessStatuses ?? []).map(String)].map((status) => [
+        status,
+        successResponse,
+      ]),
+    );
     const op: Record<string, unknown> = {
       operationId: opId,
       tags: [route.module],
@@ -148,12 +160,7 @@ function build(routes: ScannedRoute[]): BuildResult {
         ...headerParameters(enrich?.headers),
       ],
       responses: {
-        [successStatus]: enrich?.response
-          ? {
-              description: "OK",
-              content: { "application/json": { schema: toJsonSchema(enrich.response) } },
-            }
-          : { description: "OK" },
+        ...successResponses,
         "4XX": { $ref: "#/components/responses/Error" },
         "5XX": { $ref: "#/components/responses/Error" },
       },

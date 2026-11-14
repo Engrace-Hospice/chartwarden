@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { JSX, ReactNode } from "react";
 import type { NavigateFunction } from "react-router-dom";
+import { isOnboardingSession } from "./onboarding-stage";
 import { useSessionState } from "./session";
 
 /** Fresh enough for operational alerts without creating a request per render or per component. */
@@ -56,6 +57,9 @@ export function AlertInboxProvider({ children }: { children: ReactNode }): JSX.E
   const scopeRef = useRef<string | null>(null);
   const scope =
     status === "authenticated" && session ? `${session.organizationId}:${session.userId}` : null;
+  // An organization still being onboarded is confined by the server: the inbox route answers 403 ORGANIZATION_ONBOARDING, so nothing is
+  // requested (no poll, no focus read) and the bell stays in its quiet "No notifications" state rather than "could not be loaded".
+  const confined = isOnboardingSession(session);
 
   useEffect(() => {
     scopeRef.current = scope;
@@ -69,7 +73,7 @@ export function AlertInboxProvider({ children }: { children: ReactNode }): JSX.E
 
   const load = useCallback(
     async (options?: { background?: boolean }): Promise<void> => {
-      if (scope === null) return;
+      if (scope === null || confined) return;
       if (loadInFlight.current) return loadInFlight.current;
 
       setLoading(true);
@@ -97,11 +101,11 @@ export function AlertInboxProvider({ children }: { children: ReactNode }): JSX.E
       loadInFlight.current = request;
       return request;
     },
-    [client, scope],
+    [client, scope, confined],
   );
 
   useEffect(() => {
-    if (scope === null) return;
+    if (scope === null || confined) return;
 
     void load();
 
@@ -123,7 +127,7 @@ export function AlertInboxProvider({ children }: { children: ReactNode }): JSX.E
       document.removeEventListener("visibilitychange", refreshWhenVisible);
       window.clearInterval(interval);
     };
-  }, [load, scope]);
+  }, [load, scope, confined]);
 
   const markRead = useCallback(
     (alert: AlertInboxItem): void => {
