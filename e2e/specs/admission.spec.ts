@@ -15,7 +15,6 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { ADMIN_ACCOUNT } from "../fixtures/credentials";
 import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
-import { openFirstPatientChart } from "../fixtures/patients";
 
 /**
  * Drive one `EntityLookupField`: focus it, type, and pick the first real option. Selecting from the
@@ -26,7 +25,7 @@ async function pickFromLookup(page: Page, label: string, query: string): Promise
   const field = page.getByRole("combobox", { name: new RegExp(label) });
   await field.click();
   await field.fill(query);
-  const option = page.getByRole("option").first();
+  const option = page.getByRole("listbox").getByRole("option").first();
   await expect(option).toBeVisible({ timeout: 10_000 });
   const text = (await option.textContent()) ?? "";
   await option.click();
@@ -47,13 +46,49 @@ async function continueBlockedWith(page: Page, message: string): Promise<void> {
  * Those three gate "Continue" (`intakeReady` in admission-create), alongside the benefit-period number,
  * which the screen prefills. The HETS confirmation is only a warning and is left alone.
  */
-async function completeIntakeContext(page: Page): Promise<void> {
-  await pickFromLookup(page, "Patient", "Whitfield");
+async function completeIntakeContext(page: Page, patientQuery = "Whitfield"): Promise<void> {
+  await pickFromLookup(page, "Patient", patientQuery);
   // By option value (the UB-04 code), not label: the labels are "<code> — <text>" and would break on relabel.
   await page.getByRole("combobox", { name: /Type of admission/ }).selectOption("3"); // Elective
   await page.getByRole("combobox", { name: /Point of origin/ }).selectOption("1"); // Non-health care facility
   // The selected patient's benefit-period plan loads asynchronously and gates Continue.
   await expect(page.getByRole("spinbutton", { name: "Benefit period number" })).toHaveValue("1");
+}
+
+/**
+ * Create this test's own obviously synthetic candidate through the real authenticated M5 route.
+ * The canonical seed already gives Whitfield an active admission, so reusing that fixture can never
+ * prove the successful direct-intake path. A fresh patient has no open episode by construction; the
+ * wizard still has to discover and select it through its normal lookup.
+ */
+async function createAdmissionCandidate(page: Page): Promise<string> {
+  const lastName = `Testpatient${Date.now()}`;
+  const status = await page.evaluate(async (syntheticLastName) => {
+    const cookies = new Map(
+      document.cookie.split("; ").map((entry) => {
+        const separator = entry.indexOf("=");
+        return [entry.slice(0, separator), entry.slice(separator + 1)];
+      }),
+    );
+    const csrf = cookies.get("__Host-chartwarden_csrf") ?? cookies.get("chartwarden_csrf") ?? "";
+    const response = await fetch("/api/v1/patients", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "content-type": "application/json",
+        "x-csrf-token": decodeURIComponent(csrf),
+      },
+      body: JSON.stringify({
+        firstName: "Prfive",
+        lastName: syntheticLastName,
+        dob: "1955-05-05",
+        administrativeSex: "unknown",
+      }),
+    });
+    return response.status;
+  }, lastName);
+  expect(status, "the synthetic admission candidate should be created through M5").toBe(201);
+  return lastName;
 }
 
 test.describe("Admission", () => {
@@ -62,15 +97,14 @@ test.describe("Admission", () => {
   }) => {
     test.setTimeout(90_000);
     await signInAs(page, ADMIN_ACCOUNT());
-    // Discover a real, in-scope patient through the app itself, then find them in the lookup.
-    await openFirstPatientChart(page);
+    const patientQuery = await createAdmissionCandidate(page);
     await page.goto("/admissions/new");
     await expect(page.getByRole("heading", { name: "New admission" })).toBeVisible();
 
     // Step 1 — Intake context. "Continue" without a patient shows the error and stays on the step.
     const advance = page.getByRole("button", { name: "Continue" });
     await continueBlockedWith(page, "Select a patient before continuing.");
-    await completeIntakeContext(page);
+    await completeIntakeContext(page, patientQuery);
     await advance.click();
 
     // Step 2 — Clinical responsibility. Only the medical director is required.
@@ -85,13 +119,28 @@ test.describe("Admission", () => {
     await page.getByRole("button", { name: "Create admission" }).click();
     await page.waitForFunction(
       () =>
-        /\/admissions\/[^/]+$/.test(window.location.pathname) ||
+        (/\/admissions\/[^/]+$/.test(window.location.pathname) &&
+          window.location.pathname !== "/admissions/new") ||
         document.querySelector('[role="alert"]') !== null,
       { timeout: 15_000 },
     );
-    const created = /\/admissions\/[^/]+$/.test(new URL(page.url()).pathname);
+    const pathname = new URL(page.url()).pathname;
+    const created = /\/admissions\/[^/]+$/.test(pathname) && pathname !== "/admissions/new";
     if (!created) await expect(page.getByRole("alert").first()).toBeVisible();
     expect(created, "the wizard should have created the admission and navigated to it").toBe(true);
+
+    // PR5/G4 — the pending admission lands in the grouped, server-derived readiness cockpit.
+    await expect(page.getByRole("heading", { name: "Admission Intake" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Admission setup and privacy" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Notices, election, and certification" }),
+    ).toBeVisible();
+    await expect(page.getByText("Intake coordinator").first()).toBeVisible();
+    await expectNoAxeViolations(page);
+
+    // A server blocker opens its existing corrective ceremony; it is not a decorative action.
+    await page.getByRole("button", { name: "Complete Notice of Rights" }).first().click();
+    await expect(page.getByRole("heading", { name: "Complete Notice of Rights" })).toBeVisible();
   });
 
   test("the wizard gates each step on its own required field", async ({ page }) => {

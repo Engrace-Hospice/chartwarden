@@ -39,7 +39,7 @@ import {
   useApiClient,
   useIdempotencyKeeper,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
@@ -69,6 +69,13 @@ import {
 } from "./admission-detail-status";
 import { EvidenceUploadDrawer, type EvidenceUploadKind } from "./admission-evidence-upload";
 import { AdmissionHoldAction } from "./admission-hold-action";
+import {
+  type ReadinessRequirement,
+  groupReadinessRequirements,
+  readinessOwner,
+  readinessReason,
+  readinessRequirementIsSatisfied,
+} from "./admission-readiness-presentation";
 import {
   AdmissionRecommendationDrawer,
   AdmissionRecommendationSection,
@@ -142,30 +149,6 @@ interface PatientSummary {
   dob?: string | null;
   status?: string | null;
 }
-interface ReadinessRequirement {
-  code: string;
-  label: string;
-  status:
-    | "complete"
-    | "action_required"
-    | "awaiting_signature"
-    | "pending"
-    | "blocked"
-    | "overdue"
-    | "not_applicable";
-  blocking: boolean;
-  message?: string;
-  action?: string;
-  satisfiedBy?: "normal" | "override";
-  /** `patient_privacy` only: why it is blocked (category-free; picks the privacy dialog's next step). */
-  reasonCode?: string;
-  evidence?: {
-    sourceType: "structured" | "uploaded";
-    documentId?: string;
-    documentVersionId?: string;
-    completedAt?: string;
-  };
-}
 interface AdmissionReadiness {
   admissionId: string;
   status: "blocked" | "action_required" | "ready";
@@ -237,6 +220,7 @@ const GATE_ROWS: { code: string; label: string }[] = [
   { code: "nor_acknowledged", label: "Notice of Rights acknowledged" },
   { code: "cti_signed", label: "CTI signed by hospice medical director" },
 ];
+const F2F_REQUIREMENTS_HASH = `${String.fromCharCode(35)}face-to-face-requirements`;
 
 /** The evidence upload drawer to open on mount (visual-QA harness seam; production passes nothing). */
 export type InitialEvidenceUpload =
@@ -1159,11 +1143,13 @@ export function AdmissionDetail({
     else if (action === "COMPLETE_CTI_SIGNATURE") setCeremony("sign-cti-hospice-md");
     else if (action === "REVIEW_PRIVACY") setCeremony("privacy");
     else if (action === "RECORD_ADMISSION_RECOMMENDATION") setRecommending(true);
+    else if (action === "REVIEW_F2F" && admission.patientId)
+      navigate(`/patients/${admission.patientId}/election-certification${F2F_REQUIREMENTS_HASH}`);
     // FY2027 — the informational 42 CFR 418.24(c) addendum item: worked on the patient's Election tab.
     else if (action === "COMPLETE_ELECTION_ADDENDUM" && admission.patientId)
       navigate(`/patients/${admission.patientId}/election-certification`);
   };
-  const actionContext = { electionStatement, cti };
+  const actionContext = { electionStatement, cti, patientId: admission.patientId };
 
   if (pendingWorkspace) {
     return (
@@ -1386,6 +1372,7 @@ export function AdmissionDetail({
               requirements={readiness?.requirements ?? []}
               electionStatement={electionStatement}
               cti={cti}
+              patientId={admission.patientId}
               onAction={triggerAction}
             />
           </Section>
@@ -2714,7 +2701,11 @@ function AdmissionDocuments({
  */
 function isActionHandled(
   action: string,
-  context: { electionStatement: ElectionStatementView | null; cti: CtiView | null },
+  context: {
+    electionStatement: ElectionStatementView | null;
+    cti: CtiView | null;
+    patientId?: string;
+  },
 ): boolean {
   switch (action) {
     case "ACKNOWLEDGE_NOR":
@@ -2729,6 +2720,8 @@ function isActionHandled(
     case "RECORD_ADMISSION_RECOMMENDATION":
     case "COMPLETE_ELECTION_ADDENDUM":
       return true;
+    case "REVIEW_F2F":
+      return Boolean(context.patientId);
     case "REVIEW_CTI":
       return !context.cti || !context.cti.hospiceMdSigned;
     default:
@@ -2743,22 +2736,32 @@ function RequirementActionButton({
   style,
 }: {
   action: string;
-  context: { electionStatement: ElectionStatementView | null; cti: CtiView | null };
+  context: {
+    electionStatement: ElectionStatementView | null;
+    cti: CtiView | null;
+    patientId?: string;
+  };
   onAction: (action: string) => void;
   style: CSSProperties;
 }): JSX.Element {
   const label = actionLabel(action, context);
+  const unavailableDescriptionId = useId();
   if (!isActionHandled(action, context)) {
     return (
-      <button
-        type="button"
-        disabled
-        aria-disabled="true"
-        title="This step can't be completed from this screen yet."
-        style={{ ...style, opacity: 0.5, cursor: "not-allowed" }}
-      >
-        {label}
-      </button>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+        <button
+          type="button"
+          aria-disabled="true"
+          aria-describedby={unavailableDescriptionId}
+          onClick={(event) => event.preventDefault()}
+          style={{ ...style, opacity: 0.5, cursor: "not-allowed" }}
+        >
+          {label}
+        </button>
+        <span id={unavailableDescriptionId} style={actionHintStyle}>
+          This step can't be completed from this screen yet.
+        </span>
+      </div>
     );
   }
   return (
@@ -3006,6 +3009,7 @@ function actionLabel(
   if (action === "REVIEW_PRIVACY") return "Review privacy";
   if (action === "RECORD_ADMISSION_RECOMMENDATION") return "Record recommendation";
   if (action === "COMPLETE_ELECTION_ADDENDUM") return "Open election addendum";
+  if (action === "REVIEW_F2F") return "Review face-to-face requirements";
 
   if (action === "REVIEW_CTI") {
     if (!context.cti) {
@@ -3362,6 +3366,39 @@ const requirementGridStyle: CSSProperties = {
   gap: "0.75rem",
 };
 
+const readinessGroupsStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "1.25rem",
+};
+
+const readinessGroupHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  flexWrap: "wrap",
+  gap: "0.5rem 1rem",
+  marginBottom: "0.75rem",
+};
+
+const readinessGroupTitleStyle: CSSProperties = {
+  margin: 0,
+  color: "var(--color-on-surface)",
+  fontSize: "0.95rem",
+};
+
+const readinessGroupDescriptionStyle: CSSProperties = {
+  margin: "0.2rem 0 0",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.8rem",
+};
+
+const readinessGroupCountStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.78rem",
+  whiteSpace: "nowrap",
+};
+
 const requirementCardStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -3381,6 +3418,25 @@ const requirementHeaderStyle: CSSProperties = {
 const requirementMessageStyle: CSSProperties = {
   margin: 0,
   color: "var(--color-on-surface-variant)",
+  fontSize: "0.82rem",
+};
+
+const requirementDetailsStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.55rem",
+  margin: 0,
+};
+
+const requirementTermStyle: CSSProperties = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.7rem",
+  fontWeight: 700,
+};
+
+const requirementDefinitionStyle: CSSProperties = {
+  margin: "0.15rem 0 0",
+  color: "var(--color-on-surface)",
   fontSize: "0.82rem",
 };
 
@@ -3478,34 +3534,62 @@ function RequirementCards({
   requirements,
   electionStatement,
   cti,
+  patientId,
   onAction,
 }: {
   requirements: ReadinessRequirement[];
   electionStatement: ElectionStatementView | null;
   cti: CtiView | null;
+  patientId?: string;
   onAction: (action: string) => void;
 }): JSX.Element {
   if (requirements.length === 0) return <p style={emptyTextStyle}>Readiness is loading.</p>;
+  const groups = groupReadinessRequirements(requirements);
   return (
-    <div style={requirementGridStyle}>
-      {requirements.map((r) => (
-        <div key={r.code} style={requirementCardStyle}>
-          <div style={requirementHeaderStyle}>
-            <strong>{r.label}</strong>
-            <RequirementPill requirement={r} />
+    <div style={readinessGroupsStyle} data-testid="readiness-cockpit">
+      {groups.map((group) => (
+        <section key={group.id} aria-labelledby={`readiness-group-${group.id}`}>
+          <div style={readinessGroupHeaderStyle}>
+            <div>
+              <h3 id={`readiness-group-${group.id}`} style={readinessGroupTitleStyle}>
+                {group.label}
+              </h3>
+              <p style={readinessGroupDescriptionStyle}>{group.description}</p>
+            </div>
+            <span style={readinessGroupCountStyle}>
+              {group.requirements.filter(readinessRequirementIsSatisfied).length} of{" "}
+              {group.requirements.length} complete
+            </span>
           </div>
-          <p style={requirementMessageStyle}>
-            {r.message ?? (r.status === "complete" ? "Complete" : "No action required.")}
-          </p>
-          {r.action ? (
-            <RequirementActionButton
-              action={r.action}
-              context={{ electionStatement, cti }}
-              onAction={onAction}
-              style={ghostBtn}
-            />
-          ) : null}
-        </div>
+          <div style={requirementGridStyle}>
+            {group.requirements.map((requirement) => (
+              <article key={requirement.code} style={requirementCardStyle}>
+                <div style={requirementHeaderStyle}>
+                  <strong>{requirement.label}</strong>
+                  <RequirementPill requirement={requirement} />
+                </div>
+                <dl style={requirementDetailsStyle}>
+                  <div>
+                    <dt style={requirementTermStyle}>Reason</dt>
+                    <dd style={requirementDefinitionStyle}>{readinessReason(requirement)}</dd>
+                  </div>
+                  <div>
+                    <dt style={requirementTermStyle}>Suggested owner</dt>
+                    <dd style={requirementDefinitionStyle}>{readinessOwner(requirement)}</dd>
+                  </div>
+                </dl>
+                {requirement.action ? (
+                  <RequirementActionButton
+                    action={requirement.action}
+                    context={{ electionStatement, cti, patientId }}
+                    onAction={onAction}
+                    style={ghostBtn}
+                  />
+                ) : null}
+              </article>
+            ))}
+          </div>
+        </section>
       ))}
     </div>
   );

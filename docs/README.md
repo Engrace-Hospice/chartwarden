@@ -26,6 +26,7 @@ wins until the spec is re-locked.
 | Architecture Decision Records | [`adr/`](./adr/) | [`adr/README.md`](./adr/README.md) |
 | AI capability catalog (19) | [`ai/capabilities/`](./ai/capabilities/) | [below](#ai-capability-catalog) |
 | Roadmap & phase plans | `docs/*PHASE*` · `IMPLEMENTATION_ROADMAP.md` | [below](#roadmap--phase-plans) |
+| Implementation guides | [`implementation/`](./implementation/) | [below](#implementation-guides) |
 | Execution plans (waves) | [`plans/`](./plans/) | [below](#execution-plans-waves) |
 | Reference sources | [`reference/`](./reference/) | [below](#reference-sources) |
 | API contract & integrator changes | [`api/`](./api/) | [`api/CHANGES.md`](./api/CHANGES.md) |
@@ -150,6 +151,16 @@ per-module build truth is the generated matrix (`bun run status:matrix`).
 | [`PHASE_2_PLAN.md`](./PHASE_2_PLAN.md) | Phase 2 — AI activation + operational depth. |
 | [`PHASE_3_PLAN.md`](./PHASE_3_PLAN.md) | Phase 3 — multi-tenant scale + inpatient. |
 | [`PHASE_4_PLAN.md`](./PHASE_4_PLAN.md) | Phase 4 — state expansion, enterprise & certifications. |
+
+---
+
+## Implementation guides
+
+| Document | Scope |
+|---|---|
+| [`implementation/CHARTWARDEN_INTAKE_REDESIGN_IMPLEMENTATION_PLAN.md`](./implementation/CHARTWARDEN_INTAKE_REDESIGN_IMPLEMENTATION_PLAN.md) | Unified intake redesign scope, work packages, delivery gates, and testing matrix. |
+| [`implementation/intake-current-state-audit.md`](./implementation/intake-current-state-audit.md) | Verified intake routes, controls, state transitions, preservation matrix, and rollout constraints. |
+| [`implementation/intake-workspace-user-guide.md`](./implementation/intake-workspace-user-guide.md) | Frontline workflow guidance for referral intake, patient matching, admission handoff, and readiness correction. |
 
 ---
 
