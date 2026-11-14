@@ -149,6 +149,10 @@ test.describe("Documents", () => {
     await expect(
       page.getByRole("heading", { name: "Review and start the admission" }),
     ).toBeVisible();
+    const handoff = page.getByRole("region", { name: "Admission handoff summary" });
+    await expect(handoff).toBeVisible();
+    await expect(handoff.getByText("Created", { exact: true })).toBeVisible();
+    await expect(handoff.getByText(/Referral qualification checks are complete/)).toBeVisible();
     await expectNoAxeViolations(page);
   });
 
