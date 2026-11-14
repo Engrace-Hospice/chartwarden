@@ -12,8 +12,8 @@ import {
   t,
 } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
-import { useEffect, useState } from "react";
-import type { CSSProperties, JSX } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties, Dispatch, JSX, SetStateAction } from "react";
 import { verifiedUpload } from "./document-workflows";
 import type { SourceChannel as DocumentSourceChannel } from "./document-workflows";
 
@@ -55,51 +55,98 @@ export function IntakeUploadDialog({
   onClose: () => void;
   onFiled: (message: string) => void;
 }): JSX.Element {
-  const [file, setFile] = useState<File | null>(null);
-  const [channel, setChannel] = useState<ChannelKey>("fax");
-  const [stage, setStage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [files, setFiles] = useState<Record<string, File>>({});
+  const [channels, setChannels] = useState<Record<string, ChannelKey>>({});
+  const [stages, setStages] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [uploadedDocuments, setUploadedDocuments] = useState<Record<string, string>>({});
+  const submissionsInFlight = useRef(new Set<string>());
+  const contextKey = `${referralId ?? "unfiled"}:${patientId ?? "none"}`;
+  const currentContextKey = useRef(contextKey);
+  useLayoutEffect(() => {
+    currentContextKey.current = contextKey;
+  }, [contextKey]);
+  const file = files[contextKey] ?? null;
+  const channel = channels[contextKey] ?? "fax";
+  const error = errors[contextKey] ?? null;
+  const uploadedDocumentId = uploadedDocuments[contextKey] ?? null;
+  const stage = stages[contextKey] ?? null;
   const busy = stage !== null;
 
-  useEffect(() => {
-    if (!open) {
-      setFile(null);
-      setChannel("fax");
-      setStage(null);
-      setError(null);
+  function setContextStage(key: string, value: string | null): void {
+    setStages((current) => {
+      const next = { ...current };
+      if (value) next[key] = value;
+      else delete next[key];
+      return next;
+    });
+  }
+
+  function clearContextValue<T>(
+    setter: Dispatch<SetStateAction<Record<string, T>>>,
+    key: string,
+  ): void {
+    setter((current) => {
+      if (!(key in current)) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
+
+  function closeDialog(): void {
+    if (!uploadedDocumentId) {
+      clearContextValue(setFiles, contextKey);
+      clearContextValue(setChannels, contextKey);
+      clearContextValue(setErrors, contextKey);
     }
-  }, [open]);
+    setContextStage(contextKey, null);
+    submissionsInFlight.current.delete(contextKey);
+    onClose();
+  }
 
   async function submit(): Promise<void> {
-    if (!file) return;
+    if (!file || submissionsInFlight.current.has(contextKey)) return;
+    submissionsInFlight.current.add(contextKey);
+    const submissionContextKey = contextKey;
     const ch = CHANNELS.find((c) => c.value === channel) ?? CHANNELS[0];
-    setError(null);
-    setStage("Uploading");
+    clearContextValue(setErrors, submissionContextKey);
+    let completedDocumentId = uploadedDocumentId;
     try {
       // 1 — the checksum-verified upload, filed as an intake document of this referral.
-      const uploaded = await verifiedUpload(client, {
-        context: referralId
-          ? { kind: "referral", referralId, patientId: patientId ?? null }
-          : { kind: "intake" },
-        mode: "new_document",
-        file,
-        title:
-          file.name.replace(/\.[^.]+$/, "") || (referralId ? "Referral records" : "Intake fax"),
-        documentType: "intake_source",
-        patientFacing: false,
-        sourceMetadata: {
+      if (!completedDocumentId) {
+        setContextStage(submissionContextKey, "Uploading");
+        const completedUpload = await verifiedUpload(client, {
+          context: referralId
+            ? { kind: "referral", referralId, patientId: patientId ?? null }
+            : { kind: "intake" },
+          mode: "new_document",
+          file,
+          title:
+            file.name.replace(/\.[^.]+$/, "") || (referralId ? "Referral records" : "Intake fax"),
           documentType: "intake_source",
-          sourceChannel: ch.document,
-          originalFilename: file.name,
-          receivedAt: new Date().toISOString(),
-        },
-        onStage: () => undefined,
-      });
+          patientFacing: false,
+          sourceMetadata: {
+            documentType: "intake_source",
+            sourceChannel: ch.document,
+            originalFilename: file.name,
+            receivedAt: new Date().toISOString(),
+          },
+          onStage: () => undefined,
+        });
+        const documentId = completedUpload.documentId;
+        completedDocumentId = documentId;
+        setUploadedDocuments((current) => ({
+          ...current,
+          [submissionContextKey]: documentId,
+        }));
+        if (currentContextKey.current !== submissionContextKey) return;
+      }
       // 2 — the intake batch, filed against the referral (the server gives it the referral's patient).
-      setStage("Filing");
+      setContextStage(submissionContextKey, "Filing");
       const batch = await client.POST("/api/v1/intake/uploads", {
         body: {
-          documentId: uploaded.documentId,
+          documentId: completedDocumentId,
           ...(referralId ? { referralId } : {}),
           sourceChannel: ch.intake,
         },
@@ -115,7 +162,7 @@ export function IntakeUploadDialog({
         );
       }
       // 3 — start DocLens. A refusal here (DocLens off, no queue) leaves the batch filed.
-      setStage("Starting");
+      setContextStage(submissionContextKey, "Starting");
       const run = await client
         .POST("/api/v1/intake/uploads/{id}/extraction/run", {
           params: { path: { id: batch.data.id } },
@@ -124,7 +171,12 @@ export function IntakeUploadDialog({
           headers: freshIdempotencyKeyHeaders(),
         })
         .catch((err: unknown) => ({ error: err }));
-      setStage(null);
+      clearContextValue(setFiles, submissionContextKey);
+      clearContextValue(setChannels, submissionContextKey);
+      clearContextValue(setErrors, submissionContextKey);
+      clearContextValue(setUploadedDocuments, submissionContextKey);
+      if (currentContextKey.current !== submissionContextKey) return;
+      setContextStage(submissionContextKey, null);
       onFiled(
         run.error
           ? `Records filed. WardenLens did not start reading them: ${errorText(run.error, "the server refused the run")}.`
@@ -133,15 +185,23 @@ export function IntakeUploadDialog({
             : "Uploaded. WardenLens is reading it; it appears in the queue as it progresses.",
       );
     } catch (err) {
-      setStage(null);
-      setError(errorText(err, "The records could not be uploaded."));
+      const message = errorText(err, "The records could not be uploaded.");
+      setErrors((current) => ({
+        ...current,
+        [submissionContextKey]: completedDocumentId
+          ? `${message} The verified file is preserved; Retry filing reuses it and will not upload a duplicate.`
+          : message,
+      }));
+    } finally {
+      setContextStage(submissionContextKey, null);
+      submissionsInFlight.current.delete(submissionContextKey);
     }
   }
 
   return (
     <Modal
       open={open}
-      onClose={busy ? undefined : onClose}
+      onClose={busy ? undefined : closeDialog}
       ariaLabel={referralId ? "Add records" : "Upload fax"}
       width="30rem"
       accent={t.primary}
@@ -159,16 +219,26 @@ export function IntakeUploadDialog({
           <input
             type="file"
             accept={ACCEPT}
-            disabled={busy}
+            disabled={busy || uploadedDocumentId !== null}
             aria-label="Records file"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => {
+              const nextFile = e.target.files?.[0] ?? null;
+              if (nextFile) setFiles((current) => ({ ...current, [contextKey]: nextFile }));
+              else clearContextValue(setFiles, contextKey);
+              clearContextValue(setErrors, contextKey);
+            }}
           />
         </label>
         <SelectField
           label="Received by"
           value={channel}
-          disabled={busy}
-          onChange={(e) => setChannel(e.target.value as ChannelKey)}
+          disabled={busy || uploadedDocumentId !== null}
+          onChange={(e) =>
+            setChannels((current) => ({
+              ...current,
+              [contextKey]: e.target.value as ChannelKey,
+            }))
+          }
           options={CHANNELS.map((c) => ({ value: c.value, label: c.label }))}
         />
         {stage ? (
@@ -182,11 +252,17 @@ export function IntakeUploadDialog({
           </p>
         ) : null}
         <div style={dialogActions}>
-          <Button tone="tertiary" onClick={onClose} disabled={busy}>
-            Cancel
+          <Button tone="tertiary" onClick={closeDialog} disabled={busy}>
+            {uploadedDocumentId ? "Close" : "Cancel"}
           </Button>
           <Button onClick={() => void submit()} disabled={busy || file === null}>
-            {busy ? "Uploading…" : referralId ? "Upload and file" : "Upload"}
+            {busy
+              ? `${stage}…`
+              : uploadedDocumentId
+                ? "Retry filing"
+                : referralId
+                  ? "Upload and file"
+                  : "Upload"}
           </Button>
         </div>
       </div>

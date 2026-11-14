@@ -17,7 +17,8 @@ import {
 // typed client. Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { safeIntakeReturnTo, withIntakeReturnTo } from "../../shell/intake-return";
 import { Card, CardTitle, Eyebrow, Mono, StatusPill, lifecycleTone, ts } from "./lantern";
 
 interface BatchHeader {
@@ -36,6 +37,8 @@ interface JobRow {
 export function IntakeBatchDetail(): JSX.Element {
   const client = useApiClient();
   const { batchId } = useParams<{ batchId: string }>();
+  const [searchParams] = useSearchParams();
+  const returnTo = safeIntakeReturnTo(searchParams.get("returnTo"));
   const [batch, setBatch] = useState<BatchHeader | null>(null);
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,7 +71,18 @@ export function IntakeBatchDetail(): JSX.Element {
     [jobs],
   );
 
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  if (error) {
+    return (
+      <div className="wx-list-state">
+        <EmptyState title="Unavailable" description={error} />
+        {returnTo ? (
+          <Link to={returnTo} className="wx-btn-secondary">
+            Back to referral intake
+          </Link>
+        ) : null}
+      </div>
+    );
+  }
   if (loading && !batch) return <LoadingSpinner />;
 
   return (
@@ -78,9 +92,19 @@ export function IntakeBatchDetail(): JSX.Element {
           title="Intake batch"
           actions={
             batchId ? (
-              <Link to={`/intake/${batchId}/review`} className="wx-btn-primary">
-                Review extracted fields
-              </Link>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                {returnTo ? (
+                  <Link to={returnTo} className="wx-btn-secondary">
+                    Back to referral intake
+                  </Link>
+                ) : null}
+                <Link
+                  to={withIntakeReturnTo(`/intake/${batchId}/review`, returnTo)}
+                  className="wx-btn-primary"
+                >
+                  Review extracted fields
+                </Link>
+              </div>
             ) : undefined
           }
         />

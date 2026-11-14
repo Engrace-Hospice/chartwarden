@@ -11,8 +11,8 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { REFERRAL_TONE, stateLabel } from "./admission-status";
 import { AdmissionsTabs } from "./admissions-chrome";
 import { type IntakeStepId, deriveIntakeWorkspace } from "./intake-workspace-stage";
@@ -40,12 +40,14 @@ export function IntakeWorkspace(): JSX.Element {
   const { id = "" } = useParams();
   const client = useApiClient();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [referral, setReferral] = useState<ReferralView | null>(null);
-  const [viewedStepId, setViewedStepId] = useState<IntakeStepId | null>(null);
-  const [reviewingEarlierStep, setReviewingEarlierStep] = useState(false);
   const [focusStepId, setFocusStepId] = useState<IntakeStepId | null>(null);
+  const [advancingFromReview, setAdvancingFromReview] = useState(false);
+  const [verificationValid, setVerificationValid] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const workspaceRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,13 +62,18 @@ export function IntakeWorkspace(): JSX.Element {
   }, [client, id]);
 
   useEffect(() => {
-    setViewedStepId(null);
-    setReviewingEarlierStep(false);
+    setAdvancingFromReview(false);
     void load();
   }, [load]);
 
   const presentation = referral ? deriveIntakeWorkspace(referral) : null;
-  const displayedStepId = viewedStepId ?? presentation?.activeStepId ?? "receive";
+  const requestedStep = intakeStep(searchParams.get("step"));
+  const displayedStepId =
+    requestedStep &&
+    presentation &&
+    stepIndex(requestedStep) <= stepIndex(presentation.activeStepId)
+      ? requestedStep
+      : (presentation?.activeStepId ?? "receive");
   const steps = useMemo<readonly WorkflowStep[]>(() => {
     if (!presentation) return [];
     const activeIndex = stepIndex(presentation.activeStepId);
@@ -112,29 +119,39 @@ export function IntakeWorkspace(): JSX.Element {
   const displayedCopy = stepCopy(displayedStepId, currentPresentation);
   const activeIndex = stepIndex(currentPresentation.activeStepId);
   const displayedIndex = stepIndex(displayedStepId);
-  const isReviewingEarlierStep = reviewingEarlierStep && displayedIndex < activeIndex;
+  const isReviewingEarlierStep = displayedIndex < activeIndex && !advancingFromReview;
 
   function selectStep(stepId: string): void {
     const nextStepId = stepId as IntakeStepId;
     if (stepIndex(nextStepId) > activeIndex) return;
-    setViewedStepId(nextStepId === currentPresentation.activeStepId ? null : nextStepId);
-    setReviewingEarlierStep(stepIndex(nextStepId) < activeIndex);
+    setAdvancingFromReview(false);
+    setSearchParams(nextStepId === currentPresentation.activeStepId ? {} : { step: nextStepId });
     setFocusStepId(nextStepId);
   }
 
   function focusTask(stepId: IntakeStepId): void {
-    const target = document.getElementById(taskTargetId(stepId));
+    const target = workspaceRef.current?.querySelector<HTMLElement>(`#${taskTargetId(stepId)}`);
     if (typeof target?.scrollIntoView === "function") target.scrollIntoView({ block: "start" });
     target?.focus({ preventScroll: true });
   }
 
   function runPrimaryAction(): void {
+    if (displayedStepId === "verify" && !verificationValid) {
+      const invalidField =
+        workspaceRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+      if (typeof invalidField?.scrollIntoView === "function") {
+        invalidField.scrollIntoView({ block: "center" });
+      }
+      invalidField?.focus({ preventScroll: true });
+      return;
+    }
+
     if (
       displayedStepId === "verify" &&
       currentReferral.status === "pending_information" &&
       !isReviewingEarlierStep
     ) {
-      const resume = document.querySelector<HTMLButtonElement>(
+      const resume = workspaceRef.current?.querySelector<HTMLButtonElement>(
         '[data-intake-primary-action="review"]',
       );
       if (resume && !resume.disabled) {
@@ -146,7 +163,7 @@ export function IntakeWorkspace(): JSX.Element {
     }
 
     if (displayedStepId === "verify") {
-      const save = document.querySelector<HTMLButtonElement>(
+      const save = workspaceRef.current?.querySelector<HTMLButtonElement>(
         '[data-intake-primary-action="save-info"]',
       );
       if (save && !save.disabled) {
@@ -158,7 +175,7 @@ export function IntakeWorkspace(): JSX.Element {
     }
 
     if (displayedStepId === "review" && currentPresentation.blockers.length > 0) {
-      const save = document.querySelector<HTMLButtonElement>(
+      const save = workspaceRef.current?.querySelector<HTMLButtonElement>(
         '[data-intake-primary-action="save-info"]',
       );
       if (save && !save.disabled) {
@@ -170,8 +187,8 @@ export function IntakeWorkspace(): JSX.Element {
     }
 
     if (isReviewingEarlierStep) {
-      setViewedStepId(null);
-      setReviewingEarlierStep(false);
+      setAdvancingFromReview(false);
+      setSearchParams({});
       setFocusStepId(currentPresentation.activeStepId);
       return;
     }
@@ -185,7 +202,7 @@ export function IntakeWorkspace(): JSX.Element {
       return;
     }
 
-    const action = document.querySelector<HTMLButtonElement>(
+    const action = workspaceRef.current?.querySelector<HTMLButtonElement>(
       `[data-intake-primary-action="${primaryActionName(displayedStepId)}"]`,
     );
     if (action && !action.disabled) {
@@ -201,8 +218,8 @@ export function IntakeWorkspace(): JSX.Element {
   }
 
   function handleActionComplete(action: string): void {
-    setViewedStepId(action === "start-review" ? "verify" : null);
-    setReviewingEarlierStep(false);
+    setAdvancingFromReview(action === "start-review");
+    setSearchParams(action === "start-review" ? { step: "verify" } : {});
   }
 
   return (
@@ -227,7 +244,7 @@ export function IntakeWorkspace(): JSX.Element {
 
       <AdmissionsTabs current="/referrals" />
 
-      <div className="wx-intake-workspace" style={workspace}>
+      <div ref={workspaceRef} className="wx-intake-workspace" style={workspace}>
         <nav className="wx-intake-progress" aria-label="Intake progress" style={progress}>
           <WorkflowStepper
             steps={steps}
@@ -257,6 +274,7 @@ export function IntakeWorkspace(): JSX.Element {
               activeStage={displayedStepId}
               onReferralLoaded={setReferral}
               onActionComplete={handleActionComplete}
+              onVerificationValidityChange={setVerificationValid}
             />
           </section>
 
@@ -294,11 +312,13 @@ export function IntakeWorkspace(): JSX.Element {
           View full referral
         </Button>
         <Button tone="primary" onClick={runPrimaryAction}>
-          {isReviewingEarlierStep && displayedStepId === "verify"
-            ? `Save & return to ${STEP_DEFINITIONS[activeIndex]?.label ?? "current step"}`
-            : isReviewingEarlierStep
-              ? `Return to ${STEP_DEFINITIONS[activeIndex]?.label ?? "current step"}`
-              : primaryLabel(displayedStepId, presentation)}
+          {displayedStepId === "verify" && !verificationValid
+            ? "Fix highlighted fields"
+            : isReviewingEarlierStep && displayedStepId === "verify"
+              ? `Save & return to ${STEP_DEFINITIONS[activeIndex]?.label ?? "current step"}`
+              : isReviewingEarlierStep
+                ? `Return to ${STEP_DEFINITIONS[activeIndex]?.label ?? "current step"}`
+                : primaryLabel(displayedStepId, presentation)}
         </Button>
       </StickyFooterActions>
     </div>
@@ -322,6 +342,12 @@ function stepIndex(step: IntakeStepId): number {
   return STEP_DEFINITIONS.findIndex((definition) => definition.id === step);
 }
 
+function intakeStep(value: string | null): IntakeStepId | null {
+  return STEP_DEFINITIONS.some((definition) => definition.id === value)
+    ? (value as IntakeStepId)
+    : null;
+}
+
 function stepCopy(
   step: IntakeStepId,
   presentation: ReturnType<typeof deriveIntakeWorkspace>,
@@ -332,7 +358,8 @@ function stepCopy(
   const copy: Record<IntakeStepId, { heading: string; guidance: string }> = {
     receive: {
       heading: "Review the received referral",
-      guidance: "Review the referral summary, ownership, priority, and source details.",
+      guidance:
+        "Review the referral and add its source records. If no document is available, continue with manual review.",
     },
     verify: {
       heading: "Verify the referral information",
