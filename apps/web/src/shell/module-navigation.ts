@@ -39,9 +39,9 @@ const LABEL_OVERRIDES: Readonly<Record<string, string>> = {
 
 /** Curated module rows keep the working destinations in a stable order. Visibility comes from the sidebar. */
 const ADMISSIONS_ITEMS: readonly { path: string; label: string }[] = [
+  { path: "/referrals", label: "Intake" },
   { path: "/admissions", label: "All Admissions" },
   { path: "/admissions/new", label: "New Admission" },
-  { path: "/referrals", label: "Referral Inbox" },
   { path: "/referrals/new", label: "New Referral" },
   { path: "/admissions/readmit", label: "Readmit" },
   { path: "/admissions/discharges", label: "Discharge/Transfer" },

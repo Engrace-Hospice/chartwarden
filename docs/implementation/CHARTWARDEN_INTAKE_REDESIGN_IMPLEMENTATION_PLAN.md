@@ -1,7 +1,7 @@
 # ChartWarden — Unified Hospice Intake Workspace
 
 **Implementation specification**
-**Status:** Proposed; requires repository discovery and validation before code changes
+**Status:** Complete; the five staged deliveries are merged and the production-default navigation rollout was approved on 2026-11-14
 **Scope:** Referral intake through admission handoff, with DocLens-assisted review where existing capabilities permit
 **Primary constraint:** Preserve the existing backend contracts, clinical controls, tenant isolation, audit trail, and ChartWarden Lantern design tokens. Do not copy Patrium branding or assume its undocumented behavior.
 
@@ -178,6 +178,14 @@ Use fictional patient data only. At minimum, automate where infrastructure allow
 
 Each PR should include screenshots of desktop/tablet/mobile using synthetic data, a change inventory, known limitations, test evidence, and rollback instructions. Feature-flag the new workspace if the current app supports flags; otherwise use a reversible route-level rollout. Do not change the production default until approved.
 
+### 6.1 Closeout record
+
+- The staged implementation through PR 5 was merged to `main` in [PR #1038](https://github.com/Engrace-Hospice/chartwarden/pull/1038) at commit `3a9298161f0bf301e4ec968b85cb6b6403ada6be`.
+- Gate G4's automated accessibility, responsive, guided-intake, admission-readiness, and server-gate regression evidence passed before merge. The exact verification record remains in the PR and its branch history.
+- The product owner explicitly waived the remaining in-person hospice intake staff acceptance on 2026-11-14 and accepted that waiver as the final G4 decision. This is a governance waiver, not automated evidence that substitutes for a staff usability study.
+- On 2026-11-14 the product owner separately approved Intake as the production-default Admissions landing. The rollout changes navigation preference only: `/referrals` is preferred for actors who can read referrals, `/admissions` remains the fallback for admission-only actors, and all existing deep links remain valid.
+- Optional improvements that were not required for the redesign are tracked separately in [`intake-redesign-follow-up-backlog.md`](./intake-redesign-follow-up-backlog.md). They are not approved implementation scope.
+
 ## 7. Definition of done
 
 - Staff can initiate and progress a referral from one obvious intake entry point.
@@ -187,7 +195,7 @@ Each PR should include screenshots of desktop/tablet/mobile using synthetic data
 - Existing deep links and in-progress referrals continue to work.
 - Automated tests cover high-risk transitions and failure cases; accessibility and responsive behavior are verified.
 - No unapproved backend contract changes, no undocumented new clinical rules, and no PHI in fixtures or screenshots.
-- A non-developer hospice intake staff member can complete representative scenarios in usability testing without needing to know the app's internal architecture.
+- A non-developer hospice intake staff member can complete representative scenarios in usability testing without needing to know the app's internal architecture. **Closeout exception:** the product owner explicitly waived this human-acceptance exercise on 2026-11-14; the waiver is recorded above and in the audit.
 
 ## 8. Claude Code execution instructions
 

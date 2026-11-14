@@ -1,6 +1,6 @@
 # Intake Redesign Current-State Audit
 
-**Gate:** G0 discovery and contract mapping
+**Gate:** G4 complete; G0 discovery and contract mapping retained as historical evidence
 
 **Date:** 2026-11-12
 
@@ -428,6 +428,17 @@ Gate G3: backend contracts remain unchanged. The partial-failure recovery case f
 
 Gate G4: accessibility evidence, full server-gate regression, user acceptance with hospice intake staff, reversible route-level rollout, and explicit approval before changing the production-default navigation.
 
+### Gate G4 closeout — 2026-11-14
+
+Gate G4 is complete.
+
+- PR 4/G3 and PR 5/G4 were merged to `main` in [PR #1038](https://github.com/Engrace-Hospice/chartwarden/pull/1038), merge commit `3a9298161f0bf301e4ec968b85cb6b6403ada6be`.
+- The pre-merge evidence covered focused admission tests, the guided intake E2E journey, the admission Playwright scenarios, lint, typecheck, architecture fitness, the full non-live suite, and a clean PHI scan. Code, React, and compliance reviews reported no unresolved critical, high, or medium findings.
+- The product owner explicitly waived the remaining human hospice-intake-staff acceptance exercise on 2026-11-14. The project records that waiver rather than presenting automated browser checks as human usability evidence.
+- The same product owner explicitly approved the production-default navigation change on 2026-11-14. Intake becomes the preferred Admissions landing only for actors who can see `/referrals`; `/admissions` remains the permission-aware fallback.
+- The rollout remains reversible and route-compatible. No referral, admission, or intake-workspace route is deleted or redirected, and no API, schema, readiness rule, permission, or clinical transition changes.
+- Non-blocking ideas are separated into [`intake-redesign-follow-up-backlog.md`](./intake-redesign-follow-up-backlog.md); listing them does not approve implementation.
+
 ## 9. Gate G0 approval record
 
 Gate G0 is ready for reviewer decision when this audit's evidence and scope are accepted. Approval authorizes only PR 2 as described above: a frontend-derived worklist and route-compatible workspace shell with no backend contract, schema, clinical rule, signature, Medicare notice, PHI integration, or irreversible-transition change.
@@ -441,3 +452,5 @@ The following decisions remain explicitly outside that approval unless separatel
 - change referral patient-creation transaction boundaries;
 - add automatic extracted-field writeback;
 - alter readiness, eligibility, election, CTI, consent, HOPE, or admission-transition rules.
+
+These decisions now live in the separate follow-up backlog linked above. The core intake redesign initiative is closed.

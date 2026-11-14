@@ -23,9 +23,10 @@ const screens: WebScreenDescriptor[] = paths.map(([path, title]) => ({
 const sections = buildPrimaryNav(screens);
 
 describe("route breadcrumbs", () => {
-  it("links Direct intake back to the Admissions landing", () => {
+  it("links Direct intake through the Intake-first Admissions hierarchy", () => {
     expect(resolveBreadcrumbs("/admissions/new", screens, sections)).toEqual([
-      { label: "Admissions", href: "/admissions" },
+      { label: "Admissions", href: "/referrals" },
+      { label: "All admissions", href: "/admissions" },
       { label: "Direct intake" },
     ]);
   });
@@ -49,15 +50,14 @@ describe("route breadcrumbs", () => {
 
   it("places a referral detail under its inbox", () => {
     expect(resolveBreadcrumbs("/referrals/ref-1", screens, sections)).toEqual([
-      { label: "Admissions", href: "/admissions" },
-      { label: "Referral Inbox", href: "/referrals" },
+      { label: "Admissions", href: "/referrals" },
       { label: "Referral" },
     ]);
   });
 
   it("links a workflow with a separate URL prefix through its real parent", () => {
     expect(resolveBreadcrumbs("/discharges/dis-1/cosign", screens, sections)).toEqual([
-      { label: "Admissions", href: "/admissions" },
+      { label: "Admissions", href: "/referrals" },
       { label: "Discharge / transfer", href: "/admissions/discharges" },
       { label: "Cosign" },
     ]);

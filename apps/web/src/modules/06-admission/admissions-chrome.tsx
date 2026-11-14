@@ -6,8 +6,8 @@ import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 const TABS = [
-  { to: "/admissions", label: "All Admissions" },
   { to: "/referrals", label: "Intake" },
+  { to: "/admissions", label: "All Admissions" },
   { to: "/compliance/admissions", label: "Compliance Windows" },
 ] as const;
 
