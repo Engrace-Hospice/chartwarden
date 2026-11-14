@@ -108,6 +108,48 @@ test.describe("Documents", () => {
     await expect(viewer.getByText("Preview · v1")).toBeVisible();
   });
 
+  test("accessibility: a created referral opens in the guided intake workspace", async ({
+    page,
+  }) => {
+    await signInAs(page, ADMIN_ACCOUNT());
+    const referralId = await createReferral(page);
+
+    await page.goto(`/referrals/${referralId}/intake`);
+    await expect(page.getByRole("heading", { name: "Review the received referral" })).toBeVisible();
+    await page.getByRole("button", { name: "Start review & continue" }).click();
+    await expect(page).toHaveURL(new RegExp(`/referrals/${referralId}/intake$`));
+    await expect(page.getByRole("navigation", { name: "Intake progress" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Verify the referral information" }),
+    ).toBeVisible();
+    await page.getByLabel("Date of birth").fill("1954-05-08");
+    await page.getByRole("button", { name: "Save & continue to patient matching" }).click();
+    await expect(page.getByRole("heading", { name: "Patient Resolution" })).toBeVisible();
+
+    await page.getByRole("button", { name: /Receive referral/ }).click();
+    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+    await page.getByRole("button", { name: "Return to Match patient" }).click();
+    await expect(page.getByRole("heading", { name: "Patient Resolution" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Create new patient" }).click();
+    await expect(page.getByRole("heading", { name: "Address referral blockers" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Complete these required items" }),
+    ).toBeVisible();
+    await page
+      .getByLabel("Referral reason or diagnosis")
+      .fill("Metastatic lung cancer with rapid functional decline");
+    await page
+      .getByRole("textbox", { name: "Organization", exact: true })
+      .fill("Mercy General Hospital");
+    await page.getByRole("button", { name: "Save review information" }).click();
+    await page.getByRole("button", { name: "Complete referral review" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Review and start the admission" }),
+    ).toBeVisible();
+    await expectNoAxeViolations(page);
+  });
+
   test("main path: a tag survives the reload that used to erase it (#153/#91)", async ({
     page,
   }) => {

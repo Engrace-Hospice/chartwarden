@@ -468,9 +468,9 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     "/api/v1/referrals/:id",
     { preHandler: [REFERRAL_UPDATE, referralScope("referral.update")] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, userId } = actorOf(request);
       const body = parse(ReferralUpdateSchema, request.body);
-      return service.updateReferral(organizationId, idOf(request), body, body.ifVersion);
+      return service.updateReferral(organizationId, idOf(request), body, body.ifVersion, userId);
     },
   );
 

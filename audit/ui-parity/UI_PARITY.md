@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 117 documented screen specs · 45 module screen-sets registered · 401 screens wired across web/portal/admin.
+**Coverage:** 117 documented screen specs · 45 module screen-sets registered · 402 screens wired across web/portal/admin.
 - **admin**: 44 screen(s)
 - **portal**: 19 screen(s)
-- **web**: 338 screen(s)
+- **web**: 339 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -61,6 +61,7 @@
 | web | 06-admission | `admission.detail` | `/admissions/:id` | `admission.read` | ✅ |
 | web | 06-admission | `admission.discharge` | `/admissions/:id/discharge` | `discharge.create` | ✅ |
 | web | 06-admission | `admission.referral-detail` | `/referrals/:id` | `referral.read` | ✅ |
+| web | 06-admission | `admission.intake-workspace` | `/referrals/:id/intake` | `referral.read` | ✅ |
 | web | 06-admission | `admission.create` | `/admissions/new` | `admission.create` | ✅ |
 | web | 06-admission | `admission.discharges` | `/admissions/discharges` | `discharge.create` | ✅ |
 | web | 06-admission | `admission.readmit-list` | `/admissions/readmit` | `admission.create` | ✅ |

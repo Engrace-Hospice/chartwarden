@@ -231,7 +231,7 @@
       "axeReached": false
     }
   ],
-  "dynamicWebScreens": 119,
+  "dynamicWebScreens": 120,
   "dynamicAxeReachedCount": 42,
   "dynamicExcluded": [
     {
@@ -532,6 +532,11 @@
     {
       "id": "admission.referral-detail",
       "path": "/referrals/:id",
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "admission.intake-workspace",
+      "path": "/referrals/:id/intake",
       "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {

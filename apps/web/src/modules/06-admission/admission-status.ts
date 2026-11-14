@@ -49,7 +49,7 @@ export const REFERRAL_LABEL: Record<string, string> = {
   received: "New",
   under_review: "Under review",
   pending_information: "Pending information",
-  qualified: "Ready",
+  qualified: "Ready to start admission",
   declined: "Declined",
   duplicate: "Duplicate",
   withdrawn: "Withdrawn",

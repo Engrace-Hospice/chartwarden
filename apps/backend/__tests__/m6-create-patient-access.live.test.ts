@@ -244,6 +244,24 @@ describe.skipIf(!DB_URL)("create-patient — duplicate MBI + creator access — 
   });
 
   describe("creator access", () => {
+    it("attributes referral demographic edits to the authenticated actor", async () => {
+      const ref = await triagedReferral(ORG_A, "Audit, Avery");
+      await svc.updateReferral(
+        ORG_A,
+        ref.id,
+        { patientDobAtReceipt: "1951-02-03" },
+        ref.version,
+        CREATOR,
+      );
+
+      const audited = await admin.query(
+        "SELECT actor_user_id FROM audit_event WHERE resource_kind='referral' AND resource_id=$1 AND event_type='referral.update' ORDER BY created_at DESC LIMIT 1",
+        [ref.id],
+      );
+      expect(audited.rows).toHaveLength(1);
+      expect(audited.rows[0]?.actor_user_id).toBe(CREATOR);
+    });
+
     it("puts the creating actor on the new patient's caseload (audited, org-scoped)", async () => {
       const ref = await triagedReferral(ORG_A, "Delta, Dee");
       const { patientId } = await svc.createReferralPatient(ORG_A, ref.id, ref.version, CREATOR);

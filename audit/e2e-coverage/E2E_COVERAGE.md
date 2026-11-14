@@ -44,7 +44,7 @@
 
 ## Dynamic web screens (#852)
 
-42/119 registered `web` screens carrying a `:param` segment are axe-walked in `axe-route-walk.spec.ts`: patient-only paths plus seeded admission, Medicaid-claim and medication-order paths. Every id is resolved at run time through the signed-in app; none is copied from a seed constant. The rest are excluded, each with its reason:
+42/120 registered `web` screens carrying a `:param` segment are axe-walked in `axe-route-walk.spec.ts`: patient-only paths plus seeded admission, Medicaid-claim and medication-order paths. Every id is resolved at run time through the signed-in app; none is copied from a seed constant. The rest are excluded, each with its reason:
 
 | Screen id | Path | Permission | Why not walked |
 |---|---|---|---|
@@ -108,6 +108,7 @@
 | `emar.reconciliation-worksheet` | `/patients/:patientId/reconciliation/:worksheetId` | reconciliation.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `assessment.scale-trend` | `/patients/:patientId/scales/:scaleType` | assessment.read_trend | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `admission.referral-detail` | `/referrals/:id` | referral.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
+| `admission.intake-workspace` | `/referrals/:id/intake` | referral.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `prescribing.refill-detail` | `/refills/:id` | prescribing.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `reporting.dashboard` | `/reports/dashboards/:dashboardId` | report.dashboard.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
 | `reporting.role-dashboard` | `/reports/role/:roleKey` | report.dashboard.read | needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet |
