@@ -112,6 +112,7 @@ export const TransferNoticeViewSchema = Type.Object({
   payerControlNumber: nullable(Type.String()),
   latestSubmissionId: nullable(Type.String()),
   latestSubmissionOutcome: nullable(Type.String()),
+  latestSubmissionDispatchState: nullable(Type.String()),
   cancelReason: nullable(Type.String()),
   blockers: Type.Array(Finding),
   warnings: Type.Array(Finding),

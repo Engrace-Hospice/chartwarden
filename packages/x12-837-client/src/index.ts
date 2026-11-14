@@ -161,7 +161,7 @@ export type {
   Synthetic271Context,
   SyntheticHospicePeriod,
 } from "./eligibility/fixtures";
-export { X12FormatError } from "./eligibility/x12-envelope";
+export { tokenizeInterchange, X12FormatError } from "./eligibility/x12-envelope";
 
 // ─── Medicare hospice transfer notice 837I (TOB 81C/82C, correction, 8xD void) — ADR-0037 TypeScript ─────────
 export {

@@ -84,11 +84,14 @@ describe("the composition root builds every clearinghouse port from the per-org 
   });
 
   it("every clearinghouse context port resolves the org's own binding and mode", () => {
-    const calls = index.match(/buildClearinghouseContextPort\(\{[^}]*\}\)/g) ?? [];
-    expect(calls.length).toBeGreaterThanOrEqual(3);
-    for (const call of calls) {
-      expect(call).toContain("binding: clearinghouseBinding");
-      expect(call).toContain("...clearinghouseUsageFor");
+    const starts = [...index.matchAll(/buildClearinghouseContextPort\(\{/g)].map(
+      (match) => match.index,
+    );
+    expect(starts.length).toBeGreaterThanOrEqual(3);
+    for (const start of starts) {
+      const callWindow = index.slice(start, start + 2_500);
+      expect(callWindow).toContain("binding: clearinghouseBinding");
+      expect(callWindow).toContain("...clearinghouseUsageFor");
     }
   });
 

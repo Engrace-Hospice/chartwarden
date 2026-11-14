@@ -41,6 +41,11 @@ export {
   systemRoleDisplayName,
 } from "./display-names";
 export { LAB_RECOVERY_DEFAULT_GRANTS, LAB_RECOVERY_KEYS } from "./lab-recovery-grants";
+export {
+  EXTERNAL_AUDITOR_ROLE_KEY,
+  SYSTEM_MANAGED_ROLE_KEYS,
+  isSystemManagedRoleKey,
+} from "./system-managed";
 export { INTAKE_DEFAULT_GRANTS, INTAKE_ROLE_KEYS } from "./intake-grants";
 export {
   SSN_DEFAULT_GRANTS,
@@ -70,11 +75,6 @@ export {
   isTenantRoleReserved,
   roleConfersKey,
 } from "./platform-reserved";
-export {
-  EXTERNAL_AUDITOR_ROLE_KEY,
-  SYSTEM_MANAGED_ROLE_KEYS,
-  isSystemManagedRoleKey,
-} from "./system-managed";
 export {
   ADMINISTRATOR_EXCLUDED_KEYS,
   FULL_CATALOG_ROLE_KEYS,

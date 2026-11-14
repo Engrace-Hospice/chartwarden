@@ -48,6 +48,14 @@ type SeedIds = {
   sequestration: string;
   credential: string;
   lineEvidence: string;
+  renderIdentity: string;
+  renderArtifact: string;
+  medicareRouting: string;
+  medicareRoutingIssue: string;
+  claimmdRoute: string;
+  claimmdEnrollment: string;
+  noeExceptionReview: string;
+  noeExceptionReviewEvent: string;
 };
 
 /**
@@ -72,6 +80,14 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "sequestration_policy", key: "sequestration" },
   { table: "mac_submitter_credential", key: "credential" },
   { table: "claimmd_submission_line_evidence", key: "lineEvidence" },
+  { table: "medicare_notice_render_identity", key: "renderIdentity" },
+  { table: "medicare_notice_render_artifact", key: "renderArtifact" },
+  { table: "medicare_provider_routing", key: "medicareRouting" },
+  { table: "medicare_provider_routing_backfill_issue", key: "medicareRoutingIssue" },
+  { table: "claimmd_medicare_payer_route", key: "claimmdRoute" },
+  { table: "claimmd_medicare_payer_enrollment", key: "claimmdEnrollment" },
+  { table: "noe_exception_review", key: "noeExceptionReview" },
+  { table: "noe_exception_review_event", key: "noeExceptionReviewEvent" },
 ];
 
 describe.skipIf(!DB_URL)(
@@ -221,6 +237,39 @@ describe.skipIf(!DB_URL)(
        VALUES ($1,$2,$3,gen_random_uuid(),gen_random_uuid(),$4,$4,$5) RETURNING id`,
         [org, pe, patient, from, `NOE${n}-0001`],
       );
+      const noticeSubmission = await one(
+        `INSERT INTO claim_submission (organization_id, provider_entity_id, noe_id, kind,
+         claim_control_number, attempt_index)
+       VALUES ($1,$2,$3,'noe',$4,0) RETURNING id`,
+        [org, pe, noe, `NOE${n}-0001`],
+      );
+      const renderIdentity = await one(
+        `INSERT INTO medicare_notice_render_identity
+         (organization_id,notice_id,submission_id,notice_kind,related_source_id,provider_entity_id,
+          jurisdiction,vendor,account_reference,usage,route_fingerprint,source_version,mapper_version,
+          control_number,fingerprint,isa13,rendered_at)
+       VALUES ($1,$2,$3,'noe',$2,$4,'palmetto_jm','direct_mac',$5,'test',$6,$7,'m23-notice-v1',
+          $8,$9,$10,now()) RETURNING id`,
+        [
+          org,
+          noe,
+          noticeSubmission,
+          pe,
+          `direct-mac:${n}`,
+          `route-${n}`,
+          `source-${n}`,
+          `NOE${n}-0001`,
+          `fingerprint-${n}`,
+          String(n).padStart(9, "0"),
+        ],
+      );
+      const renderArtifact = await one(
+        `INSERT INTO medicare_notice_render_artifact
+         (organization_id,render_identity_id,ciphertext,content_sha256,plaintext_byte_length,
+          encryption_key_version)
+       VALUES ($1,$2,decode($3,'hex'),$4,128,'v1') RETURNING id`,
+        [org, renderIdentity, "ab".repeat(32), "a".repeat(64)],
+      );
       // `notr_one_event_kind`: CHECK (revocation + transfer + discharge event ids = 1) — the NOTR names
       // the ONE M6 event that ended the benefit period, and `trigger_kind` must agree with which id is set.
       const notr = await one(
@@ -235,6 +284,49 @@ describe.skipIf(!DB_URL)(
          set_by_membership_id)
        VALUES ($1,$2,'palmetto_jm',$3,'TP','CID','cipher',1,$4) RETURNING id`,
         [org, pe, `SUB${n}`, m],
+      );
+      const medicareRouting = await one(
+        `INSERT INTO medicare_provider_routing
+         (organization_id, provider_entity_id, mac_jurisdiction, effective_from, provenance,
+          set_by_membership_id, set_reason)
+         VALUES ($1,$2,'palmetto_jm',$3,'manual',$4,'provider_documentation') RETURNING id`,
+        [org, pe, from, m],
+      );
+      const medicareRoutingIssue = await one(
+        `INSERT INTO medicare_provider_routing_backfill_issue
+         (organization_id, provider_entity_id, legacy_credential_id, reason_code, candidate_jurisdictions)
+         VALUES ($1,$2,$3,'canonical_route_exists',ARRAY['palmetto_jm']) RETURNING id`,
+        [org, pe, randomUUID()],
+      );
+      const payerId = randomUUID();
+      const claimmdRoute = await one(
+        `INSERT INTO claimmd_medicare_payer_route
+         (organization_id,provider_entity_id,payer_id,mac_jurisdiction,account_reference,usage,
+          external_payer_id,transaction_type,effective_from,status,provenance,created_by_membership_id)
+         VALUES ($1,$2,$3,'palmetto_jm',$4,'test',$5,'837i',$6,'active','manual_configuration',$7)
+         RETURNING id`,
+        [org, pe, payerId, `account-${n}`, `PAYER${n}`, from, m],
+      );
+      const claimmdEnrollment = await one(
+        `INSERT INTO claimmd_medicare_payer_enrollment
+         (organization_id,provider_entity_id,payer_id,account_reference,usage,transaction_type,status,
+          effective_from)
+         VALUES ($1,$2,$3,$4,'test','837i','pending',$5) RETURNING id`,
+        [org, pe, payerId, `account-${n}`, from],
+      );
+      const justificationDocumentId = randomUUID();
+      const noeExceptionReview = await one(
+        `INSERT INTO noe_exception_review
+         (organization_id,noe_id,category,justification_document_id,status,created_by_membership_id,
+          updated_by_membership_id)
+         VALUES ($1,$2,'operations_disruption',$3,'evidence_required',$4,$4) RETURNING id`,
+        [org, noe, justificationDocumentId, m],
+      );
+      const noeExceptionReviewEvent = await one(
+        `INSERT INTO noe_exception_review_event
+         (organization_id,review_id,event_type,to_status,actor_membership_id,evidence_document_ids)
+         VALUES ($1,$2,'created','evidence_required',$3,ARRAY[$4]::uuid[]) RETURNING id`,
+        [org, noeExceptionReview, m, justificationDocumentId],
       );
 
       const evidenceId = randomUUID();
@@ -278,6 +370,14 @@ describe.skipIf(!DB_URL)(
         sequestration,
         credential,
         lineEvidence,
+        renderIdentity,
+        renderArtifact,
+        medicareRouting,
+        medicareRoutingIssue,
+        claimmdRoute,
+        claimmdEnrollment,
+        noeExceptionReview,
+        noeExceptionReviewEvent,
       };
     }
 
@@ -349,6 +449,58 @@ describe.skipIf(!DB_URL)(
           ),
         ),
       ).rejects.toThrow();
+    });
+
+    it("new M23 routing and exception tables reject forged cross-tenant writes", async () => {
+      const membership = "00000000-0000-0000-0000-000000000000";
+      const attempts: Array<{ sql: string; params: unknown[] }> = [
+        {
+          sql: `INSERT INTO medicare_provider_routing
+            (organization_id,provider_entity_id,mac_jurisdiction,effective_from,provenance,set_by_membership_id,set_reason)
+            VALUES ($1,$2,'palmetto_jm','2027-01-01','manual',$3,'provider_documentation')`,
+          params: [ORG_A, randomUUID(), membership],
+        },
+        {
+          sql: `INSERT INTO claimmd_medicare_payer_route
+            (organization_id,provider_entity_id,payer_id,mac_jurisdiction,account_reference,usage,
+             external_payer_id,transaction_type,effective_from,status,provenance,created_by_membership_id)
+            VALUES ($1,$2,$3,'palmetto_jm','forged','test','FORGED','837i','2027-01-01','active',
+             'manual_configuration',$4)`,
+          params: [ORG_A, randomUUID(), randomUUID(), membership],
+        },
+        {
+          sql: `INSERT INTO claimmd_medicare_payer_enrollment
+            (organization_id,provider_entity_id,payer_id,account_reference,usage,transaction_type,status,effective_from)
+            VALUES ($1,$2,$3,'forged','test','837i','pending','2027-01-01')`,
+          params: [ORG_A, randomUUID(), randomUUID()],
+        },
+        {
+          sql: `INSERT INTO noe_exception_review_event
+            (organization_id,review_id,event_type,to_status,actor_membership_id)
+            VALUES ($1,$2,'created','evidence_required',$3)`,
+          params: [ORG_A, a.noeExceptionReview, membership],
+        },
+      ];
+      for (const attempt of attempts) {
+        await expect(withOrg(ORG_B, () => db.query(attempt.sql, attempt.params))).rejects.toThrow(
+          /row-level security policy/,
+        );
+      }
+
+      // The review's BEFORE trigger resolves its NOE under the caller's tenant context before
+      // PostgreSQL evaluates WITH CHECK. Org B therefore cannot see org A's NOE and the layered
+      // same-org guard fails closed first; COVERED above separately proves the row is RLS-hidden.
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO noe_exception_review
+              (organization_id,noe_id,category,justification_document_id,status,created_by_membership_id,
+               updated_by_membership_id)
+              VALUES ($1,$2,'operations_disruption',$3,'evidence_required',$4,$4)`,
+            [ORG_A, a.noe, randomUUID(), membership],
+          ),
+        ),
+      ).rejects.toThrow(/must reference a NOE in the same organization/);
     });
 
     it("a cross-tenant UPDATE matches no rows (the USING clause covers writes too)", async () => {

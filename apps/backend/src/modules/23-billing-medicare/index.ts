@@ -94,6 +94,16 @@ export {
   buildMacOnboardingCredentialPort,
   buildDrizzleSequestrationPolicyService,
   buildDrizzleEdiProfileService,
+  buildDrizzleMedicareProviderRoutingService,
+  buildClaimMdMedicareRoutingService,
+  type ClaimMdMedicareRoutingService,
+  type MedicareProviderRoutingService,
+  buildNoeExceptionReviewService,
+  type NoeExceptionReviewService,
+  type NoeExceptionEvidenceReader,
+  buildMedicareNoticeWorklistService,
+  buildDrizzleArtifactReadinessReader,
+  type MedicareNoticeWorklistService,
 } from "./routes/index";
 export { mountM23Routes } from "./routes/mount";
 export {
@@ -104,6 +114,36 @@ export {
   buildClaim837iProviderReader,
   buildDrizzleEdiProfileReader,
 } from "./services/claim-837i-parties";
+export {
+  createMedicareNoticeRenderer,
+  MedicareNoticeRenderHold,
+  type MedicareNoticeArtifactStore,
+  type MedicareNoticeKind,
+  type MedicareNoticeRenderIdentity,
+  type MedicareNoticeRenderIdentityStore,
+  type MedicareNoticeRenderReservation,
+  type MedicareNoticeSourceLoader,
+  type RenderedMedicareNotice,
+} from "./services/medicare-notice-renderer";
+export { buildDrizzleMedicareNoticeRenderIdentityStore } from "./services/medicare-notice-render-identity-store";
+export {
+  buildDrizzleMedicareNoticeRenderArtifactStore,
+  MedicareNoticeArtifactKeyUnavailableError,
+} from "./services/medicare-notice-render-artifact-store";
+export {
+  createAuthoritativeMedicareNoticeSourceLoader,
+  MEDICARE_NOTICE_MAPPER_VERSION,
+  MEDICARE_NOTICE_MBI_DISCLOSURE_PURPOSE,
+  type MedicareNoticeClinicalPort,
+  type MedicareNoticeLoaderDeps,
+  type MedicareNoticePersistencePort,
+  type MedicareNoticeProviderFactsPort,
+  type MedicareNoticeRoutePort,
+} from "./services/medicare-notice-source-loader";
+export {
+  buildDrizzleMedicareNoticePersistence,
+  buildDrizzleMedicareNoticeRoutePort,
+} from "./services/medicare-notice-production-loader";
 export {
   type PriorElectionClosure,
   type PriorLiveEndedStayPort,
@@ -155,11 +195,16 @@ export {
   M23_QUEUE_PARAMS,
   M23_QUEUES,
   type M23WorkerDeps,
+  type M23ClaimSubmissionWorkerDeps,
   buildM23WorkerDeps,
   buildM23SubmissionQueuePort,
   buildM23RevalidateEnqueuePort,
   registerM23CronWorkers,
   registerM23DomainWorkers,
+  registerM23ClaimSubmissionWorkers,
+  registerM23NoticeSubmissionWorkers,
+  registerM23TransportAckWorkers,
+  registerM23LegacyAckWorkers,
   sweepLegacyValidationRunQueue,
   registerM23PortalHealthWorker,
   registerM23LaunchWorkers,
@@ -167,6 +212,7 @@ export {
   scheduleM23Jobs,
   scheduleM23LaunchJobs,
   scheduleM23WatchJobs,
+  scheduleM23TransportAckJobs,
   buildClaimValidationRunner,
   buildM23ValidationRunner,
   buildM23WorkQueueEnqueuePort,
@@ -202,6 +248,34 @@ export {
   m23LaunchGatewayConfigFromEnv,
 } from "./jobs/launch-gateway";
 export type { M23LaunchGatewayConfig } from "./jobs/launch-gateway";
+export {
+  DIRECT_MAC_NOTICE_GATEWAY_CONFORMANCE_SUITE,
+  DIRECT_MAC_NOTICE_GATEWAY_CONTRACT_VERSION,
+  DIRECT_MAC_NOTICE_GATEWAY_PATHS,
+  classifyDirectMacNoticeGatewayCapability,
+  DirectMacNoticeGatewayError,
+  buildDirectMacNoticeGatewayRequest,
+  buildQualifiedDirectMacNoticeDispatchAdapter,
+  createVersionedDirectMacNoticeGatewayClient,
+  directMacNoticeGatewayReadiness,
+  parseDirectMacNoticeAcknowledgmentProvenance,
+  parseDirectMacNoticeGatewayCapabilities,
+  parseDirectMacNoticeGatewayResponse,
+  qualifyDirectMacNoticeGateway,
+} from "./jobs/direct-mac-notice-gateway-contract";
+export type {
+  DirectMacNoticeAcknowledgmentProvenanceV1,
+  DirectMacNoticeGatewayCapabilitiesV1,
+  DirectMacNoticeGatewayCapabilityClass,
+  DirectMacNoticeGatewayConformanceAttestation,
+  DirectMacNoticeGatewayLookupV1,
+  DirectMacNoticeGatewayReadiness,
+  DirectMacNoticeReadinessEvidence,
+  DirectMacNoticeGatewayRequestV1,
+  DirectMacNoticeGatewayResponseV1,
+  QualifiedDirectMacNoticeGateway,
+  VersionedDirectMacNoticeGatewayClient,
+} from "./jobs/direct-mac-notice-gateway-contract";
 
 export {
   buildM23OutboxBackedSubmissionGate,
@@ -364,3 +438,12 @@ export {
   type M23TaxonomyUnmappedCodeConsumerDeps,
   buildM23TaxonomyUnmappedCodeObservedConsumer,
 } from "./outbox-consumers/m25-taxonomy-unmapped-code-observed";
+
+export {
+  MedicareNoticeDispatchHold,
+  type MedicareNoticeDispatchHoldCode,
+  type MedicareNoticeDispatchIdentity,
+  type MedicareNoticeDispatchReservation,
+  type MedicareNoticeDispatchStateMachine,
+  buildMedicareNoticeDispatchStateMachine,
+} from "./services/medicare-notice-dispatch";

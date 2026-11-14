@@ -11,6 +11,7 @@
 // services speak — enum case is mapped at the repository boundary). The optimistic-concurrency version is
 // carried on the `If-Match` header (§2.5; the route kit), NOT in the body.
 import { pageQuery } from "@chartwarden/shared/route-kit";
+export { parse } from "@chartwarden/shared/route-kit";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));

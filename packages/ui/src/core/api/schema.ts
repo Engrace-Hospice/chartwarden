@@ -6308,6 +6308,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/claimmd-medicare-routing/{providerEntityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Claim.MD Medicare payer routes and enrollment evidence */
+        get: operations["getApiV1BillingClaimmdmedicareroutingByProviderEntityId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/claimmd-medicare-routing/enrollments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record transaction-specific Claim.MD Medicare enrollment evidence */
+        post: operations["postApiV1BillingClaimmdmedicareroutingEnrollments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/claimmd-medicare-routing/routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create an effective-dated Claim.MD Medicare payer route */
+        post: operations["postApiV1BillingClaimmdmedicareroutingRoutes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/claimmd-medicare-routing/routes/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close an active Claim.MD Medicare payer route interval */
+        post: operations["postApiV1BillingClaimmdmedicareroutingRoutesClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/claims": {
         parameters: {
             query?: never;
@@ -7413,6 +7481,57 @@ export interface paths {
         put?: never;
         /** Check that the MAC portal for this credential's jurisdiction answers (a portal health probe) and, when it does, record the time as lastSandboxTestAt. It does not validate the credential: the secret, client id and submitter id are not sent, and the first real submission is the first time they are used. billing.mac_credential.admin + the provider-entity scope + a fresh step-up; Idempotency-Key required; 503 when no MAC gateway is configured (§4.1 #36) */
         post: operations["postApiV1BillingMaccredentialsByProviderEntityIdTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/medicare-notice-worklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Organization-scoped unified Medicare notice worklist; counts are scoped to the returned page */
+        get: operations["getApiV1BillingMedicarenoticeworklist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/medicare-provider-routing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create an effective-dated Medicare provider-to-MAC jurisdiction route */
+        post: operations["postApiV1BillingMedicareproviderrouting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/medicare-provider-routing/{providerEntityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read effective-dated Medicare provider routing and legacy migration issues */
+        get: operations["getApiV1BillingMedicareproviderroutingByProviderEntityId"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -19452,6 +19571,92 @@ export interface paths {
         put?: never;
         /** File a corrected NOE for a rejected one — a new DRAFT copying it, linked by correctsNoticeId (201; 200 replays the correction in progress) */
         post: operations["postApiV1NoerecordsByIdCorrect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/noe-records/{id}/exception-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List auditable NOE late-filing exception reviews */
+        get: operations["getApiV1NoerecordsByIdExceptionreviews"];
+        put?: never;
+        /** Create an auditable NOE late-filing exception review backed by protected evidence */
+        post: operations["postApiV1NoerecordsByIdExceptionreviews"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/noe-records/{id}/exception-reviews/{reviewId}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach protected evidence to an existing NOE exception review */
+        post: operations["postApiV1NoerecordsByIdExceptionreviewsByReviewIdEvidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/noe-records/{id}/exception-reviews/{reviewId}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the immutable event history for an NOE exception review */
+        get: operations["getApiV1NoerecordsByIdExceptionreviewsByReviewIdHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/noe-records/{id}/exception-reviews/{reviewId}/record-decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a MAC or CMS NOE exception decision with protected evidence */
+        post: operations["postApiV1NoerecordsByIdExceptionreviewsByReviewIdRecorddecision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/noe-records/{id}/exception-reviews/{reviewId}/record-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the externally submitted NOE exception request and its evidence */
+        post: operations["postApiV1NoerecordsByIdExceptionreviewsByReviewIdRecordrequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -49941,6 +50146,190 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingClaimmdmedicareroutingByProviderEntityId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerEntityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        routes: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            /** Format: uuid */
+                            payerId: string;
+                            macJurisdiction: string;
+                            accountReference: string;
+                            usage: string;
+                            externalPayerId: string;
+                            transactionType: string;
+                            /** Format: date */
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            status: string;
+                            provenance: string;
+                            /** Format: uuid */
+                            createdByMembershipId: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                        enrollments: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            /** Format: uuid */
+                            payerId: string;
+                            accountReference: string;
+                            usage: string;
+                            transactionType: string;
+                            status: string;
+                            verificationSource: string | null;
+                            verificationRef: string | null;
+                            verifiedByMembershipId: string | null;
+                            verifiedAt: string | null;
+                            /** Format: date */
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingClaimmdmedicareroutingEnrollments: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: uuid */
+                    payerId: string;
+                    status: "pending" | "verified" | "not_required" | "rejected" | "suspended" | "expired";
+                    /** Format: date */
+                    effectiveFrom: string;
+                    effectiveTo?: string | null;
+                    verificationSource?: "vendor_portal" | "vendor_written_confirmation" | "documented_policy";
+                    verificationRef?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingClaimmdmedicareroutingRoutes: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: uuid */
+                    payerId: string;
+                    externalPayerId: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    effectiveTo?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingClaimmdmedicareroutingRoutesClose: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: uuid */
+                    routeId: string;
+                    /** Format: date */
+                    effectiveTo: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingClaims: {
         parameters: {
             query?: {
@@ -53773,6 +54162,184 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingMedicarenoticeworklist: {
+        parameters: {
+            query: {
+                cursor?: string;
+                limit?: number;
+                type?: ("noe" | "notr" | "transfer" | "cancellation")[];
+                providerEntityId: string;
+                patientId?: string;
+                admissionId?: string;
+                state?: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                eventFrom?: string;
+                eventTo?: string;
+                deadlineRisk?: string;
+                readiness?: "blocked" | "verification_required" | "ready";
+                requiresAttention?: boolean;
+                exceptionReviewStatus?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            identity: {
+                                type: "noe" | "notr" | "transfer" | "cancellation";
+                                /** Format: uuid */
+                                noticeId: string;
+                            };
+                            sourceEventType: string;
+                            sourceEventId: string | null;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: uuid */
+                            admissionId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            /** Format: date */
+                            eventDate: string;
+                            deadline: {
+                                dueDate: string | null;
+                                risk: string;
+                                basis: string;
+                            };
+                            lifecycle: string;
+                            latestAttempt: {
+                                /** Format: uuid */
+                                submissionId: string;
+                                outcome: string;
+                                dispatchState: string;
+                            } | null;
+                            readiness: {
+                                key: string;
+                                state: "ready" | "blocked" | "verification_required" | "not_applicable" | "unknown";
+                                reasonCode: string | null;
+                                message: string;
+                                blockingStage: "render" | "dispatch" | "reconciliation" | null;
+                            }[];
+                            macAcceptance: "verified" | "not_verified" | "unknown";
+                            exceptionReview: {
+                                status: string;
+                                decisionProvenance: "operator_attested_document" | null;
+                                updatedAt: string;
+                                evidenceCount: number;
+                            } | null;
+                            nextActions: ("open_notice" | "open_noe_exception_review" | "open_transfer_notice")[];
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                        counts: {
+                            /** @constant */
+                            scope: "returned_page";
+                            total: number;
+                            requiresAttention: number;
+                            deadlineApproaching: number;
+                            overdue: number;
+                            sourceValidationRequired: number;
+                            heldByTransportCapability: number;
+                            inDoubt: number;
+                            awaitingMacEvidence: number;
+                            verifiedMacAccepted: number;
+                            exceptionReviewsPending: number;
+                            /** @constant */
+                            dimensionsOverlap: true;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingMedicareproviderrouting: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    macJurisdiction: "ngs_j6" | "ngs_jk" | "cgs_j15" | "palmetto_jj" | "palmetto_jm" | "noridian_jf" | "noridian_je";
+                    /** Format: date */
+                    effectiveFrom: string;
+                    effectiveTo?: string | null;
+                    reason: "provider_documentation" | "cms_notice" | "legacy_review" | "correction";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingMedicareproviderroutingByProviderEntityId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerEntityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            macJurisdiction: string;
+                            /** Format: date */
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            provenance: "manual" | "legacy_mac_credential";
+                            setReason: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        migrationIssues: {
+                            reasonCode: string;
+                            candidateJurisdictions: string[];
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingMetrics: {
         parameters: {
             query?: {
@@ -55129,6 +55696,7 @@ export interface operations {
                             payerControlNumber: string | null;
                             latestSubmissionId: string | null;
                             latestSubmissionOutcome: string | null;
+                            latestSubmissionDispatchState: string | null;
                             cancelReason: string | null;
                             blockers: {
                                 code: string;
@@ -55216,6 +55784,7 @@ export interface operations {
                         payerControlNumber: string | null;
                         latestSubmissionId: string | null;
                         latestSubmissionOutcome: string | null;
+                        latestSubmissionDispatchState: string | null;
                         cancelReason: string | null;
                         blockers: {
                             code: string;
@@ -55311,6 +55880,7 @@ export interface operations {
                         payerControlNumber: string | null;
                         latestSubmissionId: string | null;
                         latestSubmissionOutcome: string | null;
+                        latestSubmissionDispatchState: string | null;
                         cancelReason: string | null;
                         blockers: {
                             code: string;
@@ -55416,6 +55986,7 @@ export interface operations {
                         payerControlNumber: string | null;
                         latestSubmissionId: string | null;
                         latestSubmissionOutcome: string | null;
+                        latestSubmissionDispatchState: string | null;
                         cancelReason: string | null;
                         blockers: {
                             code: string;
@@ -55513,6 +56084,7 @@ export interface operations {
                         payerControlNumber: string | null;
                         latestSubmissionId: string | null;
                         latestSubmissionOutcome: string | null;
+                        latestSubmissionDispatchState: string | null;
                         cancelReason: string | null;
                         blockers: {
                             code: string;
@@ -55600,6 +56172,7 @@ export interface operations {
                         payerControlNumber: string | null;
                         latestSubmissionId: string | null;
                         latestSubmissionOutcome: string | null;
+                        latestSubmissionDispatchState: string | null;
                         cancelReason: string | null;
                         blockers: {
                             code: string;
@@ -55729,6 +56302,7 @@ export interface operations {
                         payerControlNumber: string | null;
                         latestSubmissionId: string | null;
                         latestSubmissionOutcome: string | null;
+                        latestSubmissionDispatchState: string | null;
                         cancelReason: string | null;
                         blockers: {
                             code: string;
@@ -89874,6 +90448,230 @@ export interface operations {
                         };
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1NoerecordsByIdExceptionreviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            noeId: string;
+                            category: "operations_disruption" | "cms_mac_system_issue" | "new_hospice_access_delay" | "other_external_determination";
+                            /** Format: uuid */
+                            justificationDocumentId: string;
+                            status: "draft" | "evidence_required" | "ready_for_external_request" | "request_recorded" | "awaiting_external_determination" | "external_approved_recorded" | "external_denied_recorded" | "withdrawn";
+                            evidenceDocumentIds: string[];
+                            externalRequestReference: string | null;
+                            externalRequestDate: string | null;
+                            externalAuthority: "a_b_mac" | "cms" | null;
+                            externalDecision: "approved" | "denied" | null;
+                            externalDecisionProvenance: "operator_attested_document" | null;
+                            externalDecisionDate: string | null;
+                            externalDecisionDocumentId: string | null;
+                            version: number;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NoerecordsByIdExceptionreviews: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    category: "operations_disruption" | "cms_mac_system_issue" | "new_hospice_access_delay" | "other_external_determination";
+                    /** Format: uuid */
+                    justificationDocumentId: string;
+                    evidenceDocumentIds: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NoerecordsByIdExceptionreviewsByReviewIdEvidence: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+                reviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    evidenceDocumentIds: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1NoerecordsByIdExceptionreviewsByReviewIdHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                reviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            eventType: string;
+                            fromStatus: string | null;
+                            toStatus: string;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            evidenceDocumentIds: string[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NoerecordsByIdExceptionreviewsByReviewIdRecorddecision: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+                reviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    decision: "approved" | "denied";
+                    authority: "a_b_mac" | "cms";
+                    /** Format: date */
+                    decisionDate: string;
+                    /** Format: uuid */
+                    evidenceDocumentId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NoerecordsByIdExceptionreviewsByReviewIdRecordrequest: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+                reviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    /** Format: date */
+                    requestDate: string;
+                    requestReference?: string;
+                    /** Format: uuid */
+                    evidenceDocumentId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

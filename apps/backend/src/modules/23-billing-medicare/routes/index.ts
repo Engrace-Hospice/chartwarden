@@ -13,6 +13,10 @@ import type { ClearinghouseAttemptResolutionService } from "../services/clearing
 import type { DdeQueueService } from "../services/dde-queue-service";
 import type { TransferNoticeService } from "../services/transfer-notice-service";
 import type { TenantClearinghouseRouteService } from "../tenant-clearinghouse/tenant-service";
+import type { ClaimMdMedicareRoutingService } from "./claimmd-medicare-routing-service";
+import type { MedicareNoticeWorklistService } from "./medicare-notice-worklist";
+import type { MedicareProviderRoutingService } from "./medicare-provider-routing-service";
+import type { NoeExceptionReviewService } from "./noe-exception-review-service";
 import type { NpiVerificationService } from "./npi-verification-service";
 import type { PlatformAdminRouteService } from "./platform-admin-service";
 import type { RateTableRouteService } from "./rate-table-service";
@@ -62,6 +66,8 @@ export interface M23RouteServices {
   readonly payerRouteStatus: (
     organizationId: string,
     providerEntityId: string,
+    effectiveDate?: string,
+    claimId?: string,
   ) => Promise<
     | { readonly status: "verified"; readonly routeFingerprint: string }
     | { readonly status: "not_configured"; readonly reasonCode?: string }
@@ -99,6 +105,10 @@ export interface M23RouteServices {
   readonly ddeQueueService?: DdeQueueService;
   /** ADR-0053 — settles a clearinghouse attempt past the vendor's window (absent ⇒ /billing/clearinghouse-attempts is not mounted). */
   readonly attemptResolutionService?: ClearinghouseAttemptResolutionService;
+  readonly medicareProviderRoutingService?: MedicareProviderRoutingService;
+  readonly claimMdMedicareRoutingService?: ClaimMdMedicareRoutingService;
+  readonly noeExceptionReviewService?: NoeExceptionReviewService;
+  readonly medicareNoticeWorklistService?: MedicareNoticeWorklistService;
 }
 
 export {
@@ -122,6 +132,24 @@ export {
   buildDrizzleRateTableService,
   hospiceRateTableEffectiveForOrg,
 } from "./rate-table-service";
+export {
+  buildDrizzleMedicareProviderRoutingService,
+  type MedicareProviderRoutingService,
+} from "./medicare-provider-routing-service";
+export {
+  buildClaimMdMedicareRoutingService,
+  type ClaimMdMedicareRoutingService,
+} from "./claimmd-medicare-routing-service";
+export {
+  buildNoeExceptionReviewService,
+  type NoeExceptionReviewService,
+  type NoeExceptionEvidenceReader,
+} from "./noe-exception-review-service";
+export {
+  buildMedicareNoticeWorklistService,
+  type MedicareNoticeWorklistService,
+} from "./medicare-notice-worklist";
+export { buildDrizzleArtifactReadinessReader } from "./medicare-notice-worklist";
 
 export {
   type SequestrationPolicyRouteService,

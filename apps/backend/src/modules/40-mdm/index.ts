@@ -9,6 +9,10 @@
 // codePath (the Wave-A deferral rule: a screen needs a manifest UI codePath to land).
 export { buildPayerNameByX12IdReader } from "./payer-name-reader";
 export {
+  buildActiveMedicarePayerByIdReader,
+  type ActiveMedicarePayerFacts,
+} from "./active-medicare-payer-reader";
+export {
   type MdmSeamDeps,
   registerMdmSeams,
   getMdmEntityProvider,

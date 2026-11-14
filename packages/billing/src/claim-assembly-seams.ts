@@ -196,6 +196,7 @@ export interface MdmEntityProvider {
   resolveProviderEntity(
     orgId: string,
     providerEntityId: string,
+    effectiveDate: IsoDate,
   ): Promise<ProviderEntityDirectoryEntry | null>;
   resolveClinicalParticipants(
     orgId: string,

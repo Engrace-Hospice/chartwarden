@@ -31,7 +31,16 @@ import {
 // schemas → reads cast, inits `as never`.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ProviderEntityLookupField } from "../../shell/entity-lookups";
+import {
+  clearStepUpDraft,
+  peekStepUpDraft,
+  stashStepUpDraft,
+  stepUpDraftKey,
+  stepUpRedirectFor,
+} from "../../shell/step-up-redirect";
+import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
 import { statusLabel } from "./billing-status";
 
 type MacJurisdiction =
@@ -51,6 +60,14 @@ const MAC_JURISDICTIONS: MacJurisdiction[] = [
   "noridian_jf",
   "noridian_je",
 ];
+
+const MEDICARE_ROUTING_ACTION = "billing.medicare_provider_routing.write";
+const CLAIMMD_ROUTING_ACTION = "billing.claimmd_medicare_routing.write";
+const MAC_CREDENTIAL_ACTION = "billing.mac_credential.write";
+const MEDICARE_ROUTING_ACTIONS: readonly string[] = [MEDICARE_ROUTING_ACTION];
+const CLAIMMD_ROUTING_ACTIONS: readonly string[] = [CLAIMMD_ROUTING_ACTION];
+const MAC_CREDENTIAL_ACTIONS: readonly string[] = [MAC_CREDENTIAL_ACTION];
+const ROUTING_DRAFT_RESOURCE = "panel";
 
 interface MacCredentialView {
   credentialId: string;
@@ -109,6 +126,12 @@ function emptyDraft(): UpsertDraft {
 
 export function MacCredentials(): JSX.Element {
   const client = useApiClient();
+  const owner = useStepUpOwner();
+  const returningFromCredentialStepUp = useStepUpReturn(owner, MAC_CREDENTIAL_ACTIONS);
+  const credentialDraftKey = stepUpDraftKey(owner, MAC_CREDENTIAL_ACTION, ROUTING_DRAFT_RESOURCE);
+  const restoredCredentialDraft = returningFromCredentialStepUp
+    ? peekStepUpDraft<Omit<UpsertDraft, "clientSecret">>(credentialDraftKey)
+    : null;
   const [creds, setCreds] = useState<MacCredentialView[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -116,7 +139,9 @@ export function MacCredentials(): JSX.Element {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<UpsertDraft | null>(null);
+  const [draft, setDraft] = useState<UpsertDraft | null>(() =>
+    restoredCredentialDraft ? { ...restoredCredentialDraft, clientSecret: "" } : null,
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [jurisdictionFilter, setJurisdictionFilter] = useState("all");
   const [secretFilter, setSecretFilter] = useState("all");
@@ -207,6 +232,8 @@ export function MacCredentials(): JSX.Element {
 
   return (
     <>
+      <MedicareProviderRoutingPanel />
+      <ClaimMdMedicareRoutingPanel />
       <AdminSplitLayout
         header={
           <PageHeader
@@ -321,6 +348,7 @@ export function MacCredentials(): JSX.Element {
       {draft ? (
         <UpsertCeremony
           draft={draft}
+          draftKey={credentialDraftKey}
           onChange={setDraft}
           onCancel={() => setDraft(null)}
           onSaved={() => {
@@ -330,6 +358,733 @@ export function MacCredentials(): JSX.Element {
         />
       ) : null}
     </>
+  );
+}
+
+interface MedicareRoutingItem {
+  id: string;
+  macJurisdiction: MacJurisdiction;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  provenance: "manual" | "legacy_mac_credential";
+  setReason: string;
+}
+
+function MedicareProviderRoutingPanel(): JSX.Element {
+  const client = useApiClient();
+  const attempt = useAttemptKey();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const owner = useStepUpOwner();
+  const returning = useStepUpReturn(owner, MEDICARE_ROUTING_ACTIONS);
+  const draftKey = stepUpDraftKey(owner, MEDICARE_ROUTING_ACTION, ROUTING_DRAFT_RESOURCE);
+  const restored = returning
+    ? peekStepUpDraft<{
+        providerEntityId: string;
+        jurisdiction: MacJurisdiction;
+        effectiveFrom: string;
+        effectiveTo: string;
+        reason: string;
+      }>(draftKey)
+    : null;
+  const [providerEntityId, setProviderEntityId] = useState(restored?.providerEntityId ?? "");
+  const [jurisdiction, setJurisdiction] = useState<MacJurisdiction>(
+    restored?.jurisdiction ?? "ngs_j6",
+  );
+  const [effectiveFrom, setEffectiveFrom] = useState(
+    restored?.effectiveFrom ?? new Date().toISOString().slice(0, 10),
+  );
+  const [effectiveTo, setEffectiveTo] = useState(restored?.effectiveTo ?? "");
+  const [reason, setReason] = useState(restored?.reason ?? "provider_documentation");
+  const [items, setItems] = useState<MedicareRoutingItem[]>([]);
+  const [issues, setIssues] = useState<{ reasonCode: string; candidateJurisdictions: string[] }[]>(
+    [],
+  );
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!providerEntityId) return;
+    setLoading(true);
+    setMessage(null);
+    const result = (await client.GET(
+      "/api/v1/billing/medicare-provider-routing/{providerEntityId}" as never,
+      { params: { path: { providerEntityId } } } as never,
+    )) as unknown as {
+      data?: { items?: MedicareRoutingItem[]; migrationIssues?: typeof issues };
+      error?: unknown;
+    };
+    setLoading(false);
+    if (result.error) {
+      setMessage("Routing configuration is unavailable or outside your provider scope.");
+      return;
+    }
+    setItems(result.data?.items ?? []);
+    setIssues(result.data?.migrationIssues ?? []);
+  }, [client, providerEntityId]);
+
+  const save = useCallback(async () => {
+    if (!providerEntityId) return;
+    setBusy(true);
+    const payload = {
+      providerEntityId,
+      macJurisdiction: jurisdiction,
+      effectiveFrom,
+      ...(effectiveTo ? { effectiveTo } : {}),
+      reason,
+    };
+    try {
+      const result = (await attempt.run(
+        JSON.stringify(payload),
+        async (key) =>
+          (await client.POST(
+            "/api/v1/billing/medicare-provider-routing" as never,
+            { body: payload, params: { header: { "Idempotency-Key": key } } } as never,
+          )) as never,
+      )) as unknown as { error?: unknown; response?: Response };
+      if (result.error) {
+        const stepUp = stepUpRedirectFor(result.error, `${location.pathname}${location.search}`);
+        if (stepUp) {
+          stashStepUpDraft(draftKey, {
+            providerEntityId,
+            jurisdiction,
+            effectiveFrom,
+            effectiveTo,
+            reason,
+          });
+          setBusy(false);
+          setConfirm(false);
+          navigate(stepUp);
+          return;
+        }
+        setMessage(
+          result.response?.status === 409
+            ? "The interval overlaps existing routing; review the history and dates."
+            : result.response?.status === 401 || result.response?.status === 403
+              ? "Step-up or provider scope is required."
+              : "Routing could not be saved.",
+        );
+      } else {
+        clearStepUpDraft(draftKey);
+        setMessage(
+          "Medicare routing saved. This does not configure payer enrollment or portal credentials.",
+        );
+        setReason("provider_documentation");
+        await load();
+      }
+    } catch {
+      setMessage("Routing could not be saved. No submission was attempted.");
+    }
+    setBusy(false);
+    setConfirm(false);
+  }, [
+    attempt.run,
+    client,
+    effectiveFrom,
+    effectiveTo,
+    jurisdiction,
+    load,
+    location.pathname,
+    location.search,
+    navigate,
+    providerEntityId,
+    reason,
+    draftKey,
+  ]);
+
+  return (
+    <section
+      aria-labelledby="medicare-routing-heading"
+      style={{
+        marginBottom: "1rem",
+        padding: "1rem",
+        border: `1px solid ${t.outlineVariant}`,
+        borderRadius: "0.75rem",
+        background: t.surface,
+      }}
+    >
+      <h2
+        id="medicare-routing-heading"
+        style={{ margin: "0 0 .35rem", fontFamily: t.fontDisplay, color: t.onSurface }}
+      >
+        Medicare provider routing
+      </h2>
+      <p style={{ margin: "0 0 .8rem", color: t.onSurfaceVariant, fontSize: ".875rem" }}>
+        MAC jurisdiction is an effective-dated Medicare billing fact. It is separate from direct-MAC
+        portal credentials and does not indicate payer enrollment or transmission readiness.
+      </p>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+          gap: ".75rem",
+          alignItems: "end",
+        }}
+      >
+        <ProviderEntityLookupField
+          label="Provider entity"
+          value={providerEntityId}
+          onChange={setProviderEntityId}
+        />
+        <Button size="sm" disabled={!providerEntityId || loading} onClick={() => void load()}>
+          {loading ? "Loading…" : "Load routing history"}
+        </Button>
+        <Labeled id="mpr-jurisdiction" label="MAC jurisdiction">
+          <select
+            id="mpr-jurisdiction"
+            value={jurisdiction}
+            onChange={(e) => setJurisdiction(e.target.value as MacJurisdiction)}
+            style={selectStyle}
+          >
+            {MAC_JURISDICTIONS.map((v) => (
+              <option key={v} value={v}>
+                {macLabel(v)}
+              </option>
+            ))}
+          </select>
+        </Labeled>
+        <Labeled id="mpr-from" label="Effective from (inclusive)">
+          <input
+            id="mpr-from"
+            type="date"
+            value={effectiveFrom}
+            onChange={(e) => setEffectiveFrom(e.target.value)}
+            style={inputStyle}
+          />
+        </Labeled>
+        <Labeled id="mpr-to" label="Effective to (inclusive, optional)">
+          <input
+            id="mpr-to"
+            type="date"
+            value={effectiveTo}
+            onChange={(e) => setEffectiveTo(e.target.value)}
+            style={inputStyle}
+          />
+        </Labeled>
+        <Labeled id="mpr-reason" label="Reason (no free text)">
+          <select
+            id="mpr-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            style={selectStyle}
+          >
+            <option value="provider_documentation">Provider documentation</option>
+            <option value="cms_notice">CMS/MAC notice</option>
+            <option value="legacy_review">Legacy record review</option>
+            <option value="correction">Correction</option>
+          </select>
+        </Labeled>
+        <Button size="sm" disabled={!providerEntityId || busy} onClick={() => setConfirm(true)}>
+          Save routing with step-up
+        </Button>
+      </div>
+      {message ? (
+        <output style={{ display: "block", color: t.onSurfaceVariant }}>{message}</output>
+      ) : null}
+      {issues.length > 0 ? (
+        <div role="alert">
+          <strong>Legacy routing needs review</strong>
+          <ul>
+            {issues.map((issue, i) => (
+              <li key={`${issue.reasonCode}-${i}`}>
+                {issue.reasonCode}:{" "}
+                {issue.candidateJurisdictions.join(", ") || "no jurisdiction candidate"}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {providerEntityId && !loading && items.length === 0 ? (
+        <output style={{ display: "block", color: t.error }}>
+          No Medicare jurisdiction is configured for this provider. Claim assembly will remain
+          blocked until an effective interval is recorded.
+        </output>
+      ) : null}
+      {items.length > 0 ? (
+        <div style={{ overflowX: "auto", marginTop: ".75rem" }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Jurisdiction</th>
+                <th>Effective from</th>
+                <th>Effective to</th>
+                <th>Source</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.id}>
+                  <td>{macLabel(item.macJurisdiction)}</td>
+                  <td>{item.effectiveFrom}</td>
+                  <td>{item.effectiveTo ?? "Open"}</td>
+                  <td>
+                    {item.provenance === "manual" ? "Administrator" : "Legacy credential import"}
+                  </td>
+                  <td>{item.setReason}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      <CeremonyModal
+        open={confirm}
+        title="Save Medicare provider routing"
+        attestation={
+          <span>
+            Set {macLabel(jurisdiction)} for provider{" "}
+            <strong style={{ fontFamily: t.fontMono }}>{providerEntityId}</strong>, effective{" "}
+            {effectiveFrom}
+            {effectiveTo ? ` through ${effectiveTo}` : " onward"}. This is not an enrollment
+            approval.
+          </span>
+        }
+        legalText="I confirm this Medicare jurisdiction and effective period are supported by provider billing records."
+        signer={{ name: "You", role: "Billing administrator" }}
+        commitLabel="Confirm & save"
+        onCommit={() => void save()}
+        onCancel={() => setConfirm(false)}
+      />
+    </section>
+  );
+}
+
+interface ClaimMdRouteRow {
+  id: string;
+  payerId: string;
+  macJurisdiction: MacJurisdiction;
+  externalPayerId: string;
+  accountReference: string;
+  usage: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  status: string;
+}
+interface ClaimMdEnrollmentRow {
+  id: string;
+  payerId: string;
+  status: string;
+  transactionType: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  verificationSource: string | null;
+}
+function ClaimMdMedicareRoutingPanel(): JSX.Element {
+  const client = useApiClient();
+  const attempt = useAttemptKey();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const owner = useStepUpOwner();
+  const returning = useStepUpReturn(owner, CLAIMMD_ROUTING_ACTIONS);
+  const draftKey = stepUpDraftKey(owner, CLAIMMD_ROUTING_ACTION, ROUTING_DRAFT_RESOURCE);
+  const restored = returning
+    ? peekStepUpDraft<{
+        providerEntityId: string;
+        payerId: string;
+        externalPayerId: string;
+        from: string;
+        status: "pending" | "verified" | "not_required" | "rejected" | "suspended" | "expired";
+        source: "vendor_portal" | "vendor_written_confirmation" | "documented_policy";
+        reference: string;
+        closeTarget: ClaimMdRouteRow | null;
+        closeDate: string;
+      }>(draftKey)
+    : null;
+  const [providerEntityId, setProvider] = useState(restored?.providerEntityId ?? "");
+  const [payerId, setPayer] = useState(restored?.payerId ?? "");
+  const [externalPayerId, setExternal] = useState(restored?.externalPayerId ?? "");
+  const [from, setFrom] = useState(restored?.from ?? new Date().toISOString().slice(0, 10));
+  const [routes, setRoutes] = useState<ClaimMdRouteRow[]>([]);
+  const [enrollments, setEnrollments] = useState<ClaimMdEnrollmentRow[]>([]);
+  const [status, setStatus] = useState<
+    "pending" | "verified" | "not_required" | "rejected" | "suspended" | "expired"
+  >(restored?.status ?? "pending");
+  const [source, setSource] = useState<
+    "vendor_portal" | "vendor_written_confirmation" | "documented_policy"
+  >(restored?.source ?? "vendor_portal");
+  const [reference, setReference] = useState(restored?.reference ?? "");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [closeTarget, setCloseTarget] = useState<ClaimMdRouteRow | null>(
+    restored?.closeTarget ?? null,
+  );
+  const [closeDate, setCloseDate] = useState(
+    restored?.closeDate ?? new Date().toISOString().slice(0, 10),
+  );
+  const stashDraftAndStepUp = useCallback(
+    (error: unknown): boolean => {
+      const stepUp = stepUpRedirectFor(error, `${location.pathname}${location.search}`);
+      if (!stepUp) return false;
+      stashStepUpDraft(draftKey, {
+        providerEntityId,
+        payerId,
+        externalPayerId,
+        from,
+        status,
+        source,
+        reference,
+        closeTarget,
+        closeDate,
+      });
+      navigate(stepUp);
+      return true;
+    },
+    [
+      closeDate,
+      closeTarget,
+      draftKey,
+      externalPayerId,
+      from,
+      location.pathname,
+      location.search,
+      navigate,
+      payerId,
+      providerEntityId,
+      reference,
+      source,
+      status,
+    ],
+  );
+  const load = useCallback(async () => {
+    if (!providerEntityId) return;
+    const result = (await client.GET(
+      "/api/v1/billing/claimmd-medicare-routing/{providerEntityId}" as never,
+      { params: { path: { providerEntityId } } } as never,
+    )) as unknown as {
+      data?: { routes?: ClaimMdRouteRow[]; enrollments?: ClaimMdEnrollmentRow[] };
+      error?: unknown;
+    };
+    if (result.error) {
+      setNotice("Claim.MD route readiness is unavailable or outside your provider scope.");
+      return;
+    }
+    setRoutes(result.data?.routes ?? []);
+    setEnrollments(result.data?.enrollments ?? []);
+    setNotice(null);
+  }, [client, providerEntityId]);
+  const submit = useCallback(
+    async (kind: "route" | "enrollment") => {
+      if (!providerEntityId || !payerId) return;
+      setBusy(true);
+      setNotice(null);
+      const body =
+        kind === "route"
+          ? { providerEntityId, payerId, externalPayerId, effectiveFrom: from }
+          : {
+              providerEntityId,
+              payerId,
+              status,
+              effectiveFrom: from,
+              ...(status === "verified" || status === "not_required"
+                ? { verificationSource: source, verificationRef: reference }
+                : {}),
+            };
+      const path =
+        kind === "route"
+          ? "/api/v1/billing/claimmd-medicare-routing/routes"
+          : "/api/v1/billing/claimmd-medicare-routing/enrollments";
+      try {
+        const result = (await attempt.run(
+          JSON.stringify({ kind, ...body }),
+          async (key) =>
+            (await client.POST(
+              path as never,
+              { body, params: { header: { "Idempotency-Key": key } } } as never,
+            )) as never,
+        )) as unknown as { error?: unknown; response?: Response };
+        if (result.error && stashDraftAndStepUp(result.error)) return;
+        if (result.error)
+          setNotice(
+            result.response?.status === 403
+              ? "This organization is not authorized for the selected Claim.MD account."
+              : result.response?.status === 409
+                ? "Account, payer, or effective dates conflict with existing configuration."
+                : "Configuration was refused; confirm provider, payer, account, and evidence.",
+          );
+        else {
+          clearStepUpDraft(draftKey);
+          setNotice(
+            kind === "route"
+              ? "Payer route recorded. Enrollment remains a separate required readiness check."
+              : "Enrollment evidence recorded. This does not prove vendor-wide production readiness.",
+          );
+          await load();
+        }
+      } catch {
+        setNotice("Configuration could not be saved. No claim was submitted.");
+      }
+      setBusy(false);
+    },
+    [
+      attempt.run,
+      client,
+      externalPayerId,
+      from,
+      load,
+      payerId,
+      providerEntityId,
+      reference,
+      source,
+      stashDraftAndStepUp,
+      status,
+      draftKey,
+    ],
+  );
+  const closeRoute = useCallback(async () => {
+    if (!closeTarget || !providerEntityId) return;
+    setBusy(true);
+    const body = { providerEntityId, routeId: closeTarget.id, effectiveTo: closeDate };
+    try {
+      const result = (await attempt.run(
+        JSON.stringify({ close: body }),
+        async (key) =>
+          (await client.POST(
+            "/api/v1/billing/claimmd-medicare-routing/routes/close" as never,
+            { body, params: { header: { "Idempotency-Key": key } } } as never,
+          )) as never,
+      )) as unknown as { error?: unknown; response?: Response };
+      if (result.error && stashDraftAndStepUp(result.error)) return;
+      if (result.error)
+        setNotice(
+          result.response?.status === 409
+            ? "The route cannot end on that date; review the interval and refresh."
+            : "The payer route could not be closed.",
+        );
+      else {
+        clearStepUpDraft(draftKey);
+        setNotice("Route end date recorded; historical effective periods remain available.");
+        setCloseTarget(null);
+        await load();
+      }
+    } catch {
+      setNotice("The route could not be updated. No claim was submitted.");
+    }
+    setBusy(false);
+  }, [
+    attempt.run,
+    client,
+    closeDate,
+    closeTarget,
+    load,
+    providerEntityId,
+    stashDraftAndStepUp,
+    draftKey,
+  ]);
+  return (
+    <section
+      aria-labelledby="claimmd-medicare-heading"
+      style={{
+        marginBottom: "1rem",
+        padding: "1rem",
+        border: `1px solid ${t.outlineVariant}`,
+        borderRadius: ".75rem",
+        background: t.surface,
+      }}
+    >
+      <h2
+        id="claimmd-medicare-heading"
+        style={{ margin: "0 0 .35rem", fontFamily: t.fontDisplay, color: t.onSurface }}
+      >
+        Claim.MD Medicare payer route & enrollment
+      </h2>
+      <p style={{ margin: "0 0 .8rem", color: t.onSurfaceVariant, fontSize: ".875rem" }}>
+        Routes are account- and usage-scoped. Enrollment is transaction-specific evidence and is
+        never approved by creating a route. Production remains blocked without verified
+        authorization or a documented exemption.
+      </p>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+          gap: ".75rem",
+          alignItems: "end",
+        }}
+      >
+        <ProviderEntityLookupField
+          label="Provider entity"
+          value={providerEntityId}
+          onChange={setProvider}
+        />
+        <Labeled id="cm3-payer" label="Canonical M40 Medicare payer ID">
+          <input
+            id="cm3-payer"
+            value={payerId}
+            onChange={(e) => setPayer(e.target.value)}
+            style={inputStyle}
+          />
+        </Labeled>
+        <Labeled id="cm3-ext-payer" label="Claim.MD payer ID (text)">
+          <input
+            id="cm3-ext-payer"
+            value={externalPayerId}
+            onChange={(e) => setExternal(e.target.value)}
+            style={inputStyle}
+          />
+        </Labeled>
+        <Labeled id="cm3-from" label="Effective from">
+          <input
+            id="cm3-from"
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            style={inputStyle}
+          />
+        </Labeled>
+        <Button
+          size="sm"
+          disabled={!providerEntityId || !payerId || !externalPayerId || busy}
+          onClick={() => void submit("route")}
+        >
+          Save payer route
+        </Button>
+        <Button size="sm" disabled={!providerEntityId} onClick={() => void load()}>
+          Load route history
+        </Button>
+        <Labeled id="cm3-enrollment-status" label="837I enrollment status">
+          <select
+            id="cm3-enrollment-status"
+            value={status}
+            onChange={(e) => {
+              const next = e.target.value as typeof status;
+              setStatus(next);
+              if (next === "not_required") setSource("documented_policy");
+            }}
+            style={selectStyle}
+          >
+            {["pending", "verified", "not_required", "rejected", "suspended", "expired"].map(
+              (s) => (
+                <option key={s} value={s}>
+                  {s.replaceAll("_", " ")}
+                </option>
+              ),
+            )}
+          </select>
+        </Labeled>
+        <Labeled id="cm3-enrollment-source" label="Evidence source">
+          <select
+            id="cm3-enrollment-source"
+            value={source}
+            onChange={(e) => setSource(e.target.value as typeof source)}
+            style={selectStyle}
+          >
+            {status !== "not_required" ? (
+              <>
+                <option value="vendor_portal">Vendor portal</option>
+                <option value="vendor_written_confirmation">Vendor written confirmation</option>
+              </>
+            ) : null}
+            <option value="documented_policy">Documented policy</option>
+          </select>
+        </Labeled>
+        <Labeled id="cm3-enrollment-ref" label="Evidence reference (no PHI)">
+          <input
+            id="cm3-enrollment-ref"
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            style={inputStyle}
+          />
+        </Labeled>
+        <Button
+          size="sm"
+          disabled={
+            !providerEntityId ||
+            !payerId ||
+            busy ||
+            ((status === "verified" || status === "not_required") && !reference)
+          }
+          onClick={() => void submit("enrollment")}
+        >
+          Record enrollment evidence
+        </Button>
+      </div>
+      {notice ? (
+        <output style={{ display: "block", color: t.onSurfaceVariant }}>{notice}</output>
+      ) : null}
+      {routes.length || enrollments.length ? (
+        <div style={{ overflowX: "auto", marginTop: ".75rem" }}>
+          <table>
+            <thead>
+              <tr>
+                <th>M40 payer</th>
+                <th>Jurisdiction</th>
+                <th>Claim.MD payer ID</th>
+                <th>Account</th>
+                <th>Usage</th>
+                <th>837I route dates</th>
+                <th>Enrollment</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {routes.map((route) => (
+                <tr key={route.id}>
+                  <td>{route.payerId}</td>
+                  <td>{macLabel(route.macJurisdiction)}</td>
+                  <td>{route.externalPayerId}</td>
+                  <td>{route.accountReference}</td>
+                  <td>{route.usage}</td>
+                  <td>
+                    {route.effectiveFrom} – {route.effectiveTo ?? "open"}
+                  </td>
+                  <td>
+                    {enrollments
+                      .filter((entry) => entry.payerId === route.payerId)
+                      .map((entry) => `${entry.status} (${entry.effectiveFrom})`)
+                      .join(", ") || "verification required"}
+                  </td>
+                  <td>
+                    {route.effectiveTo === null ? (
+                      <Button
+                        size="sm"
+                        tone="secondary"
+                        onClick={() => {
+                          setCloseDate(new Date().toISOString().slice(0, 10));
+                          setCloseTarget(route);
+                        }}
+                      >
+                        End interval…
+                      </Button>
+                    ) : (
+                      "Historical"
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      <CeremonyModal
+        open={Boolean(closeTarget)}
+        title="End Claim.MD payer route"
+        attestation={
+          <div>
+            <span>
+              End the route for external payer ID <strong>{closeTarget?.externalPayerId}</strong>.
+              Earlier effective claim history is retained.
+            </span>
+            <Labeled id="cm3-close-date" label="Effective through (inclusive)">
+              <input
+                id="cm3-close-date"
+                type="date"
+                value={closeDate}
+                onChange={(e) => setCloseDate(e.target.value)}
+                style={inputStyle}
+                disabled={busy}
+              />
+            </Labeled>
+          </div>
+        }
+        legalText="I confirm this route should no longer be used after the selected date."
+        signer={{ name: "You", role: "Billing administrator" }}
+        commitLabel="Confirm route end"
+        onCommit={() => void closeRoute()}
+        onCancel={() => setCloseTarget(null)}
+      />
+    </section>
   );
 }
 
@@ -526,17 +1281,21 @@ function CredentialDetail({
 // ── upsert ceremony — collects the credential, then a step-up attestation commits the write ───────────
 function UpsertCeremony({
   draft,
+  draftKey,
   onChange,
   onCancel,
   onSaved,
 }: {
   draft: UpsertDraft;
+  draftKey: string | null;
   onChange: (d: UpsertDraft) => void;
   onCancel: () => void;
   onSaved: () => void;
 }): JSX.Element {
   const client = useApiClient();
   const attempt = useAttemptKey();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [ceremonyOpen, setCeremonyOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const isEdit = draft.version !== null;
@@ -586,6 +1345,14 @@ function UpsertCeremony({
     }
     const { error: err, response } = result;
     if (err) {
+      const stepUp = stepUpRedirectFor(err, `${location.pathname}${location.search}`);
+      if (stepUp) {
+        const { clientSecret: _discardedSecret, ...safeDraft } = draft;
+        stashStepUpDraft(draftKey, safeDraft);
+        setCeremonyOpen(false);
+        navigate(stepUp);
+        return;
+      }
       const s = response?.status;
       setActionError(
         s === 401 || s === 403
@@ -601,9 +1368,10 @@ function UpsertCeremony({
       setCeremonyOpen(false);
       return;
     }
+    clearStepUpDraft(draftKey);
     setCeremonyOpen(false);
     onSaved();
-  }, [client, attempt.run, draft, onSaved]);
+  }, [client, attempt.run, draft, onSaved, location.pathname, location.search, draftKey, navigate]);
 
   return (
     // WX-PR-022 (UI-002): was a bespoke `role="dialog"` div with no focus trap/Escape/restore —
@@ -720,7 +1488,6 @@ function UpsertCeremony({
         }
         legalText="I confirm I am authorized to manage this provider entity's clearinghouse credentials."
         signer={{ name: "You", role: "Billing administrator" }}
-        stepUp={{ label: "Re-enter your password to continue", type: "password" }}
         commitLabel="Sign & save"
         onCommit={() => void commit()}
         onCancel={() => setCeremonyOpen(false)}

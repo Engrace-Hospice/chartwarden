@@ -18,6 +18,7 @@ const actorFor = (scope: OnboardingWriteScope): M24Actor => ({
   organizationId: scope.organizationId,
   userId: scope.operatorUserId,
   roles: scope.operatorRoles,
+  stepUpRecent: scope.stepUpRecent,
 });
 
 export function buildMedicaidOnboardingCredentialPort(deps: {

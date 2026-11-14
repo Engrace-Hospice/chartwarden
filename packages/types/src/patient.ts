@@ -595,6 +595,8 @@ export interface EligibilitySubscriberIdentity {
 export const MBI_DISCLOSURE_PURPOSES = [
   "claim_837i_submission",
   "claim_837i_preview",
+  /** Internal NOE/NOTR/8xC/8xD render; no vendor dispatch is implied by this disclosure. */
+  "medicare_notice_render",
   "hets_270_eligibility",
   /** A DDE queue item sent through the DdeAccessProvider (ADR-0103, #793); `subjectId` is the DDE work item. */
   "dde_provider_operation",
@@ -741,6 +743,15 @@ export interface PatientAddressReader {
    * safe from an outbox relay tick with no request context. The one seam that returns street-level PHI.
    */
   primaryAddress(organizationId: string, patientId: string): Promise<PatientPrimaryAddress | null>;
+  /**
+   * The full PRIMARY address effective on `asOfDate`. This is the historical, street-level variant used
+   * only by authorized internal X12 renderers; callers must not log or enqueue the returned PHI.
+   */
+  primaryAddressAt(
+    organizationId: string,
+    patientId: string,
+    asOfDate: string,
+  ): Promise<PatientPrimaryAddress | null>;
   /** The 2-letter state code of the patient's current (effective_to IS NULL) PRIMARY address, or null
    *  (no primary address, or its state is unset — e.g. a non-US address). */
   primaryResidenceState(organizationId: string, patientId: string): Promise<string | null>;

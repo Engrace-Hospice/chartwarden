@@ -204,7 +204,7 @@ describe("M23 Claim.MD evidence boundary", () => {
     );
   });
 
-  it("keeps notice uploads off by default and commits typed evidence before any notice transport call", async () => {
+  it("refuses unverified Claim.MD notice transactions even when the rollout flag is enabled", async () => {
     for (const kind of ["noe", "notr", "transfer_notice"] as const) {
       const order: string[] = [];
       const submitNotice = vi.fn(async () => {
@@ -254,15 +254,22 @@ describe("M23 Claim.MD evidence boundary", () => {
         submissionId: "00000000-0000-4000-8000-000000000006",
         attemptIndex: 0,
       };
-      await expect(transportUpload(base as never)({ ...notice })).rejects.toThrow(/disabled/);
+      await expect(transportUpload(base as never)({ ...notice })).rejects.toMatchObject({
+        code: "CH_NOT_WIRED",
+        ambiguous: false,
+      });
       expect(submitNotice).not.toHaveBeenCalled();
       const enabled = transportUpload({ ...base, claimMdNoticeUploadsEnabled: true } as never);
-      await expect(enabled(notice)).resolves.toMatchObject({ accepted: true });
-      expect(order).toEqual(["reserve", "upload", "observe"]);
+      await expect(enabled(notice)).rejects.toMatchObject({
+        code: "CH_NOT_WIRED",
+        ambiguous: false,
+      });
+      expect(submitNotice).not.toHaveBeenCalled();
+      expect(order).toEqual([]);
     }
   });
 
-  it("a tenant's own Claim.MD account records NOTICE evidence under its own org and tenant:<org>, never the platform's store", async () => {
+  it("a tenant Claim.MD account cannot bypass the unverified notice capability boundary", async () => {
     const order: string[] = [];
     const submitNotice = vi.fn(async () => {
       order.push("upload");
@@ -330,8 +337,9 @@ describe("M23 Claim.MD evidence boundary", () => {
         submissionId: "00000000-0000-4000-8000-000000000006",
         attemptIndex: 0,
       }),
-    ).resolves.toMatchObject({ accepted: true });
-    expect(asked).toEqual([{ organizationId: context.organizationId, usage: "test" }]);
-    expect(order).toEqual(["tenant-reserve", "upload", "tenant-observe"]);
+    ).rejects.toMatchObject({ code: "CH_NOT_WIRED", ambiguous: false });
+    expect(asked).toEqual([]);
+    expect(order).toEqual([]);
+    expect(submitNotice).not.toHaveBeenCalled();
   });
 });

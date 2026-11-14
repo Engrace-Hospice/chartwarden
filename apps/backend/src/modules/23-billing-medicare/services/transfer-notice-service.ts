@@ -78,6 +78,7 @@ export interface TransferNoticeView {
   readonly payerControlNumber: string | null;
   readonly latestSubmissionId: string | null;
   readonly latestSubmissionOutcome: string | null;
+  readonly latestSubmissionDispatchState: string | null;
   readonly cancelReason: string | null;
   readonly blockers: TransferNoticeEvaluation["blockers"];
   readonly warnings: TransferNoticeEvaluation["warnings"];
@@ -96,6 +97,7 @@ export interface TransferNoticeView {
 }
 
 export interface TransferNoticeListFilter {
+  readonly providerEntityId?: string;
   readonly patientId?: string;
   readonly admissionId?: string;
   readonly state?: NoticeState;
@@ -277,6 +279,7 @@ async function viewOf(tx: BillingTx, notice: Notice): Promise<TransferNoticeView
     payerControlNumber: notice.payerControlNumber,
     latestSubmissionId: notice.latestSubmissionId,
     latestSubmissionOutcome: submission?.outcome ?? null,
+    latestSubmissionDispatchState: submission?.dispatchState ?? null,
     cancelReason: notice.cancelReason,
     blockers: evaluation.blockers,
     warnings: evaluation.warnings,

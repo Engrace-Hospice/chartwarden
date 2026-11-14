@@ -3,9 +3,10 @@
 // test double, refused in production). Unset is the logged, unbound state (every call answers CH_NOT_WIRED). A vendor
 // with no adapter in this build, a vendor whose credential is missing, or a vendor named with no durable attempt store
 // all throw at boot — a deployment never silently behaves as "unset" while believing it is bound.
-// The binding is created and logged at boot and INJECTED into the M23 submit/retry workers and ack crons
-// (`buildM23WorkerDeps({ transport })`, #707); `registerM23LaunchWorkers` refuses to build them without it while a vendor is
-// configured. M24 (Medicaid) deliberately does not use it: Oregon stays a state-direct adapter (ADR-0053 D10). M25
+// The binding is created and logged at boot and INJECTED into the common M23 submit/retry workers and transport-native
+// ack crons (`buildM23WorkerDeps({ transport })`, #707); those workers are independent of the legacy X12/MAC gateway.
+// `direct_mac` still refuses to bind without that gateway. M24 (Medicaid) deliberately does not use it: Oregon stays a
+// state-direct adapter (ADR-0053 D10). M25
 // remittance consumption is bound separately (#717: M25 `remittance-pull`). Read `binding.vendor`, not `binding.transport.vendor`, to know whether a
 // clearinghouse is bound.
 import {

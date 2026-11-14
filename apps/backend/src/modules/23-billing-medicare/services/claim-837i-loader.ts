@@ -59,6 +59,7 @@ export interface Claim837iPartiesPort {
     readonly patientPayerId: string;
     /** The payer id the clearinghouse routes on (from the clearinghouse context). */
     readonly payerId: string;
+    readonly canonicalPayerId?: string;
   }): Promise<{
     readonly submitter: Claim837iParties["submitter"] | null;
     readonly receiver: Claim837iParties["receiver"] | null;
@@ -289,6 +290,7 @@ async function loadOnce(
       providerEntityId: claim.providerEntityId,
       patientPayerId: claim.patientPayerId,
       payerId: context.payerId,
+      ...(context.canonicalPayerId ? { canonicalPayerId: context.canonicalPayerId } : {}),
     }),
   ]);
 

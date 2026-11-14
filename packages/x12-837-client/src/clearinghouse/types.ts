@@ -89,6 +89,8 @@ export interface ClearinghouseContext {
   readonly providerEntityId: string;
   /** The payer id the clearinghouse routes on (e.g. a Stedi payer id for the MAC). */
   readonly payerId: string;
+  /** Canonical M40 payer identity for M23's durable Claim.MD route; never a subscriber or member identifier. */
+  readonly canonicalPayerId?: string;
   /** Present on every call so a vendor log can be joined to our audit trail. */
   readonly correlationId: string;
   /** `test` MUST reach only vendor test mode (Stedi `usageIndicator: "T"`); `production` real payers. */

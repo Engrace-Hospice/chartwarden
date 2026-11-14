@@ -127,6 +127,15 @@ decision for each further state is recorded with that state's adapter. Rejected:
 entity (two permanent code paths and a per-entity switch to get wrong), (c) skip direct-MAC and cut over to Stedi
 (Stedi cannot yet submit on this account, Q14, and the port would be proven against one vendor only).
 
+**M23-CM-1 composition clarification (2026-11-12).** Common Medicare claim submit/retry workers use the in-process
+authoritative 837I renderer and the organization-scoped `ClearinghouseBinding`; they do not require the legacy
+`M23_LAUNCH_GATEWAY_ENABLED` X12/MAC HTTP gateway. The gateway remains required for legacy NOE/NOTR/transfer
+generation, direct-MAC upload/health, and legacy raw 999/277CA processing. Claim.MD/Stedi transport-native
+acknowledgment workers are separate and do not parse vendor JSON/XML as raw X12. Platform Claim.MD claims remain
+held unless platform response capture, identity resolution, and acknowledgment apply mode are all ready; tenant-owned
+accounts retain their own transport-native response path. Therefore successful Worker boot only proves composition,
+not payer/enrollment readiness, response reconciliation readiness, or permission to transmit.
+
 ## Consequences
 
 - A new clearinghouse is one class plus a conformance run; no module changes.
@@ -432,7 +441,13 @@ GATE only, not from this hold. One alert says so per (organization, reason, seve
 (`CLEARINGHOUSE_CREDENTIAL_UNREADABLE`) holds the job and alerts the same way, instead of failing it. A rotation returns a live config to `draft` at once (documented above), so a NOE inside its 5-day window waits for a re-verification and the tenant's re-activation.
 *Owner decision needed:* keep the OLD credential live until the rotation is verified, so a rotation never opens a hold.
 
-**Notices on a tenant's own Claim.MD account.** A tenant's own Claim.MD account sends a NOE or NOTR only while `M23_CLAIMMD_NOTICE_UPLOAD_ENABLED=true` (a deployment-wide switch, off by default); with it off the upload is refused `NOT_WIRED` and the notice is not filed.
+**Medicare notice transaction support.** `M23_CLAIMMD_NOTICE_UPLOAD_ENABLED` remains a legacy rollout switch, not vendor capability evidence. Claim.MD's published API documents 837I institutional claim uploads, but the checked vendor documentation does not establish support for hospice NOE, NOTR, or transfer-notice transactions. Claim.MD and Stedi notice jobs therefore remain in a critical, delayed operational hold with typed reason codes; the transport boundary independently refuses these notice kinds. The switch alone cannot authorize a notice upload. Direct-MAC remains a separate path and requires its configured gateway. A successful institutional-claim upload or clearinghouse receipt is never evidence of payer/MAC notice acceptance.
+
+**CM-4B.2/4B.3 artifact preparation boundary (2026-11-13).** The notice composition root injects the existing authoritative renderer/artifact store into notice-worker dependencies. Submission preflight does not invoke the renderer when the external path is guaranteed held, avoiding repeated MBI disclosure. A Direct-MAC job with a bound gateway remains delayed with `M23_NOTICE_GATEWAY_ARTIFACT_CONTRACT_UNSUPPORTED`. `MacPortalPort.upload` accepts inline X12 and returns an `accepted` boolean plus `generatedFileUri`; it does not bind an artifact digest, render identity, durable notice attempt, original account/usage, or reconciliation identity. No server implementation is present in this repository to qualify remote idempotency or lookup. Therefore no Direct-MAC notice upload or durable dispatch-start transition is made. The renderer is not filing authorization. Claim.MD/Stedi remain held before rendering and their `CH_NOT_WIRED` refusal is unchanged. This does not establish a production filing path or complete CM-4B/CM-4.
+
+**CM-4B.4 proposed gateway contract (2026-11-13).** Discovery still finds no server source or deployment target, so the repository now carries only a non-production-composed `m23-direct-mac-notice.v1` client/validation contract and conformance fixtures. It binds one dispatch token to the immutable artifact digest, original account/usage/jurisdiction, provider, controls, and exact X12; rejects legacy upload responses; separates durable gateway receipt from downstream MAC and acknowledgment evidence; and requires an approved conformance attestation in addition to server-declared capabilities. The qualified adapter moves post-reservation uncertainty to `in_doubt` and never uploads an `already_started` reservation, but `index.ts` intentionally does not construct it. The existing hold remains mandatory until an actual durable server and MAC connector pass qualification.
+
+The internal CM-4B.3 state machine reuses `claim_submission`'s migration-1383 fencing transition and verifies its immutable `(organization, submission)` render identity plus finalized artifact before reservation. Duplicate reservation returns the original token; timeout/crash may move only to `in_doubt`; a known non-send/rejection terminates the attempt; and a correlated gateway receipt records transport submission without implying MAC acceptance. It is composed but not invoked by live notice workers until the server contract supplies trustworthy request identity, remote idempotency/lookup, receipt correlation, and credential/jurisdiction isolation.
 Nothing at activation checks it, so the first time a tenant's own Claim.MD account is bound in a process the backend logs one warning naming the organization (boot cannot see which tenants are live on Claim.MD: the config table has no platform-carrier grant).
 
 **Cutover.** Deploying this change makes every organization that has no config row and is not named in `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` resolve `not_chosen`: its claims, notices and pulls stop at once (held, not failed). Name every existing tenant that sends through the platform's env vendor before the deploy

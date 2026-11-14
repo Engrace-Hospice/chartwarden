@@ -35,7 +35,12 @@ export interface M23ReadActor {
 export function actorOf(request: FastifyRequest): M23ReadActor {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
+  return {
+    organizationId: ctx.organizationId,
+    userId: ctx.userId,
+    roles: ctx.roles,
+    providerEntityScope: ctx.providerEntityIds ?? [],
+  };
 }
 
 /**

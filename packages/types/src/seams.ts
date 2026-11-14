@@ -212,6 +212,9 @@ export type SeamName =
   | "VendorSessionBinder" // M2 — stamp class + vendor scope on an M19 answering-service session (M19 calls it)
   | "TenantOrgCreationProvider" // M2 — create/attach the per-tenant org M34's provision worker needs (§7.1)
   | "OrganizationReader" // M2 — resolve org display metadata by id (M35 admin lists label cross-tenant rows)
+  | "BillingServiceModeReader" // M35 — tenant's contracted billing service mode (M25 pricing statement)
+  | "NetCollectionsReader" // M25 — month net collections read for M35 statements
+  | "BereavementPortalContentProvider" // M16 — portal-safe bereavement library and memorial content for M31
   | "TerminologyProvider" // M38 — version-aware code/value-set resolution (every clinical/billing module)
   | "AlertEmitter" // M36 — emit an event; M36 resolves rules + recipients + fan-out (every module)
   | "MessagingProvider" // M36 — channel/message surface (DEK-encrypted bodies; PHI read surface)

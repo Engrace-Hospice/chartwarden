@@ -1,6 +1,6 @@
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // #821: the MAC credential upsert keeps its Idempotency-Key only after a thrown fetch.
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../../shell/session";
@@ -56,7 +56,8 @@ const type = (label: string, value: string) =>
 
 async function fillForm(): Promise<void> {
   fireEvent.click(await screen.findByRole("button", { name: "Add credential" }));
-  const box = await screen.findByRole("combobox", { name: /Provider entity/ });
+  const dialog = await screen.findByRole("dialog", { name: "MAC credential upsert" });
+  const box = within(dialog).getByRole("combobox", { name: /Provider entity/ });
   fireEvent.focus(box);
   fireEvent.change(box, { target: { value: "Eng" } });
   fireEvent.click(await screen.findByRole("option", { name: /Engrace Hospice/ }));
@@ -66,18 +67,14 @@ async function fillForm(): Promise<void> {
   type("Client secret (write-only)", "s3cret");
 }
 
-/** Open the step-up ceremony, sign, and wait for the single write to land and the ceremony to close. */
+/** Open the attestation ceremony and wait for the single write to land and the ceremony to close. */
 const sign = async (expected: number, keys: string[]) => {
   fireEvent.click(screen.getByRole("button", { name: "Save with step-up" }));
-  const stepUp = await screen.findByLabelText("Re-enter your password to continue");
-  fireEvent.change(stepUp, { target: { value: "pw" } });
   const affirm = screen.getByRole("checkbox") as HTMLInputElement;
   if (!affirm.checked) fireEvent.click(affirm);
   fireEvent.click(screen.getByRole("button", { name: "Sign & save" }));
   await waitFor(() => expect(keys.length).toBe(expected));
-  await waitFor(() =>
-    expect(screen.queryByLabelText("Re-enter your password to continue")).toBeNull(),
-  );
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Sign & save" })).toBeNull());
 };
 
 afterEach(() => cleanup());

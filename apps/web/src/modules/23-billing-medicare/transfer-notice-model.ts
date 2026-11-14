@@ -50,6 +50,7 @@ export interface TransferNotice {
   controlNumber: string;
   payerControlNumber: string | null;
   latestSubmissionOutcome: string | null;
+  latestSubmissionDispatchState: string | null;
   cancelReason: string | null;
   blockers: Finding[];
   warnings: Finding[];
@@ -63,7 +64,7 @@ export interface TransferNotice {
 
 export const STATE_LABEL: Record<NoticeState, string> = {
   draft: "Draft",
-  ready: "Ready",
+  ready: "Internally ready · dispatch held",
   submitted: "Submitted",
   ack_pending: "Awaiting 277CA",
   ack_accepted: "Accepted",
@@ -73,7 +74,7 @@ export const STATE_LABEL: Record<NoticeState, string> = {
 
 export const STATE_TONE: Record<NoticeState, StatusTone> = {
   draft: "neutral",
-  ready: "progress",
+  ready: "warning",
   submitted: "progress",
   ack_pending: "progress",
   ack_accepted: "success",

@@ -33,6 +33,7 @@ export {
   eligibilityParsedPayload,
   type JobEnqueuePort,
   type M23WorkerDeps,
+  type M23ClaimSubmissionWorkerDeps,
   type MacJurisdictionListPort,
   type MacPortalPort,
   type NoeSubmitJob,
@@ -52,12 +53,17 @@ export {
   buildM23RevalidateEnqueuePort,
   registerM23CronWorkers,
   registerM23DomainWorkers,
+  registerM23ClaimSubmissionWorkers,
+  registerM23NoticeSubmissionWorkers,
+  registerM23TransportAckWorkers,
+  registerM23LegacyAckWorkers,
   registerM23PortalHealthWorker,
   registerM23LaunchWorkers,
   registerM23WatchCronWorkers,
   scheduleM23Jobs,
   scheduleM23LaunchJobs,
   scheduleM23WatchJobs,
+  scheduleM23TransportAckJobs,
   unboundWorkerPort,
 } from "./m23-jobs";
 export {
@@ -66,6 +72,39 @@ export {
   claimAccountReferenceFor,
 } from "./clearinghouse-context";
 export { buildDirectMacGateway, buildSubmissionControlNumberReader } from "./direct-mac-gateway";
+export {
+  DIRECT_MAC_NOTICE_GATEWAY_CONFORMANCE_SUITE,
+  DIRECT_MAC_NOTICE_GATEWAY_CONTRACT_VERSION,
+  DIRECT_MAC_NOTICE_GATEWAY_PATHS,
+  classifyDirectMacNoticeGatewayCapability,
+  DirectMacNoticeGatewayError,
+  buildDirectMacNoticeGatewayRequest,
+  buildQualifiedDirectMacNoticeDispatchAdapter,
+  createVersionedDirectMacNoticeGatewayClient,
+  directMacNoticeGatewayReadiness,
+  parseDirectMacNoticeAcknowledgmentProvenance,
+  parseDirectMacNoticeGatewayCapabilities,
+  parseDirectMacNoticeGatewayResponse,
+  qualifyDirectMacNoticeGateway,
+} from "./direct-mac-notice-gateway-contract";
+export type {
+  DirectMacGatewayOperationState,
+  DirectMacNoticeGatewayCapabilityClass,
+  DirectMacGatewayReceiptStage,
+  DirectMacGatewayReceiptV1,
+  DirectMacNoticeAcknowledgmentProvenanceV1,
+  DirectMacNoticeGatewayCapabilitiesV1,
+  DirectMacNoticeGatewayConformanceAttestation,
+  DirectMacNoticeGatewayErrorCode,
+  DirectMacNoticeGatewayHttpPort,
+  DirectMacNoticeGatewayLookupV1,
+  DirectMacNoticeGatewayReadiness,
+  DirectMacNoticeReadinessEvidence,
+  DirectMacNoticeGatewayRequestV1,
+  DirectMacNoticeGatewayResponseV1,
+  QualifiedDirectMacNoticeGateway,
+  VersionedDirectMacNoticeGatewayClient,
+} from "./direct-mac-notice-gateway-contract";
 export type { ClearinghouseContextPort, M23TransportDeps } from "./clearinghouse-submission";
 export {
   buildClaimValidationRunner,

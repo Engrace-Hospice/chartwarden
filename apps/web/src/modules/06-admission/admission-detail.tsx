@@ -90,6 +90,7 @@ import {
 } from "./admission-status";
 import { MissingDischargeDetailsAlert } from "./discharge-details-alert";
 import { DischargeOrderSection } from "./discharge-order-ui";
+import { NoeAdmissionNoticeStatus } from "./noe-admission-notice-status";
 import { NomncPanel } from "./nomnc-panel";
 import { PatientIntakeDetails } from "./patient-intake-details";
 import { ResidenceQuickAdd } from "./residence-quick-add";
@@ -1289,6 +1290,9 @@ export function AdmissionDetail({
             />
           ) : null}
           <TransferNoticeStatus admissionId={admission.id} />
+          {hasPermission("billing.noe.read") ? (
+            <NoeAdmissionNoticeStatus admissionId={admission.id} />
+          ) : null}
           <section style={summaryCardStyle}>
             <div style={summaryHeaderStyle}>
               <div>
@@ -1673,6 +1677,9 @@ export function AdmissionDetail({
         {flashNotice ? <InlineAlert tone="success">{flashNotice}</InlineAlert> : null}
         <MissingDischargeDetailsAlert admissionId={admission.id} admissionState={admission.state} />
         <TransferNoticeStatus admissionId={admission.id} />
+        {hasPermission("billing.noe.read") ? (
+          <NoeAdmissionNoticeStatus admissionId={admission.id} />
+        ) : null}
         {/* Milestone 10a — NOMNC delivery + QIO expedited review record-keeping (typed facts, typed deadlines). */}
         <NomncPanel admissionId={admission.id} />
         <section style={summaryCardStyle}>

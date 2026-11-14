@@ -15,12 +15,6 @@ const ok = (data: unknown, status = 200) => ({
   error: undefined,
   response: new Response(null, { status }),
 });
-const refused = (status: number) => ({
-  data: undefined,
-  error: { error: { code: "X", message: "refused" } },
-  response: new Response(null, { status }),
-});
-
 const NOTICE = {
   transferNoticeId: TN,
   patientId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
@@ -44,6 +38,7 @@ const NOTICE = {
   controlNumber: "381501-260310-abcde-00",
   payerControlNumber: "PAYER-1",
   latestSubmissionOutcome: null,
+  latestSubmissionDispatchState: null,
   cancelReason: null,
   blockers: [],
   warnings: [],
@@ -81,20 +76,12 @@ const press = async (post: ReturnType<typeof vi.fn>, name: string, calls: number
 };
 
 describe("Transfer notice Idempotency-Key (#821)", () => {
-  it("reuses the key when the first submit threw", async () => {
-    const POST = vi.fn().mockRejectedValueOnce(new TypeError("net")).mockResolvedValue(ok(NOTICE));
+  it("does not expose dispatch while external filing remains intentionally held", async () => {
+    const POST = vi.fn();
     mount(POST);
-    await press(POST, "Submit to Medicare", 1);
-    await press(POST, "Submit to Medicare", 2);
-    expectSameKey(POST, 0, 1);
-  });
-
-  it("mints a new key after an HTTP error answer", async () => {
-    const POST = vi.fn().mockResolvedValueOnce(refused(422)).mockResolvedValue(ok(NOTICE));
-    mount(POST);
-    await press(POST, "Submit to Medicare", 1);
-    await press(POST, "Submit to Medicare", 2);
-    expectNewKey(POST, 0, 1);
+    expect(await screen.findByText(/No filing action is available here/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Submit to Medicare" })).toBeNull();
+    expect(POST).not.toHaveBeenCalled();
   });
 
   it("mints a new key after a field edit following a thrown request", async () => {

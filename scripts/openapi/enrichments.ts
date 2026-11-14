@@ -518,6 +518,12 @@ import {
   ValidationOverrideListQuerySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/billing-typebox";
 import {
+  ClaimMdMedicareEnrollmentBodySchema,
+  ClaimMdMedicareRouteBodySchema,
+  ClaimMdMedicareRoutingResponseSchema,
+  CloseClaimMdMedicareRouteBodySchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/claimmd-medicare-routing.routes";
+import {
   ResolveStaleAttemptBodySchema,
   ResolvedAttemptSchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/clearinghouse-attempt-typebox";
@@ -540,6 +546,22 @@ import {
   EdiProfileViewSchema,
   UpsertEdiProfileBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/edi-profile-typebox";
+import {
+  MedicareNoticeWorklistQuerySchema as M23MedicareNoticeWorklistQuerySchema,
+  MedicareNoticeWorklistResponseSchema as M23MedicareNoticeWorklistResponseSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/medicare-notice-worklist-typebox";
+import {
+  MedicareProviderRoutingBodySchema,
+  MedicareProviderRoutingResponseSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/medicare-provider-routing.routes";
+import {
+  AddNoeExceptionEvidenceSchema,
+  CreateNoeExceptionReviewSchema,
+  NoeExceptionReviewHistoryResponseSchema,
+  NoeExceptionReviewListResponseSchema,
+  RecordNoeExceptionDecisionSchema,
+  RecordNoeExceptionRequestSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/noe-exception-review-typebox";
 import {
   NpiVerificationListSchema,
   NpiVerificationViewSchema,
@@ -3899,7 +3921,70 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Cancel a DRAFT/READY NOE — election-reversed guard fact (§4.1 #27)",
     body: CancelNoeBodySchema,
   },
+  "POST /api/v1/noe-records/:id/exception-reviews": {
+    summary: "Create an auditable NOE late-filing exception review backed by protected evidence",
+    body: CreateNoeExceptionReviewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "GET /api/v1/noe-records/:id/exception-reviews": {
+    summary: "List auditable NOE late-filing exception reviews",
+    response: NoeExceptionReviewListResponseSchema,
+  },
+  "GET /api/v1/noe-records/:id/exception-reviews/:reviewId/history": {
+    summary: "Read the immutable event history for an NOE exception review",
+    response: NoeExceptionReviewHistoryResponseSchema,
+  },
+  "POST /api/v1/noe-records/:id/exception-reviews/:reviewId/evidence": {
+    summary: "Attach protected evidence to an existing NOE exception review",
+    body: AddNoeExceptionEvidenceSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/noe-records/:id/exception-reviews/:reviewId/record-request": {
+    summary: "Record the externally submitted NOE exception request and its evidence",
+    body: RecordNoeExceptionRequestSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/noe-records/:id/exception-reviews/:reviewId/record-decision": {
+    summary: "Record a MAC or CMS NOE exception decision with protected evidence",
+    body: RecordNoeExceptionDecisionSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
   // ── Medicare transfer notice, TOB 8xC / corrected 8xC / 8xD (transfer-notice.routes.ts) ──
+  "GET /api/v1/billing/medicare-notice-worklist": {
+    summary:
+      "Organization-scoped unified Medicare notice worklist; counts are scoped to the returned page",
+    query: M23MedicareNoticeWorklistQuerySchema,
+    response: M23MedicareNoticeWorklistResponseSchema,
+  },
+  "POST /api/v1/billing/medicare-provider-routing": {
+    summary: "Create an effective-dated Medicare provider-to-MAC jurisdiction route",
+    body: MedicareProviderRoutingBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "GET /api/v1/billing/medicare-provider-routing/:providerEntityId": {
+    summary: "Read effective-dated Medicare provider routing and legacy migration issues",
+    response: MedicareProviderRoutingResponseSchema,
+  },
+  "POST /api/v1/billing/claimmd-medicare-routing/routes": {
+    summary: "Create an effective-dated Claim.MD Medicare payer route",
+    body: ClaimMdMedicareRouteBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "GET /api/v1/billing/claimmd-medicare-routing/:providerEntityId": {
+    summary: "Read Claim.MD Medicare payer routes and enrollment evidence",
+    response: ClaimMdMedicareRoutingResponseSchema,
+  },
+  "POST /api/v1/billing/claimmd-medicare-routing/routes/close": {
+    summary: "Close an active Claim.MD Medicare payer route interval",
+    body: CloseClaimMdMedicareRouteBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/billing/claimmd-medicare-routing/enrollments": {
+    summary: "Record transaction-specific Claim.MD Medicare enrollment evidence",
+    body: ClaimMdMedicareEnrollmentBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
   "GET /api/v1/billing/transfer-notices": {
     summary:
       "Transfer-notice worklist (8xC / 8xD) with each notice's §20.1.3 blockers and allowed actions",
