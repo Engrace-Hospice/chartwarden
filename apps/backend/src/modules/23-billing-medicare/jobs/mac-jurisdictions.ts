@@ -2,13 +2,12 @@
 // (GAP-143). The composition root used to hard-code `[{ macJurisdiction: "ngs_j6" }]`, so a tenant whose
 // provider entity bills a different MAC (CGS J15, Palmetto JM, Noridian JE ...) never had its 999/277CA
 // acknowledgments pulled and its MAC portal never health-probed — acks for those claims sat at
-// `ack_pending` forever. The jurisdictions to poll are the DISTINCT `mac_jurisdiction` values of the
-// configured `mac_submitter_credential` rows (one per provider entity), across every active tenant.
+// `ack_pending` forever. Jurisdiction is a Medicare routing fact and is read from the canonical routing table;
+// the direct-MAC credential remains independently required by the portal transport.
 //
-// `mac_submitter_credential` is ORG-scoped (RLS on `app.org_id`, no platform-role grant), so the cross-tenant
+// The routing table is ORG-scoped (RLS on `app.org_id`, no platform-role grant), so the cross-tenant
 // union is built the way every other M23 cron fans out: enumerate the active orgs through the audited platform
-// enumerator, then read each org's rows under its own `withOrgContext` envelope. Only the jurisdiction code
-// is selected — never the cipher, client id or submitter ids.
+// enumerator, then read each org's rows under its own `withOrgContext` envelope. Only jurisdiction codes are selected.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { MacJurisdictionListPort } from "./m23-jobs";
@@ -53,8 +52,8 @@ export function buildDrizzleOrgMacJurisdictionReader(db: DbClient): OrgMacJurisd
   return (organizationId) =>
     withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const rows = await tx
-        .selectDistinct({ macJurisdiction: schema.macSubmitterCredential.macJurisdiction })
-        .from(schema.macSubmitterCredential);
+        .selectDistinct({ macJurisdiction: schema.medicareProviderRouting.macJurisdiction })
+        .from(schema.medicareProviderRouting);
       return rows.map((r) => r.macJurisdiction);
     });
 }

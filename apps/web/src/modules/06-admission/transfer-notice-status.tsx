@@ -17,9 +17,9 @@ interface NoticeSummary {
 
 const STATE: Record<string, { label: string; tone: StatusTone }> = {
   draft: { label: "Draft", tone: "neutral" },
-  ready: { label: "Ready to file", tone: "progress" },
-  submitted: { label: "Submitted", tone: "progress" },
-  ack_pending: { label: "Awaiting Medicare", tone: "progress" },
+  ready: { label: "Internally ready · dispatch held", tone: "warning" },
+  submitted: { label: "Request recorded · dispatch held", tone: "warning" },
+  ack_pending: { label: "Awaiting verified MAC acknowledgment", tone: "progress" },
   ack_accepted: { label: "Accepted by Medicare", tone: "success" },
   ack_rejected: { label: "Rejected", tone: "error" },
   cancelled: { label: "Cancelled", tone: "neutral" },
@@ -62,6 +62,9 @@ export function TransferNoticeStatus({ admissionId }: { admissionId: string }): 
         <StatusPill label={s.label} tone={s.tone} />
       </span>{" "}
       {open && notice.blockers[0] ? `${notice.blockers[0].message} ` : null}
+      {notice.state === "ready" || notice.state === "submitted"
+        ? "External transmission is unavailable; this status is not a Medicare filing. "
+        : null}
       <Link
         to={`/billing/transfer-notices?notice=${notice.transferNoticeId}`}
         style={{ color: "var(--color-primary)", fontWeight: 600 }}

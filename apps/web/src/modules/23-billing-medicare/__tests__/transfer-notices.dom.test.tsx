@@ -59,6 +59,7 @@ function notice(over: Partial<TransferNotice> = {}): TransferNotice {
     controlNumber: "381501-260310-abcde-00",
     payerControlNumber: null,
     latestSubmissionOutcome: null,
+    latestSubmissionDispatchState: null,
     cancelReason: null,
     blockers: [HOLD],
     warnings: [],
@@ -103,7 +104,7 @@ function mount(el: JSX.Element, client: object, path = "/billing/transfer-notice
 describe("transfer-notice model", () => {
   it("names the prior-hospice hold before the raw state", () => {
     expect(statusOf(notice())).toEqual({ label: "Held for prior hospice", tone: "warning" });
-    expect(statusOf(notice({ blockers: [], state: "ready" })).label).toBe("Ready");
+    expect(statusOf(notice({ blockers: [], state: "ready" })).label).toBe("Internally ready · dispatch held");
     expect(
       statusOf(
         notice({
@@ -172,26 +173,21 @@ describe("TransferNotices worklist", () => {
     );
   });
 
-  it("submits a ready notice, and sends a step-up refusal to the step-up screen", async () => {
+  it("keeps a ready notice held and does not expose an external submit action", async () => {
     const ready = notice({ state: "ready", blockers: [], allowedActions: ["submit", "cancel"] });
     const POST = vi.fn(async () => fail(403, "STEP_UP_REQUIRED"));
     mount(<TransferNotices />, makeClient([ready], POST), `/billing/transfer-notices?notice=${TN}`);
-    fireEvent.click(await screen.findByRole("button", { name: "Submit to Medicare" }));
-    await screen.findByText("step-up page");
-    expect(POST).toHaveBeenCalledWith("/api/v1/billing/transfer-notices/{id}/submit", {
-      params: { path: { id: TN }, header: { "Idempotency-Key": expect.any(String) } },
-      body: { expectedVersion: 3 },
-    });
+    await screen.findByText(/external dispatch is held until the gateway contract is qualified/i);
+    expect(screen.queryByRole("button", { name: "Submit to Medicare" })).toBeNull();
+    expect(POST).not.toHaveBeenCalled();
   });
 
-  it("shows the server's blocker message when submit is refused", async () => {
+  it("does not invoke the external submit endpoint even when domain readiness allows it", async () => {
     const ready = notice({ state: "ready", blockers: [], allowedActions: ["submit"] });
-    const POST = vi.fn(async () =>
-      fail(422, "TRANSFER_NOTICE_BLOCKED", "This patient already changed hospices."),
-    );
+    const POST = vi.fn(async () => fail(422, "TRANSFER_NOTICE_BLOCKED"));
     mount(<TransferNotices />, makeClient([ready], POST), `/billing/transfer-notices?notice=${TN}`);
-    fireEvent.click(await screen.findByRole("button", { name: "Submit to Medicare" }));
-    expect(await screen.findByText("This patient already changed hospices.")).toBeTruthy();
+    await screen.findByText(/no filing action is available here/i);
+    expect(POST).not.toHaveBeenCalled();
   });
 
   it("drafts a date correction for an accepted notice", async () => {

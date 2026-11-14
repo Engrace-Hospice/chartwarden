@@ -5,17 +5,15 @@ import {
   type ClaimTransitionEvent,
   DDE_WATCHDOG_LOOKAHEAD_DAYS,
   type EligibilityOutcome,
-  type NoticeState,
   canTransition as canClaimTransition,
   deriveControlNumber,
   medicareReceiptDay,
-  noeMachine,
-  notrMachine,
   parseControlNumber,
   reduce as reduceClaim,
   repositories,
 } from "@chartwarden/billing";
 import type { DbClient } from "@chartwarden/db";
+import { claimMdEvidenceAccountMatches, claimMdEvidenceFor } from "../claimmd-evidence/store";
 // apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts — M23 LIVE BullMQ wiring for the §4.8 jobs.
 //
 // The thin, infra-touching adapter that turns the @chartwarden/billing PURE domain (the claim/noe/notr lifecycle
@@ -29,11 +27,9 @@ import type { DbClient } from "@chartwarden/db";
 //   • per-job `withOrgContext(orgId)` RLS envelope (every §4.8 WORK queue is ORG-scoped, F09): the worker opens
 //     the tx on the org from the job payload and REBUILDS the repos over that tx so every write carries
 //     `app.org_id` (without it the RLS WITH CHECK denies the insert).
-//   • RULE 4 — FAIL-CLOSED-UNBOUND: every x12 / MAC-portal / MBI-unlock / HETS / cross-module seam port is bound
-//     to a LAZY `() => unboundWorkerPort(...)` thunk so the throw happens only when a JOB RUNS, never at
-//     port-bundle construction. The host boots clean even when no adapter is bound. Real MAC-portal HTTP + x12
-//     generation (the x12-837-client `ngs-j6` client) is a follow-up; the worker structure + the outbox-drain +
-//     the state transitions are built NOW with those calls placed behind the fail-closed binds.
+//   • Claim submit/retry use the authoritative in-process 837I renderer and org-scoped clearinghouse transport;
+//     they do not depend on the legacy HTTP X12/MAC gateway. Legacy notice and raw-ack groups remain explicitly
+//     capability-gated on their X12/MAC ports. Unbound orgs and unavailable capabilities fail closed at execution.
 //   • D2 outbox-only: every state transition emits its §4.10 `m23.*` event through the injected outbox IN THE
 //     SAME transaction as the mutation (the composition root binds the catalog-validating tx publisher with
 //     `bindCallerModule("m23")`).
@@ -66,6 +62,8 @@ import {
 } from "../../../bootstrap/claims-billing-gate";
 import { isPlatformClaimMdAccount, shouldRunLegacyClaimMdAckPoll } from "../claimmd-capture/config";
 import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/claim-837i-submit";
+import type { MedicareNoticeRenderer } from "../services/medicare-notice-renderer";
+import type { MedicareNoticeDispatchStateMachine } from "../services/medicare-notice-dispatch";
 import { reviewedClaimSourceIsStale } from "../services/claim-preview-integrity";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
 import { reportRevokedResponsesPending } from "../tenant-clearinghouse/revoked-responses-alert";
@@ -104,6 +102,7 @@ import {
 } from "./notice-external-filing";
 import {
   type M23CronQueueName,
+  type M23QueueParam,
   M23_CRON_QUEUES,
   M23_JOB_SCHEDULES,
   M23_QUEUES,
@@ -114,7 +113,6 @@ import {
   type GenerateTransferNotice,
   type TransferNoticeSubmitJob,
   applyTransferNoticeAck,
-  runTransferNoticeSubmit,
 } from "./transfer-notice-jobs";
 
 const {
@@ -313,6 +311,7 @@ export interface MacPortalPort {
     readonly organizationId: string;
     /** The submitting provider entity (M40); the transport resolves the MAC jurisdiction from its credential. */
     readonly providerEntityId: string;
+    readonly effectiveDate?: string;
     readonly kind: "claim_837i" | "noe" | "notr" | "transfer_notice";
     readonly x12: string;
     /** The same claim as Stedi's JSON; a Stedi-bound transport sends this instead of the raw X12. */
@@ -580,12 +579,18 @@ export interface M23WorkerDeps {
   /** When account-wide Claim.MD capture or dispatch is active, disable provider-scoped legacy ack polls. */
   readonly claimMdResponseCaptureActive?: boolean;
   readonly claimMdAckDispatcherActive?: boolean;
+  /** Platform Claim.MD production submissions stay held until the account-wide response path is enabled. */
+  readonly claimMdPlatformResponseReconciliationReady?: boolean;
   /**
    * The 837I loader's ports (admission, MBI unlock, patient identity/address, parties). When a clearinghouse vendor is
    * bound the claim submit/retry workers render the claim through the loader with these, and fail the attempt on a gap;
    * they never fall back to the sidecar's thin document. `registerM23LaunchWorkers` refuses to build without them.
    */
   readonly claim837i?: Claim837iSubmitDeps;
+  /** Internal-only authoritative notice renderer. It prepares/retrieves encrypted artifacts; it never uploads. */
+  readonly noticeRenderer?: MedicareNoticeRenderer;
+  /** Durable artifact-to-attempt fencing. Composed now, invoked only after gateway qualification. */
+  readonly noticeDispatch?: MedicareNoticeDispatchStateMachine;
   /** Replaces {@link renderClaimForTransport} (the suites that exercise transport semantics, not rendering). */
   readonly renderClaim?: typeof renderClaimForTransport;
   readonly hets?: HetsEligibilityPort;
@@ -606,9 +611,27 @@ export interface M23WorkerDeps {
   readonly reportRevokedResponses?: (organizationId: string) => Promise<void>;
 }
 
+/** Dependencies the common claim submit/retry workers consume. Legacy ports are optional fallbacks only;
+ * Claim.MD/Stedi use `transport` and the authoritative loader, and never need a MAC/X12 gateway to register. */
+export type M23ClaimSubmissionWorkerDeps = Pick<
+  M23WorkerDeps,
+  | "connection"
+  | "db"
+  | "now"
+  | "outbox"
+  | "alerts"
+  | "x12"
+  | "macPortal"
+  | "transport"
+  | "claimMdPlatformResponseReconciliationReady"
+  | "claim837i"
+  | "renderClaim"
+  | "logger"
+>;
+
 // ── the bound port bundles (bind what we can; lazy throw-on-call for the genuinely-missing infra) ───────────
 
-function outboxOf(deps: M23WorkerDeps): WorkerOutboxPort {
+function outboxOf(deps: Pick<M23WorkerDeps, "outbox">): WorkerOutboxPort {
   return (
     deps.outbox ?? {
       publish: () =>
@@ -620,7 +643,7 @@ function outboxOf(deps: M23WorkerDeps): WorkerOutboxPort {
   );
 }
 
-function alertsOf(deps: M23WorkerDeps): WorkerAlertPort {
+function alertsOf(deps: Pick<M23WorkerDeps, "alerts">): WorkerAlertPort {
   return (
     deps.alerts ?? {
       dispatch: () =>
@@ -632,7 +655,7 @@ function alertsOf(deps: M23WorkerDeps): WorkerAlertPort {
   );
 }
 
-function x12Of(deps: M23WorkerDeps): X12ClientPort {
+function x12Of(deps: Pick<M23WorkerDeps, "x12">): X12ClientPort {
   const u = (fn: string) =>
     unboundWorkerPort(
       `x12.${fn}`,
@@ -649,7 +672,7 @@ function x12Of(deps: M23WorkerDeps): X12ClientPort {
   );
 }
 
-function macPortalOf(deps: M23WorkerDeps): MacPortalPort {
+function macPortalOf(deps: Pick<M23WorkerDeps, "macPortal" | "transport">): MacPortalPort {
   const u = (fn: string) =>
     unboundWorkerPort(
       `macPortal.${fn}`,
@@ -906,7 +929,7 @@ export function claimDocumentFor(
  */
 async function generateClaim837i(
   tx: BillingDb,
-  deps: M23WorkerDeps,
+  deps: Pick<M23WorkerDeps, "transport" | "claim837i" | "renderClaim" | "x12">,
   organizationId: string,
   claim: Parameters<typeof claimDocumentFor>[0] & { readonly providerEntityId: string },
   claimControlNumber: string,
@@ -1111,6 +1134,7 @@ export async function runClaimSubmitWithinLegacyTransaction(
     uploaded = await macPortalOf(deps).upload({
       organizationId: job.organizationId,
       providerEntityId: claim.providerEntityId,
+      effectiveDate: claim.serviceFrom,
       kind: "claim_837i",
       x12: generated.x12,
       stediJson: generated.stediJson,
@@ -1469,7 +1493,7 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
  */
 export async function runClaimSubmit(
   _workerTx: BillingDb,
-  deps: M23WorkerDeps,
+  deps: M23ClaimSubmissionWorkerDeps,
   job: ClaimSubmitJob,
 ): Promise<void> {
   const ctx = systemOrgContext(job.organizationId);
@@ -1605,15 +1629,17 @@ export async function runClaimSubmit(
     // Reconcile only from the durable clearinghouse attempt store. Never resend a committed dispatch.
     const transport = orgTransport?.binding.vendor ? orgTransport : null;
     if (!transport) return;
-    const currentRoute = await transport.contexts.contextFor(
-      job.organizationId,
-      prepared.claim.providerEntityId,
-    );
-    if (
-      job.expectedRouteFingerprint &&
-      currentRoute.claimMdRouteFingerprint !== job.expectedRouteFingerprint
-    )
-      return;
+    if (transport.binding.vendor === "claimmd") {
+      const recoveryContext = await transport.contexts.contextFor(job.organizationId, prepared.claim.providerEntityId, {
+        payerRoute: "skip", effectiveDate: prepared.claim.serviceFrom,
+      });
+      const evidence = claimMdEvidenceFor(transport, job.organizationId, recoveryContext.usage).submission;
+      if (!evidence?.lookupSubmissionIdentity) return;
+      const original = await evidence.lookupSubmissionIdentity(job.organizationId, job.submissionId);
+      // Routing/enrollment may have changed after dispatch started. Reconcile only with the original account/mode;
+      // if ownership changed, retain the in-doubt state for an authorized recovery path and never query the new account.
+      if (!claimMdEvidenceAccountMatches(original, evidence)) return;
+    }
     const remote = await priorClaimAttempt(
       transport,
       job.organizationId,
@@ -1808,7 +1834,7 @@ export async function runClaimSubmit(
 /** Retry requests append the next immutable attempt, then use the same split prepare/send/finalize path. */
 export async function runClaimSubmitRetry(
   _workerTx: BillingDb,
-  deps: M23WorkerDeps,
+  deps: M23ClaimSubmissionWorkerDeps,
   job: ClaimSubmitRetryJob,
 ): Promise<void> {
   const ctx = systemOrgContext(job.organizationId);
@@ -1928,39 +1954,16 @@ export async function runClaimSubmitRetry(
 }
 
 /**
- * Record a NOE / NOTR transmission attempt. The submit route already appended the job's attempt as QUEUED and the job carries
- * its index (`settleNoticeJobAttempt` checked the row is the job's own): the idempotent append hands back THAT row, which is
- * then terminalized with this transmission's outcome instead of being left QUEUED forever.
- */
-async function recordNoticeTransmission(
-  submissions: InstanceType<typeof ClaimSubmissionRepository>,
-  values: Parameters<InstanceType<typeof ClaimSubmissionRepository>["append"]>[0],
-): Promise<Awaited<ReturnType<InstanceType<typeof ClaimSubmissionRepository>["append"]>>> {
-  const appended = await submissions.append(values);
-  if (appended.outcome !== "queued") return appended;
-  return submissions.terminalize(appended.id, {
-    outcome: values.outcome,
-    outcomeReason: null,
-    generatedFileUri: values.generatedFileUri ?? null,
-    submittedAt: values.submittedAt ?? null,
-    workerCorrelationId: values.workerCorrelationId ?? null,
-  });
-}
-
-/**
- * `noe.submit` (§4.8): drain `m23.noe.submit_requested` — validate the durable queued attempt, generate the NOE
- * via the X12 sidecar, upload through the configured transport (legacy MAC portal when no vendor is bound),
- * terminalize that same `claim_submission`, then drive the §2.2 NOE READY → SUBMITTED transition.
+ * `noe.submit` (§4.8): validate the durable queued attempt and hold before generation until CM-4A's
+ * authoritative source loader and internal renderer are wired. The current legacy X12 sidecar is
+ * intentionally not used as a production notice-generation fallback.
  */
 export async function runNoeSubmit(
   tx: BillingDb,
   deps: M23WorkerDeps,
   job: NoeSubmitJob,
 ): Promise<void> {
-  const outbox = outboxOf(deps);
   const noes = new NoeRepository(tx);
-  const submissions = new ClaimSubmissionRepository(tx);
-  const now = (deps.now ?? (() => new Date()))();
 
   // Owner decision D4: never generate or upload for an org whose clearinghouse is not live (the worker pre-flight parks or holds).
   await assertNoticeMayTransmit(deps, job.organizationId, "noe");
@@ -1977,68 +1980,20 @@ export async function runNoeSubmit(
     externalFilingStatus: noe.externalFilingStatus,
   });
   if (!settled.proceed) return;
-  const attempt = settled.attempt;
 
-  const generated = await x12Of(deps).generateNoe({
-    organizationId: job.organizationId,
-    noeId: job.noeId,
-    noeControlNumber: noe.noeControlNumber,
-  });
-  const uploaded = await macPortalOf(deps).upload({
-    organizationId: job.organizationId,
-    providerEntityId: noe.providerEntityId,
-    kind: "noe",
-    x12: generated.x12,
-    controlNumber: noe.noeControlNumber,
-    noticeId: noe.id,
-    submissionId: attempt.id,
-    attemptIndex: attempt.attemptIndex,
-  });
-  const submission = await recordNoticeTransmission(submissions, {
-    organizationId: job.organizationId,
-    providerEntityId: noe.providerEntityId,
-    kind: "noe",
-    noeId: job.noeId,
-    claimControlNumber: noe.noeControlNumber,
-    attemptIndex: attempt.attemptIndex,
-    outcome: uploaded.accepted ? "submitted" : "failed_portal",
-    generatedFileUri: uploaded.generatedFileUri,
-    submittedAt: uploaded.accepted ? now : null,
-    workerCorrelationId: generated.correlationId,
-  });
-  if (!uploaded.accepted) throw new Error("configured transport rejected the NOE upload");
-
-  const next = noeMachine.reduce(noe.state, "submit");
-  if (next.error)
-    throw new Error(`illegal NOE transition ${noe.state} --submit--> (${next.error})`);
-  const result = await noes.transitionToState(job.noeId, noe.version, next.state as NoticeState, {
-    latestSubmissionId: submission.id,
-  });
-  if (!result.ok) throw new Error(`noe ${job.noeId} version conflict on submit`);
-
-  await outbox.publish(tx, {
-    eventName: "m23.noe.submitted",
-    organizationId: job.organizationId,
-    aggregateKind: "noe",
-    aggregateId: job.noeId,
-    payload: {
-      noeId: job.noeId,
-      submissionId: submission.id,
-      submittedAt: now.toISOString(),
-    },
-  });
+  // Rendering is never dispatch authorization. The preflight owns artifact preparation and holds
+  // the job until a verified transport can consume the immutable artifact under its original
+  // account/attempt identity. This defensive branch must not call a gateway or terminalize the row.
+  throw new Error("M23_NOTICE_DISPATCH_NOT_AUTHORIZED");
 }
 
-/** `notr.submit` (§4.8): the NOTR twin of {@link runNoeSubmit} (parallel state machine + control number). */
+/** `notr.submit`: fail closed like {@link runNoeSubmit} until authoritative notice facts are wired. */
 export async function runNotrSubmit(
   tx: BillingDb,
   deps: M23WorkerDeps,
   job: NotrSubmitJob,
 ): Promise<void> {
-  const outbox = outboxOf(deps);
   const notrs = new NotrRepository(tx);
-  const submissions = new ClaimSubmissionRepository(tx);
-  const now = (deps.now ?? (() => new Date()))();
 
   await assertNoticeMayTransmit(deps, job.organizationId, "notr");
   const notr = await notrs.findByIdForUpdate(job.notrId);
@@ -2053,90 +2008,22 @@ export async function runNotrSubmit(
     externalFilingStatus: notr.externalFilingStatus,
   });
   if (!settled.proceed) return;
-  const attempt = settled.attempt;
 
-  const generated = await x12Of(deps).generateNotr({
-    organizationId: job.organizationId,
-    notrId: job.notrId,
-    notrControlNumber: notr.notrControlNumber,
-  });
-  const uploaded = await macPortalOf(deps).upload({
-    organizationId: job.organizationId,
-    providerEntityId: notr.providerEntityId,
-    kind: "notr",
-    x12: generated.x12,
-    controlNumber: notr.notrControlNumber,
-    noticeId: notr.id,
-    submissionId: attempt.id,
-    attemptIndex: attempt.attemptIndex,
-  });
-  const submission = await recordNoticeTransmission(submissions, {
-    organizationId: job.organizationId,
-    providerEntityId: notr.providerEntityId,
-    kind: "notr",
-    notrId: job.notrId,
-    claimControlNumber: notr.notrControlNumber,
-    attemptIndex: attempt.attemptIndex,
-    outcome: uploaded.accepted ? "submitted" : "failed_portal",
-    generatedFileUri: uploaded.generatedFileUri,
-    submittedAt: uploaded.accepted ? now : null,
-    workerCorrelationId: generated.correlationId,
-  });
-  if (!uploaded.accepted) throw new Error("configured transport rejected the NOTR upload");
-
-  const next = notrMachine.reduce(notr.state, "submit");
-  if (next.error)
-    throw new Error(`illegal NOTR transition ${notr.state} --submit--> (${next.error})`);
-  const result = await notrs.transitionToState(
-    job.notrId,
-    notr.version,
-    next.state as NoticeState,
-    {
-      latestSubmissionId: submission.id,
-    },
-  );
-  if (!result.ok) throw new Error(`notr ${job.notrId} version conflict on submit`);
-
-  await outbox.publish(tx, {
-    eventName: "m23.notr.submitted",
-    organizationId: job.organizationId,
-    aggregateKind: "notr",
-    aggregateId: job.notrId,
-    payload: {
-      notrId: job.notrId,
-      submissionId: submission.id,
-      submittedAt: now.toISOString(),
-    },
-  });
+  throw new Error("M23_NOTICE_DISPATCH_NOT_AUTHORIZED");
 }
 
-/**
- * `transfer_notice.submit`: the 8xC / 8xD processor (`jobs/transfer-notice-jobs.ts`) over this bundle's ports.
- * Exported for the live suite, which drives it directly (the `runClaimSubmit` posture).
- */
+/** `transfer_notice.submit`: fail closed until its authoritative facts and internal renderer are wired. */
 export async function runTransferNoticeSubmitJob(
   tx: BillingDb,
   deps: M23WorkerDeps,
   job: TransferNoticeSubmitJob,
 ): Promise<void> {
-  const x12 = x12Of(deps);
-  const portal = macPortalOf(deps);
-  await runTransferNoticeSubmit(
-    tx,
-    {
-      generate: (input) =>
-        x12.generateTransferNotice
-          ? x12.generateTransferNotice(input)
-          : unboundWorkerPort(
-              "x12.generateTransferNotice",
-              "bind the X12 gateway's generate-transfer-notice operation",
-            ),
-      upload: (input) => portal.upload(input),
-      outbox: outboxOf(deps),
-      now: deps.now ?? (() => new Date()),
-    },
-    job,
-  );
+  // Transfer notices use the preflight's internal artifact preparation only. This processor is
+  // intentionally not a transport path until a secure artifact-aware MAC contract is verified.
+  void tx;
+  void deps;
+  void job;
+  throw new Error("M23_NOTICE_DISPATCH_NOT_AUTHORIZED");
 }
 
 /**
@@ -3325,7 +3212,17 @@ const M23_DEADLINE_NOTICE_QUEUES: ReadonlySet<string> = new Set([
  * for the tenant to file itself and transmits nothing; the caller completes the job.
  */
 export async function holdBeforeRun(
-  deps: Pick<M23WorkerDeps, "db" | "transport" | "alerts" | "logger">,
+  deps: Pick<
+    M23WorkerDeps,
+    | "db"
+    | "transport"
+    | "x12"
+    | "macPortal"
+    | "alerts"
+    | "logger"
+    | "claimMdPlatformResponseReconciliationReady"
+    | "noticeRenderer"
+  >,
   job: HoldableJob,
   token: string | undefined,
   queue: string,
@@ -3360,7 +3257,97 @@ export async function holdBeforeRun(
       severity,
     });
   }
-  if (state.state === "bound") return undefined;
+  if (state.state === "bound") {
+    const isNoticeSubmission =
+      M23_NOTICE_PARK_QUEUES.has(queue) || queue === M23_QUEUES.transferNoticeSubmit;
+    if (isNoticeSubmission) {
+      const orgTransport = await transportForOrg(deps, data.organizationId);
+      const vendor = orgTransport?.binding.vendor ?? null;
+      if (vendor === null) {
+        return holdJobWhileUnbound({
+          deps,
+          job,
+          token,
+          queue,
+          organizationId: data.organizationId,
+          reason: "M23_NOTICE_TRANSPORT_UNBOUND",
+          severity,
+        });
+      }
+      // Claim.MD and Stedi document institutional claim submission, but that is not evidence that
+      // their payer networks accept these distinct hospice notice transactions. Keep the durable
+      // BullMQ request delayed and alert the tenant until transaction-specific conformance is verified.
+      if (vendor !== null && vendor !== "direct_mac") {
+        return holdJobWhileUnbound({
+          deps,
+          job,
+          token,
+          queue,
+          organizationId: data.organizationId,
+          reason: `M23_NOTICE_${vendor.toUpperCase()}_CAPABILITY_UNVERIFIED`,
+          severity,
+        });
+      }
+      // Direct MAC still requires its actual portal and legacy gateway capabilities; never fake them
+      // or fall back to a tenant's unrelated clearinghouse account.
+      if (vendor === "direct_mac" && (!deps.x12 || !deps.macPortal)) {
+        return holdJobWhileUnbound({
+          deps,
+          job,
+          token,
+          queue,
+          organizationId: data.organizationId,
+          reason: "M23_NOTICE_DIRECT_MAC_GATEWAY_UNAVAILABLE",
+          severity,
+        });
+      }
+      // The repository has no verified gateway-server contract for artifact identity, remote
+      // idempotency, or outcome lookup. A worker guaranteed to remain held must not unlock MBI or
+      // render X12 merely to produce another artifact. Renderer binding is retained for explicitly
+      // authorized internal render operations; it is not invoked as a side effect of this hold.
+      const noticeRenderer = deps.noticeRenderer;
+      if (vendor === "direct_mac" && !noticeRenderer) {
+        return holdJobWhileUnbound({
+          deps,
+          job,
+          token,
+          queue,
+          organizationId: data.organizationId,
+          reason: "M23_NOTICE_AUTHORITATIVE_RENDERER_NOT_BOUND",
+          severity,
+        });
+      }
+      if (vendor === "direct_mac") {
+        return holdJobWhileUnbound({
+          deps,
+          job,
+          token,
+          queue,
+          organizationId: data.organizationId,
+          reason: "M23_NOTICE_GATEWAY_ARTIFACT_CONTRACT_UNSUPPORTED",
+          severity,
+        });
+      }
+    }
+    if (
+      (queue === M23_QUEUES.claimSubmit || queue === M23_QUEUES.claimSubmitRetry) &&
+      deps.claimMdPlatformResponseReconciliationReady !== true
+    ) {
+      const orgBinding = await transportForOrg(deps, data.organizationId);
+      if (orgBinding && isPlatformClaimMdAccount(orgBinding.binding)) {
+        return holdJobWhileUnbound({
+          deps,
+          job,
+          token,
+          queue,
+          organizationId: data.organizationId,
+          reason: "CLAIMMD_RESPONSE_RECONCILIATION_NOT_READY",
+          severity: "critical",
+        });
+      }
+    }
+    return undefined;
+  }
   if (noticeKind && state.reason === "outside") {
     await parkNoticeForExternalFiling(deps, {
       organizationId: data.organizationId,
@@ -3514,22 +3501,49 @@ export function assertTransportInjected(
   }
 }
 
-/** Launch slice: one claim submission worker plus the 999/277CA reconciliation workers. */
-export function registerM23LaunchWorkers(
-  deps: M23WorkerDeps,
+/** Common durable claim submission capability. X12/MAC ports are optional legacy fallbacks and are not required to register. */
+export function registerM23ClaimSubmissionWorkers(
+  deps: M23ClaimSubmissionWorkerDeps,
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): Worker[] {
-  if (!deps.x12 || !deps.macPortal || !deps.outbox || !deps.jurisdictions) {
-    throw new Error(
-      "M23LaunchCapabilityIncomplete: x12, macPortal, outbox, and jurisdictions are required",
-    );
-  }
   assertTransportInjected(env, deps);
   if ((activeTransport(deps) || hasPerOrgTransport(deps)) && !deps.claim837i) {
     throw new Error(
       "M23LaunchCapabilityIncomplete: a clearinghouse vendor is bound but the workers were built without the 837I loader ports (claim837i)",
     );
   }
+  const submissionWorker = <D extends { organizationId: string }>(
+    queue: string,
+    concurrency: number,
+    run: (tx: BillingDb, workerDeps: M23ClaimSubmissionWorkerDeps, data: D) => Promise<void>,
+  ) =>
+    new Worker(
+      queue,
+      async (job, token) => {
+        const data = job.data as D;
+        if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
+        // Before transport: billing entitlement and the org's active clearinghouse must permit the send.
+        if ((await holdBeforeRun(deps, job, token, queue, data)) === "parked") return;
+        return run(deps.db, deps, data);
+      },
+      { connection: deps.connection, concurrency },
+    );
+  return [
+    submissionWorker(
+      M23_QUEUES.claimSubmit,
+      M23_QUEUE_PARAMS.claimSubmit.concurrency,
+      runClaimSubmit,
+    ),
+    submissionWorker(
+      M23_QUEUES.claimSubmitRetry,
+      M23_QUEUE_PARAMS.claimSubmitRetry.concurrency,
+      runClaimSubmitRetry,
+    ),
+  ];
+}
+
+/** Notice queue consumers are always registered; preflight holds unsupported vendors and missing MAC capabilities. */
+export function registerM23NoticeSubmissionWorkers(deps: M23WorkerDeps): Worker[] {
   const orgWorker = <D extends { organizationId: string }>(
     queue: string,
     concurrency: number,
@@ -3552,22 +3566,22 @@ export function registerM23LaunchWorkers(
       },
       { connection: deps.connection, concurrency },
     );
-  const submissionWorker = <D extends { organizationId: string }>(
-    queue: string,
-    concurrency: number,
-    run: (tx: BillingDb, workerDeps: M23WorkerDeps, data: D) => Promise<void>,
-  ) =>
-    new Worker(
-      queue,
-      async (job, token) => {
-        const data = job.data as D;
-        if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
-        // Before any transport: the add-on gate (ADR-0110) and whether the org's clearinghouse is live hold the job here.
-        if ((await holdBeforeRun(deps, job, token, queue, data)) === "parked") return;
-        return run(deps.db, deps, data);
-      },
-      { connection: deps.connection, concurrency },
-    );
+  return [
+    orgWorker(M23_QUEUES.noeSubmit, M23_QUEUE_PARAMS.noeSubmit.concurrency, runNoeSubmit),
+    orgWorker(M23_QUEUES.notrSubmit, M23_QUEUE_PARAMS.notrSubmit.concurrency, runNotrSubmit),
+    orgWorker(
+      M23_QUEUES.transferNoticeSubmit,
+      M23_QUEUE_PARAMS.transferNoticeSubmit.concurrency,
+      runTransferNoticeSubmitJob,
+    ),
+  ];
+}
+
+/** Transport-native ack polling uses each clearinghouse's API and never requires raw X12 or a MAC portal. */
+export function registerM23TransportAckWorkers(deps: M23WorkerDeps): Worker[] {
+  if (!deps.transport || (!deps.transport.binding.vendor && !hasPerOrgTransport(deps))) {
+    throw new Error("M23TransportAckCapabilityIncomplete: no platform or organization transport is bound");
+  }
   const cron = (queue: string, run: () => Promise<void>) =>
     new Worker(queue, async () => run(), {
       connection: deps.connection,
@@ -3575,20 +3589,49 @@ export function registerM23LaunchWorkers(
       lockDuration: M23_CRON_LOCK_DURATION_MS,
     });
   return [
-    submissionWorker(
-      M23_QUEUES.claimSubmit,
-      M23_QUEUE_PARAMS.claimSubmit.concurrency,
-      runClaimSubmit,
-    ),
-    submissionWorker(
-      M23_QUEUES.claimSubmitRetry,
-      M23_QUEUE_PARAMS.claimSubmitRetry.concurrency,
-      runClaimSubmitRetry,
-    ),
-    orgWorker(M23_QUEUES.noeSubmit, M23_QUEUE_PARAMS.noeSubmit.concurrency, runNoeSubmit),
-    orgWorker(M23_QUEUES.notrSubmit, M23_QUEUE_PARAMS.notrSubmit.concurrency, runNotrSubmit),
     cron(M23_CRON_QUEUES.ackPull999, () => runAckPull999(deps)),
     cron(M23_CRON_QUEUES.ackPull277ca, () => runAckPull277ca(deps)),
+  ];
+}
+
+/** Raw-file acknowledgment polling is available only when the complete legacy X12/MAC gateway is present. */
+export function registerM23LegacyAckWorkers(deps: M23WorkerDeps): Worker[] {
+  if (!deps.x12 || !deps.macPortal || !deps.jurisdictions) {
+    throw new Error("M23MacAckCapabilityIncomplete: x12, macPortal, and jurisdictions are required");
+  }
+  if (activeTransport(deps) || hasPerOrgTransport(deps)) {
+    throw new Error("M23MacAckCapabilityIncomplete: transport-native ack workers own these queues");
+  }
+  const cron = (queue: string, run: () => Promise<void>) =>
+    new Worker(queue, async () => run(), {
+      connection: deps.connection,
+      concurrency: 1,
+      lockDuration: M23_CRON_LOCK_DURATION_MS,
+    });
+  return [
+    cron(M23_CRON_QUEUES.ackPull999, () => runAckPull999(deps)),
+    cron(M23_CRON_QUEUES.ackPull277ca, () => runAckPull277ca(deps)),
+  ];
+}
+
+/** Backward-compatible composition helper for callers that intentionally build the full legacy launch slice. */
+export function registerM23LaunchWorkers(
+  deps: M23WorkerDeps,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Worker[] {
+  if (!deps.x12 || !deps.macPortal || !deps.outbox || !deps.jurisdictions) {
+    throw new Error(
+      "M23LaunchCapabilityIncomplete: x12, macPortal, outbox, and jurisdictions are required",
+    );
+  }
+  assertTransportInjected(env, deps);
+  const ackWorkers = activeTransport(deps) || hasPerOrgTransport(deps)
+    ? registerM23TransportAckWorkers(deps)
+    : registerM23LegacyAckWorkers(deps);
+  return [
+    ...registerM23ClaimSubmissionWorkers(deps, env),
+    ...registerM23NoticeSubmissionWorkers(deps),
+    ...ackWorkers,
   ];
 }
 
@@ -3715,6 +3758,31 @@ export async function scheduleM23WatchJobs(connection: ConnectionOptions): Promi
   );
 }
 
+/** Schedule only the transport-native acknowledgment polls when no legacy gateway is configured. */
+export async function scheduleM23TransportAckJobs(connection: ConnectionOptions): Promise<Queue[]> {
+  const schedules: readonly [M23CronQueueName, string, M23QueueParam][] = [
+    [M23_CRON_QUEUES.ackPull999, M23_JOB_SCHEDULES.ackPull999, M23_QUEUE_PARAMS.ackPull999],
+    [M23_CRON_QUEUES.ackPull277ca, M23_JOB_SCHEDULES.ackPull277ca, M23_QUEUE_PARAMS.ackPull277ca],
+  ];
+  return Promise.all(
+    schedules.map(async ([name, pattern, params]) => {
+      const queue = new Queue(name, { connection });
+      await queue.add(
+        "scheduled",
+        {},
+        {
+          repeat: { pattern },
+          attempts: params.attempts,
+          backoff: params.backoff,
+          removeOnComplete: { count: 500 },
+          removeOnFail: false,
+        },
+      );
+      return queue;
+    }),
+  );
+}
+
 /** Schedule only the launch acknowledgment reconciliation ticks. */
 export async function scheduleM23LaunchJobs(connection: ConnectionOptions): Promise<Queue[]> {
   const schedules: readonly [
@@ -3756,7 +3824,10 @@ export function buildM23WorkerDeps(deps: {
   transport?: M23TransportDeps;
   claimMdResponseCaptureActive?: boolean;
   claimMdAckDispatcherActive?: boolean;
+  claimMdPlatformResponseReconciliationReady?: boolean;
   claim837i?: Claim837iSubmitDeps;
+  noticeRenderer?: MedicareNoticeRenderer;
+  noticeDispatch?: MedicareNoticeDispatchStateMachine;
   renderClaim?: typeof renderClaimForTransport;
   hets?: HetsEligibilityPort;
   noticeWindow?: NoticeWindowPort;
@@ -3779,7 +3850,11 @@ export function buildM23WorkerDeps(deps: {
     transport: deps.transport,
     claimMdResponseCaptureActive: deps.claimMdResponseCaptureActive,
     claimMdAckDispatcherActive: deps.claimMdAckDispatcherActive,
+    claimMdPlatformResponseReconciliationReady:
+      deps.claimMdPlatformResponseReconciliationReady,
     claim837i: deps.claim837i,
+    noticeRenderer: deps.noticeRenderer,
+    noticeDispatch: deps.noticeDispatch,
     renderClaim: deps.renderClaim,
     hets: deps.hets,
     noticeWindow: deps.noticeWindow,

@@ -7,6 +7,9 @@ import {
   IfVersion,
   IsoDateSchema,
   IsoDateTimeSchema,
+  MedicareNoticeDeadlineApi,
+  NoticeEvidenceEventApi,
+  NoticeAttemptSummaryApi,
   NoticeStateApi,
   PageOf,
   Uuid,
@@ -51,6 +54,8 @@ export const NoeListQuery = Type.Composite([
   Type.Object({
     state: Type.Optional(NoticeStateApi),
     providerEntityId: Type.Optional(Uuid),
+    patientId: Type.Optional(Uuid),
+    admissionId: Type.Optional(Uuid),
     /** Filter NOEs whose timely-filing window targets on/before this date (the watchdog worklist). */
     windowTargetBefore: Type.Optional(IsoDateSchema),
     windowBreached: Type.Optional(Type.Boolean()),
@@ -67,6 +72,9 @@ export const NoeView = Type.Object({
   electionEffectiveDate: IsoDateSchema,
   windowTargetAt: IsoDateSchema,
   windowBreachedAt: Type.Union([IsoDateSchema, Type.Null()]),
+  deadline: MedicareNoticeDeadlineApi,
+  evidenceTimeline: Type.Array(NoticeEvidenceEventApi),
+  latestAttempt: NoticeAttemptSummaryApi,
   noeControlNumber: Type.String(),
   payerNoeControlNumber: Type.Union([Type.String(), Type.Null()]),
   /** The MAC's answer (migration 0377): the 277CA acceptance date, or the 999 / 277CA rejection + PHI-free codes. */

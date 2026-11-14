@@ -42,12 +42,14 @@ import {
 /** What a context is for. `payerRoute: "skip"`: it is not addressed to a payer (an ack or remittance pull), so no Claim.MD payer route is resolved. */
 export interface ClearinghouseContextOptions {
   readonly payerRoute?: "skip";
+  readonly effectiveDate?: string;
+  readonly claimId?: string;
 }
 
-/** Resolves the per-call clearinghouse context (the composition root reads provider entity + MAC credential). */
+/** Resolves the per-call context from organization-scoped provider routing and clearinghouse configuration. */
 export interface ClearinghouseContextPort {
   /**
-   * Context for one provider entity; throws when it has no MAC submitter credential (nothing to submit as). For a Claim.MD account it
+   * Context for one provider entity; throws when effective Medicare routing or the provider NPI is absent. For a Claim.MD account it
    * also throws when no payer route is configured, unless `options.payerRoute` is `"skip"`: only a claim is addressed to a payer.
    */
   contextFor(
@@ -55,7 +57,7 @@ export interface ClearinghouseContextPort {
     providerEntityId: string,
     options?: ClearinghouseContextOptions,
   ): Promise<ClearinghouseContext>;
-  /** Provider entities of the org that have a credential, i.e. whose acknowledgments are pulled. */
+  /** Provider entities with routing configured for transport-native acknowledgment polling. */
   providerEntitiesFor(organizationId: string): Promise<readonly string[]>;
 }
 
@@ -73,7 +75,7 @@ export interface M23TransportDeps {
   readonly claimMdNoticeEvidence?: ClaimMdNoticeEvidencePort;
   /** The stores a tenant's OWN Claim.MD account (`account: "tenant"`) records under; absent, such a send fails closed. */
   readonly tenantClaimMdEvidence?: TenantClaimMdEvidence;
-  /** Separate, default-off gate. A configured clearinghouse vendor alone never enables notice uploads. */
+  /** Legacy rollout flag retained for configuration compatibility; it does not certify vendor notice support. */
   readonly claimMdNoticeUploadsEnabled?: boolean;
   /** Durable ack cursors (#749); absent, every ack pull starts from a null cursor. */
   readonly ackCursors?: AckCursorStore;
@@ -95,7 +97,7 @@ export async function priorClaimAttempt(
   controlNumber: string,
 ): Promise<SubmissionAttempt | null> {
   if (!transport.attempts) return null;
-  const ctx = await transport.contexts.contextFor(organizationId, providerEntityId);
+  const ctx = await transport.contexts.contextFor(organizationId, providerEntityId, { payerRoute: "skip" });
   return transport.attempts.find(
     organizationId,
     scopeKey(ctx),
@@ -208,6 +210,7 @@ type TransportUploadKind = "claim_837i" | "noe" | "notr" | "transfer_notice";
 export type TransportUpload = (input: {
   readonly organizationId: string;
   readonly providerEntityId: string;
+  readonly effectiveDate?: string;
   readonly kind: TransportUploadKind;
   readonly x12: string;
   /** The same claim as Stedi's JSON; used for a Stedi claim, where it replaces the raw X12 (no ISA13 to match). */
@@ -295,8 +298,21 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
         "this file kind is not routable through the clearinghouse",
       );
     }
+    if (kind !== "claim" && transport.binding.vendor !== "direct_mac") {
+      // Generic support for 837I institutional claims is not conformance evidence for hospice NOE,
+      // NOTR, or transfer-notice transactions. Keep this transport boundary fail-closed even if a
+      // caller bypasses the BullMQ capability preflight or turns on the legacy rollout switch.
+      throw failure(
+        kind,
+        CH.NOT_WIRED,
+        "transaction-specific hospice notice support is not verified for this clearinghouse",
+      );
+    }
     const ctx = await beforeSend(kind, "the clearinghouse context could not be built", () =>
-      transport.contexts.contextFor(input.organizationId, input.providerEntityId),
+      transport.contexts.contextFor(input.organizationId, input.providerEntityId, {
+        effectiveDate: input.effectiveDate,
+        ...(input.claimId ? { claimId: input.claimId } : {}),
+      }),
     );
     // A tenant's own Claim.MD account records under its own stores, the platform account under the platform's (never crossed).
     const evidence = claimMdEvidenceFor(transport, input.organizationId, ctx.usage);

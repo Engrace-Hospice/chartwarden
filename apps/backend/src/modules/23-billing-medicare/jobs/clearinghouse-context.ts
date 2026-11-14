@@ -1,20 +1,23 @@
-// apps/backend/src/modules/23-billing-medicare/jobs/clearinghouse-context.ts — the per-call ClearinghouseContext the M23
-// workers hand the bound transport (ADR-0053 D3, #707). The MAC jurisdiction comes from the provider entity's submitter
-// credential (M23's own table, the row the legacy portal resolves its jurisdiction from). The provider's NPI belongs to
-// M1's `provider_entity`, so the composition root injects it (`providerNpi`) instead of this module reading that table.
+// apps/backend/src/modules/23-billing-medicare/jobs/clearinghouse-context.ts — per-call ClearinghouseContext.
+// Medicare jurisdiction is effective-dated provider routing; direct-MAC portal credentials are transport-specific.
+// The provider's NPI belongs to M1's provider_entity, so the composition root injects it.
 import { createHash, randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
 import { type ClearinghouseContext, clearinghouseUsageFromEnv } from "@chartwarden/x12-837-client";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { tenantClaimMdAccountReference } from "../claimmd-evidence/store";
+import { resolveMedicareProviderRouting } from "../services/medicare-provider-routing";
 import type { ClearinghouseContextPort } from "./clearinghouse-submission";
 
 export const CLEARINGHOUSE_PAYER_ID_ENV = "CLEARINGHOUSE_PAYER_ID";
 export const CLAIMMD_M23_PAYER_ROUTES_ENV = "CLAIMMD_M23_PAYER_ROUTES";
 export const CLAIMMD_ACCOUNT_REFERENCE_ENV = "CLAIMMD_ACCOUNT_REFERENCE";
 export const CLEARINGHOUSE_VENDOR_ENV = "CLEARINGHOUSE_VENDOR";
+export function claimMdEnrollmentStatusReady(status: string | null, matchCount = status === null ? 0 : 1): boolean {
+  return matchCount === 1 && (status === "verified" || status === "not_required");
+}
 export type ClaimMdM23PayerRoute = {
   readonly organizationId: string;
   readonly providerEntityId: string;
@@ -58,6 +61,72 @@ export interface ClearinghouseContextDeps {
     organizationId: string,
     providerEntityId: string,
   ) => Promise<string | null>;
+  /** Minimal M5-owned projection; never return the subscriber/member identifier to this resolver. */
+  readonly coveragePayerFacts?: (input: { organizationId: string; patientId: string; patientPayerId: string }) => Promise<{
+    payerId: string; coverageKind: string; effectiveFrom: string; effectiveTo: string | null;
+  } | null>;
+  /** M40-owned canonical payer validation, run on the caller's transaction. */
+  readonly activeMedicarePayerById?: (tx: DbClient, payerId: string) => Promise<{ id: string; x12PayerId: string | null; name: string; updatedAt: Date } | null>;
+}
+
+async function resolveDurableClaimMdRoute(deps: Pick<ClearinghouseContextDeps, "db" | "coveragePayerFacts" | "activeMedicarePayerById">, input: {
+  organizationId: string; providerEntityId: string; claimId: string; accountReference: string;
+  usage: ClearinghouseContext["usage"]; macJurisdiction: string;
+}): Promise<{ payerId: string; canonicalPayerId: string; routeFingerprint: string }> {
+  return withOrgContext(deps.db, { organizationId: input.organizationId, userId: "" }, async (tx) => {
+    const [claim] = await tx.select({ patientId: schema.claim.patientId, patientPayerId: schema.claim.patientPayerId,
+      serviceFrom: schema.claim.serviceFrom, macJurisdiction: schema.claim.macJurisdiction })
+      .from(schema.claim).where(and(eq(schema.claim.id, input.claimId), eq(schema.claim.organizationId, input.organizationId),
+        eq(schema.claim.providerEntityId, input.providerEntityId))).limit(1);
+    if (!claim) throw new ChartWardenError("CLAIMMD_ROUTE_CLAIM_UNAVAILABLE", "Claim payer routing could not be verified", 422);
+    if (claim.macJurisdiction !== input.macJurisdiction) {
+      throw new ChartWardenError("CLAIMMD_ROUTE_JURISDICTION_STALE", "Claim jurisdiction differs from effective provider routing", 409);
+    }
+    if (!deps.coveragePayerFacts || !deps.activeMedicarePayerById) {
+      throw new ChartWardenError("CLAIMMD_PAYER_SEAMS_UNAVAILABLE", "Canonical payer verification is unavailable", 503);
+    }
+    const coverage = await deps.coveragePayerFacts({ organizationId: input.organizationId, patientId: claim.patientId, patientPayerId: claim.patientPayerId });
+    if (!coverage || coverage.coverageKind !== "medicare_ffs" || coverage.effectiveFrom > claim.serviceFrom ||
+        (coverage.effectiveTo !== null && coverage.effectiveTo < claim.serviceFrom)) {
+      throw new ChartWardenError("CLAIMMD_ROUTE_PAYER_UNAVAILABLE", "Claim does not have an effective Medicare fee-for-service payer", 422);
+    }
+    const payer = await deps.activeMedicarePayerById(tx as DbClient, coverage.payerId);
+    if (!payer) {
+      throw new ChartWardenError("CLAIMMD_ROUTE_PAYER_INACTIVE", "The claim's canonical Medicare payer is unavailable", 422);
+    }
+    const routeTable = schema.claimmdMedicarePayerRoute;
+    const routes = await tx.select().from(routeTable).where(and(
+      eq(routeTable.organizationId, input.organizationId), eq(routeTable.providerEntityId, input.providerEntityId),
+      eq(routeTable.payerId, payer.id), eq(routeTable.accountReference, input.accountReference), eq(routeTable.usage, input.usage),
+      eq(routeTable.macJurisdiction, input.macJurisdiction as typeof schema.medicareProviderRouting.$inferSelect.macJurisdiction),
+      eq(routeTable.transactionType, "837i"), eq(routeTable.status, "active"), lte(routeTable.effectiveFrom, claim.serviceFrom),
+      or(isNull(routeTable.effectiveTo), gte(routeTable.effectiveTo, claim.serviceFrom)),
+    )).limit(2);
+    const route = routes[0];
+    if (routes.length !== 1 || !route) throw new ChartWardenError(routes.length ? "CLAIMMD_ROUTE_AMBIGUOUS" : "CLAIMMD_ROUTE_NOT_CONFIGURED",
+      routes.length ? "Claim.MD payer routing is ambiguous" : "Claim.MD payer routing is not configured for this claim", routes.length ? 409 : 422);
+    const enrollmentTable = schema.claimmdMedicarePayerEnrollment;
+    const enrollments = await tx.select().from(enrollmentTable).where(and(
+      eq(enrollmentTable.organizationId, input.organizationId), eq(enrollmentTable.providerEntityId, input.providerEntityId),
+      eq(enrollmentTable.payerId, payer.id), eq(enrollmentTable.accountReference, input.accountReference),
+      eq(enrollmentTable.usage, input.usage), eq(enrollmentTable.transactionType, "837i"),
+      lte(enrollmentTable.effectiveFrom, claim.serviceFrom),
+      or(isNull(enrollmentTable.effectiveTo), gte(enrollmentTable.effectiveTo, claim.serviceFrom)),
+    )).limit(2);
+    const enrollment = enrollments[0];
+    if (!claimMdEnrollmentStatusReady(enrollment?.status ?? null, enrollments.length) || !enrollment) {
+      const status = enrollments.length === 1 ? enrollment?.status ?? "unknown" : "unknown";
+      throw new ChartWardenError(`CLAIMMD_ENROLLMENT_${status.toUpperCase()}`,
+        "Claim.MD payer enrollment or transaction authorization is not verified", 422);
+    }
+    return { payerId: route.externalPayerId, canonicalPayerId: payer.id, routeFingerprint: createHash("sha256").update(JSON.stringify({
+      routeId: route.id, routeUpdatedAt: route.updatedAt, payerId: payer.id, payerUpdatedAt: payer.updatedAt,
+      externalPayerId: route.externalPayerId, accountReference: input.accountReference, usage: input.usage,
+      macJurisdiction: input.macJurisdiction,
+      enrollmentId: enrollment.id, enrollmentStatus: enrollment.status, enrollmentVerifiedAt: enrollment.verifiedAt,
+      enrollmentUpdatedAt: enrollment.updatedAt, transactionType: route.transactionType,
+    })).digest("hex") };
+  });
 }
 
 /**
@@ -106,9 +175,11 @@ export function resolveClaimMdM23PayerRoute(input: {
   );
   if (matches.length === 0) throw new Error("CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE");
   if (matches.length !== 1) throw new Error("CLAIMMD_PAYER_ROUTE_AMBIGUOUS");
-  const payerId = matches[0]!.payerId.trim();
+  const match = matches[0];
+  if (!match) throw new Error("CLAIMMD_PAYER_ROUTE_MISSING_OR_INACTIVE");
+  const payerId = match.payerId.trim();
   if (!payerId) throw new Error("CLAIMMD_PAYER_ROUTE_INVALID");
-  const route = matches[0]!;
+  const route = match;
   return {
     payerId,
     routeFingerprint: createHash("sha256").update(JSON.stringify(route)).digest("hex"),
@@ -202,46 +273,68 @@ export function buildClearinghouseContextPort(
   }
   return {
     async contextFor(organizationId, providerEntityId, options) {
-      const credential = await withOrgContext(
-        deps.db,
-        { organizationId, userId: "" },
-        async (tx) => {
-          const [row] = await tx
-            .select({ macJurisdiction: schema.macSubmitterCredential.macJurisdiction })
-            .from(schema.macSubmitterCredential)
-            .where(
-              and(
-                eq(schema.macSubmitterCredential.organizationId, organizationId),
-                eq(schema.macSubmitterCredential.providerEntityId, providerEntityId),
-              ),
-            )
-            .limit(1);
-          return row;
-        },
-      );
+      const claimId = options?.claimId;
+      const claimDate = claimId ? await withOrgContext(deps.db, { organizationId, userId: "" }, async (tx) => {
+        const [row] = await tx.select({ serviceFrom: schema.claim.serviceFrom }).from(schema.claim).where(and(
+          eq(schema.claim.id, claimId), eq(schema.claim.organizationId, organizationId),
+          eq(schema.claim.providerEntityId, providerEntityId),
+        )).limit(1);
+        return row?.serviceFrom ?? null;
+      }) : null;
+      if (claimId && !claimDate) throw new ChartWardenError("CLAIMMD_ROUTE_CLAIM_UNAVAILABLE", "Claim payer routing could not be verified", 422);
+      if (options?.effectiveDate && claimDate && options.effectiveDate !== claimDate) {
+        throw new ChartWardenError("CLAIMMD_ROUTE_EFFECTIVE_DATE_MISMATCH", "Claim routing date does not match its service date", 409);
+      }
+      const effectiveDate = claimDate ?? options?.effectiveDate ?? new Date().toISOString().slice(0, 10);
+      const routing = await resolveMedicareProviderRouting(deps.db, { organizationId, providerEntityId, effectiveDate });
       const billingNpi = await deps.providerNpi(organizationId, providerEntityId);
       const orgUsage = (await deps.usageFor?.(organizationId)) ?? usage;
-      if (!credential || !billingNpi) {
+      const resolvedBinding = deps.binding?.forOrg ? await deps.binding.forOrg(organizationId) : deps.binding;
+      const vendor = resolvedBinding ? resolvedBinding.vendor : platformVendor;
+      if (vendor === "direct_mac") {
+        const credentialReady = await withOrgContext(deps.db, { organizationId, userId: "" }, async (tx) => {
+          const [credential] = await tx.select({
+            cipher: schema.macSubmitterCredential.clientSecretCipher,
+            expiresAt: schema.macSubmitterCredential.credentialExpiresAt,
+          }).from(schema.macSubmitterCredential).where(and(
+            eq(schema.macSubmitterCredential.organizationId, organizationId),
+            eq(schema.macSubmitterCredential.providerEntityId, providerEntityId),
+          )).limit(1);
+          return Boolean(credential?.cipher && (!credential.expiresAt || credential.expiresAt.getTime() > Date.now()));
+        });
+        if (!credentialReady) {
+          throw new ChartWardenError("MAC_SUBMITTER_CREDENTIAL_UNAVAILABLE", "Direct-MAC transmission requires an active provider portal credential", 422);
+        }
+      }
+      if (!billingNpi) {
         throw new Error(
-          "clearinghouse context: provider entity has no MAC submitter credential or NPI on file",
+          "clearinghouse context: provider entity has no NPI on file",
         );
       }
-      let payerId = payerOverride || credential.macJurisdiction;
+      let payerId = payerOverride || routing.macJurisdiction;
       let claimMdRouteFingerprint: string | undefined;
+      let canonicalPayerId: string | undefined;
       const claimMdAccount =
         options?.payerRoute === "skip" ? null : await claimMdAccountOf(deps, organizationId);
       if (claimMdAccount) {
         // Claim.MD never takes the global payer override: the route is scoped to this org's account and mode.
-        const resolvedRoute = resolveClaimMdM23PayerRoute({
-          routes: claimMdRoutes,
-          organizationId,
-          providerEntityId,
-          macJurisdiction: credential.macJurisdiction,
-          accountReference: claimMdAccount.accountReference,
-          usage: orgUsage,
-        });
-        payerId = resolvedRoute.payerId;
-        claimMdRouteFingerprint = resolvedRoute.routeFingerprint;
+        if (options?.claimId) {
+          const resolvedRoute = await resolveDurableClaimMdRoute(deps, {
+              organizationId, providerEntityId, claimId: options.claimId,
+              accountReference: claimMdAccount.accountReference, usage: orgUsage, macJurisdiction: routing.macJurisdiction,
+          });
+          payerId = resolvedRoute.payerId;
+          canonicalPayerId = resolvedRoute.canonicalPayerId;
+          claimMdRouteFingerprint = resolvedRoute.routeFingerprint;
+        } else {
+          const resolvedRoute = resolveClaimMdM23PayerRoute({
+            routes: claimMdRoutes, organizationId, providerEntityId,
+            macJurisdiction: routing.macJurisdiction, accountReference: claimMdAccount.accountReference,
+            usage: orgUsage, at: new Date(`${effectiveDate}T12:00:00.000Z`),
+          });
+          payerId = resolvedRoute.payerId;
+          claimMdRouteFingerprint = resolvedRoute.routeFingerprint;
+        }
       }
       return {
         organizationId,
@@ -250,17 +343,18 @@ export function buildClearinghouseContextPort(
         correlationId: randomUUID(),
         usage: orgUsage,
         billingNpi,
-        jurisdiction: credential.macJurisdiction,
+        jurisdiction: routing.macJurisdiction,
         ...(claimMdRouteFingerprint ? { claimMdRouteFingerprint } : {}),
+        ...(canonicalPayerId ? { canonicalPayerId } : {}),
       };
     },
 
     async providerEntitiesFor(organizationId) {
       return withOrgContext(deps.db, { organizationId, userId: "" }, async (tx) => {
         const rows = await tx
-          .selectDistinct({ id: schema.macSubmitterCredential.providerEntityId })
-          .from(schema.macSubmitterCredential)
-          .where(eq(schema.macSubmitterCredential.organizationId, organizationId));
+          .selectDistinct({ id: schema.medicareProviderRouting.providerEntityId })
+          .from(schema.medicareProviderRouting)
+          .where(eq(schema.medicareProviderRouting.organizationId, organizationId));
         return rows.map((r) => r.id);
       });
     },
@@ -284,18 +378,19 @@ export function buildClaimPayerRouteStatus(
     /** Structured logger for a readiness check that failed to resolve (ids and a code only, never the error's message). */
     readonly log?: (fields: Record<string, unknown>, message: string) => void;
   },
-): (organizationId: string, providerEntityId: string) => Promise<ClaimPayerRouteStatus> {
-  return async (organizationId, providerEntityId) => {
+): (organizationId: string, providerEntityId: string, effectiveDate?: string, claimId?: string) => Promise<ClaimPayerRouteStatus> {
+  return async (organizationId, providerEntityId, effectiveDate, claimId) => {
     try {
       if (!(await claimMdAccountOf(deps, organizationId))) return { status: "not_applicable" };
       const context = await buildClearinghouseContextPort(deps).contextFor(
         organizationId,
         providerEntityId,
+        { ...(effectiveDate ? { effectiveDate } : {}), ...(claimId ? { claimId } : {}) },
       );
       if (!context.claimMdRouteFingerprint) {
         return { status: "not_configured", reasonCode: "PAYER_ROUTE_NOT_VERIFIED" };
       }
-      if (!(await deps.payerIsActive(context.payerId))) {
+      if (!claimId && !(await deps.payerIsActive(context.payerId))) {
         return { status: "not_configured", reasonCode: "CLAIMMD_PAYER_ROUTE_PAYER_NOT_ACTIVE" };
       }
       return { status: "verified", routeFingerprint: context.claimMdRouteFingerprint };

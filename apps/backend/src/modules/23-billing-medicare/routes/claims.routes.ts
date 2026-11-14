@@ -82,6 +82,8 @@ export interface ClaimsRouteDeps {
   readonly payerRouteStatus: (
     organizationId: string,
     providerEntityId: string,
+    effectiveDate?: string,
+    claimId?: string,
   ) => Promise<
     | { readonly status: "verified"; readonly routeFingerprint: string }
     | { readonly status: "not_configured"; readonly reasonCode?: string }
@@ -93,6 +95,7 @@ export interface ClaimsRouteDeps {
     readonly actorUserId: string;
     readonly claimId: string;
     readonly providerEntityId: string;
+    readonly effectiveDate?: string;
     readonly routeFingerprint?: string;
   }) => Promise<
     | {
@@ -399,7 +402,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
       const actor = actorOf(request);
       const { id } = parse(ClaimIdParamsSchema, request.params);
       const claim = await readService.getClaim(actor, id);
-      const route = await payerRouteStatus(actor.organizationId, claim.providerEntityId);
+      const route = await payerRouteStatus(actor.organizationId, claim.providerEntityId, claim.serviceFrom, claim.claimId);
       const now = (deps.now ?? Date.now)();
       const boundRouteFingerprint = routeFingerprintFor(
         route,
@@ -418,6 +421,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
                 actorUserId: actor.userId,
                 claimId: id,
                 providerEntityId: claim.providerEntityId,
+                effectiveDate: claim.serviceFrom,
                 ...(boundRouteFingerprint ? { routeFingerprint: boundRouteFingerprint } : {}),
               })
             : { status: "blocked" as const, gaps: [] as readonly ClaimGap[] };
@@ -570,7 +574,7 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
         );
       }
       const claim = await readService.getClaim(actor, id);
-      const route = await payerRouteStatus(actor.organizationId, claim.providerEntityId);
+      const route = await payerRouteStatus(actor.organizationId, claim.providerEntityId, claim.serviceFrom, claim.claimId);
       if (route.status === "not_configured") {
         throw new ChartWardenError(
           route.reasonCode ?? "PAYER_ROUTE_NOT_VERIFIED",

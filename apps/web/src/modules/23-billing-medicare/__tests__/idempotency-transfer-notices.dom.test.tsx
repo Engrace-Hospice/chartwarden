@@ -44,6 +44,7 @@ const NOTICE = {
   controlNumber: "381501-260310-abcde-00",
   payerControlNumber: "PAYER-1",
   latestSubmissionOutcome: null,
+  latestSubmissionDispatchState: null,
   cancelReason: null,
   blockers: [],
   warnings: [],

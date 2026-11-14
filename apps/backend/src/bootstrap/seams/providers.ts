@@ -291,6 +291,9 @@ export const patientAddressReaderDenyStub: PatientAddressReader = {
   primaryAddress() {
     throw new NotImplementedError("PatientAddressReader");
   },
+  primaryAddressAt() {
+    throw new NotImplementedError("PatientAddressReader");
+  },
   primaryResidenceState() {
     throw new NotImplementedError("PatientAddressReader");
   },

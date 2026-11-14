@@ -30,7 +30,7 @@ import * as schema from "@chartwarden/db/schema";
 import { decodeKeysetCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { NotFoundError } from "@chartwarden/types";
-import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import {
   type ClaimAttentionView,
   type ClaimStayEndFactsPort,
@@ -59,6 +59,7 @@ import type {
   NoeView,
   NotrListFilter,
   NotrView,
+  NoticeAttemptSummaryView,
   RuleConfigListFilter,
   RuleConfigView,
   ValidationOverrideAuditView,
@@ -298,6 +299,68 @@ function mapLine(row: repositories.ClaimLineRecord): ClaimLineView {
 
 /** The AR-aging states (a claim with an outstanding receivable: dispatched but not yet paid/closed). */
 const AR_OPEN_DB_STATES = ["SUBMITTED", "ACK_PENDING", "ACK_ACCEPTED", "ACK_PARTIAL"] as const;
+const FINAL_CLAIM_DB_STATES = ["SUBMITTED", "ACK_PENDING", "ACK_ACCEPTED", "ACK_PARTIAL", "PAID", "PARTIAL_PAID", "DENIED"] as const;
+// Only the hospice discharge final bill (TOB 814) is evidence for the discharge-alive NOTR exception.
+// An initial 811 on the same admission must never suppress a NOTR deadline.
+const FINAL_CLAIM_TOBS = ["814"] as const;
+
+async function loadNoticeAttempts(
+  tx: BillingDb,
+  organizationId: string,
+  submissionIds: readonly (string | null | undefined)[],
+): Promise<Map<string, NoticeAttemptSummaryView>> {
+  const ids = [...new Set(submissionIds.filter((id): id is string => typeof id === "string"))];
+  if (ids.length === 0) return new Map();
+  const rows = await tx.select({
+    id: schema.claimSubmission.id,
+    attemptIndex: schema.claimSubmission.attemptIndex,
+    outcome: schema.claimSubmission.outcome,
+    dispatchState: schema.claimSubmission.dispatchState,
+    dispatchStartedAt: schema.claimSubmission.dispatchStartedAt,
+    submittedAt: schema.claimSubmission.submittedAt,
+    createdAt: schema.claimSubmission.createdAt,
+  }).from(schema.claimSubmission).where(and(
+    eq(schema.claimSubmission.organizationId, organizationId),
+    inArray(schema.claimSubmission.id, ids),
+  ));
+  const state = (value: string): NoticeAttemptSummaryView["dispatchState"] | null => {
+    if (value === "pending" || value === "sending" || value === "in_doubt" || value === "finished") return value;
+    return null;
+  };
+  return new Map(rows.flatMap((row) => {
+    const dispatchState = state(row.dispatchState);
+    if (!dispatchState) return [];
+    return [[row.id, {
+    submissionId: row.id,
+    attemptIndex: row.attemptIndex,
+    outcome: row.outcome,
+    dispatchState,
+    dispatchStartedAt: row.dispatchStartedAt?.toISOString() ?? null,
+    submittedAt: row.submittedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+  }] as const];
+  }));
+}
+
+async function finalClaimAdmissionIds(tx: BillingDb, rows: readonly repositories.NotrRecord[]): Promise<Set<string>> {
+  const candidates = rows.filter((row) => row.triggerKind === "discharge");
+  const first = candidates[0];
+  if (!first) return new Set();
+  const result = await tx.select({ admissionId: schema.claim.admissionId })
+    .from(schema.claim)
+    .where(and(
+      eq(schema.claim.organizationId, first.organizationId),
+      inArray(schema.claim.tob, [...FINAL_CLAIM_TOBS]),
+      inArray(schema.claim.state, [...FINAL_CLAIM_DB_STATES]),
+      // The exception is tied to the final claim for this exact discharge date, not any 814
+      // from another episode/date belonging to the same admission.
+      or(...candidates.map((row) => and(
+        eq(schema.claim.admissionId, row.admissionId),
+        eq(schema.claim.serviceTo, row.effectiveEndDate),
+      ))),
+    ));
+  return new Set(result.map((row) => row.admissionId));
+}
 
 /**
  * Build the Drizzle-backed {@link M23ReadRouteService}. Every method opens one `withOrgContext` transaction
@@ -689,8 +752,9 @@ export function buildDrizzleM23ReadService(
         const repo = new repositories.NoeRepository(tx);
         const page = await repo.listByOrgPage(actor.organizationId, filter, cursor, limit);
         const corrections = await repo.listCorrectionsForMany(page.items.map((r) => r.id));
+        const attempts = await loadNoticeAttempts(tx, actor.organizationId, page.items.map((r) => r.latestSubmissionId));
         return {
-          items: page.items.map((r) => mapNoe(r, corrections)),
+          items: page.items.map((r) => mapNoe(r, corrections, now(), attempts.get(r.latestSubmissionId ?? "") ?? null)),
           nextCursor: page.nextCursor,
           hasMore: page.hasMore,
         } satisfies CursorPage<NoeView>;
@@ -702,7 +766,8 @@ export function buildDrizzleM23ReadService(
         const repo = new repositories.NoeRepository(tx);
         const row = await repo.findById(noeId);
         if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("noe");
-        return mapNoe(row, await repo.listCorrectionsOf(row.id));
+        const attempts = await loadNoticeAttempts(tx, actor.organizationId, [row.latestSubmissionId]);
+        return mapNoe(row, await repo.listCorrectionsOf(row.id), now(), attempts.get(row.latestSubmissionId ?? "") ?? null);
       });
     },
 
@@ -711,8 +776,10 @@ export function buildDrizzleM23ReadService(
         const repo = new repositories.NotrRepository(tx);
         const page = await repo.listByOrgPage(actor.organizationId, filter, cursor, limit);
         const corrections = await repo.listCorrectionsForMany(page.items.map((r) => r.id));
+        const finalClaims = await finalClaimAdmissionIds(tx, page.items);
+        const attempts = await loadNoticeAttempts(tx, actor.organizationId, page.items.map((r) => r.latestSubmissionId));
         return {
-          items: page.items.map((r) => mapNotr(r, corrections)),
+          items: page.items.map((r) => mapNotr(r, corrections, now(), finalClaims.has(r.admissionId), attempts.get(r.latestSubmissionId ?? "") ?? null)),
           nextCursor: page.nextCursor,
           hasMore: page.hasMore,
         } satisfies CursorPage<NotrView>;
@@ -724,7 +791,9 @@ export function buildDrizzleM23ReadService(
         const repo = new repositories.NotrRepository(tx);
         const row = await repo.findById(notrId);
         if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("notr");
-        return mapNotr(row, await repo.listCorrectionsOf(row.id));
+        const finalClaims = await finalClaimAdmissionIds(tx, [row]);
+        const attempts = await loadNoticeAttempts(tx, actor.organizationId, [row.latestSubmissionId]);
+        return mapNotr(row, await repo.listCorrectionsOf(row.id), now(), finalClaims.has(row.admissionId), attempts.get(row.latestSubmissionId ?? "") ?? null);
       });
     },
 

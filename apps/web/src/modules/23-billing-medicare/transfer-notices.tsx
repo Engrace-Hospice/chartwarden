@@ -147,6 +147,10 @@ export function TransferNotices(): JSX.Element {
           </div>
         </header>
 
+        <InlineAlert tone="warning">
+          <strong>External notice transmission is unavailable.</strong> Direct MAC notice dispatch is awaiting gateway contract qualification. Claim.MD and Stedi notice transaction support is not verified. Internal readiness does not mean the 8xC/8xD was filed.
+        </InlineAlert>
+
         <BillingTabs />
 
         <div className="wx-filter-panel">
@@ -489,22 +493,9 @@ function NoticeRail({
             ) : (
               <div className="wx-action-row">
                 {can("submit") ? (
-                  <Button
-                    disabled={busy}
-                    onClick={() =>
-                      run(
-                        "submit",
-                        (key) =>
-                          client.POST("/api/v1/billing/transfer-notices/{id}/submit", {
-                            params: params(key),
-                            body: { expectedVersion: n.version },
-                          }),
-                        "The notice could not be submitted.",
-                      )
-                    }
-                  >
-                    Submit to Medicare
-                  </Button>
+                  <p role="note" className="wx-row-sub">
+                    This notice is internally ready, but external dispatch is held until the gateway contract is qualified. No filing action is available here.
+                  </p>
                 ) : null}
                 {can("confirm_prior_billing") ? (
                   <Button

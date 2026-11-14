@@ -21,6 +21,8 @@ const fakes = vi.hoisted(() => ({
   noes: new Map<string, Record<string, unknown>>(),
   notrs: new Map<string, Record<string, unknown>>(),
   processors: new Map<string, (job: unknown, token?: string) => Promise<unknown>>(),
+  registrations: [] as string[],
+  queueAdds: [] as { queue: string; name: string; data: unknown; options: Record<string, unknown> }[],
   /** The `claim_submission` attempt log (append-only: a row only ever leaves `queued`). */
   attempts: [] as Record<string, unknown>[],
   /** The ids a submit worker read WITH the row lock (`findByIdForUpdate`). */
@@ -32,10 +34,18 @@ vi.mock("bullmq", async (importOriginal) => {
   class Worker {
     constructor(queue: string, processor: (job: unknown, token?: string) => Promise<unknown>) {
       fakes.processors.set(queue, processor);
+      fakes.registrations.push(queue);
     }
     close = async () => undefined;
   }
-  return { ...original, Worker };
+  class Queue {
+    constructor(readonly name: string) {}
+    add = async (name: string, data: unknown, options: Record<string, unknown>) => {
+      fakes.queueAdds.push({ queue: this.name, name, data, options });
+    };
+    close = async () => undefined;
+  }
+  return { ...original, Worker, Queue };
 });
 
 vi.mock("@chartwarden/billing", async (importOriginal) => {
@@ -114,9 +124,13 @@ import type { M23TransportDeps } from "../src/modules/23-billing-medicare/jobs/c
 import {
   type M23WorkerDeps,
   holdBeforeRun,
+  registerM23ClaimSubmissionWorkers,
   registerM23LaunchWorkers,
+  buildM23SubmissionQueuePort,
+  registerM23TransportAckWorkers,
   runNoeSubmit,
   runNotrSubmit,
+  runTransferNoticeSubmitJob,
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
 import { M23_QUEUES } from "../src/modules/23-billing-medicare/jobs/queues";
 
@@ -215,8 +229,89 @@ beforeEach(() => {
   fakes.noes.clear();
   fakes.notrs.clear();
   fakes.processors.clear();
+  fakes.registrations.length = 0;
+  fakes.queueAdds.length = 0;
   fakes.attempts.length = 0;
   fakes.lockedReads.length = 0;
+});
+
+describe("capability-specific M23 worker registration", () => {
+  it("builds the claim outbox queue producer from Redis alone with its deterministic job id", async () => {
+    const { port } = buildM23SubmissionQueuePort({} as never);
+    await port.enqueue("claim.submit", "submission-1", {
+      organizationId: ORG,
+      claimId: "claim-1",
+    });
+
+    expect(fakes.queueAdds).toHaveLength(1);
+    expect(fakes.queueAdds[0]).toMatchObject({
+      queue: "claim.submit",
+      name: "claim.submit",
+      data: { organizationId: ORG, claimId: "claim-1" },
+      options: {
+        jobId: "m23:claim.submit:submission-1",
+        attempts: 1,
+      },
+    });
+  });
+
+  it("registers Claim.MD claim submit/retry and transport-native ack workers without X12 or MAC ports", async () => {
+    const { deps } = depsFor({ vendor: "claimmd", transport: new InMemoryClearinghouse() });
+    const withoutGateway = {
+      ...deps,
+      x12: undefined,
+      macPortal: undefined,
+      jurisdictions: undefined,
+    } as M23WorkerDeps;
+
+    const workers = [
+      ...registerM23ClaimSubmissionWorkers(withoutGateway, {}),
+      ...registerM23TransportAckWorkers(withoutGateway),
+    ];
+
+    expect(fakes.registrations).toEqual([
+      M23_QUEUES.claimSubmit,
+      M23_QUEUES.claimSubmitRetry,
+      "ack.pull-999",
+      "ack.pull-277ca",
+    ]);
+    expect(new Set(fakes.registrations).size).toBe(fakes.registrations.length);
+    await Promise.all(workers.map((worker) => worker.close()));
+  });
+
+  it("registers the common Stedi claim workers independently of gateway ports", () => {
+    const { deps } = depsFor(LIVE);
+    registerM23ClaimSubmissionWorkers(
+      { ...deps, x12: undefined, macPortal: undefined, jurisdictions: undefined },
+      {},
+    );
+
+    expect(fakes.registrations).toEqual([M23_QUEUES.claimSubmit, M23_QUEUES.claimSubmitRetry]);
+  });
+
+  it("holds platform Claim.MD claim work until response reconciliation is ready", async () => {
+    const { deps } = depsFor({ vendor: "claimmd", transport: new InMemoryClearinghouse() });
+    const { job, moved } = jobOf();
+
+    await expect(
+      pre(deps, M23_QUEUES.claimSubmit, { claimId: "claim-1", submissionId: "submission-1" }, job),
+    ).rejects.toBeInstanceOf(DelayedError);
+    expect(moved).toHaveLength(1);
+  });
+
+  it("does not apply the platform response hold to a tenant-owned Claim.MD account", async () => {
+    const { deps } = depsFor({
+      vendor: "claimmd",
+      account: "tenant",
+      transport: new InMemoryClearinghouse(),
+    });
+    const { job, moved } = jobOf();
+
+    await expect(
+      pre(deps, M23_QUEUES.claimSubmit, { claimId: "claim-1", submissionId: "submission-1" }, job),
+    ).resolves.toBeUndefined();
+    expect(moved).toEqual([]);
+  });
 });
 
 describe.each([
@@ -373,13 +468,13 @@ describe.each([
     }
   });
 
-  it("lets the job run when the org's vendor is live, and on the legacy single-vendor path", async () => {
+  it("holds a bound vendor or unresolved legacy notice until the authoritative renderer is wired", async () => {
     table.set(id, make());
     for (const binding of [LIVE, null]) {
       const { deps } = depsFor(binding);
       const { job, moved } = jobOf();
-      await expect(pre(deps, queue, data, job)).resolves.toBeUndefined();
-      expect(moved).toEqual([]);
+      await expect(pre(deps, queue, data, job)).rejects.toBeInstanceOf(DelayedError);
+      expect(moved).toHaveLength(1);
     }
     expect(table.get(id)).toEqual(make());
   });
@@ -387,6 +482,16 @@ describe.each([
 
 describe("transfer-notice job pre-flight", () => {
   const data = { transferNoticeId: "tn-1", submissionId: "sub-1" };
+
+  it("direct processor invocation refuses before the legacy generator or portal can run", async () => {
+    const { deps } = depsFor(LIVE);
+    await expect(
+      runTransferNoticeSubmitJob({} as never, deps, {
+        organizationId: ORG,
+        ...data,
+      } as never),
+    ).rejects.toThrow("M23_NOTICE_DISPATCH_NOT_AUTHORIZED");
+  });
 
   it("HOLDS the job for every unbound reason, outside included: nothing is transmitted and nothing is failed", async () => {
     for (const binding of [UNBOUND_OUTSIDE, UNBOUND_NOT_CHOSEN, UNBOUND_NOT_ACTIVE]) {
@@ -399,11 +504,11 @@ describe("transfer-notice job pre-flight", () => {
     }
   });
 
-  it("lets it run when the org's vendor is live", async () => {
+  it("holds the job when the org's vendor is live but the authoritative renderer is absent", async () => {
     const { deps } = depsFor(LIVE);
-    await expect(
-      pre(deps, M23_QUEUES.transferNoticeSubmit, data, jobOf().job),
-    ).resolves.toBeUndefined();
+    await expect(pre(deps, M23_QUEUES.transferNoticeSubmit, data, jobOf().job)).rejects.toBeInstanceOf(
+      DelayedError,
+    );
   });
 });
 
@@ -455,20 +560,21 @@ describe.each([
   );
 
   it.each(cases)(
-    "%s: a live org's job runs the submit",
-    async (_k, queue, data, table, id, make, kind) => {
+    "%s: a live org's job remains held until its authoritative renderer is wired",
+    async (_k, queue, data, table, id, make, _kind) => {
       table.set(id, make());
       seedAttempt(make(), { id: "att-own" });
       const { deps, generated } = depsFor(LIVE);
       register(deps);
-      const { job } = jobOf();
+      const { job, moved } = jobOf();
       await expect(
         (fakes.processors.get(queue) as NonNullable<ReturnType<typeof fakes.processors.get>>)(
           { ...job, data: { organizationId: ORG, ...data, submissionId: "att-own" } },
           "tok",
         ),
-      ).rejects.toThrow("stop after generate");
-      expect(generated).toEqual([kind]);
+      ).rejects.toBeInstanceOf(DelayedError);
+      expect(moved).toHaveLength(1);
+      expect(generated).toEqual([]);
     },
   );
 
@@ -522,7 +628,7 @@ describe("runNoeSubmit / runNotrSubmit: the defensive guard (the org may switch 
       // (the fake generator stops the job after the read: all this proves is HOW the notice was read)
       await expect(
         run({} as never, deps, { organizationId: ORG, ...data, submissionId: "att-own" } as never),
-      ).rejects.toThrow("stop after generate");
+      ).rejects.toThrow("M23_NOTICE_DISPATCH_NOT_AUTHORIZED");
       expect(fakes.lockedReads).toEqual([id]);
     },
   );
@@ -560,25 +666,25 @@ describe("runNoeSubmit / runNotrSubmit: the defensive guard (the org may switch 
   );
 
   it.each(cases)(
-    "%s: records the transmission on the job's OWN attempt (a resubmit's attempt 1), never on a closed attempt 0",
-    async (_k, run, data, table, id, make, kind) => {
+    "%s: does not record transmission or close its attempt while rendering is unavailable",
+    async (_k, run, data, table, id, make, _kind) => {
       table.set(id, make());
       seedAttempt(make(), { id: "att-0", outcome: "failed_worker", outcomeReason: "PARKED" });
       seedAttempt(make(), { id: "att-1", attemptIndex: 1 });
       const { deps, generated } = depsFor(LIVE, { transmits: true });
-      await run({} as never, deps, {
+      await expect(run({} as never, deps, {
         organizationId: ORG,
         ...data,
         submissionId: "att-1",
-      } as never);
-      expect(generated).toEqual([kind]);
-      expect(attemptById("att-1")).toMatchObject({ outcome: "submitted" });
+      } as never)).rejects.toThrow("M23_NOTICE_DISPATCH_NOT_AUTHORIZED");
+      expect(generated).toEqual([]);
+      expect(attemptById("att-1")).toMatchObject({ outcome: "queued" });
       expect(attemptById("att-0")).toMatchObject({
         outcome: "failed_worker",
         outcomeReason: "PARKED",
       });
       expect(fakes.attempts).toHaveLength(2); // nothing appended
-      expect(table.get(id)).toMatchObject({ state: "submitted", latestSubmissionId: "att-1" });
+      expect(table.get(id)).toMatchObject({ state: "ready", version: 4 });
     },
   );
 
@@ -609,8 +715,8 @@ describe("runNoeSubmit / runNotrSubmit: the defensive guard (the org may switch 
   );
 
   it.each(cases)(
-    "%s: still runs for a live vendor and on the legacy path",
-    async (_k, run, data, table, id, make, kind) => {
+    "%s: refuses to render for a live vendor or legacy path until authoritative loading is bound",
+    async (_k, run, data, table, id, make, _kind) => {
       table.set(id, make());
       seedAttempt(make(), { id: "att-own" });
       for (const binding of [LIVE, null]) {
@@ -621,8 +727,8 @@ describe("runNoeSubmit / runNotrSubmit: the defensive guard (the org may switch 
             ...data,
             submissionId: "att-own",
           } as never),
-        ).rejects.toThrow("stop after generate");
-        expect(generated).toEqual([kind]);
+        ).rejects.toThrow("M23_NOTICE_DISPATCH_NOT_AUTHORIZED");
+        expect(generated).toEqual([]);
       }
     },
   );

@@ -42,6 +42,7 @@ export async function renderClaimForTransport(args: {
   readonly contextFor: (
     organizationId: string,
     providerEntityId: string,
+    options?: { readonly claimId?: string; readonly effectiveDate?: string },
   ) => Promise<ClearinghouseContext>;
   readonly organizationId: string;
   readonly claim: { readonly id: string; readonly providerEntityId: string };
@@ -55,7 +56,9 @@ export async function renderClaimForTransport(args: {
     context: ClearinghouseContext,
   ) => Promise<{ readonly interchangeNumber: number; readonly renderedAt: Date }>;
 }): Promise<RenderedClaim> {
-  const context = await args.contextFor(args.organizationId, args.claim.providerEntityId);
+  const context = await args.contextFor(args.organizationId, args.claim.providerEntityId, {
+    claimId: args.claim.id,
+  });
   const { interchangeNumber, renderedAt } = await args.interchangeFor(context);
   const loaded = await loadAndRender837i(
     {

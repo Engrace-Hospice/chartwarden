@@ -25,8 +25,12 @@ import { registerEligibilityRoutes } from "./eligibility.routes";
 import type { M23RouteServices } from "./index";
 import { type M23InternalSeamProvider, registerInternalSeamRoutes } from "./internal.routes";
 import { registerMacCredentialRoutes } from "./mac-credentials.routes";
+import { registerMedicareProviderRoutingRoutes } from "./medicare-provider-routing.routes";
+import { registerClaimMdMedicareRoutingRoutes } from "./claimmd-medicare-routing.routes";
 import { registerMetricsRoutes } from "./metrics.routes";
 import { registerNoeRoutes } from "./noe.routes";
+import { registerNoeExceptionReviewRoutes } from "./noe-exception-review.routes";
+import { registerMedicareNoticeWorklistRoutes } from "./medicare-notice-worklist.routes";
 import { registerNotrRoutes } from "./notr.routes";
 import { registerNpiVerificationRoutes } from "./npi-verification.routes";
 import { registerPlatformAdminRoutes } from "./platform-admin.routes";
@@ -58,6 +62,7 @@ export {
   type SequestrationPolicyRouteDeps,
 } from "./sequestration-policy.routes";
 export { registerMacCredentialRoutes, type MacCredentialRouteDeps } from "./mac-credentials.routes";
+export { registerMedicareProviderRoutingRoutes } from "./medicare-provider-routing.routes";
 export { registerRateTableRoutes, type RateTableRouteDeps } from "./rate-table.routes";
 export { registerVisitChargeRoutes, type VisitChargeRouteDeps } from "./visit-charge.routes";
 export { registerPlatformAdminRoutes, type PlatformAdminRouteDeps } from "./platform-admin.routes";
@@ -99,6 +104,8 @@ export function mountM23Routes(
   registerRuleConfigRoutes(app, { readService, writeService });
   // Route group D — NOE / NOTR (list/detail/submit/cancel).
   registerNoeRoutes(app, { readService, writeService });
+  if (services.noeExceptionReviewService) registerNoeExceptionReviewRoutes(app, services.noeExceptionReviewService);
+  if (services.medicareNoticeWorklistService) registerMedicareNoticeWorklistRoutes(app, services.medicareNoticeWorklistService);
   registerNotrRoutes(app, { readService, writeService });
   // The Medicare transfer notice (TOB 8xC / corrected 8xC / 8xD; CMS Pub. 100-04 ch. 11 §20.1.3–§20.1.4).
   if (services.transferNoticeService) {
@@ -125,6 +132,12 @@ export function mountM23Routes(
     registerSequestrationPolicyRoutes(app, { sequestrationService: services.sequestrationService });
   }
   registerMacCredentialRoutes(app, { readService, writeService });
+  if (services.medicareProviderRoutingService) {
+    registerMedicareProviderRoutingRoutes(app, services.medicareProviderRoutingService);
+  }
+  if (services.claimMdMedicareRoutingService) {
+    registerClaimMdMedicareRoutingRoutes(app, services.claimMdMedicareRoutingService);
+  }
   // Migration 1269 — the tenant-entered EDI profile (submitter + receiver parties of the 837I interchange).
   if (services.ediProfileService) {
     registerEdiProfileRoutes(app, { ediProfileService: services.ediProfileService });

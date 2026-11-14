@@ -48,6 +48,8 @@ type SeedIds = {
   sequestration: string;
   credential: string;
   lineEvidence: string;
+  renderIdentity: string;
+  renderArtifact: string;
 };
 
 /**
@@ -72,6 +74,8 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "sequestration_policy", key: "sequestration" },
   { table: "mac_submitter_credential", key: "credential" },
   { table: "claimmd_submission_line_evidence", key: "lineEvidence" },
+  { table: "medicare_notice_render_identity", key: "renderIdentity" },
+  { table: "medicare_notice_render_artifact", key: "renderArtifact" },
 ];
 
 describe.skipIf(!DB_URL)(
@@ -221,6 +225,29 @@ describe.skipIf(!DB_URL)(
        VALUES ($1,$2,$3,gen_random_uuid(),gen_random_uuid(),$4,$4,$5) RETURNING id`,
         [org, pe, patient, from, `NOE${n}-0001`],
       );
+      const noticeSubmission = await one(
+        `INSERT INTO claim_submission (organization_id, provider_entity_id, noe_id, kind,
+         claim_control_number, attempt_index)
+       VALUES ($1,$2,$3,'noe',$4,0) RETURNING id`,
+        [org, pe, noe, `NOE${n}-0001`],
+      );
+      const renderIdentity = await one(
+        `INSERT INTO medicare_notice_render_identity
+         (organization_id,notice_id,submission_id,notice_kind,related_source_id,provider_entity_id,
+          jurisdiction,vendor,account_reference,usage,route_fingerprint,source_version,mapper_version,
+          control_number,fingerprint,isa13,rendered_at)
+       VALUES ($1,$2,$3,'noe',$2,$4,'palmetto_jm','direct_mac',$5,'test',$6,$7,'m23-notice-v1',
+          $8,$9,$10,now()) RETURNING id`,
+        [org, noe, noticeSubmission, pe, `direct-mac:${n}`, `route-${n}`, `source-${n}`,
+          `NOE${n}-0001`, `fingerprint-${n}`, String(n).padStart(9, "0")],
+      );
+      const renderArtifact = await one(
+        `INSERT INTO medicare_notice_render_artifact
+         (organization_id,render_identity_id,ciphertext,content_sha256,plaintext_byte_length,
+          encryption_key_version)
+       VALUES ($1,$2,decode($3,'hex'),$4,128,'v1') RETURNING id`,
+        [org, renderIdentity, "ab".repeat(32), "a".repeat(64)],
+      );
       // `notr_one_event_kind`: CHECK (revocation + transfer + discharge event ids = 1) — the NOTR names
       // the ONE M6 event that ended the benefit period, and `trigger_kind` must agree with which id is set.
       const notr = await one(
@@ -278,6 +305,8 @@ describe.skipIf(!DB_URL)(
         sequestration,
         credential,
         lineEvidence,
+        renderIdentity,
+        renderArtifact,
       };
     }
 

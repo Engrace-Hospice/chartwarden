@@ -8,6 +8,7 @@
 // D7 overlay eraser (T10) build on this. The §5 screens DEFER — the M40 manifest has no frontend
 // codePath (the Wave-A deferral rule: a screen needs a manifest UI codePath to land).
 export { buildPayerNameByX12IdReader } from "./payer-name-reader";
+export { buildActiveMedicarePayerByIdReader, type ActiveMedicarePayerFacts } from "./active-medicare-payer-reader";
 export {
   type MdmSeamDeps,
   registerMdmSeams,

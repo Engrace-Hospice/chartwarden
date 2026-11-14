@@ -81571,6 +81571,95 @@
         }
       }
     },
+    "/api/v1/billing/claimmd-medicare-routing/{providerEntityId}": {
+      "get": {
+        "operationId": "getApiV1BillingClaimmdmedicareroutingByProviderEntityId",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/claimmd-medicare-routing/enrollments": {
+      "post": {
+        "operationId": "postApiV1BillingClaimmdmedicareroutingEnrollments",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/claimmd-medicare-routing/routes": {
+      "post": {
+        "operationId": "postApiV1BillingClaimmdmedicareroutingRoutes",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/claimmd-medicare-routing/routes/close": {
+      "post": {
+        "operationId": "postApiV1BillingClaimmdmedicareroutingRoutesClose",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/billing/claims": {
       "get": {
         "operationId": "getApiV1BillingClaims",
@@ -98355,6 +98444,639 @@
         }
       }
     },
+    "/api/v1/billing/medicare-notice-worklist": {
+      "get": {
+        "operationId": "getApiV1BillingMedicarenoticeworklist",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Organization-scoped unified Medicare notice worklist; counts are scoped to the returned page",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minItems": 1,
+              "uniqueItems": true,
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "const": "noe",
+                    "type": "string"
+                  },
+                  {
+                    "const": "notr",
+                    "type": "string"
+                  },
+                  {
+                    "const": "transfer",
+                    "type": "string"
+                  },
+                  {
+                    "const": "cancellation",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "admissionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "draft",
+                  "type": "string"
+                },
+                {
+                  "const": "ready",
+                  "type": "string"
+                },
+                {
+                  "const": "submitted",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_pending",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_accepted",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_rejected",
+                  "type": "string"
+                },
+                {
+                  "const": "cancelled",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "eventFrom",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "eventTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "deadlineRisk",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 48,
+              "type": "string"
+            }
+          },
+          {
+            "name": "readiness",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "blocked",
+                  "type": "string"
+                },
+                {
+                  "const": "verification_required",
+                  "type": "string"
+                },
+                {
+                  "const": "ready",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "requiresAttention",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "exceptionReviewStatus",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 48,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore",
+                    "counts"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "identity",
+                          "sourceEventType",
+                          "sourceEventId",
+                          "patientId",
+                          "admissionId",
+                          "providerEntityId",
+                          "eventDate",
+                          "deadline",
+                          "lifecycle",
+                          "latestAttempt",
+                          "readiness",
+                          "macAcceptance",
+                          "exceptionReview",
+                          "nextActions",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "identity": {
+                            "type": "object",
+                            "required": [
+                              "type",
+                              "noticeId"
+                            ],
+                            "properties": {
+                              "type": {
+                                "anyOf": [
+                                  {
+                                    "const": "noe",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "notr",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "transfer",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cancellation",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "noticeId": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "sourceEventType": {
+                            "type": "string"
+                          },
+                          "sourceEventId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "eventDate": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "deadline": {
+                            "type": "object",
+                            "required": [
+                              "dueDate",
+                              "risk",
+                              "basis"
+                            ],
+                            "properties": {
+                              "dueDate": {
+                                "anyOf": [
+                                  {
+                                    "format": "date",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "risk": {
+                                "type": "string"
+                              },
+                              "basis": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "lifecycle": {
+                            "type": "string"
+                          },
+                          "latestAttempt": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "submissionId",
+                                  "outcome",
+                                  "dispatchState"
+                                ],
+                                "properties": {
+                                  "submissionId": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "outcome": {
+                                    "type": "string"
+                                  },
+                                  "dispatchState": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "readiness": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "key",
+                                "state",
+                                "reasonCode",
+                                "message",
+                                "blockingStage"
+                              ],
+                              "properties": {
+                                "key": {
+                                  "type": "string"
+                                },
+                                "state": {
+                                  "anyOf": [
+                                    {
+                                      "const": "ready",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "blocked",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "verification_required",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "not_applicable",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "unknown",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "reasonCode": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "message": {
+                                  "type": "string"
+                                },
+                                "blockingStage": {
+                                  "anyOf": [
+                                    {
+                                      "const": "render",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "dispatch",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "reconciliation",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "macAcceptance": {
+                            "anyOf": [
+                              {
+                                "const": "verified",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_verified",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unknown",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "exceptionReview": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "decisionProvenance",
+                                  "updatedAt",
+                                  "evidenceCount"
+                                ],
+                                "properties": {
+                                  "status": {
+                                    "type": "string"
+                                  },
+                                  "decisionProvenance": {
+                                    "anyOf": [
+                                      {
+                                        "const": "operator_attested_document",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "updatedAt": {
+                                    "type": "string"
+                                  },
+                                  "evidenceCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "nextActions": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "const": "open_notice",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "open_noe_exception_review",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "open_transfer_notice",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    },
+                    "counts": {
+                      "type": "object",
+                      "required": [
+                        "scope",
+                        "total",
+                        "requiresAttention",
+                        "deadlineApproaching",
+                        "overdue",
+                        "sourceValidationRequired",
+                        "heldByTransportCapability",
+                        "inDoubt",
+                        "awaitingMacEvidence",
+                        "verifiedMacAccepted",
+                        "exceptionReviewsPending",
+                        "dimensionsOverlap"
+                      ],
+                      "properties": {
+                        "scope": {
+                          "const": "returned_page",
+                          "type": "string"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "requiresAttention": {
+                          "type": "integer"
+                        },
+                        "deadlineApproaching": {
+                          "type": "integer"
+                        },
+                        "overdue": {
+                          "type": "integer"
+                        },
+                        "sourceValidationRequired": {
+                          "type": "integer"
+                        },
+                        "heldByTransportCapability": {
+                          "type": "integer"
+                        },
+                        "inDoubt": {
+                          "type": "integer"
+                        },
+                        "awaitingMacEvidence": {
+                          "type": "integer"
+                        },
+                        "verifiedMacAccepted": {
+                          "type": "integer"
+                        },
+                        "exceptionReviewsPending": {
+                          "type": "integer"
+                        },
+                        "dimensionsOverlap": {
+                          "const": true,
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/medicare-provider-routing": {
+      "post": {
+        "operationId": "postApiV1BillingMedicareproviderrouting",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/medicare-provider-routing/{providerEntityId}": {
+      "get": {
+        "operationId": "getApiV1BillingMedicareproviderroutingByProviderEntityId",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/billing/metrics": {
       "get": {
         "operationId": "getApiV1BillingMetrics",
@@ -103145,6 +103867,7 @@
                           "payerControlNumber",
                           "latestSubmissionId",
                           "latestSubmissionOutcome",
+                          "latestSubmissionDispatchState",
                           "cancelReason",
                           "blockers",
                           "warnings",
@@ -103368,6 +104091,16 @@
                             ]
                           },
                           "latestSubmissionOutcome": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "latestSubmissionDispatchState": {
                             "anyOf": [
                               {
                                 "type": "string"
@@ -103645,6 +104378,7 @@
                     "payerControlNumber",
                     "latestSubmissionId",
                     "latestSubmissionOutcome",
+                    "latestSubmissionDispatchState",
                     "cancelReason",
                     "blockers",
                     "warnings",
@@ -103868,6 +104602,16 @@
                       ]
                     },
                     "latestSubmissionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionDispatchState": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -104138,6 +104882,7 @@
                     "payerControlNumber",
                     "latestSubmissionId",
                     "latestSubmissionOutcome",
+                    "latestSubmissionDispatchState",
                     "cancelReason",
                     "blockers",
                     "warnings",
@@ -104361,6 +105106,16 @@
                       ]
                     },
                     "latestSubmissionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionDispatchState": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -104657,6 +105412,7 @@
                     "payerControlNumber",
                     "latestSubmissionId",
                     "latestSubmissionOutcome",
+                    "latestSubmissionDispatchState",
                     "cancelReason",
                     "blockers",
                     "warnings",
@@ -104880,6 +105636,16 @@
                       ]
                     },
                     "latestSubmissionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionDispatchState": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -105200,6 +105966,7 @@
                     "payerControlNumber",
                     "latestSubmissionId",
                     "latestSubmissionOutcome",
+                    "latestSubmissionDispatchState",
                     "cancelReason",
                     "blockers",
                     "warnings",
@@ -105423,6 +106190,16 @@
                       ]
                     },
                     "latestSubmissionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionDispatchState": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -105713,6 +106490,7 @@
                     "payerControlNumber",
                     "latestSubmissionId",
                     "latestSubmissionOutcome",
+                    "latestSubmissionDispatchState",
                     "cancelReason",
                     "blockers",
                     "warnings",
@@ -105936,6 +106714,16 @@
                       ]
                     },
                     "latestSubmissionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionDispatchState": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -106295,6 +107083,7 @@
                     "payerControlNumber",
                     "latestSubmissionId",
                     "latestSubmissionOutcome",
+                    "latestSubmissionDispatchState",
                     "cancelReason",
                     "blockers",
                     "warnings",
@@ -106518,6 +107307,16 @@
                       ]
                     },
                     "latestSubmissionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestSubmissionDispatchState": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -238534,6 +239333,210 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/noe-records/{id}/exception-reviews": {
+      "get": {
+        "operationId": "getApiV1NoerecordsByIdExceptionreviews",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1NoerecordsByIdExceptionreviews",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/noe-records/{id}/exception-reviews/{reviewId}/evidence": {
+      "post": {
+        "operationId": "postApiV1NoerecordsByIdExceptionreviewsByReviewIdEvidence",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reviewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/noe-records/{id}/exception-reviews/{reviewId}/history": {
+      "get": {
+        "operationId": "getApiV1NoerecordsByIdExceptionreviewsByReviewIdHistory",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reviewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/noe-records/{id}/exception-reviews/{reviewId}/record-decision": {
+      "post": {
+        "operationId": "postApiV1NoerecordsByIdExceptionreviewsByReviewIdRecorddecision",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reviewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/noe-records/{id}/exception-reviews/{reviewId}/record-request": {
+      "post": {
+        "operationId": "postApiV1NoerecordsByIdExceptionreviewsByReviewIdRecordrequest",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "reviewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

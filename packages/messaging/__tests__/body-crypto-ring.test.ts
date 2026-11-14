@@ -37,6 +37,15 @@ describe("ring body envelope (v2)", () => {
     expect(() => openMessageBodyRing(sealed, d.key, ORG_B)).toThrow();
   });
 
+  it("binds optional artifact identity context without changing legacy no-context envelopes", () => {
+    const d = dek();
+    const aad = "m23-medicare-notice-x12:v1:org:artifact";
+    const sealed = sealMessageBodyRing("exact bytes\r~", d, ORG_A, aad);
+    expect(openMessageBodyRing(sealed, d.key, ORG_A, aad)).toBe("exact bytes\r~");
+    expect(() => openMessageBodyRing(sealed, d.key, ORG_A, "another-artifact")).toThrow();
+    expect(() => openMessageBodyRing(sealed, d.key, ORG_B, aad)).toThrow();
+  });
+
   it("is bound to the version label: a relabelled envelope fails (AAD)", () => {
     const d = dek();
     const sealed = sealMessageBodyRing("x", d, ORG_A);

@@ -39,6 +39,7 @@ import { getSeam } from "../../../bootstrap/index";
 import { hospiceRateTableEffectiveForOrg } from "../routes/rate-table-service";
 import { visitChargeVersionsForOrg } from "../routes/visit-charge-service";
 import { resolveWageIndexForOrg } from "../routes/wage-index-service";
+import { resolveMedicareProviderRouting } from "./medicare-provider-routing";
 import type { ProviderCcnPort } from "../routes/write-service";
 import { type PlaceOfServicePorts, resolvePlaceOfService } from "./place-of-service-resolver";
 
@@ -129,36 +130,10 @@ export function buildM23PatientPayerAdapter(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-// 2. mdm.resolveProviderEntity (M40 — CCN + MAC jurisdiction) — real, direct reads.
+// 2. mdm.resolveProviderEntity (M40 CCN + M23 effective-dated Medicare routing).
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
-/**
- * `ProviderEntityDirectoryEntry` needs THREE facts together (`ccn`, `macJurisdiction`, `cbsaCode`) and the
- * method can only return the whole object or `null` — it cannot honestly return two real fields and
- * fabricate the third. `ccn` is real (the `provider_entity` row, the exact query M23's own write-service
- * composition root already runs for the same purpose). `macJurisdiction` was investigated as "a genuine
- * missing fact — no column, no derivation anywhere" (#250's own scoping pass); that was WRONG, checked
- * against the schema rather than assumed: `mac_submitter_credential.mac_jurisdiction` is exactly this fact,
- * admin-set per provider entity during MAC portal onboarding (`packages/db/src/schema/billing/
- * mac-submitter-credential.ts`), unique per `providerEntityId`, with a real repository
- * (`MacSubmitterCredentialRepository.findByProviderEntity`) already reading the safe (cipher-free)
- * projection. A provider entity that has not yet been onboarded with a MAC submitter credential has no
- * jurisdiction to report — that is a named 422 `MAC_SUBMITTER_CREDENTIAL_MISSING` (it used to be `null`,
- * which the caller turned into `PROVIDER_ENTITY_UNRESOLVED` and so blamed the provider entity itself).
- * `null` stays reserved for a provider entity that is absent or invisible in this org.
- *
- * `cbsaCode` is set to `null` unconditionally: traced every read of `pe.cbsaCode` in `claim-assembly.ts` —
- * there are none. The claim's actual CBSA comes from `wageIndex.cbsaCode` (the `wage_index_factor` row),
- * a completely separate read. `ProviderEntityDirectoryEntry.cbsaCode` is dead in this file; `null` is
- * therefore not a placeholder standing in for unknown data, it is an honest report of a field this method
- * has no consumer for.
- *
- * `provider_entity` is owned by Module 1 (Foundation), not M23 — `arch:tables` refuses this file reading
- * its Drizzle schema directly. Its CCN is resolved through the SAME injected `ProviderCcnPort` the M23
- * write-service already binds at the composition root (`write-service.ts`'s own doc: "M23 may not import
- * M40's [sic — M1's] package, so this is a typed PORT the composition root binds"), not a second,
- * duplicate cross-module edge.
- */
+/** CCN remains an injected M1 provider-directory fact; jurisdiction is independently resolved by service date. */
 // This adapter is built ONCE at boot over the bare pooled `db` (`boot-assembly.ts` has no per-request
 // handle to hand it) and then called from deep inside `assemble()`'s OWN `withOrgContext` transaction —
 // but that transaction's scoped `tx` handle never reaches here, only the closed-over `orgId` argument
@@ -166,21 +141,12 @@ export function buildM23PatientPayerAdapter(
 // `withOrgContext(db, {organizationId: orgId, ...})` — the exact `admissionSchedulingContextForOrg` /
 // `electionPeriodContextForOrg` (M6) "second wall behind RLS, org-explicit rather than ambient" pattern —
 // instead of assuming the caller's ambient request context reaches an object built at boot time.
-/** No MAC submitter credential (hence no MAC jurisdiction) is on file for a resolved provider entity. */
-function macSubmitterCredentialMissing(ccn: string): ChartWardenError {
-  return new ChartWardenError(
-    "MAC_SUBMITTER_CREDENTIAL_MISSING",
-    `provider entity CCN ${ccn} has no MAC submitter credential on file, so its MAC jurisdiction is unknown; onboard the provider entity's MAC portal credential and retry`,
-    422,
-  );
-}
-
 export function buildM23MdmProviderEntityAdapter(
   db: BillingDb,
   providerCcn: ProviderCcnPort,
 ): Pick<MdmEntityProvider, "resolveProviderEntity"> {
   return {
-    async resolveProviderEntity(orgId, providerEntityId) {
+    async resolveProviderEntity(orgId, providerEntityId, effectiveDate) {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         let ccn: string;
         try {
@@ -191,16 +157,13 @@ export function buildM23MdmProviderEntityAdapter(
           return null;
         }
 
-        const macCredentials = new repositories.MacSubmitterCredentialRepository(tx);
-        const credential = await macCredentials.findByProviderEntity(providerEntityId);
-        // A real, visible provider entity with no MAC submitter credential is NOT "unresolved": it is a
-        // named, fixable onboarding gap. Collapsing it into PROVIDER_ENTITY_UNRESOLVED told the biller the
-        // provider entity itself was missing (and the wizard could only say "check the inputs").
-        if (!credential) throw macSubmitterCredentialMissing(ccn);
+        const routing = await resolveMedicareProviderRouting(db, {
+          organizationId: orgId, providerEntityId, effectiveDate,
+        });
 
         const entry: ProviderEntityDirectoryEntry = {
           ccn,
-          macJurisdiction: credential.macJurisdiction,
+          macJurisdiction: routing.macJurisdiction,
           cbsaCode: null,
         };
         return entry;

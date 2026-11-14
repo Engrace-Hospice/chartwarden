@@ -84,6 +84,13 @@ export {
   type TransferInNoticeContext,
   transferInNoticeContextForOrg,
 } from "./transfer-in-notice-context";
+export {
+  type M6AuthoritativeNoticeFacts,
+  type M6MedicareNoticeSource,
+  type M6NoticeSourceCode,
+  M6NoticeSourceError,
+  buildM6MedicareNoticeSource,
+} from "./medicare-notice-source";
 // M23 claim list / detail — the batched, admission-keyed stay-end facts ("needs attention" flags).
 export {
   CLAIM_STAY_END_BATCH_MAX,

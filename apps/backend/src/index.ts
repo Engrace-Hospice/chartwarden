@@ -52,9 +52,11 @@ import {
   MESSAGING_QUEUES,
   REALTIME_HINT_EVENT,
   accountRoom,
+  bodyEnvelopeScheme,
   computeRoomSet,
   createAlertPayloadRegistry,
   setOutOfBandFallbackObserver,
+  ringEnvelopeVersion,
   userRoom,
 } from "@chartwarden/messaging";
 import {
@@ -96,7 +98,11 @@ import type {
   ScaleType,
 } from "@chartwarden/types";
 import { createX12835Client } from "@chartwarden/x12-835-client";
-import { bindDdeProvider, probeClaimMdAccountKey } from "@chartwarden/x12-837-client";
+import {
+  bindDdeProvider,
+  clearinghouseUsageFromEnv,
+  probeClaimMdAccountKey,
+} from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
@@ -567,6 +573,7 @@ import {
   buildM6ProposalAcceptedConsumer,
   buildM6RecertificationSignedConsumer,
   buildM6WorkerDeps,
+  buildM6MedicareNoticeSource,
   claimAssemblyRangeContextForOrg,
   claimStayEndFactsForOrg,
   composeNonCoveredItemsReaders,
@@ -1189,6 +1196,10 @@ import {
   buildClaim837iPartiesPortFactory,
   buildClaim837iProviderReader,
   buildClaimPayerRouteStatus,
+  buildClaimMdMedicareRoutingService,
+  buildNoeExceptionReviewService,
+  buildMedicareNoticeWorklistService,
+  buildDrizzleArtifactReadinessReader,
   buildClaimStateService,
   buildClaimValidationContextPort,
   buildClaimValidationRunner,
@@ -1202,6 +1213,12 @@ import {
   buildDrizzleEdiProfileService,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
+  buildDrizzleMedicareProviderRoutingService,
+  buildDrizzleMedicareNoticePersistence,
+  buildDrizzleMedicareNoticeRenderArtifactStore,
+  MedicareNoticeArtifactKeyUnavailableError,
+  buildDrizzleMedicareNoticeRenderIdentityStore,
+  buildDrizzleMedicareNoticeRoutePort,
   buildDrizzleNpiVerificationService,
   buildDrizzleOrgMacJurisdictionReader,
   buildDrizzlePlatformAdminService,
@@ -1215,6 +1232,7 @@ import {
   buildM23BootAssemblySeams,
   buildM23BootAssemblyService,
   buildM23LateCheckResolvedConsumer,
+  buildMedicareNoticeDispatchStateMachine,
   buildM23NoeDraftConsumer,
   buildM23NoticeFiledLateConsumer,
   buildM23NotrDraftConsumer,
@@ -1239,6 +1257,8 @@ import {
   buildTransferNoticeService,
   claimAccountReferenceFor,
   createClaimMdOperationalReader,
+  createAuthoritativeMedicareNoticeSourceLoader,
+  createMedicareNoticeRenderer,
   createDrizzleBillingEraseStore,
   createDrizzleDdeAgingStore,
   createDrizzleDdeChangeStore,
@@ -1256,7 +1276,10 @@ import {
   registerDdeDailyChangeWorker,
   registerM23AbacPredicates,
   registerM23DomainWorkers,
-  registerM23LaunchWorkers,
+  registerM23ClaimSubmissionWorkers,
+  registerM23NoticeSubmissionWorkers,
+  registerM23TransportAckWorkers,
+  registerM23LegacyAckWorkers,
   registerM23PortalHealthWorker,
   registerM23PublishedSeams,
   registerM23WatchCronWorkers,
@@ -1264,6 +1287,7 @@ import {
   scheduleDdeDailyChange,
   scheduleM23Jobs,
   scheduleM23WatchJobs,
+  scheduleM23TransportAckJobs,
   sweepLegacyValidationRunQueue,
   validateBillingAiBlockAtBoot,
   wireM23Tenancy,
@@ -1808,6 +1832,7 @@ import { buildAfterHoursTriageBinding } from "./modules/36-messaging/afterhours-
 import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipient-fallback";
 import { createResponseAnalyticsReader } from "./modules/36-messaging/analytics/response-analytics-reader";
 import {
+  BodyKeyUnavailableError,
   invalidateMessageBodyKeys,
   setMessageBodyKeyProvider,
   sharedRingDekCache,
@@ -2046,6 +2071,7 @@ import {
   M40_PLATFORM_JOB_ID,
   buildM29NppesPlatformConsumers,
   buildPayerNameByX12IdReader,
+  buildActiveMedicarePayerByIdReader,
   createDbBaaStore,
   createDbMdmStore,
   createDbNppesNpiSource,
@@ -4062,8 +4088,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // provider (every call answers DDE_NOT_WIRED); a vendor with no adapter in this build throws here (no adapter exists
   // yet, so naming one refuses to boot rather than silently behaving as manual).
   const ddeBinding = bindDdeProvider(process.env, {});
-  const m23SubmissionQueues =
-    queueConnection && m23LaunchGateway ? buildM23SubmissionQueuePort(queueConnection) : null;
+  // Claim requests enter the durable outbox before BullMQ; the producer needs Redis only. Notice workers
+  // remain independently gated on their legacy X12/MAC generation capability below.
+  const m23SubmissionQueues = queueConnection ? buildM23SubmissionQueuePort(queueConnection) : null;
   // F-153 (#248) — the `revalidate.consumer` producer, unlike submission, needs no MAC/X12 launch
   // gateway — only the Valkey connection the worker itself already requires to run. Built unconditionally
   // (queueConnection may still be undefined; the port fails closed per-call in that case, RULE 4).
@@ -4247,12 +4274,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     organizationId,
     vendor,
   }: { readonly organizationId: string; readonly vendor: string }): void => {
-    if (vendor !== "claimmd" || claimMdNoticeUploadsEnabled) return;
+    if (vendor !== "claimmd") return;
     if (noticeUploadWarnedOrgs.has(organizationId)) return;
     noticeUploadWarnedOrgs.add(organizationId);
     app.log.warn(
       { organizationId },
-      "M23_CLAIMMD_NOTICE_UPLOAD_ENABLED is not true: this organization's own Claim.MD account cannot send its NOE / NOTR (the upload is refused NOT_WIRED and the notice is not filed); set the flag before its CMS deadlines matter",
+      "Claim.MD hospice notice transaction support is unverified: this organization's NOE / NOTR remains held; the rollout flag cannot authorize transmission",
     );
   };
   const tenantClearinghouse = dbHandle
@@ -4266,10 +4293,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         onAnomaly: (anomaly, context) =>
           app.log.warn({ anomaly, ...context }, "Clearinghouse anomaly"),
         claimMdRequestCounter: rateLimitStore ?? null,
-        // A tenant's own Claim.MD account sends NOE / NOTR only while M23_CLAIMMD_NOTICE_UPLOAD_ENABLED=true (a deployment-wide
-        // switch, off by default): without it the notice stays held (NOT_WIRED) and its deadline is at risk. Boot cannot see which
-        // organizations are live on Claim.MD (the config table has no platform-carrier grant), so say it once per org, the first
-        // time its account is bound in this process.
+        // A tenant's own Claim.MD account's notice work stays held until transaction-specific vendor support is verified. The
+        // rollout switch is not evidence. Boot cannot see which organizations are live on Claim.MD (the config table has no
+        // platform-carrier grant), so say it once per org, the first time its account is bound in this process.
         onTenantAccountBound: warnOnceWhenNoticesCannotSend,
       })
     : null;
@@ -4831,6 +4857,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
   const m41OutboxPublisher = bindCallerModule(txOutboxPublisher, "m41");
   const claimMdAckExecutionMode = claimMdAckMode(process.env);
+  // Claim workers may boot without the legacy gateway, but a platform Claim.MD send remains held until
+  // the platform-account response path can capture, identify, and apply its responses.
+  const claimMdPlatformResponseReconciliationReady =
+    platformClearinghouseBinding.vendor !== "claimmd" ||
+    (claimMdResponseCaptureEnabled(process.env) &&
+      claimMdResolverEnabled &&
+      claimMdAckExecutionMode === "apply");
   const claimMdEraConfig = claimMdEraRuntimeConfig(process.env);
   let claimMdEraCapture: ReturnType<typeof createClaimMdEraCapture> | undefined;
   let claimMdEraStore: ReturnType<typeof createClaimMdEraStore> | undefined;
@@ -7773,6 +7806,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ...m23AssemblyPorts,
           });
           const m23PayerNameByX12Id = buildPayerNameByX12IdReader();
+          const m23ActiveMedicarePayerById = buildActiveMedicarePayerByIdReader();
+          const m23CoveragePayerFacts = async (input: { organizationId: string; patientId: string; patientPayerId: string }) => {
+            const rows = await getSeam("PatientCoverageReader").coveragesForPatient({
+              organizationId: input.organizationId, patientId: input.patientId,
+            });
+            const row = rows.find((coverage) => coverage.id === input.patientPayerId);
+            return row ? { payerId: row.payerId, coverageKind: row.coverageKind,
+              effectiveFrom: row.effectiveFrom, effectiveTo: row.effectiveTo } : null;
+          };
           const m23ClaimPreviewParties = buildClaim837iPartiesPortFactory({
             routeKey: claimPartiesRouteKey,
             profile: buildDrizzleEdiProfileReader(),
@@ -7791,6 +7833,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 }).decrypt(input),
             }),
             payerName: m23PayerNameByX12Id,
+            payerNameByCanonicalId: async (tx, payerId) =>
+              (await m23ActiveMedicarePayerById(tx, payerId))?.name ?? null,
           });
           // ADR-0110 — the claims-billing add-on gate on M23's new-work routes (route-classes.ts); submitting a void
           // claim stays open (read under the caller's org).
@@ -7799,12 +7843,32 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             m23RouteClasses((org, id) => isVoidM23Claim(dbHandle.db, org, id)),
             () =>
               mountM23Routes(app, {
+                noeExceptionReviewService: buildNoeExceptionReviewService(dbHandle.db, {
+                  documentMetadata: ({ documentId, organizationId }) =>
+                    getSeam("DocumentReader").documentMetadata({ documentId, organizationId }),
+                }),
+                medicareNoticeWorklistService: buildMedicareNoticeWorklistService({
+                  readService: buildDrizzleM23ReadService(dbHandle.db),
+                  transferNoticeService: buildTransferNoticeService(dbHandle.db, {
+                    outbox: m23OutboxPublisher,
+                    billsOutside: m23BillsOutside,
+                    jobs: buildM23OutboxBackedSubmissionGate({ "transfer_notice.submit": m23SubmissionQueues !== null }),
+                    transferInFacts: (organizationId, transferEventId) =>
+                      transferInNoticeContextForOrg(dbHandle.db, organizationId, transferEventId),
+                  }),
+                  exceptionReviews: buildNoeExceptionReviewService(dbHandle.db, {
+                    documentMetadata: ({ documentId, organizationId }) =>
+                      getSeam("DocumentReader").documentMetadata({ documentId, organizationId }),
+                  }),
+                  artifactReadiness: buildDrizzleArtifactReadinessReader(dbHandle.db),
+                }),
                 previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
                 renderClaimPreview: async ({
                   organizationId,
                   actorUserId,
                   claimId,
                   providerEntityId,
+                  effectiveDate,
                   routeFingerprint,
                 }) => {
                   const context = await buildClearinghouseContextPort({
@@ -7812,8 +7876,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                     env: process.env,
                     binding: clearinghouseBinding,
                     providerNpi: m25PayeeNpi,
+                    coveragePayerFacts: m23CoveragePayerFacts,
+                    activeMedicarePayerById: m23ActiveMedicarePayerById,
                     ...clearinghouseUsageFor,
-                  }).contextFor(organizationId, providerEntityId);
+                  }).contextFor(organizationId, providerEntityId, { effectiveDate, claimId });
                   // The same resolution the submit worker repeats, so the preview's fingerprint and the worker's keep matching.
                   const accountReference = await claimAccountReferenceFor(
                     { binding: clearinghouseBinding, env: process.env },
@@ -7868,6 +7934,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   env: process.env,
                   binding: clearinghouseBinding,
                   providerNpi: m25PayeeNpi,
+                  coveragePayerFacts: m23CoveragePayerFacts,
+                  activeMedicarePayerById: m23ActiveMedicarePayerById,
                   log: (fields, message) => app.log.warn(fields, message),
                   ...clearinghouseUsageFor,
                   payerIsActive: async (payerId) =>
@@ -7883,6 +7951,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 // F-211 — the tenant-entered CMS wage index (`/billing/wage-indexes`), read by the same boot assembly.
                 wageIndexService: buildDrizzleWageIndexService(dbHandle.db),
                 platformAdminService: buildDrizzlePlatformAdminService(dbHandle.db),
+                medicareProviderRoutingService: buildDrizzleMedicareProviderRoutingService(dbHandle.db, m23ProviderCcn),
+                claimMdMedicareRoutingService: buildClaimMdMedicareRoutingService(dbHandle.db, m23ProviderCcn, process.env, m23ActiveMedicarePayerById),
                 // ADR-0053 amendment precondition 2 — platform-verified NPI ownership. Cross-tenant list and platform-only
                 // writes, so one allowlisted, audited withPlatformContext per call; no platform pool => 503, never a
                 // tenant-pool read.
@@ -8025,7 +8095,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   ...m23AssemblyPorts,
                 }),
                 // The receiving hospice's Medicare transfer notice (TOB 8xC / 8xD, CMS Pub. 100-04 ch. 11
-                // §20.1.3–§20.1.4). Submission rides the same outbox → BullMQ bridge + launch gateway as the NOE;
+                // §20.1.3–§20.1.4). Submission rides the same durable outbox → BullMQ bridge as NOE/NOTR;
                 // M6's org-explicit transfer-in read refreshes our admission date + physicians before filing.
                 // ADR-0052 — the DDE work queue (human work tracking; no DDE integration or credential).
                 attemptResolutionService: buildClearinghouseAttemptResolutionService(
@@ -11089,7 +11159,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     //      X12/MAC-portal I/O, so they must NOT sit behind the launch gateway — they did not exist at all before
     //      (the old all-in-one registrar had no caller and has been deleted), so revalidation jobs piled up unconsumed and every watch tick threw
     //      `unboundWorkerPort`.
-    //   2. + the launch gateway: claim/NOE/NOTR submit[.retry], the 999/277CA ack pulls and MAC-portal health.
+    //   2. common claim submit/retry workers use the internal renderer + org transport; transport-native ack polls
+    //      use that same transport. The legacy launch gateway separately enables notice generation, direct-MAC
+    //      upload/health, and raw-file ack processing.
     //   3. HETS 270/271 (`hets`) is bound only when `M23_HETS_TRANSPORT` is configured (M5's MbiUnlockReader
     //      supplies the transient MBI). Unconfigured, the `eligibility.refresh` job fails closed when it runs
     //      and the route-side gate keeps refusing eligibility checks (503).
@@ -11148,6 +11220,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       db: dbHandle.db,
       claimMdResponseCaptureActive: claimMdResponseCaptureEnabled(process.env),
       claimMdAckDispatcherActive: claimMdAckExecutionMode !== "off",
+      claimMdPlatformResponseReconciliationReady,
       outbox: m23OutboxPublisher,
       // F-161 (#248) — the §4.9 window-watch/portal-health alert routing, over the live M36 AlertEmitter
       // seam (the M27 `WX-PR-013` pattern).
@@ -11195,9 +11268,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           payerName: buildPayerNameByX12IdReader(),
         }),
       },
-      // #707 - the clearinghouse binding. With CLEARINGHOUSE_VENDOR set the submit/retry workers and the ack crons use
-      // it instead of the legacy MAC portal; unset keeps the legacy path. registerM23LaunchWorkers refuses to build
-      // without it while a vendor is configured.
+      // #707 - organization-scoped clearinghouse binding for common claim workers and transport-native acknowledgment.
+      // The legacy notice/raw-MAC groups receive their separate gateway ports below.
       transport: {
         binding: clearinghouseBinding,
         attempts: createDrizzleAttemptStore(dbHandle.db),
@@ -11214,6 +11286,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           env: process.env,
           binding: clearinghouseBinding,
           providerNpi: m25PayeeNpi,
+          coveragePayerFacts: async (input) => {
+            const rows = await getSeam("PatientCoverageReader").coveragesForPatient({ organizationId: input.organizationId, patientId: input.patientId });
+            const row = rows.find((coverage) => coverage.id === input.patientPayerId);
+            return row ? { payerId: row.payerId, coverageKind: row.coverageKind, effectiveFrom: row.effectiveFrom, effectiveTo: row.effectiveTo } : null;
+          },
+          activeMedicarePayerById: buildActiveMedicarePayerByIdReader(),
           ...clearinghouseUsageFor,
         }),
       },
@@ -11223,17 +11301,143 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       ddeWatchdog: buildDdeWatchdog({ outbox: m23OutboxPublisher }),
       logger: app.log,
     });
+    // CM-4A.1: compose the authoritative, internal-only notice renderer. It intentionally is not
+    // handed to the live notice processors yet: CM-4A.2 must persist the exact encrypted bytes before
+    // CM-4B.2 may relax any transport hold. Constructing it here proves production seams are complete
+    // without enabling a vendor call or the legacy HTTP generator.
+    const m23NoticeAttempts = createDrizzleAttemptStore(dbHandle.db);
+    const m23NoticePartiesFactory = buildClaim837iPartiesPortFactory({
+      routeKey: claimPartiesRouteKey,
+      profile: buildDrizzleEdiProfileReader(),
+      provider: buildClaim837iProviderReader({
+        sealedFacts: (tx, organizationId, providerEntityId) =>
+          buildFoundationSiteReader().providerEntityBillingFacts(tx, organizationId, providerEntityId),
+        decryptTaxId: (input) =>
+          createTaxIdCipher({
+            dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+            dekForOrgVersion: (orgId, version) =>
+              getTenantKeyProvider().dekForOrgVersion(orgId, version),
+          }).decrypt(input),
+      }),
+      payerName: buildPayerNameByX12IdReader(),
+      payerNameByCanonicalId: async (tx, payerId) =>
+        (await buildActiveMedicarePayerByIdReader()(tx, payerId))?.name ?? null,
+    });
+    const m23NoticeRoute = buildDrizzleMedicareNoticeRoutePort({
+      db: dbHandle.db,
+      bindingForOrg: async (organizationId) =>
+        clearinghouseBinding.forOrg
+          ? clearinghouseBinding.forOrg(organizationId)
+          : clearinghouseBinding,
+      usageForOrg: async (organizationId) =>
+        (await tenantClearinghouse?.usageFor(organizationId)) ?? clearinghouseUsageFromEnv(process.env),
+      accountReferenceFor: async (organizationId, binding) => {
+        if (binding.vendor === "claimmd") {
+          return claimAccountReferenceFor(
+            { binding: clearinghouseBinding, env: process.env },
+            organizationId,
+          );
+        }
+        return binding.account === "tenant"
+          ? `tenant:${organizationId}`
+          : binding.vendor === "direct_mac"
+            ? `direct-mac:${organizationId}`
+            : "platform:stedi";
+      },
+      coveragePayerFacts: async (input) => {
+        const rows = await getSeam("PatientCoverageReader").coveragesForPatient({
+          organizationId: input.organizationId,
+          patientId: input.patientId,
+        });
+        const row = rows.find((candidate) => candidate.id === input.patientPayerId);
+        return row ? {
+          payerId: row.payerId,
+          coverageKind: row.coverageKind,
+          effectiveFrom: row.effectiveFrom,
+          effectiveTo: row.effectiveTo,
+        } : null;
+      },
+      activeMedicarePayerById: buildActiveMedicarePayerByIdReader(),
+    });
+    const m23NoticeSources = createAuthoritativeMedicareNoticeSourceLoader({
+      persistence: buildDrizzleMedicareNoticePersistence(dbHandle.db),
+      clinical: buildM6MedicareNoticeSource(dbHandle.db),
+      coverages: getSeam("PatientCoverageReader"),
+      mbiUnlock: () => getSeam("MbiUnlockReader"),
+      patients: lazyPatientReader(),
+      addresses: lazyPatientAddressReader(),
+      physicians: getMdmEntityProvider(),
+      provider: m23ClaimSeamPorts.providerCcn,
+      route: m23NoticeRoute,
+      partiesFor: () => ({
+        partiesFor: (input) => withOrgContext(
+          dbHandle.db,
+          { organizationId: input.organizationId, userId: "" },
+          (tx) => m23NoticePartiesFactory(tx as DbClient).partiesFor(input),
+        ),
+      }),
+    });
+    const m23ArtifactCipher = createMessageBodyCipher({ sealScheme: "ring" });
+    const m23InternalNoticeRenderer = createMedicareNoticeRenderer({
+      sources: m23NoticeSources,
+      identities: buildDrizzleMedicareNoticeRenderIdentityStore(dbHandle.db, m23NoticeAttempts),
+      artifacts: buildDrizzleMedicareNoticeRenderArtifactStore(dbHandle.db, {
+        async sealRing(organizationId, plaintext, aadContext) {
+          const sealed = await m23ArtifactCipher.sealRing(organizationId, plaintext, aadContext);
+          return { ...sealed, keyVersion: ringEnvelopeVersion(sealed.cipher) };
+        },
+        async open(organizationId, ciphertext, aadContext, expectedKeyVersion) {
+          if (bodyEnvelopeScheme(ciphertext) !== "ring" || ringEnvelopeVersion(ciphertext) !== expectedKeyVersion) {
+            throw new Error("Unsupported or mismatched artifact key version");
+          }
+          try {
+            return await m23ArtifactCipher.open(organizationId, ciphertext, aadContext);
+          } catch (error) {
+            if (error instanceof BodyKeyUnavailableError) throw new MedicareNoticeArtifactKeyUnavailableError();
+            throw error;
+          }
+        },
+      }, async ({ organizationId, renderIdentityId }) => {
+        try {
+          await m23AlertPort.dispatch({
+            alertCode: "m23.notice.render_artifact_integrity_failure",
+            severity: "critical",
+            organizationId,
+            payload: { renderIdentityId },
+          });
+        } catch {
+          app.log.error({ organizationId, renderIdentityId }, "M23 notice artifact integrity alert delivery failed");
+        }
+      }),
+      fingerprintKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY ?? "",
+    });
+    const m23NoticeDispatch = buildMedicareNoticeDispatchStateMachine(dbHandle.db);
     let m23Workers: Worker[] = [
       ...registerM23DomainWorkers(m23CoreWorkerDeps),
       ...registerM23WatchCronWorkers(m23CoreWorkerDeps),
+      // Claim submission uses the in-process authoritative renderer and org-resolved transport. The legacy
+      // X12/MAC gateway remains optional for this group; an unbound organization is held by holdBeforeRun.
+      ...registerM23ClaimSubmissionWorkers(m23CoreWorkerDeps),
     ];
+    const transportAckAvailable = Boolean(
+      m23CoreWorkerDeps.transport &&
+        (m23CoreWorkerDeps.transport.binding.vendor || m23CoreWorkerDeps.transport.binding.forOrg),
+    );
+    if (transportAckAvailable) {
+      // Claim.MD/Stedi (including per-tenant bindings) poll their native transport API; no raw X12 parser or MAC portal.
+      m23Workers = [...m23Workers, ...registerM23TransportAckWorkers(m23CoreWorkerDeps)];
+    }
+    let m23NoticeWorkerDeps = buildM23WorkerDeps({
+      ...m23CoreWorkerDeps,
+      noticeRenderer: m23InternalNoticeRenderer,
+      noticeDispatch: m23NoticeDispatch,
+    });
     if (m23LaunchGateway) {
-      const m23LaunchWorkerDeps = buildM23WorkerDeps({
+      const m23GatewayWorkerDeps = buildM23WorkerDeps({
         ...m23CoreWorkerDeps,
         x12: m23LaunchGateway.x12,
         macPortal: m23LaunchGateway.macPortal,
-        // GAP-143 — the distinct MAC jurisdictions of the tenants' configured submitter credentials (was a
-        // hard-coded 'ngs_j6', so every other MAC's acks were never pulled).
+        // GAP-143 — the distinct MAC jurisdictions of the tenants' configured submitter credentials.
         jurisdictions: buildMacJurisdictionLister({
           orgs: m23ActiveOrgs,
           readOrg: buildDrizzleOrgMacJurisdictionReader(dbHandle.db),
@@ -11241,30 +11445,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             app.log.error({ err, organizationId }, "M23 MAC jurisdiction read failed for org"),
         }),
       });
-      m23Workers = [
-        ...m23Workers,
-        // claim/NOE/NOTR submit[.retry] + the two ack-pull crons (F-161: the portal-health cron was never
-        // registered either, so it never ran a tick in any deployment).
-        ...registerM23LaunchWorkers(m23LaunchWorkerDeps),
-        ...registerM23PortalHealthWorker(m23LaunchWorkerDeps),
-      ];
-    } else if (platformClearinghouseBinding.vendor) {
-      // A bound vendor still needs the X12 generator behind the launch gateway; without it nothing would be sent
-      // while the platform believes it is bound.
-      throw new Error(
-        `CLEARINGHOUSE_VENDOR=${platformClearinghouseBinding.vendor} needs the M23 launch gateway (X12 generation); it is not configured`,
-      );
-    } else if (tenantClearinghouse) {
-      // Tenants choose their clearinghouse at runtime, so boot cannot know whether any will: say so loudly instead of
-      // refusing (an `outside`-only deployment is legitimate), and the claim workers stay off until the gateway exists.
-      app.log.warn(
-        "M23 launch workers disabled: tenant clearinghouses need the M23 launch gateway (X12 generation); configure X12 and MAC gateway URLs and bearer tokens",
-      );
-    } else {
-      app.log.warn(
-        "M23 launch workers disabled: configure X12 and MAC gateway URLs and bearer tokens",
-      );
+      m23NoticeWorkerDeps = buildM23WorkerDeps({
+        ...m23GatewayWorkerDeps,
+        noticeRenderer: m23InternalNoticeRenderer,
+        noticeDispatch: m23NoticeDispatch,
+      });
+      if (!transportAckAvailable) {
+        m23Workers = [...m23Workers, ...registerM23LegacyAckWorkers(m23GatewayWorkerDeps)];
+      }
+      m23Workers = [...m23Workers, ...registerM23PortalHealthWorker(m23GatewayWorkerDeps)];
     }
+    // Notice queue consumers always exist so committed outbox work cannot strand. They share the
+    // gateway only when configured; preflight holds unsupported vendor transactions and missing
+    // direct-MAC capabilities without spending attempts or claiming the notice was filed.
+    m23Workers = [...m23Workers, ...registerM23NoticeSubmissionWorkers(m23NoticeWorkerDeps)];
     // M23 and M27 once shared a queue named `validation-run`; move any M23 job still stranded on it (never dropped).
     sweepLegacyValidationRunQueue(queueConnection)
       .then((result) =>
@@ -11279,12 +11473,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       await Promise.all(m23Workers.map((worker) => worker.close()));
     });
     try {
-      // The watchdog schedules need only the tier-1 workers above. With the launch gateway,
-      // `scheduleM23Jobs` is the superset (the same watch patterns + ack pulls + portal health) — BullMQ
-      // dedupes an identical repeat pattern re-added to the same queue.
+      // Gateway deployments retain the complete legacy schedule. Without it, transport-native ack polls
+      // are scheduled independently from MAC health/raw-file work; domain/watch schedules always remain.
       const m23ScheduleQueues = m23LaunchGateway
         ? await scheduleM23Jobs(queueConnection)
-        : await scheduleM23WatchJobs(queueConnection);
+        : [
+            ...(await scheduleM23WatchJobs(queueConnection)),
+            ...(transportAckAvailable
+              ? await scheduleM23TransportAckJobs(queueConnection)
+              : []),
+          ];
       app.addHook("onClose", async () => {
         await Promise.all(m23ScheduleQueues.map((queue) => queue.close()));
       });

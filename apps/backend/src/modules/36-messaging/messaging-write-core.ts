@@ -88,11 +88,11 @@ export function bodySealSchemeFromEnv(env: NodeJS.ProcessEnv = process.env): Bod
  */
 export interface MessageBodyCipher {
   /** Seal a plaintext under the configured scheme + compute the pre-encryption integrity digest. */
-  seal(orgId: string, plaintext: string): Promise<{ cipher: Buffer; sha256: string }>;
+  seal(orgId: string, plaintext: string, aadContext?: string): Promise<{ cipher: Buffer; sha256: string }>;
   /** Seal under the tenant ring DEK regardless of the configured scheme (backfill; the digest is of the plaintext). */
-  sealRing(orgId: string, plaintext: string): Promise<{ cipher: Buffer; sha256: string }>;
+  sealRing(orgId: string, plaintext: string, aadContext?: string): Promise<{ cipher: Buffer; sha256: string }>;
   /** Decrypt a `body_cipher` bytea, either scheme (entitled-reader path only). */
-  open(orgId: string, cipher: Buffer): Promise<string>;
+  open(orgId: string, cipher: Buffer, aadContext?: string): Promise<string>;
 }
 
 /** Build the lazy, per-process {@link MessageBodyCipher}. `kek`, `keys`, `ringCache` and `sealScheme` are injectable for tests. */
@@ -126,7 +126,7 @@ export function createMessageBodyCipher(
     }
     return cache;
   };
-  const sealRing = async (orgId: string, plaintext: string) => {
+  const sealRing = async (orgId: string, plaintext: string, aadContext?: string) => {
     let dek: RingBodyDek;
     try {
       dek = await ring().current(orgId);
@@ -134,24 +134,26 @@ export function createMessageBodyCipher(
       throw new BodyKeyUnavailableError(err);
     }
     return {
-      cipher: sealMessageBodyRing(plaintext, dek, orgId),
+      cipher: sealMessageBodyRing(plaintext, dek, orgId, aadContext),
       sha256: messageBodySha256(plaintext),
     };
   };
   return {
     sealRing,
-    async seal(orgId, plaintext) {
+    async seal(orgId, plaintext, aadContext) {
       if ((opts.sealScheme ?? bodySealSchemeFromEnv()) === "ring")
-        return sealRing(orgId, plaintext);
+        return sealRing(orgId, plaintext, aadContext);
+      if (aadContext !== undefined) throw new Error("message body crypto: context binding requires ring encryption");
       return {
         cipher: sealMessageBody(plaintext, legacyDek(orgId)),
         sha256: messageBodySha256(plaintext),
       };
     },
-    async open(orgId, cipher) {
+    async open(orgId, cipher, aadContext) {
       const scheme = bodyEnvelopeScheme(cipher);
       // Key lookup failures are infrastructure (BodyKeyUnavailableError); only the GCM open below is a statement about the bytes.
       if (scheme === "legacy") {
+        if (aadContext !== undefined) throw new Error("message body crypto: identity-bound context requires ring envelope");
         let dek: Buffer;
         try {
           dek = legacyDek(orgId);
@@ -167,7 +169,7 @@ export function createMessageBodyCipher(
         } catch (err) {
           throw new BodyKeyUnavailableError(err);
         }
-        return openMessageBodyRing(cipher, dek.key, orgId);
+        return openMessageBodyRing(cipher, dek.key, orgId, aadContext);
       }
       throw new Error(`message body-crypto: cannot open a ${scheme} envelope`);
     },

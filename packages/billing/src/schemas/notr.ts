@@ -7,6 +7,9 @@ import {
   IfVersion,
   IsoDateSchema,
   IsoDateTimeSchema,
+  MedicareNoticeDeadlineApi,
+  NoticeEvidenceEventApi,
+  NoticeAttemptSummaryApi,
   NoticeStateApi,
   NotrTriggerKindApi,
   PageOf,
@@ -52,6 +55,8 @@ export const NotrListQuery = Type.Composite([
   Type.Object({
     state: Type.Optional(NoticeStateApi),
     providerEntityId: Type.Optional(Uuid),
+    patientId: Type.Optional(Uuid),
+    admissionId: Type.Optional(Uuid),
     triggerKind: Type.Optional(NotrTriggerKindApi),
     windowTargetBefore: Type.Optional(IsoDateSchema),
     windowBreached: Type.Optional(Type.Boolean()),
@@ -69,6 +74,9 @@ export const NotrView = Type.Object({
   effectiveEndDate: IsoDateSchema,
   windowTargetAt: IsoDateSchema,
   windowBreachedAt: Type.Union([IsoDateSchema, Type.Null()]),
+  deadline: MedicareNoticeDeadlineApi,
+  evidenceTimeline: Type.Array(NoticeEvidenceEventApi),
+  latestAttempt: NoticeAttemptSummaryApi,
   notrControlNumber: Type.String(),
   payerNotrControlNumber: Type.Union([Type.String(), Type.Null()]),
   /** The MAC's answer (migration 0377): the 277CA acceptance date, or the 999 / 277CA rejection + PHI-free codes. */

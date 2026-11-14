@@ -45,4 +45,11 @@ describe("buildMbiUnlockReader disclosure validation", () => {
       reader.unlockForEligibility({ ...base, disclosure: disclosure as never }),
     ).rejects.toThrow(message);
   });
+
+  it("accepts the closed internal notice-render purpose and proceeds to the protected DB read", async () => {
+    await expect(reader.unlockForEligibility({
+      ...base,
+      disclosure: { purpose: "medicare_notice_render", subjectId: UUID },
+    })).rejects.toThrow("db must not be touched");
+  });
 });

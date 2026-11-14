@@ -81,6 +81,62 @@ export const NoticeStateApi = Type.Union([
   Type.Literal("CANCELLED"),
 ]);
 
+/** Server-authoritative notice deadline and lifecycle assessment; no client-computable acceptance state. */
+export const MedicareNoticeDeadlineApi = Type.Object({
+  applies: Type.Boolean(),
+  basis: Type.String(),
+  policyVersion: Type.Literal("CMS-100-04-Ch11-20.1.1-20.1.2-2024-06-03"),
+  triggerDate: Type.Union([IsoDateSchema, Type.Null()]),
+  dueDate: Type.Union([IsoDateSchema, Type.Null()]),
+  risk: Type.Union([
+    Type.Literal("not_applicable"), Type.Literal("not_determinable"), Type.Literal("on_track"),
+    Type.Literal("approaching"), Type.Literal("due_today"), Type.Literal("overdue"),
+    Type.Literal("submitted_awaiting_verification"), Type.Literal("accepted_within_deadline"),
+    Type.Literal("accepted_after_deadline"), Type.Literal("filing_timeliness_unknown"), Type.Literal("transport_rejected"), Type.Literal("rejected"),
+  ]),
+  lifecycle: Type.Union([
+    Type.Literal("draft"), Type.Literal("ready"), Type.Literal("submission_requested"),
+    Type.Literal("dispatch_started"), Type.Literal("transport_receipt_confirmed"), Type.Literal("transport_rejected"),
+    Type.Literal("known_not_sent"), Type.Literal("outcome_unknown"), Type.Literal("awaiting_mac_acknowledgment"),
+    Type.Literal("mac_accepted_verified"), Type.Literal("mac_rejected_verified"), Type.Literal("external_filing_recorded"),
+    Type.Literal("cancelled"), Type.Literal("unknown"),
+  ]),
+  acceptance: Type.Union([Type.Literal("verified"), Type.Literal("not_verified"), Type.Literal("unknown")]),
+  acceptedAt: Type.Union([IsoDateTimeSchema, Type.Null()]),
+  timeliness: Type.Union([Type.Literal("timely"), Type.Literal("late"), Type.Literal("unknown"), Type.Literal("not_applicable")]),
+  followUp: Type.String(),
+});
+
+export const NoticeEvidenceEventApi = Type.Object({
+  kind: Type.Union([
+    Type.Literal("notice_created"), Type.Literal("submission_requested"), Type.Literal("dispatch_started"),
+    Type.Literal("transport_receipt_recorded"), Type.Literal("external_filing_recorded"),
+    Type.Literal("mac_accepted"), Type.Literal("mac_rejected"),
+  ]),
+  source: Type.Union([
+    Type.Literal("m23_notice_record"), Type.Literal("m23_submission_attempt"), Type.Literal("tenant_recorded_external_filing"),
+    Type.Literal("verified_mac_acknowledgment"),
+  ]),
+  at: IsoDateTimeSchema,
+  referenceId: Uuid,
+  submissionId: Type.Union([Uuid, Type.Null()]),
+  verification: Type.Union([Type.Literal("recorded"), Type.Literal("verified")]),
+  safeSummary: Type.String(),
+});
+
+export const NoticeAttemptSummaryApi = Type.Union([
+  Type.Object({
+    submissionId: Uuid,
+    attemptIndex: Type.Integer({ minimum: 0 }),
+    outcome: Type.String(),
+    dispatchState: Type.Union([Type.Literal("pending"), Type.Literal("sending"), Type.Literal("in_doubt"), Type.Literal("finished")]),
+    dispatchStartedAt: Type.Union([IsoDateTimeSchema, Type.Null()]),
+    submittedAt: Type.Union([IsoDateTimeSchema, Type.Null()]),
+    createdAt: IsoDateTimeSchema,
+  }),
+  Type.Null(),
+]);
+
 /** `m23_notr_trigger_kind`. */
 export const NotrTriggerKindApi = Type.Union([
   Type.Literal("revocation"),

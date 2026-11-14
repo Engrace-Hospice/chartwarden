@@ -6308,6 +6308,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/claimmd-medicare-routing/{providerEntityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1BillingClaimmdmedicareroutingByProviderEntityId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/claimmd-medicare-routing/enrollments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1BillingClaimmdmedicareroutingEnrollments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/claimmd-medicare-routing/routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1BillingClaimmdmedicareroutingRoutes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/claimmd-medicare-routing/routes/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1BillingClaimmdmedicareroutingRoutesClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/claims": {
         parameters: {
             query?: never;
@@ -7413,6 +7477,55 @@ export interface paths {
         put?: never;
         /** Probe the MAC portal for a ProviderEntity's credential and stamp last_sandbox_test_at; step-up (§4.1 #36) */
         post: operations["postApiV1BillingMaccredentialsByProviderEntityIdTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/medicare-notice-worklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Organization-scoped unified Medicare notice worklist; counts are scoped to the returned page */
+        get: operations["getApiV1BillingMedicarenoticeworklist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/medicare-provider-routing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1BillingMedicareproviderrouting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/medicare-provider-routing/{providerEntityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1BillingMedicareproviderroutingByProviderEntityId"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -19452,6 +19565,86 @@ export interface paths {
         put?: never;
         /** File a corrected NOE for a rejected one — a new DRAFT copying it, linked by correctsNoticeId (201; 200 replays the correction in progress) */
         post: operations["postApiV1NoerecordsByIdCorrect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/noe-records/{id}/exception-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1NoerecordsByIdExceptionreviews"];
+        put?: never;
+        post: operations["postApiV1NoerecordsByIdExceptionreviews"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/noe-records/{id}/exception-reviews/{reviewId}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1NoerecordsByIdExceptionreviewsByReviewIdEvidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/noe-records/{id}/exception-reviews/{reviewId}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiV1NoerecordsByIdExceptionreviewsByReviewIdHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/noe-records/{id}/exception-reviews/{reviewId}/record-decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1NoerecordsByIdExceptionreviewsByReviewIdRecorddecision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/noe-records/{id}/exception-reviews/{reviewId}/record-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1NoerecordsByIdExceptionreviewsByReviewIdRecordrequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -49923,6 +50116,88 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingClaimmdmedicareroutingByProviderEntityId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerEntityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingClaimmdmedicareroutingEnrollments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingClaimmdmedicareroutingRoutes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingClaimmdmedicareroutingRoutesClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingClaims: {
         parameters: {
             query?: {
@@ -53692,6 +53967,148 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingMedicarenoticeworklist: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                type?: ("noe" | "notr" | "transfer" | "cancellation")[];
+                providerEntityId?: string;
+                patientId?: string;
+                admissionId?: string;
+                state?: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                eventFrom?: string;
+                eventTo?: string;
+                deadlineRisk?: string;
+                readiness?: "blocked" | "verification_required" | "ready";
+                requiresAttention?: boolean;
+                exceptionReviewStatus?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            identity: {
+                                type: "noe" | "notr" | "transfer" | "cancellation";
+                                /** Format: uuid */
+                                noticeId: string;
+                            };
+                            sourceEventType: string;
+                            sourceEventId: string | null;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** Format: uuid */
+                            admissionId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            /** Format: date */
+                            eventDate: string;
+                            deadline: {
+                                dueDate: string | null;
+                                risk: string;
+                                basis: string;
+                            };
+                            lifecycle: string;
+                            latestAttempt: {
+                                /** Format: uuid */
+                                submissionId: string;
+                                outcome: string;
+                                dispatchState: string;
+                            } | null;
+                            readiness: {
+                                key: string;
+                                state: "ready" | "blocked" | "verification_required" | "not_applicable" | "unknown";
+                                reasonCode: string | null;
+                                message: string;
+                                blockingStage: "render" | "dispatch" | "reconciliation" | null;
+                            }[];
+                            macAcceptance: "verified" | "not_verified" | "unknown";
+                            exceptionReview: {
+                                status: string;
+                                decisionProvenance: "operator_attested_document" | null;
+                                updatedAt: string;
+                                evidenceCount: number;
+                            } | null;
+                            nextActions: ("open_notice" | "open_noe_exception_review" | "open_transfer_notice")[];
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                        counts: {
+                            /** @constant */
+                            scope: "returned_page";
+                            total: number;
+                            requiresAttention: number;
+                            deadlineApproaching: number;
+                            overdue: number;
+                            sourceValidationRequired: number;
+                            heldByTransportCapability: number;
+                            inDoubt: number;
+                            awaitingMacEvidence: number;
+                            verifiedMacAccepted: number;
+                            exceptionReviewsPending: number;
+                            /** @constant */
+                            dimensionsOverlap: true;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingMedicareproviderrouting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingMedicareproviderroutingByProviderEntityId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerEntityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingMetrics: {
         parameters: {
             query?: {
@@ -55048,6 +55465,7 @@ export interface operations {
                             payerControlNumber: string | null;
                             latestSubmissionId: string | null;
                             latestSubmissionOutcome: string | null;
+                            latestSubmissionDispatchState: string | null;
                             cancelReason: string | null;
                             blockers: {
                                 code: string;
@@ -55135,6 +55553,7 @@ export interface operations {
                         payerControlNumber: string | null;
                         latestSubmissionId: string | null;
                         latestSubmissionOutcome: string | null;
+                        latestSubmissionDispatchState: string | null;
                         cancelReason: string | null;
                         blockers: {
                             code: string;
@@ -55230,6 +55649,7 @@ export interface operations {
                         payerControlNumber: string | null;
                         latestSubmissionId: string | null;
                         latestSubmissionOutcome: string | null;
+                        latestSubmissionDispatchState: string | null;
                         cancelReason: string | null;
                         blockers: {
                             code: string;
@@ -55335,6 +55755,7 @@ export interface operations {
                         payerControlNumber: string | null;
                         latestSubmissionId: string | null;
                         latestSubmissionOutcome: string | null;
+                        latestSubmissionDispatchState: string | null;
                         cancelReason: string | null;
                         blockers: {
                             code: string;
@@ -55432,6 +55853,7 @@ export interface operations {
                         payerControlNumber: string | null;
                         latestSubmissionId: string | null;
                         latestSubmissionOutcome: string | null;
+                        latestSubmissionDispatchState: string | null;
                         cancelReason: string | null;
                         blockers: {
                             code: string;
@@ -55519,6 +55941,7 @@ export interface operations {
                         payerControlNumber: string | null;
                         latestSubmissionId: string | null;
                         latestSubmissionOutcome: string | null;
+                        latestSubmissionDispatchState: string | null;
                         cancelReason: string | null;
                         blockers: {
                             code: string;
@@ -55648,6 +56071,7 @@ export interface operations {
                         payerControlNumber: string | null;
                         latestSubmissionId: string | null;
                         latestSubmissionOutcome: string | null;
+                        latestSubmissionDispatchState: string | null;
                         cancelReason: string | null;
                         blockers: {
                             code: string;
@@ -89793,6 +90217,142 @@ export interface operations {
                         };
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1NoerecordsByIdExceptionreviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NoerecordsByIdExceptionreviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NoerecordsByIdExceptionreviewsByReviewIdEvidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                reviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1NoerecordsByIdExceptionreviewsByReviewIdHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                reviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NoerecordsByIdExceptionreviewsByReviewIdRecorddecision: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                reviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1NoerecordsByIdExceptionreviewsByReviewIdRecordrequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                reviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

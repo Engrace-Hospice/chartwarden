@@ -56,6 +56,8 @@ export interface Claim837iPartiesDeps {
   ) => Promise<ProviderBillingFacts | null>;
   /** The payer's name for an X12 payer id, or null when the payer is unknown. */
   readonly payerName: (tx: PartiesTx, x12PayerId: string) => Promise<string | null>;
+  /** M40 name lookup for a durable Claim.MD route keyed by canonical payer UUID, not external payer id. */
+  readonly payerNameByCanonicalId?: (tx: PartiesTx, payerId: string) => Promise<string | null>;
 }
 
 const EIN_PATTERN = /^\d{9}$/;
@@ -138,7 +140,7 @@ export function buildClaim837iPartiesPortFactory(
   deps: Claim837iPartiesDeps,
 ): (tx: PartiesTx) => Claim837iPartiesPort {
   return (tx) => ({
-    async partiesFor({ organizationId, providerEntityId, payerId }) {
+    async partiesFor({ organizationId, providerEntityId, payerId, canonicalPayerId }) {
       const routeKey =
         typeof deps.routeKey === "function"
           ? await deps.routeKey(tx, organizationId)
@@ -147,7 +149,9 @@ export function buildClaim837iPartiesPortFactory(
         ? await deps.profile(tx, organizationId, providerEntityId, routeKey)
         : null;
       const provider = await deps.provider(tx, organizationId, providerEntityId);
-      const payerName = await deps.payerName(tx, payerId);
+      const payerName = canonicalPayerId && deps.payerNameByCanonicalId
+        ? await deps.payerNameByCanonicalId(tx, canonicalPayerId)
+        : await deps.payerName(tx, payerId);
       return {
         submitter: profile?.submitter ?? null,
         receiver: profile?.receiver ?? null,

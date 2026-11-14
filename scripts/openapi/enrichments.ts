@@ -518,6 +518,10 @@ import {
   ValidationOverrideListQuerySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/billing-typebox";
 import {
+  MedicareNoticeWorklistQuerySchema as M23MedicareNoticeWorklistQuerySchema,
+  MedicareNoticeWorklistResponseSchema as M23MedicareNoticeWorklistResponseSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/medicare-notice-worklist-typebox";
+import {
   ResolveStaleAttemptBodySchema,
   ResolvedAttemptSchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/clearinghouse-attempt-typebox";
@@ -3898,6 +3902,11 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: CancelNoeBodySchema,
   },
   // ── Medicare transfer notice, TOB 8xC / corrected 8xC / 8xD (transfer-notice.routes.ts) ──
+  "GET /api/v1/billing/medicare-notice-worklist": {
+    summary: "Organization-scoped unified Medicare notice worklist; counts are scoped to the returned page",
+    query: M23MedicareNoticeWorklistQuerySchema,
+    response: M23MedicareNoticeWorklistResponseSchema,
+  },
   "GET /api/v1/billing/transfer-notices": {
     summary:
       "Transfer-notice worklist (8xC / 8xD) with each notice's §20.1.3 blockers and allowed actions",

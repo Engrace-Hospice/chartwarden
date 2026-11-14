@@ -28,6 +28,7 @@ import {
 } from "../services/rhc-carry-over-stored";
 import type { RhcCarryOverView } from "../services/rhc-carry-over-view";
 import type { M23ReadActor } from "./actor";
+import type { NoticeDeadlineAssessment } from "../services/notice-deadline-policy";
 
 type Json = Readonly<Record<string, unknown>>;
 
@@ -397,6 +398,26 @@ export interface NoticeExternalFilingView {
   readonly recordedAt: string | null;
 }
 
+export interface NoticeEvidenceEventView {
+  readonly kind: "notice_created" | "submission_requested" | "dispatch_started" | "transport_receipt_recorded" | "external_filing_recorded" | "mac_accepted" | "mac_rejected";
+  readonly source: "m23_notice_record" | "m23_submission_attempt" | "tenant_recorded_external_filing" | "verified_mac_acknowledgment";
+  readonly at: string;
+  readonly referenceId: string;
+  readonly submissionId: string | null;
+  readonly verification: "recorded" | "verified";
+  readonly safeSummary: string;
+}
+
+export interface NoticeAttemptSummaryView {
+  readonly submissionId: string;
+  readonly attemptIndex: number;
+  readonly outcome: string;
+  readonly dispatchState: "pending" | "sending" | "in_doubt" | "finished";
+  readonly dispatchStartedAt: string | null;
+  readonly submittedAt: string | null;
+  readonly createdAt: string;
+}
+
 export interface NoeView extends NoticeAckOutcomeView, NoticeCorrectionLinkView {
   readonly noeId: string;
   readonly organizationId: string;
@@ -408,6 +429,9 @@ export interface NoeView extends NoticeAckOutcomeView, NoticeCorrectionLinkView 
   readonly electionEffectiveDate: string;
   readonly windowTargetAt: string;
   readonly windowBreachedAt: string | null;
+  readonly deadline: NoticeDeadlineAssessment;
+  readonly evidenceTimeline: readonly NoticeEvidenceEventView[];
+  readonly latestAttempt: NoticeAttemptSummaryView | null;
   readonly externalFiling: NoticeExternalFilingView | null;
   readonly noeControlNumber: string;
   readonly payerNoeControlNumber: string | null;
@@ -432,6 +456,9 @@ export interface NotrView extends NoticeAckOutcomeView, NoticeCorrectionLinkView
   readonly effectiveEndDate: string;
   readonly windowTargetAt: string;
   readonly windowBreachedAt: string | null;
+  readonly deadline: NoticeDeadlineAssessment;
+  readonly evidenceTimeline: readonly NoticeEvidenceEventView[];
+  readonly latestAttempt: NoticeAttemptSummaryView | null;
   readonly externalFiling: NoticeExternalFilingView | null;
   readonly state: NoticeState;
   readonly notrControlNumber: string;

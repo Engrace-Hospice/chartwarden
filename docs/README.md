@@ -68,6 +68,8 @@ These **win over module and screen specs** in any conflict. All in [`architectur
 | [`CHARTWARDEN_AI_GOVERNANCE_v0.2.md`](./architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md) | AI governance (see also the [capability catalog](#ai-capability-catalog)). |
 | [`CHARTWARDEN_DR_BCP_v0.1.md`](./architecture/CHARTWARDEN_DR_BCP_v0.1.md) | Disaster recovery & business continuity. |
 | [`CHARTWARDEN_OPS_RUNBOOK_v0.1.md`](./architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md) | Operations runbook. |
+| [`M23_MEDICARE_PROVIDER_ROUTING.md`](./architecture/M23_MEDICARE_PROVIDER_ROUTING.md) | M23 provider routing ownership, effective dates, and legacy backfill policy. |
+| [`M23_MEDICARE_NOTICE_RENDERING.md`](./architecture/M23_MEDICARE_NOTICE_RENDERING.md) | CM-4A authoritative notice source mapping, encrypted exact X12 artifact persistence, and remaining dispatch holds. |
 | [`CHARTWARDEN_INTEGRATIONS_v0_1.md`](./architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md) | Integration catalog. |
 | [`ARCHITECTURE_25_15_FITNESS.md`](./architecture/ARCHITECTURE_25_15_FITNESS.md) | Architecture-fitness & boundary-enforcement rules (the gates). |
 
@@ -204,7 +206,7 @@ represent **completed, merged** waves and are retained as historical governance 
 | [`history/`](./history/README.md) | Audit findings (F-0xx), #248 outbox-binding rounds, and per-gate incident history, split by topic (moved out of `CLAUDE.md`). |
 | [`adr/`](./adr/) | Decision records — see [`adr/README.md`](./adr/README.md). |
 | [`../audit/`](../audit/) | Generated audit & fitness-enforcement reports (outside `docs/`) — the source for counts (routes, tables, ADRs, modules); read them instead of trusting a number in prose. |
-| [`audits/`](./audits/) | Gap-analysis reports and the audit prompt (`GAP_ANALYSIS_*.md`), plus live-browser and production-readiness audit folders, and [`audits/billing-e2e/`](./audits/billing-e2e/) (billing scenario-to-test matrix, plan, issue drafts). |
+| [`audits/`](./audits/) | Gap-analysis reports and audit prompts, plus live-browser/production-readiness audit folders, [`audits/billing-e2e/`](./audits/billing-e2e/), and [`audits/clearinghouse-integration/M23_DIRECT_MAC_NOTICE_GATEWAY_CONTRACT_V1.md`](./audits/clearinghouse-integration/M23_DIRECT_MAC_NOTICE_GATEWAY_CONTRACT_V1.md) (proposed Direct-MAC v1 integration and conformance requirements). |
 | [`cartography/`](./cartography/) | Workflow cartographies (admission/intake, patient care, encounters/visits, HOPE) used as audit inputs. |
 | [`research/`](./research/) | Regulatory research notes (e.g. `FY2027_HOSPICE_COP_RESEARCH.md`). |
 | [`reviews/`](./reviews/) | Review prompt templates (architecture compliance, exceedance, red-team, lock-grade, production readiness). |

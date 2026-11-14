@@ -65,6 +65,8 @@ export interface Notice837iInput extends Parties837i {
   /** ICD-10-CM, with or without the dot. */
   readonly principalDiagnosis: string;
   readonly attendingPhysician: X12Physician;
+  /** Loop 2310F certifying physician; omitted only when it is the attending physician. */
+  readonly otherPhysician?: X12Physician | null;
 }
 
 /** Build the 837I interchange for one NOE or NOTR (ISA … IEA, one ST-SE). */
@@ -111,6 +113,10 @@ function buildNotice(input: Notice837iInput): string {
     ["HI", `ABK:${dx}`],
     ...hi("BH", [`27:D8:${admission}`]),
     physicianName(input.attendingPhysician, "71", "attendingPhysician"),
+    ...(input.otherPhysician === null || input.otherPhysician === undefined ||
+    input.otherPhysician.npi === input.attendingPhysician.npi
+      ? []
+      : [physicianName(input.otherPhysician, "DN", "otherPhysician")]),
     ["LX", "1"],
     ["SV2", "0650", `HC:Q5009:::::${kind.description}`, "0", "UN", "1"],
     ["DTP", "472", "D8", through],

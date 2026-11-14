@@ -39,6 +39,39 @@ function renderDetail(config: typeof NOE_CONFIG, data: unknown) {
 }
 
 describe("NOE / NOTR acknowledgment outcome", () => {
+  it("uses the server's deadline assessment and clearly holds external transmission", async () => {
+    const view = record({
+      state: "ready",
+      deadline: {
+        applies: true,
+        risk: "due_today",
+        basis: "CMS five calendar day policy",
+        triggerDate: "2026-10-03",
+        dueDate: "2026-10-08",
+        lifecycle: "ready",
+        acceptance: "not_verified",
+        acceptedAt: null,
+        timeliness: "unknown",
+        followUp: "Complete prerequisites and obtain verified MAC acceptance by the due date.",
+      },
+      evidenceTimeline: [{
+        kind: "notice_created",
+        source: "m23_notice_record",
+        at: "2026-10-03T12:00:00.000Z",
+        referenceId: NOE_ID,
+        submissionId: null,
+        verification: "recorded",
+        safeSummary: "Notice record created.",
+      }],
+    });
+    renderDetail(NOE_CONFIG, view);
+    expect(await screen.findByText("Due today — acceptance required")).toBeTruthy();
+    expect(screen.getByText(/no supported external filing pathway is enabled/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "External submission unavailable" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("heading", { name: "Evidence timeline" })).toBeTruthy();
+    expect(screen.getByText("Notice record created.")).toBeTruthy();
+  });
+
   it("a rejected NOE says it was not filed, with the stage and the reason codes", async () => {
     renderDetail(
       NOE_CONFIG,

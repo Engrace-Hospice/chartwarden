@@ -87,3 +87,28 @@ describe.each([
     expect(JSON.stringify(view)).not.toContain("0aa");
   });
 });
+
+describe("notice lifecycle projections", () => {
+  it("uses verified MAC acceptance rather than submission state and records only available timeline evidence", () => {
+    const view = mapNoe({
+      ...noeRow,
+      state: "ack_pending",
+      acceptedAt: null,
+      latestSubmissionId: "00000000-0000-4000-8000-000000000099",
+    } as repositories.NoeRecord, [], new Date("2026-11-04T12:00:00Z"));
+    expect(view.deadline).toMatchObject({
+      risk: "submitted_awaiting_verification",
+      acceptance: "not_verified",
+      timeliness: "unknown",
+    });
+    expect(view.evidenceTimeline).toEqual([
+      expect.objectContaining({ kind: "notice_created", verification: "recorded" }),
+    ]);
+    expect(JSON.stringify(view.evidenceTimeline)).not.toContain("MBI");
+  });
+
+  it("does not apply five-day NOTR deadline when an org-scoped final claim is already filed", () => {
+    const view = mapNotr(notrRow, [], new Date("2026-11-04T12:00:00Z"), true);
+    expect(view.deadline).toMatchObject({ applies: false, risk: "not_applicable" });
+  });
+});

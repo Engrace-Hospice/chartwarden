@@ -107,18 +107,21 @@ export function bodyEnvelopeScheme(cipher: Buffer): BodyEnvelopeScheme {
   return "unknown";
 }
 
-function ringAad(prefix: string, orgId: string, version: string): Buffer {
-  return Buffer.from(`${prefix}${orgId}:${version}`, "utf8");
+function ringAad(prefix: string, orgId: string, version: string, context?: string): Buffer {
+  // Preserve the established message AAD byte-for-byte when no context is supplied.
+  return Buffer.from(context === undefined
+    ? `${prefix}${orgId}:${version}`
+    : `${prefix}${orgId}:${version}:${context}`, "utf8");
 }
 
 /** Seal a plaintext under a tenant ring DEK → v2 envelope that records the ring version. */
-export function sealMessageBodyRing(plaintext: string, dek: RingBodyDek, orgId: string): Buffer {
+export function sealMessageBodyRing(plaintext: string, dek: RingBodyDek, orgId: string, aadContext?: string): Buffer {
   if (!RING_LABEL.test(dek.version)) throw new Error("message body-crypto: bad ring version label");
   if (dek.key.length !== KEY_LEN)
     throw new Error(`message body-crypto: DEK must be ${KEY_LEN} bytes`);
   const nonce = randomBytes(NONCE_LEN);
   const cipher = createCipheriv("aes-256-gcm", dek.key, nonce);
-  cipher.setAAD(ringAad(RING_AAD_PREFIX, orgId, dek.version));
+  cipher.setAAD(ringAad(RING_AAD_PREFIX, orgId, dek.version, aadContext));
   const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const label = Buffer.from(dek.version, "ascii");
   return Buffer.concat([
@@ -148,13 +151,13 @@ export function ringEnvelopeVersion(cipher: Buffer): string {
 }
 
 /** Open a v2 envelope under the ring DEK of that version. Throws on a wrong key/org, tamper or bad format. */
-export function openMessageBodyRing(cipher: Buffer, key: Buffer, orgId: string): string {
+export function openMessageBodyRing(cipher: Buffer, key: Buffer, orgId: string, aadContext?: string): string {
   const { version, body } = parseRing(cipher);
   const nonce = cipher.subarray(body, body + NONCE_LEN);
   const tag = cipher.subarray(cipher.length - TAG_LEN);
   const ct = cipher.subarray(body + NONCE_LEN, cipher.length - TAG_LEN);
   const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-  decipher.setAAD(ringAad(RING_AAD_PREFIX, orgId, version));
+  decipher.setAAD(ringAad(RING_AAD_PREFIX, orgId, version, aadContext));
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
 }

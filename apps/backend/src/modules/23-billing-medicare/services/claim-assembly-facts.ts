@@ -89,7 +89,7 @@ export async function readAssemblyFacts(
     ? await seams.cbsa.areasFor(orgId, patientId, range, inpatientStaysOf(resolvedLoc, range))
     : undefined;
 
-  const pe = await seams.mdm.resolveProviderEntity(orgId, providerEntityId);
+  const pe = await seams.mdm.resolveProviderEntity(orgId, providerEntityId, serviceFrom);
   if (!pe) {
     throw new ChartWardenError(
       "PROVIDER_ENTITY_UNRESOLVED",
