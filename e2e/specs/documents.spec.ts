@@ -117,7 +117,7 @@ test.describe("Documents", () => {
     await page.goto(`/referrals/${referralId}/intake`);
     await expect(page.getByRole("heading", { name: "Review the received referral" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Records" })).toBeVisible();
-    await expect(page.getByText("No records yet")).toBeVisible();
+    await expect(page.getByText("No records yet", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Start review & continue" }).click();
     await expect(page).toHaveURL(new RegExp(`/referrals/${referralId}/intake\\?step=verify$`));
     await expect(page.getByRole("navigation", { name: "Intake progress" })).toBeVisible();
@@ -151,7 +151,7 @@ test.describe("Documents", () => {
     ).toBeVisible();
     const handoff = page.getByRole("region", { name: "Admission handoff summary" });
     await expect(handoff).toBeVisible();
-    await expect(handoff.getByText("Created", { exact: true })).toBeVisible();
+    await expect(handoff.getByText("New patient", { exact: true })).toBeVisible();
     await expect(handoff.getByText(/Referral qualification checks are complete/)).toBeVisible();
     await expectNoAxeViolations(page);
   });

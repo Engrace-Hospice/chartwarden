@@ -1148,8 +1148,15 @@ export function AdmissionDetail({
     // FY2027 — the informational 42 CFR 418.24(c) addendum item: worked on the patient's Election tab.
     else if (action === "COMPLETE_ELECTION_ADDENDUM" && admission.patientId)
       navigate(`/patients/${admission.patientId}/election-certification`);
+    else if (action === "RESOLVE_PATIENT" && admission.referralId)
+      navigate(`/referrals/${admission.referralId}/intake?step=match`);
   };
-  const actionContext = { electionStatement, cti, patientId: admission.patientId };
+  const actionContext = {
+    electionStatement,
+    cti,
+    patientId: admission.patientId,
+    referralId: admission.referralId,
+  };
 
   if (pendingWorkspace) {
     return (
@@ -1302,7 +1309,7 @@ export function AdmissionDetail({
                 <strong>Admission cannot be activated</strong>
                 <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.2rem" }}>
                   {readiness.requirements
-                    .filter((r) => r.blocking && r.status !== "complete")
+                    .filter((r) => r.blocking && !readinessRequirementIsSatisfied(r))
                     .map((r) => (
                       <li key={r.code}>{r.message ?? `${r.label} is incomplete.`}</li>
                     ))}
@@ -2696,8 +2703,8 @@ function AdmissionDocuments({
 
 /**
  * The actions `triggerAction` opens something for. A requirement action outside this set (one the
- * server added before this screen learned it, or one completed elsewhere) renders as a DISABLED button
- * with a tooltip — never as a button that silently does nothing.
+ * server added before this screen learned it, or one completed elsewhere) renders as an
+ * `aria-disabled` button with a visible explanation — never as a button that silently does nothing.
  */
 function isActionHandled(
   action: string,
@@ -2705,6 +2712,7 @@ function isActionHandled(
     electionStatement: ElectionStatementView | null;
     cti: CtiView | null;
     patientId?: string;
+    referralId?: string | null;
   },
 ): boolean {
   switch (action) {
@@ -2720,6 +2728,8 @@ function isActionHandled(
     case "RECORD_ADMISSION_RECOMMENDATION":
     case "COMPLETE_ELECTION_ADDENDUM":
       return true;
+    case "RESOLVE_PATIENT":
+      return Boolean(context.referralId);
     case "REVIEW_F2F":
       return Boolean(context.patientId);
     case "REVIEW_CTI":
@@ -2740,6 +2750,7 @@ function RequirementActionButton({
     electionStatement: ElectionStatementView | null;
     cti: CtiView | null;
     patientId?: string;
+    referralId?: string | null;
   };
   onAction: (action: string) => void;
   style: CSSProperties;
@@ -3010,6 +3021,7 @@ function actionLabel(
   if (action === "RECORD_ADMISSION_RECOMMENDATION") return "Record recommendation";
   if (action === "COMPLETE_ELECTION_ADDENDUM") return "Open election addendum";
   if (action === "REVIEW_F2F") return "Review face-to-face requirements";
+  if (action === "RESOLVE_PATIENT") return "Resolve patient identity";
 
   if (action === "REVIEW_CTI") {
     if (!context.cti) {

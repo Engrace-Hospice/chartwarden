@@ -92,7 +92,7 @@ async function createAdmissionCandidate(page: Page): Promise<string> {
 }
 
 test.describe("Admission", () => {
-  test("main path: direct-intake wizard creates an admission for a real patient", async ({
+  test("main path: direct-intake wizard creates an admission for a synthetic patient", async ({
     page,
   }) => {
     test.setTimeout(90_000);
