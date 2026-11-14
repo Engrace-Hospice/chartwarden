@@ -1,4 +1,4 @@
-import { formatMrn, isValidMedicaidNumber, isValidMedicareNumber } from "@chartwarden/types";
+import { isValidMedicaidNumber, isValidMedicareNumber } from "@chartwarden/types";
 import {
   Button,
   CodeSearchInput,
@@ -12,7 +12,7 @@ import {
   useApiClient,
 } from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ReferralDocumentsPanel } from "../../shell/document-workflows";
 import { PatientLookupField } from "../../shell/entity-lookups";
@@ -73,6 +73,7 @@ export function ReferralDetail({
   const [activity, setActivity] = useState<ReferralActivity[]>([]);
   const [candidates, setCandidates] = useState<ReferralCandidate[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [selectedPatientLabel, setSelectedPatientLabel] = useState("");
   const [newNote, setNewNote] = useState("");
   const [pendingReason, setPendingReason] = useState("");
   const [terminalReason, setTerminalReason] = useState("");
@@ -91,6 +92,7 @@ export function ReferralDetail({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionErrorStage, setActionErrorStage] = useState<IntakeStepId | null>(null);
+  const conversionInFlight = useRef(false);
 
   const load = useCallback(async () => {
     if (!id) return null;
@@ -147,6 +149,8 @@ export function ReferralDetail({
   }, [onVerificationValidityChange, verificationValid]);
 
   async function run(label: string, fn: () => Promise<void>): Promise<void> {
+    if (label === "convert" && conversionInFlight.current) return;
+    if (label === "convert") conversionInFlight.current = true;
     setBusy(label);
     setError(null);
     setActionErrorStage(null);
@@ -155,9 +159,19 @@ export function ReferralDetail({
       const refreshed = await load();
       if (refreshed) onActionComplete?.(label, refreshed);
     } catch (err) {
-      setError(errorMessage(err, "The action could not be completed."));
+      if (errorCode(err) === "VERSION_MISMATCH") {
+        const refreshed = await load();
+        if (refreshed) {
+          setError(
+            "This referral changed while you were reviewing it. Review the updated information and try again.",
+          );
+        }
+      } else {
+        setError(actionErrorMessage(label, err));
+      }
       setActionErrorStage(activeStage ?? null);
     } finally {
+      if (label === "convert") conversionInFlight.current = false;
       setBusy(null);
     }
   }
@@ -192,6 +206,9 @@ export function ReferralDetail({
   const showVerification = showAll || activeStage === "verify" || activeStage === "review";
   const showPatientInformation = showAll || activeStage === "review";
   const showStartAdmission = showAll || activeStage === "handoff" || activeStage === "requirements";
+  const selectedCandidate = candidates.find(
+    (candidate) => (candidate.patientId ?? candidate.id ?? "") === selectedPatientId,
+  );
 
   const header = (
     <PageHeader
@@ -453,6 +470,8 @@ export function ReferralDetail({
                               ifVersion: r.version,
                             });
                             setCandidates(result.candidates ?? []);
+                            setSelectedPatientId("");
+                            setSelectedPatientLabel("");
                           })
                         }
                       >
@@ -476,9 +495,76 @@ export function ReferralDetail({
                     <PatientLookupField
                       label="Search patients manually"
                       value={selectedPatientId}
-                      onChange={setSelectedPatientId}
+                      valueLabel={selectedPatientLabel || undefined}
+                      onChange={(patientId, option) => {
+                        setSelectedPatientId(patientId);
+                        setSelectedPatientLabel(option?.searchLabel ?? "");
+                      }}
                       clearable
                     />
+                    {candidates.length ? (
+                      <div style={candidateList}>
+                        {candidates.map((c) => {
+                          const patientId = c.patientId ?? c.id ?? "";
+                          return (
+                            <div key={candidateKey(c)} style={candidate}>
+                              <strong>{c.displayName ?? c.name ?? "Patient"}</strong>
+                              <span style={muted}>
+                                {c.dob ? `DOB ${formatDateOnly(c.dob)}` : "DOB not shown"}
+                                {c.mrn ? ` · MRN ending ${String(c.mrn).slice(-4)}` : ""}
+                                {c.phoneLast4 ? ` · Phone ending ${c.phoneLast4}` : ""}
+                              </span>
+                              <span style={muted}>
+                                {c.confidence ?? c.score ?? "Potential match"}
+                              </span>
+                              <Button
+                                size="sm"
+                                tone={selectedPatientId === patientId ? "primary" : "secondary"}
+                                disabled={!patientId}
+                                aria-pressed={selectedPatientId === patientId}
+                                aria-label={`Select ${c.displayName ?? c.name ?? "patient"}`}
+                                onClick={() => {
+                                  setSelectedPatientId(patientId);
+                                  setSelectedPatientLabel(c.displayName ?? c.name ?? "Patient");
+                                }}
+                              >
+                                Select patient
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    {selectedPatientId ? (
+                      <section aria-label="Selected patient" style={selectedPatientBox}>
+                        <h3 style={subheading}>Selected patient</h3>
+                        {selectedCandidate ? (
+                          <>
+                            <strong>
+                              {selectedCandidate.displayName ?? selectedCandidate.name ?? "Patient"}
+                            </strong>
+                            <span style={muted}>
+                              {selectedCandidate.dob
+                                ? `DOB ${formatDateOnly(selectedCandidate.dob)}`
+                                : "DOB not shown"}
+                              {selectedCandidate.mrn
+                                ? ` · MRN ending ${String(selectedCandidate.mrn).slice(-4)}`
+                                : ""}
+                              {selectedCandidate.phoneLast4
+                                ? ` · Phone ending ${selectedCandidate.phoneLast4}`
+                                : ""}
+                            </span>
+                          </>
+                        ) : (
+                          <strong>
+                            {selectedPatientLabel || "Patient selected from chart search"}
+                          </strong>
+                        )}
+                        <p style={muted}>
+                          Confirm this selection to link the canonical patient to the referral.
+                        </p>
+                      </section>
+                    ) : null}
                     <Button
                       size="sm"
                       tone="primary"
@@ -494,41 +580,6 @@ export function ReferralDetail({
                     >
                       Confirm selected patient
                     </Button>
-                    {candidates.length ? (
-                      <div style={candidateList}>
-                        {candidates.map((c) => {
-                          const patientId = c.patientId ?? c.id ?? "";
-                          return (
-                            <div key={candidateKey(c)} style={candidate}>
-                              <strong>{c.displayName ?? c.name ?? "Patient"}</strong>
-                              <span style={muted}>
-                                {c.dob ? `DOB ${formatDateOnly(c.dob)}` : "DOB not shown"}
-                                {c.mrn ? ` · ${formatMrn(c.mrn)}` : ""}
-                                {c.phoneLast4 ? ` · Phone ending ${c.phoneLast4}` : ""}
-                              </span>
-                              <span style={muted}>
-                                {c.confidence ?? c.score ?? "Potential match"}
-                              </span>
-                              <Button
-                                size="sm"
-                                tone="primary"
-                                disabled={!patientId}
-                                onClick={() =>
-                                  void run("confirm-patient", async () => {
-                                    await referralCommand(client, r.id, "confirm-patient", {
-                                      patientId,
-                                      ifVersion: r.version,
-                                    });
-                                  })
-                                }
-                              >
-                                Confirm patient
-                              </Button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : null}
                   </div>
                 )}
               </section>
@@ -789,6 +840,46 @@ export function ReferralDetail({
                   </Button>
                 ) : (
                   <div style={stack}>
+                    <section aria-label="Admission handoff summary" style={handoffSummary}>
+                      <h3 style={subheading}>Admission handoff summary</h3>
+                      <div style={factsGrid}>
+                        <Fact label="Patient" value={r.patientNameAtReceipt} />
+                        <Fact
+                          label="Patient match"
+                          value={
+                            PATIENT_RESOLUTION_LABEL[r.patientResolutionStatus] ?? "Not resolved"
+                          }
+                        />
+                        <Fact
+                          label="Date of birth"
+                          value={
+                            r.patientDobAtReceipt
+                              ? formatDateOnly(r.patientDobAtReceipt)
+                              : "Not provided"
+                          }
+                        />
+                        <Fact
+                          label="Primary diagnosis"
+                          value={primaryDiagnosisIcd10.trim() || "Required before admission"}
+                        />
+                      </div>
+                      <p style={muted}>
+                        {canConvert
+                          ? "Referral qualification checks are complete. Final admission checks run when you start the admission."
+                          : r.qualificationBlockers.length === 0
+                            ? resolved
+                              ? "The referral must be qualified before admission handoff."
+                              : "Confirm or create the patient before admission handoff."
+                            : "Resolve the referral qualification blockers before admission handoff."}
+                      </p>
+                      {r.qualificationBlockers.length > 0 ? (
+                        <ul style={blockerList}>
+                          {r.qualificationBlockers.map((blocker) => (
+                            <li key={blocker.code}>{blocker.message}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </section>
                     <CodeSearchInput
                       label="Primary ICD-10"
                       system="icd10cm"
@@ -1071,10 +1162,30 @@ function activityLabel(value: string): string {
 
 function errorMessage(err: unknown, fallback: string): string {
   const e = err as {
-    error?: { message?: string; details?: Array<{ message?: string }> };
+    error?: { code?: string; message?: string; details?: Array<{ message?: string }> };
     message?: string;
   };
   return e.error?.details?.[0]?.message ?? e.error?.message ?? e.message ?? fallback;
+}
+
+function errorCode(err: unknown): string | null {
+  const e = err as { error?: { code?: string }; code?: string };
+  return e.error?.code ?? e.code ?? null;
+}
+
+function actionErrorMessage(action: string, err: unknown): string {
+  const code = errorCode(err);
+  const message = errorMessage(err, "The action could not be completed.");
+  if (
+    action === "create-patient" &&
+    (code === "CONFLICT" || /already exists|duplicate/i.test(message))
+  ) {
+    return "A patient may already exist with these identifiers. Find patient matches or search the chart, then confirm the correct patient.";
+  }
+  if (action === "convert" && (code === "FORBIDDEN" || code === "PERMISSION_DENIED")) {
+    return "You do not have permission to start this admission. Ask an authorized admissions user to complete the handoff.";
+  }
+  return message;
 }
 
 const layout: CSSProperties = {
@@ -1172,6 +1283,23 @@ const label: CSSProperties = {
   fontWeight: 600,
 };
 const stack: CSSProperties = { display: "grid", gap: "0.7rem" };
+const subheading: CSSProperties = { margin: 0, fontSize: "0.9rem" };
+const selectedPatientBox: CSSProperties = {
+  display: "grid",
+  gap: "0.4rem",
+  border: `1px solid ${t.primary}`,
+  borderRadius: t.radiusLg,
+  padding: t.space3,
+  background: `color-mix(in srgb, ${t.primary} 6%, ${t.surfaceLowest})`,
+};
+const handoffSummary: CSSProperties = {
+  display: "grid",
+  gap: "0.7rem",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: t.radiusLg,
+  padding: t.space3,
+  background: t.surfaceLow,
+};
 const resolvedBox: CSSProperties = {
   display: "grid",
   gap: "0.35rem",

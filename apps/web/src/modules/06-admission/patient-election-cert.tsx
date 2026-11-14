@@ -17,9 +17,9 @@ import type { StatusTone } from "@chartwarden/ui";
 // aggregate read GET /api/v1/patients/:patientId/election-certification (+ the patient summary for the
 // banner) via the typed client. The SERVER owns authoritative state (ADR-0030, no frontend authz); a
 // patient with no admission renders an honest empty state, never fabricated certification data.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import {
   ChartPatientBanner,
@@ -111,11 +111,14 @@ const SUB_TONE: Record<string, StatusTone> = {
   closed: "neutral",
 };
 const subTone = (s: string): StatusTone => SUB_TONE[s] ?? "neutral";
+const F2F_REQUIREMENTS_HASH = `${String.fromCharCode(35)}face-to-face-requirements`;
 
 export function PatientElectionCert(): JSX.Element {
   const client = useApiClient();
+  const location = useLocation();
   const session = useSession();
   const { patientId } = useParams<{ patientId: string }>();
+  const focusedF2fNavigationRef = useRef<string | null>(null);
   const [data, setData] = useState<ElectionCert | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -167,6 +170,16 @@ export function PatientElectionCert(): JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (loading || location.hash !== F2F_REQUIREMENTS_HASH) return;
+    const navigationKey = `${location.key}:${patientId ?? ""}`;
+    if (focusedF2fNavigationRef.current === navigationKey) return;
+    const target = document.getElementById("face-to-face-requirements");
+    target?.scrollIntoView?.({ block: "start" });
+    target?.focus();
+    if (target) focusedF2fNavigationRef.current = navigationKey;
+  }, [loading, location.hash, location.key, patientId]);
 
   const signCti = useCallback(
     async (ctiId: string, periodLabel: string, narrative?: string): Promise<void> => {
@@ -381,7 +394,13 @@ export function PatientElectionCert(): JSX.Element {
                 {/* FY2027 — 42 CFR 418.24(c) election statement addendum. */}
                 <ElectionAddendumPanel admissionId={admission.id} />
 
-                <h2 style={{ ...cardHeading, margin: "0 0 0.5rem" }}>Benefit periods</h2>
+                <h2
+                  id="face-to-face-requirements"
+                  tabIndex={-1}
+                  style={{ ...cardHeading, margin: "0 0 0.5rem", scrollMarginTop: "1rem" }}
+                >
+                  Benefit periods and Face-to-Face requirements
+                </h2>
                 {data && data.periods.length === 0 ? (
                   <p style={meta}>No benefit periods opened yet for this admission.</p>
                 ) : (

@@ -56,6 +56,14 @@ function ok(data: unknown) {
   return { data, error: undefined, response: new Response(null, { status: 200 }) };
 }
 
+function fail(code: string, message: string, status = 409) {
+  return {
+    data: undefined,
+    error: { error: { code, message } },
+    response: new Response(null, { status }),
+  };
+}
+
 function clientFor(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     GET: vi.fn(async (path: string) => {
@@ -280,7 +288,7 @@ describe("Referral Phase 2 workflow screens", () => {
       expect(screen.getByRole("heading", { name: "Robert Johnson" })).toBeTruthy(),
     );
     expect(
-      screen.getByText("A patient must be confirmed or created before qualification."),
+      screen.getAllByText("A patient must be confirmed or created before qualification.").length,
     ).toBeTruthy();
     expect(screen.getByText("Packet requested.")).toBeTruthy();
     expect(screen.getByText("Review started")).toBeTruthy();
@@ -341,6 +349,72 @@ describe("Referral Phase 2 workflow screens", () => {
     );
   });
 
+  it("requires a separate confirmation after a patient-match candidate is selected", async () => {
+    const candidateId = "22222222-2222-4222-8222-222222222222";
+    const post = vi.fn(async (path: string) => {
+      if (path.endsWith("/patient-matches")) {
+        return ok({
+          id: referral.id,
+          state: "under_review",
+          version: 5,
+          candidates: [
+            {
+              patientId: candidateId,
+              displayName: "Robert J. Johnson",
+              dob: "1954-05-08",
+              mrn: "MRN-004812",
+              phoneLast4: "0198",
+              confidence: "Strong demographic match",
+            },
+          ],
+        });
+      }
+      return ok({ id: referral.id, state: "under_review", version: 5 });
+    });
+    const client = clientFor({ POST: post as unknown as ApiClient["POST"] });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Find patient matches" }));
+    expect(await screen.findByText("Robert J. Johnson")).toBeTruthy();
+    expect(screen.getByText("Strong demographic match")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select Robert J. Johnson" }));
+    expect(screen.getByRole("heading", { name: "Selected patient" })).toBeTruthy();
+    expect(document.body.textContent).toContain("MRN ending 4812");
+    expect(document.body.textContent).not.toContain("MRN-004812");
+    expect(post.mock.calls.some(([path]) => String(path).endsWith("/confirm-patient"))).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm selected patient" }));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        `/api/v1/referrals/${referral.id}/confirm-patient`,
+        expect.objectContaining({
+          body: expect.objectContaining({ patientId: candidateId, ifVersion: referral.version }),
+        }),
+      ),
+    );
+  });
+
+  it("turns a duplicate create-patient conflict into an explicit matching recovery path", async () => {
+    const client = clientFor({
+      POST: vi.fn(async (path: string) =>
+        path.endsWith("/create-patient")
+          ? fail(
+              "CONFLICT",
+              "A patient with this Medicare number already exists in your organization.",
+            )
+          : ok({ id: referral.id, state: "under_review", version: 5 }),
+      ) as unknown as ApiClient["POST"],
+    });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Create new patient" }));
+
+    expect(await screen.findByText(/patient may already exist/i)).toBeTruthy();
+    expect(screen.getByText(/find patient matches or search the chart/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Find patient matches" })).toBeTruthy();
+  });
+
   it("uses the canonical referral conversion endpoint once a referral is qualified", async () => {
     const qualified = {
       ...referral,
@@ -379,6 +453,152 @@ describe("Referral Phase 2 workflow screens", () => {
           body: expect.objectContaining({ primaryDiagnosisIcd10: "C34.90", ifVersion: 4 }),
         }),
       ),
+    );
+    expect(await screen.findByText("Admission opened")).toBeTruthy();
+  });
+
+  it("shows a deliberate handoff summary before conversion", async () => {
+    const qualified = {
+      ...referral,
+      status: "qualified" as const,
+      state: "qualified" as const,
+      patientId: "22222222-2222-4222-8222-222222222222",
+      patientResolutionStatus: "matched" as const,
+      qualificationBlockers: [],
+    };
+    const client = clientFor({
+      GET: vi.fn(async (path: string) =>
+        path === "/api/v1/referrals/{id}" ? ok(qualified) : ok({ items: [] }),
+      ) as unknown as ApiClient["GET"],
+    });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    const summary = await screen.findByRole("region", { name: "Admission handoff summary" });
+    expect(within(summary).getByText("Robert Johnson")).toBeTruthy();
+    expect(within(summary).getByText("Matched")).toBeTruthy();
+    expect(within(summary).getByText("C34.90")).toBeTruthy();
+    expect(within(summary).getByText(/referral qualification checks are complete/i)).toBeTruthy();
+  });
+
+  it("does not overstate handoff readiness when an unresolved referral has no blockers", async () => {
+    const unresolved = { ...referral, qualificationBlockers: [] };
+    const client = clientFor({
+      GET: vi.fn(async (path: string) =>
+        path === "/api/v1/referrals/{id}" ? ok(unresolved) : ok({ items: [] }),
+      ) as unknown as ApiClient["GET"],
+    });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    const summary = await screen.findByRole("region", { name: "Admission handoff summary" });
+    expect(within(summary).getByText(/confirm or create the patient/i)).toBeTruthy();
+    expect(within(summary).queryByText(/checks are complete/i)).toBeNull();
+  });
+
+  it("shows server-reported qualification blocker reasons in the handoff summary", async () => {
+    renderWithShell(<ReferralDetail />, clientFor(), `/referrals/${referral.id}`);
+
+    const summary = await screen.findByRole("region", { name: "Admission handoff summary" });
+    expect(
+      within(summary).getByText("A patient must be confirmed or created before qualification."),
+    ).toBeTruthy();
+  });
+
+  it("reloads server truth after a stale conversion and keeps the refusal in the handoff step", async () => {
+    const qualified = {
+      ...referral,
+      status: "qualified" as const,
+      state: "qualified" as const,
+      patientId: "22222222-2222-4222-8222-222222222222",
+      patientResolutionStatus: "matched" as const,
+      qualificationBlockers: [],
+    };
+    let referralReads = 0;
+    const get = vi.fn(async (path: string) => {
+      if (path !== "/api/v1/referrals/{id}") return ok({ items: [] });
+      referralReads += 1;
+      return ok(
+        referralReads === 1 ? qualified : { ...qualified, version: 5, priority: "routine" },
+      );
+    });
+    const client = clientFor({
+      GET: get as unknown as ApiClient["GET"],
+      POST: vi.fn(async (path: string) =>
+        path.endsWith("/convert")
+          ? fail("VERSION_MISMATCH", "stale write on referral")
+          : ok({ id: referral.id, state: "qualified", version: 5 }),
+      ) as unknown as ApiClient["POST"],
+    });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Start Admission" }));
+
+    expect(await screen.findByText(/referral changed while you were reviewing it/i)).toBeTruthy();
+    await waitFor(() =>
+      expect(get.mock.calls.filter(([path]) => path === "/api/v1/referrals/{id}")).toHaveLength(2),
+    );
+    expect(screen.getAllByText("Routine").length).toBeGreaterThan(0);
+  });
+
+  it("keeps an authorization refusal in place without suggesting step-up", async () => {
+    const qualified = {
+      ...referral,
+      status: "qualified" as const,
+      state: "qualified" as const,
+      patientId: "22222222-2222-4222-8222-222222222222",
+      patientResolutionStatus: "matched" as const,
+      qualificationBlockers: [],
+    };
+    const client = clientFor({
+      GET: vi.fn(async (path: string) =>
+        path === "/api/v1/referrals/{id}" ? ok(qualified) : ok({ items: [] }),
+      ) as unknown as ApiClient["GET"],
+      POST: vi.fn(async (path: string) =>
+        path.endsWith("/convert")
+          ? fail("FORBIDDEN", "forbidden", 403)
+          : ok({ id: referral.id, state: "qualified", version: 5 }),
+      ) as unknown as ApiClient["POST"],
+    });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Start Admission" }));
+
+    expect(await screen.findByText(/do not have permission to start this admission/i)).toBeTruthy();
+    expect(screen.queryByText(/step-up/i)).toBeNull();
+  });
+
+  it("allows only one conversion request while the first submission is unresolved", async () => {
+    const qualified = {
+      ...referral,
+      status: "qualified" as const,
+      state: "qualified" as const,
+      patientId: "22222222-2222-4222-8222-222222222222",
+      patientResolutionStatus: "matched" as const,
+      qualificationBlockers: [],
+    };
+    let resolveConversion: ((value: ReturnType<typeof ok>) => void) | undefined;
+    const conversion = new Promise<ReturnType<typeof ok>>((resolve) => {
+      resolveConversion = resolve;
+    });
+    const post = vi.fn(async (path: string) =>
+      path.endsWith("/convert")
+        ? conversion
+        : ok({ id: referral.id, state: "qualified", version: 5 }),
+    );
+    const client = clientFor({
+      GET: vi.fn(async (path: string) =>
+        path === "/api/v1/referrals/{id}" ? ok(qualified) : ok({ items: [] }),
+      ) as unknown as ApiClient["GET"],
+      POST: post as unknown as ApiClient["POST"],
+    });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    const start = await screen.findByRole("button", { name: "Start Admission" });
+    fireEvent.click(start);
+    fireEvent.click(start);
+
+    expect(post.mock.calls.filter(([path]) => String(path).endsWith("/convert"))).toHaveLength(1);
+    resolveConversion?.(
+      ok({ id: referral.id, state: "converted", version: 5, admissionId: "adm-1" }),
     );
     expect(await screen.findByText("Admission opened")).toBeTruthy();
   });
