@@ -242,9 +242,7 @@ describe("IntakeUploadDialog — referral context", () => {
     expect((retry as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(retry);
     await waitFor(() => expect(onFiled).toHaveBeenCalledOnce());
-    expect(post.mock.calls.filter(([path]) => path === "/api/v1/document-uploads")).toHaveLength(
-      1,
-    );
+    expect(post.mock.calls.filter(([path]) => path === "/api/v1/document-uploads")).toHaveLength(1);
   });
 
   it("never exposes or files a preserved document after the referral changes", async () => {
