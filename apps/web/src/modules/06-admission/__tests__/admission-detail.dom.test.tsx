@@ -2,7 +2,7 @@ import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import type { Session } from "../../../shell/session";
@@ -215,10 +215,24 @@ function renderWithShell(
               path="/admissions/:id"
               element={<AdmissionDetail {...(initialUpload ? { initialUpload } : {})} />}
             />
+            <Route
+              path="/patients/:patientId/election-certification"
+              element={<ElectionCertificationDestination />}
+            />
           </Routes>
         </SessionProvider>
       </ApiClientProvider>
     </MemoryRouter>,
+  );
+}
+
+function ElectionCertificationDestination(): JSX.Element {
+  const location = useLocation();
+  return (
+    <>
+      <h1>Election certification destination</h1>
+      <span>{location.hash}</span>
+    </>
   );
 }
 
@@ -235,6 +249,11 @@ describe("Admission intake workspace", () => {
       screen.getAllByText("Notice of Rights acknowledgment is required.").length,
     ).toBeGreaterThan(0);
     expect(screen.getAllByText("Election Statement must be signed.").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "Admission setup and privacy" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Notices, election, and certification" }),
+    ).toBeTruthy();
+    expect(screen.getAllByText("Intake coordinator").length).toBeGreaterThan(0);
     // The admission is still "pending" (not yet active) — `HopeEntry` gates HOPE assessment access
     // behind activation (`active={admission.state === "active"}`), so it shows this message rather
     // than the "HOPE Admission Assessment" mini-widget + "Open HOPE" button, which only render once
@@ -1027,7 +1046,7 @@ describe("Patient privacy review (REVIEW_PRIVACY)", () => {
     );
   });
 
-  it("never renders a requirement action this screen can't perform as a live button", async () => {
+  it("opens Face-to-Face corrective work in the patient's certification workflow", async () => {
     const client = clientFor(
       readiness({
         requirements: [
@@ -1036,7 +1055,7 @@ describe("Patient privacy review (REVIEW_PRIVACY)", () => {
             label: "Face-to-Face",
             status: "action_required",
             blocking: true,
-            message: "Face-to-face encounter is required.",
+            message: "Face-to-face encounter is overdue and needs an exception review.",
             action: "REVIEW_F2F",
           },
         ],
@@ -1046,9 +1065,51 @@ describe("Patient privacy review (REVIEW_PRIVACY)", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
     );
-    const buttons = screen.getAllByRole("button", { name: /review f2f/i });
+    expect(screen.getByRole("heading", { name: "Timing and clinical follow-up" })).toBeTruthy();
+    expect(
+      screen.getAllByText("Face-to-face encounter is overdue and needs an exception review.")
+        .length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("Hospice physician or nurse practitioner").length).toBeGreaterThan(
+      0,
+    );
+    const buttons = screen.getAllByRole("button", { name: /review face-to-face requirements/i });
     expect(buttons.length).toBeGreaterThan(0);
-    for (const b of buttons) expect((b as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(buttons[0]!);
+    expect(
+      await screen.findByRole("heading", { name: "Election certification destination" }),
+    ).toBeTruthy();
+    expect(screen.getByText("#face-to-face-requirements")).toBeTruthy();
+  });
+
+  it("keeps an unknown future corrective action visible but disabled", async () => {
+    renderWithShell(
+      clientFor(
+        readiness({
+          requirements: [
+            {
+              code: "future_requirement",
+              label: "Future requirement",
+              status: "action_required",
+              blocking: true,
+              message: "A future server requirement needs review.",
+              action: "REVIEW_FUTURE_REQUIREMENT",
+            },
+          ],
+        }),
+      ),
+    );
+
+    const actions = await screen.findAllByRole("button", { name: /review future requirement/i });
+    expect(actions.length).toBeGreaterThan(0);
+    for (const action of actions) {
+      expect((action as HTMLButtonElement).disabled).toBe(false);
+      expect(action.getAttribute("aria-disabled")).toBe("true");
+      expect(action.getAttribute("aria-describedby")).toBeTruthy();
+    }
+    expect(
+      screen.getAllByText("This step can't be completed from this screen yet.").length,
+    ).toBeGreaterThan(0);
   });
 });
 
