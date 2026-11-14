@@ -43,6 +43,7 @@ import type { AlertEmitter } from "@chartwarden/messaging";
 import {
   type LinkedHelpRequestPort,
   SupportRepository,
+  elevateSupportSession,
   startSupportSession,
 } from "@chartwarden/saas-tenant-platform";
 import {
@@ -1534,6 +1535,63 @@ describe.skipIf(!DB_URL)("M34 support session, LIVE Postgres on the real roles",
         startedSession,
       ]);
       expect(session?.close_reason).toBe("grant_revoked");
+    });
+  });
+
+  describe("an elevation racing a revoke", () => {
+    it("serializes on the grant before the session so revocation closes the elevated session", async () => {
+      const grantId = (await issue(ADMIN, "organization_scoped")).body.id;
+      const startedSession = (await start(grantId)).body.sessionId;
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let locked: () => void = () => undefined;
+      const hasLock = new Promise<void>((resolve) => {
+        locked = resolve;
+      });
+
+      const elevating = withPlatformContext(
+        platform.db,
+        { jobId: JOB_ID, reason: "race elevate", crossTenant: true },
+        auditBypass,
+        async (tx) => {
+          const repo = new SupportRepository(tx);
+          const grant = await repo.findConsentGrantByIdForShare(grantId);
+          expect(grant?.revokedAt).toBeNull();
+          locked();
+          await gate;
+          return elevateSupportSession(ports.bind(tx), {
+            supportSessionId: startedSession,
+            actorMembershipId: OPERATOR.membership,
+          });
+        },
+      );
+      await hasLock;
+      let revokeSettled = false;
+      const revoking = revoke(ADMIN, grantId).then((response) => {
+        revokeSettled = true;
+        return response;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(revokeSettled, "the revoke must wait for the elevation's SHARE lock").toBe(false);
+      release();
+      await elevating;
+      expect((await revoking).statusCode).toBe(200);
+
+      const [session] = await q<{ close_reason: string }>(
+        "SELECT close_reason FROM support_session WHERE id = $1",
+        [startedSession],
+      );
+      expect(session?.close_reason).toBe("grant_revoked");
+      expect(
+        (
+          await q(
+            "SELECT 1 FROM support_session_event WHERE support_session_id = $1 AND event_kind = 'session.elevate'",
+            [startedSession],
+          )
+        ).length,
+      ).toBe(1);
     });
   });
 });

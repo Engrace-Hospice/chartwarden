@@ -192,6 +192,7 @@ export interface TenantClearinghouseService {
     store: ConfigStore,
     actor: ClearinghouseActor,
     input: RecordBaaInput,
+    expectedVersion?: number,
   ): Promise<{ readonly view: ClearinghouseConfigView; readonly changedFields: readonly string[] }>;
   /** The platform operator verifies the tenant's recorded BAA. */
   /**
@@ -215,6 +216,7 @@ export interface TenantClearinghouseService {
     store: ConfigStore,
     actor: ClearinghouseActor,
     input: VerifyClearinghouseInput,
+    expectedVersion?: number,
   ): Promise<VerifyPlan>;
   /** Step 2: the vendor call (no store, no transaction). Null when the plan is an attestation. */
   runProbe(plan: VerifyPlan): Promise<ConnectionProbeOutcome | null>;

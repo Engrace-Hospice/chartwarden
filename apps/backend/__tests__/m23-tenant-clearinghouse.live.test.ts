@@ -310,6 +310,17 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       headers: { ...(method === "GET" ? tenantRead(org) : tenantWrite(org)), ...extra },
       ...(payload ? { payload } : {}),
     });
+  const tenantPinnedCall = async (
+    org: string,
+    path: "/baa" | "/verify",
+    payload: object,
+    extra: Record<string, string> = {},
+  ) => {
+    const current = await tenantCall("GET", org, "");
+    expect(current.statusCode, current.body).toBe(200);
+    const version = (current.json() as { version: number }).version;
+    return tenantCall("POST", org, path, payload, { ...extra, "if-match": String(version) });
+  };
   const platformCall = (
     method: "GET" | "PUT" | "POST",
     slug: string,
@@ -1004,7 +1015,23 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       allow: false,
       reason: "clearinghouse_not_active",
     });
-    const verify = await tenantCall("POST", ORG_A, "/verify", {});
+    const beforeVerify = await tenantCall("GET", ORG_A, "");
+    const verifyVersion = (beforeVerify.json() as { version: number }).version;
+    const probesBeforeStale = probed.length;
+    const unpinnedVerify = await tenantCall("POST", ORG_A, "/verify", {});
+    expect(unpinnedVerify.statusCode).toBe(428);
+    expect(errorCode(unpinnedVerify)).toBe("IF_MATCH_REQUIRED");
+    const staleVerify = await tenantCall(
+      "POST",
+      ORG_A,
+      "/verify",
+      {},
+      { "if-match": String(verifyVersion + 1) },
+    );
+    expect(staleVerify.statusCode, staleVerify.body).toBe(409);
+    expect(errorCode(staleVerify)).toBe("STALE_VERSION");
+    expect(probed).toHaveLength(probesBeforeStale);
+    const verify = await tenantPinnedCall(ORG_A, "/verify", {});
     expect(verify.statusCode, verify.body).toBe(200);
     expect(verify.json()).toMatchObject({
       config: { status: "verified", verification: { kind: "connection_test" } },
@@ -1021,7 +1048,17 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect(noBaa.statusCode).toBe(409);
     expect(errorCode(noBaa)).toBe("CLEARINGHOUSE_BAA_NOT_VERIFIED");
     // The tenant records its own BAA; an operator has not verified it yet -> still 409.
-    const record = await tenantCall("POST", ORG_A, "/baa", BAA);
+    const beforeBaa = await tenantCall("GET", ORG_A, "");
+    const baaVersion = (beforeBaa.json() as { version: number }).version;
+    const unpinnedBaa = await tenantCall("POST", ORG_A, "/baa", BAA);
+    expect(unpinnedBaa.statusCode).toBe(428);
+    expect(errorCode(unpinnedBaa)).toBe("IF_MATCH_REQUIRED");
+    const staleBaa = await tenantCall("POST", ORG_A, "/baa", BAA, {
+      "if-match": String(baaVersion + 1),
+    });
+    expect(staleBaa.statusCode, staleBaa.body).toBe(409);
+    expect(errorCode(staleBaa)).toBe("STALE_VERSION");
+    const record = await tenantPinnedCall(ORG_A, "/baa", BAA);
     expect(record.statusCode, record.body).toBe(200);
     expect(record.json()).toMatchObject({
       status: "verified",
@@ -1032,7 +1069,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect(unverified.statusCode).toBe(409);
     expect(errorCode(unverified)).toBe("CLEARINGHOUSE_BAA_NOT_VERIFIED");
     // The tenant cannot verify its own BAA: the route does not exist on the tenant surface, and the body refuses the field.
-    expect((await tenantCall("POST", ORG_A, "/baa", { ...BAA, verified: true })).statusCode).toBe(
+    expect((await tenantPinnedCall(ORG_A, "/baa", { ...BAA, verified: true })).statusCode).toBe(
       422,
     );
     // A platform operator verifies it: allowed for an ACTIVE tenant too (ORG_A is live), audited with operator, org and reason.
@@ -1042,7 +1079,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     const unpinned = await platformCall("POST", "ch-a", "/baa/verify", { reason: REASON });
     expect(unpinned.statusCode).toBe(428);
     expect(errorCode(unpinned)).toBe("IF_MATCH_REQUIRED");
-    const swapped = await tenantCall("POST", ORG_A, "/baa", {
+    const swapped = await tenantPinnedCall(ORG_A, "/baa", {
       ...BAA,
       documentRef: "Claim.MD BAA, a different agreement, contract folder 9",
     });
@@ -1293,6 +1330,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       attempts: new InMemoryAttemptStore(),
       platformBinding,
       fallbackOrgIds: new Set([ORG_E]),
+      isOrganizationLive: async () => true,
     });
     const forOrg = runtime.binding.forOrg;
     expect((await forOrg?.(ORG_A))?.transport.vendor).toBe("claimmd");
@@ -1354,6 +1392,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       attempts: new InMemoryAttemptStore(),
       platformBinding: { vendor: "in_memory", transport: createInMemoryHarness().transport },
       fallbackOrgIds: new Set(),
+      isOrganizationLive: async () => true,
     });
     const moved: number[] = [];
     await expect(
@@ -1372,7 +1411,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     expect(moved).toHaveLength(1);
     configureClaimsBillingGate({ mode: "enforce", log: () => {} });
     // re-verify and re-activate the new key: the BAA needs no second verification
-    const reverify = await tenantCall("POST", ORG_A, "/verify", {});
+    const reverify = await tenantPinnedCall(ORG_A, "/verify", {});
     expect(reverify.json()).toMatchObject({
       config: { status: "verified" },
       test: { outcome: "ok" },
@@ -1574,7 +1613,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
     const early = await tenantCall("POST", ORG_B, "/activate", {});
     expect(early.statusCode).toBe(409);
     expect(errorCode(early)).toBe("CLEARINGHOUSE_BAA_NOT_VERIFIED");
-    expect((await tenantCall("POST", ORG_B, "/baa", BAA)).statusCode).toBe(200);
+    expect((await tenantPinnedCall(ORG_B, "/baa", BAA)).statusCode).toBe(200);
     const recordedB = (await tenantCall("GET", ORG_B, "")).json() as {
       baa: { recordedAt: string };
     };
@@ -2805,8 +2844,8 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         secret: keyOf(slug),
       });
       expect(created.statusCode, created.body).toBe(201);
-      expect((await tenantCall("POST", org, "/verify", {})).statusCode).toBe(200);
-      const recorded = await tenantCall("POST", org, "/baa", BAA);
+      expect((await tenantPinnedCall(org, "/verify", {})).statusCode).toBe(200);
+      const recorded = await tenantPinnedCall(org, "/baa", BAA);
       expect(recorded.statusCode, recorded.body).toBe(200);
       const pin = (recorded.json() as View).baa?.recordedAt as string;
       const verified = await platformCall(
@@ -2891,6 +2930,8 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
         attempts: new InMemoryAttemptStore(),
         platformBinding: { vendor: "in_memory", transport: createInMemoryHarness().transport },
         fallbackOrgIds: new Set(),
+        // This describe exercises BAA-revocation/config state; organization lifecycle is held live throughout.
+        isOrganizationLive: async () => true,
       });
     const unbound = async (org: string) => runtime().binding.forOrg?.(org);
     /** The admin connection inside ONE transaction that carries the guard trigger's setting: what the config store sets for a service write. */
@@ -3481,7 +3522,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
       await attempt(REV_ORG_N, 4, "reserved", 0);
       expect((await revoke("rev-n", pin)).statusCode).toBe(200);
 
-      const recorded = await tenantCall("POST", REV_ORG_N, "/baa", BAA); // the identical document: still a new statement
+      const recorded = await tenantPinnedCall(REV_ORG_N, "/baa", BAA); // the identical document: still a new statement
       expect(recorded.statusCode, recorded.body).toBe(200);
       expect(recorded.json()).toMatchObject({
         status: "verified",
@@ -3620,7 +3661,7 @@ describe.skipIf(!DB_URL)("M23 tenant clearinghouse, LIVE Postgres on the real ro
          VALUES ($1,'claimmd',$2)`,
         [ORG_A, fingerprint],
       );
-      const ordinary = await tenantCall("POST", REV_ORG_Q, "/baa", {
+      const ordinary = await tenantPinnedCall(REV_ORG_Q, "/baa", {
         ...BAA,
         documentRef: "another agreement, contract folder 31",
       });

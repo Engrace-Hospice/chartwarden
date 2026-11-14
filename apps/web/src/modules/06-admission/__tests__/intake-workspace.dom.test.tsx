@@ -46,7 +46,7 @@ const referral: ReferralView = {
   ],
 };
 
-function clientFor(value: ReferralView = referral): ApiClient {
+function clientFor(value: ReferralView = referral, reviewGate?: Promise<void>): ApiClient {
   let current = value;
   return {
     GET: vi.fn(async (path: string) => ({
@@ -56,6 +56,7 @@ function clientFor(value: ReferralView = referral): ApiClient {
     })),
     POST: vi.fn(async (path: string) => {
       if (path.endsWith("/review")) {
+        await reviewGate;
         current = {
           ...current,
           state: "under_review",
@@ -115,8 +116,8 @@ function clientFor(value: ReferralView = referral): ApiClient {
   } as unknown as ApiClient;
 }
 
-function renderWorkspace(value?: ReferralView): ApiClient {
-  const client = clientFor(value);
+function renderWorkspace(value?: ReferralView, reviewGate?: Promise<void>): ApiClient {
+  const client = clientFor(value, reviewGate);
   render(
     <MemoryRouter initialEntries={[`/referrals/${referral.id}/intake`]}>
       <ApiClientProvider client={client}>
@@ -185,6 +186,27 @@ describe("IntakeWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Save & continue to patient matching" }));
     expect(await screen.findByRole("heading", { name: "Patient Resolution" })).toBeTruthy();
+  });
+
+  it("disables Start review while its transition is in flight", async () => {
+    let releaseReview = (): void => undefined;
+    const reviewGate = new Promise<void>((resolve) => {
+      releaseReview = resolve;
+    });
+    const client = renderWorkspace(
+      { ...referral, state: "received", status: "received" },
+      reviewGate,
+    );
+
+    const startReview = await screen.findByRole("button", { name: "Start review" });
+    fireEvent.click(startReview);
+
+    await waitFor(() => expect((startReview as HTMLButtonElement).disabled).toBe(true));
+    fireEvent.click(startReview);
+    expect(client.POST).toHaveBeenCalledTimes(1);
+
+    releaseReview();
+    await screen.findByRole("heading", { name: "Verify the referral information" });
   });
 
   it("lets staff reopen completed steps, go back, and return to the current required step", async () => {

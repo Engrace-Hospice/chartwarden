@@ -2,7 +2,7 @@
 // Step 2, Plan & contract: the operator picks a published census-banded plan, previews what the tenant would pay, and signs it. Signing
 // is what settles the step (the server attests it through the wizard), so there is no separate "mark done". The contract read is
 // audited per read, so it is made only when this step is open and can be acted on.
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PlanContractPanel, formatCents } from "./plan-contract-panel";
 import {
@@ -504,12 +504,12 @@ describe("PlanContractPanel: the billing service is a choice", () => {
       },
     });
     await screen.findByLabelText("Plan");
-    chooseService("none");
+    chooseService("billing_software");
     fillInputs();
     fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
     await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
     fireEvent.change(screen.getByLabelText("Staff accounts"), { target: { value: "13" } });
-    release(ok(PREVIEW_RESULT));
+    await act(async () => release(ok(PREVIEW_RESULT)));
     await waitFor(() =>
       expect(
         (screen.getByRole("button", { name: "Preview price" }) as HTMLButtonElement).disabled,
@@ -519,7 +519,7 @@ describe("PlanContractPanel: the billing service is a choice", () => {
     // asking again for the inputs as they are now shows that price
     fireEvent.click(screen.getByRole("button", { name: "Preview price" }));
     await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(2));
-    release(ok(PREVIEW_RESULT));
+    await act(async () => release(ok(PREVIEW_RESULT)));
     expect(await screen.findByText("$1,088.00")).toBeTruthy();
   });
 });

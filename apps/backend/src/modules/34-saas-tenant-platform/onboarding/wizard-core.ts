@@ -61,15 +61,21 @@ export async function load(
   return { store, tenant, templates, tasks };
 }
 
+/** The task and its template, whoever asks (404 when the tenant has no such task). */
+export function stepOf(ctx: Loaded, taskId: string): { task: StepTask; template: StepTemplate } {
+  const task = ctx.tasks.find((t) => t.id === taskId);
+  const template = task && ctx.templates.find((t) => t.key === task.templateKey);
+  if (!task || !template) throw new NotFoundError("onboarding_task", taskId);
+  return { task, template };
+}
+
 /** The task and its template, for a step action by `actor` (owner check included). */
 export function targetOf(
   ctx: Loaded,
   taskId: string,
   actor: WizardActor,
 ): { task: StepTask; template: StepTemplate } {
-  const task = ctx.tasks.find((t) => t.id === taskId);
-  const template = task && ctx.templates.find((t) => t.key === task.templateKey);
-  if (!task || !template) throw new NotFoundError("onboarding_task", taskId);
+  const { task, template } = stepOf(ctx, taskId);
   if (!actorMayActOnStep(actor, template.owner)) {
     throw refuse(
       "ONBOARDING_STEP_OWNER_MISMATCH",
@@ -110,7 +116,7 @@ export async function view(ctx: Loaded, now: () => Date): Promise<WizardView> {
  * officer's attestation and the platform approval are the two parties, and one operator could otherwise be both hats.
  */
 export async function isPlatformStaffMember(
-  store: WizardStore,
+  store: Pick<WizardStore, "isPlatformStaff">,
   member: { readonly userId: string; readonly roleKeys: readonly string[] },
 ): Promise<boolean> {
   return (

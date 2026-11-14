@@ -23,11 +23,13 @@ export type OrgDataWritten = (
 
 /**
  * The scope runs under the TARGET organization's own RLS context (the actor's user as `app.user_id`, so the write-audit trigger
- * and any policy that pins the session user see them), hands `run` stores bound to that transaction, then runs `afterWrite` in it.
+ * and any policy that pins the session user see them), runs an optional serialization step, hands `run` stores bound to that
+ * transaction, then runs `afterWrite` in it.
  */
 export function createOrgDataWriteScope(
   db: DbClient,
   afterWrite: OrgDataWritten,
+  beforeWrite?: OrgDataWritten,
 ): OrgDataWriteScope {
   return (scope, run) =>
     withOrgContext(
@@ -35,6 +37,7 @@ export function createOrgDataWriteScope(
       { organizationId: scope.organizationId, userId: scope.userId },
       async (rawTx) => {
         const tx = rawTx as unknown as DbClient;
+        await beforeWrite?.(tx, scope);
         const result = await run(
           createDrizzleOrgAdminStore(tx, createDrizzleSiteAdminRepository(tx, scope.userId)),
         );

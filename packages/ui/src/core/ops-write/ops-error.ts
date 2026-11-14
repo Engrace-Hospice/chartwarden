@@ -60,6 +60,9 @@ export interface ResponseLike {
   readonly headers?: { get(name: string): string | null };
 }
 
+/** Backward-compatible name used by existing operator-write call sites. */
+export type ErrorResponse = ResponseLike;
+
 interface Envelope {
   readonly code: string | null;
   readonly correlationId: string | null;
@@ -120,10 +123,10 @@ const RATE_LIMITED_CODE = "RATE_LIMITED";
 
 /** `Retry-After` as whole seconds (the delta form every limiter here sends); anything else is not used. */
 function retryAfterOf(response: ResponseLike | null | undefined): number | null {
-  const raw = response?.headers?.get("retry-after");
+  const raw = response?.headers?.get("retry-after") ?? response?.headers?.get("Retry-After");
   if (raw === null || raw === undefined || !/^\d{1,6}$/.test(raw.trim())) return null;
   const seconds = Number(raw.trim());
-  return seconds > 0 ? seconds : null;
+  return seconds > 0 && seconds <= 3600 ? seconds : null;
 }
 
 const waitWords = (seconds: number): string =>
@@ -219,4 +222,16 @@ export function describeOpsError(
     correlationId,
     ...(kind === "rate-limited" ? { retryAfterSeconds } : {}),
   };
+}
+
+/**
+ * A refusal that is about an input the screen renders: the form stays open and each message is read beside its field, so the notice is
+ * not repeated. `renders` says which fields this screen actually shows (default: any): a refusal that names only fields the screen does
+ * not render (the server's `(root)` for an unknown shape) is NOT about an input, and its notice must show.
+ */
+export function isAboutAnInput(
+  failure: Pick<OpsFailure, "kind" | "fieldErrors">,
+  renders: (field: string) => boolean = () => true,
+): boolean {
+  return failure.kind === "validation" && Object.keys(failure.fieldErrors).some(renders);
 }

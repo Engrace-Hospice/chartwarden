@@ -15,13 +15,9 @@ import {
   rejectAiActor,
   requireIdempotencyKey,
 } from "@chartwarden/shared/route-kit";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { writeActorOf } from "./actor";
-import {
-  MacCredentialListQuerySchema,
-  ProviderEntityParamsSchema,
-  UpsertMacCredentialBodySchema,
-} from "./billing-typebox";
+import { MacCredentialListQuerySchema, ProviderEntityParamsSchema } from "./billing-typebox";
 import {
   P,
   PROVIDER_SCOPE,
@@ -29,12 +25,19 @@ import {
   targetProviderFromBody,
   targetProviderFromParams,
 } from "./guards";
+import { parseMacCredentialBody } from "./mac-credential-body";
 import type { M23ReadRouteService } from "./read-service";
 import type { M23WriteRouteService } from "./write-service";
 
 export interface MacCredentialRouteDeps {
   readonly readService: M23ReadRouteService;
   readonly writeService: M23WriteRouteService;
+  /**
+   * Per-user and per-organization cap on `POST .../test` (an outbound call to the MAC gateway per request). Production wires
+   * MAC_CREDENTIAL_TEST_ROUTE_RATE_LIMIT, which fails CLOSED: with its store down the route is a typed 503, never an unmetered gateway
+   * call. Absent = unlimited (tests only).
+   */
+  readonly testRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 }
 
 const READ = P("billing.mac_credential.read");
@@ -87,12 +90,23 @@ export function registerMacCredentialRoutes(
     },
   );
 
-  // POST /billing/mac-credentials/:providerEntityId/test — probe the MAC sandbox for a PE's credential and
-  // stamp `last_sandbox_test_at` on success. §4.1 #36 (GAP-144). Step-up (privileged config) + the provider
-  // scope + AI block + Idempotency-Key; the secret is never read, returned or logged.
+  // POST /billing/mac-credentials/:providerEntityId/test — check that the MAC portal for the PE's credential's jurisdiction
+  // answers and stamp `last_sandbox_test_at` when it does. §4.1 #36 (GAP-144). It does NOT validate the credential: the probe
+  // sends no secret, client id or submitter id (the first real submission is their first use). Step-up (privileged config) + the
+  // provider scope + AI block + Idempotency-Key; the secret is never read, returned or logged.
   app.post(
     "/api/v1/billing/mac-credentials/:providerEntityId/test",
-    { preHandler: [ADMIN, ADMIN_PARAM_ABAC, ADMIN_STEPUP, NO_AI, IDEMPOTENT] },
+    {
+      // The limiter runs AFTER the permission and step-up guards, so a caller who may not test never spends the budget.
+      preHandler: [
+        ADMIN,
+        ADMIN_PARAM_ABAC,
+        ADMIN_STEPUP,
+        NO_AI,
+        IDEMPOTENT,
+        ...(deps.testRateLimit ? [deps.testRateLimit as never] : []),
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { providerEntityId } = parse(ProviderEntityParamsSchema, request.params);
@@ -106,7 +120,7 @@ export function registerMacCredentialRoutes(
     { preHandler: [ADMIN, ADMIN_ABAC, ADMIN_STEPUP, NO_AI, IDEMPOTENT] },
     async (request, reply) => {
       const actor = writeActorOf(request);
-      const body = parse(UpsertMacCredentialBodySchema, request.body);
+      const body = parseMacCredentialBody(request.body);
       const expectedVersion = optionalIfMatchVersionOf(request);
       const res = await writeService.upsertMacCredential(actor, {
         providerEntityId: body.providerEntityId,
