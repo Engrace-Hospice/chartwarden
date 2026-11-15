@@ -1,6 +1,7 @@
 # ChartWarden — Workflow 04: Scheduled Visit & Encounter Documentation
 
-**Status:** Four boundaries approved on 2026-11-14; G0 audit authorized; implementation is not approved
+**Status:** Four boundaries and G0 approved on 2026-11-14; presentation-focused implementation is
+in progress without backend contract changes
 
 **Sequence:** Workflow 04, after Unified Intake, Patient Admission, and Patient Chart & Demographics
 
@@ -173,28 +174,28 @@ G0 is an evidence task only. Commit the audit separately and stop for approval b
 
 ## 8. Minimum test matrix
 
-| ID | Scenario | Required assertion |
-|---|---|---|
-| T01 | Clinician opens assigned visit | Correct patient/visit; no wrong-patient or stale context |
-| T02 | Repeated start/open action | One encounter or an explicit idempotent/conflict outcome |
-| T03 | Save structured draft | Canonical M8 draft reloads; no false success |
-| T04 | Network failure during save | Local work retained; retry is safe and status is accurate |
-| T05 | Navigate with dirty/in-flight work | Explicit protection; system exits are not intercepted |
-| T06 | Two tabs edit one draft | Existing version/conflict policy is explicit and tested |
-| T07 | Missing required content | Finalize returns server blockers and actionable remediation |
-| T08 | Authorized signature | Fresh auth, immutable signed record, audit/outbox behavior |
-| T09 | Unauthorized/direct signature | UI omits action; backend denies without data leakage |
-| T10 | LPN/CHHA signature | Cosign request, deadline, routing, and billing hold are correct |
-| T11 | RN/supervisor cosign | Exact role/scope; lifecycle closes once; audit remains durable |
-| T12 | Signed-note correction | Addendum only; original bytes and attribution preserved |
-| T13 | EVV complete/missing/late | M18 truth represented; M8 does not manufacture EVV events |
-| T14 | Care-plan review overdue | Server gate blocks and links to canonical M7 correction |
-| T15 | Visit completion continuity | Schedule and chart reach the same signed encounter |
-| T16 | Cross-tenant/caseload deep link | Consistent non-leaking denial at UI, API, and RLS layers |
-| T17 | Mobile/offline interruption | Implemented recovery behavior proven; unsupported claims removed |
-| T18 | Responsive and accessible | 375/768/1440, keyboard, focus, labels, axe, no clipped controls |
-| T19 | Performance and resilience | Stable layout, bounded requests, no critical console/5xx errors |
-| T20 | PHI handling | No PHI in URL, logs, analytics, persistent browser storage, or evidence |
+| ID  | Scenario                           | Required assertion                                                      |
+| --- | ---------------------------------- | ----------------------------------------------------------------------- |
+| T01 | Clinician opens assigned visit     | Correct patient/visit; no wrong-patient or stale context                |
+| T02 | Repeated start/open action         | One encounter or an explicit idempotent/conflict outcome                |
+| T03 | Save structured draft              | Canonical M8 draft reloads; no false success                            |
+| T04 | Network failure during save        | Local work retained; retry is safe and status is accurate               |
+| T05 | Navigate with dirty/in-flight work | Explicit protection; system exits are not intercepted                   |
+| T06 | Two tabs edit one draft            | Existing version/conflict policy is explicit and tested                 |
+| T07 | Missing required content           | Finalize returns server blockers and actionable remediation             |
+| T08 | Authorized signature               | Fresh auth, immutable signed record, audit/outbox behavior              |
+| T09 | Unauthorized/direct signature      | UI omits action; backend denies without data leakage                    |
+| T10 | LPN/CHHA signature                 | Cosign request, deadline, routing, and billing hold are correct         |
+| T11 | RN/supervisor cosign               | Exact role/scope; lifecycle closes once; audit remains durable          |
+| T12 | Signed-note correction             | Addendum only; original bytes and attribution preserved                 |
+| T13 | EVV complete/missing/late          | M18 truth represented; M8 does not manufacture EVV events               |
+| T14 | Care-plan review overdue           | Server gate blocks and links to canonical M7 correction                 |
+| T15 | Visit completion continuity        | Schedule and chart reach the same signed encounter                      |
+| T16 | Cross-tenant/caseload deep link    | Consistent non-leaking denial at UI, API, and RLS layers                |
+| T17 | Mobile/offline interruption        | Implemented recovery behavior proven; unsupported claims removed        |
+| T18 | Responsive and accessible          | 375/768/1440, keyboard, focus, labels, axe, no clipped controls         |
+| T19 | Performance and resilience         | Stable layout, bounded requests, no critical console/5xx errors         |
+| T20 | PHI handling                       | No PHI in URL, logs, analytics, persistent browser storage, or evidence |
 
 Use synthetic patients and clinicians only. A green unit test does not substitute for live RLS,
 real-browser, signature, or multi-role evidence.

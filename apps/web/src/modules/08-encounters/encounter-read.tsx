@@ -1124,11 +1124,11 @@ export function EncounterRead(): JSX.Element {
       <div style={workspace}>
         <div style={workspaceBody}>
           <ChartModuleRail patientId={e.patientId} current="encounters" />
-          <div style={encounterContent}>
+          <div className="wx-encounter-record-content" style={encounterContent}>
             {/* ─────────────────────────────────────────────────────────────
               MAIN VISIT DOCUMENTATION
           ────────────────────────────────────────────────────────────── */}
-            <main style={mainColumn}>
+            <main className="wx-encounter-record-main" style={mainColumn}>
               <header style={encounterHeader}>
                 <div>
                   <div style={titleLine}>
@@ -1177,7 +1177,11 @@ export function EncounterRead(): JSX.Element {
                     </span>
                   </div>
 
-                  <div style={workflowSteps} aria-label="Visit documentation progress">
+                  <div
+                    className="wx-encounter-workflow-steps"
+                    style={workflowSteps}
+                    aria-label="Visit documentation progress"
+                  >
                     {workflowSections.map((section, index) => (
                       <div key={section.key} style={workflowStep}>
                         <span style={section.started ? workflowDotDone : workflowDot}>
@@ -1666,7 +1670,7 @@ export function EncounterRead(): JSX.Element {
               RIGHT CONTEXT RAIL
           ────────────────────────────────────────────────────────── */}
 
-            <aside style={rightRail}>
+            <aside className="wx-encounter-record-rail" style={rightRail}>
               {/* ─────────────────────────────────────────────────────────
       QUICK ACTIONS
   ────────────────────────────────────────────────────────── */}
@@ -2681,7 +2685,6 @@ const workspaceBody: CSSProperties = {
 
 const encounterContent: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) 20rem",
   alignItems: "start",
   flex: 1,
   minWidth: 0,
@@ -3183,9 +3186,6 @@ const emptyDescription: CSSProperties = {
 
 const rightRail: CSSProperties = {
   minWidth: 0,
-
-  position: "sticky",
-  top: "1rem",
   alignSelf: "start",
 
   padding: "1.25rem",
@@ -3365,7 +3365,7 @@ const dangerBtn: CSSProperties = {
 
 const dangerGhostBtn: CSSProperties = {
   ...secondaryBtn,
-  color: t.error,
+  color: "var(--color-error-pill-fg)",
 };
 
 const railActionBtn: CSSProperties = {

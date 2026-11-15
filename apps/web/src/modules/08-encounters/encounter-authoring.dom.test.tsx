@@ -11,9 +11,9 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/
 // sending it from forgetting it. Several assertions are about the SHAPE of the selection tree, which the
 // server validates section-by-section and code-by-code: a composer that sent a section the template does
 // not have would be rejected in production and would pass a shallow "did we PATCH" check.
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { JSX } from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { EncounterCompose } from "./encounter-compose";
@@ -70,6 +70,7 @@ let calls: string[] = [];
 let bodies: Record<string, unknown>[] = [];
 let headers: Record<string, string>[] = [];
 let writeFailure: { status: number; body: unknown } | null = null;
+let writeFailurePath: string | null = null;
 
 function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string; method: string } {
   if (typeof input === "string")
@@ -164,7 +165,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
         // Every M8 authoring write sends JSON; recording nothing is honest if one ever does not.
       }
     }
-    if (writeFailure) {
+    if (writeFailure && (!writeFailurePath || path.endsWith(writeFailurePath))) {
       return new Response(JSON.stringify(writeFailure.body), {
         status: writeFailure.status,
         headers: { "content-type": "application/json" },
@@ -186,21 +187,28 @@ const SESSION = {
   isAdmin: false,
 };
 
-function mount(path: string, element: JSX.Element, route: string): ReturnType<typeof render> {
-  return render(
+function mount(path: string, element: JSX.Element, route: string) {
+  const router = createMemoryRouter(
+    [
+      { path: route, element },
+      {
+        path: "/patients/:patientId/encounters/:encounterId",
+        element: <h1>Encounter destination</h1>,
+      },
+      { path: "*", element: <h1>Other destination</h1> },
+    ],
+    { initialEntries: [path] },
+  );
+  const result = render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <SessionProvider session={SESSION}>
         <ToastProvider>
-          <MemoryRouter initialEntries={[path]}>
-            <Routes>
-              <Route path={route} element={element} />
-              <Route path="*" element={<div>navigated</div>} />
-            </Routes>
-          </MemoryRouter>
+          <RouterProvider router={router} />
         </ToastProvider>
       </SessionProvider>
     </ApiClientProvider>,
-  ) as unknown as ReturnType<typeof render>;
+  );
+  return { ...result, router };
 }
 
 const mountCompose = () =>
@@ -217,12 +225,78 @@ beforeEach(() => {
   bodies = [];
   headers = [];
   writeFailure = null;
+  writeFailurePath = null;
   encounterStatus = "draft";
   storedSections = [];
   storedVersion = 3;
 });
 afterEach(() => {
   writeFailure = null;
+  writeFailurePath = null;
+});
+
+describe("Workflow 04 — patient context and recoverable navigation", () => {
+  it("keeps patient identity visible and returns to the canonical encounter route", async () => {
+    mountCompose();
+
+    expect(await screen.findByText("Ada Lovelace")).toBeTruthy();
+    expect(screen.getByText("MRN-9")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to encounter" }));
+    expect(await screen.findByRole("heading", { name: "Encounter destination" })).toBeTruthy();
+  });
+
+  it("announces unsaved work, guards route and browser exits, and clears the guard after save", async () => {
+    const { router } = mountCompose();
+    expect(await screen.findByText("All changes saved")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText(/Dyspnea at rest/i));
+    expect(screen.getByText("Unsaved changes")).toBeTruthy();
+
+    const dirtyUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(dirtyUnload);
+    expect(dirtyUnload.defaultPrevented).toBe(true);
+
+    await act(async () => {
+      await router.navigate(`/patients/${PATIENT}/encounters/${ENCOUNTER}`);
+    });
+    expect(screen.getByRole("alertdialog", { name: "Leave without saving?" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(screen.getByText("Unsaved changes")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    expect(await screen.findByText("All changes saved")).toBeTruthy();
+    const cleanUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(cleanUnload);
+    expect(cleanUnload.defaultPrevented).toBe(false);
+  });
+
+  it("links a server care-plan blocker to the canonical M7 correction route", async () => {
+    writeFailurePath = "/finalize";
+    writeFailure = {
+      status: 422,
+      body: {
+        error: {
+          code: "COMPLIANCE_GATE_FAILED",
+          message: "The encounter is not ready to finalize.",
+          details: [
+            {
+              code: "CARE_PLAN_REVIEW_OVERDUE",
+              field: "carePlan",
+              message: "The patient's care plan is past its review window.",
+            },
+          ],
+        },
+      },
+    };
+    const { router } = mountCompose();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Finalize note" }));
+    const link = await screen.findByRole("button", { name: "Open care plan" });
+    fireEvent.click(link);
+
+    expect(router.state.location.pathname).toBe(`/patients/${PATIENT}/care-plan`);
+  });
 });
 
 describe("#91 — the note can be composed", () => {
@@ -387,7 +461,7 @@ describe("#91 — My Drafts leads somewhere a draft can be finished", () => {
     fireEvent.click(row);
     // Until the composer existed, every row in the author's unfinished-work queue led to a read-only
     // view of the thing they came here to write.
-    expect(await screen.findByText("navigated")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Other destination" })).toBeTruthy();
   });
 
   it("names the patient instead of a truncated id", async () => {
