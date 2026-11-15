@@ -2,7 +2,10 @@ import {
   Button,
   EmptyState,
   LoadingSpinner,
+  Modal,
   PageHeader,
+  PatientBanner,
+  PatientWorkspaceLayout,
   StatusPill,
   TextAreaField,
   TextField,
@@ -18,9 +21,9 @@ import {
 // - optimistic concurrency.
 //
 // This page only improves the authoring experience around that contract.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { type BlockerFunction, useBlocker, useNavigate, useParams } from "react-router-dom";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
 import {
   type DraftSections,
@@ -61,12 +64,37 @@ function feedbackFor(result: Extract<WriteResult<unknown>, { ok: false }>): UiFe
       message:
         "The note was updated after you opened it. Reload the latest version before continuing.",
     };
+  const first = Array.isArray(result.details) ? result.details[0] : result.details;
+  const field =
+    first && typeof first === "object" && typeof (first as { field?: unknown }).field === "string"
+      ? (first as { field: string }).field
+      : undefined;
   return {
     tone: "error",
     title: "Action needed",
     message: readableValidation(result.details, result.message),
+    field,
   };
 }
+
+interface PatientSummary {
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly mrn: string;
+  readonly dob?: string;
+}
+
+const SHELL_EXIT_PATHS = new Set(["/expired", "/error", "/maintenance", "/tenant-unavailable"]);
+const isShellExit = (pathname: string): boolean =>
+  SHELL_EXIT_PATHS.has(pathname) || pathname === "/login" || pathname.startsWith("/login/");
+
+const serializedDraft = (draft: DraftSections): string => JSON.stringify(toSelectionsBody(draft));
+
+const transportFeedback: UiFeedback = {
+  tone: "error",
+  title: "Connection interrupted",
+  message: "The connection was interrupted. Your changes are still here; try again.",
+};
 
 const VITAL_LABELS: Record<string, string> = {
   bpSystolic: "Systolic blood pressure",
@@ -92,9 +120,10 @@ function readableValidation(details: unknown, fallback: string): string {
 export function EncounterCompose(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
-  const { patientId, encounterId } = useParams<{ patientId: string; encounterId: string }>();
+  const { encounterId } = useParams<{ patientId: string; encounterId: string }>();
 
   const [encounter, setEncounter] = useState<EncounterView | null>(null);
+  const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [template, setTemplate] = useState<TemplateView | null>(null);
   const [draft, setDraft] = useState<DraftSections>({});
   const [preview, setPreview] = useState("");
@@ -103,46 +132,81 @@ export function EncounterCompose(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<UiFeedback | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [operation, setOperation] = useState<"saving" | "finalizing" | null>(null);
+  const [lastSavedDraft, setLastSavedDraft] = useState(() => serializedDraft({}));
   const [vitalsOpen, setVitalsOpen] = useState(false);
+  const loadSequence = useRef(0);
 
-  const load = useCallback(async () => {
-    if (!encounterId) return;
+  const load = useCallback(async (): Promise<EncounterView | null> => {
+    if (!encounterId) return null;
+    const sequence = ++loadSequence.current;
 
     setLoading(true);
     setError(null);
+    setEncounter(null);
+    setPatient(null);
+    setTemplate(null);
+    setDraft({});
+    setPreview("");
+    setVersion(0);
+    setLastSavedDraft(serializedDraft({}));
+    setOpenSection(null);
 
-    const enc = await client.GET("/api/v1/encounters/{encounterId}", {
-      params: { path: { encounterId } },
-    });
+    try {
+      const enc = await client.GET("/api/v1/encounters/{encounterId}", {
+        params: { path: { encounterId } },
+      });
 
-    if (enc.error || !enc.data) {
-      setError("Could not load this encounter.");
-      setLoading(false);
-      return;
-    }
+      if (sequence !== loadSequence.current) return null;
+      if (enc.error || !enc.data) {
+        setError("Could not load this encounter.");
+        setLoading(false);
+        return null;
+      }
 
-    setEncounter(enc.data as EncounterView);
+      const loadedEncounter = enc.data as EncounterView;
+      const [tmpl, sel, pat] = await Promise.all([
+        loadTemplate(client, encounterId),
+        loadSelections(client, encounterId),
+        client.GET("/api/v1/patients/{id}", {
+          params: { path: { id: loadedEncounter.patientId } },
+        }),
+      ]);
 
-    const [tmpl, sel] = await Promise.all([
-      loadTemplate(client, encounterId),
-      loadSelections(client, encounterId),
-    ]);
+      if (sequence !== loadSequence.current) return null;
 
-    setTemplate(tmpl);
+      if (!tmpl || !sel || pat.error || !pat.data) {
+        setError("Could not load this encounter.");
+        setLoading(false);
+        return null;
+      }
 
-    if (sel) {
-      setDraft(toDraft(sel.sections));
+      setEncounter(loadedEncounter);
+      setTemplate(tmpl);
+      setPatient(pat.data as PatientSummary);
+
+      const loadedDraft = toDraft(sel.sections);
+      setDraft(loadedDraft);
+      setLastSavedDraft(serializedDraft(loadedDraft));
       setPreview(sel.layer1Preview);
       setVersion(sel.version);
-    }
 
-    setOpenSection((prev) => prev ?? tmpl?.sections[0]?.sectionId ?? null);
-    setLoading(false);
+      setOpenSection((prev) => prev ?? tmpl.sections[0]?.sectionId ?? null);
+      setLoading(false);
+      return loadedEncounter;
+    } catch {
+      if (sequence !== loadSequence.current) return null;
+      setError("Could not load this encounter. Check your connection and try again.");
+      setLoading(false);
+      return null;
+    }
   }, [client, encounterId]);
 
   useEffect(() => {
     void load();
+    return () => {
+      loadSequence.current += 1;
+    };
   }, [load]);
 
   const unmet = useMemo(
@@ -150,7 +214,22 @@ export function EncounterCompose(): JSX.Element {
     [template, draft],
   );
 
-  const editable = encounter?.status === "draft";
+  const editable = encounter?.status === "draft" && encounter.id === encounterId;
+  const currentDraft = useMemo(() => serializedDraft(draft), [draft]);
+  const dirty = editable && currentDraft !== lastSavedDraft;
+  const busy = operation !== null;
+  const shouldBlock = useCallback<BlockerFunction>(
+    ({ nextLocation }) => (dirty || busy) && !isShellExit(nextLocation.pathname),
+    [busy, dirty],
+  );
+  const blocker = useBlocker(shouldBlock);
+
+  useEffect(() => {
+    if (!dirty && !busy) return;
+    const warn = (event: BeforeUnloadEvent): void => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [busy, dirty]);
 
   const completion = useMemo(() => {
     if (!template) {
@@ -222,63 +301,105 @@ export function EncounterCompose(): JSX.Element {
   async function save(): Promise<void> {
     if (!encounterId) return;
 
-    setBusy(true);
+    setOperation("saving");
     setFeedback(null);
 
-    const res = await saveSelections(client, encounterId, version, toSelectionsBody(draft));
+    try {
+      const res = await saveSelections(client, encounterId, version, toSelectionsBody(draft));
 
-    setBusy(false);
+      if (!res.ok) {
+        setFeedback(feedbackFor(res));
+        return;
+      }
 
-    if (!res.ok) {
-      setFeedback(feedbackFor(res));
-      return;
+      setVersion(res.value.version);
+      setPreview(res.value.layer1Preview);
+      setLastSavedDraft(currentDraft);
+      setFeedback({
+        tone: "success",
+        title: "Draft saved",
+        message: "Your visit note changes were saved.",
+      });
+    } catch {
+      setFeedback(transportFeedback);
+    } finally {
+      setOperation(null);
     }
-
-    setVersion(res.value.version);
-    setPreview(res.value.layer1Preview);
-    setFeedback({
-      tone: "success",
-      title: "Draft saved",
-      message: "Your visit note changes were saved.",
-    });
   }
 
   async function finalize(): Promise<void> {
     if (!encounterId) return;
 
-    setBusy(true);
+    setOperation("finalizing");
     setFeedback(null);
+    let finalizationAttempted = false;
 
-    const saved = await saveSelections(client, encounterId, version, toSelectionsBody(draft));
+    try {
+      const saved = await saveSelections(client, encounterId, version, toSelectionsBody(draft));
 
-    if (!saved.ok) {
-      setBusy(false);
-      setFeedback(feedbackFor(saved));
-      return;
+      if (!saved.ok) {
+        setFeedback(feedbackFor(saved));
+        return;
+      }
+
+      setVersion(saved.value.version);
+      setPreview(saved.value.layer1Preview);
+      setLastSavedDraft(currentDraft);
+
+      finalizationAttempted = true;
+      const res = await finalizeEncounter(client, encounterId);
+
+      if (!res.ok) {
+        setFeedback(feedbackFor(res));
+        return;
+      }
+
+      setFeedback({
+        tone: "success",
+        title: "Note finalized",
+        message: "Sign it from the encounter record.",
+      });
+      const reloaded = await load();
+      if (!reloaded) {
+        setError(
+          "The note was finalized, but the updated record could not be reloaded. Return to the encounter record or refresh before continuing.",
+        );
+      }
+    } catch {
+      if (!finalizationAttempted) {
+        setFeedback(transportFeedback);
+        return;
+      }
+
+      const reconciled = await load();
+      if (!reconciled) {
+        setError(
+          "Finalization status could not be confirmed. Return to the encounter record or refresh before continuing.",
+        );
+      } else if (reconciled.status === "draft") {
+        setFeedback({
+          tone: "warning",
+          title: "Finalization not completed",
+          message: "Your draft was saved, but finalization was not completed. You can try again.",
+        });
+      } else {
+        setFeedback({
+          tone: "success",
+          title: "Note finalized",
+          message: "The server confirmed finalization after the connection was interrupted.",
+        });
+      }
+    } finally {
+      setOperation(null);
     }
-
-    setVersion(saved.value.version);
-    setPreview(saved.value.layer1Preview);
-
-    const res = await finalizeEncounter(client, encounterId);
-
-    setBusy(false);
-
-    if (!res.ok) {
-      setFeedback(feedbackFor(res));
-      return;
-    }
-
-    setFeedback({
-      tone: "success",
-      title: "Note finalized",
-      message: "Sign it from the encounter record.",
-    });
-    await load();
   }
 
   if (error) {
     return <EmptyState title="Unavailable" description={error} />;
+  }
+
+  if (encounter !== null && encounter.id !== encounterId) {
+    return <LoadingSpinner />;
   }
 
   if (loading && encounter === null) {
@@ -294,385 +415,459 @@ export function EncounterCompose(): JSX.Element {
   const activeDraft = active ? draft[active.sectionId] : undefined;
   const activeSelectionCount = activeDraft?.entries.length ?? 0;
   const activeHasFreeText = (activeDraft?.freeText.trim().length ?? 0) > 0;
+  const recordPath = `/patients/${encounter.patientId}/encounters/${encounter.id}`;
+  const banner = patient ? (
+    <PatientBanner
+      name={`${patient.firstName} ${patient.lastName}`}
+      mrn={patient.mrn}
+      dob={patient.dob}
+    />
+  ) : (
+    <PatientBanner name="Encounter documentation" />
+  );
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader
-          title="Compose visit note"
-          actions={
-            <div style={headerActions}>
-              <Button tone="tertiary" onClick={() => navigate(-1)}>
-                Back
-              </Button>
-              <StatusPill
-                label={stateLabel(encounter.status)}
-                tone={ENCOUNTER_TONE[encounter.status] ?? "neutral"}
-              />
-
-              <Button
-                tone="tertiary"
-                onClick={() => navigate(`/patients/${patientId}/encounters/${encounter.id}`)}
-              >
-                Open record
-              </Button>
-
-              <Button tone="tertiary" onClick={() => setVitalsOpen((v) => !v)} disabled={!editable}>
-                {vitalsOpen ? "Close vitals" : "Vitals"}
-              </Button>
-
-              <Button tone="tertiary" onClick={() => void save()} disabled={busy || !editable}>
-                {busy ? "Saving…" : "Save draft"}
-              </Button>
-
-              <Button onClick={() => void finalize()} disabled={busy || !editable}>
-                Finalize note
-              </Button>
-            </div>
-          }
-        />
-      }
-      table={
-        <main style={page}>
-          <section style={summaryBar} aria-label="Visit note progress">
-            <div style={summaryMain}>
-              <div style={summaryTitleRow}>
-                <div>
-                  <div style={eyebrow}>Documentation progress</div>
-                  <div style={summaryTitle}>
-                    {completion.completed} of {completion.total} sections documented
-                  </div>
-                </div>
-
-                <strong style={completionPercent}>{completion.percent}%</strong>
-              </div>
-
-              <div style={progressTrack} aria-hidden>
-                <span
-                  style={{
-                    ...progressFill,
-                    width: `${completion.percent}%`,
-                  }}
+    <PatientWorkspaceLayout banner={banner}>
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title="Compose visit note"
+            actions={
+              <div className="wx-encounter-compose-actions" style={headerActions}>
+                <Button tone="tertiary" onClick={() => navigate(recordPath)} disabled={busy}>
+                  Back to encounter
+                </Button>
+                <StatusPill
+                  label={stateLabel(encounter.status)}
+                  tone={ENCOUNTER_TONE[encounter.status] ?? "neutral"}
                 />
+
+                <Button tone="tertiary" onClick={() => navigate(recordPath)} disabled={busy}>
+                  Open record
+                </Button>
+
+                <Button
+                  tone="tertiary"
+                  onClick={() => setVitalsOpen((v) => !v)}
+                  disabled={!editable || busy}
+                >
+                  {vitalsOpen ? "Close vitals" : "Vitals"}
+                </Button>
+
+                <Button tone="tertiary" onClick={() => void save()} disabled={busy || !editable}>
+                  {operation === "saving" ? "Saving…" : "Save draft"}
+                </Button>
+
+                <Button onClick={() => void finalize()} disabled={busy || !editable}>
+                  Finalize note
+                </Button>
               </div>
-            </div>
-
-            <div style={summaryStats}>
-              <div style={summaryStat}>
-                <span style={summaryStatValue}>{completion.requiredRemaining}</span>
-                <span style={summaryStatLabel}>required remaining</span>
-              </div>
-
-              <div style={summaryDivider} />
-
-              <div style={summaryStat}>
-                <span style={summaryStatValue}>
-                  {activeSelectionCount + (activeHasFreeText ? 1 : 0)}
-                </span>
-                <span style={summaryStatLabel}>items in current section</span>
-              </div>
-            </div>
-          </section>
-
-          {feedback ? (
-            <output
-              style={{
-                ...noticeBox,
-                ...(feedback.tone === "success" ? noticeSuccess : noticeError),
-              }}
+            }
+          />
+        }
+        table={
+          <main className="wx-encounter-compose" style={page}>
+            <section
+              className="wx-encounter-compose-summary"
+              style={summaryBar}
+              aria-label="Visit note progress"
             >
-              <strong style={noticeTitle}>{feedback.title}</strong>
-              <span>{feedback.message}</span>
+              <div style={summaryMain}>
+                <div style={summaryTitleRow}>
+                  <div>
+                    <div style={eyebrow}>Documentation progress</div>
+                    <div style={summaryTitle}>
+                      {completion.completed} of {completion.total} sections documented
+                    </div>
+                  </div>
+
+                  <strong style={completionPercent}>{completion.percent}%</strong>
+                </div>
+
+                <div style={progressTrack} aria-hidden>
+                  <span
+                    style={{
+                      ...progressFill,
+                      width: `${completion.percent}%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="wx-encounter-compose-summary-stats" style={summaryStats}>
+                <div className="wx-encounter-compose-summary-stat" style={summaryStat}>
+                  <span style={summaryStatValue}>{completion.requiredRemaining}</span>
+                  <span style={summaryStatLabel}>required remaining</span>
+                </div>
+
+                <div style={summaryDivider} />
+
+                <div className="wx-encounter-compose-summary-stat" style={summaryStat}>
+                  <span style={summaryStatValue}>
+                    {activeSelectionCount + (activeHasFreeText ? 1 : 0)}
+                  </span>
+                  <span style={summaryStatLabel}>items in current section</span>
+                </div>
+              </div>
+            </section>
+
+            <output className="wx-encounter-save-state" aria-live="polite">
+              {operation === "saving"
+                ? "Saving changes…"
+                : operation === "finalizing"
+                  ? "Saving and finalizing…"
+                  : dirty
+                    ? "Unsaved changes"
+                    : "All changes saved"}
             </output>
-          ) : null}
 
-          {unmet.length > 0 ? (
-            <section style={attentionCard} aria-label="Required documentation">
-              <div style={attentionMark} aria-hidden>
-                !
-              </div>
+            {feedback ? (
+              <output
+                style={{
+                  ...noticeBox,
+                  ...(feedback.tone === "success" ? noticeSuccess : noticeError),
+                }}
+              >
+                <strong style={noticeTitle}>{feedback.title}</strong>
+                <span>{feedback.message}</span>
+                {feedback.field === "carePlan" ? (
+                  <Button
+                    tone="tertiary"
+                    onClick={() => navigate(`/patients/${encounter.patientId}/care-plan`)}
+                  >
+                    Open care plan
+                  </Button>
+                ) : null}
+              </output>
+            ) : null}
 
-              <div style={{ minWidth: 0 }}>
-                <strong style={attentionTitle}>
-                  {unmet.length} required {unmet.length === 1 ? "section needs" : "sections need"}{" "}
-                  attention
-                </strong>
-                <p style={attentionText}>
-                  Complete {unmet.join(", ")} before finalization. The server still performs the
-                  authoritative finalization check.
-                </p>
-              </div>
-            </section>
-          ) : (
-            <section style={readyCard}>
-              <span style={readyMark} aria-hidden>
-                ✓
-              </span>
-              <div>
-                <strong style={readyTitle}>Required documentation is complete</strong>
-                <p style={readyText}>You can still review the assembled note before finalizing.</p>
-              </div>
-            </section>
-          )}
+            {unmet.length > 0 ? (
+              <section style={attentionCard} aria-label="Required documentation">
+                <div style={attentionMark} aria-hidden>
+                  !
+                </div>
 
-          {vitalsOpen ? (
-            <VitalsPanel
-              encounterId={encounter.id}
-              onSaved={() => {
-                setVitalsOpen(false);
-                setFeedback({
-                  tone: "success",
-                  title: "Vitals recorded",
-                  message: "Visit vitals were saved.",
-                });
-              }}
-            />
-          ) : null}
-
-          <div style={workspace}>
-            <aside style={sectionRail} aria-label="Visit note sections">
-              <div style={railHeader}>
+                <div style={{ minWidth: 0 }}>
+                  <strong style={attentionTitle}>
+                    {unmet.length} required {unmet.length === 1 ? "section needs" : "sections need"}{" "}
+                    attention
+                  </strong>
+                  <p style={attentionText}>
+                    Complete {unmet.join(", ")} before finalization. The server still performs the
+                    authoritative finalization check.
+                  </p>
+                </div>
+              </section>
+            ) : (
+              <section style={readyCard}>
+                <span style={readyMark} aria-hidden>
+                  ✓
+                </span>
                 <div>
-                  <div style={eyebrow}>Note sections</div>
-                  <strong style={railTitle}>Document the visit</strong>
+                  <strong style={readyTitle}>Required documentation is complete</strong>
+                  <p style={readyText}>
+                    You can still review the assembled note before finalizing.
+                  </p>
                 </div>
-                <span style={railCount}>{template.sections.length}</span>
-              </div>
+              </section>
+            )}
 
-              <nav style={sectionNav}>
-                {template.sections.map((section, index) => {
-                  const filled = sectionIsFilled(draft, section.sectionId);
-                  const isActive = section.sectionId === active?.sectionId;
-                  const missingRequired = section.required && !filled;
+            {vitalsOpen ? (
+              <VitalsPanel
+                encounterId={encounter.id}
+                disabled={busy}
+                onSaved={() => {
+                  setVitalsOpen(false);
+                  setFeedback({
+                    tone: "success",
+                    title: "Vitals recorded",
+                    message: "Visit vitals were saved.",
+                  });
+                }}
+              />
+            ) : null}
 
-                  return (
-                    <button
-                      key={section.sectionId}
-                      type="button"
-                      onClick={() => setOpenSection(section.sectionId)}
-                      aria-current={isActive ? "step" : undefined}
-                      style={{
-                        ...sectionNavButton,
-                        ...(isActive ? sectionNavButtonActive : null),
-                      }}
-                    >
-                      <span
+            <div className="wx-encounter-compose-workspace" style={workspace}>
+              <aside
+                className="wx-encounter-compose-section-rail"
+                style={sectionRail}
+                aria-label="Visit note sections"
+              >
+                <div style={railHeader}>
+                  <div>
+                    <div style={eyebrow}>Note sections</div>
+                    <strong style={railTitle}>Document the visit</strong>
+                  </div>
+                  <span style={railCount}>{template.sections.length}</span>
+                </div>
+
+                <nav style={sectionNav}>
+                  {template.sections.map((section, index) => {
+                    const filled = sectionIsFilled(draft, section.sectionId);
+                    const isActive = section.sectionId === active?.sectionId;
+                    const missingRequired = section.required && !filled;
+                    const sectionState = filled
+                      ? "Documented"
+                      : missingRequired
+                        ? "Required"
+                        : "Not started";
+
+                    return (
+                      <button
+                        key={section.sectionId}
+                        type="button"
+                        onClick={() => setOpenSection(section.sectionId)}
+                        aria-current={isActive ? "step" : undefined}
+                        aria-label={`${section.heading}: ${sectionState}`}
                         style={{
-                          ...sectionIndex,
-                          ...(filled ? sectionIndexComplete : null),
-                          ...(isActive && !filled ? sectionIndexActive : null),
+                          ...sectionNavButton,
+                          ...(isActive ? sectionNavButtonActive : null),
                         }}
-                        aria-hidden
                       >
-                        {filled ? "✓" : index + 1}
-                      </span>
-
-                      <span style={sectionNavCopy}>
                         <span
                           style={{
-                            ...sectionNavTitle,
-                            ...(isActive ? sectionNavTitleActive : null),
+                            ...sectionIndex,
+                            ...(filled ? sectionIndexComplete : null),
+                            ...(isActive && !filled ? sectionIndexActive : null),
                           }}
+                          aria-hidden
                         >
-                          {section.heading}
+                          {filled ? "✓" : index + 1}
                         </span>
 
-                        <span
-                          style={{
-                            ...sectionNavMeta,
-                            ...(missingRequired ? sectionNavMetaRequired : null),
-                          }}
-                        >
-                          {filled ? "Documented" : missingRequired ? "Required" : "Not started"}
+                        <span style={sectionNavCopy}>
+                          <span
+                            style={{
+                              ...sectionNavTitle,
+                              ...(isActive ? sectionNavTitleActive : null),
+                            }}
+                          >
+                            {section.heading}
+                          </span>
+
+                          <span
+                            style={{
+                              ...sectionNavMeta,
+                              ...(missingRequired ? sectionNavMetaRequired : null),
+                            }}
+                          >
+                            {sectionState}
+                          </span>
                         </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </nav>
+                      </button>
+                    );
+                  })}
+                </nav>
 
-              {!editable ? (
-                <div style={readOnlyHint}>
-                  This note is read-only because the encounter is{" "}
-                  {stateLabel(encounter.status).toLowerCase()}.
-                </div>
-              ) : null}
-            </aside>
+                {!editable ? (
+                  <div style={readOnlyHint}>
+                    This note is read-only because the encounter is{" "}
+                    {stateLabel(encounter.status).toLowerCase()}.
+                  </div>
+                ) : null}
+              </aside>
 
-            <section style={editorColumn}>
-              {active ? (
-                <div style={editorCard}>
-                  <header style={editorHeader}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={eyebrow}>Current section</div>
-                      <div style={editorTitleRow}>
-                        <h2 style={editorTitle}>{active.heading}</h2>
-                        {active.required ? (
-                          <span style={requiredBadge}>Required</span>
-                        ) : (
-                          <span style={optionalBadge}>Optional</span>
-                        )}
+              <section className="wx-encounter-compose-editor" style={editorColumn}>
+                {active ? (
+                  <div style={editorCard}>
+                    <header className="wx-encounter-compose-editor-header" style={editorHeader}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={eyebrow}>Current section</div>
+                        <div style={editorTitleRow}>
+                          <h2 style={editorTitle}>{active.heading}</h2>
+                          {active.required ? (
+                            <span className="wx-encounter-required-badge" style={requiredBadge}>
+                              Required
+                            </span>
+                          ) : (
+                            <span style={optionalBadge}>Optional</span>
+                          )}
+                        </div>
+                        <p style={editorDescription}>
+                          Select the statements that describe this visit. Additional free text is
+                          stored verbatim.
+                        </p>
                       </div>
-                      <p style={editorDescription}>
-                        Select the statements that describe this visit. Additional free text is
-                        stored verbatim.
-                      </p>
+
+                      <div style={selectionCounter}>
+                        <strong>{activeSelectionCount}</strong>
+                        <span>
+                          {activeSelectionCount === 1
+                            ? "statement selected"
+                            : "statements selected"}
+                        </span>
+                      </div>
+                    </header>
+
+                    <div style={editorBody}>
+                      {active.entries.length === 0 ? (
+                        <div style={emptyVocabulary}>
+                          <strong style={emptyVocabularyTitle}>
+                            No preset statements for this section
+                          </strong>
+                          <p style={emptyVocabularyText}>
+                            The template has no entries for this {humanize(encounter.discipline)}{" "}
+                            {humanize(encounter.encounterType)}. Add the documentation in the
+                            free-text field below.
+                          </p>
+                        </div>
+                      ) : (
+                        <div style={entryGrid}>
+                          {active.entries.map((entry) => {
+                            const picked = draft[active.sectionId]?.entries.find(
+                              (e) => e.code === entry.code,
+                            );
+                            const selected = picked !== undefined;
+
+                            return (
+                              <div
+                                key={entry.code}
+                                style={{
+                                  ...entryCard,
+                                  ...(selected ? entryCardSelected : null),
+                                }}
+                              >
+                                <label style={entryLabel}>
+                                  <input
+                                    type="checkbox"
+                                    checked={selected}
+                                    disabled={!editable || busy}
+                                    onChange={() => toggleEntry(active.sectionId, entry)}
+                                    style={entryCheckbox}
+                                  />
+
+                                  <span style={entryContent}>
+                                    <span style={entryText}>{entry.label}</span>
+
+                                    {entry.bodySystem ? (
+                                      <span style={entryMetaRow}>
+                                        <StatusPill
+                                          label={humanize(entry.bodySystem)}
+                                          tone="neutral"
+                                        />
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                </label>
+
+                                {picked && entry.slots.length > 0 ? (
+                                  <div style={slotPanel}>
+                                    <div style={slotPanelTitle}>Complete selected details</div>
+
+                                    <div style={slotGrid}>
+                                      {entry.slots.map((slot) => (
+                                        <TextField
+                                          key={slot}
+                                          label={humanize(slot)}
+                                          value={String(picked.params[slot] ?? "")}
+                                          onChange={(e) =>
+                                            setSlot(
+                                              active.sectionId,
+                                              entry.code,
+                                              slot,
+                                              e.target.value,
+                                            )
+                                          }
+                                          disabled={!editable || busy}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <div style={freeTextSection}>
+                        <div style={freeTextHeading}>
+                          <div>
+                            <strong style={freeTextTitle}>Additional clinical notes</strong>
+                            <p style={freeTextHint}>
+                              Optional. Enter only information not already represented by the
+                              selected statements.
+                            </p>
+                          </div>
+                          <span style={verbatimBadge}>Recorded verbatim</span>
+                        </div>
+
+                        <TextAreaField
+                          label="Additional notes"
+                          value={draft[active.sectionId]?.freeText ?? ""}
+                          onChange={(e) => setFreeText(active.sectionId, e.target.value)}
+                          rows={5}
+                          disabled={!editable || busy}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+
+              <aside className="wx-encounter-compose-preview" style={previewColumn}>
+                <section style={previewCard}>
+                  <header style={previewHeader}>
+                    <div>
+                      <div style={eyebrow}>SERVER-ASSEMBLED PREVIEW</div>
+                      <h2 style={previewTitle}>Note as it reads</h2>
                     </div>
 
-                    <div style={selectionCounter}>
-                      <strong>{activeSelectionCount}</strong>
-                      <span>
-                        {activeSelectionCount === 1 ? "statement selected" : "statements selected"}
-                      </span>
-                    </div>
+                    <span style={previewStatus}>
+                      {preview.trim().length > 0 ? "Available" : "Not saved"}
+                    </span>
                   </header>
 
-                  <div style={editorBody}>
-                    {active.entries.length === 0 ? (
-                      <div style={emptyVocabulary}>
-                        <strong style={emptyVocabularyTitle}>
-                          No preset statements for this section
-                        </strong>
-                        <p style={emptyVocabularyText}>
-                          The template has no entries for this {humanize(encounter.discipline)}{" "}
-                          {humanize(encounter.encounterType)}. Add the documentation in the
-                          free-text field below.
+                  <div style={previewBody}>
+                    {preview.trim().length === 0 ? (
+                      <div style={previewEmpty}>
+                        <strong style={previewEmptyTitle}>No assembled narrative yet</strong>
+                        <p style={previewEmptyText}>
+                          Save the draft to generate the server-built narrative from your
+                          selections.
                         </p>
                       </div>
                     ) : (
-                      <div style={entryGrid}>
-                        {active.entries.map((entry) => {
-                          const picked = draft[active.sectionId]?.entries.find(
-                            (e) => e.code === entry.code,
-                          );
-                          const selected = picked !== undefined;
-
-                          return (
-                            <div
-                              key={entry.code}
-                              style={{
-                                ...entryCard,
-                                ...(selected ? entryCardSelected : null),
-                              }}
-                            >
-                              <label style={entryLabel}>
-                                <input
-                                  type="checkbox"
-                                  checked={selected}
-                                  disabled={!editable}
-                                  onChange={() => toggleEntry(active.sectionId, entry)}
-                                  style={entryCheckbox}
-                                />
-
-                                <span style={entryContent}>
-                                  <span style={entryText}>{entry.label}</span>
-
-                                  {entry.bodySystem ? (
-                                    <span style={entryMetaRow}>
-                                      <StatusPill
-                                        label={humanize(entry.bodySystem)}
-                                        tone="neutral"
-                                      />
-                                    </span>
-                                  ) : null}
-                                </span>
-                              </label>
-
-                              {picked && entry.slots.length > 0 ? (
-                                <div style={slotPanel}>
-                                  <div style={slotPanelTitle}>Complete selected details</div>
-
-                                  <div style={slotGrid}>
-                                    {entry.slots.map((slot) => (
-                                      <TextField
-                                        key={slot}
-                                        label={humanize(slot)}
-                                        value={String(picked.params[slot] ?? "")}
-                                        onChange={(e) =>
-                                          setSlot(
-                                            active.sectionId,
-                                            entry.code,
-                                            slot,
-                                            e.target.value,
-                                          )
-                                        }
-                                        disabled={!editable}
-                                      />
-                                    ))}
-                                  </div>
-                                </div>
-                              ) : null}
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <p style={previewText}>{preview}</p>
                     )}
-
-                    <div style={freeTextSection}>
-                      <div style={freeTextHeading}>
-                        <div>
-                          <strong style={freeTextTitle}>Additional clinical notes</strong>
-                          <p style={freeTextHint}>
-                            Optional. Enter only information not already represented by the selected
-                            statements.
-                          </p>
-                        </div>
-                        <span style={verbatimBadge}>Recorded verbatim</span>
-                      </div>
-
-                      <TextAreaField
-                        label="Additional notes"
-                        value={draft[active.sectionId]?.freeText ?? ""}
-                        onChange={(e) => setFreeText(active.sectionId, e.target.value)}
-                        rows={5}
-                        disabled={!editable}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </section>
-
-            <aside style={previewColumn}>
-              <section style={previewCard}>
-                <header style={previewHeader}>
-                  <div>
-                    <div style={eyebrow}>SERVER-ASSEMBLED PREVIEW</div>
-                    <h2 style={previewTitle}>Note as it reads</h2>
                   </div>
 
-                  <span style={previewStatus}>
-                    {preview.trim().length > 0 ? "Available" : "Not saved"}
-                  </span>
-                </header>
-
-                <div style={previewBody}>
-                  {preview.trim().length === 0 ? (
-                    <div style={previewEmpty}>
-                      <strong style={previewEmptyTitle}>No assembled narrative yet</strong>
-                      <p style={previewEmptyText}>
-                        Save the draft to generate the server-built narrative from your selections.
-                      </p>
-                    </div>
-                  ) : (
-                    <p style={previewText}>{preview}</p>
-                  )}
-                </div>
-
-                {editable ? (
-                  <footer style={previewFooter}>
-                    <span style={previewFooterText}>Preview updates after saving.</span>
-                    <Button tone="tertiary" onClick={() => void save()} disabled={busy}>
-                      {busy ? "Saving…" : "Save & refresh preview"}
-                    </Button>
-                  </footer>
-                ) : null}
-              </section>
-            </aside>
-          </div>
-        </main>
-      }
-    />
+                  {editable ? (
+                    <footer style={previewFooter}>
+                      <span style={previewFooterText}>Preview updates after saving.</span>
+                      <Button tone="tertiary" onClick={() => void save()} disabled={busy}>
+                        {busy ? "Saving…" : "Save & refresh preview"}
+                      </Button>
+                    </footer>
+                  ) : null}
+                </section>
+              </aside>
+            </div>
+          </main>
+        }
+      />
+      <Modal
+        open={blocker.state === "blocked"}
+        role="alertdialog"
+        ariaLabel="Leave without saving?"
+        dismissOnScrim={false}
+      >
+        <div style={discardDialog}>
+          <h2 style={discardTitle}>Leave without saving?</h2>
+          <p style={discardText}>
+            {busy
+              ? "Your visit note is being saved. Wait for the operation to finish before leaving."
+              : "Your visit-note changes have not been saved. Keep editing or discard them before leaving."}
+          </p>
+          <footer style={discardActions}>
+            <Button tone="tertiary" onClick={() => blocker.reset?.()}>
+              Keep editing
+            </Button>
+            {!busy ? <Button onClick={() => blocker.proceed?.()}>Discard changes</Button> : null}
+          </footer>
+        </div>
+      </Modal>
+    </PatientWorkspaceLayout>
   );
 }
 
@@ -683,9 +878,11 @@ export function EncounterCompose(): JSX.Element {
  */
 function VitalsPanel({
   encounterId,
+  disabled,
   onSaved,
 }: {
   encounterId: string;
+  disabled: boolean;
   onSaved: () => void;
 }): JSX.Element {
   const client = useApiClient();
@@ -749,6 +946,7 @@ function VitalsPanel({
             <TextField
               label={label}
               value={values[key] ?? ""}
+              disabled={busy || disabled}
               onChange={(e) =>
                 setValues((current) => ({
                   ...current,
@@ -770,7 +968,7 @@ function VitalsPanel({
       <footer style={vitalsFooter}>
         <span style={vitalsFooterHint}>Clinical validation is applied by the server.</span>
 
-        <Button onClick={() => void submit()} disabled={busy}>
+        <Button onClick={() => void submit()} disabled={busy || disabled}>
           {busy ? "Recording…" : "Record vitals"}
         </Button>
       </footer>
@@ -984,14 +1182,11 @@ const readyText: CSSProperties = {
 
 const workspace: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(13rem, 15rem) minmax(26rem, 1fr) minmax(19rem, 24rem)",
   gap: "1rem",
   alignItems: "start",
 };
 
 const sectionRail: CSSProperties = {
-  position: "sticky",
-  top: "1rem",
   overflow: "hidden",
   border: hairline,
   borderRadius: "0.9rem",
@@ -1160,8 +1355,33 @@ const requiredBadge: CSSProperties = {
   borderRadius: 999,
   fontSize: "0.66rem",
   fontWeight: 700,
-  color: "var(--color-error)",
+  color: "var(--color-error-pill-fg)",
   background: "color-mix(in srgb, var(--color-error) 9%, transparent)",
+};
+
+const discardDialog: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+  padding: "1.25rem",
+};
+
+const discardTitle: CSSProperties = {
+  margin: 0,
+  fontSize: "1.15rem",
+  color: "var(--color-on-surface)",
+};
+
+const discardText: CSSProperties = {
+  margin: 0,
+  lineHeight: 1.5,
+  color: "var(--color-on-surface-variant)",
+};
+
+const discardActions: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "0.5rem",
 };
 
 const optionalBadge: CSSProperties = {

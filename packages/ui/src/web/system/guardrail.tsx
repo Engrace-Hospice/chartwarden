@@ -311,19 +311,25 @@ function PrimaryButton({
 function GhostButton({
   children,
   onClick,
-}: { children: ReactNode; onClick?: () => void }): JSX.Element {
+  disabled = false,
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+}): JSX.Element {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       style={{
         padding: "0.5rem 1rem",
         borderRadius: t.radiusMd,
         border: "none",
-        background: t.surfaceHigh,
-        color: t.onSurface,
+        background: disabled ? t.surfaceContainer : t.surfaceHigh,
+        color: disabled ? t.muted : t.onSurface,
         fontWeight: 600,
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
       }}
     >
       {children}
@@ -448,6 +454,8 @@ export interface CeremonyModalProps {
   /** Marks this as an EPCS ceremony (controlled-substance) — uses alert accent, not gold (§2.2). */
   epcs?: boolean;
   commitLabel?: string;
+  /** Prevents a second irreversible commit while the first request is still in flight. */
+  commitDisabled?: boolean;
   onCommit: (stepUpValue?: string) => void;
   onCancel: () => void;
 }
@@ -460,6 +468,7 @@ export function CeremonyModal({
   stepUp,
   epcs = false,
   commitLabel = "Sign & commit",
+  commitDisabled = false,
   onCommit,
   onCancel,
 }: CeremonyModalProps): JSX.Element | null {
@@ -470,7 +479,8 @@ export function CeremonyModal({
   if (!open) return null;
   const accent = epcs ? t.alert : t.primary;
   const needsStepUp = Boolean(stepUp);
-  const commitReady = (!needsStepUp || credential.trim().length > 0) && (!legalText || affirmed);
+  const commitReady =
+    !commitDisabled && (!needsStepUp || credential.trim().length > 0) && (!legalText || affirmed);
   return (
     <Modal
       open={open}
@@ -556,7 +566,9 @@ export function CeremonyModal({
         ) : null}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
-          <GhostButton onClick={onCancel}>Cancel</GhostButton>
+          <GhostButton onClick={onCancel} disabled={commitDisabled}>
+            Cancel
+          </GhostButton>
           <PrimaryButton
             tone={epcs ? "error" : "primary"}
             disabled={!commitReady}

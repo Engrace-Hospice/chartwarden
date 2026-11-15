@@ -442,7 +442,7 @@ export function PatientBanner({
   // it, the meta line below, actions right. The tab strip that follows draws the bottom rule.
   return (
     <div
-      className="wx-patient-banner"
+      className={`wx-patient-banner${actions ? " wx-patient-banner-has-actions" : ""}`}
       style={{
         position: "sticky",
         top: 0,

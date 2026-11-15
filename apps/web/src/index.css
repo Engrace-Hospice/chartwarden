@@ -415,6 +415,46 @@
   .wx-patient-workspace {
     background: var(--color-background);
   }
+  /* Reserve the patient identity footprint before its parallel reads settle. Without this contract,
+     code-status/allergy chips and the identity table push every chart destination after first paint. */
+  .wx-patient-banner {
+    min-height: 7.75rem !important;
+  }
+  .wx-banner-code-status-slot,
+  .wx-banner-allergy-slot {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.5rem;
+  }
+  .wx-banner-code-status-slot {
+    min-width: 10.5rem;
+  }
+  .wx-banner-allergy-slot {
+    min-width: 8.75rem;
+  }
+  .wx-patient-summary-panel {
+    min-height: 13.375rem;
+  }
+
+  /* Workflow 04 encounter authoring/record presentation. The route and server contracts stay
+     unchanged; these hooks let the existing three-column desktop surfaces collapse without clipping. */
+  .wx-encounter-compose-workspace {
+    grid-template-columns: minmax(13rem, 15rem) minmax(26rem, 1fr) minmax(19rem, 24rem);
+  }
+  .wx-encounter-compose-section-rail,
+  .wx-encounter-record-rail {
+    position: sticky;
+    top: 1rem;
+  }
+  .wx-encounter-record-content {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+  }
+  .wx-encounter-save-state {
+    align-self: flex-end;
+    color: var(--color-on-surface-variant);
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
   /* A screen's workspace row that starts with the chart tab strip stacks vertically: the strip
      spans the top, the screen's own content fills below (chart-module-rail.tsx). */
   div:has(> .wx-chart-tabs) {
@@ -429,7 +469,7 @@
     border-bottom: 1px solid var(--color-card-border);
     padding: 0 1.5rem;
     overflow-x: auto;
-    /* Twelve tabs overflow a laptop-width chart; a visible thin scrollbar is the cue that more exist. */
+    /* The grouped chart destinations remain horizontally reachable at narrow widths. */
     scrollbar-width: thin;
   }
   .wx-chart-tabs ul {
@@ -460,6 +500,46 @@
   .wx-chart-tab:focus-visible {
     outline: 2px solid var(--color-focus-ring);
     outline-offset: -2px;
+  }
+  .wx-chart-subtabs {
+    flex-shrink: 0;
+    background: var(--color-surface-low);
+    border-bottom: 1px solid var(--color-card-border);
+    padding: 0.5rem 1.5rem;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .wx-chart-subtabs ul {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .wx-chart-subtab {
+    display: block;
+    padding: 0.4rem 0.7rem;
+    border-radius: 9999px;
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    white-space: nowrap;
+  }
+  .wx-chart-subtab:hover {
+    background: var(--color-surface-high);
+    color: var(--color-on-surface);
+    text-decoration: none;
+  }
+  .wx-chart-subtab.active {
+    background: var(--color-primary-tint);
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+  .wx-chart-subtab:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
   }
   .wx-patient-rail > * {
     flex-shrink: 0;
@@ -1253,6 +1333,21 @@
       width: 100%;
       padding: 0 1.5rem 1.5rem;
     }
+    .wx-encounter-compose-workspace {
+      grid-template-columns: minmax(12rem, 14rem) minmax(0, 1fr);
+    }
+    .wx-encounter-compose-preview {
+      grid-column: 1 / -1;
+    }
+    .wx-encounter-record-content {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .wx-encounter-record-rail {
+      position: static;
+      width: auto;
+      border-top: 1px solid var(--color-card-border);
+      border-left: 0 !important;
+    }
   }
   @media (max-width: 900px) {
     .wx-patient-workspace .wx-right-panel {
@@ -1263,9 +1358,55 @@
     .wx-patient-banner {
       align-items: flex-start !important;
     }
+    .wx-patient-banner-has-actions {
+      min-height: 9rem !important;
+    }
     .wx-banner-actions {
       width: 100%;
       margin-left: 0 !important;
+    }
+  }
+  @media (max-width: 700px) {
+    .wx-encounter-compose {
+      padding: 0.75rem !important;
+    }
+    .wx-encounter-compose-summary,
+    .wx-encounter-compose-editor-header {
+      flex-direction: column;
+    }
+    .wx-encounter-compose-summary-stats {
+      width: 100%;
+      justify-content: space-between;
+      gap: 0.5rem !important;
+    }
+    .wx-encounter-compose-summary-stat {
+      min-width: 0 !important;
+    }
+    .wx-encounter-compose-workspace {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .wx-encounter-compose-section-rail {
+      position: static;
+    }
+    .wx-encounter-compose-preview {
+      grid-column: auto;
+    }
+    .wx-encounter-compose-actions {
+      justify-content: flex-start !important;
+    }
+    .wx-encounter-record-main,
+    .wx-encounter-record-rail {
+      padding: 1rem !important;
+    }
+    .wx-encounter-workflow-steps {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      row-gap: 0.75rem !important;
+    }
+    .wx-patient-banner {
+      min-height: 11.5rem !important;
+    }
+    .wx-patient-banner-has-actions {
+      min-height: 15rem !important;
     }
   }
 

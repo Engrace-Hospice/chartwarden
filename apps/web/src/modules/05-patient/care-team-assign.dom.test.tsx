@@ -188,6 +188,7 @@ describe("Assign care team member", () => {
     expect((await screen.findAllByText("Nora Visit, RN")).length).toBeGreaterThan(0);
     expect(gets).not.toContain(`/api/v1/orgs/${ORG}/care-team-staff`);
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Assign care team member" })).toBeNull();
   });
 
   it("shows a neutral label, not a uuid prefix, when the response carries no name", async () => {

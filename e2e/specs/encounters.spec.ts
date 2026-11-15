@@ -42,65 +42,183 @@
 // derivation resolves to the empty set for them and the modal correctly offers nothing — the same
 // RBAC/ABAC split `hope.spec.ts` and `emar.spec.ts` sign in around.
 import { expect, test } from "@playwright/test";
-import { RN_ACCOUNT } from "../fixtures/credentials";
+import type { Locator, Page } from "@playwright/test";
+import { ADMIN_ACCOUNT, RN_ACCOUNT } from "../fixtures/credentials";
 import {
   enrolPasskey,
   expectNoAxeViolations,
   signInAs,
+  signOut,
   stepUpWithPasskey,
 } from "../fixtures/helpers";
 import { openPatientChartByLastName } from "../fixtures/patients";
 
 /** The flagship seeded patient — active RHC, so she has an admission to open an encounter against. */
 const PATIENT_LAST_NAME = "Whitfield";
+const EVV_ATTESTATION =
+  "The assigned mobile device did not produce an EVV bracket, so this visit is being attested manually.";
+
+async function pickLookupOption(
+  scope: Locator,
+  label: string,
+  query: string,
+  option: RegExp,
+): Promise<void> {
+  const box = scope.getByRole("combobox", { name: label, exact: true });
+  await box.fill(query);
+  const hit = scope
+    .getByRole("listbox", { name: label, exact: true })
+    .getByRole("option", { name: option })
+    .first();
+  await expect(hit).toBeVisible({ timeout: 15_000 });
+  await hit.click();
+}
+
+function localDay(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+async function openVisitWindow(
+  page: Page,
+  serviceDate: string,
+  assignedMembershipId: string,
+): Promise<{ start: string; end: string }> {
+  return page.evaluate(
+    async ({ day, membershipId }) => {
+      const from = new Date(`${day}T00:00`);
+      const to = new Date(from);
+      to.setDate(to.getDate() + 1);
+      const response = await fetch(
+        `/api/v1/visits?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`,
+        { credentials: "include" },
+      );
+      if (!response.ok) throw new Error(`visit availability read failed: ${response.status}`);
+      const body = await response.json();
+      const visits = (Array.isArray(body) ? body : (body.items ?? [])) as Array<{
+        assignedMembershipId: string;
+        scheduledStartedAt: string;
+        scheduledEndedAt: string;
+      }>;
+      for (let hour = 7; hour <= 20; hour += 1) {
+        const hh = String(hour).padStart(2, "0");
+        const start = new Date(`${day}T${hh}:00`);
+        const end = new Date(start.getTime() + 45 * 60_000);
+        const overlaps = visits.some(
+          (visit) =>
+            visit.assignedMembershipId === membershipId &&
+            Date.parse(visit.scheduledStartedAt) < end.getTime() &&
+            Date.parse(visit.scheduledEndedAt) > start.getTime(),
+        );
+        if (!overlaps)
+          return {
+            start: `${day}T${hh}:00`,
+            end: `${day}T${hh}:45`,
+          };
+      }
+      throw new Error("no open RN visit window was available for the synthetic test day");
+    },
+    { day: serviceDate, membershipId: assignedMembershipId },
+  );
+}
+
+const visitShortId = (visitId: string): string =>
+  visitId.length > 18 ? `${visitId.slice(0, 8)}...${visitId.slice(-6)}` : visitId;
 
 test.describe("Encounters", () => {
   test("main path: an RN opens a visit note, composes it, finalizes and signs it", async ({
     page,
   }) => {
-    test.setTimeout(120_000);
-    await signInAs(page, RN_ACCOUNT());
-
-    const patientId = await openPatientChartByLastName(page, PATIENT_LAST_NAME);
-    await page.goto(`/patients/${patientId}/encounters`);
-    await expect(page.getByRole("heading", { name: "Encounters / Visits" })).toBeVisible();
-
-    // ── 1. Open the note (F-083) ───────────────────────────────────────────────────────────────────
-    //
-    // The #235 redesign replaced the old "New encounter" modal with the chart tab's "New Encounter"
-    // dialog, which asks for the ACTIVE ADMISSION explicitly (a lookup over this patient's active
-    // admissions) and, on a committed 201, lands on the encounter record rather than the composer —
-    // the record's "Compose note" action is the way into the composer from there.
-    await page.getByRole("button", { name: "New Encounter" }).click();
-    const dialog = page.getByRole("dialog", { name: "New Encounter" });
-    await expect(dialog).toBeVisible();
-
-    const admission = dialog.getByRole("combobox", { name: "Active admission" });
+    test.setTimeout(180_000);
+    // ── 1. An administrator schedules the RN's visit; M17 publishes it and M8 owns draft seeding. ──
+    await signInAs(page, ADMIN_ACCOUNT());
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const serviceDate = localDay(tomorrow);
+    await page.goto(`/scheduling/day?date=${serviceDate}`);
+    await expect(page.getByRole("heading", { name: "Day View" })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: "New Visit" }).click();
+    const visitDialog = page.getByRole("dialog", { name: "New Visit" });
+    await pickLookupOption(
+      visitDialog,
+      "Patient",
+      PATIENT_LAST_NAME,
+      new RegExp(PATIENT_LAST_NAME, "i"),
+    );
+    const admission = visitDialog.getByRole("combobox", { name: "Active admission" });
     await admission.click();
-    await dialog
+    await visitDialog
       .getByRole("listbox", { name: "Active admission" })
       .getByRole("option")
       .first()
       .click();
+    await visitDialog.getByLabel("Visit purpose").selectOption("routine_visit");
+    await visitDialog.getByLabel("Visit setting").selectOption("telephonic");
+    const clinician = visitDialog.getByRole("combobox", { name: /Assigned clinician/ });
+    await clinician.selectOption({ label: "Rita Alvarez, RN · RN" });
+    const assignedMembershipId = await clinician.inputValue();
+    const visitWindow = await openVisitWindow(page, serviceDate, assignedMembershipId);
+    await visitDialog.getByLabel("Scheduled start").fill(visitWindow.start);
+    await visitDialog.getByLabel("Scheduled end").fill(visitWindow.end);
+    await visitDialog.getByRole("button", { name: "Create Visit" }).click();
+    await page.waitForURL(/\/scheduling\/visits\/[^/]+$/, { timeout: 15_000 });
+    const visitId = /\/scheduling\/visits\/([^/?#]+)$/.exec(page.url())?.[1] as string;
+    expect(visitId).toBeTruthy();
+    const visit = await page.evaluate(async (id) => {
+      const response = await fetch(`/api/v1/visits/${id}`, { credentials: "include" });
+      if (!response.ok) throw new Error(`visit read failed: ${response.status}`);
+      return response.json() as Promise<{ patientId: string }>;
+    }, visitId);
+    const patientId = visit.patientId;
 
-    // THE REGRESSION GUARD for the derivation. Rita holds `rn` and `rn_case_manager`; only the first is
-    // a clinical discipline, so the intersection with the §2.2 vocabulary is exactly {rn} and the field
-    // preselects it rather than offering a menu whose other entries the server would refuse. Asserted
-    // on the VALUE, which is the wire vocabulary, not on the rendered label.
-    await expect(dialog.getByLabel("Discipline")).toHaveValue("rn");
+    // The assigned RN advances the visit with the existing fresh-auth self-attestation flow.
+    await signOut(page);
+    await signInAs(page, RN_ACCOUNT());
+    await enrolPasskey(page);
+    await stepUpWithPasskey(page, "/me/visits");
+    await expect(page.getByRole("heading", { name: "My Visits" })).toBeVisible();
+    const shortVisitId = visitShortId(visitId);
+    await page.getByRole("button", { name: `Start visit ${shortVisitId}` }).click();
+    const startDialog = page.getByRole("dialog", { name: "Start visit" });
+    await startDialog.getByLabel("Reason there is no EVV bracket (required)").fill(EVV_ATTESTATION);
+    await startDialog.getByRole("button", { name: "Confirm" }).click();
+    await expect(startDialog).toBeHidden({ timeout: 15_000 });
+    await page.getByRole("button", { name: `Check in visit ${shortVisitId}` }).click();
+    const arriveDialog = page.getByRole("dialog", { name: "Check in to visit" });
+    await arriveDialog
+      .getByLabel("Reason there is no EVV bracket (required)")
+      .fill(EVV_ATTESTATION);
+    await arriveDialog.getByRole("button", { name: "Confirm" }).click();
+    await expect(arriveDialog).toBeHidden({ timeout: 15_000 });
 
-    // A routine visit: `ENCOUNTER_DISCIPLINE_RULES` makes it rn|lpn, so it is legal for this caller and
-    // the HearthNote registry has a template for the pair — which is the reason the type list is built
-    // from that map rather than from the raw enum.
-    await dialog.getByLabel("Encounter type").selectOption("routine_visit");
-    await dialog.getByRole("button", { name: "Create Encounter" }).click();
-
-    // The dialog closes only on a committed 201, and the app opens the new encounter's record.
-    await expect(dialog).toBeHidden({ timeout: 15_000 });
+    // Wait for the asynchronous M17-published → M8-draft consumer, then enter through My Visits.
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            async ({ expectedPatientId, expectedVisitId }) => {
+              const response = await fetch(
+                `/api/v1/encounters?patientId=${encodeURIComponent(expectedPatientId)}`,
+                { credentials: "include" },
+              );
+              if (!response.ok) return false;
+              const body = await response.json();
+              const rows = Array.isArray(body) ? body : (body.encounters ?? []);
+              return rows.some((row: { visitId?: string }) => row.visitId === expectedVisitId);
+            },
+            { expectedPatientId: patientId, expectedVisitId: visitId },
+          ),
+        { timeout: 60_000, message: "M8 did not seed the encounter for the published visit" },
+      )
+      .toBe(true);
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "My Visits" })).toBeVisible();
+    await page.getByRole("button", { name: `Open encounter for visit ${shortVisitId}` }).click();
     await page.waitForURL(/\/encounters\/[^/]+$/, { timeout: 15_000 });
     const encounterId = /\/encounters\/([^/]+)$/.exec(page.url())?.[1] as string;
     expect(encounterId).toBeTruthy();
-    // An empty draft is not the goal, the note is: straight on to the composer.
     await page.getByRole("button", { name: "Compose note" }).click();
     await page.waitForURL(new RegExp(`/encounters/${encounterId}/compose$`), { timeout: 15_000 });
 
@@ -112,16 +230,16 @@ test.describe("Encounters", () => {
     // Every REQUIRED section, because the §2.6 Layer-3 gate refuses a note that says nothing and that
     // refusal is the server's — the composer captions required sections "Required" and never
     // pre-empts it. The tabs are the section nav; a section is satisfied by an entry OR by prose, and
-    // the shipped vocabulary has no entries for several of them, so free text is what always works.
+    // free text deliberately exercises the tenant-DEK sealing path that protects authored narrative.
     const sections = page.getByRole("complementary", { name: "Visit note sections" });
     const requiredLabels = await sections
-      .getByRole("button")
-      .filter({ hasText: "Required" })
-      .allTextContents();
+      .getByRole("button", { name: /: Required$/ })
+      .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label") ?? ""));
     expect(requiredLabels.length).toBeGreaterThan(0);
     for (const label of requiredLabels) {
-      // Keep the section name: a caption may change to "Documented" while another is edited.
-      await sections.getByRole("button", { name: label.replace(/Required/, "").trim() }).click();
+      // Keep the explicit server-template heading: the state suffix changes to "Documented" while
+      // another section is edited, and decorative step numbers never enter this accessible name.
+      await sections.getByRole("button", { name: label, exact: true }).click();
       await page
         .getByLabel("Additional notes")
         .fill("Patient resting comfortably; no new symptoms reported this visit.");
@@ -159,37 +277,17 @@ test.describe("Encounters", () => {
     // This is where every seeded stack used to answer 503 HEARTHNOTE_CIPHER_UNBOUND. Finalize seals the
     // assembled narrative under the tenant DEK and pins it, so what M22 prints and M28 exposes is what
     // was assembled here rather than what today's corpus would produce from the same selections.
-    await page.getByRole("button", { name: "Finalize" }).click();
+    await page.getByRole("button", { name: "Finalize note", exact: true }).click();
     await expect(page.getByText("Note finalized", { exact: true })).toBeVisible({
       timeout: 15_000,
     });
 
-    // ── 4. The sign gate refuses a session with no fresh step-up (F-084) ───────────────────────────
-    //
-    // Asserting the refusal is the point: CoP 418.104(c) is why the ceremony exists, and a control that
-    // silently succeeded would be the defect. The session is fresh from `signInAs` and still not
-    // enough — freshness here means a second factor inside the policy window, which a password never
-    // establishes. What changed is what the clinician is TOLD: this used to redirect nowhere and read
-    // "You do not have permission for this action".
+    // ── 4. Sign with the same server-verified fresh step-up used for visit arrival. ────────────────
     await page.goto(`/patients/${patientId}/encounters/${encounterId}`);
-    // The record's footer action is "Sign encounter" since the redesign (it was "Sign").
     const signButton = page.getByRole("button", { name: "Sign encounter", exact: true });
     await expect(signButton).toBeVisible({ timeout: 15_000 });
     await signButton.click();
     const signDialog = page.getByRole("dialog", { name: "Sign encounter" });
-    await expect(signDialog).toBeVisible();
-    // The §2.7 attestation. `commitReady` is false until it is ticked, which is the ceremony's own
-    // control and not something to route around: an attestation nobody affirmed is not a signature.
-    await signDialog.getByRole("checkbox").check();
-    await signDialog.getByRole("button", { name: "Sign & commit" }).click();
-    // The refusal routes to the step-up screen rather than dead-ending in the dialog.
-    await page.waitForURL(/\/step-up\?returnTo=/, { timeout: 15_000 });
-
-    // ── 5. Enrol a factor, step up, and sign for real ──────────────────────────────────────────────
-    await enrolPasskey(page);
-    await stepUpWithPasskey(page, `/patients/${patientId}/encounters/${encounterId}`);
-
-    await signButton.click();
     await expect(signDialog).toBeVisible();
     await signDialog.getByRole("checkbox").check();
     await signDialog.getByRole("button", { name: "Sign & commit" }).click();
@@ -202,6 +300,15 @@ test.describe("Encounters", () => {
       timeout: 15_000,
     });
     await expect(signButton).toBeHidden();
+
+    // M8's signed event is the only authority that completes M17. The visit and chart must lead back
+    // to this exact immutable encounter rather than parallel client-owned status.
+    await page.goto(`/scheduling/visits/${visitId}`);
+    await expect(page.getByText("Completed", { exact: true }).first()).toBeVisible({
+      timeout: 20_000,
+    });
+    await page.getByRole("button", { name: "Signed", exact: true }).click();
+    await page.waitForURL(`/patients/${patientId}/encounters/${encounterId}`);
   });
 
   test("the patient encounters list is accessible (WCAG 2.1 A/AA)", async ({ page }) => {

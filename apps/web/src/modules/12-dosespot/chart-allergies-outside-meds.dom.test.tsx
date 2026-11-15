@@ -79,6 +79,20 @@ beforeEach(() => {
 });
 
 describe("F-238 — allergy banner", () => {
+  it("reserves a labelled panel while the allergy read is pending", () => {
+    const pendingClient = createApiClient({
+      baseUrl: "http://localhost",
+      fetch: async () => new Promise<Response>(() => {}),
+    });
+    render(
+      <ApiClientProvider client={pendingClient}>
+        <AllergyBanner patientId={PATIENT} />
+      </ApiClientProvider>,
+    );
+    expect(screen.getByText("Allergies")).toBeTruthy();
+    expect(screen.getByText("Loading allergy information…").getAttribute("aria-busy")).toBe("true");
+  });
+
   it("shows an unverified referral allergy, labelled, with Verify / Entered in error", async () => {
     mount(<AllergyBanner patientId={PATIENT} />);
     expect(await screen.findByText("Penicillin - hives")).toBeTruthy();

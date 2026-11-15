@@ -415,14 +415,24 @@ export function ChartBanner({
             label={patientStatusLabel(patient.status)}
             tone={PATIENT_STATUS_TONE[patient.status] ?? "neutral"}
           />
-          <CodeStatusChip state={codeStatus} patientId={patient.id} />
-          {extras.allergies === null ? null : extras.allergies.length > 0 ? (
-            <span title={extras.allergies.join(", ")}>
-              <StatusPill label={allergyLabel(extras.allergies)} tone="critical" />
-            </span>
-          ) : (
-            <StatusPill label="No allergies recorded" tone="neutral" />
-          )}
+          <span
+            className="wx-banner-code-status-slot"
+            aria-busy={codeStatus.kind === "unknown" ? "true" : undefined}
+          >
+            <CodeStatusChip state={codeStatus} patientId={patient.id} />
+          </span>
+          <span
+            className="wx-banner-allergy-slot"
+            aria-busy={identity.extrasPending ? "true" : undefined}
+          >
+            {extras.allergies === null ? null : extras.allergies.length > 0 ? (
+              <span title={extras.allergies.join(", ")}>
+                <StatusPill label={allergyLabel(extras.allergies)} tone="critical" />
+              </span>
+            ) : (
+              <StatusPill label="No allergies recorded" tone="neutral" />
+            )}
+          </span>
         </>
       }
       meta={
@@ -459,7 +469,7 @@ export function ChartPatientBanner({
   if (!identity) {
     return (
       <div
-        className="wx-patient-banner"
+        className={`wx-patient-banner${actions ? " wx-patient-banner-has-actions" : ""}`}
         aria-busy="true"
         style={{ minHeight: "6.25rem", background: t.surfaceLowest }}
       />
@@ -476,6 +486,7 @@ export function PatientSummaryPanel({ identity }: { identity: ChartIdentity | nu
   const age = p ? ageYears(p.dob) : null;
   return (
     <Panel
+      className="wx-patient-summary-panel"
       title="Patient Summary"
       icon="users"
       action={

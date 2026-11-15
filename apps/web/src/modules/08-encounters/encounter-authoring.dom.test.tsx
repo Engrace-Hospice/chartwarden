@@ -11,9 +11,9 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/
 // sending it from forgetting it. Several assertions are about the SHAPE of the selection tree, which the
 // server validates section-by-section and code-by-code: a composer that sent a section the template does
 // not have would be rejected in production and would pass a shallow "did we PATCH" check.
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { JSX } from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { EncounterCompose } from "./encounter-compose";
@@ -70,6 +70,16 @@ let calls: string[] = [];
 let bodies: Record<string, unknown>[] = [];
 let headers: Record<string, string>[] = [];
 let writeFailure: { status: number; body: unknown } | null = null;
+let writeFailurePath: string | null = null;
+let writeTransportFailurePath: string | null = null;
+let deferredWritePath: string | null = null;
+let releaseDeferredWrite: (() => void) | null = null;
+let mirrorEncounterIdFromPath = false;
+let failedSelectionsEncounterId: string | null = null;
+let readTransportFailurePath: string | null = null;
+let finalizeCommitsBeforeTransportFailure = false;
+let failReloadAfterFinalize = false;
+let finalizeSucceeded = false;
 
 function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string; method: string } {
   if (typeof input === "string")
@@ -116,8 +126,9 @@ function bodyFor(method: string, path: string): unknown {
           },
         ],
       };
+    const pathEncounterId = path.match(/^\/api\/v1\/encounters\/([^/]+)$/)?.[1];
     return {
-      id: ENCOUNTER,
+      id: mirrorEncounterIdFromPath && pathEncounterId ? pathEncounterId : ENCOUNTER,
       organizationId: "org-1",
       patientId: PATIENT,
       admissionId: "adm-1",
@@ -145,6 +156,26 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   const { url, method } = requestOf(input, init);
   const path = new URL(url, "http://localhost").pathname;
   calls.push(`${method} ${path}`);
+  if (
+    method === "GET" &&
+    ((readTransportFailurePath && path.endsWith(readTransportFailurePath)) ||
+      (failReloadAfterFinalize && finalizeSucceeded && path === `/api/v1/encounters/${ENCOUNTER}`))
+  ) {
+    throw new TypeError("connection dropped");
+  }
+  if (
+    method === "GET" &&
+    failedSelectionsEncounterId &&
+    path === `/api/v1/encounters/${failedSelectionsEncounterId}/selections`
+  ) {
+    return new Response(
+      JSON.stringify({ error: { code: "UNAVAILABLE", message: "unavailable" } }),
+      {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      },
+    );
+  }
   if (method !== "GET") {
     const req = typeof input === "object" && "clone" in input ? (input as Request) : null;
     const collected: Record<string, string> = {};
@@ -164,12 +195,27 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
         // Every M8 authoring write sends JSON; recording nothing is honest if one ever does not.
       }
     }
-    if (writeFailure) {
+    if (writeFailure && (!writeFailurePath || path.endsWith(writeFailurePath))) {
       return new Response(JSON.stringify(writeFailure.body), {
         status: writeFailure.status,
         headers: { "content-type": "application/json" },
       });
     }
+    if (writeTransportFailurePath && path.endsWith(writeTransportFailurePath)) {
+      if (path.endsWith("/finalize") && finalizeCommitsBeforeTransportFailure) {
+        encounterStatus = "finalized";
+      }
+      throw new TypeError("connection dropped");
+    }
+    if (deferredWritePath && path.endsWith(deferredWritePath)) {
+      await new Promise<void>((resolve) => {
+        releaseDeferredWrite = resolve;
+      });
+    }
+  }
+  if (method === "POST" && path.endsWith("/finalize")) {
+    encounterStatus = "finalized";
+    finalizeSucceeded = true;
   }
   return new Response(JSON.stringify(bodyFor(method, path)), {
     status: 200,
@@ -186,21 +232,28 @@ const SESSION = {
   isAdmin: false,
 };
 
-function mount(path: string, element: JSX.Element, route: string): ReturnType<typeof render> {
-  return render(
+function mount(path: string, element: JSX.Element, route: string) {
+  const router = createMemoryRouter(
+    [
+      { path: route, element },
+      {
+        path: "/patients/:patientId/encounters/:encounterId",
+        element: <h1>Encounter destination</h1>,
+      },
+      { path: "*", element: <h1>Other destination</h1> },
+    ],
+    { initialEntries: [path] },
+  );
+  const result = render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <SessionProvider session={SESSION}>
         <ToastProvider>
-          <MemoryRouter initialEntries={[path]}>
-            <Routes>
-              <Route path={route} element={element} />
-              <Route path="*" element={<div>navigated</div>} />
-            </Routes>
-          </MemoryRouter>
+          <RouterProvider router={router} />
         </ToastProvider>
       </SessionProvider>
     </ApiClientProvider>,
-  ) as unknown as ReturnType<typeof render>;
+  );
+  return { ...result, router };
 }
 
 const mountCompose = () =>
@@ -217,12 +270,141 @@ beforeEach(() => {
   bodies = [];
   headers = [];
   writeFailure = null;
+  writeFailurePath = null;
+  writeTransportFailurePath = null;
+  deferredWritePath = null;
+  releaseDeferredWrite = null;
+  mirrorEncounterIdFromPath = false;
+  failedSelectionsEncounterId = null;
+  readTransportFailurePath = null;
+  finalizeCommitsBeforeTransportFailure = false;
+  failReloadAfterFinalize = false;
+  finalizeSucceeded = false;
   encounterStatus = "draft";
   storedSections = [];
   storedVersion = 3;
 });
 afterEach(() => {
   writeFailure = null;
+  writeFailurePath = null;
+  writeTransportFailurePath = null;
+  deferredWritePath = null;
+  releaseDeferredWrite = null;
+  mirrorEncounterIdFromPath = false;
+  failedSelectionsEncounterId = null;
+  readTransportFailurePath = null;
+  finalizeCommitsBeforeTransportFailure = false;
+  failReloadAfterFinalize = false;
+  finalizeSucceeded = false;
+});
+
+describe("Workflow 04 — patient context and recoverable navigation", () => {
+  it("keeps patient identity visible and returns to the canonical encounter route", async () => {
+    mountCompose();
+
+    expect(await screen.findByText("Ada Lovelace")).toBeTruthy();
+    expect(screen.getByText("MRN-9")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to encounter" }));
+    expect(await screen.findByRole("heading", { name: "Encounter destination" })).toBeTruthy();
+  });
+
+  it("does not show the previous chart while a new encounter route loads", async () => {
+    const { router } = mountCompose();
+    expect(await screen.findByText("Ada Lovelace")).toBeTruthy();
+
+    await act(async () => {
+      await router.navigate(
+        `/patients/${PATIENT}/encounters/cccccccc-3333-4333-8333-cccccccccccc/compose`,
+      );
+    });
+
+    expect(screen.queryByText("Ada Lovelace")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
+  });
+
+  it("does not expose the previous narrative when the next encounter selections fail", async () => {
+    const nextEncounter = "cccccccc-3333-4333-8333-cccccccccccc";
+    mirrorEncounterIdFromPath = true;
+    storedSections = [
+      {
+        sectionId: "assessment",
+        entries: [{ code: "nv.resp.dyspnea_at_rest" }],
+        freeText: "",
+      },
+    ];
+    const { router } = mountCompose();
+    expect(await screen.findByText("Patient reports dyspnea at rest.")).toBeTruthy();
+    failedSelectionsEncounterId = nextEncounter;
+
+    await act(async () => {
+      await router.navigate(`/patients/${PATIENT}/encounters/${nextEncounter}/compose`);
+    });
+
+    expect(await screen.findByText("Could not load this encounter.")).toBeTruthy();
+    expect(screen.queryByText("Patient reports dyspnea at rest.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
+  });
+
+  it("shows a recoverable error when the initial encounter transport rejects", async () => {
+    readTransportFailurePath = `/api/v1/encounters/${ENCOUNTER}`;
+    mountCompose();
+
+    expect(await screen.findByText(/Could not load this encounter/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
+  });
+
+  it("announces unsaved work, guards route and browser exits, and clears the guard after save", async () => {
+    const { router } = mountCompose();
+    expect(await screen.findByText("All changes saved")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText(/Dyspnea at rest/i));
+    expect(screen.getByText("Unsaved changes")).toBeTruthy();
+
+    const dirtyUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(dirtyUnload);
+    expect(dirtyUnload.defaultPrevented).toBe(true);
+
+    await act(async () => {
+      await router.navigate(`/patients/${PATIENT}/encounters/${ENCOUNTER}`);
+    });
+    expect(screen.getByRole("alertdialog", { name: "Leave without saving?" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(screen.getByText("Unsaved changes")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    expect(await screen.findByText("All changes saved")).toBeTruthy();
+    const cleanUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(cleanUnload);
+    expect(cleanUnload.defaultPrevented).toBe(false);
+  });
+
+  it("links a server care-plan blocker to the canonical M7 correction route", async () => {
+    writeFailurePath = "/finalize";
+    writeFailure = {
+      status: 422,
+      body: {
+        error: {
+          code: "COMPLIANCE_GATE_FAILED",
+          message: "The encounter is not ready to finalize.",
+          details: [
+            {
+              code: "CARE_PLAN_REVIEW_OVERDUE",
+              field: "carePlan",
+              message: "The patient's care plan is past its review window.",
+            },
+          ],
+        },
+      },
+    };
+    const { router } = mountCompose();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Finalize note" }));
+    const link = await screen.findByRole("button", { name: "Open care plan" });
+    fireEvent.click(link);
+
+    expect(router.state.location.pathname).toBe(`/patients/${PATIENT}/care-plan`);
+  });
 });
 
 describe("#91 — the note can be composed", () => {
@@ -313,6 +495,34 @@ describe("#91 — finalize is the server's gate, and its refusals are legible", 
     expect(writes()[1]).toBe(`POST /api/v1/encounters/${ENCOUNTER}/finalize`);
   });
 
+  it("locks authoring controls and prevents discarding while finalization saves the draft", async () => {
+    deferredWritePath = "/selections";
+    const { router } = mountCompose();
+    const choice = (await screen.findByLabelText(/Dyspnea at rest/i)) as HTMLInputElement;
+    fireEvent.click(choice);
+    fireEvent.click(screen.getByRole("button", { name: "Finalize note" }));
+    await waitFor(() =>
+      expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
+    );
+
+    expect(choice.disabled).toBe(true);
+    expect((screen.getByLabelText(/Additional notes/i) as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Vitals" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    await act(async () => {
+      await router.navigate("/other");
+    });
+    expect(screen.getByText(/visit note is being saved/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Discard changes" })).toBeNull();
+
+    await act(async () => releaseDeferredWrite?.());
+    await waitFor(() =>
+      expect(writes()).toContain(`POST /api/v1/encounters/${ENCOUNTER}/finalize`),
+    );
+  });
+
   it("Finalize stays ENABLED with a required section empty — the §2.6 gate is the server's", async () => {
     // The prompt names what is missing; it does not pre-empt. The server's checks are more than
     // "required sections are non-empty", so a client that guessed would either block a legal note or
@@ -331,6 +541,46 @@ describe("#91 — finalize is the server's gate, and its refusals are legible", 
     expect((await screen.findByText(/updated after you opened it/i)).textContent).toMatch(
       /Reload the latest version/i,
     );
+  });
+
+  it("releases the authoring lock when the save transport rejects", async () => {
+    writeTransportFailurePath = "/selections";
+    mountCompose();
+    const choice = (await screen.findByLabelText(/Dyspnea at rest/i)) as HTMLInputElement;
+    fireEvent.click(choice);
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+
+    expect(await screen.findByText(/connection was interrupted/i)).toBeTruthy();
+    expect(choice.disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Save draft" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    expect(screen.getByText("Unsaved changes")).toBeTruthy();
+  });
+
+  it("releases the authoring lock when the finalize transport rejects", async () => {
+    writeTransportFailurePath = "/finalize";
+    finalizeCommitsBeforeTransportFailure = true;
+    mountCompose();
+    const choice = (await screen.findByLabelText(/Dyspnea at rest/i)) as HTMLInputElement;
+    fireEvent.click(choice);
+    fireEvent.click(screen.getByRole("button", { name: "Finalize note" }));
+
+    expect(await screen.findByText(/server confirmed finalization/i)).toBeTruthy();
+    expect(choice.disabled).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Finalize note" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("does not spin forever when the post-finalize reload transport rejects", async () => {
+    failReloadAfterFinalize = true;
+    mountCompose();
+    fireEvent.click(await screen.findByLabelText(/Dyspnea at rest/i));
+    fireEvent.click(screen.getByRole("button", { name: "Finalize note" }));
+
+    expect(await screen.findByText(/updated record could not be reloaded/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
   });
 
   it("a D11 VOCAB_VERSION_MISMATCH says the corpus moved, which is what the clinician must act on", async () => {
@@ -387,7 +637,7 @@ describe("#91 — My Drafts leads somewhere a draft can be finished", () => {
     fireEvent.click(row);
     // Until the composer existed, every row in the author's unfinished-work queue led to a read-only
     // view of the thing they came here to write.
-    expect(await screen.findByText("navigated")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Other destination" })).toBeTruthy();
   });
 
   it("names the patient instead of a truncated id", async () => {

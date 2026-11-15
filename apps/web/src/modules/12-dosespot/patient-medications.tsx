@@ -325,7 +325,7 @@ export function PatientMedications(): JSX.Element {
             }
           />
         ) : (
-          <div className="wx-patient-banner" aria-busy="true" style={{ minHeight: "6.25rem" }} />
+          <div className="wx-patient-banner wx-patient-banner-has-actions" aria-busy="true" />
         )
       }
       rail={

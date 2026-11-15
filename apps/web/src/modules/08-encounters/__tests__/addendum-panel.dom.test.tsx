@@ -1,6 +1,6 @@
 import { ApiClientProvider } from "@chartwarden/ui";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import type { AddendumRow } from "../addenda-api";
@@ -70,16 +70,23 @@ function mount(
       vi.fn(async () => ({ data: { version: 4, layer1Preview: "Pain controlled." } })),
     POST: overrides.POST ?? vi.fn(async () => ({ data: { status: "finalized" } })),
   };
-  render(
-    <MemoryRouter>
-      <ApiClientProvider client={client as never}>
-        <SessionProvider session={session}>
-          <AddendaPanel encounterId="enc-1" addenda={addenda} onChanged={onChanged} />
-        </SessionProvider>
-      </ApiClientProvider>
-    </MemoryRouter>,
+  const router = createMemoryRouter(
+    [
+      {
+        path: "*",
+        element: (
+          <ApiClientProvider client={client as never}>
+            <SessionProvider session={session}>
+              <AddendaPanel encounterId="enc-1" addenda={addenda} onChanged={onChanged} />
+            </SessionProvider>
+          </ApiClientProvider>
+        ),
+      },
+    ],
+    { initialEntries: ["/patients/patient-1/encounters/enc-1"] },
   );
-  return { client, onChanged };
+  render(<RouterProvider router={router} />);
+  return { client, onChanged, router };
 }
 
 describe("Addendum panel (GAP-027)", () => {
@@ -125,7 +132,89 @@ describe("Addendum panel (GAP-027)", () => {
       },
     });
     expect(JSON.stringify(init)).not.toMatch(/author|cosign|signer/i);
-    expect(await screen.findByText("Draft saved.")).toBeTruthy();
+    expect(await screen.findByText("Addendum changes saved")).toBeTruthy();
+  });
+
+  it("keeps one draft editor active at a time", async () => {
+    mount([draft, { ...draft, id: "add-2", reason: "Second correction" }]);
+    const first = screen.getByLabelText("Addendum add-1");
+    const second = screen.getByLabelText("Addendum add-2");
+
+    fireEvent.click(within(first).getByRole("button", { name: "Edit draft" }));
+    await screen.findByLabelText("Pain controlled");
+
+    expect(
+      (within(second).getByRole("button", { name: "Edit draft" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.getAllByLabelText("Pain controlled")).toHaveLength(1);
+  });
+
+  it("locks the editor and prevents discarding while a save is in flight", async () => {
+    let finishSave: (() => void) | undefined;
+    const PATCH = vi.fn(
+      () =>
+        new Promise<{ data: { version: number; layer1Preview: string } }>((resolve) => {
+          finishSave = () => resolve({ data: { version: 4, layer1Preview: "Pain controlled." } });
+        }),
+    );
+    const { router } = mount([draft], { PATCH });
+    fireEvent.click(screen.getByRole("button", { name: "Edit draft" }));
+    const choice = (await screen.findByLabelText("Pain controlled")) as HTMLInputElement;
+    fireEvent.click(choice);
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(PATCH).toHaveBeenCalledTimes(1));
+
+    expect(choice.disabled).toBe(true);
+    expect((screen.getByLabelText("Pain — additional notes") as HTMLTextAreaElement).disabled).toBe(
+      true,
+    );
+    expect(
+      (screen.getByRole("button", { name: "Close editor" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    await act(async () => {
+      await router.navigate("/patients/patient-1/encounters");
+    });
+    expect(screen.getByText(/addendum is being saved/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Discard addendum changes" })).toBeNull();
+
+    await act(async () => finishSave?.());
+    expect(await screen.findByText("Addendum changes saved")).toBeTruthy();
+  });
+
+  it("announces and protects unsaved addendum work until the server saves it", async () => {
+    const { client, router } = mount([draft]);
+    fireEvent.click(screen.getByRole("button", { name: "Edit draft" }));
+    expect(
+      (screen.getByRole("button", { name: "Finalize addendum" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.click(await screen.findByLabelText("Pain controlled"));
+    expect(screen.getByText("Unsaved addendum changes")).toBeTruthy();
+
+    const dirtyUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(dirtyUnload);
+    expect(dirtyUnload.defaultPrevented).toBe(true);
+
+    await act(async () => {
+      await router.navigate("/patients/patient-1/encounters");
+    });
+    expect(
+      screen.getByRole("alertdialog", { name: "Leave addendum without saving?" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing addendum" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close editor" }));
+    expect(
+      screen.getByRole("alertdialog", { name: "Leave addendum without saving?" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing addendum" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(client.PATCH).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Addendum changes saved")).toBeTruthy();
+    const cleanUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(cleanUnload);
+    expect(cleanUnload.defaultPrevented).toBe(false);
   });
 
   it("shows a 409 STALE_VERSION on save verbatim", async () => {
@@ -140,6 +229,25 @@ describe("Addendum panel (GAP-027)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     // 77519b66e: the alert is user-facing prose now, not "<status> <CODE>: <message>".
     expect((await screen.findByRole("alert")).textContent).toBe("version 3 is stale");
+  });
+
+  it("releases the editor lock when the save transport rejects", async () => {
+    mount([draft], {
+      PATCH: vi.fn(async () => {
+        throw new TypeError("connection dropped");
+      }),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit draft" }));
+    const choice = (await screen.findByLabelText("Pain controlled")) as HTMLInputElement;
+    fireEvent.click(choice);
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/connection was interrupted/i);
+    expect(choice.disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Save draft" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    expect(screen.getByText("Unsaved addendum changes")).toBeTruthy();
   });
 
   it("finalizes a draft and reloads from the server", async () => {
@@ -244,8 +352,24 @@ describe("Addendum draft survives the step-up round trip (GAP-027)", () => {
     await restoredNotes();
     fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     await waitFor(() => expect(client.PATCH).toHaveBeenCalledTimes(1));
-    await screen.findByText("Draft saved.");
+    await screen.findByText("Addendum changes saved");
     cleanup();
+    mount([draft], {}, ME);
+    expect(screen.getByRole("button", { name: "Edit draft" })).toBeTruthy();
+    expect(screen.queryByLabelText("Pain — additional notes")).toBeNull();
+  });
+
+  it("clears the stashed draft when the clinician discards it", async () => {
+    await typeAndSave(stepUpPatch());
+    const { router } = mount([draft], {}, ME);
+    await restoredNotes();
+
+    await act(async () => {
+      await router.navigate("/patients/patient-1/encounters");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discard addendum changes" }));
+    cleanup();
+
     mount([draft], {}, ME);
     expect(screen.getByRole("button", { name: "Edit draft" })).toBeTruthy();
     expect(screen.queryByLabelText("Pain — additional notes")).toBeNull();
