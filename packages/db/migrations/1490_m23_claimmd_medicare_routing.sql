@@ -9,7 +9,7 @@ CREATE TABLE claimmd_medicare_payer_route (
   organization_id uuid NOT NULL REFERENCES organization(id) ON DELETE RESTRICT,
   provider_entity_id uuid NOT NULL,
   payer_id uuid NOT NULL,
-  mac_jurisdiction m23_mac_jurisdiction NOT NULL,
+  mac_jurisdiction mac_jurisdiction NOT NULL,
   account_reference text NOT NULL CHECK (account_reference ~ '^[A-Za-z0-9._:-]{1,128}$'),
   usage text NOT NULL CHECK (usage IN ('test','production')),
   external_payer_id text NOT NULL CHECK (external_payer_id ~ '^[A-Za-z0-9._-]{1,40}$'),
