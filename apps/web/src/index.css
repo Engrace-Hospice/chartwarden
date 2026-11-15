@@ -415,6 +415,26 @@
   .wx-patient-workspace {
     background: var(--color-background);
   }
+  /* Reserve the patient identity footprint before its parallel reads settle. Without this contract,
+     code-status/allergy chips and the identity table push every chart destination after first paint. */
+  .wx-patient-banner {
+    min-height: 7.75rem !important;
+  }
+  .wx-banner-code-status-slot,
+  .wx-banner-allergy-slot {
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.5rem;
+  }
+  .wx-banner-code-status-slot {
+    min-width: 10.5rem;
+  }
+  .wx-banner-allergy-slot {
+    min-width: 8.75rem;
+  }
+  .wx-patient-summary-panel {
+    min-height: 13.375rem;
+  }
   /* A screen's workspace row that starts with the chart tab strip stacks vertically: the strip
      spans the top, the screen's own content fills below (chart-module-rail.tsx). */
   div:has(> .wx-chart-tabs) {
@@ -429,7 +449,7 @@
     border-bottom: 1px solid var(--color-card-border);
     padding: 0 1.5rem;
     overflow-x: auto;
-    /* Twelve tabs overflow a laptop-width chart; a visible thin scrollbar is the cue that more exist. */
+    /* The grouped chart destinations remain horizontally reachable at narrow widths. */
     scrollbar-width: thin;
   }
   .wx-chart-tabs ul {
@@ -460,6 +480,46 @@
   .wx-chart-tab:focus-visible {
     outline: 2px solid var(--color-focus-ring);
     outline-offset: -2px;
+  }
+  .wx-chart-subtabs {
+    flex-shrink: 0;
+    background: var(--color-surface-low);
+    border-bottom: 1px solid var(--color-card-border);
+    padding: 0.5rem 1.5rem;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .wx-chart-subtabs ul {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .wx-chart-subtab {
+    display: block;
+    padding: 0.4rem 0.7rem;
+    border-radius: 9999px;
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    white-space: nowrap;
+  }
+  .wx-chart-subtab:hover {
+    background: var(--color-surface-high);
+    color: var(--color-on-surface);
+    text-decoration: none;
+  }
+  .wx-chart-subtab.active {
+    background: var(--color-primary-tint);
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+  .wx-chart-subtab:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
   }
   .wx-patient-rail > * {
     flex-shrink: 0;
@@ -1263,9 +1323,20 @@
     .wx-patient-banner {
       align-items: flex-start !important;
     }
+    .wx-patient-banner-has-actions {
+      min-height: 9rem !important;
+    }
     .wx-banner-actions {
       width: 100%;
       margin-left: 0 !important;
+    }
+  }
+  @media (max-width: 700px) {
+    .wx-patient-banner {
+      min-height: 11.5rem !important;
+    }
+    .wx-patient-banner-has-actions {
+      min-height: 15rem !important;
     }
   }
 

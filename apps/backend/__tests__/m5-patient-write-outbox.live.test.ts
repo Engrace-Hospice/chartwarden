@@ -17,6 +17,7 @@ import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/index";
+import { createDbPatientLifecyclePort } from "../src/modules/05-patient/patient-lifecycle-db";
 import { createDbPatientRouteService } from "../src/modules/05-patient/patient-route-service-db";
 import { decidePatientSyncTrigger } from "../src/modules/12-dosespot/consumers/sync-triggers";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
@@ -32,6 +33,7 @@ describe.skipIf(!DB_URL)("GAP-016 M5 write outbox — LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let service: ReturnType<typeof createDbPatientRouteService>;
+  let lifecycle: ReturnType<typeof createDbPatientLifecyclePort>;
 
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });
@@ -73,6 +75,7 @@ describe.skipIf(!DB_URL)("GAP-016 M5 write outbox — LIVE Postgres", () => {
         txPublisher.publish(tx, { ...(input as object), callerModule: "m5" } as never),
     };
     service = createDbPatientRouteService(handle.db, outbox as never);
+    lifecycle = createDbPatientLifecyclePort(handle.db, outbox as never);
   }, 180_000);
 
   afterAll(async () => {
@@ -118,6 +121,36 @@ describe.skipIf(!DB_URL)("GAP-016 M5 write outbox — LIVE Postgres", () => {
       enqueueSync: true,
       patientId,
     });
+  });
+
+  it("documents demographics as last-write-wins until a version contract is approved", async () => {
+    const patientId = await admit();
+    await admin.query("DELETE FROM outbox_event");
+
+    const first = await lifecycle.updateDemographics(
+      ORG_A,
+      patientId,
+      { legalFirstName: "First writer" },
+      STAFF,
+    );
+    const second = await lifecycle.updateDemographics(
+      ORG_A,
+      patientId,
+      { legalFirstName: "Second writer" },
+      STAFF,
+    );
+
+    expect(first.changed).toEqual(["legalFirstName"]);
+    expect(second.changed).toEqual(["legalFirstName"]);
+    const stored = await admin.query<{ legal_first_name: string }>(
+      "SELECT legal_first_name FROM patient WHERE id = $1",
+      [patientId],
+    );
+    expect(stored.rows[0]?.legal_first_name).toBe("Second writer");
+    expect((await events()).map((event) => event.event_type)).toEqual([
+      "m5.patient.updated",
+      "m5.patient.updated",
+    ]);
   });
 
   it("addAddress publishes m5.patient.address_changed with the new addressId", async () => {

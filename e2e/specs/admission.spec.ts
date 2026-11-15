@@ -211,7 +211,7 @@ test.describe("Admission", () => {
   test("multi-role journey: organization administrator prepares, physician signs, and administrator activates", async ({
     page,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(240_000);
     const consoleErrors: string[] = [];
     const pageErrors: string[] = [];
     const serverErrors: string[] = [];
@@ -316,6 +316,52 @@ test.describe("Admission", () => {
     await expect(page.getByRole("link", { name: "Review care team" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Open HOPE" })).toBeVisible();
     await captureResponsiveEvidence(page, "active-continuation");
+
+    // Workflow 03 continuation — follow the activated admission into the canonical patient chart,
+    // update demographics through the generated PATCH contract, then prove another clinical role
+    // sees the same M5-owned identity on a downstream module route.
+    await page.getByRole("link", { name: "Open patient chart" }).click();
+    await page.waitForURL((url) => url.pathname === patientPath);
+    const chartNav = page.getByRole("navigation", { name: "Patient chart" });
+    await expect(chartNav).toBeVisible();
+    await expect(
+      chartNav.getByRole("link", { name: "Patient details", exact: true }),
+    ).toBeVisible();
+    await chartNav.getByRole("link", { name: "Patient details", exact: true }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`${patientPath.replaceAll("/", "\\/")}\\?view=demographics$`),
+    );
+    await expect(page.getByRole("heading", { name: "Demographics & Identifiers" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Edit demographics" }).click();
+    await page.getByLabel("First name").fill("Journey");
+    const demographicsWrite = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PATCH" &&
+        new URL(response.url()).pathname === `/api/v1${patientPath}`,
+    );
+    await page.getByRole("button", { name: "Save changes" }).click();
+    expect((await demographicsWrite).status()).toBe(200);
+    await expect(page.getByText("Demographics updated.")).toBeVisible();
+    await expect(page.locator(".wx-patient-banner")).toContainText("Journey");
+
+    await signOut(page);
+    await signInAs(page, PRESCRIBER_ACCOUNT());
+    await page.goto(`${patientPath}/election-certification`);
+    await expect(page.getByRole("heading", { name: "Election & Certification" })).toBeVisible();
+    await expect(page.locator(".wx-patient-banner")).toContainText("Journey");
+
+    // The physician can read the chart but does not hold privacy.admin. Prove both layers of that
+    // narrower boundary: no officer affordance in the chart and a direct backend refusal.
+    await page.goto(`${patientPath}?view=privacy`);
+    await expect(page.getByRole("heading", { name: "Privacy Flags" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open the privacy officer view" })).toHaveCount(0);
+    const deniedStatus = await page.evaluate(
+      async (path) => (await fetch(`/api/v1${path}/privacy`, { credentials: "include" })).status,
+      patientPath,
+    );
+    expect(deniedStatus).toBe(403);
+
     expect(serverErrors, "the journey should receive no server-error responses").toEqual([]);
     expect(consoleErrors, "the journey should emit no browser console errors").toEqual([]);
     expect(pageErrors, "the journey should emit no uncaught page errors").toEqual([]);

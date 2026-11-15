@@ -36,7 +36,14 @@ import type { paths } from "@chartwarden/ui";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import {
+  type BlockerFunction,
+  Link,
+  useBlocker,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 
 import type { FormEvent, JSX, ReactNode } from "react";
 
@@ -607,7 +614,40 @@ interface Identifier {
   effectiveTo: string | null;
 }
 
-function DemographicsTab({
+const DEMOGRAPHICS_SHELL_EXITS = new Set([
+  "/expired",
+  "/error",
+  "/maintenance",
+  "/tenant-unavailable",
+]);
+
+const nullableFormValue = (form: FormData, name: string): string | null =>
+  String(form.get(name) ?? "").trim() || null;
+
+const listFormValue = (form: FormData, name: string): string[] =>
+  String(form.get(name) ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+function demographicsUpdateFrom(form: FormData) {
+  return {
+    legalFirstName: String(form.get("legalFirstName") ?? "").trim(),
+    legalMiddleName: nullableFormValue(form, "legalMiddleName"),
+    legalLastName: String(form.get("legalLastName") ?? "").trim(),
+    legalNameSuffix: nullableFormValue(form, "legalNameSuffix"),
+    dob: String(form.get("dob") ?? ""),
+    sexAssignedAtBirth: String(form.get("sexAssignedAtBirth") ?? "U"),
+    genderIdentityCode: nullableFormValue(form, "genderIdentityCode"),
+    sexualOrientationCode: nullableFormValue(form, "sexualOrientationCode"),
+    pronounsCode: nullableFormValue(form, "pronounsCode"),
+    maritalStatusCode: nullableFormValue(form, "maritalStatusCode"),
+    raceCodes: listFormValue(form, "raceCodes"),
+    ethnicityCodes: listFormValue(form, "ethnicityCodes"),
+  };
+}
+
+export function DemographicsTab({
   patientId,
   onSaved,
 }: {
@@ -616,12 +656,47 @@ function DemographicsTab({
 }): JSX.Element {
   const client = useApiClient();
   const toast = useToast();
+  const canEdit = useSession()?.permissions?.includes("patient.edit") ?? false;
   const [demographics, setDemographics] = useState<Demographics | null>(null);
   const [identifiers, setIdentifiers] = useState<Identifier[] | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const editHeadingRef = useRef<HTMLHeadingElement>(null);
+  const discardHeadingRef = useRef<HTMLHeadingElement>(null);
+  const shouldBlock = useCallback<BlockerFunction>(
+    ({ nextLocation }) =>
+      editing &&
+      (dirty || saving) &&
+      nextLocation.pathname !== "/login" &&
+      !nextLocation.pathname.startsWith("/login/") &&
+      !DEMOGRAPHICS_SHELL_EXITS.has(nextLocation.pathname),
+    [dirty, editing, saving],
+  );
+  const blocker = useBlocker(shouldBlock);
+
+  useEffect(() => {
+    if (blocker.state === "blocked") setDiscarding(true);
+  }, [blocker.state]);
+
+  useEffect(() => {
+    if (blocker.state === "blocked" && !editing) blocker.proceed();
+  }, [blocker, editing]);
+
+  useEffect(() => {
+    if (!editing) return;
+    (discarding ? discardHeadingRef : editHeadingRef).current?.focus();
+  }, [discarding, editing]);
+
+  useEffect(() => {
+    if (!editing || (!dirty && !saving)) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, editing, saving]);
 
   useEffect(() => {
     let active = true;
@@ -692,55 +767,81 @@ function DemographicsTab({
     setSaving(true);
     setSaveError(null);
 
-    const form = new FormData(event.currentTarget);
-    const nullable = (name: string) => String(form.get(name) ?? "").trim() || null;
-    const list = (name: string) =>
-      String(form.get(name) ?? "")
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean);
+    const body = demographicsUpdateFrom(new FormData(event.currentTarget));
 
     try {
-      const res = await (
-        client as unknown as {
-          PUT: (
-            path: string,
-            options: unknown,
-          ) => Promise<{ data?: Demographics; error?: unknown }>;
-        }
-      ).PUT("/api/v1/patients/{id}/demographics", {
+      const res = await client.PATCH("/api/v1/patients/{id}", {
         params: { path: { id: patientId } },
-        body: {
-          legalFirstName: String(form.get("legalFirstName") ?? "").trim(),
-          legalMiddleName: nullable("legalMiddleName"),
-          legalLastName: String(form.get("legalLastName") ?? "").trim(),
-          legalNameSuffix: nullable("legalNameSuffix"),
-          dob: String(form.get("dob") ?? ""),
-          sexAssignedAtBirth: String(form.get("sexAssignedAtBirth") ?? "U"),
-          genderIdentityCode: nullable("genderIdentityCode"),
-          sexualOrientationCode: nullable("sexualOrientationCode"),
-          pronounsCode: nullable("pronounsCode"),
-          maritalStatusCode: nullable("maritalStatusCode"),
-          preferredLanguageCode: nullable("preferredLanguageCode"),
-          raceCodes: list("raceCodes"),
-          ethnicityCodes: list("ethnicityCodes"),
-        },
+        body,
       });
 
-      if (res.error || !res.data) {
+      if (res.error) {
         setSaveError("Could not save demographics. Please review the fields and try again.");
+        return;
+      }
+
+      // The write is durable at this point. A subsequent projection-read failure must not be
+      // described as an unsaved draft that can still be discarded.
+      setDirty(false);
+
+      // The PATCH response is the write receipt (`patientId`, `changed`), not a demographics view.
+      // Re-read the canonical projection before updating the tab and shared patient banner.
+      const refreshed = await client.GET("/api/v1/patients/{id}/demographics", {
+        params: { path: { id: patientId } },
+      });
+      if (refreshed.error || !refreshed.data) {
+        setSaveError(
+          "Demographics were saved, but the updated record could not be reloaded. Refresh the chart to continue.",
+        );
         return;
       }
 
       // Update this tab immediately and notify the chart shell so the banner
       // and shared chart data reconcile without requiring a page reload.
-      setDemographics(res.data);
-      onSaved(res.data);
+      const updated = refreshed.data as Demographics;
+      setDemographics(updated);
+      onSaved(updated);
+      setDirty(false);
+      setDiscarding(false);
       setEditing(false);
       toast.show("Demographics updated.", { tone: "success" });
+    } catch {
+      setSaveError("Could not save demographics. Check your connection and try again.");
     } finally {
       setSaving(false);
     }
+  }
+
+  function keepEditing(): void {
+    if (blocker.state === "blocked") blocker.reset();
+    setDiscarding(false);
+  }
+
+  function discardChanges(): void {
+    setDirty(false);
+    setDiscarding(false);
+    if (blocker.state === "blocked") blocker.proceed();
+    else setEditing(false);
+  }
+
+  function requestClose(): void {
+    if (saving) return;
+    if (discarding) {
+      keepEditing();
+      return;
+    }
+    if (dirty) setDiscarding(true);
+    else setEditing(false);
+  }
+
+  const saveNavigationBlocked = discarding && blocker.state === "blocked" && saving;
+  const refreshFailureNavigationBlocked =
+    discarding && blocker.state === "blocked" && !saving && !dirty;
+
+  function leaveAfterRefreshFailure(): void {
+    setDiscarding(false);
+    setEditing(false);
+    if (blocker.state === "blocked") blocker.proceed();
   }
 
   return (
@@ -750,15 +851,19 @@ function DemographicsTab({
         title="Demographics & Identifiers"
         description="Core identity, demographic attributes and identifiers used across the patient chart."
         trailing={
-          <Button
-            tone="secondary"
-            onClick={() => {
-              setSaveError(null);
-              setEditing(true);
-            }}
-          >
-            Edit demographics
-          </Button>
+          canEdit ? (
+            <Button
+              tone="secondary"
+              onClick={() => {
+                setSaveError(null);
+                setDirty(false);
+                setDiscarding(false);
+                setEditing(true);
+              }}
+            >
+              Edit demographics
+            </Button>
+          ) : undefined
         }
       />
 
@@ -912,14 +1017,89 @@ function DemographicsTab({
 
       <Modal
         open={editing}
-        onClose={saving ? undefined : () => setEditing(false)}
-        ariaLabel="Edit patient demographics"
+        onClose={saving ? undefined : requestClose}
+        dismissOnScrim={!dirty && !discarding}
+        ariaLabel={
+          saveNavigationBlocked
+            ? "Demographics save in progress"
+            : refreshFailureNavigationBlocked
+              ? "Demographics reload failed"
+              : discarding
+                ? "Discard demographics changes"
+                : "Edit patient demographics"
+        }
+        role={discarding ? "alertdialog" : "dialog"}
         width="54rem"
       >
-        <form style={modalForm} onSubmit={submitDemographics}>
+        {saveNavigationBlocked ? (
+          <div style={modalForm}>
+            <div style={modalBody}>
+              <h2 ref={discardHeadingRef} tabIndex={-1} style={modalTitle}>
+                A save is still in progress
+              </h2>
+              <p style={{ margin: 0 }}>
+                Stay on this page until ChartWarden confirms whether the demographics update was
+                saved.
+              </p>
+            </div>
+            <footer style={modalFooter}>
+              <Button type="button" onClick={keepEditing}>
+                Stay on this page
+              </Button>
+            </footer>
+          </div>
+        ) : refreshFailureNavigationBlocked ? (
+          <div style={modalForm}>
+            <div style={modalBody}>
+              <h2 ref={discardHeadingRef} tabIndex={-1} style={modalTitle}>
+                The update was saved, but could not be reloaded
+              </h2>
+              <p style={{ margin: 0 }}>
+                Stay and refresh the chart to verify the canonical record, or leave this page. The
+                saved update will not be discarded.
+              </p>
+            </div>
+            <footer style={modalFooter}>
+              <Button type="button" tone="tertiary" onClick={keepEditing}>
+                Stay on this page
+              </Button>
+              <Button type="button" onClick={leaveAfterRefreshFailure}>
+                Leave this page
+              </Button>
+            </footer>
+          </div>
+        ) : discarding ? (
+          <div style={modalForm}>
+            <div style={modalBody}>
+              <h2 ref={discardHeadingRef} tabIndex={-1} style={modalTitle}>
+                Discard changes?
+              </h2>
+              <p style={{ margin: 0 }}>
+                Your demographics changes have not been saved. Keep editing or discard them before
+                leaving.
+              </p>
+            </div>
+            <footer style={modalFooter}>
+              <Button type="button" tone="tertiary" onClick={keepEditing}>
+                Keep editing
+              </Button>
+              <Button type="button" onClick={discardChanges}>
+                Discard changes
+              </Button>
+            </footer>
+          </div>
+        ) : null}
+        <form
+          hidden={discarding}
+          style={modalForm}
+          onSubmit={submitDemographics}
+          onChangeCapture={() => setDirty(true)}
+        >
           <header style={modalHeader}>
             <div>
-              <h2 style={modalTitle}>Edit demographics</h2>
+              <h2 ref={editHeadingRef} tabIndex={-1} style={modalTitle}>
+                Edit demographics
+              </h2>
               <p style={modalLead}>
                 Update identity and demographic information. MRN and protected identifiers are
                 managed separately to preserve identity and audit history.
@@ -1039,14 +1219,6 @@ function DemographicsTab({
                     style={input}
                   />
                 </FieldLabel>
-                <FieldLabel label="Preferred language" optional>
-                  <input
-                    name="preferredLanguageCode"
-                    defaultValue={d.preferredLanguageCode ?? ""}
-                    placeholder="Enter language code"
-                    style={input}
-                  />
-                </FieldLabel>
               </div>
             </section>
 
@@ -1087,12 +1259,7 @@ function DemographicsTab({
           </div>
 
           <footer style={modalFooter}>
-            <Button
-              type="button"
-              tone="tertiary"
-              disabled={saving}
-              onClick={() => setEditing(false)}
-            >
+            <Button type="button" tone="tertiary" disabled={saving} onClick={requestClose}>
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>
@@ -1156,9 +1323,10 @@ function AddressLine({ a }: { a: Address }): JSX.Element {
   );
 }
 
-function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
+export function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
   const client = useApiClient();
   const toast = useToast();
+  const canEdit = useSession()?.permissions?.includes("patient.edit") ?? false;
   const [addresses, setAddresses] = useState<Address[] | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [form, setForm] = useState({
@@ -1220,29 +1388,33 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
     if (form.line2) body.line2 = form.line2;
     if (form.state) body.state = form.state.toUpperCase();
 
-    const res = await client.POST("/api/v1/patients/{id}/addresses", {
-      params: { path: { id: patientId } },
-      body,
-    });
+    try {
+      const res = await client.POST("/api/v1/patients/{id}/addresses", {
+        params: { path: { id: patientId } },
+        body,
+      });
 
-    setSaving(false);
+      if (res.error) {
+        setSaveError("Could not save the address. Check the fields and try again.");
+        return;
+      }
 
-    if (res.error) {
-      setSaveError("Could not save the address. Check the fields and try again.");
-      return;
+      toast.show("Address saved.", { tone: "success" });
+      setForm({
+        line1: "",
+        line2: "",
+        city: "",
+        state: "",
+        postalCode: "",
+        kind: "home",
+        isPrimary: false,
+      });
+      await load();
+    } catch {
+      setSaveError("Could not save the address. Check your connection and try again.");
+    } finally {
+      setSaving(false);
     }
-
-    toast.show("Address saved.", { tone: "success" });
-    setForm({
-      line1: "",
-      line2: "",
-      city: "",
-      state: "",
-      postalCode: "",
-      kind: "home",
-      isPrimary: false,
-    });
-    await load();
   }
 
   if (status === "loading" && addresses === null) return <LoadingSpinner />;
@@ -1358,111 +1530,113 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
           ) : null}
         </div>
 
-        <Card title="Add address">
-          <p style={cardIntro}>
-            Add a new address record. Setting it as primary will close the current primary record
-            and preserve it in history.
-          </p>
+        {canEdit ? (
+          <Card title="Add address">
+            <p style={cardIntro}>
+              Add a new address record. Setting it as primary will close the current primary record
+              and preserve it in history.
+            </p>
 
-          <form onSubmit={submit} style={addressForm}>
-            <FieldLabel label="Street address">
-              <input
-                required
-                placeholder="123 Main Street"
-                value={form.line1}
-                onChange={(e) => setForm({ ...form, line1: e.target.value })}
-                style={input}
-              />
-            </FieldLabel>
-
-            <FieldLabel label="Apartment / suite" optional>
-              <input
-                placeholder="Apt 4B"
-                value={form.line2}
-                onChange={(e) => setForm({ ...form, line2: e.target.value })}
-                style={input}
-              />
-            </FieldLabel>
-
-            <div style={formGridThree}>
-              <FieldLabel label="City">
+            <form onSubmit={submit} style={addressForm}>
+              <FieldLabel label="Street address">
                 <input
                   required
-                  placeholder="City"
-                  value={form.city}
-                  onChange={(e) => setForm({ ...form, city: e.target.value })}
+                  placeholder="123 Main Street"
+                  value={form.line1}
+                  onChange={(e) => setForm({ ...form, line1: e.target.value })}
                   style={input}
                 />
               </FieldLabel>
 
-              <FieldLabel label="State" optional>
+              <FieldLabel label="Apartment / suite" optional>
                 <input
-                  placeholder="ST"
-                  maxLength={2}
-                  value={form.state}
-                  onChange={(e) => setForm({ ...form, state: e.target.value })}
+                  placeholder="Apt 4B"
+                  value={form.line2}
+                  onChange={(e) => setForm({ ...form, line2: e.target.value })}
                   style={input}
                 />
               </FieldLabel>
 
-              <FieldLabel label="ZIP code">
-                <input
-                  required
-                  placeholder="ZIP"
-                  value={form.postalCode}
-                  onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
-                  style={input}
-                />
-              </FieldLabel>
-            </div>
+              <div style={formGridThree}>
+                <FieldLabel label="City">
+                  <input
+                    required
+                    placeholder="City"
+                    value={form.city}
+                    onChange={(e) => setForm({ ...form, city: e.target.value })}
+                    style={input}
+                  />
+                </FieldLabel>
 
-            <div style={formGridTwo}>
-              <FieldLabel label="Address type">
-                <select
-                  value={form.kind}
-                  onChange={(e) => setForm({ ...form, kind: e.target.value })}
-                  style={input}
-                >
-                  {ADDRESS_KINDS.map((kind) => (
-                    <option key={kind} value={kind}>
-                      {titleCase(kind)}
-                    </option>
-                  ))}
-                </select>
-              </FieldLabel>
+                <FieldLabel label="State" optional>
+                  <input
+                    placeholder="ST"
+                    maxLength={2}
+                    value={form.state}
+                    onChange={(e) => setForm({ ...form, state: e.target.value })}
+                    style={input}
+                  />
+                </FieldLabel>
 
-              <label style={primaryToggle}>
-                <input
-                  type="checkbox"
-                  checked={form.isPrimary}
-                  onChange={(e) => setForm({ ...form, isPrimary: e.target.checked })}
-                />
-                <span>
-                  <strong style={{ display: "block" }}>Set as primary</strong>
-                  <small style={{ color: "var(--color-muted)" }}>
-                    Use as the patient's main residence.
-                  </small>
-                </span>
-              </label>
-            </div>
-
-            {form.isPrimary && current.some((address) => address.isPrimary) ? (
-              <div style={warningNote}>
-                The current primary address will move to history when this address is saved.
+                <FieldLabel label="ZIP code">
+                  <input
+                    required
+                    placeholder="ZIP"
+                    value={form.postalCode}
+                    onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
+                    style={input}
+                  />
+                </FieldLabel>
               </div>
-            ) : null}
 
-            {saveError ? (
-              <div role="alert" style={errorNote}>
-                {saveError}
+              <div style={formGridTwo}>
+                <FieldLabel label="Address type">
+                  <select
+                    value={form.kind}
+                    onChange={(e) => setForm({ ...form, kind: e.target.value })}
+                    style={input}
+                  >
+                    {ADDRESS_KINDS.map((kind) => (
+                      <option key={kind} value={kind}>
+                        {titleCase(kind)}
+                      </option>
+                    ))}
+                  </select>
+                </FieldLabel>
+
+                <label style={primaryToggle}>
+                  <input
+                    type="checkbox"
+                    checked={form.isPrimary}
+                    onChange={(e) => setForm({ ...form, isPrimary: e.target.checked })}
+                  />
+                  <span>
+                    <strong style={{ display: "block" }}>Set as primary</strong>
+                    <small style={{ color: "var(--color-muted)" }}>
+                      Use as the patient's main residence.
+                    </small>
+                  </span>
+                </label>
               </div>
-            ) : null}
 
-            <button type="submit" disabled={saving} style={primaryButton}>
-              {saving ? "Saving…" : "Add address"}
-            </button>
-          </form>
-        </Card>
+              {form.isPrimary && current.some((address) => address.isPrimary) ? (
+                <div style={warningNote}>
+                  The current primary address will move to history when this address is saved.
+                </div>
+              ) : null}
+
+              {saveError ? (
+                <div role="alert" style={errorNote}>
+                  {saveError}
+                </div>
+              ) : null}
+
+              <button type="submit" disabled={saving} style={primaryButton}>
+                {saving ? "Saving…" : "Add address"}
+              </button>
+            </form>
+          </Card>
+        ) : null}
       </div>
     </div>
   );
@@ -2174,6 +2348,7 @@ export function CareTeamTab({
 }): JSX.Element {
   const client = useApiClient();
   const toast = useToast();
+  const canAssign = useSession()?.permissions?.includes("patient.assign") ?? false;
   const navigate = useNavigate();
   const [team, setTeam] = useState<CareTeam | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -2263,14 +2438,16 @@ export function CareTeamTab({
             >
               {openingConversation ? "Opening…" : "Open care team conversation"}
             </Button>
-            <Button
-              onClick={() => {
-                setAssignmentError(null);
-                setAssignOpen(true);
-              }}
-            >
-              Assign care team member
-            </Button>
+            {canAssign ? (
+              <Button
+                onClick={() => {
+                  setAssignmentError(null);
+                  setAssignOpen(true);
+                }}
+              >
+                Assign care team member
+              </Button>
+            ) : null}
           </div>
         }
       />
