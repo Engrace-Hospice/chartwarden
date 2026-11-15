@@ -1,7 +1,7 @@
 import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
@@ -12,7 +12,22 @@ const session: Session = {
   userId: "11111111-1111-4111-8111-111111111111",
   organizationId: "org-1",
   displayName: "Sarah Miller",
-  permissions: ["admission.read", "admission.update"],
+  permissions: [
+    "admission.read",
+    "admission.update",
+    "admission.activate",
+    "admission.record_recommendation",
+    "nor.acknowledge",
+    "election.draft",
+    "election.sign",
+    "election_addendum.read",
+    "cti.draft",
+    "cti.sign_hospice_md",
+    "f2f.read",
+    "referral.update",
+    "patient.read",
+    "hope.timepoint.read",
+  ],
 };
 
 const admissionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -264,10 +279,8 @@ describe("Admission intake workspace", () => {
       screen.getAllByText("Notice of Rights acknowledgment is required.").length,
     ).toBeGreaterThan(0);
     expect(screen.getAllByText("Election Statement must be signed.").length).toBeGreaterThan(0);
-    expect(screen.getByRole("heading", { name: "Admission setup and privacy" })).toBeTruthy();
-    expect(
-      screen.getByRole("heading", { name: "Notices, election, and certification" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Required before activation" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "After admission and follow-up" })).toBeTruthy();
     expect(screen.getAllByText("Intake coordinator").length).toBeGreaterThan(0);
     // The admission is still "pending" (not yet active) — `HopeEntry` gates HOPE assessment access
     // behind activation (`active={admission.state === "active"}`), so it shows this message rather
@@ -344,6 +357,52 @@ describe("Admission intake workspace", () => {
     expect(screen.getAllByText("This step can't be completed from this screen yet.").length).toBe(
       2,
     );
+  });
+
+  it("explains when the signed-in role cannot complete a readiness action", async () => {
+    renderWithShell(clientFor(), {
+      ...session,
+      permissions: ["admission.read"],
+    });
+
+    const actions = await screen.findAllByRole("button", { name: "Complete Notice of Rights" });
+    expect(actions.length).toBeGreaterThan(0);
+    expect(actions.every((action) => action.getAttribute("aria-disabled") === "true")).toBe(true);
+    expect(
+      screen.getAllByText(
+        "Your current role cannot complete this step. Suggested owner: Intake coordinator.",
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("keeps server readiness authoritative while requiring activation permission", async () => {
+    renderWithShell(
+      clientFor(
+        readiness({
+          status: "ready",
+          canActivate: true,
+          completed: 1,
+          blockingRemaining: 0,
+          requirements: [
+            {
+              code: "notice_of_rights",
+              label: "Notice of Rights",
+              status: "complete",
+              blocking: true,
+            },
+          ],
+        }),
+      ),
+      { ...session, permissions: ["admission.read"] },
+    );
+
+    const activate = (await screen.findByRole("button", {
+      name: "Activate Admission",
+    })) as HTMLButtonElement;
+    expect(activate.disabled).toBe(true);
+    expect(
+      screen.getByText(/Activation is ready, but your current role cannot activate admissions/),
+    ).toBeTruthy();
   });
 
   it("does not list a not-applicable requirement as an activation blocker", async () => {
@@ -1167,7 +1226,7 @@ describe("Patient privacy review (REVIEW_PRIVACY)", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
     );
-    expect(screen.getByRole("heading", { name: "Timing and clinical follow-up" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Required before activation" })).toBeTruthy();
     expect(
       screen.getAllByText("Face-to-face encounter is overdue and needs an exception review.")
         .length,
@@ -1278,6 +1337,143 @@ describe("Admission activation — service location", () => {
       }),
     } as unknown as ApiClient;
   };
+
+  it("submits activation once while the confirmed request is in flight", async () => {
+    const client = clientFor(readiness({ canActivate: true, blockingRemaining: 0 }));
+    let resolveActivation: ((value: ReturnType<typeof ok>) => void) | undefined;
+    const activationPending = new Promise<ReturnType<typeof ok>>((resolve) => {
+      resolveActivation = resolve;
+    });
+    const post = client.POST as ReturnType<typeof vi.fn>;
+    post.mockImplementation(async (path: string) =>
+      path === "/api/v1/admissions/{id}/activate"
+        ? activationPending
+        : ok({ id: admissionId, state: "pending", version: 5 }),
+    );
+    renderWithShell(client);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "Activate Admission" }))[0]!);
+    const dialog = await screen.findByRole("dialog", { name: "Activate admission" });
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    const activate = within(dialog).getByRole("button", { name: "Activate" });
+    fireEvent.click(activate);
+
+    expect(
+      (
+        (await within(dialog).findByRole("button", {
+          name: "Activating...",
+        })) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Activating..." }));
+    expect(
+      post.mock.calls.filter(([path]) => path === "/api/v1/admissions/{id}/activate"),
+    ).toHaveLength(1);
+
+    await act(async () => {
+      resolveActivation?.(ok({ id: admissionId, state: "active", version: 5 }));
+      await activationPending;
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Activate admission" })).toBeNull(),
+    );
+  });
+
+  it("refreshes and displays changed blockers after a stale activation refusal", async () => {
+    const ready = readiness({ canActivate: true, blockingRemaining: 0 });
+    const changed = readiness({
+      status: "action_required",
+      canActivate: false,
+      completed: 6,
+      blockingRemaining: 1,
+      requirements: [
+        {
+          code: "election_statement",
+          label: "Election Statement",
+          status: "action_required",
+          blocking: true,
+          message: "The Election Statement changed and must be signed again.",
+          action: "COMPLETE_ELECTION_SIGNATURE",
+        },
+      ],
+    });
+    const client = clientFor(ready);
+    const get = client.GET as unknown as (path: string, init?: unknown) => Promise<unknown>;
+    let readinessReads = 0;
+    client.GET = vi.fn(async (path: string, init?: unknown) => {
+      if (path === "/api/v1/admissions/{id}/readiness") {
+        readinessReads += 1;
+        return ok(readinessReads === 1 ? ready : changed);
+      }
+      return get(path, init);
+    }) as never;
+    const post = client.POST as ReturnType<typeof vi.fn>;
+    const staleResponse = {
+      data: undefined,
+      error: { error: { code: "VERSION_MISMATCH" } },
+      response: new Response(null, { status: 409 }),
+    };
+    let resolveActivation: ((value: typeof staleResponse) => void) | undefined;
+    const activationPending = new Promise<typeof staleResponse>((resolve) => {
+      resolveActivation = resolve;
+    });
+    post.mockReturnValue(activationPending);
+    renderWithShell(client);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "Activate Admission" }))[0]!);
+    const dialog = await screen.findByRole("dialog", { name: "Activate admission" });
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Activate" }));
+
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    expect(post.mock.calls.map(([path]) => path)).toEqual(["/api/v1/admissions/{id}/activate"]);
+    await act(async () => {
+      resolveActivation?.(staleResponse);
+      await activationPending;
+    });
+
+    expect(
+      await screen.findByText("Admission requirements changed. Review the blockers and try again."),
+    ).toBeTruthy();
+    await waitFor(() => expect(readinessReads).toBeGreaterThan(1));
+    expect(
+      screen.getAllByText("The Election Statement changed and must be signed again.").length,
+    ).toBeGreaterThan(0);
+    expect(
+      (screen.getByRole("button", { name: "Activate Admission" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
+  it("recovers the activation ceremony after a network failure", async () => {
+    const client = clientFor(readiness({ canActivate: true, blockingRemaining: 0 }));
+    let rejectActivation: ((reason: Error) => void) | undefined;
+    const activationPending = new Promise<never>((_resolve, reject) => {
+      rejectActivation = reject;
+    });
+    (client.POST as ReturnType<typeof vi.fn>).mockReturnValue(activationPending);
+    renderWithShell(client);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "Activate Admission" }))[0]!);
+    const dialog = await screen.findByRole("dialog", { name: "Activate admission" });
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Activate" }));
+
+    await act(async () => {
+      rejectActivation?.(new Error("network down"));
+      await activationPending.catch(() => undefined);
+    });
+    expect(
+      await within(dialog).findByText(
+        "Could not reach the server. Check your connection and try again.",
+      ),
+    ).toBeTruthy();
+    expect(
+      (within(dialog).getByRole("button", { name: "Activate" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
 
   it("sends the chosen service location with the activation request", async () => {
     const client = unsited(clientFor(readiness({ canActivate: true, blockingRemaining: 0 })));

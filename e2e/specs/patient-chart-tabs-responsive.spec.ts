@@ -20,20 +20,26 @@ const VIEWPORTS = [
   { width: 1440, height: 900 },
 ] as const;
 const CHART_SECTIONS = ["medications", "care-plan"] as const;
-// Mirrors TABS in apps/web/src/shell/chart-module-rail.tsx.
-const TAB_LABELS = [
+// Mirrors the six primary groups in apps/web/src/shell/chart-module-rail.tsx.
+const GROUP_LABELS = [
   "Overview",
+  "Patient details",
   "Clinical",
-  "Election & Certification",
+  "Documents",
+  "Communication",
+  "More",
+] as const;
+const CLINICAL_SECTION_LABELS = [
+  "Clinical summary",
   "Assessments",
-  "Plan of Care",
+  "HOPE assessments",
+  "Plan of care",
+  "Discipline plans",
   "Orders",
   "Medications",
   "Visits",
   "IDG",
-  "Documents",
-  "Claims",
-  "Communication",
+  "Code status",
 ] as const;
 
 /** True when the topmost element at the centre of `target` is the target or one of its descendants. */
@@ -112,7 +118,7 @@ for (const section of CHART_SECTIONS) {
         const nav = await openChart(viewport, section);
         const scrollable = await nav.evaluate((el) => el.scrollWidth > el.clientWidth);
 
-        for (const label of TAB_LABELS) {
+        for (const label of GROUP_LABELS) {
           const tab = nav.getByRole("link", { name: label, exact: true });
           await expect(tab, `tab "${label}" is missing`).toHaveCount(1);
           if (!(await isInsideNav(nav, tab))) {
@@ -130,6 +136,34 @@ for (const section of CHART_SECTIONS) {
           expect(await isHitTestable(tab), `tab "${label}" is covered by another element`).toBe(
             true,
           );
+        }
+      });
+
+      test("every clinical destination is visible or reachable in the contextual strip", async () => {
+        await openChart(viewport, section);
+        const nav = page.locator('nav[aria-label="Clinical sections"]');
+        await expect(nav).toBeVisible();
+        const scrollable = await nav.evaluate((el) => el.scrollWidth > el.clientWidth);
+
+        for (const label of CLINICAL_SECTION_LABELS) {
+          const tab = nav.getByRole("link", { name: label, exact: true });
+          await expect(tab, `clinical destination "${label}" is missing`).toHaveCount(1);
+          if (!(await isInsideNav(nav, tab))) {
+            expect(
+              scrollable,
+              `clinical destination "${label}" is clipped and the strip does not scroll`,
+            ).toBe(true);
+            await tab.scrollIntoViewIfNeeded();
+          }
+          await expect
+            .poll(() => isInsideNav(nav, tab), {
+              message: `clinical destination "${label}" is outside the strip`,
+            })
+            .toBe(true);
+          expect(
+            await isHitTestable(tab),
+            `clinical destination "${label}" is covered by another element`,
+          ).toBe(true);
         }
       });
     });

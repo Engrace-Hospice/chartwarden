@@ -46,17 +46,20 @@ function renderBanner(identity: ChartIdentity, responses: Record<string, unknown
 
 describe("patient-context DOB rendering", () => {
   it("PatientSummaryPanel shows the stored birth day", () => {
-    render(
+    const { container } = render(
       <MemoryRouter>
         <PatientSummaryPanel identity={IDENTITY} />
       </MemoryRouter>,
     );
     expect(screen.getByText(/Mar 15, 1950/)).toBeTruthy();
+    expect(container.querySelector(".wx-patient-summary-panel")).toBeTruthy();
   });
 
   it("ChartBanner shows the stored birth day", () => {
-    renderBanner(IDENTITY, {});
+    renderBanner({ ...IDENTITY, extrasPending: true }, {});
     expect(screen.getAllByText(/Mar 15, 1950/).length).toBeGreaterThan(0);
+    expect(document.querySelector(".wx-banner-code-status-slot")).toBeTruthy();
+    expect(document.querySelector(".wx-banner-allergy-slot")).toBeTruthy();
   });
 
   it("ChartBanner shows neither coverage when the patient has none", () => {

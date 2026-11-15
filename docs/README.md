@@ -164,6 +164,8 @@ per-module build truth is the generated matrix (`bun run status:matrix`).
 | [`implementation/intake-current-state-audit.md`](./implementation/intake-current-state-audit.md) | Verified intake routes, controls, state transitions, preservation matrix, and rollout constraints. |
 | [`implementation/intake-workspace-user-guide.md`](./implementation/intake-workspace-user-guide.md) | Frontline workflow guidance for referral intake, patient matching, admission handoff, and readiness correction. |
 | [`implementation/intake-redesign-follow-up-backlog.md`](./implementation/intake-redesign-follow-up-backlog.md) | Optional, unapproved enhancements kept separate from the closed intake redesign initiative. |
+| [`implementation/ChartWarden_Workflow_03_Patient_Chart_Demographics.md`](./implementation/ChartWarden_Workflow_03_Patient_Chart_Demographics.md) | Patient chart and demographics workflow plan, approval gates, work packages, and test matrix. |
+| [`implementation/03-patient-chart-current-state-audit.md`](./implementation/03-patient-chart-current-state-audit.md) | Workflow 03 G0 audit of chart IA, canonical ownership, permissions, integrity, privacy, performance, tests, and proposed presentation boundaries. |
 
 ---
 

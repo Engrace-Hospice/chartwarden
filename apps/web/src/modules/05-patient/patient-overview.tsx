@@ -868,6 +868,7 @@ function PatientInfoPanel({
 
   className?: string;
 }): JSX.Element {
+  const canEdit = useSession()?.permissions?.includes("patient.edit") ?? false;
   const age = ageYears(patient.dob);
 
   const addr = currentAddress(data.addresses);
@@ -885,7 +886,7 @@ function PatientInfoPanel({
       className={className}
       action={
         <PanelLink to={`/patients/${patient.id}?view=demographics`}>
-          Edit <Glyph name="pencil" size={13} />
+          {canEdit ? "Edit" : "View"} <Glyph name={canEdit ? "pencil" : "arrow-right"} size={13} />
         </PanelLink>
       }
     >
@@ -1099,6 +1100,7 @@ function CareTeamPanel({
 
   className?: string;
 }): JSX.Element {
+  const canAssign = useSession()?.permissions?.includes("patient.assign") ?? false;
   const team = data.careTeam?.assignments;
 
   const conversation = useOpenPatientConversation(patientId);
@@ -1108,7 +1110,11 @@ function CareTeamPanel({
       title="Care Team"
       icon="users"
       className={className}
-      action={<PanelLink to={`/patients/${patientId}?view=care-team`}>Manage</PanelLink>}
+      action={
+        <PanelLink to={`/patients/${patientId}?view=care-team`}>
+          {canAssign ? "Manage" : "View"}
+        </PanelLink>
+      }
     >
       {team === undefined ? (
         <Loading />

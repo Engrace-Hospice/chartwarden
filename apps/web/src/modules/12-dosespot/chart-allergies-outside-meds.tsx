@@ -110,7 +110,15 @@ export function AllergyBanner({ patientId }: { patientId: string }): JSX.Element
       </Panel>
     );
   }
-  if (rows === null) return null;
+  if (rows === null) {
+    return (
+      <Panel title="Allergies" icon="alert">
+        <p aria-busy="true" style={{ margin: 0, color: t.onSurfaceVariant }}>
+          Loading allergy information…
+        </p>
+      </Panel>
+    );
+  }
   const shown = rows.filter((r) => r.verificationStatus !== "entered_in_error");
   const unverified = shown.filter((r) => r.verificationStatus === "unverified").length;
 

@@ -3,11 +3,10 @@ import { type JSX, type ReactNode, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { PatientConversationLink, useOpenPatientConversation } from "./open-patient-conversation";
 // apps/web/src/shell — the patient-chart tab strip, shared by every patient-scoped workspace screen
-// (Care Plan, Orders, Assessments, …) so it is defined once. 2026-09-25 redesign: the mockups replace
-// the vertical module rail with a horizontal tab bar under the patient banner (Overview · Clinical ·
-// Assessments · Care Plans · Orders · Medications · Visits · IDG · Documents · Claims · Communication).
-// Callers still render <ChartModuleRail> as the first child of their workspace row; index.css turns
-// that row into a column when it holds the strip, so no screen had to change its markup.
+// (Care Plan, Orders, Assessments, …) so it is defined once. The primary strip groups the workspace
+// into six stable areas; a contextual secondary strip preserves every existing patient destination.
+// Callers still render <ChartModuleRail> as the first child of their workspace row, so no patient
+// screen or route has to change its markup.
 
 export type ChartSection =
   | "summary"
@@ -32,100 +31,121 @@ export type ChartSection =
   | "claims"
   | "communication";
 
-type ChartTabKey =
+type ChartGroupKey =
   | "overview"
+  | "patient-details"
   | "clinical"
-  | "election"
-  | "assessments"
-  | "care-plans"
-  | "orders"
-  | "medications"
-  | "visits"
-  | "idg"
   | "documents"
-  | "signatures"
-  | "claims"
-  | "communication";
+  | "communication"
+  | "more";
 
-// Which tab a section lives under. The M5 record sub-views (demographics, addresses, coverage, care
-// team, privacy) and Election & Certification are reached from the Overview's panels and the banner's
-// Actions menu, so they highlight Overview.
-const SECTION_TAB: Record<ChartSection, ChartTabKey> = {
+// Every existing chart section stays addressable at its current route. This map changes only the
+// presentation: the former thirteen-item strip is grouped into six stable patient-workspace areas.
+const SECTION_GROUP: Record<ChartSection, ChartGroupKey> = {
   summary: "overview",
-  demographics: "overview",
-  addresses: "overview",
-  coverage: "overview",
-  "care-team": "overview",
-  privacy: "overview",
-  "code-status": "overview",
-  election: "election",
+  demographics: "patient-details",
+  addresses: "patient-details",
+  coverage: "patient-details",
+  "care-team": "patient-details",
+  privacy: "more",
+  "code-status": "clinical",
+  election: "more",
   clinical: "clinical",
-  hope: "assessments",
-  assessments: "assessments",
-  "care-plan": "care-plans",
-  "discipline-plans": "care-plans",
-  encounters: "visits",
-  orders: "orders",
-  medications: "medications",
-  idg: "idg",
+  hope: "clinical",
+  assessments: "clinical",
+  "care-plan": "clinical",
+  "discipline-plans": "clinical",
+  encounters: "clinical",
+  orders: "clinical",
+  medications: "clinical",
+  idg: "clinical",
   documents: "documents",
-  signatures: "signatures",
-  claims: "claims",
+  signatures: "documents",
+  claims: "more",
   communication: "communication",
 };
 
-const TABS: {
-  key: ChartTabKey;
+const GROUPS: {
+  key: ChartGroupKey;
   label: string;
   route: (id: string) => string;
 }[] = [
   { key: "overview", label: "Overview", route: (id) => `/patients/${id}` },
+  {
+    key: "patient-details",
+    label: "Patient details",
+    route: (id) => `/patients/${id}?view=demographics`,
+  },
   {
     key: "clinical",
     label: "Clinical",
     route: (id) => `/patients/${id}?view=clinical`,
   },
   {
-    key: "election",
-    label: "Election & Certification",
-    route: (id) => `/patients/${id}/election-certification`,
-  },
-  {
-    key: "assessments",
-    label: "Assessments",
-    route: (id) => `/patients/${id}/assessments`,
-  },
-  {
-    key: "care-plans",
-    label: "Plan of Care",
-    route: (id) => `/patients/${id}/care-plan`,
-  },
-  { key: "orders", label: "Orders", route: (id) => `/patients/${id}/orders` },
-  {
-    key: "medications",
-    label: "Medications",
-    route: (id) => `/patients/${id}/medications`,
-  },
-  {
-    key: "visits",
-    label: "Visits",
-    route: (id) => `/patients/${id}/encounters`,
-  },
-  { key: "idg", label: "IDG", route: (id) => `/patients/${id}/idg-history` },
-  {
     key: "documents",
     label: "Documents",
     route: (id) => `/patients/${id}/documents`,
   },
-  {
-    key: "signatures",
-    label: "Signatures",
-    route: (id) => `/patients/${id}/signatures`,
-  },
-  { key: "claims", label: "Claims", route: (id) => `/patients/${id}/claims` },
   // Rendered as PatientConversationLink (opens this patient's care-team conversation); route is the href fallback.
   { key: "communication", label: "Communication", route: () => "/messaging" },
+  {
+    key: "more",
+    label: "More",
+    route: (id) => `/patients/${id}/election-certification`,
+  },
 ];
+
+type SectionLink = {
+  key: ChartSection;
+  label: string;
+  route: (id: string) => string;
+};
+
+const GROUP_SECTIONS: Partial<Record<ChartGroupKey, SectionLink[]>> = {
+  "patient-details": [
+    {
+      key: "demographics",
+      label: "Demographics & identifiers",
+      route: (id) => `/patients/${id}?view=demographics`,
+    },
+    { key: "addresses", label: "Addresses", route: (id) => `/patients/${id}?view=addresses` },
+    { key: "coverage", label: "Coverage", route: (id) => `/patients/${id}?view=coverage` },
+    { key: "care-team", label: "Care team", route: (id) => `/patients/${id}?view=care-team` },
+  ],
+  clinical: [
+    { key: "clinical", label: "Clinical summary", route: (id) => `/patients/${id}?view=clinical` },
+    { key: "assessments", label: "Assessments", route: (id) => `/patients/${id}/assessments` },
+    { key: "hope", label: "HOPE assessments", route: (id) => `/patients/${id}/hope` },
+    { key: "care-plan", label: "Plan of care", route: (id) => `/patients/${id}/care-plan` },
+    {
+      key: "discipline-plans",
+      label: "Discipline plans",
+      route: (id) => `/patients/${id}/discipline-plans`,
+    },
+    { key: "orders", label: "Orders", route: (id) => `/patients/${id}/orders` },
+    { key: "medications", label: "Medications", route: (id) => `/patients/${id}/medications` },
+    { key: "encounters", label: "Visits", route: (id) => `/patients/${id}/encounters` },
+    { key: "idg", label: "IDG", route: (id) => `/patients/${id}/idg-history` },
+    {
+      key: "code-status",
+      label: "Code status",
+      route: (id) => `/patients/${id}?view=code-status`,
+    },
+  ],
+  documents: [
+    { key: "documents", label: "Documents", route: (id) => `/patients/${id}/documents` },
+    { key: "signatures", label: "Signatures", route: (id) => `/patients/${id}/signatures` },
+  ],
+  more: [
+    {
+      key: "election",
+      label: "Election & certification",
+      route: (id) => `/patients/${id}/election-certification`,
+    },
+    { key: "privacy", label: "Privacy", route: (id) => `/patients/${id}?view=privacy` },
+    { key: "claims", label: "Claims", route: (id) => `/patients/${id}/claims` },
+  ],
+};
 
 export function ChartModuleRail({
   patientId,
@@ -134,46 +154,77 @@ export function ChartModuleRail({
   patientId: string;
   current: ChartSection;
 }): JSX.Element {
-  const active = SECTION_TAB[current];
+  const activeGroup = SECTION_GROUP[current];
+  const sectionLinks = GROUP_SECTIONS[activeGroup] ?? [];
   const conversation = useOpenPatientConversation(patientId);
-  const nav = useRef<HTMLElement>(null);
-  // The strip scrolls at laptop widths; keep the current tab on screen after a navigation.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `active` is the trigger, not a value read
+  const primaryNav = useRef<HTMLElement>(null);
+  const secondaryNav = useRef<HTMLElement>(null);
+  // Both strips can scroll on a narrow viewport; keep the active group and destination visible.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the active keys are the triggers
   useEffect(() => {
-    nav.current
+    primaryNav.current
       ?.querySelector<HTMLElement>("[aria-current='page']")
       ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-  }, [active]);
+    secondaryNav.current
+      ?.querySelector<HTMLElement>("[aria-current='page']")
+      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [activeGroup, current]);
   return (
-    <nav ref={nav} className="wx-chart-tabs" aria-label="Patient chart">
-      <ul>
-        {TABS.map((tab) => {
-          const isActive = tab.key === active;
-          return (
-            <li key={tab.key}>
-              {tab.key === "communication" ? (
-                <PatientConversationLink
-                  patientId={patientId}
-                  conversation={conversation}
-                  className={isActive ? "wx-chart-tab active" : "wx-chart-tab"}
-                  aria-current={isActive ? "page" : undefined}
-                >
-                  {tab.label}
-                </PatientConversationLink>
-              ) : (
-                <Link
-                  to={tab.route(patientId)}
-                  className={isActive ? "wx-chart-tab active" : "wx-chart-tab"}
-                  aria-current={isActive ? "page" : undefined}
-                >
-                  {tab.label}
-                </Link>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+    <>
+      <nav ref={primaryNav} className="wx-chart-tabs" aria-label="Patient chart">
+        <ul>
+          {GROUPS.map((group) => {
+            const isActive = group.key === activeGroup;
+            return (
+              <li key={group.key}>
+                {group.key === "communication" ? (
+                  <PatientConversationLink
+                    patientId={patientId}
+                    conversation={conversation}
+                    className={isActive ? "wx-chart-tab active" : "wx-chart-tab"}
+                    aria-current={isActive ? "page" : undefined}
+                  >
+                    {group.label}
+                  </PatientConversationLink>
+                ) : (
+                  <Link
+                    to={group.route(patientId)}
+                    className={isActive ? "wx-chart-tab active" : "wx-chart-tab"}
+                    aria-current={isActive ? "page" : undefined}
+                  >
+                    {group.label}
+                  </Link>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+      {sectionLinks.length > 0 ? (
+        <nav
+          ref={secondaryNav}
+          className="wx-chart-subtabs"
+          aria-label={`${GROUPS.find((group) => group.key === activeGroup)?.label ?? "Chart"} sections`}
+        >
+          <ul>
+            {sectionLinks.map((section) => {
+              const isActive = section.key === current;
+              return (
+                <li key={section.key}>
+                  <Link
+                    to={section.route(patientId)}
+                    className={isActive ? "wx-chart-subtab active" : "wx-chart-subtab"}
+                    aria-current={isActive ? "page" : undefined}
+                  >
+                    {section.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+      ) : null}
+    </>
   );
 }
 
