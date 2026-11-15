@@ -8,9 +8,10 @@ export function claimMdResponseCaptureEnabled(
 }
 
 /**
- * Account-wide capture/dispatch and per-provider Claim.MD acknowledgment polling must never run together ON THE SAME ACCOUNT.
- * The capture reads the platform's own Claim.MD account only, so it is decided per organization: one with its own sealed
- * Claim.MD credential (`account: "tenant"`) keeps its per-tenant poll while capture is on (owner decision 2026-11-08).
+ * The BIL-1.1 capture service is platform-account-only. Tenant-owned Claim.MD accounts keep their existing
+ * organization/provider-scoped poll because it also applies the supported legacy ACK behavior. Do not turn this into a
+ * tenant capture switch until raw response capture, tenant-key encryption/RLS, account-wide cursor ownership, and the
+ * downstream handoff have been unified. Running a second account poll here would race the established cursor/status path.
  */
 export function shouldRunLegacyClaimMdAckPoll(input: {
   readonly captureActive: boolean;
@@ -18,6 +19,7 @@ export function shouldRunLegacyClaimMdAckPoll(input: {
   readonly vendor: string | null | undefined;
   readonly account?: "tenant";
 }): boolean {
+  // Fail closed against accidental double polling: enabling platform capture does not opt tenant accounts into a second poller.
   if (input.account === "tenant") return true;
   return !(input.vendor === "claimmd" && (input.captureActive || input.dispatcherActive === true));
 }

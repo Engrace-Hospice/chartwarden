@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
-import type { AccountResponsePage, ClaimMdUsage } from "@chartwarden/x12-837-client";
+import {
+  type AccountResponsePage,
+  type ClaimMdUsage,
+  encodeClaimMdCapturedPayload,
+} from "@chartwarden/x12-837-client";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { createClaimMdInboxCipher } from "./cipher";
 
@@ -91,7 +95,21 @@ export function createClaimMdResponseStore(input: {
     ): Promise<{ cursor: string; inserted: number; duplicates: number; review: number }> {
       if (page.afterCursor !== lease.cursor || BigInt(page.nextCursor) < BigInt(page.afterCursor))
         throw new Error("CLAIMMD_CURSOR_MISMATCH");
-      const plaintext = JSON.stringify(page.body);
+      if (page.events.length === 0 && page.nextCursor === page.afterCursor) {
+        return run("claimmd empty response poll", async (tx) => {
+          const [stream] = await tx
+            .update(S)
+            .set({ lastSuccessAt: sql`now()`, updatedAt: sql`now()`, errorCode: null })
+            .where(and(owned(lease), eq(S.cursor, page.afterCursor)))
+            .returning({ cursor: S.cursor });
+          if (!stream) throw new Error("CLAIMMD_LEASE_FENCED");
+          return { cursor: stream.cursor, inserted: 0, duplicates: 0, review: 0 };
+        });
+      }
+      const plaintext = encodeClaimMdCapturedPayload({
+        rawPayload: page.rawPayload,
+        sourceFormat: page.sourceFormat,
+      });
       const encrypted = input.cipher.seal(lease.streamId, page.afterCursor, plaintext);
       return run("claimmd response page capture", async (tx) => {
         const [stream] = await tx

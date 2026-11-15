@@ -530,3 +530,9 @@ clearinghouses a binding built from a tenant's own sealed credential carries `ac
 - **NOE / NOTR jobs keep main's contract.** Every job carries `submissionId`; it is checked against the stored attempt
   (organization, provider entity, notice, kind) and `attemptIndex` is passed through. A job without it fails loudly; a park closes
   only the job's own matching attempt.
+
+## Amendment 2026-11-15 — tenant response evidence boundary (CM-5A.3A)
+
+Migration 1493 adds a separate tenant-owned encrypted Claim.MD response repository; it does not change the per-account poll ownership above. The stable inbox account UUID is provisioned only after explicit operator verification and is bound to the active tenant clearinghouse config and its current keyed credential fingerprint. Credential rotation retains the UUID only after a separate authorized confirmation. The current config schema does not expose a vendor-issued Claim.MD account identifier, so the internal verification record is not represented as independent vendor proof. Raw pages use the tenant DEK and organization/account/batch/cursor-bound AES-GCM AAD; the platform BIL-1.1 role, key and inbox remain separate.
+
+The existing tenant poller remains the sole active reader and cursor owner. A typed archive-before-existing-ACK adapter is available for a future one-fetch integration but is not composed into the poller, which currently yields normalized ACK data rather than exact raw page provenance. Historical per-provider and ACK-kind cursors remain distinct; inventory is read-only and no cursor cutover or backfill occurs. Runtime PostgreSQL/RLS qualification for migration 1493 remains outstanding.

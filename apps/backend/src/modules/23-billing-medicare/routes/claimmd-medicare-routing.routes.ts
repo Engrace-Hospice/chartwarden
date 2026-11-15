@@ -96,6 +96,52 @@ export const CloseClaimMdMedicareRouteBodySchema = Type.Object({
   routeId: Type.String({ format: "uuid" }),
   effectiveTo: Type.String({ format: "date" }),
 });
+const NullableString = Type.Union([Type.String(), Type.Null()]);
+const ClaimMdRouteView = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  organizationId: Type.String({ format: "uuid" }),
+  providerEntityId: Type.String({ format: "uuid" }),
+  payerId: Type.String({ format: "uuid" }),
+  macJurisdiction: Type.String(),
+  accountReference: Type.String(),
+  usage: Type.String(),
+  externalPayerId: Type.String(),
+  transactionType: Type.String(),
+  effectiveFrom: Type.String({ format: "date" }),
+  effectiveTo: NullableString,
+  status: Type.String(),
+  provenance: Type.String(),
+  createdByMembershipId: Type.String({ format: "uuid" }),
+  createdAt: Type.String({ format: "date-time" }),
+  updatedAt: Type.String({ format: "date-time" }),
+});
+const ClaimMdEnrollmentView = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  organizationId: Type.String({ format: "uuid" }),
+  providerEntityId: Type.String({ format: "uuid" }),
+  payerId: Type.String({ format: "uuid" }),
+  accountReference: Type.String(),
+  usage: Type.String(),
+  transactionType: Type.String(),
+  status: Type.String(),
+  verificationSource: NullableString,
+  verificationRef: NullableString,
+  verifiedByMembershipId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+  verifiedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  effectiveFrom: Type.String({ format: "date" }),
+  effectiveTo: NullableString,
+  createdAt: Type.String({ format: "date-time" }),
+  updatedAt: Type.String({ format: "date-time" }),
+});
+export const ClaimMdMedicareRoutingResponse = Type.Object({
+  routes: Type.Array(ClaimMdRouteView),
+  enrollments: Type.Array(ClaimMdEnrollmentView),
+});
+export const ClaimMdMedicareIdResponse = Type.Object({ id: Type.String({ format: "uuid" }) });
+export const ClaimMdMedicareCloseRouteResponse = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  effectiveTo: Type.String({ format: "date" }),
+});
 
 export function registerClaimMdMedicareRoutingRoutes(
   app: FastifyInstance,

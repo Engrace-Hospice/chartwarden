@@ -4,9 +4,14 @@
 // wrapper over the shared NoticeWindowDetail. Lantern DetailPageLayout, tokens-only, §5.4 aria-live countdown.
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
+import { NoeExceptionSummary } from "./noe-exception-review";
 import { NOE_CONFIG, NoticeWindowDetail } from "./notice-window";
 
 export function NoeDetail(): JSX.Element {
   const { noeId } = useParams<{ noeId: string }>();
-  return <NoticeWindowDetail config={NOE_CONFIG} id={noeId ?? ""} />;
+  return (
+    <NoticeWindowDetail config={NOE_CONFIG} id={noeId ?? ""}>
+      <NoeExceptionSummary noeId={noeId ?? ""} />
+    </NoticeWindowDetail>
+  );
 }

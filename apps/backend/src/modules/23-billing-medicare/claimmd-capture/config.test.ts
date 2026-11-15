@@ -36,4 +36,15 @@ describe("Claim.MD legacy acknowledgment poll coordination", () => {
       }),
     ).toBe(true);
   });
+
+  it("keeps the tenant-owned legacy poll as the sole reader even when platform capture and dispatch are enabled", () => {
+    expect(
+      shouldRunLegacyClaimMdAckPoll({
+        captureActive: true,
+        dispatcherActive: true,
+        vendor: "claimmd",
+        account: "tenant",
+      }),
+    ).toBe(true);
+  });
 });

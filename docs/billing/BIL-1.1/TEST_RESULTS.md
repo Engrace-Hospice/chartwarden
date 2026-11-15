@@ -10,7 +10,22 @@ Executed:
 bunx vitest run packages/x12-837-client/src/clearinghouse/claimmd-account-response.test.ts apps/backend/src/modules/23-billing-medicare/claimmd-capture/capture.test.ts
 ```
 
-Result at the time recorded: **2 files passed, 6 tests passed**. Coverage includes nested event normalization, absent identity metadata, large decimal response identifiers, absence of provider identity in requests, shared request-budget behavior, successful durable capture contract, fetch failure behavior, and encryption/authentication checks. These are unit tests with fakes; they do not certify database transactions or vendor behavior.
+Current focused command:
+
+```sh
+bunx vitest run packages/x12-837-client/src/clearinghouse/claimmd-account-response.test.ts packages/x12-837-client/src/clearinghouse/claimmd-transport.test.ts apps/backend/src/modules/23-billing-medicare/claimmd-capture/capture.test.ts apps/backend/src/modules/23-billing-medicare/claimmd-identity/service.test.ts apps/backend/src/modules/23-billing-medicare/claimmd-ack/service.test.ts apps/backend/src/modules/23-billing-medicare/claimmd-ack/interpret.test.ts
+```
+
+Result: **6 files passed, 66 tests passed, 0 failed, 0 skipped**. Coverage includes nested event normalization, absent identity metadata, large decimal response identifiers, absence of provider identity in requests, shared request-budget behavior, JSON/XML envelope normalization, DTD/malformed XML refusal, capture failure/cursor behavior, encrypted payload/AAD checks, and identity/ACK/transport regressions. Tests use fixtures and fake fetch; they do not certify database transactions or vendor behavior.
+
+TypeScript commands executed for this change:
+
+```sh
+bunx tsc -b packages/x12-837-client --pretty false
+NODE_OPTIONS=--max-old-space-size=6144 bunx tsc -b apps/backend --pretty false
+```
+
+Both commands exited 0. This is a project typecheck, not a PostgreSQL/RLS qualification.
 
 ## Requested follow-up commands
 
@@ -30,4 +45,26 @@ After completing missing database and runtime wiring, run the focused command ab
 - `arch:status-matrix`: generated `audit/implementation-status/IMPLEMENTATION_STATUS.md` is stale.
 - `arch:inject-coverage`: generated `audit/inject-coverage/INJECT_COVERAGE.md` is stale.
 
-The migration-related gates passed: manifest mirror, table ownership, tenancy, DDL legality, migration numbering and compatibility. `arch:test-typecheck`, route reachability, live-suite coverage, and other checks also passed. Generated reports were not refreshed as part of this focused change. No claim of full architecture-fitness success is made.
+
+## CM-5A.3A tenant inbox foundation (2026-11-15)
+
+Focused regression command (synthetic fixtures and mocked transports only) covered the tenant account resolver, tenant DEK cipher, archive-before-ACK handoff, read-only legacy cursor inventory, platform-capture tenant refusal, and existing Claim.MD identity/ACK/transport paths:
+
+```sh
+bunx vitest run apps/backend/src/modules/23-billing-medicare/claimmd-tenant-inbox/*.test.ts apps/backend/src/modules/23-billing-medicare/claimmd-capture/config.test.ts apps/backend/src/modules/23-billing-medicare/claimmd-capture/capture.test.ts apps/backend/src/modules/23-billing-medicare/jobs/clearinghouse-submission.test.ts packages/x12-837-client/src/clearinghouse/claimmd-account-response.test.ts packages/x12-837-client/src/clearinghouse/claimmd-transport.test.ts apps/backend/src/modules/23-billing-medicare/claimmd-identity/service.test.ts apps/backend/src/modules/23-billing-medicare/claimmd-ack/service.test.ts apps/backend/src/modules/23-billing-medicare/claimmd-ack/interpret.test.ts
+```
+
+Result: **12 files passed, 98 tests passed, 0 failed, 0 skipped**. The suite does not execute Drizzle persistence against PostgreSQL and does not prove database uniqueness, RLS or concurrency.
+
+TypeScript/static commands executed:
+
+```sh
+NODE_OPTIONS=--max-old-space-size=6144 bunx tsc -b apps/backend --pretty false
+bunx tsc -b packages/db --pretty false
+bun run arch:migration-numbering
+bun run arch:migration-compat
+bun run arch:tenancy
+bun run arch:manifest-mirror
+```
+
+All exited 0. Targeted Biome and `git diff --check` also passed for the changed non-live files. The existing live M23 RLS suite was extended with tenant inbox row-isolation/immutability coverage, but it was **not executed**; the repository compliance guard blocked an attempted formatting command that named the destructive live suite, and no `/hooks` authorization was requested or granted in this lot. Migration 1493 has not been applied to PostgreSQL. No vendor calls were made.

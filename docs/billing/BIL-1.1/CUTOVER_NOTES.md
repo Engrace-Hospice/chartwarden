@@ -4,6 +4,16 @@
 
 There is no boot registration, scheduler, account-key loader, platform-role wiring change, stream bootstrap, tenant event consumer, or feature-flag change. The migration may create capture tables and a dedicated role, but without an explicitly inserted stream row the capture service returns `NOT_BOOTSTRAPPED_OR_BUSY`. Keep the service inactive until all gates below have evidence.
 
+### Tenant-owned Claim.MD capture status
+
+Tenant-owned accounts still use the existing per-organization/provider ACK polling path. Do not enable a second BIL-1.1 poller for them: the legacy path has its own durable cursor and applies existing ACK behavior, while the current inbox is platform-role/platform-key owned and account-cursor based. Tenant archival requires a unified one-fetch pipeline and tenant-appropriate encryption/RLS plus a compatible cursor migration. No tenant cutover, backfill, or reset is part of CM-5A.2; the old path remains authoritative and its previously processed responses are not represented as archived inbox evidence.
+
+## CM-5A.3A status
+
+Migration 1493 and the tenant-owned encrypted inbox repository are implemented as a foundation only. The active `runTransportAckPull` poller still owns all tenant vendor reads and legacy ACK cursor writes. Its current transport exposes normalized events rather than the exact raw response page, so the archive-before-ACK adapter is not composed into it. The existing provider/ACK-type cursor coordinates have been inventoried read-only and are explicitly non-comparable; none has been reset, advanced, or collapsed into a new account cursor. The account `coverage_started_at` is the prospective start of verified archival, not a claim that prior responses exist in the inbox.
+
+No live cutover, historical replay, or vendor polling is authorized. Before any later integration, establish the actual vendor account identity with auditable evidence (the current config has no vendor-issued account ID), add an exact-raw-page transport seam to the existing single poller, define archive/ACK/cursor transaction boundaries and fencing, provision tenant key access, and execute migration 1493 against the approved isolated PostgreSQL application-role/RLS and concurrency suite. Rollback must leave the legacy cursor untouched and must not delete encrypted evidence.
+
 ## Staged activation plan
 
 1. Provision separate test and production account credentials through the approved secret store; provision and document the encryption keyring and rotation/recovery process.

@@ -12,6 +12,7 @@ export interface CaptureCounters {
   readonly code:
     | "OK"
     | "NOT_BOOTSTRAPPED_OR_BUSY"
+    | "UNSUPPORTED_ACCOUNT_OWNERSHIP"
     | "FETCH_FAILED"
     | "CAPTURE_FAILED"
     | "NO_PROGRESS";
@@ -37,6 +38,18 @@ export function createClaimMdResponseCapture(input: {
 }) {
   return {
     async runOnce(accountReference: string, usage: ClaimMdUsage): Promise<CaptureCounters> {
+      // Tenant account references are intentionally not accepted by this platform-only inbox. The
+      // tenant poller remains the single owner until tenant encryption/RLS and cursor handoff exist.
+      if (accountReference.startsWith("tenant:")) {
+        return {
+          pages: 0,
+          events: 0,
+          duplicates: 0,
+          needsReview: 0,
+          cursor: null,
+          code: "UNSUPPORTED_ACCOUNT_OWNERSHIP",
+        };
+      }
       let lease = await input.store.acquire(accountReference, usage);
       if (!lease)
         return {

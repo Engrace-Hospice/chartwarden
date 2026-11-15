@@ -8,7 +8,7 @@ import {
 import { NOT_WIRED_TRANSPORT } from "@chartwarden/x12-837-client";
 import { clearinghouseUsageFromEnv } from "@chartwarden/x12-837-client";
 import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   type M23TransportDeps,
   type TransportAck,
@@ -116,6 +116,21 @@ describe("a worker cannot be built without the binding while a vendor is configu
     ).toBe(transport);
   });
 
+  it("buildM23WorkerDeps carries durable notice issue evaluation through", () => {
+    const noticeIssueSync = {
+      synchronize: vi.fn(async () => {}),
+      flushNotifications: vi.fn(async () => 0),
+      evaluateOrganization: vi.fn(async () => {}),
+    };
+    expect(
+      buildM23WorkerDeps({
+        connection: {} as never,
+        db: {} as never,
+        noticeIssueSync,
+      }).noticeIssueSync,
+    ).toBe(noticeIssueSync);
+  });
+
   it("activeTransport is null for an unbound binding (the legacy ports) and set for a vendor", () => {
     expect(
       activeTransport({
@@ -156,6 +171,13 @@ describe("transportUpload (claim / NOE / NOTR submit + retry go through the vend
       await expect(upload(kind, n)).rejects.toThrow(CH.NOT_WIRED);
     }
   });
+
+  it.each(["noe", "notr", "transfer_notice"] as const)(
+    "refuses unverified %s support without falling back to a different transport",
+    async (kind) => {
+      await expect(upload(kind, `notice-${kind}`)).rejects.toThrow("CH_NOT_WIRED");
+    },
+  );
 
   it("a retry of the same control number replays instead of filing twice", async () => {
     const t = transportDeps();

@@ -148,7 +148,8 @@ describe("GAP-069 watchdog crons", () => {
     ]);
     expect(published.map((p) => p.eventName)).toEqual(["m23.noe.window_breached"]);
     expect(published.every(catalogAccepts)).toBe(true);
-    expect(alerts.map((a) => a.alertCode)).toEqual(["m23.noe.window_breached"]);
+    // The watchdog publishes the catalog event transactionally; downstream M36 delivery owns alerts.
+    expect(alerts).toEqual([]);
   });
 
   it("publishes a catalog-valid window_warning on the target day", async () => {
@@ -162,6 +163,25 @@ describe("GAP-069 watchdog crons", () => {
     expect(breaches).toHaveLength(0);
     expect(published.map((p) => p.eventName)).toEqual(["m23.noe.window_warning"]);
     expect(published.every(catalogAccepts)).toBe(true);
+  });
+
+  it("runs one authoritative issue evaluation and notification flush per organization", async () => {
+    fakes.noeCandidates = [
+      { id: "noe-issue", admissionId: "adm-issue", version: 1, windowTargetAt: "2026-10-05" },
+    ];
+    const evaluateOrganization = vi.fn(async () => {});
+    const synchronize = vi.fn(async () => {});
+    const flushNotifications = vi.fn(async () => 0);
+    const { deps } = harness({
+      noticeIssueSync: { evaluateOrganization, synchronize, flushNotifications },
+    });
+
+    await runNoeWindowWatch(deps);
+
+    expect(evaluateOrganization).toHaveBeenCalledOnce();
+    expect(evaluateOrganization).toHaveBeenCalledWith(ORG);
+    expect(synchronize).not.toHaveBeenCalled();
+    expect(flushNotifications).toHaveBeenCalledWith(ORG);
   });
 
   // The CMS window is counted in Eastern calendar days (the record service and the DDE lookahead judge "today" the same way).

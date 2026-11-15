@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
+import { decodeClaimMdCapturedPayload } from "@chartwarden/x12-837-client";
 import { and, asc, count, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { claimMdIdentityFromCapturedPage } from "./event-identifiers";
 import type { ClaimMdIdentityEvent, IdentityResolution, SubmissionCandidate } from "./resolve";
@@ -128,7 +129,9 @@ export function createClaimMdIdentityStore(input: {
           return null;
         let body: unknown;
         try {
-          body = JSON.parse(input.cipher.open(row.streamId, row.cursor, row.payload));
+          body = decodeClaimMdCapturedPayload(
+            input.cipher.open(row.streamId, row.cursor, row.payload),
+          );
         } catch {
           throw new Error("CLAIMMD_INBOX_KEY_OR_PAYLOAD_UNAVAILABLE");
         }

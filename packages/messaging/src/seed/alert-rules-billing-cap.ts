@@ -17,6 +17,17 @@ const BILLING_AND_COMPLIANCE: Audience = {
   recipientResolver: "role_set",
   resolverArgs: { roleKeys: ["billing_manager", "compliance_officer", "org_admin"] },
 };
+const NOTICE_BILLING_ASSIGNEE: Audience = {
+  recipientResolver: "role_set",
+  resolverArgs: { roleKeys: ["billing_manager"], userIdPaths: ["assigneeUserId"] },
+};
+const NOTICE_ESCALATION_ASSIGNEE: Audience = {
+  recipientResolver: "role_set",
+  resolverArgs: {
+    roleKeys: ["billing_manager", "compliance_officer", "org_admin"],
+    userIdPaths: ["assigneeUserId"],
+  },
+};
 // GAP-040 - the M26 cap audiences are "whoever holds `cap.event.read`" (exact key, resolved live from the tenant's
 // own role grants), NOT a hand-made `cfo` / `billing_manager` role: neither is a role template, and no template
 // grants `cap.event.read`, so those role keys resolved nobody in a fresh tenant. The org administrators are the
@@ -68,6 +79,8 @@ export const BILLING_CAP_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   rule("m23.noe.window_warning", "warn", BILLING_MANAGERS),
   rule("m23.notr.window_breached", "critical", BILLING_AND_COMPLIANCE),
   rule("m23.notr.window_warning", "warn", BILLING_MANAGERS),
+  rule("m23.notice.operational_issue.warning", "warn", NOTICE_BILLING_ASSIGNEE),
+  rule("m23.notice.operational_issue.critical", "critical", NOTICE_ESCALATION_ASSIGNEE),
   rule("m23.claim.submission_stalled", "critical", BILLING_MANAGERS),
   rule("m23.eligibility.expired", "warn", BILLING_MANAGERS),
   // Platform-status events: the composition root fans them out once per active org.

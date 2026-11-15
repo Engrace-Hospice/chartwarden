@@ -18,6 +18,8 @@ export interface ScreenDescriptor<TScreen = unknown> {
   navGroup?: string;
   /** Permission key gating nav visibility. The server remains the authoritative enforcer. */
   requiredPermission?: string;
+  /** Any one of these permission keys grants visibility to a mixed-scope screen. */
+  requiredAnyPermission?: readonly string[];
   /**
    * Render inside the app-shell chrome (Top Nav + nav rail)? Default true. Set false for
    * pre-application surfaces shown standalone — Auth Flow, System Page (ADR-0030: "outside the App

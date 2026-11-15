@@ -7487,6 +7487,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/medicare-notice-issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List organization-scoped Medicare notice operational issues visible under the caller's notice permissions */
+        get: operations["getApiV1BillingMedicarenoticeissues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/medicare-notice-issues/{id}/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge that an authorized operator has seen a Medicare notice issue; does not resolve or file the notice */
+        post: operations["postApiV1BillingMedicarenoticeissuesByIdAcknowledge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/medicare-notice-issues/{id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign or unassign a Medicare notice operational issue to an authorized active organization member */
+        post: operations["postApiV1BillingMedicarenoticeissuesByIdAssign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/medicare-notice-issues/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read append-only, PHI-safe event history for an authorized Medicare notice operational issue */
+        get: operations["getApiV1BillingMedicarenoticeissuesByIdHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/medicare-notice-worklist": {
         parameters: {
             query?: never;
@@ -19584,10 +19652,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List auditable NOE late-filing exception reviews */
+        /** List protected NOE exception-review records; these are operator-attested external workflows, not MAC decisions */
         get: operations["getApiV1NoerecordsByIdExceptionreviews"];
         put?: never;
-        /** Create an auditable NOE late-filing exception review backed by protected evidence */
+        /** Start an operator-managed NOE exception review with protected M22 evidence; does not request or approve an exception */
         post: operations["postApiV1NoerecordsByIdExceptionreviews"];
         delete?: never;
         options?: never;
@@ -19604,7 +19672,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Attach protected evidence to an existing NOE exception review */
+        /** Attach additional authorized M22 evidence to an open NOE exception review */
         post: operations["postApiV1NoerecordsByIdExceptionreviewsByReviewIdEvidence"];
         delete?: never;
         options?: never;
@@ -19619,7 +19687,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read the immutable event history for an NOE exception review */
+        /** Read append-only NOE exception-review events and safe evidence references */
         get: operations["getApiV1NoerecordsByIdExceptionreviewsByReviewIdHistory"];
         put?: never;
         post?: never;
@@ -19638,7 +19706,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record a MAC or CMS NOE exception decision with protected evidence */
+        /** Record an externally received decision with step-up and supporting M22 evidence; this is operator attestation, not verified MAC acceptance */
         post: operations["postApiV1NoerecordsByIdExceptionreviewsByReviewIdRecorddecision"];
         delete?: never;
         options?: never;
@@ -19655,7 +19723,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record the externally submitted NOE exception request and its evidence */
+        /** Record an externally made exception request with step-up and supporting M22 evidence; WardenX does not transmit it */
         post: operations["postApiV1NoerecordsByIdExceptionreviewsByReviewIdRecordrequest"];
         delete?: never;
         options?: never;
@@ -50254,7 +50322,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -50290,7 +50363,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -50324,7 +50402,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: date */
+                        effectiveTo: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -54162,6 +54247,202 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingMedicarenoticeissues: {
+        parameters: {
+            query?: {
+                status?: "active" | "acknowledged" | "assigned" | "resolved" | "superseded";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        noticeType: "noe" | "notr" | "transfer" | "cancellation";
+                        /** Format: uuid */
+                        noticeId: string;
+                        issueCode: string;
+                        occurrenceKey: string;
+                        status: "active" | "acknowledged" | "assigned" | "resolved" | "superseded";
+                        severity: "info" | "warning" | "critical";
+                        responsibleArea: string;
+                        ddeWorkItemId: string | null;
+                        assignedMembershipId: string | null;
+                        acknowledgedAt: string | null;
+                        /** Format: date-time */
+                        firstDetectedAt: string;
+                        /** Format: date-time */
+                        lastEvaluatedAt: string;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingMedicarenoticeissuesByIdAcknowledge: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        noticeType: "noe" | "notr" | "transfer" | "cancellation";
+                        /** Format: uuid */
+                        noticeId: string;
+                        issueCode: string;
+                        occurrenceKey: string;
+                        status: "active" | "acknowledged" | "assigned" | "resolved" | "superseded";
+                        severity: "info" | "warning" | "critical";
+                        responsibleArea: string;
+                        ddeWorkItemId: string | null;
+                        assignedMembershipId: string | null;
+                        acknowledgedAt: string | null;
+                        /** Format: date-time */
+                        firstDetectedAt: string;
+                        /** Format: date-time */
+                        lastEvaluatedAt: string;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingMedicarenoticeissuesByIdAssign: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    assignedMembershipId: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        noticeType: "noe" | "notr" | "transfer" | "cancellation";
+                        /** Format: uuid */
+                        noticeId: string;
+                        issueCode: string;
+                        occurrenceKey: string;
+                        status: "active" | "acknowledged" | "assigned" | "resolved" | "superseded";
+                        severity: "info" | "warning" | "critical";
+                        responsibleArea: string;
+                        ddeWorkItemId: string | null;
+                        assignedMembershipId: string | null;
+                        acknowledgedAt: string | null;
+                        /** Format: date-time */
+                        firstDetectedAt: string;
+                        /** Format: date-time */
+                        lastEvaluatedAt: string;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingMedicarenoticeissuesByIdHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        eventType: string;
+                        reasonCode: string;
+                        /** Format: date-time */
+                        occurredAt: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingMedicarenoticeworklist: {
         parameters: {
             query: {
@@ -54235,6 +54516,35 @@ export interface operations {
                                 evidenceCount: number;
                             } | null;
                             nextActions: ("open_notice" | "open_noe_exception_review" | "open_transfer_notice")[];
+                            operationalIssues: {
+                                identity: {
+                                    type: "noe" | "notr" | "transfer" | "cancellation";
+                                    /** Format: uuid */
+                                    noticeId: string;
+                                    kind: "deadline_approaching" | "deadline_due_today" | "deadline_overdue" | "mac_rejection" | "transport_rejected" | "transport_unavailable" | "source_or_routing_blocked" | "artifact_integrity_hold" | "submission_in_doubt" | "mac_evidence_pending" | "exception_review_follow_up";
+                                };
+                                severity: "critical" | "warning" | "info";
+                                /** @constant */
+                                status: "active";
+                                responsibleArea: "billing" | "organization_administration" | "platform_integration" | "reconciliation";
+                                summary: string;
+                                permittedAction: "open_notice" | "open_dde_queue" | "open_noe_exception_review";
+                            }[];
+                            persistedIssues: {
+                                /** Format: uuid */
+                                id: string;
+                                issueCode: string;
+                                status: string;
+                                severity: string;
+                                responsibleArea: string;
+                                assignedMembershipId: string | null;
+                                acknowledgedAt: string | null;
+                                ddeWorkItemId: string | null;
+                                version: number;
+                                /** Format: date-time */
+                                updatedAt: string;
+                                notificationDeliveryState: "pending" | "retry_exhausted" | null;
+                            }[];
                             createdAt: string;
                         }[];
                         nextCursor: string | null;
@@ -54291,7 +54601,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -90455,7 +90770,10 @@ export interface operations {
     };
     getApiV1NoerecordsByIdExceptionreviews: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 id: string;
@@ -90529,7 +90847,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        noeId: string;
+                        category: "operations_disruption" | "cms_mac_system_issue" | "new_hospice_access_delay" | "other_external_determination";
+                        /** Format: uuid */
+                        justificationDocumentId: string;
+                        status: "draft" | "evidence_required" | "ready_for_external_request" | "request_recorded" | "awaiting_external_determination" | "external_approved_recorded" | "external_denied_recorded" | "withdrawn";
+                        evidenceDocumentIds: string[];
+                        externalRequestReference: string | null;
+                        externalRequestDate: string | null;
+                        externalAuthority: "a_b_mac" | "cms" | null;
+                        externalDecision: "approved" | "denied" | null;
+                        externalDecisionProvenance: "operator_attested_document" | null;
+                        externalDecisionDate: string | null;
+                        externalDecisionDocumentId: string | null;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -90562,7 +90904,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        noeId: string;
+                        category: "operations_disruption" | "cms_mac_system_issue" | "new_hospice_access_delay" | "other_external_determination";
+                        /** Format: uuid */
+                        justificationDocumentId: string;
+                        status: "draft" | "evidence_required" | "ready_for_external_request" | "request_recorded" | "awaiting_external_determination" | "external_approved_recorded" | "external_denied_recorded" | "withdrawn";
+                        evidenceDocumentIds: string[];
+                        externalRequestReference: string | null;
+                        externalRequestDate: string | null;
+                        externalAuthority: "a_b_mac" | "cms" | null;
+                        externalDecision: "approved" | "denied" | null;
+                        externalDecisionProvenance: "operator_attested_document" | null;
+                        externalDecisionDate: string | null;
+                        externalDecisionDocumentId: string | null;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -90589,8 +90955,8 @@ export interface operations {
                     "application/json": {
                         items: {
                             eventType: string;
-                            fromStatus: string | null;
-                            toStatus: string;
+                            fromStatus: ("draft" | "evidence_required" | "ready_for_external_request" | "request_recorded" | "awaiting_external_determination" | "external_approved_recorded" | "external_denied_recorded" | "withdrawn") | null;
+                            toStatus: "draft" | "evidence_required" | "ready_for_external_request" | "request_recorded" | "awaiting_external_determination" | "external_approved_recorded" | "external_denied_recorded" | "withdrawn";
                             /** Format: date-time */
                             occurredAt: string;
                             evidenceDocumentIds: string[];
@@ -90634,7 +91000,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        noeId: string;
+                        category: "operations_disruption" | "cms_mac_system_issue" | "new_hospice_access_delay" | "other_external_determination";
+                        /** Format: uuid */
+                        justificationDocumentId: string;
+                        status: "draft" | "evidence_required" | "ready_for_external_request" | "request_recorded" | "awaiting_external_determination" | "external_approved_recorded" | "external_denied_recorded" | "withdrawn";
+                        evidenceDocumentIds: string[];
+                        externalRequestReference: string | null;
+                        externalRequestDate: string | null;
+                        externalAuthority: "a_b_mac" | "cms" | null;
+                        externalDecision: "approved" | "denied" | null;
+                        externalDecisionProvenance: "operator_attested_document" | null;
+                        externalDecisionDate: string | null;
+                        externalDecisionDocumentId: string | null;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -90671,7 +91061,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        noeId: string;
+                        category: "operations_disruption" | "cms_mac_system_issue" | "new_hospice_access_delay" | "other_external_determination";
+                        /** Format: uuid */
+                        justificationDocumentId: string;
+                        status: "draft" | "evidence_required" | "ready_for_external_request" | "request_recorded" | "awaiting_external_determination" | "external_approved_recorded" | "external_denied_recorded" | "withdrawn";
+                        evidenceDocumentIds: string[];
+                        externalRequestReference: string | null;
+                        externalRequestDate: string | null;
+                        externalAuthority: "a_b_mac" | "cms" | null;
+                        externalDecision: "approved" | "denied" | null;
+                        externalDecisionProvenance: "operator_attested_document" | null;
+                        externalDecisionDate: string | null;
+                        externalDecisionDocumentId: string | null;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

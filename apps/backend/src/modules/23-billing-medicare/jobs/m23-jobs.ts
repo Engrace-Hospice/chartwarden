@@ -65,6 +65,8 @@ import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/c
 import { reviewedClaimSourceIsStale } from "../services/claim-preview-integrity";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
 import type { MedicareNoticeDispatchStateMachine } from "../services/medicare-notice-dispatch";
+import type { MedicareNoticeIssueObservation } from "../services/medicare-notice-operational-issues";
+import { noticeDeadlineIssueObservation } from "../services/medicare-notice-operational-issues";
 import type { MedicareNoticeRenderer } from "../services/medicare-notice-renderer";
 import { reportRevokedResponsesPending } from "../tenant-clearinghouse/revoked-responses-alert";
 import { isVoidM23Claim } from "../void-claim";
@@ -602,6 +604,15 @@ export interface M23WorkerDeps {
   readonly jurisdictions?: MacJurisdictionListPort;
   /** ADR-0052 — files a DDE work item for each at-risk NOE/NOTR the window-watch crons walk (absent ⇒ no item). */
   readonly ddeWatchdog?: DdeWatchdogPort;
+  /** Persist the same window-watch evidence for the unified operational issue worklist. */
+  readonly noticeIssueSync?: {
+    synchronize(
+      organizationId: string,
+      observations: readonly MedicareNoticeIssueObservation[],
+    ): Promise<void>;
+    flushNotifications(organizationId: string): Promise<number>;
+    evaluateOrganization?(organizationId: string): Promise<void>;
+  };
   /** Structured logger for failures that must not abort the cron (ids only, never PHI). */
   readonly logger?: { error(fields: Record<string, unknown>, message: string): void };
   /**
@@ -2872,6 +2883,7 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
 
   const ddeFailures: { organizationId: string; failures: readonly unknown[] }[] = [];
   for (const { organizationId } of orgs) {
+    const issueObservations: MedicareNoticeIssueObservation[] = [];
     await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (txAny) => {
       const tx = txAny as unknown as BillingDb;
       const noes = new NoeRepository(tx);
@@ -2879,6 +2891,13 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
       const candidates = await noes.listWindowWatchCandidates(organizationId, asOf);
       for (const noe of candidates) {
         const days = daysToTarget(noe.windowTargetAt, now);
+        const issue = noticeDeadlineIssueObservation({
+          noticeType: "noe",
+          noticeId: noe.id,
+          sourceVersion: noe.version,
+          daysToDeadline: days,
+        });
+        if (issue) issueObservations.push(issue);
         if (days < 0) {
           await noticeWindowOf(deps).recordBreach({
             tx,
@@ -2898,12 +2917,6 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
               breachedAt: now.toISOString(),
             },
           });
-          await alertsOf(deps).dispatch({
-            alertCode: "m23.noe.window_breached",
-            severity: "critical",
-            organizationId,
-            payload: { noeId: noe.id, admissionId: noe.admissionId },
-          });
         } else if (days <= 2) {
           await outbox.publish(tx, {
             eventName: "m23.noe.window_warning",
@@ -2916,24 +2929,32 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
               daysIntoWindow: NOTICE_WINDOW_DAYS - days,
             },
           });
-          await alertsOf(deps).dispatch({
-            alertCode: "m23.noe.window_warning",
-            severity: "warn",
-            organizationId,
-            payload: {
-              noeId: noe.id,
-              admissionId: noe.admissionId,
-              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-            },
-          });
         }
       }
     });
     // ADR-0052: after (and apart from) the warnings / breach stamps above, so a failure here cannot undo them.
-    ddeFailures.push({
-      organizationId,
-      failures: await queueDdeWorkIsolated(deps, organizationId, "noe", now),
-    });
+    const failures = await queueDdeWorkIsolated(deps, organizationId, "noe", now);
+    if (deps.noticeIssueSync?.evaluateOrganization) {
+      try {
+        await deps.noticeIssueSync.evaluateOrganization(organizationId);
+      } catch (error) {
+        failures.push(error);
+      }
+    } else if (deps.noticeIssueSync && issueObservations.length) {
+      try {
+        await deps.noticeIssueSync.synchronize(organizationId, issueObservations);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (deps.noticeIssueSync) {
+      try {
+        await deps.noticeIssueSync.flushNotifications(organizationId);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    ddeFailures.push({ organizationId, failures });
   }
   reportDdeFailures(deps, "noe", ddeFailures);
 }
@@ -2946,6 +2967,7 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
 
   const ddeFailures: { organizationId: string; failures: readonly unknown[] }[] = [];
   for (const { organizationId } of orgs) {
+    const issueObservations: MedicareNoticeIssueObservation[] = [];
     await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (txAny) => {
       const tx = txAny as unknown as BillingDb;
       const notrs = new NotrRepository(tx);
@@ -2953,6 +2975,13 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
       const candidates = await notrs.listWindowWatchCandidates(organizationId, asOf);
       for (const notr of candidates) {
         const days = daysToTarget(notr.windowTargetAt, now);
+        const issue = noticeDeadlineIssueObservation({
+          noticeType: "notr",
+          noticeId: notr.id,
+          sourceVersion: notr.version,
+          daysToDeadline: days,
+        });
+        if (issue) issueObservations.push(issue);
         if (days < 0) {
           await noticeWindowOf(deps).recordBreach({
             tx,
@@ -2972,12 +3001,6 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
               breachedAt: now.toISOString(),
             },
           });
-          await alertsOf(deps).dispatch({
-            alertCode: "m23.notr.window_breached",
-            severity: "critical",
-            organizationId,
-            payload: { notrId: notr.id },
-          });
         } else if (days <= 2) {
           await outbox.publish(tx, {
             eventName: "m23.notr.window_warning",
@@ -2990,24 +3013,32 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
               daysIntoWindow: NOTICE_WINDOW_DAYS - days,
             },
           });
-          await alertsOf(deps).dispatch({
-            alertCode: "m23.notr.window_warning",
-            severity: "warn",
-            organizationId,
-            payload: {
-              notrId: notr.id,
-              admissionId: notr.admissionId,
-              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-            },
-          });
         }
       }
     });
     // ADR-0052: after (and apart from) the warnings / breach stamps above, so a failure here cannot undo them.
-    ddeFailures.push({
-      organizationId,
-      failures: await queueDdeWorkIsolated(deps, organizationId, "notr", now),
-    });
+    const failures = await queueDdeWorkIsolated(deps, organizationId, "notr", now);
+    if (deps.noticeIssueSync?.evaluateOrganization) {
+      try {
+        await deps.noticeIssueSync.evaluateOrganization(organizationId);
+      } catch (error) {
+        failures.push(error);
+      }
+    } else if (deps.noticeIssueSync && issueObservations.length) {
+      try {
+        await deps.noticeIssueSync.synchronize(organizationId, issueObservations);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (deps.noticeIssueSync) {
+      try {
+        await deps.noticeIssueSync.flushNotifications(organizationId);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    ddeFailures.push({ organizationId, failures });
   }
   reportDdeFailures(deps, "notr", ddeFailures);
 }
@@ -3854,6 +3885,7 @@ export function buildM23WorkerDeps(deps: {
   activeOrgs?: ActiveOrgListPort;
   jurisdictions?: MacJurisdictionListPort;
   ddeWatchdog?: DdeWatchdogPort;
+  noticeIssueSync?: M23WorkerDeps["noticeIssueSync"];
   logger?: { error(fields: Record<string, unknown>, message: string): void };
 }): M23WorkerDeps {
   return {
@@ -3880,6 +3912,7 @@ export function buildM23WorkerDeps(deps: {
     activeOrgs: deps.activeOrgs,
     jurisdictions: deps.jurisdictions,
     ddeWatchdog: deps.ddeWatchdog,
+    noticeIssueSync: deps.noticeIssueSync,
     logger: deps.logger,
   };
 }

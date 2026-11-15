@@ -26,6 +26,7 @@ import { registerEligibilityRoutes } from "./eligibility.routes";
 import type { M23RouteServices } from "./index";
 import { type M23InternalSeamProvider, registerInternalSeamRoutes } from "./internal.routes";
 import { registerMacCredentialRoutes } from "./mac-credentials.routes";
+import { registerMedicareNoticeIssueRoutes } from "./medicare-notice-issues.routes";
 import { registerMedicareNoticeWorklistRoutes } from "./medicare-notice-worklist.routes";
 import { registerMedicareProviderRoutingRoutes } from "./medicare-provider-routing.routes";
 import { registerMetricsRoutes } from "./metrics.routes";
@@ -108,6 +109,8 @@ export function mountM23Routes(
     registerNoeExceptionReviewRoutes(app, services.noeExceptionReviewService);
   if (services.medicareNoticeWorklistService)
     registerMedicareNoticeWorklistRoutes(app, services.medicareNoticeWorklistService);
+  if (services.medicareNoticeOperationalIssueService)
+    registerMedicareNoticeIssueRoutes(app, services.medicareNoticeOperationalIssueService);
   registerNotrRoutes(app, { readService, writeService });
   // The Medicare transfer notice (TOB 8xC / corrected 8xC / 8xD; CMS Pub. 100-04 ch. 11 §20.1.3–§20.1.4).
   if (services.transferNoticeService) {

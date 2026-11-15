@@ -518,7 +518,9 @@ import {
   ValidationOverrideListQuerySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/billing-typebox";
 import {
+  ClaimMdMedicareCloseRouteResponse,
   ClaimMdMedicareEnrollmentBodySchema,
+  ClaimMdMedicareIdResponse,
   ClaimMdMedicareRouteBodySchema,
   ClaimMdMedicareRoutingResponseSchema,
   CloseClaimMdMedicareRouteBodySchema,
@@ -547,20 +549,30 @@ import {
   UpsertEdiProfileBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/edi-profile-typebox";
 import {
+  MedicareNoticeIssueAssignBody as M23MedicareNoticeIssueAssignBody,
+  MedicareNoticeIssueHistoryResponse as M23MedicareNoticeIssueHistoryResponse,
+  MedicareNoticeIssueListQuery as M23MedicareNoticeIssueListQuery,
+  MedicareNoticeIssueResponse as M23MedicareNoticeIssueResponse,
+  MedicareNoticeIssueVersionBody as M23MedicareNoticeIssueVersionBody,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/medicare-notice-issues-typebox";
+import {
   MedicareNoticeWorklistQuerySchema as M23MedicareNoticeWorklistQuerySchema,
   MedicareNoticeWorklistResponseSchema as M23MedicareNoticeWorklistResponseSchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/medicare-notice-worklist-typebox";
 import {
   MedicareProviderRoutingBodySchema,
+  MedicareProviderRoutingConfigureResponse,
   MedicareProviderRoutingResponseSchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/medicare-provider-routing.routes";
 import {
-  AddNoeExceptionEvidenceSchema,
-  CreateNoeExceptionReviewSchema,
-  NoeExceptionReviewHistoryResponseSchema,
-  NoeExceptionReviewListResponseSchema,
-  RecordNoeExceptionDecisionSchema,
-  RecordNoeExceptionRequestSchema,
+  AddNoeExceptionEvidenceSchema as M23AddNoeExceptionEvidenceSchema,
+  CreateNoeExceptionReviewSchema as M23CreateNoeExceptionReviewSchema,
+  NoeExceptionListQuerySchema as M23NoeExceptionListQuerySchema,
+  NoeExceptionReviewHistoryResponseSchema as M23NoeExceptionReviewHistoryResponseSchema,
+  NoeExceptionReviewListResponseSchema as M23NoeExceptionReviewListResponseSchema,
+  NoeExceptionReviewViewSchema as M23NoeExceptionReviewViewSchema,
+  RecordNoeExceptionDecisionSchema as M23RecordNoeExceptionDecisionSchema,
+  RecordNoeExceptionRequestSchema as M23RecordNoeExceptionRequestSchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/noe-exception-review-typebox";
 import {
   NpiVerificationListSchema,
@@ -3921,35 +3933,6 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Cancel a DRAFT/READY NOE — election-reversed guard fact (§4.1 #27)",
     body: CancelNoeBodySchema,
   },
-  "POST /api/v1/noe-records/:id/exception-reviews": {
-    summary: "Create an auditable NOE late-filing exception review backed by protected evidence",
-    body: CreateNoeExceptionReviewSchema,
-    headers: IDEMPOTENCY_KEY_HEADER,
-    status: 201,
-  },
-  "GET /api/v1/noe-records/:id/exception-reviews": {
-    summary: "List auditable NOE late-filing exception reviews",
-    response: NoeExceptionReviewListResponseSchema,
-  },
-  "GET /api/v1/noe-records/:id/exception-reviews/:reviewId/history": {
-    summary: "Read the immutable event history for an NOE exception review",
-    response: NoeExceptionReviewHistoryResponseSchema,
-  },
-  "POST /api/v1/noe-records/:id/exception-reviews/:reviewId/evidence": {
-    summary: "Attach protected evidence to an existing NOE exception review",
-    body: AddNoeExceptionEvidenceSchema,
-    headers: IDEMPOTENCY_KEY_HEADER,
-  },
-  "POST /api/v1/noe-records/:id/exception-reviews/:reviewId/record-request": {
-    summary: "Record the externally submitted NOE exception request and its evidence",
-    body: RecordNoeExceptionRequestSchema,
-    headers: IDEMPOTENCY_KEY_HEADER,
-  },
-  "POST /api/v1/noe-records/:id/exception-reviews/:reviewId/record-decision": {
-    summary: "Record a MAC or CMS NOE exception decision with protected evidence",
-    body: RecordNoeExceptionDecisionSchema,
-    headers: IDEMPOTENCY_KEY_HEADER,
-  },
   // ── Medicare transfer notice, TOB 8xC / corrected 8xC / 8xD (transfer-notice.routes.ts) ──
   "GET /api/v1/billing/medicare-notice-worklist": {
     summary:
@@ -3961,6 +3944,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Create an effective-dated Medicare provider-to-MAC jurisdiction route",
     body: MedicareProviderRoutingBodySchema,
     headers: IDEMPOTENCY_KEY_HEADER,
+    response: MedicareProviderRoutingConfigureResponse,
   },
   "GET /api/v1/billing/medicare-provider-routing/:providerEntityId": {
     summary: "Read effective-dated Medicare provider routing and legacy migration issues",
@@ -3970,6 +3954,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Create an effective-dated Claim.MD Medicare payer route",
     body: ClaimMdMedicareRouteBodySchema,
     headers: IDEMPOTENCY_KEY_HEADER,
+    response: ClaimMdMedicareIdResponse,
   },
   "GET /api/v1/billing/claimmd-medicare-routing/:providerEntityId": {
     summary: "Read Claim.MD Medicare payer routes and enrollment evidence",
@@ -3979,11 +3964,38 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Close an active Claim.MD Medicare payer route interval",
     body: CloseClaimMdMedicareRouteBodySchema,
     headers: IDEMPOTENCY_KEY_HEADER,
+    response: ClaimMdMedicareCloseRouteResponse,
   },
   "POST /api/v1/billing/claimmd-medicare-routing/enrollments": {
     summary: "Record transaction-specific Claim.MD Medicare enrollment evidence",
     body: ClaimMdMedicareEnrollmentBodySchema,
     headers: IDEMPOTENCY_KEY_HEADER,
+    response: ClaimMdMedicareIdResponse,
+  },
+  "GET /api/v1/billing/medicare-notice-issues": {
+    summary:
+      "List organization-scoped Medicare notice operational issues visible under the caller's notice permissions",
+    query: M23MedicareNoticeIssueListQuery,
+    response: Type.Array(M23MedicareNoticeIssueResponse),
+  },
+  "GET /api/v1/billing/medicare-notice-issues/:id/history": {
+    summary:
+      "Read append-only, PHI-safe event history for an authorized Medicare notice operational issue",
+    response: M23MedicareNoticeIssueHistoryResponse,
+  },
+  "POST /api/v1/billing/medicare-notice-issues/:id/assign": {
+    summary:
+      "Assign or unassign a Medicare notice operational issue to an authorized active organization member",
+    body: M23MedicareNoticeIssueAssignBody,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23MedicareNoticeIssueResponse,
+  },
+  "POST /api/v1/billing/medicare-notice-issues/:id/acknowledge": {
+    summary:
+      "Acknowledge that an authorized operator has seen a Medicare notice issue; does not resolve or file the notice",
+    body: M23MedicareNoticeIssueVersionBody,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23MedicareNoticeIssueResponse,
   },
   "GET /api/v1/billing/transfer-notices": {
     summary:
@@ -14421,6 +14433,44 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/noe-records/:id": {
     summary: "NOE detail (§4.1 #25)",
     response: M23NoeView,
+  },
+  "GET /api/v1/noe-records/:id/exception-reviews": {
+    summary:
+      "List protected NOE exception-review records; these are operator-attested external workflows, not MAC decisions",
+    query: M23NoeExceptionListQuerySchema,
+    response: M23NoeExceptionReviewListResponseSchema,
+  },
+  "GET /api/v1/noe-records/:id/exception-reviews/:reviewId/history": {
+    summary: "Read append-only NOE exception-review events and safe evidence references",
+    response: M23NoeExceptionReviewHistoryResponseSchema,
+  },
+  "POST /api/v1/noe-records/:id/exception-reviews": {
+    summary:
+      "Start an operator-managed NOE exception review with protected M22 evidence; does not request or approve an exception",
+    body: M23CreateNoeExceptionReviewSchema,
+    response: M23NoeExceptionReviewViewSchema,
+    status: 201,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/noe-records/:id/exception-reviews/:reviewId/evidence": {
+    summary: "Attach additional authorized M22 evidence to an open NOE exception review",
+    body: M23AddNoeExceptionEvidenceSchema,
+    response: M23NoeExceptionReviewViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/noe-records/:id/exception-reviews/:reviewId/record-request": {
+    summary:
+      "Record an externally made exception request with step-up and supporting M22 evidence; WardenX does not transmit it",
+    body: M23RecordNoeExceptionRequestSchema,
+    response: M23NoeExceptionReviewViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/noe-records/:id/exception-reviews/:reviewId/record-decision": {
+    summary:
+      "Record an externally received decision with step-up and supporting M22 evidence; this is operator attestation, not verified MAC acceptance",
+    body: M23RecordNoeExceptionDecisionSchema,
+    response: M23NoeExceptionReviewViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
   },
   "GET /api/v1/notr-records": {
     summary: "List NOTR records - timely-filing worklist, cursor-paginated (§4.1 #28)",

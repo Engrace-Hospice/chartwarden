@@ -111,3 +111,18 @@ describe("the seeded M26 cap alert audiences", () => {
     }
   });
 });
+
+describe("the seeded M23 Medicare notice issue audiences", () => {
+  const issueRules = BILLING_CAP_ALERT_RULES.filter((rule) =>
+    rule.eventType.startsWith("m23.notice.operational_issue."),
+  );
+
+  it("routes to authorized operational roles and the assigned user", () => {
+    expect(issueRules).toHaveLength(2);
+    for (const rule of issueRules) {
+      expect(rule.recipientResolver).toBe("role_set");
+      expect(rule.resolverArgs.userIdPaths).toEqual(["assigneeUserId"]);
+      expect(rule.resolverArgs.roleKeys).toContain("billing_manager");
+    }
+  });
+});

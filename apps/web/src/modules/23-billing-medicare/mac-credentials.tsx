@@ -644,6 +644,7 @@ function MedicareProviderRoutingPanel(): JSX.Element {
         }
         legalText="I confirm this Medicare jurisdiction and effective period are supported by provider billing records."
         signer={{ name: "You", role: "Billing administrator" }}
+        stepUp={{ label: "Re-enter your password to continue", type: "password" }}
         commitLabel="Confirm & save"
         onCommit={() => void save()}
         onCancel={() => setConfirm(false)}
@@ -1080,6 +1081,7 @@ function ClaimMdMedicareRoutingPanel(): JSX.Element {
         }
         legalText="I confirm this route should no longer be used after the selected date."
         signer={{ name: "You", role: "Billing administrator" }}
+        stepUp={{ label: "Re-enter your password to continue", type: "password" }}
         commitLabel="Confirm route end"
         onCommit={() => void closeRoute()}
         onCancel={() => setCloseTarget(null)}

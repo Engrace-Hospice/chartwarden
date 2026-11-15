@@ -2,10 +2,17 @@ import { createHash } from "node:crypto";
 import { encodeCursor as encodeDomainCursor } from "@chartwarden/billing";
 import type { repositories } from "@chartwarden/billing";
 import * as schema from "@chartwarden/db/schema";
-import { decodeCursor, encodeCursor } from "@chartwarden/shared/route-kit";
+import { CONSUMER_USER_ID, decodeCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ForbiddenError } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
+import type {
+  MedicareNoticeIssueEvaluation,
+  MedicareNoticeIssueListProjection,
+  MedicareNoticeIssueObservation,
+  MedicareNoticeIssueType,
+  MedicareNoticeOperationalIssueService,
+} from "../services/medicare-notice-operational-issues";
 import type {
   TransferNoticeService,
   TransferNoticeView,
@@ -31,6 +38,35 @@ export interface NoticeReadinessCheck {
   readonly reasonCode: string | null;
   readonly message: string;
   readonly blockingStage: "render" | "dispatch" | "reconciliation" | null;
+}
+export type MedicareNoticeOperationalIssueKind =
+  | "deadline_approaching"
+  | "deadline_due_today"
+  | "deadline_overdue"
+  | "mac_rejection"
+  | "transport_rejected"
+  | "transport_unavailable"
+  | "source_or_routing_blocked"
+  | "artifact_integrity_hold"
+  | "submission_in_doubt"
+  | "mac_evidence_pending"
+  | "exception_review_follow_up";
+export interface MedicareNoticeOperationalIssue {
+  /** Stable within the organization and notice type; derived from canonical persisted evidence. */
+  readonly identity: {
+    readonly type: MedicareNoticeWorklistType;
+    readonly noticeId: string;
+    readonly kind: MedicareNoticeOperationalIssueKind;
+  };
+  readonly severity: "critical" | "warning" | "info";
+  readonly status: "active";
+  readonly responsibleArea:
+    | "billing"
+    | "organization_administration"
+    | "platform_integration"
+    | "reconciliation";
+  readonly summary: string;
+  readonly permittedAction: "open_notice" | "open_dde_queue" | "open_noe_exception_review";
 }
 export interface MedicareNoticeWorkItem {
   readonly identity: { readonly type: MedicareNoticeWorklistType; readonly noticeId: string };
@@ -60,6 +96,8 @@ export interface MedicareNoticeWorkItem {
     readonly evidenceCount: number;
   };
   readonly nextActions: readonly MedicareNoticeNextAction[];
+  readonly operationalIssues: readonly MedicareNoticeOperationalIssue[];
+  readonly persistedIssues: readonly MedicareNoticeIssueListProjection[];
   readonly createdAt: string;
 }
 
@@ -105,6 +143,9 @@ export interface MedicareNoticeWorklistService {
     cursor?: string,
     limit?: number,
   ): Promise<MedicareNoticeWorklistResult>;
+}
+export interface MedicareNoticeOperationalIssueEvaluator {
+  evaluateOrganization(organizationId: string): Promise<void>;
 }
 export type ArtifactReadinessMetadata = {
   readonly state: "pending" | "finalized" | "corrupt";
@@ -230,6 +271,262 @@ function check(
   return { key, state, reasonCode, message, blockingStage };
 }
 
+/**
+ * Read-only operational issue projection over persisted notice/deadline/readiness evidence. It deliberately does not
+ * persist a second lifecycle or treat an alert/task acknowledgement as regulatory resolution. Durable DDE tasks and
+ * M36 notifications remain owned by their existing modules.
+ */
+export function evaluateMedicareNoticeOperationalIssues(input: {
+  readonly identity: MedicareNoticeWorkItem["identity"];
+  readonly deadlineRisk: string;
+  readonly lifecycle: string;
+  readonly latestAttempt: MedicareNoticeWorkItem["latestAttempt"];
+  readonly readiness: readonly NoticeReadinessCheck[];
+  readonly macAcceptance: MedicareNoticeWorkItem["macAcceptance"];
+  readonly exceptionReview: MedicareNoticeWorkItem["exceptionReview"];
+}): readonly MedicareNoticeOperationalIssue[] {
+  const issues: MedicareNoticeOperationalIssue[] = [];
+  const add = (
+    kind: MedicareNoticeOperationalIssueKind,
+    severity: MedicareNoticeOperationalIssue["severity"],
+    responsibleArea: MedicareNoticeOperationalIssue["responsibleArea"],
+    summary: string,
+    permittedAction: MedicareNoticeOperationalIssue["permittedAction"] = "open_notice",
+  ) => {
+    issues.push({
+      identity: { ...input.identity, kind },
+      severity,
+      status: "active",
+      responsibleArea,
+      summary,
+      permittedAction,
+    });
+  };
+  const accepted = input.macAcceptance === "verified";
+  if (!accepted && input.deadlineRisk === "overdue")
+    add(
+      "deadline_overdue",
+      "critical",
+      "billing",
+      "The filing deadline has passed without verified MAC acceptance.",
+      "open_dde_queue",
+    );
+  else if (!accepted && input.deadlineRisk === "due_today")
+    add(
+      "deadline_due_today",
+      "critical",
+      "billing",
+      "The filing deadline is today; verified MAC acceptance is not recorded.",
+      "open_dde_queue",
+    );
+  else if (!accepted && input.deadlineRisk === "approaching")
+    add(
+      "deadline_approaching",
+      "warning",
+      "billing",
+      "The filing deadline is approaching; verified MAC acceptance is not recorded.",
+      "open_dde_queue",
+    );
+
+  if (input.lifecycle === "outcome_unknown" || input.latestAttempt?.dispatchState === "in_doubt") {
+    add(
+      "submission_in_doubt",
+      "critical",
+      "reconciliation",
+      "The submission outcome is unknown. Investigate the original attempt; automatic resend is unavailable.",
+    );
+  } else if (input.deadlineRisk === "rejected") {
+    add(
+      "mac_rejection",
+      "critical",
+      "billing",
+      "A recorded MAC rejection requires review of its authoritative acknowledgment evidence.",
+    );
+  } else if (input.deadlineRisk === "transport_rejected") {
+    add(
+      "transport_rejected",
+      "warning",
+      "billing",
+      "The transport recorded a rejection; this is not MAC acceptance or a MAC rejection.",
+    );
+  }
+
+  for (const item of input.readiness.filter((entry) => entry.state === "blocked")) {
+    if (item.key === "transport") {
+      add("transport_unavailable", "warning", "platform_integration", item.message);
+    } else if (item.key === "artifact" && item.reasonCode === "ARTIFACT_INTEGRITY_HOLD") {
+      add(
+        "artifact_integrity_hold",
+        "critical",
+        "reconciliation",
+        "The finalized artifact is on integrity hold; preserve it for authorized investigation.",
+      );
+    } else if (item.key === "provider_payer") {
+      add("source_or_routing_blocked", "warning", "organization_administration", item.message);
+    } else if (item.key === "source" || item.key === "transaction") {
+      add("source_or_routing_blocked", "warning", "billing", item.message);
+    }
+  }
+
+  const hasPersistedReceipt =
+    input.latestAttempt !== null &&
+    input.latestAttempt.dispatchState === "finished" &&
+    ["submitted", "transport_received", "transport_receipt_confirmed"].includes(
+      input.latestAttempt.outcome,
+    );
+  if (!accepted && hasPersistedReceipt)
+    add(
+      "mac_evidence_pending",
+      "info",
+      "reconciliation",
+      "A transport receipt is recorded, but verified MAC acceptance evidence is still pending.",
+    );
+
+  const review = input.exceptionReview;
+  if (review && review.status !== "withdrawn") {
+    const summary =
+      review.status === "external_denied_recorded"
+        ? "An external denial was recorded by an operator; review the evidence and next steps. It is not a verified MAC acknowledgment."
+        : review.status === "external_approved_recorded"
+          ? "An external determination was recorded by an operator; review its evidence. It is not verified MAC acceptance."
+          : "The NOE exception review has an outstanding evidence or decision step.";
+    add("exception_review_follow_up", "warning", "billing", summary, "open_noe_exception_review");
+  }
+  return issues;
+}
+
+const operationalIssuesFor = (
+  item: Omit<MedicareNoticeWorkItem, "operationalIssues" | "persistedIssues">,
+): readonly MedicareNoticeOperationalIssue[] =>
+  evaluateMedicareNoticeOperationalIssues({
+    identity: item.identity,
+    deadlineRisk: item.deadline.risk,
+    lifecycle: item.lifecycle,
+    latestAttempt: item.latestAttempt,
+    readiness: item.readiness,
+    macAcceptance: item.macAcceptance,
+    exceptionReview: item.exceptionReview,
+  });
+
+const projectedIssueCode = (
+  noticeType: MedicareNoticeIssueType,
+  kind: MedicareNoticeOperationalIssueKind,
+): string => (kind.startsWith("deadline_") ? `${noticeType}_deadline_follow_up` : kind);
+
+const PROJECTED_ISSUE_KINDS: readonly MedicareNoticeOperationalIssueKind[] = [
+  "deadline_approaching",
+  "deadline_due_today",
+  "deadline_overdue",
+  "mac_rejection",
+  "transport_rejected",
+  "transport_unavailable",
+  "source_or_routing_blocked",
+  "artifact_integrity_hold",
+  "submission_in_doubt",
+  "mac_evidence_pending",
+  "exception_review_follow_up",
+];
+
+/**
+ * Converts the canonical read projection into a durable issue evaluation. The evidence key contains
+ * only stable record/version metadata, never beneficiary data or narrative text.
+ */
+export function operationalIssueEvaluationOf(
+  item: MedicareNoticeWorkItem,
+): MedicareNoticeIssueEvaluation {
+  const noticeType = item.identity.type as MedicareNoticeIssueType;
+  const observations = item.operationalIssues.map((issue): MedicareNoticeIssueObservation => {
+    const issueCode = projectedIssueCode(noticeType, issue.identity.kind);
+    const occurrenceKey = createHash("sha256")
+      .update(
+        JSON.stringify({
+          createdAt: item.createdAt,
+          kind: issue.identity.kind,
+          severity: issue.severity,
+          deadlineRisk: item.deadline.risk,
+          lifecycle: item.lifecycle,
+          submissionId: item.latestAttempt?.submissionId ?? null,
+          dispatchState: item.latestAttempt?.dispatchState ?? null,
+          outcome: item.latestAttempt?.outcome ?? null,
+          reviewStatus: item.exceptionReview?.status ?? null,
+          reviewUpdatedAt: item.exceptionReview?.updatedAt ?? null,
+        }),
+      )
+      .digest("hex")
+      .slice(0, 40);
+    return {
+      noticeType,
+      noticeId: item.identity.noticeId,
+      issueCode,
+      occurrenceKey,
+      severity: issue.severity,
+      responsibleArea: issue.responsibleArea,
+    };
+  });
+  const evidenceKey = createHash("sha256")
+    .update(
+      JSON.stringify({
+        createdAt: item.createdAt,
+        deadline: item.deadline,
+        lifecycle: item.lifecycle,
+        latestAttempt: item.latestAttempt,
+        macAcceptance: item.macAcceptance,
+        exceptionReview: item.exceptionReview
+          ? { status: item.exceptionReview.status, updatedAt: item.exceptionReview.updatedAt }
+          : null,
+        readiness: item.readiness.map(({ key, state, reasonCode }) => ({ key, state, reasonCode })),
+      }),
+    )
+    .digest("hex")
+    .slice(0, 40);
+  return {
+    noticeType,
+    noticeId: item.identity.noticeId,
+    evidenceKey,
+    evaluatedIssueCodes: [
+      `${noticeType}_deadline_follow_up`,
+      ...PROJECTED_ISSUE_KINDS.filter((kind) => !kind.startsWith("deadline_")).map((kind) =>
+        projectedIssueCode(noticeType, kind),
+      ),
+    ],
+    observations,
+  };
+}
+
+/**
+ * Worker-only read/evaluate adapter. It consumes the same authoritative projection as the UI and
+ * never renders X12, decrypts an artifact/MBI, or performs transport I/O.
+ */
+export function buildMedicareNoticeOperationalIssueEvaluator(deps: {
+  readonly worklist: MedicareNoticeWorklistService;
+  readonly issues: Pick<MedicareNoticeOperationalIssueService, "reconcile">;
+  readonly maxPages?: number;
+}): MedicareNoticeOperationalIssueEvaluator {
+  const maxPages = Math.min(Math.max(deps.maxPages ?? 100, 1), 100);
+  return {
+    async evaluateOrganization(organizationId) {
+      const actor: M23ReadActor = {
+        organizationId,
+        userId: CONSUMER_USER_ID,
+        roles: [],
+      };
+      let cursor: string | undefined;
+      for (let pageNumber = 0; pageNumber < maxPages; pageNumber++) {
+        const page = await deps.worklist.list(
+          actor,
+          {},
+          ["noe", "notr", "transfer", "cancellation"],
+          cursor,
+          100,
+        );
+        await deps.issues.reconcile(organizationId, page.items.map(operationalIssueEvaluationOf));
+        if (!page.hasMore || !page.nextCursor) return;
+        cursor = page.nextCursor;
+      }
+      throw new Error("Medicare notice issue evaluation exceeded its bounded page budget");
+    },
+  };
+}
 function artifactCheck(
   submissionId: string | null,
   metadata?: ArtifactReadinessMetadata,
@@ -313,7 +610,7 @@ function fromNoe(
 ): MedicareNoticeWorkItem {
   const accepted = v.deadline.acceptance === "verified";
   const attempt = v.latestAttempt;
-  return {
+  const item: Omit<MedicareNoticeWorkItem, "operationalIssues" | "persistedIssues"> = {
     identity: { type: "noe", noticeId: v.noeId },
     sourceEventType: "election",
     sourceEventId: v.electionPeriodId,
@@ -390,12 +687,13 @@ function fromNoe(
     nextActions: accepted ? ["open_notice"] : ["open_notice", "open_noe_exception_review"],
     createdAt: v.createdAt,
   };
+  return { ...item, operationalIssues: operationalIssuesFor(item), persistedIssues: [] };
 }
 
 function fromNotr(v: NotrView, artifact?: ArtifactReadinessMetadata): MedicareNoticeWorkItem {
   const accepted = v.deadline.acceptance === "verified";
   const attempt = v.latestAttempt;
-  return {
+  const item: Omit<MedicareNoticeWorkItem, "operationalIssues" | "persistedIssues"> = {
     identity: { type: "notr", noticeId: v.notrId },
     sourceEventType: v.triggerKind,
     sourceEventId: v.revocationEventId ?? v.dischargeEventId ?? v.transferEventId,
@@ -467,6 +765,7 @@ function fromNotr(v: NotrView, artifact?: ArtifactReadinessMetadata): MedicareNo
     nextActions: ["open_notice"],
     createdAt: v.createdAt,
   };
+  return { ...item, operationalIssues: operationalIssuesFor(item), persistedIssues: [] };
 }
 
 function fromTransfer(
@@ -475,7 +774,7 @@ function fromTransfer(
 ): MedicareNoticeWorkItem {
   const cancellation = v.action === "void";
   const accepted = v.state === "ack_accepted";
-  return {
+  const item: Omit<MedicareNoticeWorkItem, "operationalIssues" | "persistedIssues"> = {
     identity: { type: cancellation ? "cancellation" : "transfer", noticeId: v.transferNoticeId },
     sourceEventType: cancellation ? "transfer_notice_cancellation" : "transfer_in",
     sourceEventId: v.transferEventId,
@@ -557,6 +856,7 @@ function fromTransfer(
     nextActions: ["open_transfer_notice"],
     createdAt: v.createdAt,
   };
+  return { ...item, operationalIssues: operationalIssuesFor(item), persistedIssues: [] };
 }
 
 function matches(item: MedicareNoticeWorkItem, filter: MedicareNoticeWorklistFilter): boolean {
@@ -597,6 +897,7 @@ export function buildMedicareNoticeWorklistService(deps: {
   readonly transferNoticeService: TransferNoticeService;
   readonly exceptionReviews?: Pick<NoeExceptionReviewService, "summaries">;
   readonly artifactReadiness?: ArtifactReadinessReader;
+  readonly operationalIssues?: Pick<MedicareNoticeOperationalIssueService, "byNoticeReferences">;
   readonly pageSize?: number;
 }): MedicareNoticeWorklistService {
   const pageSize = Math.min(Math.max(deps.pageSize ?? 50, 1), 100);
@@ -771,7 +1072,25 @@ export function buildMedicareNoticeWorklistService(deps: {
       const hasMore = reachedPageBoundary
         ? boundaryHasMore
         : !(exhausted.noe && exhausted.notr && exhausted.transfer);
-      const items = all.slice(0, limit);
+      const pageItems = all.slice(0, limit);
+      const persisted = deps.operationalIssues
+        ? await deps.operationalIssues.byNoticeReferences(
+            actor,
+            pageItems.map((item) => ({
+              noticeType: item.identity.type as MedicareNoticeIssueType,
+              noticeId: item.identity.noticeId,
+            })),
+          )
+        : [];
+      const issueMap = new Map<string, MedicareNoticeIssueListProjection[]>();
+      for (const issue of persisted) {
+        const key = `${issue.noticeType}:${issue.noticeId}`;
+        issueMap.set(key, [...(issueMap.get(key) ?? []), issue]);
+      }
+      const items = pageItems.map((item) => ({
+        ...item,
+        persistedIssues: issueMap.get(`${item.identity.type}:${item.identity.noticeId}`) ?? [],
+      }));
       const counts = {
         scope: "returned_page" as const,
         total: items.length,

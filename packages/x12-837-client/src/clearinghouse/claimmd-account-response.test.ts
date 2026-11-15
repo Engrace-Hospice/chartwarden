@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   captureAccountResponsePage,
   createClaimMdAccountResponseReader,
+  decodeClaimMdCapturedPayload,
+  encodeClaimMdCapturedPayload,
 } from "./claimmd-account-response";
 
 describe("Claim.MD account response capture", () => {
@@ -76,5 +78,58 @@ describe("Claim.MD account response capture", () => {
     expect((await reader.fetchAccountResponses("acct-test", "test", "0")).ok).toBe(true);
     expect(counter.increment).toHaveBeenCalledWith("claimmd:test", 5_000);
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("parses the documented XML attribute envelope and preserves exact source text", async () => {
+    const raw =
+      '<result last_responseid="9"><claim bill_npi="123" pcn="SYNTH" status="A" senderid="CLMMD"><messages responseid="9" status="A" mesgid="ACK" message="Accepted"/></claim></result>';
+    const fetchImpl = vi.fn(async (_url: unknown, init: RequestInit) => {
+      expect((init.body as URLSearchParams).get("ResponseID")).toBe("8");
+      return new Response(raw, {
+        status: 200,
+        headers: { "content-type": "application/xml" },
+      });
+    });
+    const reader = createClaimMdAccountResponseReader({
+      accounts: { "acct-test": { test: "offline-fixture" } },
+      counter: { increment: async () => 1 },
+      fetch: fetchImpl as unknown as typeof fetch,
+    });
+    const result = await reader.fetchAccountResponses("acct-test", "test", "8");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.page.sourceFormat).toBe("xml");
+    expect(result.page.rawPayload).toBe(raw);
+    expect(result.page.events[0]?.responseId).toBe("9");
+    expect(
+      decodeClaimMdCapturedPayload(
+        encodeClaimMdCapturedPayload({
+          rawPayload: raw,
+          sourceFormat: "xml",
+        }),
+      ),
+    ).toEqual(result.page.body);
+  });
+
+  it("rejects DTD/entity declarations and malformed XML", async () => {
+    const values = [
+      '<!DOCTYPE result [<!ENTITY x "boom">]><result last_responseid="0"/>',
+      "<result><claim></result>",
+    ];
+    for (const raw of values) {
+      const reader = createClaimMdAccountResponseReader({
+        accounts: { "acct-test": { test: "offline-fixture" } },
+        counter: { increment: async () => 1 },
+        fetch: (async () =>
+          new Response(raw, {
+            status: 200,
+            headers: { "content-type": "application/xml" },
+          })) as typeof fetch,
+      });
+      expect(await reader.fetchAccountResponses("acct-test", "test", "0")).toEqual({
+        ok: false,
+        code: "BAD_ENVELOPE",
+      });
+    }
   });
 });

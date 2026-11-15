@@ -8,5 +8,8 @@
     ".": "./src/index.ts",
     "./testing": "./src/testing.ts"
   },
+  "dependencies": {
+    "saxes": "^6.0.0"
+  },
   "types": "./src/index.ts"
 }
