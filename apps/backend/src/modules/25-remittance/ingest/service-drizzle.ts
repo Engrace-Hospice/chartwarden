@@ -372,8 +372,13 @@ export function buildDrizzleM25IngestService(
       deps.payeeTin &&
       deps.payeeTinPolicy &&
       (await deps.payeeTinPolicy(organizationId, payerKind))
-    )
-      return tinMismatch(organizationId, providerEntityId, payee.id);
+    ) {
+      const identifierMismatch = await tinMismatch(organizationId, providerEntityId, payee.id);
+      if (identifierMismatch) return identifierMismatch;
+      // Some senders include both N104 (FI) and REF*TJ. If both are present, both must identify
+      // the same provider; accepting one while ignoring a contradictory second value is unsafe.
+      return payee.taxId ? tinMismatch(organizationId, providerEntityId, payee.taxId) : null;
+    }
     const expected = (await deps.payeeNpi(organizationId, providerEntityId))?.trim();
     if (!expected) return "payee check: the provider entity has no NPI on file";
     if (payee?.idQualifier !== "XX" || !payee.id)
@@ -1113,7 +1118,12 @@ export function buildDrizzleM25IngestService(
         totalPaymentAmount: money(parsed.totalPaymentAmount),
         plbTotalAmount: money(parsed.providerAdjustmentTotal ?? 0),
         contentDigest: digest,
-        productionDate: productionDay(parsed.productionDate),
+        paymentEffectiveDate: parsed.paymentEffectiveDate,
+        adjudicationCutoffDate: parsed.adjudicationCutoffDate,
+        functionalGroupCreationDate: parsed.functionalGroupCreationDate,
+        productionDate: parsed.paymentEffectiveDate
+          ? productionDay(parsed.paymentEffectiveDate)
+          : null,
         minioObjectKey: input.minioObjectKey,
         fileSha256: input.fileSha256,
         parseStatus: "queued",

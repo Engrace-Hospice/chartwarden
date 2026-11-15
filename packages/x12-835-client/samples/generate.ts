@@ -22,7 +22,7 @@ const hdr = (
   "LX*1",
 ];
 const bpr = (amt: string, method = "ACH*CCP") =>
-  `BPR*I*${amt}*C*${method}*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615`;
+  `BPR*C*${amt}*C*${method}*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615`;
 
 const bodies: Record<string, string[]> = {
   // 1 claim, routine home care, fully paid. 1500.00
@@ -77,15 +77,15 @@ const bodies: Record<string, string[]> = {
     "CAS*PR*2*40.00",
     "CAS*CO*45*20.00",
   ],
-  // claim-level AMT*I interest. The parser reads and discards AMT, so BPR must equal CLP04 (interest is NOT
-  // added to the balance check); see samples.test.ts for the BPR 1012.34 variant.
+  // AMT*I interest is reported with opposite-signed PLB L6; the net payment includes the L6 amount.
   "05-interest-amt-i": [
-    bpr("1000.00"),
+    bpr("1012.34"),
     ...hdr("EFT1005", "SYNTHETIC MAC"),
     "CLP*PCN-5001*1*1000.00*1000.00*0.00*MA*ICN-5001*813",
     "NM1*QC*1*DOE*JANE****MI*1AA1AA1AA11",
     "AMT*I*12.34",
     "SVC*HC:Q5001*1000.00*1000.00*0651*7",
+    "PLB*1512345678*20261231*L6*-12.34",
   ],
   // zero-dollar remit paid by ACH (BPR04 not NON): accepted today, the companion guide may require NON.
   "06-zero-payment-ach": [

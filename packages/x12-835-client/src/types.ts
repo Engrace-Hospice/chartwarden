@@ -160,8 +160,14 @@ export interface ParsedRemittanceAdvice {
   providerAdjustments?: readonly ParsedProviderAdjustment[];
   /** Unknown ST..SE segments the normalized M25 model does not yet understand. PHI-bearing; memory only. */
   unknownSegments?: readonly { readonly segmentId: string; readonly elements: readonly string[] }[];
-  /** BPR16 (check issue / EFT effective date), falling back to DTM*405 (production date) — ISO date-time. */
-  productionDate: string;
+  /** BPR16 — payment effective/settlement date. Null when the payment scenario carries no date. */
+  paymentEffectiveDate?: string | null;
+  /** DTM*405 — adjudication cutoff/production-cycle date, when explicitly sent. Never inferred from BPR16. */
+  adjudicationCutoffDate?: string | null;
+  /** Enclosing GS04 — functional-group creation date. */
+  functionalGroupCreationDate?: string;
+  /** @deprecated Compatibility alias for older consumers; use the source-specific date fields above. */
+  productionDate: string | null;
   /** TRN03 — the originating company identifier. */
   originatingCompanyId?: string;
   /** N1*PR loop (always set by the parser; optional so hand-built advices still type). */

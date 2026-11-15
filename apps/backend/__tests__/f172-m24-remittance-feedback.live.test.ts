@@ -513,6 +513,9 @@ describe.skipIf(!DB_URL)(
                   : "SYNTHETIC-F171-MEDICAID-TRACE",
                 paymentMethod: "eft",
                 totalPaymentAmount: 500,
+                paymentEffectiveDate: "2026-02-10",
+                adjudicationCutoffDate: null,
+                functionalGroupCreationDate: "2026-02-10",
                 productionDate: "2026-02-10",
                 claims: [
                   {

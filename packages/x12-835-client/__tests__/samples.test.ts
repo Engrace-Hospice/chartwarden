@@ -50,6 +50,19 @@ describe("committed .835 samples", () => {
     expect(v.claims[0]).toMatchObject({ statusCode: 22, totalPayment: -700 });
   });
 
+  it("03 does not apply CLP05/PR equality to a reversal, but still checks its financial balance", () => {
+    const reversalOnly = SAMPLES["03-reversal-rebill-plb"].replace(
+      "CLP*PCN-3001*22*-700.00*-700.00*0.00",
+      "CLP*PCN-3001*22*-700.00*-700.00*12.34",
+    );
+    expect(ok(reversalOnly).claims[0]?.patientResponsibility).toBe(12.34);
+    const unbalanced = reversalOnly.replace(
+      "CLP*PCN-3001*22*-700.00*-700.00*12.34",
+      "CLP*PCN-3001*22*-700.00*-699.99*12.34",
+    );
+    expect(refusal(unbalanced)).toMatch(/claim 1 does not balance/);
+  });
+
   it("04 partial with lines: line charge and paid sums equal the claim's, PR equals CLP05", () => {
     const v = ok(SAMPLES["04-partial-with-service-lines"]);
     const claim = v.claims[0];
@@ -68,11 +81,17 @@ describe("committed .835 samples", () => {
     expect(refusal(bad)).toMatch(/service line 2 does not balance/);
   });
 
-  it("05 interest in AMT*I is validated and discarded, so it is not part of the payment balance (today)", () => {
-    expect(ok(SAMPLES["05-interest-amt-i"]).totalPaymentAmount).toBe(1000);
-    // A MAC that folds interest into BPR02 would make this file unbalanced; that is the #671 question.
-    const withInterest = SAMPLES["05-interest-amt-i"].replace("BPR*I*1000.00", "BPR*I*1012.34");
-    expect(refusal(withInterest)).toMatch(/BPR02 1012\.34 != sum\(CLP04\)/);
+  it("05 reconciles AMT*I with opposite-signed PLB L6", () => {
+    expect(ok(SAMPLES["05-interest-amt-i"]).totalPaymentAmount).toBe(1012.34);
+    const withoutL6 = SAMPLES["05-interest-amt-i"]
+      .replace("PLB*1512345678*20261231*L6*-12.34~", "")
+      .replace("SE*16*0001", "SE*15*0001")
+      .replace("BPR*C*1012.34", "BPR*C*1000.00");
+    expect(refusal(withoutL6)).toMatch(/AMT\*I net interest/);
+    const wrongL6 = SAMPLES["05-interest-amt-i"]
+      .replace("L6*-12.34", "L6*12.34")
+      .replace("BPR*C*1012.34", "BPR*C*987.66");
+    expect(refusal(wrongL6)).toMatch(/AMT\*I net interest/);
   });
 
   it("06 zero-dollar remit by ACH is accepted (BPR02 = 0 does not force NON)", () => {

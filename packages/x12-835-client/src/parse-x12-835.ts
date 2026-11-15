@@ -9,12 +9,10 @@
 //    balanced on its own, and selected by ST02 (a second ISA or GS is rejected);
 //  - the SVC01 qualifier is validated AND kept (`serviceIdQualifier`: HC/NU/...), so a HCPCS and an
 //    revenue/other id with the same text are never confused downstream;
-//  - `productionDate` is BPR16 (check issue / EFT effective date), falling back to DTM*405 (the 835 production
-//    date). Per the 5010 835 TR3 these are different facts; BPR16 wins because it is the payment date a
-//    reconciler wants and is required by the TR3, DTM*405 is only the fallback for non-conformant files.
-//    The TR3 is not in this repo (docs/reference/cms holds only CMS manuals), so this is unverified against it;
-//  - BPR02 = 0 does not force BPR04 = NON (the repo's own zero-pay fixture is NON, but the TR3 rule that ties the
-//    two is not in the repo and real MAC zero-pay files have not been seen: accepted, not enforced);
+//  - BPR16 (payment effective date), DTM*405 (adjudication cutoff) and GS04 (functional-group creation date)
+//    remain distinct. `productionDate` is a deprecated compatibility alias only;
+//  - BPR01 H is the no-payment case and requires BPR02=0 / BPR04=NON. Zero BPR02 alone does not reject CHK/ACH;
+//    the parser never creates a bank transaction;
 //  - test files (ISA15 != P) are rejected unless `allowTestFiles` is set; only GS01=HP / GS08=005010X221* pass.
 import { type CentsAdjustment, checkClaimBalance, checkPaymentBalance } from "./balance-835";
 import {
@@ -190,6 +188,7 @@ interface ClaimDraft {
   remarks: ParsedRemark[];
   lines: LineDraft[];
   references: { qualifier: string; value: string }[];
+  interestCents: number;
 }
 
 function newClaim(seg: X12Segment): ClaimDraft {
@@ -210,6 +209,7 @@ function newClaim(seg: X12Segment): ClaimDraft {
     remarks: [],
     lines: [],
     references: [],
+    interestCents: 0,
   };
 }
 
@@ -256,8 +256,12 @@ function applyClaimSegment(claim: ClaimDraft, seg: X12Segment): void {
   else if (id === "REF" && elem(seg, 1) && elem(seg, 2))
     claim.references.push({ qualifier: elem(seg, 1), value: elem(seg, 2) });
   else if (id === "MIA" || id === "MOA") claim.remarks.push(...remarksOf(seg));
-  else if (id === "AMT") toCents(elem(seg, 2), "AMT02");
-  else if (id === "NM1" && (elem(seg, 1) === "QC" || elem(seg, 1) === "IL") && elem(seg, 9)) {
+  else if (id === "AMT") {
+    const amount = toCents(elem(seg, 2), "AMT02");
+    if (elem(seg, 1) === "I") {
+      claim.interestCents += amount;
+    }
+  } else if (id === "NM1" && (elem(seg, 1) === "QC" || elem(seg, 1) === "IL") && elem(seg, 9)) {
     if (elem(seg, 1) === "QC" || !claim.patientMemberId) claim.patientMemberId = elem(seg, 9);
   } else if (id === "DTM" && !line) {
     const q = elem(seg, 1);
@@ -306,7 +310,7 @@ interface TransactionSet {
 function unwrapEnvelope(
   segs: readonly X12Segment[],
   opts: ParseX12835Options,
-): { isa13: string; sets: readonly TransactionSet[] } {
+): { isa13: string; groupCreationDate: string; sets: readonly TransactionSet[] } {
   const ids = segs.map(segId);
   const pos = (id: string): number[] => ids.flatMap((x, i) => (x === id ? [i] : []));
   if (ids[0] !== "ISA" || ids[ids.length - 1] !== "IEA")
@@ -343,6 +347,7 @@ function unwrapEnvelope(
     fail("interchange is not flagged production (ISA15 != P)");
   if (elem(gs, 1) !== "HP") fail("functional group is not a health care payment (GS01 != HP)");
   if (!elem(gs, 8).startsWith("005010X221")) fail("GS08 is not a 005010X221 (5010 835) version");
+  const groupCreationDate = toIsoDate(elem(gs, 4), "GS04");
   if (elem(gs, 6) === "" || elem(ge, 2) !== elem(gs, 6)) fail("GE02 does not match GS06");
   if (elem(ge, 1) !== String(stAts.length)) fail("GE01 transaction-set count does not match");
   if (elem(iea, 2) !== isa13) fail("IEA02 does not match ISA13");
@@ -361,7 +366,7 @@ function unwrapEnvelope(
   });
   if (new Set(sets.map((x) => x.st02)).size !== sets.length)
     fail("two transaction sets share an ST02");
-  return { isa13, sets };
+  return { isa13, groupCreationDate, sets };
 }
 
 function parsePlb(
@@ -400,10 +405,12 @@ function parsePlb(
     const [reason, reference] = reasonElement.split(compSep, 2);
     if (!reason) fail("PLB reason is missing");
     occurrence += 1;
+    const cents = toCents(amount, "PLB amount");
+    if (cents === 0) fail("PLB amount cannot be zero");
     out.push({
       reason,
       ...(reference ? { reference } : {}),
-      cents: toCents(amount, "PLB amount"),
+      cents,
       providerIdentifier,
       fiscalPeriod: normalizedFiscalPeriod,
       segmentPosition,
@@ -429,6 +436,15 @@ function applyPartyRef(party: ParsedRemittanceParty, kind: "PR" | "PE", seg: X12
   const v = elem(seg, 2);
   if (!v) return;
   party.references ??= [];
+  // Identity-bearing references must be unambiguous. In particular, consumers use the normalized
+  // `taxId` / `payerAssignedId` fields; silently letting a later REF overwrite an earlier value
+  // could make a contradictory payee identity pass verification.
+  if (
+    kind === "PE" &&
+    (q === "TJ" || q === "PQ") &&
+    party.references.some((ref) => ref.qualifier === q)
+  )
+    fail(`duplicate payee REF ${q} identity`);
   party.references.push({ qualifier: q, value: v });
   if (kind === "PE" && q === "TJ") party.taxId = v;
   else if (kind === "PE" && q === "PQ") party.payerAssignedId = v;
@@ -438,7 +454,9 @@ function applyPartyRef(party: ParsedRemittanceParty, kind: "PR" | "PE", seg: X12
 interface Body {
   readonly bpr: X12Segment;
   readonly trn: X12Segment;
-  readonly production: string | undefined;
+  readonly paymentEffectiveDate: string | null;
+  readonly adjudicationCutoffDate: string | null;
+  readonly interestCents: number;
   readonly parties: Readonly<Record<"PR" | "PE", ParsedRemittanceParty | undefined>>;
   readonly claims: readonly ClaimDraft[];
   readonly plb: readonly {
@@ -496,13 +514,24 @@ function walkBody(body: readonly X12Segment[], compSep: string): Body {
     } else if (id === "REF" && !current && party && partyKind) applyPartyRef(party, partyKind, seg);
     else if (current) applyClaimSegment(current, seg);
     else if (id === "CAS") fail("CAS outside a CLP");
-    else if (id === "DTM" && elem(seg, 1) === "405") dtm405 = toIsoDate(elem(seg, 2), "DTM405");
+    else if (id === "DTM" && elem(seg, 1) === "405") {
+      if (dtm405) fail("more than one DTM*405");
+      dtm405 = toIsoDate(elem(seg, 2), "DTM405");
+    }
   }
   if (!bpr) return fail("missing BPR");
   if (!trn) return fail("missing TRN");
   if (!parties.PR || !parties.PE) fail("missing N1 payer (PR) or payee (PE) loop");
-  const date = elem(bpr, 16) ? toIsoDate(elem(bpr, 16), "BPR16") : dtm405;
-  return { bpr, trn, production: date, parties, claims, plb };
+  return {
+    bpr,
+    trn,
+    paymentEffectiveDate: elem(bpr, 16) ? toIsoDate(elem(bpr, 16), "BPR16") : null,
+    adjudicationCutoffDate: dtm405 ?? null,
+    interestCents: claims.reduce((sum, c) => sum + c.interestCents, 0),
+    parties,
+    claims,
+    plb,
+  };
 }
 
 function checkBalances(b: Body, total: number): void {
@@ -528,6 +557,9 @@ function checkBalances(b: Body, total: number): void {
     b.claims.map((c) => c.paid),
     b.plb.map((item) => item.cents),
   );
+  const l6Cents = b.plb.filter((x) => x.reason === "L6").reduce((sum, x) => sum + x.cents, 0);
+  if (b.interestCents !== -l6Cents)
+    fail("AMT*I net interest does not equal opposite-signed PLB L6");
 }
 
 function buildSet(
@@ -536,17 +568,23 @@ function buildSet(
   gs06: string,
   chosen: TransactionSet,
   payerProgram: PayerProgram,
+  groupCreationDate: string,
 ): ParsedRemittanceAdvice {
   const { st02, body } = chosen;
   const b = walkBody(body, doc.componentSeparator);
   const method = PAYMENT_METHODS[elem(b.bpr, 4)];
   if (!method) fail("BPR04 is not a supported payment method");
   if (elem(b.bpr, 3) !== "C") fail("BPR03 is not C (credit); debit remittances are unsupported");
+  const handling = elem(b.bpr, 1);
+  if (!(handling === "C" || handling === "H" || handling === "I"))
+    fail("BPR01 is not a supported handling code");
+  const total = toCents(elem(b.bpr, 2), "BPR02");
+  if (handling === "H" && (total !== 0 || elem(b.bpr, 4) !== "NON"))
+    fail("BPR01 H requires BPR02 zero and BPR04 NON");
   const trace = elem(b.trn, 2);
   if (!trace) fail("missing TRN02 trace number");
-  if (!b.production) fail("missing BPR16/DTM405 production date");
-  const total = toCents(elem(b.bpr, 2), "BPR02");
-  if (total < 0) fail("BPR02 is negative");
+  if (elem(b.bpr, 2).trim().startsWith("-") || total < 0) fail("BPR02 is negative");
+  if (elem(b.trn, 1) !== "1") fail("TRN01 is not 1 (current transaction trace number)");
   checkBalances(b, total);
   return {
     payerProgram,
@@ -582,7 +620,10 @@ function buildSet(
             .map((segment) => ({ segmentId: segId(segment), elements: segment.el.slice(1) })),
         }
       : {}),
-    productionDate: `${b.production}T00:00:00Z`,
+    paymentEffectiveDate: b.paymentEffectiveDate,
+    adjudicationCutoffDate: b.adjudicationCutoffDate,
+    functionalGroupCreationDate: groupCreationDate,
+    productionDate: b.paymentEffectiveDate ? `${b.paymentEffectiveDate}T00:00:00Z` : null,
     claims: b.claims.map(toClaim),
   };
 }
@@ -594,7 +635,7 @@ function build(
   transactionSetControlNumber?: string,
 ): ParsedRemittanceAdvice {
   const doc = tokenizeX12(raw);
-  const { isa13, sets } = unwrapEnvelope(doc.segments, opts);
+  const { isa13, groupCreationDate, sets } = unwrapEnvelope(doc.segments, opts);
   const chosen =
     transactionSetControlNumber === undefined
       ? sets.length === 1
@@ -603,7 +644,7 @@ function build(
       : sets.find((x) => x.st02 === transactionSetControlNumber);
   if (!chosen) return fail("no transaction set with that ST02 in the file");
   const gs = doc.segments.find((segment) => segId(segment) === "GS");
-  return buildSet(doc, isa13, gs ? elem(gs, 6) : "", chosen, payerProgram);
+  return buildSet(doc, isa13, gs ? elem(gs, 6) : "", chosen, payerProgram, groupCreationDate);
 }
 
 /** Parse raw 835 text. Never throws: any failure is a non-retryable degraded envelope (PHI-free reason). */
@@ -635,12 +676,12 @@ export function parseX12835AllSets(
 ): X12WorkerResult<ParsedRemittanceAdvice[]> {
   try {
     const doc = tokenizeX12(raw);
-    const { isa13, sets } = unwrapEnvelope(doc.segments, opts);
+    const { isa13, groupCreationDate, sets } = unwrapEnvelope(doc.segments, opts);
     return {
       ok: true,
       value: sets.map((set) => {
         const gs = doc.segments.find((segment) => segId(segment) === "GS");
-        return buildSet(doc, isa13, gs ? elem(gs, 6) : "", set, payerProgram);
+        return buildSet(doc, isa13, gs ? elem(gs, 6) : "", set, payerProgram, groupCreationDate);
       }),
     };
   } catch (err) {

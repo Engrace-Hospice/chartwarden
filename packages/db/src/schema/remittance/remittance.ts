@@ -19,6 +19,7 @@ import { sql } from "drizzle-orm";
 // have to carry the partition key, so those constraints live (where safe) in SQL, not Drizzle.
 // No MBI is ever stored (D13); free_text / patient-identifier columns are audit-denylisted (§3.6).
 import {
+  date,
   index,
   integer,
   jsonb,
@@ -64,7 +65,11 @@ export const remittanceAdvice = pgTable(
     plbTotalAmount: numeric("plb_total_amount", { precision: 12, scale: 2 }).notNull().default("0"),
     // sha256 of the set's claim payments: a resend (new ISA/ST, same TRN) is recognised by content.
     contentDigest: varchar("content_digest", { length: 64 }),
-    productionDate: timestamp("production_date", { withTimezone: true }).notNull(),
+    // Source-specific ERA dates. Historical rows remain nullable because old production_date provenance is ambiguous.
+    paymentEffectiveDate: date("payment_effective_date", { mode: "string" }),
+    adjudicationCutoffDate: date("adjudication_cutoff_date", { mode: "string" }),
+    functionalGroupCreationDate: date("functional_group_creation_date", { mode: "string" }),
+    productionDate: timestamp("production_date", { withTimezone: true }),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
     minioObjectKey: varchar("minio_object_key", { length: 500 }).notNull(),
     fileSha256: varchar("file_sha256", { length: 64 }).notNull(),

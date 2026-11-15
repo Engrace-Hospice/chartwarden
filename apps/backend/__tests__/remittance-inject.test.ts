@@ -143,6 +143,9 @@ function createM25Backend(): {
       payerKind: string;
       paymentMethod: string;
       totalPaymentAmount: string;
+      paymentEffectiveDate: string | null;
+      adjudicationCutoffDate: string | null;
+      functionalGroupCreationDate: string | null;
       parseStatus: string;
       receivedAt: string;
     }
@@ -201,6 +204,9 @@ function createM25Backend(): {
     payerKind: "medicare_a",
     paymentMethod: "eft",
     totalPaymentAmount: "1200.00",
+    paymentEffectiveDate: "2026-02-10",
+    adjudicationCutoffDate: null,
+    functionalGroupCreationDate: "2026-02-10",
     parseStatus: "parsed",
     receivedAt: NOW,
   });

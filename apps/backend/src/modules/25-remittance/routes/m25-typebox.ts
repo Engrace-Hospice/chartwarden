@@ -274,6 +274,9 @@ export const RemittanceAdviceSummarySchema = Type.Object({
   payerKind: Type.String(),
   paymentMethod: Type.String(),
   totalPaymentAmount: Type.String({ description: "Decimal string — never a float" }),
+  paymentEffectiveDate: Type.Union([Type.String({ format: "date" }), Type.Null()]),
+  adjudicationCutoffDate: Type.Union([Type.String({ format: "date" }), Type.Null()]),
+  functionalGroupCreationDate: Type.Union([Type.String({ format: "date" }), Type.Null()]),
   parseStatus: Type.String(),
   receivedAt: Type.String({ format: "date-time" }),
 });

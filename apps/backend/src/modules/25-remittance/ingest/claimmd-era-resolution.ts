@@ -124,7 +124,7 @@ function safeComponent(advice: ParsedRemittanceAdvice, fileIndex: number) {
       : null,
     trace: advice.checkOrEftTraceNumber ?? null,
     paymentMethod: advice.paymentMethod,
-    paymentDate: advice.productionDate,
+    paymentDate: advice.paymentEffectiveDate,
     paymentAmount: advice.totalPaymentAmount,
     providerAdjustments: advice.providerAdjustments ?? [],
     claims: advice.claims.map((claim) => ({

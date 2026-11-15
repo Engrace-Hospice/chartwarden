@@ -5,7 +5,7 @@
 //  - sum(SVC02) = CLP03 is enforced for every claim with service lines (not yet checked against MAC
 //    companion guides);
 //  - CLP05 must equal the PR adjustments exactly (an absent CLP05 counts as 0);
-//  - interest carried inside CLP04 is not modelled separately;
+//  - AMT*I is checked against the opposite-signed net PLB/L6 by parse-x12-835.ts;
 //  - claim and line CAS are additive in the claim balance.
 import { X12ParseError } from "./x12-tokenizer";
 
@@ -68,7 +68,8 @@ export function checkClaimBalance(c: ClaimCents, n: number): void {
   const diff = c.charge - c.paid - sum(all.map((a) => a.cents));
   if (diff !== 0) unbalanced(`claim ${n} does not balance (CLP03 - CLP04 - CAS = ${usd(diff)})`);
   const pr = sum(all.filter((a) => a.groupCode === "PR").map((a) => a.cents));
-  if (pr !== c.patientResponsibility) {
+  // CLP05 is explicitly not used for reversals (005010X221 §1.10.2.8; X12 RFI 2548).
+  if (c.statusCode !== 22 && pr !== c.patientResponsibility) {
     unbalanced(`claim ${n} patient responsibility (CLP05) disagrees with PR adjustments`);
   }
 }

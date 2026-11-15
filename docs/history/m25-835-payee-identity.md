@@ -11,8 +11,8 @@
 ## Parser
 
 - SVC01 qualifier kept as `ParsedServiceLine.serviceIdQualifier`.
-- `productionDate` = BPR16, falling back to DTM*405. Per the 5010 835 TR3 BPR16 is the check issue / EFT effective date and DTM*405 the production date; they are different facts. The TR3 is not in this repo (`docs/reference/cms` holds only CMS manuals), so the rule is recorded from knowledge, unverified. Pinned by tests.
-- BPR02 = 0 with BPR04 other than NON: accepted, pinned by a test, not enforced (spec text unavailable; repo zero-pay fixture uses NON).
+- Date fields are distinct: BPR16 → payment effective date, DTM*405 → adjudication cutoff, GS04 → functional-group creation date. DTM*405 is never substituted for BPR16. Historical `production_date` is retained because its source cannot be recovered with certainty; new rows populate it only from BPR16.
+- BPR02=0 with CHK/ACH remains accepted when the rest of the transaction balances; no bank payment is created by this parser or claim posting path. BPR01 H is constrained to zero BPR02 and BPR04 NON. MAC-specific zero-payment combinations remain unverified.
 - `receiveAdvice` tokenizes once: `X12835WorkerClient.parse835All` (optional; `parseX12835AllSets`) returns every ST/SE set in one pass; clients without it fall back to one `parse835` per ST02.
 - Multiple GS groups / ISA interchanges per file: still rejected. `unwrapEnvelope` and `parseX12EnvelopeHeader` assume one ISA/GS; supporting more means a nested group walk and per-group GE/IEA accounting plus a dedup-key change (ISA13 is per interchange). Not straightforward; left.
 - `parse277ca` sidecar: ADR-0029 puts the 277CA with M23's client; the `parse277ca` here stays the fail-closed sidecar mapper and no port is wired. No code change.
@@ -24,3 +24,11 @@
 - Which Medicaid/MCO programs actually send FI-only payees (decides who goes in `M25_PAYEE_TIN_POLICY`).
 - Where a PTAN should live (payer-enrolment owner) and whether to compare it.
 - Multiple GS/ISA per file, if any MAC or clearinghouse sends them.
+
+## M25-671-A date and balancing hardening
+
+- **Date provenance:** new nullable `payment_effective_date`, `adjudication_cutoff_date`, and `functional_group_creation_date` columns retain the source date independently. The additive migration does not backfill historical rows; `production_date` is nullable for new remittances that omit BPR16. Reports use BPR16 when known and the legacy value for old rows.
+- **BPR:** BPR02 remains nonnegative and zero is valid. BPR01 H requires BPR02=0 and BPR04=NON; debit BPR03 and unsupported methods remain refused. TRN01 must be `1`. Zero-dollar CHK/ACH is accepted without a synthetic cash movement.
+- **Claim balance:** calculations remain integer cents. CLP05 is checked against PR CAS but omitted from the independent balancing sum; CLP02=22 is exempt from the CLP05 comparison as directed by X12 RFI 2548. Service-line and claim charge/payment/CAS balances remain strict.
+- **PLB and interest:** payment equation remains BPR02 = sum(CLP04) - sum(PLB); zero PLB amounts are refused. AMT*I total must equal the opposite-signed PLB L6 total, and zero net requires no L6. Test fixtures cover both directions.
+- **Evidence:** [X12 RFI 2548](https://x12.org/resources/requests-for-interpretation/rfi-2548-clp05-has-different-value-sum-pr-cas-segments) (CLP05/PR and reversals), [X12 RFI 2123](https://x12.org/resources/requests-for-interpretation/rfi-2123-835-interest-reporting-reqquir) (interest and L6), [X12 RFI 2831](https://x12.org/resources/requests-for-interpretation/rfi-2831-bpr01-and-bpr02-requirements-835) (BPR01/BPR02). Scope is the generic 005010 X221/X221A1 transaction rules. Synthetic tests do not certify CGS, NGS or Palmetto companion-guide behavior.
