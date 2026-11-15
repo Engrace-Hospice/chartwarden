@@ -577,6 +577,7 @@ export function EncounterRead(): JSX.Element {
     setCeremony(null);
     setReason("");
     setActionError(null);
+    setActionRemediation(null);
     clearFieldError("reason");
   }, [clearFieldError]);
 
@@ -595,6 +596,7 @@ export function EncounterRead(): JSX.Element {
 
       setBusy(true);
       setActionError(null);
+      setActionRemediation(null);
       if (mode === "supervisor-release") {
         clearFieldError("reason");
       }
@@ -880,6 +882,7 @@ export function EncounterRead(): JSX.Element {
 
     setBusy(true);
     setActionError(null);
+    setActionRemediation(null);
     setNotice(null);
 
     const res = await post("/api/v1/patients/{patientId}/care-plan", {

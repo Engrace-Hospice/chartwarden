@@ -158,7 +158,7 @@ export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): J
                         <Button
                           tone="secondary"
                           size="sm"
-                          disabled={busyId === a.id}
+                          disabled={busyId === a.id || editingId !== null}
                           onClick={() => setEditingId(a.id)}
                         >
                           Edit draft
@@ -391,6 +391,7 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
                       id={id}
                       type="checkbox"
                       checked={Boolean(picked)}
+                      disabled={saving}
                       onChange={() => toggle(section.sectionId, entry.code)}
                     />
                     {entry.label}
@@ -401,6 +402,7 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
                           key={slot}
                           label={`${entry.label} — ${slot}`}
                           value={String(picked.params[slot] ?? "")}
+                          disabled={saving}
                           onChange={(ev) =>
                             setSlot(section.sectionId, entry.code, slot, ev.target.value)
                           }
@@ -414,6 +416,7 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
               label={`${section.heading} — additional notes`}
               style={{ minHeight: "4rem" }}
               value={sec?.freeText ?? ""}
+              disabled={saving}
               onChange={(ev) => setFreeText(section.sectionId, ev.target.value)}
             />
           </fieldset>
@@ -439,6 +442,7 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
         <Button
           size="sm"
           tone="secondary"
+          disabled={saving}
           onClick={() => {
             if (dirty || saving) setCloseRequested(true);
             else onClose();
@@ -456,7 +460,9 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
         <div style={discardDialog}>
           <h2 style={discardTitle}>Leave addendum without saving?</h2>
           <p style={discardText}>
-            Your addendum changes have not been saved. Keep editing or discard them before leaving.
+            {saving
+              ? "Your addendum is being saved. Wait for the operation to finish before leaving."
+              : "Your addendum changes have not been saved. Keep editing or discard them before leaving."}
           </p>
           <footer style={discardActions}>
             <Button
@@ -468,14 +474,16 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
             >
               Keep editing addendum
             </Button>
-            <Button
-              onClick={() => {
-                if (closeRequested) onClose();
-                else blocker.proceed?.();
-              }}
-            >
-              Discard addendum changes
-            </Button>
+            {!saving ? (
+              <Button
+                onClick={() => {
+                  if (closeRequested) onClose();
+                  else blocker.proceed?.();
+                }}
+              >
+                Discard addendum changes
+              </Button>
+            ) : null}
           </footer>
         </div>
       </Modal>

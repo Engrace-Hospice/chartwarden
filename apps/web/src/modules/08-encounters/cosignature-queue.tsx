@@ -383,7 +383,7 @@ export function CosignatureQueue(): JSX.Element {
                         <Button
                           size="sm"
                           tone="secondary"
-                          aria-label={`Review ${reviewDisciplineLabel(e.discipline)} ${stateLabel(e.encounterType).toLowerCase()}`}
+                          aria-label={`Review ${reviewDisciplineLabel(e.discipline)} ${stateLabel(e.encounterType).toLowerCase()} for patient ${e.patientId.slice(0, 8)} on ${e.serviceDate}`}
                           onClick={() => navigate(`/patients/${e.patientId}/encounters/${e.id}`)}
                         >
                           Review

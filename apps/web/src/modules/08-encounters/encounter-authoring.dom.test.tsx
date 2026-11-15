@@ -71,6 +71,8 @@ let bodies: Record<string, unknown>[] = [];
 let headers: Record<string, string>[] = [];
 let writeFailure: { status: number; body: unknown } | null = null;
 let writeFailurePath: string | null = null;
+let deferredWritePath: string | null = null;
+let releaseDeferredWrite: (() => void) | null = null;
 
 function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string; method: string } {
   if (typeof input === "string")
@@ -171,6 +173,11 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
         headers: { "content-type": "application/json" },
       });
     }
+    if (deferredWritePath && path.endsWith(deferredWritePath)) {
+      await new Promise<void>((resolve) => {
+        releaseDeferredWrite = resolve;
+      });
+    }
   }
   return new Response(JSON.stringify(bodyFor(method, path)), {
     status: 200,
@@ -226,6 +233,8 @@ beforeEach(() => {
   headers = [];
   writeFailure = null;
   writeFailurePath = null;
+  deferredWritePath = null;
+  releaseDeferredWrite = null;
   encounterStatus = "draft";
   storedSections = [];
   storedVersion = 3;
@@ -233,6 +242,8 @@ beforeEach(() => {
 afterEach(() => {
   writeFailure = null;
   writeFailurePath = null;
+  deferredWritePath = null;
+  releaseDeferredWrite = null;
 });
 
 describe("Workflow 04 — patient context and recoverable navigation", () => {
@@ -244,6 +255,20 @@ describe("Workflow 04 — patient context and recoverable navigation", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Back to encounter" }));
     expect(await screen.findByRole("heading", { name: "Encounter destination" })).toBeTruthy();
+  });
+
+  it("does not show the previous chart while a new encounter route loads", async () => {
+    const { router } = mountCompose();
+    expect(await screen.findByText("Ada Lovelace")).toBeTruthy();
+
+    await act(async () => {
+      await router.navigate(
+        `/patients/${PATIENT}/encounters/cccccccc-3333-4333-8333-cccccccccccc/compose`,
+      );
+    });
+
+    expect(screen.queryByText("Ada Lovelace")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save draft" })).toBeNull();
   });
 
   it("announces unsaved work, guards route and browser exits, and clears the guard after save", async () => {
@@ -385,6 +410,34 @@ describe("#91 — finalize is the server's gate, and its refusals are legible", 
     // Order matters: finalizing an unsaved draft would gate on what the server last saw.
     expect(writes()[0]).toBe(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`);
     expect(writes()[1]).toBe(`POST /api/v1/encounters/${ENCOUNTER}/finalize`);
+  });
+
+  it("locks authoring controls and prevents discarding while finalization saves the draft", async () => {
+    deferredWritePath = "/selections";
+    const { router } = mountCompose();
+    const choice = (await screen.findByLabelText(/Dyspnea at rest/i)) as HTMLInputElement;
+    fireEvent.click(choice);
+    fireEvent.click(screen.getByRole("button", { name: "Finalize note" }));
+    await waitFor(() =>
+      expect(writes()).toContain(`PATCH /api/v1/encounters/${ENCOUNTER}/selections`),
+    );
+
+    expect(choice.disabled).toBe(true);
+    expect((screen.getByLabelText(/Additional notes/i) as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Vitals" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    await act(async () => {
+      await router.navigate("/other");
+    });
+    expect(screen.getByText(/visit note is being saved/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Discard changes" })).toBeNull();
+
+    await act(async () => releaseDeferredWrite?.());
+    await waitFor(() =>
+      expect(writes()).toContain(`POST /api/v1/encounters/${ENCOUNTER}/finalize`),
+    );
   });
 
   it("Finalize stays ENABLED with a required section empty — the §2.6 gate is the server's", async () => {

@@ -54,7 +54,11 @@ describe("Cosignature queue task actions", () => {
     const row = within(queue).getByRole("row", { name: /Routine Visit/i });
     expect(row.getAttribute("role")).not.toBe("button");
 
-    fireEvent.click(within(row).getByRole("button", { name: "Review LPN routine visit" }));
+    fireEvent.click(
+      within(row).getByRole("button", {
+        name: "Review LPN routine visit for patient patient- on 2026-11-15",
+      }),
+    );
     expect(screen.getByLabelText("location").textContent).toBe(
       "/patients/patient-12345678/encounters/encounter-12345678",
     );

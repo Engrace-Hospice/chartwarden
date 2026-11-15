@@ -135,6 +135,53 @@ describe("Addendum panel (GAP-027)", () => {
     expect(await screen.findByText("Addendum changes saved")).toBeTruthy();
   });
 
+  it("keeps one draft editor active at a time", async () => {
+    mount([draft, { ...draft, id: "add-2", reason: "Second correction" }]);
+    const first = screen.getByLabelText("Addendum add-1");
+    const second = screen.getByLabelText("Addendum add-2");
+
+    fireEvent.click(within(first).getByRole("button", { name: "Edit draft" }));
+    await screen.findByLabelText("Pain controlled");
+
+    expect(
+      (within(second).getByRole("button", { name: "Edit draft" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.getAllByLabelText("Pain controlled")).toHaveLength(1);
+  });
+
+  it("locks the editor and prevents discarding while a save is in flight", async () => {
+    let finishSave: (() => void) | undefined;
+    const PATCH = vi.fn(
+      () =>
+        new Promise<{ data: { version: number; layer1Preview: string } }>((resolve) => {
+          finishSave = () => resolve({ data: { version: 4, layer1Preview: "Pain controlled." } });
+        }),
+    );
+    const { router } = mount([draft], { PATCH });
+    fireEvent.click(screen.getByRole("button", { name: "Edit draft" }));
+    const choice = (await screen.findByLabelText("Pain controlled")) as HTMLInputElement;
+    fireEvent.click(choice);
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(PATCH).toHaveBeenCalledTimes(1));
+
+    expect(choice.disabled).toBe(true);
+    expect((screen.getByLabelText("Pain — additional notes") as HTMLTextAreaElement).disabled).toBe(
+      true,
+    );
+    expect(
+      (screen.getByRole("button", { name: "Close editor" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    await act(async () => {
+      await router.navigate("/patients/patient-1/encounters");
+    });
+    expect(screen.getByText(/addendum is being saved/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Discard addendum changes" })).toBeNull();
+
+    await act(async () => finishSave?.());
+    expect(await screen.findByText("Addendum changes saved")).toBeTruthy();
+  });
+
   it("announces and protects unsaved addendum work until the server saves it", async () => {
     const { client, router } = mount([draft]);
     fireEvent.click(screen.getByRole("button", { name: "Edit draft" }));

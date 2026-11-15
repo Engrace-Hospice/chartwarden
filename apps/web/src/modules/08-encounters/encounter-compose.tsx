@@ -21,7 +21,7 @@ import {
 // - optimistic concurrency.
 //
 // This page only improves the authoring experience around that contract.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { type BlockerFunction, useBlocker, useNavigate, useParams } from "react-router-dom";
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
@@ -129,9 +129,11 @@ export function EncounterCompose(): JSX.Element {
   const [operation, setOperation] = useState<"saving" | "finalizing" | null>(null);
   const [lastSavedDraft, setLastSavedDraft] = useState(() => serializedDraft({}));
   const [vitalsOpen, setVitalsOpen] = useState(false);
+  const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
     if (!encounterId) return;
+    const sequence = ++loadSequence.current;
 
     setLoading(true);
     setError(null);
@@ -140,13 +142,12 @@ export function EncounterCompose(): JSX.Element {
       params: { path: { encounterId } },
     });
 
+    if (sequence !== loadSequence.current) return;
     if (enc.error || !enc.data) {
       setError("Could not load this encounter.");
       setLoading(false);
       return;
     }
-
-    setEncounter(enc.data as EncounterView);
 
     const loadedEncounter = enc.data as EncounterView;
     const [tmpl, sel, pat] = await Promise.all([
@@ -157,6 +158,9 @@ export function EncounterCompose(): JSX.Element {
       }),
     ]);
 
+    if (sequence !== loadSequence.current) return;
+
+    setEncounter(loadedEncounter);
     setTemplate(tmpl);
     setPatient((pat.data ?? null) as PatientSummary | null);
 
@@ -177,6 +181,9 @@ export function EncounterCompose(): JSX.Element {
 
   useEffect(() => {
     void load();
+    return () => {
+      loadSequence.current += 1;
+    };
   }, [load]);
 
   const unmet = useMemo(
@@ -184,7 +191,7 @@ export function EncounterCompose(): JSX.Element {
     [template, draft],
   );
 
-  const editable = encounter?.status === "draft";
+  const editable = encounter?.status === "draft" && encounter.id === encounterId;
   const currentDraft = useMemo(() => serializedDraft(draft), [draft]);
   const dirty = editable && currentDraft !== lastSavedDraft;
   const busy = operation !== null;
@@ -332,6 +339,10 @@ export function EncounterCompose(): JSX.Element {
     return <EmptyState title="Unavailable" description={error} />;
   }
 
+  if (encounter !== null && encounter.id !== encounterId) {
+    return <LoadingSpinner />;
+  }
+
   if (loading && encounter === null) {
     return <LoadingSpinner />;
   }
@@ -379,7 +390,7 @@ export function EncounterCompose(): JSX.Element {
                 <Button
                   tone="tertiary"
                   onClick={() => setVitalsOpen((v) => !v)}
-                  disabled={!editable}
+                  disabled={!editable || busy}
                 >
                   {vitalsOpen ? "Close vitals" : "Vitals"}
                 </Button>
@@ -505,6 +516,7 @@ export function EncounterCompose(): JSX.Element {
             {vitalsOpen ? (
               <VitalsPanel
                 encounterId={encounter.id}
+                disabled={busy}
                 onSaved={() => {
                   setVitalsOpen(false);
                   setFeedback({
@@ -660,7 +672,7 @@ export function EncounterCompose(): JSX.Element {
                                   <input
                                     type="checkbox"
                                     checked={selected}
-                                    disabled={!editable}
+                                    disabled={!editable || busy}
                                     onChange={() => toggleEntry(active.sectionId, entry)}
                                     style={entryCheckbox}
                                   />
@@ -697,7 +709,7 @@ export function EncounterCompose(): JSX.Element {
                                               e.target.value,
                                             )
                                           }
-                                          disabled={!editable}
+                                          disabled={!editable || busy}
                                         />
                                       ))}
                                     </div>
@@ -726,7 +738,7 @@ export function EncounterCompose(): JSX.Element {
                           value={draft[active.sectionId]?.freeText ?? ""}
                           onChange={(e) => setFreeText(active.sectionId, e.target.value)}
                           rows={5}
-                          disabled={!editable}
+                          disabled={!editable || busy}
                         />
                       </div>
                     </div>
@@ -784,14 +796,15 @@ export function EncounterCompose(): JSX.Element {
         <div style={discardDialog}>
           <h2 style={discardTitle}>Leave without saving?</h2>
           <p style={discardText}>
-            Your visit-note changes have not been saved. Keep editing or discard them before
-            leaving.
+            {busy
+              ? "Your visit note is being saved. Wait for the operation to finish before leaving."
+              : "Your visit-note changes have not been saved. Keep editing or discard them before leaving."}
           </p>
           <footer style={discardActions}>
             <Button tone="tertiary" onClick={() => blocker.reset?.()}>
               Keep editing
             </Button>
-            <Button onClick={() => blocker.proceed?.()}>Discard changes</Button>
+            {!busy ? <Button onClick={() => blocker.proceed?.()}>Discard changes</Button> : null}
           </footer>
         </div>
       </Modal>
@@ -806,9 +819,11 @@ export function EncounterCompose(): JSX.Element {
  */
 function VitalsPanel({
   encounterId,
+  disabled,
   onSaved,
 }: {
   encounterId: string;
+  disabled: boolean;
   onSaved: () => void;
 }): JSX.Element {
   const client = useApiClient();
@@ -872,6 +887,7 @@ function VitalsPanel({
             <TextField
               label={label}
               value={values[key] ?? ""}
+              disabled={busy || disabled}
               onChange={(e) =>
                 setValues((current) => ({
                   ...current,
@@ -893,7 +909,7 @@ function VitalsPanel({
       <footer style={vitalsFooter}>
         <span style={vitalsFooterHint}>Clinical validation is applied by the server.</span>
 
-        <Button onClick={() => void submit()} disabled={busy}>
+        <Button onClick={() => void submit()} disabled={busy || disabled}>
           {busy ? "Recording…" : "Record vitals"}
         </Button>
       </footer>
