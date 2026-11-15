@@ -221,7 +221,7 @@ export const OverrideRoleApi = Type.Union([
   Type.Literal("org_admin"),
 ]);
 
-/** `m23_mac_jurisdiction`. */
+/** `mac_jurisdiction`. */
 export const MacJurisdictionApi = Type.Union([
   Type.Literal("ngs_j6"),
   Type.Literal("ngs_jk"),

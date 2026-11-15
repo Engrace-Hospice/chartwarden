@@ -23,7 +23,7 @@ import type {
 import type { CapProjectionProvider } from "./seams";
 import type { VisitChargeVersion } from "./visit-charges";
 
-/** The MAC jurisdiction alphabet (the frozen `m23_mac_jurisdiction` enum), derived — never re-listed. */
+/** The MAC jurisdiction alphabet (the frozen `mac_jurisdiction` enum), derived — never re-listed. */
 type MacJurisdiction = ClaimRecord["macJurisdiction"];
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
