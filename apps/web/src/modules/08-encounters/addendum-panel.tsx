@@ -13,6 +13,7 @@ import {
   Button,
   CeremonyModal,
   EmptyState,
+  Modal,
   StatusPill,
   TextAreaField,
   TextField,
@@ -21,7 +22,7 @@ import {
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { type BlockerFunction, Link, useBlocker } from "react-router-dom";
 import { useSession } from "../../shell/session";
 import {
   clearStepUpDraft,
@@ -83,6 +84,9 @@ function FailureAlert({ failure }: { failure: Failure }): JSX.Element {
 
 const ADDENDUM_DRAFT_ACTION = "m8-addendum";
 const STEP_UP_CODE = "STEP_UP_REQUIRED";
+const SHELL_EXIT_PATHS = new Set(["/expired", "/error", "/maintenance", "/tenant-unavailable"]);
+const isShellExit = (pathname: string): boolean =>
+  SHELL_EXIT_PATHS.has(pathname) || pathname === "/login" || pathname.startsWith("/login/");
 
 export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): JSX.Element {
   const client = useApiClient();
@@ -150,22 +154,19 @@ export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): J
                 <div style={actions}>
                   {a.status === "draft" ? (
                     <>
-                      <Button
-                        tone="secondary"
-                        size="sm"
-                        disabled={busyId === a.id}
-                        onClick={() => {
-                          if (editingId === a.id) {
-                            clearStepUpDraft(stepUpDraftKey(session, ADDENDUM_DRAFT_ACTION, a.id));
-                          }
-                          setEditingId(editingId === a.id ? null : a.id);
-                        }}
-                      >
-                        {editingId === a.id ? "Close editor" : "Edit draft"}
-                      </Button>
+                      {editingId !== a.id ? (
+                        <Button
+                          tone="secondary"
+                          size="sm"
+                          disabled={busyId === a.id}
+                          onClick={() => setEditingId(a.id)}
+                        >
+                          Edit draft
+                        </Button>
+                      ) : null}
                       <Button
                         size="sm"
-                        disabled={busyId === a.id}
+                        disabled={busyId === a.id || editingId === a.id}
                         onClick={() => void finalize(a.id)}
                       >
                         {busyId === a.id ? "Working…" : "Finalize addendum"}
@@ -187,7 +188,14 @@ export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): J
               ) : null}
               {failure?.addendumId === a.id ? <FailureAlert failure={failure.error} /> : null}
               {editingId === a.id && a.status === "draft" ? (
-                <AddendumEditor encounterId={encounterId} addendumId={a.id} />
+                <AddendumEditor
+                  encounterId={encounterId}
+                  addendumId={a.id}
+                  onClose={() => {
+                    clearStepUpDraft(stepUpDraftKey(session, ADDENDUM_DRAFT_ACTION, a.id));
+                    setEditingId(null);
+                  }}
+                />
               ) : null}
             </li>
           ))}
@@ -242,10 +250,11 @@ function StackedRows({ rows }: { readonly rows: readonly StackedRow[] }): JSX.El
 interface EditorProps {
   readonly encounterId: string;
   readonly addendumId: string;
+  readonly onClose: () => void;
 }
 
 /** Selection composer for one draft addendum — the parent's template menu, the addendum's own tree. */
-function AddendumEditor({ encounterId, addendumId }: EditorProps): JSX.Element {
+function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.Element {
   const client = useApiClient();
   const session = useSession();
   const draftKey = stepUpDraftKey(session, ADDENDUM_DRAFT_ACTION, addendumId);
@@ -257,6 +266,13 @@ function AddendumEditor({ encounterId, addendumId }: EditorProps): JSX.Element {
   const [saveError, setSaveError] = useState<Failure | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [closeRequested, setCloseRequested] = useState(false);
+  const shouldBlock = useCallback<BlockerFunction>(
+    ({ nextLocation }) => (dirty || saving) && !isShellExit(nextLocation.pathname),
+    [dirty, saving],
+  );
+  const blocker = useBlocker(shouldBlock);
 
   const load = useCallback(async () => {
     const [tpl, sel] = await Promise.all([
@@ -275,7 +291,9 @@ function AddendumEditor({ encounterId, addendumId }: EditorProps): JSX.Element {
     setTemplate(tpl);
     // Unsaved edits stashed before a step-up round trip win over the (older) saved tree; the version
     // stays the server's, so the save still carries a correct If-Match.
-    setDraft(peekStepUpDraft<DraftSections>(draftKey) ?? toDraft(sel.value.sections));
+    const stashed = peekStepUpDraft<DraftSections>(draftKey);
+    setDraft(stashed ?? toDraft(sel.value.sections));
+    setDirty(stashed !== null);
     setVersion(sel.value.version);
     setPreview(sel.value.layer1Preview);
   }, [client, encounterId, addendumId, draftKey]);
@@ -284,8 +302,16 @@ function AddendumEditor({ encounterId, addendumId }: EditorProps): JSX.Element {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!dirty && !saving) return;
+    const warn = (event: BeforeUnloadEvent): void => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, saving]);
+
   function toggle(sectionId: string, code: string): void {
     setSaved(false);
+    setDirty(true);
     setDraft((cur) => {
       const sec = cur[sectionId] ?? { entries: [], freeText: "" };
       const has = sec.entries.some((e) => e.code === code);
@@ -298,6 +324,7 @@ function AddendumEditor({ encounterId, addendumId }: EditorProps): JSX.Element {
 
   function setSlot(sectionId: string, code: string, slot: string, value: string): void {
     setSaved(false);
+    setDirty(true);
     setDraft((cur) => {
       const sec = cur[sectionId];
       if (!sec) return cur;
@@ -310,6 +337,7 @@ function AddendumEditor({ encounterId, addendumId }: EditorProps): JSX.Element {
 
   function setFreeText(sectionId: string, freeText: string): void {
     setSaved(false);
+    setDirty(true);
     setDraft((cur) => ({
       ...cur,
       [sectionId]: { entries: cur[sectionId]?.entries ?? [], freeText },
@@ -334,6 +362,7 @@ function AddendumEditor({ encounterId, addendumId }: EditorProps): JSX.Element {
     clearStepUpDraft(draftKey);
     setVersion(res.value.version);
     setPreview(res.value.layer1Preview);
+    setDirty(false);
     setSaved(true);
   }
 
@@ -400,12 +429,56 @@ function AddendumEditor({ encounterId, addendumId }: EditorProps): JSX.Element {
         </div>
       ) : null}
       {saveError ? <FailureAlert failure={saveError} /> : null}
-      {saved ? <output style={metaText}>Draft saved.</output> : null}
+      {saving ? <output style={metaText}>Saving addendum changes…</output> : null}
+      {!saving && dirty ? <output style={metaText}>Unsaved addendum changes</output> : null}
+      {!saving && saved ? <output style={metaText}>Addendum changes saved</output> : null}
       <div style={actions}>
         <Button size="sm" disabled={saving} onClick={() => void save()}>
           {saving ? "Saving…" : "Save draft"}
         </Button>
+        <Button
+          size="sm"
+          tone="secondary"
+          onClick={() => {
+            if (dirty || saving) setCloseRequested(true);
+            else onClose();
+          }}
+        >
+          Close editor
+        </Button>
       </div>
+      <Modal
+        open={blocker.state === "blocked" || closeRequested}
+        role="alertdialog"
+        ariaLabel="Leave addendum without saving?"
+        dismissOnScrim={false}
+      >
+        <div style={discardDialog}>
+          <h2 style={discardTitle}>Leave addendum without saving?</h2>
+          <p style={discardText}>
+            Your addendum changes have not been saved. Keep editing or discard them before leaving.
+          </p>
+          <footer style={discardActions}>
+            <Button
+              tone="tertiary"
+              onClick={() => {
+                setCloseRequested(false);
+                blocker.reset?.();
+              }}
+            >
+              Keep editing addendum
+            </Button>
+            <Button
+              onClick={() => {
+                if (closeRequested) onClose();
+                else blocker.proceed?.();
+              }}
+            >
+              Discard addendum changes
+            </Button>
+          </footer>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -458,4 +531,13 @@ const checkLabel: CSSProperties = {
   gap: "0.45rem",
   fontSize: "0.8rem",
   color: t.onSurface,
+};
+const discardDialog: CSSProperties = { ...stack, gap: "1rem", padding: "1.25rem" };
+const discardTitle: CSSProperties = { margin: 0, color: t.onSurface, fontSize: "1.15rem" };
+const discardText: CSSProperties = { margin: 0, color: t.onSurfaceVariant, lineHeight: 1.5 };
+const discardActions: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "0.5rem",
+  flexWrap: "wrap",
 };

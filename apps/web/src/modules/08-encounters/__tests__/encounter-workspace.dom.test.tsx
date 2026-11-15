@@ -93,6 +93,58 @@ function renderPatientEncounters(client: {
 }
 
 describe("Encounter workspace web workflow", () => {
+  it.each([
+    ["carePlan", "Open care plan", "/patients/patient-1/care-plan"],
+    ["evv", "Open EVV reconciliation", "/evv/missing-resolutions"],
+  ])(
+    "links a server %s finalize blocker to its canonical correction surface",
+    async (field, action, href) => {
+      const get = vi.fn(async (path: string) => {
+        if (path === "/api/v1/encounters/{encounterId}") return { data: encounter };
+        if (path === "/api/v1/encounters/{encounterId}/cosignature")
+          return { data: { status: null } };
+        if (path === "/api/v1/patients/{id}")
+          return {
+            data: {
+              firstName: "Ava",
+              lastName: "Stone",
+              dob: "1950-01-01",
+              mrn: "MRN1",
+              status: "active",
+            },
+          };
+        if (path === "/api/v1/internal/care-plan/relevant-elements")
+          return { data: { problems: [], goals: [], interventions: [], redacted: false } };
+        return { data: { assessments: [] } };
+      });
+      const patch = vi.fn(async () => ({ data: { status: "ok" }, response: new Response() }));
+      const post = vi.fn(async (path: string) =>
+        path.endsWith("/finalize")
+          ? {
+              error: {
+                error: {
+                  code: "COMPLIANCE_GATE_FAILED",
+                  message: "The encounter is not ready to finalize.",
+                  details: [
+                    {
+                      field,
+                      message: "Resolve this server-identified blocker before finalizing.",
+                    },
+                  ],
+                },
+              },
+              response: new Response(null, { status: 422 }),
+            }
+          : { data: { status: "ok" }, response: new Response() },
+      );
+      renderEncounter({ GET: get, PATCH: patch, POST: post });
+
+      fireEvent.click(await screen.findByRole("button", { name: "Review & finalize" }));
+      const link = await screen.findByRole("link", { name: action });
+      expect(link.getAttribute("href")).toBe(href);
+    },
+  );
+
   it("explains when an active Care Plan's linkable items are privacy-restricted", async () => {
     const get = vi.fn(async (path: string) => {
       if (path === "/api/v1/encounters/{encounterId}") return { data: encounter };

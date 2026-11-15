@@ -1,6 +1,6 @@
 import { ApiClientProvider } from "@chartwarden/ui";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { RouterProvider, createMemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import type { AddendumRow } from "../addenda-api";
@@ -70,16 +70,23 @@ function mount(
       vi.fn(async () => ({ data: { version: 4, layer1Preview: "Pain controlled." } })),
     POST: overrides.POST ?? vi.fn(async () => ({ data: { status: "finalized" } })),
   };
-  render(
-    <MemoryRouter>
-      <ApiClientProvider client={client as never}>
-        <SessionProvider session={session}>
-          <AddendaPanel encounterId="enc-1" addenda={addenda} onChanged={onChanged} />
-        </SessionProvider>
-      </ApiClientProvider>
-    </MemoryRouter>,
+  const router = createMemoryRouter(
+    [
+      {
+        path: "*",
+        element: (
+          <ApiClientProvider client={client as never}>
+            <SessionProvider session={session}>
+              <AddendaPanel encounterId="enc-1" addenda={addenda} onChanged={onChanged} />
+            </SessionProvider>
+          </ApiClientProvider>
+        ),
+      },
+    ],
+    { initialEntries: ["/patients/patient-1/encounters/enc-1"] },
   );
-  return { client, onChanged };
+  render(<RouterProvider router={router} />);
+  return { client, onChanged, router };
 }
 
 describe("Addendum panel (GAP-027)", () => {
@@ -125,7 +132,42 @@ describe("Addendum panel (GAP-027)", () => {
       },
     });
     expect(JSON.stringify(init)).not.toMatch(/author|cosign|signer/i);
-    expect(await screen.findByText("Draft saved.")).toBeTruthy();
+    expect(await screen.findByText("Addendum changes saved")).toBeTruthy();
+  });
+
+  it("announces and protects unsaved addendum work until the server saves it", async () => {
+    const { client, router } = mount([draft]);
+    fireEvent.click(screen.getByRole("button", { name: "Edit draft" }));
+    expect(
+      (screen.getByRole("button", { name: "Finalize addendum" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.click(await screen.findByLabelText("Pain controlled"));
+    expect(screen.getByText("Unsaved addendum changes")).toBeTruthy();
+
+    const dirtyUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(dirtyUnload);
+    expect(dirtyUnload.defaultPrevented).toBe(true);
+
+    await act(async () => {
+      await router.navigate("/patients/patient-1/encounters");
+    });
+    expect(
+      screen.getByRole("alertdialog", { name: "Leave addendum without saving?" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing addendum" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Close editor" }));
+    expect(
+      screen.getByRole("alertdialog", { name: "Leave addendum without saving?" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing addendum" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(client.PATCH).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Addendum changes saved")).toBeTruthy();
+    const cleanUnload = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(cleanUnload);
+    expect(cleanUnload.defaultPrevented).toBe(false);
   });
 
   it("shows a 409 STALE_VERSION on save verbatim", async () => {
@@ -244,7 +286,7 @@ describe("Addendum draft survives the step-up round trip (GAP-027)", () => {
     await restoredNotes();
     fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     await waitFor(() => expect(client.PATCH).toHaveBeenCalledTimes(1));
-    await screen.findByText("Draft saved.");
+    await screen.findByText("Addendum changes saved");
     cleanup();
     mount([draft], {}, ME);
     expect(screen.getByRole("button", { name: "Edit draft" })).toBeTruthy();

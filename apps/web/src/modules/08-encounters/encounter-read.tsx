@@ -17,7 +17,7 @@ import {
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
 import { type ScaleDefinition, loadScaleCatalog } from "../09-assessments/assessments-api";
 import { RecordAssessmentModal } from "../09-assessments/record-assessment-modal";
@@ -281,6 +281,7 @@ export function EncounterRead(): JSX.Element {
 
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionRemediation, setActionRemediation] = useState<"carePlan" | "evv" | null>(null);
   const [sectionErrors, setSectionErrors] = useState<Partial<Record<EncounterSection, string>>>({});
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [reason, setReason] = useState("");
@@ -515,7 +516,7 @@ export function EncounterRead(): JSX.Element {
     // A preview only once something is documented — an empty tree still assembles the template's
     // headings, which would read as a note that says nothing.
     setNoteText(
-      sel.data?.sections.some((s) => s.entries.length > 0 || Boolean(s.freeText))
+      sel.data?.sections?.some((s) => s.entries.length > 0 || Boolean(s.freeText))
         ? (sel.data?.layer1Preview ?? "")
         : "",
     );
@@ -723,6 +724,7 @@ export function EncounterRead(): JSX.Element {
   ): Promise<void> {
     setBusy(true);
     setActionError(null);
+    setActionRemediation(null);
     setNotice(null);
     if (section) {
       clearSectionError(section);
@@ -735,6 +737,10 @@ export function EncounterRead(): JSX.Element {
 
     if (res.error) {
       const mapped = fieldErrorsFrom(res.error, supportedFields);
+      const remediation = validationDetails(res.error)
+        .map((detail) => fieldKeyFromPath(detail.field))
+        .find((field): field is "carePlan" | "evv" => field === "carePlan" || field === "evv");
+      setActionRemediation(remediation ?? null);
 
       if (Object.keys(mapped).length > 0) {
         setFieldErrors((current) => ({
@@ -758,6 +764,7 @@ export function EncounterRead(): JSX.Element {
     }
 
     clearFieldErrors(supportedFields);
+    setActionRemediation(null);
     setUtilityModal(null);
     setReason("");
     setNotice(success);
@@ -1213,6 +1220,12 @@ export function EncounterRead(): JSX.Element {
                 <div role="alert" aria-live="assertive" style={pageAlertStyle}>
                   <Glyph name="alert" size={16} />
                   <span>{actionError}</span>
+                  {actionRemediation === "carePlan" ? (
+                    <Link to={`/patients/${e.patientId}/care-plan`}>Open care plan</Link>
+                  ) : null}
+                  {actionRemediation === "evv" ? (
+                    <Link to="/evv/missing-resolutions">Open EVV reconciliation</Link>
+                  ) : null}
                 </div>
               ) : null}
 

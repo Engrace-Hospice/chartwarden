@@ -35,6 +35,9 @@ interface EncounterRow {
 }
 
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
+const CLINICAL_ACRONYMS = new Set(["rn", "lpn", "cna", "msw"]);
+const reviewDisciplineLabel = (discipline: string): string =>
+  CLINICAL_ACRONYMS.has(discipline) ? discipline.toUpperCase() : stateLabel(discipline);
 
 export function CosignatureQueue(): JSX.Element {
   const client = useApiClient();
@@ -325,11 +328,12 @@ export function CosignatureQueue(): JSX.Element {
             >
               <table style={tableStyle}>
                 <colgroup>
-                  <col style={{ width: "27%" }} />
-                  <col style={{ width: "16%" }} />
-                  <col style={{ width: "15%" }} />
-                  <col style={{ width: "18%" }} />
+                  <col style={{ width: "23%" }} />
                   <col style={{ width: "14%" }} />
+                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "16%" }} />
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "10%" }} />
                   <col style={{ width: "10%" }} />
                 </colgroup>
                 <thead>
@@ -340,24 +344,12 @@ export function CosignatureQueue(): JSX.Element {
                     <th>Cosign SLA</th>
                     <th>Status</th>
                     <th>Patient</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pagedItems.map((e) => (
-                    <tr
-                      key={e.id}
-                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => navigate(`/patients/${e.patientId}/encounters/${e.id}`)}
-                      onKeyDown={(ev) => {
-                        if (ev.key === "Enter" || ev.key === " ") {
-                          ev.preventDefault();
-                          navigate(`/patients/${e.patientId}/encounters/${e.id}`);
-                        }
-                      }}
-                      style={{ cursor: "pointer" }}
-                    >
+                    <tr key={e.id}>
                       <td>
                         <div style={primaryCellStyle}>
                           <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
@@ -387,6 +379,16 @@ export function CosignatureQueue(): JSX.Element {
                         />
                       </td>
                       <td style={monoMutedStyle}>{e.patientId.slice(0, 8)}</td>
+                      <td>
+                        <Button
+                          size="sm"
+                          tone="secondary"
+                          aria-label={`Review ${reviewDisciplineLabel(e.discipline)} ${stateLabel(e.encounterType).toLowerCase()}`}
+                          onClick={() => navigate(`/patients/${e.patientId}/encounters/${e.id}`)}
+                        >
+                          Review
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
