@@ -166,6 +166,7 @@ per-module build truth is the generated matrix (`bun run status:matrix`).
 | [`implementation/intake-redesign-follow-up-backlog.md`](./implementation/intake-redesign-follow-up-backlog.md) | Optional, unapproved enhancements kept separate from the closed intake redesign initiative. |
 | [`implementation/ChartWarden_Workflow_03_Patient_Chart_Demographics.md`](./implementation/ChartWarden_Workflow_03_Patient_Chart_Demographics.md) | Patient chart and demographics workflow plan, approval gates, work packages, and test matrix. |
 | [`implementation/03-patient-chart-current-state-audit.md`](./implementation/03-patient-chart-current-state-audit.md) | Workflow 03 G0 audit of chart IA, canonical ownership, permissions, integrity, privacy, performance, tests, and proposed presentation boundaries. |
+| [`implementation/ChartWarden_Workflow_04_Visit_Encounter_Documentation.md`](./implementation/ChartWarden_Workflow_04_Visit_Encounter_Documentation.md) | Proposed Workflow 04 definition for scheduled visit, encounter documentation, signature/cosignature, EVV truth, and downstream continuity. |
 
 ---
 
