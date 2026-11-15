@@ -72,6 +72,7 @@ import { AdmissionHoldAction } from "./admission-hold-action";
 import {
   type ReadinessRequirement,
   groupReadinessRequirements,
+  readinessActionIsPermitted,
   readinessOwner,
   readinessReason,
   readinessRequirementIsSatisfied,
@@ -284,6 +285,7 @@ export function AdmissionDetail({
     | null
   >(initialUpload ?? null);
   const [busy, setBusy] = useState(false);
+  const activationSubmitting = useRef(false);
   // 42 CFR 418.25(a) — the recommendation capture drawer replaces the readiness rail while open.
   const [recommending, setRecommending] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -521,7 +523,7 @@ export function AdmissionDetail({
         return true;
       }
       setBusy(false);
-      if (status === 412) {
+      if (status === 412 || (status === 409 && code === "VERSION_MISMATCH")) {
         setActionError("Admission requirements changed. Review the blockers and try again.");
         void load();
       } else if (status === 403) setActionError("You do not have permission for this action.");
@@ -572,25 +574,32 @@ export function AdmissionDetail({
   );
 
   const activate = useCallback(async () => {
-    if (!id || !admission) return;
+    if (!id || !admission || activationSubmitting.current) return;
+    activationSubmitting.current = true;
     setBusy(true);
     setActionError(null);
-    const { error: err, response } = await client.POST("/api/v1/admissions/{id}/activate", {
-      params: { path: { id } },
-      body: {
-        ifVersion: admission.version,
-        ...(activationLocationId && !admission.locationId
-          ? { locationId: activationLocationId }
-          : {}),
-      },
-    });
-    if (err) {
-      branchError(response?.status, err?.error?.code, "Activation failed.");
-      return;
+    try {
+      const { error: err, response } = await client.POST("/api/v1/admissions/{id}/activate", {
+        params: { path: { id } },
+        body: {
+          ifVersion: admission.version,
+          ...(activationLocationId && !admission.locationId
+            ? { locationId: activationLocationId }
+            : {}),
+        },
+      });
+      if (err) {
+        branchError(response?.status, err?.error?.code, "Activation failed.");
+        return;
+      }
+      closeCeremony();
+      void load();
+    } catch {
+      setActionError("Could not reach the server. Check your connection and try again.");
+    } finally {
+      activationSubmitting.current = false;
+      setBusy(false);
     }
-    setBusy(false);
-    closeCeremony();
-    void load();
   }, [id, admission, activationLocationId, client, branchError, closeCeremony, load]);
 
   const acknowledgeNor = useCallback(async () => {
@@ -1108,6 +1117,7 @@ export function AdmissionDetail({
     !readiness?.requirements.some((r) => r.code === "notice_of_rights" && r.status === "complete");
   const canActivate =
     pendingWorkspace && (readiness?.canActivate ?? admission.activationGate.ready);
+  const canSubmitActivation = canActivate && hasPermission("admission.activate");
   // Discharge / revocation / transfer-out entry (discharge-workflow.tsx): only from a state the
   // admission state machine discharges from, and only for an actor holding one of the workflow's keys
   // (display gating — the server derives and enforces the real per-reason key on submit).
@@ -1157,7 +1167,15 @@ export function AdmissionDetail({
     cti,
     patientId: admission.patientId,
     referralId: admission.referralId,
+    permissions: session?.permissions ?? [],
   };
+  const actionIsPermitted = (action: string): boolean =>
+    readinessActionIsPermitted(action, {
+      permissions: actionContext.permissions,
+      hasElectionStatement: Boolean(electionStatement),
+      hasCti: Boolean(cti),
+      ctiHospiceMdSigned: cti?.hospiceMdSigned ?? false,
+    });
 
   if (pendingWorkspace) {
     return (
@@ -1186,8 +1204,8 @@ export function AdmissionDetail({
                 <button
                   type="button"
                   onClick={() => setCeremony("activate")}
-                  style={canActivate ? primaryBtn : disabledBtn}
-                  disabled={!canActivate}
+                  style={canSubmitActivation ? primaryBtn : disabledBtn}
+                  disabled={!canSubmitActivation}
                 >
                   Activate Admission
                 </button>
@@ -1325,6 +1343,12 @@ export function AdmissionDetail({
                 <span>All blocking admission requirements are complete.</span>
               </div>
             ) : null}
+            {canActivate && !hasPermission("admission.activate") ? (
+              <p style={actionHintStyle}>
+                Activation is ready, but your current role cannot activate admissions. Ask an
+                authorized admission lead to complete this step.
+              </p>
+            ) : null}
             {advisories.map((r) => (
               <div key={r.code} style={nextStepStyle} data-testid={`advisory-${r.code}`}>
                 <div>
@@ -1337,6 +1361,7 @@ export function AdmissionDetail({
                     context={actionContext}
                     onAction={triggerAction}
                     style={ghostBtn}
+                    owner={readinessOwner(r)}
                   />
                 ) : null}
               </div>
@@ -1348,6 +1373,9 @@ export function AdmissionDetail({
                   <p style={requirementMessageStyle}>
                     {nextRequirement.message ?? "Complete this item to move the admission forward."}
                   </p>
+                  <span style={actionHintStyle}>
+                    Suggested owner: {readinessOwner(nextRequirement)}
+                  </span>
                 </div>
                 {nextRequirement.action ? (
                   <RequirementActionButton
@@ -1355,6 +1383,7 @@ export function AdmissionDetail({
                     context={actionContext}
                     onAction={triggerAction}
                     style={primaryBtn}
+                    owner={readinessOwner(nextRequirement)}
                   />
                 ) : null}
               </div>
@@ -1384,6 +1413,8 @@ export function AdmissionDetail({
               electionStatement={electionStatement}
               cti={cti}
               patientId={admission.patientId}
+              referralId={admission.referralId}
+              permissions={session?.permissions ?? []}
               onAction={triggerAction}
             />
           </Section>
@@ -1434,15 +1465,13 @@ export function AdmissionDetail({
 
               {readiness?.requirements.find((r) => r.code === "admission_details")?.status !==
               "complete" ? (
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => setCeremony("admission-details")}
-                    style={ghostBtn}
-                  >
-                    Complete admission details
-                  </button>
-                </div>
+                <RequirementActionButton
+                  action="COMPLETE_ADMISSION_DETAILS"
+                  context={actionContext}
+                  onAction={triggerAction}
+                  style={ghostBtn}
+                  owner="Intake coordinator"
+                />
               ) : null}
             </div>
           </Section>
@@ -1460,9 +1489,13 @@ export function AdmissionDetail({
                 requirement={readiness?.requirements.find((r) => r.code === "notice_of_rights")}
               />
               {canAcknowledgeNor ? (
-                <button type="button" onClick={() => setCeremony("nor")} style={ghostBtn}>
-                  Complete Notice of Rights
-                </button>
+                <RequirementActionButton
+                  action="COMPLETE_NOTICE_OF_RIGHTS"
+                  context={actionContext}
+                  onAction={triggerAction}
+                  style={ghostBtn}
+                  owner="Intake coordinator"
+                />
               ) : null}
             </div>
           </Section>
@@ -1486,8 +1519,26 @@ export function AdmissionDetail({
                 <button
                   type="button"
                   onClick={() => setCeremony(electionStatement ? "sign-election" : "election")}
-                  style={ghostBtn}
-                  disabled={!period || electionStatement?.state === "signed"}
+                  style={
+                    !period ||
+                    electionStatement?.state === "signed" ||
+                    !actionIsPermitted(
+                      electionStatement
+                        ? "COMPLETE_ELECTION_SIGNATURE"
+                        : "COMPLETE_ELECTION_STATEMENT",
+                    )
+                      ? disabledBtn
+                      : ghostBtn
+                  }
+                  disabled={
+                    !period ||
+                    electionStatement?.state === "signed" ||
+                    !actionIsPermitted(
+                      electionStatement
+                        ? "COMPLETE_ELECTION_SIGNATURE"
+                        : "COMPLETE_ELECTION_STATEMENT",
+                    )
+                  }
                 >
                   {electionStatement?.state === "signed"
                     ? "Election signed"
@@ -1522,8 +1573,17 @@ export function AdmissionDetail({
                           : "sign-cti-hospice-md",
                     )
                   }
-                  style={ghostBtn}
-                  disabled={!period || cti?.state === "signed" || !admission.hospicePhysicianId}
+                  style={
+                    actionIsPermitted(cti ? "COMPLETE_CTI_SIGNATURE" : "COMPLETE_CTI")
+                      ? ghostBtn
+                      : disabledBtn
+                  }
+                  disabled={
+                    !period ||
+                    cti?.state === "signed" ||
+                    !admission.hospicePhysicianId ||
+                    !actionIsPermitted(cti ? "COMPLETE_CTI_SIGNATURE" : "COMPLETE_CTI")
+                  }
                 >
                   {!cti
                     ? "Complete CTI"
@@ -1542,7 +1602,7 @@ export function AdmissionDetail({
           <AdmissionRecommendationSection
             admissionId={admission.id}
             recommendation={admission.admissionRecommendation}
-            editable
+            editable={hasPermission("admission.record_recommendation")}
             onRecord={() => setRecommending(true)}
           />
           <Section title="Documents">
@@ -1571,7 +1631,15 @@ export function AdmissionDetail({
         <PageHeader
           title="Admission"
           actions={
-            <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: "0.625rem",
+                flexWrap: "wrap",
+              }}
+            >
               <StatusPill
                 label={stateLabel(admission.state)}
                 tone={ADMISSION_TONE[admission.state] ?? "neutral"}
@@ -1675,6 +1743,42 @@ export function AdmissionDetail({
     >
       <div style={contentShellStyle}>
         {flashNotice ? <InlineAlert tone="success">{flashNotice}</InlineAlert> : null}
+        {admission.state === "active" && admission.patientId ? (
+          <section style={continuationCardStyle} data-testid="post-activation-continuation">
+            <div>
+              <h2 style={sectionTitleStyle}>Admission activated</h2>
+              <p style={requirementMessageStyle}>
+                Continue care setup using the existing patient and assessment workspaces. No task is
+                created or assigned automatically.
+              </p>
+            </div>
+            <div style={continuationActionsStyle}>
+              {hasPermission("patient.read") ? (
+                <>
+                  <Link to={`/patients/${admission.patientId}`} className="wx-btn-primary">
+                    Open patient chart
+                  </Link>
+                  <Link
+                    to={`/patients/${admission.patientId}?view=care-team`}
+                    className="wx-btn-secondary"
+                  >
+                    Review care team
+                  </Link>
+                </>
+              ) : null}
+              {hasPermission("hope.timepoint.read") ? (
+                <Link to={`/admissions/${admission.id}/hope`} className="wx-btn-secondary">
+                  Open HOPE
+                </Link>
+              ) : null}
+              {!hasPermission("patient.read") && !hasPermission("hope.timepoint.read") ? (
+                <span style={actionHintStyle}>
+                  Your current role has no additional post-activation workspace available.
+                </span>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
         <MissingDischargeDetailsAlert admissionId={admission.id} admissionState={admission.state} />
         <TransferNoticeStatus admissionId={admission.id} />
         {hasPermission("billing.noe.read") ? (
@@ -1738,7 +1842,10 @@ export function AdmissionDetail({
         <AdmissionRecommendationSection
           admissionId={admission.id}
           recommendation={admission.admissionRecommendation}
-          editable={admission.state === "active" || admission.state === "on_hold"}
+          editable={
+            (admission.state === "active" || admission.state === "on_hold") &&
+            hasPermission("admission.record_recommendation")
+          }
           onRecord={() => setRecommending(true)}
         />
         <DischargeOrderSection admissionId={admission.id} />
@@ -2272,6 +2379,7 @@ export function AdmissionDetail({
           legalText="I attest the admission is ready for activation."
           signer={sessionSigner}
           commitLabel={busy ? "Activating..." : "Activate"}
+          commitDisabled={busy}
           onCommit={() => void activate()}
           onCancel={closeCeremony}
         />
@@ -2751,6 +2859,7 @@ function RequirementActionButton({
   context,
   onAction,
   style,
+  owner,
 }: {
   action: string;
   context: {
@@ -2758,13 +2867,22 @@ function RequirementActionButton({
     cti: CtiView | null;
     patientId?: string;
     referralId?: string | null;
+    permissions: readonly string[];
   };
   onAction: (action: string) => void;
   style: CSSProperties;
+  owner?: string;
 }): JSX.Element {
   const label = actionLabel(action, context);
   const unavailableDescriptionId = useId();
-  if (!isActionHandled(action, context)) {
+  const handled = isActionHandled(action, context);
+  const permitted = readinessActionIsPermitted(action, {
+    permissions: context.permissions,
+    hasElectionStatement: Boolean(context.electionStatement),
+    hasCti: Boolean(context.cti),
+    ctiHospiceMdSigned: context.cti?.hospiceMdSigned ?? false,
+  });
+  if (!handled || !permitted) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
         <button
@@ -2777,7 +2895,11 @@ function RequirementActionButton({
           {label}
         </button>
         <span id={unavailableDescriptionId} style={actionHintStyle}>
-          This step can't be completed from this screen yet.
+          {!handled
+            ? "This step can't be completed from this screen yet."
+            : owner
+              ? `Your current role cannot complete this step. Suggested owner: ${owner}.`
+              : "Your current role cannot complete this step. Ask an authorized team member to continue."}
         </span>
       </div>
     );
@@ -3329,6 +3451,18 @@ const nextStepStyle: CSSProperties = {
   border: "1px solid var(--color-outline-variant)",
 };
 
+const continuationCardStyle: CSSProperties = {
+  ...summaryCardStyle,
+  borderColor: "var(--color-success)",
+};
+
+const continuationActionsStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.625rem",
+  flexWrap: "wrap",
+};
+
 const sectionInnerStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -3554,12 +3688,16 @@ function RequirementCards({
   electionStatement,
   cti,
   patientId,
+  referralId,
+  permissions,
   onAction,
 }: {
   requirements: ReadinessRequirement[];
   electionStatement: ElectionStatementView | null;
   cti: CtiView | null;
   patientId?: string;
+  referralId?: string | null;
+  permissions: readonly string[];
   onAction: (action: string) => void;
 }): JSX.Element {
   if (requirements.length === 0) return <p style={emptyTextStyle}>Readiness is loading.</p>;
@@ -3600,9 +3738,10 @@ function RequirementCards({
                 {requirement.action ? (
                   <RequirementActionButton
                     action={requirement.action}
-                    context={{ electionStatement, cti, patientId }}
+                    context={{ electionStatement, cti, patientId, referralId, permissions }}
                     onAction={onAction}
                     style={ghostBtn}
+                    owner={readinessOwner(requirement)}
                   />
                 ) : null}
               </article>

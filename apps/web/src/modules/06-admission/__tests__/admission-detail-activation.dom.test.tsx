@@ -16,7 +16,7 @@ const session: Session = {
   userId: "11111111-1111-4111-8111-111111111111",
   organizationId: "org-1",
   displayName: "Sarah Miller",
-  permissions: ["admission.read", "admission.update"],
+  permissions: ["admission.read", "admission.update", "patient.read", "hope.timepoint.read"],
 };
 const admissionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const windowId = "7d1e5b22-9c3a-4f10-8a6b-1c2d3e4f5a6b";
@@ -136,6 +136,20 @@ async function tick(seconds: number): Promise<void> {
 }
 
 describe("Admission detail right after activation", () => {
+  it("offers explicit, side-effect-free continuation links after activation", async () => {
+    const { client } = clientFor(["active"]);
+    renderPage(client);
+
+    const continuation = await screen.findByTestId("post-activation-continuation");
+    expect(continuation.textContent).toContain("No task is created or assigned automatically.");
+    const hrefs = Array.from(continuation.querySelectorAll("a")).map((link) =>
+      link.getAttribute("href"),
+    );
+    expect(hrefs).toContain("/patients/patient-1");
+    expect(hrefs).toContain("/patients/patient-1?view=care-team");
+    expect(hrefs).toContain(`/admissions/${admissionId}/hope`);
+  });
+
   it("never shows a lagging patient 'Prospective' next to an active admission, then refreshes it", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { client, patientReads } = clientFor(["prospective", "active"]);

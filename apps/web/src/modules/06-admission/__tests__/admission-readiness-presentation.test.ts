@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   type ReadinessRequirement,
   groupReadinessRequirements,
+  readinessActionIsPermitted,
+  readinessActionPermission,
   readinessOwner,
   readinessReason,
   readinessRequirementIsSatisfied,
@@ -19,25 +21,25 @@ const requirement = (
 });
 
 describe("admission readiness presentation", () => {
-  it("groups server requirements without changing their order or blocking state", () => {
+  it("groups server requirements by operational next step without changing status or blocking state", () => {
     const input = [
-      requirement("patient_privacy", { blocking: false }),
+      requirement("patient_privacy"),
       requirement("notice_of_rights"),
-      requirement("cti"),
-      requirement("f2f", { status: "overdue" }),
-      requirement("future_requirement"),
+      requirement("cti", { status: "awaiting_signature" }),
+      requirement("f2f", { status: "overdue", blocking: false }),
+      requirement("future_requirement", { blocking: false }),
     ];
 
     const groups = groupReadinessRequirements(input);
 
     expect(groups.map((group) => group.label)).toEqual([
-      "Admission setup and privacy",
-      "Notices, election, and certification",
-      "Timing and clinical follow-up",
-      "Other readiness items",
+      "Required before activation",
+      "Awaiting another person",
+      "After admission and follow-up",
     ]);
     expect(groups.flatMap((group) => group.requirements)).toEqual(input);
-    expect(groups[0]?.requirements[0]?.blocking).toBe(false);
+    expect(groups[0]?.requirements[0]?.blocking).toBe(true);
+    expect(groups[1]?.requirements[0]?.status).toBe("awaiting_signature");
     expect(groups[2]?.requirements[0]?.status).toBe("overdue");
   });
 
@@ -69,5 +71,47 @@ describe("admission readiness presentation", () => {
       readinessRequirementIsSatisfied(requirement("addendum", { status: "not_applicable" })),
     ).toBe(true);
     expect(readinessRequirementIsSatisfied(requirement("cti", { status: "pending" }))).toBe(false);
+  });
+
+  it("maps contextual actions to the permission enforced by their next route", () => {
+    expect(
+      readinessActionPermission("COMPLETE_ELECTION_STATEMENT", {
+        hasElectionStatement: false,
+        hasCti: false,
+        ctiHospiceMdSigned: false,
+      }),
+    ).toBe("election.draft");
+    expect(
+      readinessActionPermission("COMPLETE_ELECTION_STATEMENT", {
+        hasElectionStatement: true,
+        hasCti: false,
+        ctiHospiceMdSigned: false,
+      }),
+    ).toBe("election.sign");
+    expect(
+      readinessActionPermission("REVIEW_CTI", {
+        hasElectionStatement: false,
+        hasCti: true,
+        ctiHospiceMdSigned: false,
+      }),
+    ).toBe("cti.sign_hospice_md");
+  });
+
+  it("allows informational privacy review but refuses a mutation without its permission", () => {
+    const context = {
+      permissions: ["admission.read"],
+      hasElectionStatement: false,
+      hasCti: false,
+      ctiHospiceMdSigned: false,
+    };
+
+    expect(readinessActionIsPermitted("REVIEW_PRIVACY", context)).toBe(true);
+    expect(readinessActionIsPermitted("COMPLETE_NOTICE_OF_RIGHTS", context)).toBe(false);
+    expect(
+      readinessActionIsPermitted("COMPLETE_NOTICE_OF_RIGHTS", {
+        ...context,
+        permissions: [...context.permissions, "nor.acknowledge"],
+      }),
+    ).toBe(true);
   });
 });
