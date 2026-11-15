@@ -204,6 +204,9 @@ describe("patient details permission-aware mutations", () => {
     await user.clear(screen.getByLabelText("First name"));
     await user.type(screen.getByLabelText("First name"), "Changed");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
+    expect((screen.getByLabelText("First name") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Date of birth") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText(/Race codes/i) as HTMLInputElement).disabled).toBe(true);
     await act(async () => {
       void router.navigate("/elsewhere");
     });

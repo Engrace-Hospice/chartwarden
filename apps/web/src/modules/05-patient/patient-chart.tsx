@@ -1124,6 +1124,7 @@ export function DemographicsTab({
                     placeholder="e.g. Benjamin"
                     autoComplete="given-name"
                     required
+                    disabled={saving}
                     style={input}
                   />
                 </FieldLabel>
@@ -1134,6 +1135,7 @@ export function DemographicsTab({
                     placeholder="e.g. Davies"
                     autoComplete="family-name"
                     required
+                    disabled={saving}
                     style={input}
                   />
                 </FieldLabel>
@@ -1143,6 +1145,7 @@ export function DemographicsTab({
                     defaultValue={d.legalMiddleName ?? ""}
                     placeholder="e.g. James"
                     autoComplete="additional-name"
+                    disabled={saving}
                     style={input}
                   />
                 </FieldLabel>
@@ -1151,6 +1154,7 @@ export function DemographicsTab({
                     name="legalNameSuffix"
                     defaultValue={d.legalNameSuffix ?? ""}
                     placeholder="e.g. Jr."
+                    disabled={saving}
                     style={input}
                   />
                 </FieldLabel>
@@ -1160,6 +1164,7 @@ export function DemographicsTab({
                     type="date"
                     defaultValue={dateOnly(d.dob)}
                     required
+                    disabled={saving}
                     style={input}
                   />
                 </FieldLabel>
@@ -1167,6 +1172,7 @@ export function DemographicsTab({
                   <select
                     name="sexAssignedAtBirth"
                     defaultValue={d.sexAssignedAtBirth}
+                    disabled={saving}
                     style={input}
                   >
                     <option value="M">Male</option>
@@ -1192,6 +1198,7 @@ export function DemographicsTab({
                     name="genderIdentityCode"
                     defaultValue={d.genderIdentityCode ?? ""}
                     placeholder="Enter gender identity code"
+                    disabled={saving}
                     style={input}
                   />
                 </FieldLabel>
@@ -1200,6 +1207,7 @@ export function DemographicsTab({
                     name="pronounsCode"
                     defaultValue={d.pronounsCode ?? ""}
                     placeholder="Enter pronouns code"
+                    disabled={saving}
                     style={input}
                   />
                 </FieldLabel>
@@ -1208,6 +1216,7 @@ export function DemographicsTab({
                     name="sexualOrientationCode"
                     defaultValue={d.sexualOrientationCode ?? ""}
                     placeholder="Enter sexual orientation code"
+                    disabled={saving}
                     style={input}
                   />
                 </FieldLabel>
@@ -1216,6 +1225,7 @@ export function DemographicsTab({
                     name="maritalStatusCode"
                     defaultValue={d.maritalStatusCode ?? ""}
                     placeholder="Enter marital status code"
+                    disabled={saving}
                     style={input}
                   />
                 </FieldLabel>
@@ -1237,6 +1247,7 @@ export function DemographicsTab({
                     name="raceCodes"
                     defaultValue={d.raceCodes.join(", ")}
                     placeholder="Comma-separated race codes"
+                    disabled={saving}
                     style={input}
                   />
                 </FieldLabel>
@@ -1245,6 +1256,7 @@ export function DemographicsTab({
                     name="ethnicityCodes"
                     defaultValue={d.ethnicityCodes.join(", ")}
                     placeholder="Comma-separated ethnicity codes"
+                    disabled={saving}
                     style={input}
                   />
                 </FieldLabel>

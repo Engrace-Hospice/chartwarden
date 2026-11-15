@@ -88,6 +88,13 @@ const SHELL_EXIT_PATHS = new Set(["/expired", "/error", "/maintenance", "/tenant
 const isShellExit = (pathname: string): boolean =>
   SHELL_EXIT_PATHS.has(pathname) || pathname === "/login" || pathname.startsWith("/login/");
 
+const transportFailure: Failure = {
+  ok: false,
+  status: null,
+  code: null,
+  message: "The connection was interrupted. Your changes are still here; try again.",
+};
+
 export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): JSX.Element {
   const client = useApiClient();
   const session = useSession();
@@ -348,22 +355,27 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
     setSaving(true);
     setSaveError(null);
     setSaved(false);
-    const res = await saveAddendumSelections(
-      client,
-      { encounterId, addendumId },
-      version,
-      toSelectionsBody(draft),
-    );
-    setSaving(false);
-    if (!res.ok) {
-      if (res.code === STEP_UP_CODE) stashStepUpDraft(draftKey, draft);
-      return setSaveError(res);
+    try {
+      const res = await saveAddendumSelections(
+        client,
+        { encounterId, addendumId },
+        version,
+        toSelectionsBody(draft),
+      );
+      if (!res.ok) {
+        if (res.code === STEP_UP_CODE) stashStepUpDraft(draftKey, draft);
+        return setSaveError(res);
+      }
+      clearStepUpDraft(draftKey);
+      setVersion(res.value.version);
+      setPreview(res.value.layer1Preview);
+      setDirty(false);
+      setSaved(true);
+    } catch {
+      setSaveError(transportFailure);
+    } finally {
+      setSaving(false);
     }
-    clearStepUpDraft(draftKey);
-    setVersion(res.value.version);
-    setPreview(res.value.layer1Preview);
-    setDirty(false);
-    setSaved(true);
   }
 
   if (loadError) return <FailureAlert failure={loadError} />;
@@ -477,6 +489,7 @@ function AddendumEditor({ encounterId, addendumId, onClose }: EditorProps): JSX.
             {!saving ? (
               <Button
                 onClick={() => {
+                  clearStepUpDraft(draftKey);
                   if (closeRequested) onClose();
                   else blocker.proceed?.();
                 }}

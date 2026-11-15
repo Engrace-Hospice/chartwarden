@@ -90,6 +90,12 @@ const isShellExit = (pathname: string): boolean =>
 
 const serializedDraft = (draft: DraftSections): string => JSON.stringify(toSelectionsBody(draft));
 
+const transportFeedback: UiFeedback = {
+  tone: "error",
+  title: "Connection interrupted",
+  message: "The connection was interrupted. Your changes are still here; try again.",
+};
+
 const VITAL_LABELS: Record<string, string> = {
   bpSystolic: "Systolic blood pressure",
   bpDiastolic: "Diastolic blood pressure",
@@ -131,52 +137,69 @@ export function EncounterCompose(): JSX.Element {
   const [vitalsOpen, setVitalsOpen] = useState(false);
   const loadSequence = useRef(0);
 
-  const load = useCallback(async () => {
-    if (!encounterId) return;
+  const load = useCallback(async (): Promise<EncounterView | null> => {
+    if (!encounterId) return null;
     const sequence = ++loadSequence.current;
 
     setLoading(true);
     setError(null);
+    setEncounter(null);
+    setPatient(null);
+    setTemplate(null);
+    setDraft({});
+    setPreview("");
+    setVersion(0);
+    setLastSavedDraft(serializedDraft({}));
+    setOpenSection(null);
 
-    const enc = await client.GET("/api/v1/encounters/{encounterId}", {
-      params: { path: { encounterId } },
-    });
+    try {
+      const enc = await client.GET("/api/v1/encounters/{encounterId}", {
+        params: { path: { encounterId } },
+      });
 
-    if (sequence !== loadSequence.current) return;
-    if (enc.error || !enc.data) {
-      setError("Could not load this encounter.");
-      setLoading(false);
-      return;
-    }
+      if (sequence !== loadSequence.current) return null;
+      if (enc.error || !enc.data) {
+        setError("Could not load this encounter.");
+        setLoading(false);
+        return null;
+      }
 
-    const loadedEncounter = enc.data as EncounterView;
-    const [tmpl, sel, pat] = await Promise.all([
-      loadTemplate(client, encounterId),
-      loadSelections(client, encounterId),
-      client.GET("/api/v1/patients/{id}", {
-        params: { path: { id: loadedEncounter.patientId } },
-      }),
-    ]);
+      const loadedEncounter = enc.data as EncounterView;
+      const [tmpl, sel, pat] = await Promise.all([
+        loadTemplate(client, encounterId),
+        loadSelections(client, encounterId),
+        client.GET("/api/v1/patients/{id}", {
+          params: { path: { id: loadedEncounter.patientId } },
+        }),
+      ]);
 
-    if (sequence !== loadSequence.current) return;
+      if (sequence !== loadSequence.current) return null;
 
-    setEncounter(loadedEncounter);
-    setTemplate(tmpl);
-    setPatient((pat.data ?? null) as PatientSummary | null);
+      if (!tmpl || !sel || pat.error || !pat.data) {
+        setError("Could not load this encounter.");
+        setLoading(false);
+        return null;
+      }
 
-    if (sel) {
+      setEncounter(loadedEncounter);
+      setTemplate(tmpl);
+      setPatient(pat.data as PatientSummary);
+
       const loadedDraft = toDraft(sel.sections);
       setDraft(loadedDraft);
       setLastSavedDraft(serializedDraft(loadedDraft));
       setPreview(sel.layer1Preview);
       setVersion(sel.version);
-    } else {
-      setDraft({});
-      setLastSavedDraft(serializedDraft({}));
-    }
 
-    setOpenSection((prev) => prev ?? tmpl?.sections[0]?.sectionId ?? null);
-    setLoading(false);
+      setOpenSection((prev) => prev ?? tmpl.sections[0]?.sectionId ?? null);
+      setLoading(false);
+      return loadedEncounter;
+    } catch {
+      if (sequence !== loadSequence.current) return null;
+      setError("Could not load this encounter. Check your connection and try again.");
+      setLoading(false);
+      return null;
+    }
   }, [client, encounterId]);
 
   useEffect(() => {
@@ -281,23 +304,27 @@ export function EncounterCompose(): JSX.Element {
     setOperation("saving");
     setFeedback(null);
 
-    const res = await saveSelections(client, encounterId, version, toSelectionsBody(draft));
+    try {
+      const res = await saveSelections(client, encounterId, version, toSelectionsBody(draft));
 
-    if (!res.ok) {
+      if (!res.ok) {
+        setFeedback(feedbackFor(res));
+        return;
+      }
+
+      setVersion(res.value.version);
+      setPreview(res.value.layer1Preview);
+      setLastSavedDraft(currentDraft);
+      setFeedback({
+        tone: "success",
+        title: "Draft saved",
+        message: "Your visit note changes were saved.",
+      });
+    } catch {
+      setFeedback(transportFeedback);
+    } finally {
       setOperation(null);
-      setFeedback(feedbackFor(res));
-      return;
     }
-
-    setVersion(res.value.version);
-    setPreview(res.value.layer1Preview);
-    setLastSavedDraft(currentDraft);
-    setOperation(null);
-    setFeedback({
-      tone: "success",
-      title: "Draft saved",
-      message: "Your visit note changes were saved.",
-    });
   }
 
   async function finalize(): Promise<void> {
@@ -305,34 +332,66 @@ export function EncounterCompose(): JSX.Element {
 
     setOperation("finalizing");
     setFeedback(null);
+    let finalizationAttempted = false;
 
-    const saved = await saveSelections(client, encounterId, version, toSelectionsBody(draft));
+    try {
+      const saved = await saveSelections(client, encounterId, version, toSelectionsBody(draft));
 
-    if (!saved.ok) {
+      if (!saved.ok) {
+        setFeedback(feedbackFor(saved));
+        return;
+      }
+
+      setVersion(saved.value.version);
+      setPreview(saved.value.layer1Preview);
+      setLastSavedDraft(currentDraft);
+
+      finalizationAttempted = true;
+      const res = await finalizeEncounter(client, encounterId);
+
+      if (!res.ok) {
+        setFeedback(feedbackFor(res));
+        return;
+      }
+
+      setFeedback({
+        tone: "success",
+        title: "Note finalized",
+        message: "Sign it from the encounter record.",
+      });
+      const reloaded = await load();
+      if (!reloaded) {
+        setError(
+          "The note was finalized, but the updated record could not be reloaded. Return to the encounter record or refresh before continuing.",
+        );
+      }
+    } catch {
+      if (!finalizationAttempted) {
+        setFeedback(transportFeedback);
+        return;
+      }
+
+      const reconciled = await load();
+      if (!reconciled) {
+        setError(
+          "Finalization status could not be confirmed. Return to the encounter record or refresh before continuing.",
+        );
+      } else if (reconciled.status === "draft") {
+        setFeedback({
+          tone: "warning",
+          title: "Finalization not completed",
+          message: "Your draft was saved, but finalization was not completed. You can try again.",
+        });
+      } else {
+        setFeedback({
+          tone: "success",
+          title: "Note finalized",
+          message: "The server confirmed finalization after the connection was interrupted.",
+        });
+      }
+    } finally {
       setOperation(null);
-      setFeedback(feedbackFor(saved));
-      return;
     }
-
-    setVersion(saved.value.version);
-    setPreview(saved.value.layer1Preview);
-    setLastSavedDraft(currentDraft);
-
-    const res = await finalizeEncounter(client, encounterId);
-
-    if (!res.ok) {
-      setOperation(null);
-      setFeedback(feedbackFor(res));
-      return;
-    }
-
-    setFeedback({
-      tone: "success",
-      title: "Note finalized",
-      message: "Sign it from the encounter record.",
-    });
-    await load();
-    setOperation(null);
   }
 
   if (error) {

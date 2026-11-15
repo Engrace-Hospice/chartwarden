@@ -231,6 +231,25 @@ describe("Addendum panel (GAP-027)", () => {
     expect((await screen.findByRole("alert")).textContent).toBe("version 3 is stale");
   });
 
+  it("releases the editor lock when the save transport rejects", async () => {
+    mount([draft], {
+      PATCH: vi.fn(async () => {
+        throw new TypeError("connection dropped");
+      }),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit draft" }));
+    const choice = (await screen.findByLabelText("Pain controlled")) as HTMLInputElement;
+    fireEvent.click(choice);
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/connection was interrupted/i);
+    expect(choice.disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Save draft" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    expect(screen.getByText("Unsaved addendum changes")).toBeTruthy();
+  });
+
   it("finalizes a draft and reloads from the server", async () => {
     const { client, onChanged } = mount([draft]);
     fireEvent.click(screen.getByRole("button", { name: "Finalize addendum" }));
@@ -335,6 +354,22 @@ describe("Addendum draft survives the step-up round trip (GAP-027)", () => {
     await waitFor(() => expect(client.PATCH).toHaveBeenCalledTimes(1));
     await screen.findByText("Addendum changes saved");
     cleanup();
+    mount([draft], {}, ME);
+    expect(screen.getByRole("button", { name: "Edit draft" })).toBeTruthy();
+    expect(screen.queryByLabelText("Pain — additional notes")).toBeNull();
+  });
+
+  it("clears the stashed draft when the clinician discards it", async () => {
+    await typeAndSave(stepUpPatch());
+    const { router } = mount([draft], {}, ME);
+    await restoredNotes();
+
+    await act(async () => {
+      await router.navigate("/patients/patient-1/encounters");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Discard addendum changes" }));
+    cleanup();
+
     mount([draft], {}, ME);
     expect(screen.getByRole("button", { name: "Edit draft" })).toBeTruthy();
     expect(screen.queryByLabelText("Pain — additional notes")).toBeNull();
