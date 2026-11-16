@@ -13,7 +13,7 @@
  */
 import { GIT_EXEC_CONFIG, configKey } from "./git-config-rules";
 import { type LongOption, optionValues } from "./option-values";
-import { VARIABLE_SETTERS, assignments } from "./shell-assignments";
+import { VARIABLE_SETTERS, assignments, hasParameterAssignment } from "./shell-assignments";
 import { shellQuote } from "./wrappers";
 
 /** A string-valued option of one git subcommand: its short letter ("" for none) and its long spellings. */
@@ -233,13 +233,18 @@ const TRACE_NOT_A_FILE = /^(?:[0-9]*|true|false|off|2>&1|af_unix:.*)$/i;
 /** Programs whose arguments set variables for the shell that follows: `export NAME=v`. */
 const VARIABLE_SETTER = new RegExp(`^(?:${VARIABLE_SETTERS.join("|")})$`);
 
-/** The `NAME=value` words a command sets: its prefix assignments and, for `export` and kin, its arguments. */
+/**
+ * The `NAME=value` words a command sets: its prefix assignments, for `export` and kin its arguments, and, for any command,
+ * an argument that holds a `${NAME:=value}` (`: ${GIT_TRACE:=/x}` assigns whatever the command is).
+ */
 export function assignmentWords(
   prog: string,
   args: readonly string[],
   assigns: readonly string[],
 ): string[] {
-  return VARIABLE_SETTER.test(prog) ? [...assigns, ...args] : [...assigns];
+  return VARIABLE_SETTER.test(prog)
+    ? [...assigns, ...args]
+    : [...assigns, ...args.filter(hasParameterAssignment)];
 }
 
 /** The values of the variables that carry a command line (`EDITOR='rm x'`, `EDITOR+=…`), as strings to judge. */

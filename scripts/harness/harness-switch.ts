@@ -18,22 +18,35 @@
  * Pure: the caller hands over the parsed commands, so this module imports nothing from the classifier.
  */
 import { isLongInPlace } from "./option-values";
-import { ASSIGN, VARIABLE_SETTERS, shellWords } from "./shell-assignments";
+import {
+  ASSIGN,
+  VARIABLE_SETTERS,
+  assignments,
+  hasParameterAssignment,
+  hasUnplaceableName,
+  shellWords,
+} from "./shell-assignments";
 
 /** The names of the variables the rule guards. `HOME` moves what `~` and `$HOME` mean. */
-const NAMES =
-  "CW_STOP_GATE|CW_AGENT_LEDGER|CW_HARNESS_FAIL_OPEN|CW_HARNESS_ROOT_FOR_TESTS|ECC_DISABLED_HOOKS|ECC_GATEGUARD|CODEX_HOME|CLAUDE_CONFIG_DIR|CLAUDE_PROJECT_DIR|HOME";
-/** A word that assigns one: `NAME=value`. */
-const SWITCH_WORD = new RegExp(`^(?:${NAMES})${ASSIGN}`);
-/** A word that IS the name, which a command like `read` takes as the variable to set. */
-const NAME_WORD = new RegExp(`^(?:${NAMES})(?:${ASSIGN}.*)?$`, "s");
+const GUARDED: ReadonlySet<string> = new Set([
+  "CW_STOP_GATE",
+  "CW_AGENT_LEDGER",
+  "CW_HARNESS_FAIL_OPEN",
+  "CW_HARNESS_ROOT_FOR_TESTS",
+  "ECC_DISABLED_HOOKS",
+  "ECC_GATEGUARD",
+  "CODEX_HOME",
+  "CLAUDE_CONFIG_DIR",
+  "CLAUDE_PROJECT_DIR",
+  "HOME",
+]);
 /** The name and an assignment operator ANYWHERE in a command's text, quotes and nested strings included. */
-const SWITCH_TEXT = new RegExp(`\\b(?:${NAMES})${ASSIGN}`);
+const SWITCH_TEXT = new RegExp(`\\b(?:${[...GUARDED].join("|")})${ASSIGN}`);
 /** What may sit inside a name the shell still reads as the name: quotes, backslashes, a brace group. */
 const OBFUSCATION = /[\\'"{},]/g;
 
-/** Programs whose own arguments assign variables (`export NAME=value`, `env NAME=value cmd`). */
-const VARIABLE_SETTER = new RegExp(`^(?:${[...VARIABLE_SETTERS, "env"].join("|")})$`);
+/** Programs whose own arguments assign variables (`export NAME=value`; `env` is a wrapper the word reader peels). */
+const VARIABLE_SETTER = new RegExp(`^(?:${VARIABLE_SETTERS.join("|")})$`);
 /** Programs that take the NAME of a variable (or of an environment entry) to set, with no `=`. */
 const NAMES_A_VARIABLE =
   /^(read|mapfile|readarray|getopts|launchctl|tmux|systemctl|defaults|setenv|for|select)$/;
@@ -145,16 +158,24 @@ function printsOrSearches(p: SwitchCommand, git: GitSplitter): boolean {
 
 /** Does this command hand a harness variable to the shell or the session to set, as an assignment or by name? */
 function assignsOrNames(p: SwitchCommand): boolean {
-  if (shellWords(p.assigns).some((w) => SWITCH_WORD.test(w))) return true;
-  if (VARIABLE_SETTER.test(p.prog) && shellWords(p.args).some((w) => SWITCH_WORD.test(w)))
-    return true;
-  if (NAMES_A_VARIABLE.test(p.prog)) return shellWords(p.args).some((w) => NAME_WORD.test(w));
+  // One reading of an assignment (`shell-assignments.ts`): `NAME=v`, `NAME+=v`, `${NAME:=v}` in any word, a name spelled
+  // with quotes, backslashes, a comma group or a sequence (`CODEX_HOM{E..E}=x`).
+  const assigned = (words: readonly string[]): boolean =>
+    assignments(words).some((a) => GUARDED.has(a.name));
+  if (assigned(p.assigns)) return true;
+  if (assigned(p.args.filter(hasParameterAssignment))) return true;
+  if (VARIABLE_SETTER.test(p.prog) && (assigned(p.args) || hasUnplaceableName(p.args))) return true;
+  if (NAMES_A_VARIABLE.test(p.prog)) return namesGuarded(p.args);
   if (p.prog !== "printf") return false;
   const named = p.args.flatMap((a, k) =>
     a === "-v" ? [p.args[k + 1] ?? ""] : a.startsWith("-v") ? [a.slice(2)] : [],
   );
-  return shellWords(named).some((w) => NAME_WORD.test(w));
+  return namesGuarded(named);
 }
+
+/** Is one of these words the NAME of a guarded variable (`read CODEX_HOME`), alone or with an assignment after it? */
+const namesGuarded = (words: readonly string[]): boolean =>
+  shellWords(words).some((w) => GUARDED.has(w.split(/[:+]?=/, 1)[0] ?? ""));
 
 /**
  * Does one command line SWITCH the harness (see the module comment)? `git` splits the arguments of a git

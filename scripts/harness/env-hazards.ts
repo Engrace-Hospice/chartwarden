@@ -50,6 +50,18 @@ const OPTION_VARIABLE: ReadonlyMap<string, RegExp> = new Map([
 /** Variables that decide which hook a coding agent runs: refused only when an agent is started on the same line. */
 const AGENT_HOOK_VARIABLE = /^(?:PATH|SHELL|BASH_ENV|ENV|ZDOTDIR|LD_LIBRARY_PATH|DYLD_[A-Z0-9_]+)$/;
 
+/** A variable that picks an agent's hook binary, assigned anywhere in a command's text, quotes and nested strings included. */
+const HOOK_VARIABLE_TEXT =
+  /\b(?:PATH|SHELL|BASH_ENV|ENV|ZDOTDIR|LD_LIBRARY_PATH|DYLD_[A-Z0-9_]+)[:+]?=/;
+
+/**
+ * Does the WHOLE command line, at every nesting level, assign a variable that picks an agent's hook binary? The classifier
+ * judges `bash -c '…'`, `eval`, `| sh` and `$( )` as command lines of their own, one level at a time, and an agent started
+ * inside one of them must still see a `PATH=…` set outside it (CR5-2).
+ */
+export const assignsHookVariable = (commandText: string): boolean =>
+  HOOK_VARIABLE_TEXT.test(commandText);
+
 /** A coding agent's command word (`claude`, `codex`, `claude-code`, `claude@latest`), bare or as a path. */
 const AGENT_CLI = /(^|\/)(codex|claude(-code)?)(@[\w.-]+)?$/;
 
@@ -70,13 +82,17 @@ const loadsCode = (name: string, value: string): boolean =>
  * Why the command line of `commands` should ask, or null: a variable that loads code is assigned anywhere in it, or
  * an agent is started and a variable that picks its hook binary is assigned anywhere in it.
  */
-export function loaderEnvReason(commands: readonly EnvCommand[]): string | null {
+export function loaderEnvReason(
+  commands: readonly EnvCommand[],
+  hookVariableInWholeCommand = false,
+): string | null {
   const assigned = commands.flatMap((c) => assignments(c.words)).filter((a) => a.value !== "");
   if (assigned.some((a) => LOADER_VARIABLE.test(a.name) || loadsCode(a.name, a.value))) {
     return LOADER_REASON;
   }
   const startsAgent = commands.some((c) => isAgentSpawn(c.prog, c.args));
-  return startsAgent && assigned.some((a) => AGENT_HOOK_VARIABLE.test(a.name))
+  return startsAgent &&
+    (hookVariableInWholeCommand || assigned.some((a) => AGENT_HOOK_VARIABLE.test(a.name)))
     ? AGENT_REASON
     : null;
 }

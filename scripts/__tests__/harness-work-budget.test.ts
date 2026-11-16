@@ -164,9 +164,11 @@ describe("CR-C1 (round 4): a brace word longer than a path is not a way past the
     expect(d(`bun -e 'console.log([${nine}])'`)).toBe("allow");
   });
 
-  it("an unquoted brace word with no whitespace is a path the shell expands, so the same sizes ask", () => {
-    expect(d(`echo ${"{a,b}".repeat(9)}`)).toBe("ask");
+  it("an unquoted brace word the budget cuts is a word the shell expands, so it asks (wave 7: the cap is the command's, 4,096)", () => {
+    expect(d(`echo ${"{a,b}".repeat(13)}`)).toBe("ask");
     expect(d(`echo {a,b}${"z".repeat(4100)}`)).toBe("ask");
+    // Nine groups are 512 alternatives: inside the budget now, and an everyday command.
+    expect(d(`echo ${"{a,b}".repeat(9)}`)).toBe("allow");
   });
 
   it("a 60 KB word of alternatives is cheap: the fallback reading is bounded in size and time", () => {
@@ -177,7 +179,7 @@ describe("CR-C1 (round 4): a brace word longer than a path is not a way past the
   });
 });
 
-describe("CR-C2 (round 4): the 256-alternative cap does not leave later groups silently unexpanded", () => {
+describe("CR-C2 (round 4): the alternative cap (256 then; the command's 4,096 since wave 7) does not leave later groups silently unexpanded", () => {
   const empties = (n: number) => "{x,}".repeat(n);
   it.each([8, 9, 10, 12, 16, 20, 60])("`cat ~/.aws/{x,}` x%s then `credentials` is a deny", (n) => {
     expect(d(`cat ~/.aws/${empties(n)}credentials`)).toBe("deny");
@@ -198,14 +200,14 @@ describe("CR-C2 (round 4): the 256-alternative cap does not leave later groups s
     expect(d(cmd)).toBe("deny");
   });
   it("a harness path hidden the same way asks", () => {
-    expect(d(`rm scripts/harness/${empties(9)}hard-deadline.ts`)).toBe("ask");
+    expect(d(`rm scripts/harness/${empties(13)}hard-deadline.ts`)).toBe("ask");
     expect(d(`rm scripts/harness/${"{x,hard-deadline.ts}".repeat(1)}${"{,}".repeat(9)}`)).toBe(
       "ask",
     );
   });
   it("spends the budget, so a command that holds one asks even when nothing in it is a path", () => {
     refillWork(1000);
-    expandBraces(`a${empties(9)}b`);
+    expandBraces(`a${empties(13)}b`);
     expect(work.spent).toBe(true);
   });
   it.each([

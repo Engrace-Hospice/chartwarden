@@ -10,8 +10,12 @@
  * what a cheap check can still find stands: a budget never turns a deny into an ask.
  */
 
-/** Alternatives one word may expand to. */
-const MAX_BRACE_ALTERNATIVES = 256;
+/**
+ * Alternatives one word may expand to: the per-command cap, so that one word is not cut earlier than the command is (a
+ * cut makes the command ask, and a cut that falls before a real name turns a deny into an ask). Eleven two-way groups are
+ * 2,048 alternatives; a name that needs a mix of first and last alternatives is found for any word up to this size.
+ */
+const MAX_BRACE_ALTERNATIVES = 4096;
 const MAX_BRACE_GROUPS = 16;
 /** Brace alternatives, and the characters they hold, one command may produce. */
 const MAX_COMMAND_BRACE_ALTERNATIVES = 4096;
@@ -44,6 +48,13 @@ export interface Work {
   spent: boolean;
   /** The clock or the judged-text budget ran out: nothing more is judged (every further judging is costly). */
   halted: boolean;
+  /**
+   * Does the command line being judged hold a brace group the SHELL would expand (an unquoted `{a,b}` or `{a..b}`)?
+   * Set per simple command by the classifier from the lexer (`bare-braces.ts`); true until then. A word the budget cuts
+   * spends the budget only when it did: a quoted `{"a":1,"b":2}` in an inline script is not a finding, and whitespace in
+   * the word never says so (`{c,'x y'}` is a bare group whose alternative holds a quoted space).
+   */
+  bareBraces: boolean;
 }
 
 const freshWork = (limitMs: number): Work => ({
@@ -55,6 +66,7 @@ const freshWork = (limitMs: number): Work => ({
   deadline: performance.now() + limitMs,
   spent: false,
   halted: false,
+  bareBraces: true,
 });
 
 /** The current command's budget; `refillWork` replaces it, so read it through this binding. */
@@ -96,6 +108,29 @@ export function spendResolution(chars: number, strict: boolean): boolean {
   return true;
 }
 
+/** A `{a..b}` or `{a..b..step}` body: two integers or two single letters, and an optional integer step. */
+const SEQUENCE = /^(-?\d+|[A-Za-z])\.\.(-?\d+|[A-Za-z])(?:\.\.(-?\d+))?$/;
+const isSequence = (body: string): boolean => SEQUENCE.test(body);
+/** The most items one sequence expands to. */
+const MAX_SEQUENCE_ITEMS = 256;
+
+/** The alternatives of a brace body: its comma-separated parts, or the items of a sequence (`E..E` is `E`, `1..3` is `1 2 3`). */
+function alternativesOf(body: string): string[] {
+  const m = SEQUENCE.exec(body);
+  if (!m) return body.split(",");
+  const [, from, to, step] = m as unknown as [string, string, string, string | undefined];
+  const numeric = /^-?\d+$/.test(from) && /^-?\d+$/.test(to);
+  if (!numeric && (/\d/.test(from) || /\d/.test(to))) return body.split(",");
+  const a = numeric ? Number(from) : from.charCodeAt(0);
+  const b = numeric ? Number(to) : to.charCodeAt(0);
+  const by = Math.max(Math.abs(Number(step ?? 1)), 1) * (b >= a ? 1 : -1);
+  const out: string[] = [];
+  for (let n = a; (by > 0 ? n <= b : n >= b) && out.length < MAX_SEQUENCE_ITEMS; n += by) {
+    out.push(numeric ? String(n) : String.fromCharCode(n));
+  }
+  return out;
+}
+
 /**
  * The first `{a,b}` group in `word` that has no brace inside it, split into the text before, its body and
  * the text after; null when there is none. One pass: a regex for this backtracks quadratically on `{,,,,`.
@@ -110,7 +145,7 @@ function firstBraceGroup(word: string): { pre: string; body: string; post: strin
       comma = false;
     } else if (ch === ",") comma ||= open >= 0;
     else if (ch === "}") {
-      if (open >= 0 && comma) {
+      if (open >= 0 && (comma || isSequence(word.slice(open + 1, i)))) {
         return { pre: word.slice(0, open), body: word.slice(open + 1, i), post: word.slice(i + 1) };
       }
       open = -1;
@@ -134,7 +169,7 @@ function singleGroupAlternatives(word: string): string[] {
     if (!found) break;
     const pre = word.slice(0, from + found.pre.length);
     const post = found.post;
-    for (const alternative of found.body.split(",")) {
+    for (const alternative of alternativesOf(found.body)) {
       if (room <= 0) break;
       out.push(`${pre}${alternative}${post}`);
       room -= pre.length + alternative.length + post.length;
@@ -156,7 +191,7 @@ function edgeAlternatives(word: string): string[] {
     for (let group = 0; group < MAX_EDGE_GROUPS; group++) {
       const found = firstBraceGroup(w);
       if (!found) break;
-      const alternatives = found.body.split(",");
+      const alternatives = alternativesOf(found.body);
       const chosen = last ? alternatives[alternatives.length - 1] : alternatives[0];
       w = `${found.pre}${chosen ?? ""}${found.post}`;
     }
@@ -172,17 +207,24 @@ const cheapAlternatives = (word: string): string[] => [
 ];
 
 /**
- * A word the budget could not expand fully spends it (the command asks) when the shell would really have expanded it:
- * a word with whitespace in it was quoted (`python3 -c '… {"a":1,"b":2} …'`, `bun -e '…'`), and the shell leaves the
- * braces of a quoted string alone, so an inline script that holds a few object literals is not a finding. The cheap
- * reading (each group alone, all-first, all-last) still runs for it, and a protected name it finds is still a deny or an ask.
+ * A word the budget could not expand fully spends it (the command asks) when the shell would really have expanded a brace
+ * group of the command: a word cut while the command holds no UNQUOTED group (`python3 -c '… {"a":1,"b":2} …'`, a long
+ * JSON body) is quoted text, and an inline script that holds a few object literals is not a finding. The cheap reading
+ * (each group alone, all-first, all-last) still runs for it, and a protected name it finds is still a deny or an ask.
  */
-function spendIfShellWouldExpand(word: string): void {
-  if (!/\s/.test(word)) work.spent = true;
+function spendIfShellWouldExpand(_word: string): void {
+  if (work.bareBraces) work.spent = true;
 }
+
+/** Say whether the command line about to be judged holds a brace group the shell would expand (`bare-braces.ts`). */
+export const setBareBraces = (value: boolean): void => {
+  work.bareBraces = value;
+};
 
 /** Bash brace expansion of one word: `.en{v,}` is `.env` and `.en`. Bounded, so it cannot be made to blow up. */
 export function expandBraces(word: string): string[] {
+  // The command holds no group the shell would expand (every brace is quoted or escaped): the word stays as written.
+  if (!work.bareBraces) return [word];
   if (word.length > MAX_BRACE_WORD_CHARS) {
     // Not a file name, so not expanded; but a group in it may still read as a protected name through one alternative
     // (`cat {<secret>,<4,100 characters>}`), so the command asks and the cheap reading below can still deny.
@@ -210,12 +252,12 @@ export function expandBraces(word: string): string[] {
         continue;
       }
       if (work.braces <= 0 || work.braceChars <= 0) {
-        work.spent = true; // a group is left unexpanded: the command asks, and the cheap reading below still denies
+        spendIfShellWouldExpand(w); // a group is left unexpanded: the command asks, and the cheap reading below still denies
         next.push(w, ...singleGroupAlternatives(w));
         continue;
       }
       changed = true;
-      const alternatives = group.body.split(",");
+      const alternatives = alternativesOf(group.body);
       work.braces -= alternatives.length;
       work.braceChars -= alternatives.length * w.length;
       for (const alt of alternatives) next.push(`${group.pre}${alt}${group.post}`);

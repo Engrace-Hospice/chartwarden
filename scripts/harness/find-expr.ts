@@ -10,7 +10,7 @@
  * lazy listing of the protected files in the tree (`protected-names.ts`), when a name or path test has to be judged.
  */
 import { globMatches, globTokens } from "./glob";
-import { protectedNameSamples } from "./protected-names";
+import { protectedNameSamples, protectedNamesComplete } from "./protected-names";
 
 const baseOf = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 
@@ -66,6 +66,8 @@ function regexAsGlob(regex: string): string | null {
 
 /** Does this test ONLY pass files that cannot be protected ones? */
 function narrowsTo(test: string, pattern: string): boolean {
+  // A listing that missed some protected names cannot say a pattern matches none of them (`protected-names.ts`).
+  if (!protectedNamesComplete()) return false;
   if (/^-name$/.test(test)) return !matchesAny(pattern, nameCandidates(), false);
   if (/^-iname$/.test(test)) return !matchesAny(pattern, nameCandidates(), true);
   if (/^-(?:path|wholename)$/.test(test)) return !matchesAny(pattern, pathCandidates(), false);

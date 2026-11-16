@@ -21,8 +21,9 @@
 import { userInfo } from "node:os";
 
 import { backupName } from "./backup-names";
+import { hasBareBraceGroup } from "./bare-braces";
 import { clientFindings, clientTexts, isDbClient } from "./db-client-escapes";
-import { isAgentSpawn, loaderEnvReason } from "./env-hazards";
+import { assignsHookVariable, isAgentSpawn, loaderEnvReason } from "./env-hazards";
 import { execCommandWrites, findActions } from "./find-expr";
 import { GIT_EXEC_CONFIG, configKey, gitConfigDenial, gitFileWrites } from "./git-config-rules";
 import {
@@ -61,6 +62,7 @@ import {
 import { runsLiveSuite } from "./live-suite";
 import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
+import { protectedNameSamples, protectedNamesComplete } from "./protected-names";
 import { pathCandidates, writeCapable } from "./protected-operands";
 import {
   PROTECTED_FRAGMENT,
@@ -94,6 +96,7 @@ import {
   expandBraces,
   halted,
   refillWork,
+  setBareBraces,
   spendJudgedChars,
   spendResolution,
   trimSlashes,
@@ -812,6 +815,11 @@ function trimQuotes(t: string): string {
  * the name tests below look only at how the word ends, and {@link globReachesSecret} judges the wildcards.
  */
 function fileArgs(args: readonly string[]): string[] {
+  return fileArgGroups(args).flat();
+}
+
+/** The same words as {@link fileArgs}, one group per argument: a brace word is one argument that expands to several files. */
+function fileArgGroups(args: readonly string[]): string[][] {
   return args
     .map((t) =>
       unescapeWord(
@@ -821,7 +829,7 @@ function fileArgs(args: readonly string[]): string[] {
       ),
     )
     .filter((t) => t && !t.startsWith("-"))
-    .flatMap(expandBraces);
+    .map(expandBraces);
 }
 
 /** Names a live secret file can have; a wildcard that expands onto any of them reads one. */
@@ -986,6 +994,12 @@ const MAX_NESTING = 8;
 // hook was killed at its own timeout and Claude Code let the call run). One budget for the whole call keeps it bounded.
 const MAX_JUDGED_COMMAND_LINES = 300;
 let judgeBudget = MAX_JUDGED_COMMAND_LINES;
+/**
+ * Does the whole command text (every nesting level) assign a variable that picks an agent's hook binary? Set by
+ * `classifyBash` at depth 0 and read at every level, so `PATH=… bash -c 'claude -p x'` asks (one-shot process state, like
+ * `judgeBudget`).
+ */
+let hookVariableInCommand = false;
 const MAX_SUBSTITUTIONS = 32;
 
 /**
@@ -1006,6 +1020,7 @@ export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): Bas
   if (depth === 0) {
     judgeBudget = MAX_JUDGED_COMMAND_LINES;
     refillWork(ctx.judgeTimeLimitMs ?? MAX_COMMAND_JUDGE_MS);
+    hookVariableInCommand = assignsHookVariable(cmd);
   }
   const start = startingDir(ctx);
   const verdict = judge(cmd, ctx, depth, [start]);
@@ -1292,6 +1307,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
       args: p.args,
       words: assignmentWords(p.prog, p.args, p.assigns),
     })),
+    hookVariableInCommand,
   );
   if (loaderReason) verdicts.push(ask(loaderReason));
   // The text ends inside a quote, substitution or heredoc: the shell would wait for more, so what ran is unknown.
@@ -1311,6 +1327,8 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   const cdpath = /\bCDPATH\b/.test(c);
   parts.forEach((part, index) => {
     if (halted()) return;
+    // A word the brace budget cuts asks only if THIS command holds a group the shell would expand (the lexer's reading).
+    setBareBraces(hasBareBraceGroup(part.text));
     const parsed = parsedParts[index] as Parsed;
     // `a && b` runs b only where a succeeded; after `;`, `||`, a newline, a pipe or `&` it may not have.
     const shellIn = part.chained && part.joiner === "&&" ? after : anywhere;
@@ -1336,6 +1354,8 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
         guess === "" ? null : classifySegment(part.text, { ...parsed, prog: guess }, ctx, here);
       verdicts.push(named ?? ask(DYNAMIC_PROGRAM_REASON));
     }
+    // `env GIT_TRACE{2..2}=x git status`: a brace group in the program word builds the name (here an assignment `env` reads).
+    if (BRACE_GROUP_WORD.test(parsed.word)) verdicts.push(ask(DYNAMIC_PROGRAM_REASON));
     // Commands the shell runs INSIDE this one: `bash -c '…'`, `eval …`, `find -exec …`.
     if (parsed.prog === "eval") {
       verdicts.push(judge(parsed.args.join(" "), ctx, depth + 1, here));
@@ -1382,6 +1402,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     after = moved ? (part.joiner === "||" ? joinDirs(shellIn, moved) : moved) : shellIn;
     if (moved) anywhere = joinDirs(anywhere, moved);
   });
+  setBareBraces(true); // outside a simple command nothing says which braces are quoted: the conservative reading
   // `$( … )` and backticks run wherever the command around them runs.
   const inners = substitutions(c);
   if (inners.length > MAX_SUBSTITUTIONS) {
@@ -1760,25 +1781,28 @@ const isInPlace = (arg: string): boolean =>
  */
 function splitDest(
   args: readonly string[],
-  files: readonly string[],
+  groups: ReadonlyArray<readonly string[]>,
   targetOption = true,
-): { dest: string | undefined; srcs: string[] } {
+): { dests: string[]; srcs: string[] } {
   const dest = targetOption ? optionValues(args, "t", [["target-directory", 1]])[0] : undefined;
-  if (dest !== undefined) return { dest, srcs: files.filter((f) => f !== dest) };
-  return { dest: files.at(-1), srcs: files.slice(0, -1) };
+  if (dest !== undefined) return { dests: [dest], srcs: groups.flat().filter((f) => f !== dest) };
+  // The destination is the last ARGUMENT, and a brace word in it is several destinations (`cp x .claude/{a,b}`).
+  return { dests: [...(groups.at(-1) ?? [])], srcs: groups.slice(0, -1).flat() };
 }
 
 /** The destination, and `dest/<name>` for each source: `cp x scripts/` writes `scripts/x`. */
 function copyTargets(
   args: readonly string[],
-  files: readonly string[],
+  groups: ReadonlyArray<readonly string[]>,
   recursive: boolean,
   targetOption = true,
 ): WriteTarget[] {
-  const { dest, srcs } = splitDest(args, files, targetOption);
-  if (dest === undefined) return [];
+  const { dests, srcs } = splitDest(args, groups, targetOption);
   const contents = recursive || srcs.some(isContentsSource);
-  return [wt(dest, contents, contents), ...srcs.map((s) => wt(`${dest}/${baseName(s)}`))];
+  return dests.flatMap((dest) => [
+    wt(dest, contents, contents),
+    ...srcs.map((s) => wt(`${dest}/${baseName(s)}`)),
+  ]);
 }
 
 /** Does an `-exec` command (its words, wrappers and all) write the files it is handed? */
@@ -1949,7 +1973,8 @@ function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
 }
 
 function mainWrites(prog: string, args: readonly string[]): WriteTarget[] {
-  const files = fileArgs(args);
+  const groups = fileArgGroups(args);
+  const files = groups.flat();
   const recursive = args.some(isRecursive);
   if (prog === "rm") {
     const tree = args.some((a) => clusterHas(a, "rR") || isLongOption(a, "recursive", 1));
@@ -1959,14 +1984,20 @@ function mainWrites(prog: string, args: readonly string[]): WriteTarget[] {
   if (prog === "mv") {
     return [
       // Moving the root, or a directory the root is in, takes everything under it away.
-      ...splitDest(args, files).srcs.map((s) => wt(s, true, true)),
-      ...copyTargets(args, files, false),
+      ...splitDest(args, groups).srcs.map((s) => wt(s, true, true)),
+      ...copyTargets(args, groups, false),
     ];
   }
-  if (/^(cp|install|ln)$/.test(prog)) return copyTargets(args, files, recursive);
-  if (prog === "ditto") return copyTargets(args, files, true);
+  if (/^(cp|install|ln)$/.test(prog)) return copyTargets(args, groups, recursive);
+  if (prog === "ditto") return copyTargets(args, groups, true);
   // rsync and scp name a remote side `host:path`; one that names this machine is a local path.
-  if (/^(rsync|scp)$/.test(prog)) return copyTargets(args, files.map(localPath), true, false);
+  if (/^(rsync|scp)$/.test(prog))
+    return copyTargets(
+      args,
+      groups.map((g) => g.map(localPath)),
+      true,
+      false,
+    );
   if (/^(tee|touch|truncate|mkdir|ed|ex|vi|vim|nano)$/.test(prog)) return files.map((f) => wt(f));
   if (/^(chmod|chown|chgrp|setfacl|chflags|xattr)$/.test(prog)) {
     return files.map((f) => wt(f, recursive, recursive));
@@ -2206,7 +2237,8 @@ function gitWriteVerdict(
       if (isMagicPathspec(p)) return ask(MAGIC_PATHSPEC_REASON);
       const rel = resolvePath(p, dir, ctx);
       if (rel === null) return ask(UNKNOWN_DIR_REASON);
-      if (hasWildcard(rel) ? wildcardReachesProtected(rel) : protectedTouch(rel, WHOLE_TREE)) {
+      // The literal part of a wildcard pathspec counts too (`scripts/harness/hard-dead*`), then what the wildcard can match.
+      if (protectedTouch(rel, WHOLE_TREE) || (hasWildcard(rel) && wildcardReachesProtected(rel))) {
         return ask(protectedReason(rel));
       }
     }
@@ -2217,10 +2249,14 @@ function gitWriteVerdict(
 const MAGIC_PATHSPEC_REASON =
   "A magic pathspec (`:/`, `:(top)`, `:(glob)`) names files from the top of the tree whatever directory this runs in, so it can reach the guard and the compliance record. A human decides.";
 
-/** Does a pathspec wildcard (`*`, `scripts/h*`, `.*`) expand onto any protected path? */
+/**
+ * Does a pathspec wildcard (`*`, `scripts/h*`, `.*`) expand onto any protected path? Tried against the protected names the
+ * tree holds (`protected-names.ts`) and the named samples; when that listing is incomplete, any wildcard may.
+ */
 function wildcardReachesProtected(spec: string): boolean {
+  if (!protectedNamesComplete()) return true;
   const tokens = globTokens(spec.toLowerCase());
-  return PROTECTED_SAMPLES.some((sample) => globMatches(tokens, sample));
+  return protectedNameSamples().some((sample) => globMatches(tokens, sample));
 }
 
 /** Does the working tree this git command acts on hold the repo (and so the guard)? An unknown directory may. */
@@ -2339,6 +2375,9 @@ function withoutExpansions(word: string): string {
   return rest;
 }
 
+/** A `{a,b}` or `{a..b}` group in a program word: the shell expands it into the name the guard would have judged. */
+const BRACE_GROUP_WORD = /\{[^{}]*(?:,|\.\.)[^{}]*\}/;
+
 const DYNAMIC_PROGRAM_REASON =
   "The command's name is built by a substitution or an expansion, so the guard cannot tell which program runs. Name the program. A human decides.";
 
@@ -2420,7 +2459,7 @@ function copyOutVerdict(
 ): BashVerdict | null {
   if (!/^(?:cp|rsync|ditto)$/.test(prog)) return null;
   if (prog !== "ditto" && !args.some(isRecursive)) return null;
-  const { srcs } = splitDest(args, fileArgs(args), prog !== "rsync");
+  const { srcs } = splitDest(args, fileArgGroups(args), prog !== "rsync");
   const reaches = srcs.some((src) => {
     const rel = resolvePath(src, cwd, ctx);
     return (
