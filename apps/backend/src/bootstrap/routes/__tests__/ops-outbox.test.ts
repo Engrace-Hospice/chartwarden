@@ -144,6 +144,17 @@ describe("ops-outbox routes — GET /api/v1/ops/outbox/:id", () => {
 });
 
 describe("payloadForOps — a decision's clinical text never reaches an operator (audit D-11)", () => {
+  it("withholds the narrative of a decision that has no mutations (a team note, a referral, an order request)", () => {
+    const out = payloadForOps("idg.decision_recorded", {
+      decisionId: "d1",
+      payload: { kind: "team_note", noteText: "SYNTHETIC-NOTE-TEXT" },
+    });
+    const text = JSON.stringify(out);
+    expect(text).not.toContain("SYNTHETIC-NOTE-TEXT");
+    expect(text).toContain("team_note");
+    expect(text).toContain("d1");
+  });
+
   const decision = (mutations: unknown[]) => ({
     decisionId: "d1",
     payload: { kind: "care_plan_update", mutations },
@@ -209,7 +220,9 @@ describe("payloadForOps — a decision's clinical text never reaches an operator
   it("returns every other event, and an unrecognised decision shape, exactly as stored", () => {
     const other = { planId: "p1", snapshot: { goals: [] } };
     expect(payloadForOps("m15.plan.version_signed", other)).toBe(other);
-    const odd = { payload: { kind: "team_note", noteText: "x" } };
-    expect(payloadForOps("idg.decision_recorded", odd)).toBe(odd);
+    // An unrecognised wrapper is returned as is.
+    expect(payloadForOps("idg.decision_recorded", null)).toBeNull();
+    const noDecision = { decisionId: "d1" };
+    expect(payloadForOps("idg.decision_recorded", noDecision)).toBe(noDecision);
   });
 });

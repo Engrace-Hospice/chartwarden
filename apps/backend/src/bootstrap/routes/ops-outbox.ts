@@ -90,13 +90,31 @@ const withheldMutation = (mutation: unknown): unknown => {
  */
 export function payloadForOps(eventType: string, payload: unknown): unknown {
   if (eventType !== "idg.decision_recorded") return payload;
-  const decision = (payload as { payload?: { kind?: unknown; mutations?: unknown } } | null)
-    ?.payload;
-  if (!decision || !Array.isArray(decision.mutations)) return payload;
+  const decision = (
+    payload as { payload?: Record<string, unknown> & { mutations?: unknown } } | null
+  )?.payload;
+  if (!decision || typeof decision !== "object") return payload;
+  if (!Array.isArray(decision.mutations)) {
+    return { ...(payload as object), payload: withheldDecisionFields(decision) };
+  }
   return {
     ...(payload as object),
-    payload: { ...decision, mutations: decision.mutations.map(withheldMutation) },
+    payload: {
+      ...withheldDecisionFields(decision),
+      mutations: decision.mutations.map(withheldMutation),
+    },
   };
+}
+
+/** A decision's own fields other than its kind (a team note's text, a referral's narrative, ...) are clinical text. */
+const DECISION_KEEP_KEYS: ReadonlySet<string> = new Set(["kind", "planKind"]);
+
+function withheldDecisionFields(decision: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(decision)) {
+    out[key] = DECISION_KEEP_KEYS.has(key) || key === "mutations" ? value : PART2_WITHHELD;
+  }
+  return out;
 }
 
 export function registerOpsOutboxRoutes(app: FastifyInstance, deps: { db?: DbClient }): void {
@@ -165,7 +183,15 @@ export function registerOpsOutboxRoutes(app: FastifyInstance, deps: { db?: DbCli
       // The detail returns the event's full `payload`, which can carry PHI (e.g. `m15.plan.version_signed` seals the
       // plan's goals). Without a `resourceIdParam` the emitter has nothing to account the read against, returns
       // early, and the disclosure leaves no trail.
-      config: { auditRead: { resourceKind: "outbox_event", resourceIdParam: "id" } },
+      // The event's own `patientId` (most plan, decision and document events carry one) attributes the read to
+      // the patient, so a §164.528 accounting by patient shows an operator opening that row.
+      config: {
+        auditRead: {
+          resourceKind: "outbox_event",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "payload.patientId",
+        },
+      },
     },
     async (request: FastifyRequest, reply) => {
       if (!deps.db) throw new NotFoundError("outbox event");
