@@ -4,7 +4,7 @@ import {
   effectiveHopeJ2051TriggerStateForReview,
   isCompletedSfvRegulatoryState,
 } from "../src/modules/10-hope/hope-readiness-service";
-import { buildCompletedSfvRegulatoryAnswerPlan } from "../src/modules/10-hope/hope-route-service-db";
+import { buildCompletedSfvRegulatoryAnswerPlan } from "../src/modules/10-hope/hope-sfv-completion-plan";
 import { deriveHopeJ2051TriggerState } from "../src/modules/10-hope/hope-sfv-service";
 import { createHopeApplicabilityEngine } from "../src/modules/10-hope/spec/applicability-registry";
 import type { HopeValidationContext } from "../src/modules/10-hope/spec/validation";

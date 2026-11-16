@@ -251,6 +251,7 @@ describe("HOPE schedules Refreshing cue", () => {
     expect(screen.queryByText("Refreshing…")).toBeNull();
 
     fireEvent.click(await screen.findByRole("button", { name: "Skip" }));
+    fireEvent.change(await screen.findByLabelText(/Reason/), { target: { value: "other" } });
     fireEvent.click(await screen.findByRole("button", { name: "Skip window" }));
 
     await waitFor(() => expect(region.getAttribute("aria-busy")).toBe("true"));

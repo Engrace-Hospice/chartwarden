@@ -9,7 +9,8 @@ import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { registerHopeAbacPredicates as _registerM10Abac } from "./abac-predicates";
 import { type HopeWriteOutboxPort, createDbHopeBackend } from "./hope-route-service-db";
-import { registerHopeRoutes as _registerM10Routes } from "./routes/hope-routes";
+import type { HopeCancelHoldPort } from "./hope-submission-cancel-db";
+import { type HopeRouteDeps, registerHopeRoutes as _registerM10Routes } from "./routes/hope-routes";
 
 /**
  * M10L — mount the M10 HOPE routes over the PRODUCTION Drizzle backend (RLS-scoped under `withOrgContext`).
@@ -18,15 +19,21 @@ import { registerHopeRoutes as _registerM10Routes } from "./routes/hope-routes";
  * completion, schedule skip, submission assemble/retry) are live over Drizzle; every state transition emits
  * its `m10.hope.*` event on the passed transactional-outbox publisher (the composition root binds M1's
  * catalog-validating publisher pinned to caller-module `m10`). Replaces the in-memory scaffold mount for M10.
+ * `legalHolds` is the M4 legal-hold read (run on the cancel's own transaction) that a package cancel's byte purge is gated on;
+ * without it a cancel keeps the bytes (fail closed). `sfvCompletionRateLimit` is REQUIRED: it bounds the SFV completion route per
+ * actor (the denied-probe audit rows), and a mount that forgot it would leave that route unlimited without a trace; see
+ * `HopeRouteDeps`. The first three are spelt out as `undefined` by a caller that has none.
  */
 export function mountHopeRoutes(
   app: FastifyInstance,
   db: DbClient,
-  outbox?: HopeWriteOutboxPort,
+  outbox: HopeWriteOutboxPort | undefined,
+  legalHolds: HopeCancelHoldPort | undefined,
+  sfvCompletionRateLimit: HopeRouteDeps["sfvCompletionRateLimit"],
 ): void {
-  const backend = createDbHopeBackend(db, outbox);
+  const backend = createDbHopeBackend(db, outbox, undefined, legalHolds);
   _registerM10Abac({ resolver: backend });
-  _registerM10Routes(app, { service: backend });
+  _registerM10Routes(app, { service: backend, sfvCompletionRateLimit });
 }
 
 export { type HopeWriteOutboxPort, createDbHopeBackend } from "./hope-route-service-db";
@@ -273,9 +280,9 @@ export {
   runIqiesSubmitCron,
   runSfvWatchdogCron,
   runSubmissionJob,
-  scheduleM10Jobs,
   transmitCorrelationId,
 } from "./jobs/cron-workers";
+export { m10SchedulerId, scheduleM10Jobs } from "./jobs/cron-schedule";
 export { M10_PLATFORM_JOB_ID, wireM10Tenancy } from "./wiring";
 export {
   M10_M6_ADMISSION_WORKFLOW_CONSUMER,

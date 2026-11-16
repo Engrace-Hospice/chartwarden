@@ -39,6 +39,19 @@ export const hopeSubmissions = pgTable(
     resultImportedAt: timestamp("result_imported_at", { withTimezone: true }),
     resultImportedByMembershipId: uuid("result_imported_by_membership_id"),
     resultReportHash: text("result_report_hash"),
+    // The report reference the operator typed on the LATEST result import (migration 1496). It lives in its own column so the
+    // worklist reads it without detoasting `acceptance_report` (the multi-MB base64 ZIP); the same value is still kept in
+    // `acceptance_report->>'reportReference'`. Operator-typed, up to 128 chars (`HOPE_REFERENCE_MAX_LENGTH`) from `[A-Za-z0-9 ._:#/-]` (the route screens it for
+    // patient identifiers), as `hope_submission_result_event.report_reference`; scrubbed from the audit images (1497, 1499). NULL
+    // for a batch whose result a release without this column recorded (migration 1496): the list and detail show no reference then.
+    reportReference: text("report_reference"),
+    // R-08 — a package cancelled before upload (migration 1495). `cancel_reason_code` is a fixed code list
+    // (HOPE_SUBMISSION_CANCEL_REASON_CODES), never free text, so the audit trigger needs no scrub entry.
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelledByMembershipId: uuid("cancelled_by_membership_id"),
+    cancelReasonCode: text("cancel_reason_code"),
+    // No writer today. Whoever adds one must add this column to the audit trigger's `v_cols` and to `M10_AUDIT_DENYLIST` in the same
+    // migration: a file-level CMS result is free text from CMS, and the M4 row-diff trigger would copy it unscrubbed.
     fileLevelResult: jsonb("file_level_result"),
     // NOT NULL relaxed in mig 0130 (M10L): a `queued` submission has no envelope yet — the transmit
     // worker (§4.10) populates the URI + digest at assembly/transmit time.

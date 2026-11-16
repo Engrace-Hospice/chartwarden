@@ -2,12 +2,10 @@ import {
   Button,
   DetailPageLayout,
   EmptyState,
-  LoadingSpinner,
   PageHeader,
   StatusPill,
   type StatusTone,
   useApiClient,
-  useOptionalToast,
 } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — HOPE submission detail (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/CHARTWARDEN_UI_HOPE_ENGINE.md — "Use Documentation Workspace."
@@ -16,15 +14,52 @@ import {
 // surfaces harden. Reads GET /api/v1/hope/submissions/:id via the typed client; the server enforces every
 // scope incl. PE scope (ADR-0030 — no authz on the frontend). Leaves only (@chartwarden/ui).
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { JSX } from "react";
+import type { JSX, RefObject } from "react";
 import { Link, useParams } from "react-router-dom";
 import { NameLabel, patientNameOf } from "../../shell/name-display";
 import { usePatientNames } from "../../shell/patient-names";
 import { useSession } from "../../shell/session";
-import { SUBMISSION_TONE, rfaLabel, stateLabel } from "./hope-status";
+import { HopeActionModal } from "./hope-action-modal";
+import {
+  failedWriteMessage,
+  isClientRefusal,
+  isStaleVersionRefusal,
+  readSucceeded,
+  refusalWordsOf,
+  withRequestTimeout,
+  writeOutcomeUnknown,
+  writeSucceeded,
+} from "./hope-api";
+import { formatInstantDateTime } from "./hope-format";
+import { LoadingRegion, useRetryFocus } from "./hope-retry-focus";
+import { CANCEL_REASON_LABEL, SUBMISSION_TONE, rfaLabel, stateLabel } from "./hope-status";
 import { RecordCmsResultModal } from "./record-cms-result-modal";
+import { useFocusOnNewError } from "./use-focus-on-new-error";
 
 const MANAGE_PERMISSION = "hope.submission.manage";
+/**
+ * The request to mark a package uploaded got no usable answer: the server may or may not have applied it. The page is read again
+ * (see `markUploaded`), so its status is the answer; reloading is what is left when that read fails too.
+ */
+const MARK_UPLOADED_UNCONFIRMED =
+  "Could not confirm that the package was marked uploaded. Check its status on this page before trying again; reload the page if it looks out of date.";
+/** The package WAS marked uploaded (the write was answered), but the page's re-read after it was not: say so, it cannot be undone. */
+const MARK_UPLOADED_REFRESH_FAILED =
+  "Could not refresh the HOPE submission. The package was marked uploaded: reload this page to see its status.";
+const REFRESH_FAILED = "Could not refresh the HOPE submission.";
+/** The write was answered as done (the page's own re-read after it is told apart above). */
+const MARK_UPLOADED_DONE = "The package was marked uploaded to CMS.";
+const CANCELLED_DONE = "Package cancelled. Its records can be packaged again.";
+const RESULT_RECORDED_DONE = "CMS result recorded.";
+const LOAD_FAILED = "Could not load the HOPE submission.";
+/** hope.scope answers a submission outside the caller's scope with 404 (deny-as-not-found): Try again cannot make it appear. */
+const NOT_AVAILABLE = "This HOPE submission was not found, or not available to you.";
+const isNotAvailable = (status: number | undefined): boolean => status === 403 || status === 404;
+/** What the package download came back with: the ZIP, or a refusal (its status and parsed body, when it had one). */
+type PackageAnswer = { blob: Blob } | { refused: { status: number; body: unknown } };
+const DOWNLOAD_FAILED = "Could not download the package.";
+/** Batches never marked uploaded to CMS: the only ones that can still be marked uploaded or cancelled (the server enforces the same set). */
+const NEVER_UPLOADED = new Set(["packaged", "exported"]);
 /** Statuses where the CMS result may still be recorded (the server enforces the same set). */
 const RESULT_RECORDABLE = new Set(["exported", "in_flight", "submitted_pending_result"]);
 /** A CMS verdict on an item is final (the server ignores later rows for it), so the dialog never asks for one. */
@@ -37,6 +72,7 @@ const ITEM_TONE: Record<string, StatusTone> = {
   pending: "progress",
   blocked: "error",
   unmatched: "warning",
+  cancelled: "neutral",
 };
 const RESOLUTION_TONE: Record<string, StatusTone> = {
   needs_correction: "error",
@@ -84,6 +120,8 @@ interface SubmissionDetail {
   submittedAt?: string | null;
   acceptedAt: string | null;
   iqiesSubmissionReference?: string | null;
+  cancelledAt?: string | null;
+  cancelReasonCode?: string | null;
   resultImportedAt?: string | null;
   resultReportReference?: string | null;
   items?: ItemRow[];
@@ -96,10 +134,24 @@ export function SubmissionDetail(): JSX.Element {
   const [row, setRow] = useState<SubmissionDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Bumped by "Try again": the load below runs again, and focus keeps its place (the error leaves the page while it loads).
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const retry = useRetryFocus(loading, error);
+  // False once the read is refused (403) or not found for this user (404): Try again could not change either.
+  const [retryable, setRetryable] = useState(true);
   const [busy, setBusy] = useState(false);
   // Action failures (download / mark uploaded / refresh) are shown inline: they must not replace the loaded page.
   const [actionError, setActionError] = useState<string | null>(null);
+  // The refusal takes focus: the button that was pressed is disabled while the write is out, and a browser that drops focus from
+  // a disabled control (Firefox, Safari) would leave the keyboard user on the page's top.
+  const actionErrorRef = useFocusOnNewError<HTMLParagraphElement>(actionError);
+  // What the last successful action did, kept on the page (a transient toast would not hold focus): the control that was used
+  // often disappears with the status it changed, and focus must not fall to the document with nothing said.
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeRef = useRef<HTMLOutputElement>(null);
   const [recording, setRecording] = useState(false);
+  // R-08: cancelling a never-uploaded package asks for a reason in a dialog before anything is written.
+  const [cancelling, setCancelling] = useState(false);
   // Marking uploaded is irreversible: the first click only asks, the second one writes.
   const [confirmingUpload, setConfirmingUpload] = useState(false);
   const confirmUploadRef = useRef<HTMLSpanElement>(null);
@@ -111,9 +163,33 @@ export function SubmissionDetail(): JSX.Element {
     else if (hadUploadConfirm.current) markUploadedRef.current?.focus();
     hadUploadConfirm.current = confirmingUpload;
   }, [confirmingUpload]);
-  const toast = useOptionalToast();
+  // A re-read that follows a write must not run for a page the clinician has left (it is a request, not a state update).
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const downloadRef = useRef<HTMLButtonElement>(null);
+  // After a download or mark-uploaded write ends without an error (so the alert has no focus to take), the button that was used is
+  // where the clinician was: it is disabled while the write is out, and Firefox and Safari drop focus from a disabled control.
+  const refocusAfterWrite = useRef<RefObject<HTMLButtonElement> | null>(null);
+  useEffect(() => {
+    if (busy || !refocusAfterWrite.current) return;
+    const target = refocusAfterWrite.current;
+    refocusAfterWrite.current = null;
+    if (!actionError) target.current?.focus();
+  }, [busy, actionError]);
   const canManage = useSession()?.permissions?.includes(MANAGE_PERMISSION) ?? false;
+  // The control that was used can leave with the status it changed: when that leaves focus on the document, the note takes it.
+  useEffect(() => {
+    if (notice === null || row === null) return;
+    const active = document.activeElement;
+    if (active === null || active === document.body) noticeRef.current?.focus();
+  }, [notice, row]);
   const items = row?.items ?? [];
+  const isCancelled = row?.status === "cancelled";
   const findings = useMemo(
     () =>
       [...(row?.findings ?? [])].sort(
@@ -133,54 +209,94 @@ export function SubmissionDetail(): JSX.Element {
   const rowNumber = new Map(items.map((i, idx) => [i.assessmentId, idx + 1]));
   const itemAria = (i: ItemRow): string => `${itemLabel(i)}, row ${rowNumber.get(i.assessmentId)}`;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `loadAttempt` is not read here; bumping it is what re-runs the load (Try again)
   useEffect(() => {
     let active = true;
     (async () => {
       if (!id) return;
       setLoading(true);
       setError(null);
+      setRetryable(true);
       setRow(null);
       try {
-        const { data, error: err } = await client.GET("/api/v1/hope/submissions/{id}", {
-          params: { path: { id } },
-        });
+        // Bounded: a stalled connection must end in the error state below, not in a spinner that never stops.
+        const reply = await withRequestTimeout((signal) =>
+          client.GET("/api/v1/hope/submissions/{id}", { params: { path: { id } }, signal }),
+        );
         if (!active) return;
-        if (err) setError("Could not load the HOPE submission.");
-        else setRow(data as SubmissionDetail);
+        // An empty reply from a gateway fault has no error body: it is not a submission, and must not blank the page.
+        if (readSucceeded(reply)) setRow(reply.data as SubmissionDetail);
+        else if (isNotAvailable(reply.response?.status)) {
+          setRetryable(false);
+          setError(NOT_AVAILABLE);
+        } else setError(LOAD_FAILED);
       } catch {
-        if (active) setError("Could not load the HOPE submission.");
+        if (active) setError(LOAD_FAILED);
       }
       if (active) setLoading(false);
     })();
     return () => {
       active = false;
     };
-  }, [client, id]);
+  }, [client, id, loadAttempt]);
 
-  const reload = async (): Promise<void> => {
-    if (!id) return;
+  /** Re-reads the submission; false when that failed (`onFailure` is then shown, null to say nothing). */
+  const reload = async (onFailure: string | null = REFRESH_FAILED): Promise<boolean> => {
+    if (!id) return true;
     try {
-      const { data, error: err } = await client.GET("/api/v1/hope/submissions/{id}", {
-        params: { path: { id } },
-      });
-      if (err) setActionError("Could not refresh the HOPE submission.");
-      else setRow(data as SubmissionDetail);
+      // Bounded like every request this page waits on: `busy` is still set while an action's re-read is out.
+      const reply = await withRequestTimeout((signal) =>
+        client.GET("/api/v1/hope/submissions/{id}", { params: { path: { id } }, signal }),
+      );
+      // A failed re-read keeps the submission already on screen (with its actions) and says so.
+      if (readSucceeded(reply)) {
+        setRow(reply.data as SubmissionDetail);
+        return true;
+      }
     } catch {
-      setActionError("Could not refresh the HOPE submission.");
+      // Handled below, like an unreadable reply.
     }
+    if (onFailure !== null) setActionError(onFailure);
+    return false;
   };
 
   const downloadPackage = async (): Promise<void> => {
     if (!id || busy) return;
+    refocusAfterWrite.current = downloadRef;
     setBusy(true);
     setActionError(null);
+    setNotice(null);
     try {
       // fetch (not a navigation) so a 403/404/409 stays on this page instead of replacing the SPA with raw JSON.
-      const res = await fetch(`/api/v1/hope/submissions/${encodeURIComponent(id)}/package`, {
-        credentials: "include",
+      // Bounded, body included: a stalled download must free Download, Mark uploaded, Cancel package and Record CMS result.
+      // (A package that takes longer than REQUEST_TIMEOUT_MS to arrive reads as a failed download; it is a read, so trying again is safe.)
+      const answer = await withRequestTimeout(async (signal): Promise<PackageAnswer> => {
+        const res = await fetch(`/api/v1/hope/submissions/${encodeURIComponent(id)}/package`, {
+          credentials: "include",
+          signal,
+        });
+        if (!res.ok) {
+          const body: unknown = await res.json().catch(() => null);
+          return { refused: { status: res.status, body } };
+        }
+        return { blob: await res.blob() };
       });
-      if (!res.ok) throw new Error(String(res.status));
-      const url = URL.createObjectURL(await res.blob());
+      if ("refused" in answer) {
+        // The server's own reason for a refusal it explained (a package cancelled since this page loaded says so); a 409 means this
+        // page is out of date, so it is re-read, unless it only says the record was busy (the step was not applied: nothing to
+        // re-read, and `busy` must not be held for the read).
+        const { status, body } = answer.refused;
+        setActionError((isClientRefusal(status) ? refusalWordsOf(body) : null) ?? DOWNLOAD_FAILED);
+        // A fault of the server's own (not a refusal) may have come after it advanced a packaged batch to exported, which is what
+        // lets Record CMS result appear: re-read, so a download that failed on the way back does not leave the page behind it.
+        if (
+          isStaleVersionRefusal({ error: body, response: { status } }) ||
+          !isClientRefusal(status)
+        )
+          await reload(null);
+        return;
+      }
+      const url = URL.createObjectURL(answer.blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = row?.packageFilename ?? `${id}.zip`;
@@ -188,7 +304,10 @@ export function SubmissionDetail(): JSX.Element {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       await reload(); // the download advances a packaged batch to exported
     } catch {
-      setActionError("Could not download the package.");
+      setActionError(DOWNLOAD_FAILED);
+      // No usable answer (a rejection, a timeout that includes the body): the server may have advanced the batch before the reply
+      // was lost, so the page is read again, silently, as after a download that failed on the server's side.
+      await reload(null);
     } finally {
       setBusy(false);
     }
@@ -197,24 +316,59 @@ export function SubmissionDetail(): JSX.Element {
   const markUploaded = async (): Promise<void> => {
     if (!id || busy) return;
     setConfirmingUpload(false);
+    refocusAfterWrite.current = markUploadedRef;
     setBusy(true);
     setActionError(null);
+    setNotice(null);
+    // No usable answer: the package may have been marked (and that cannot be undone), so the page is read again once the actions are free.
+    let unconfirmed = false;
     try {
       const api = client as unknown as {
-        POST: (path: string, init: unknown) => Promise<{ error?: unknown }>;
+        POST: (
+          path: string,
+          init: unknown,
+        ) => Promise<{
+          data?: unknown;
+          error?: unknown;
+          response?: { ok?: boolean; status?: number };
+        }>;
       };
-      const { error: err } = await api.POST("/api/v1/hope/submissions/{id}/mark-uploaded", {
-        params: { path: { id } },
-        // No client clock: the server stamps `submittedAt` itself (now) when it is omitted, so a retry after a lost reply is the same
-        // request and replays under the client's per-intent Idempotency-Key.
-        body: {},
-      });
-      if (err) setActionError("Could not mark this package uploaded.");
-      else await reload();
+      // Bounded: a stalled connection must not hold `busy` (and every action beside it) for good. An abort is a rejection,
+      // told apart from a refusal in the catch below.
+      const reply = await withRequestTimeout((signal) =>
+        api.POST("/api/v1/hope/submissions/{id}/mark-uploaded", {
+          params: { path: { id } },
+          // No client clock: the server stamps `submittedAt` itself (now) when it is omitted, so a retry after a lost reply is the same
+          // request and replays under the client's per-intent Idempotency-Key.
+          body: {},
+          signal,
+        }),
+      );
+      // An empty 5xx has no error body, and is not a success: the package may or may not have been marked, so it says so.
+      if (writeSucceeded(reply)) {
+        // Marked, which cannot be undone: a re-read that fails after it says that, not just "could not refresh".
+        if (await reload(MARK_UPLOADED_REFRESH_FAILED)) setNotice(MARK_UPLOADED_DONE);
+      } else {
+        unconfirmed = writeOutcomeUnknown(reply);
+        setActionError(
+          failedWriteMessage(
+            reply,
+            MARK_UPLOADED_UNCONFIRMED,
+            "Could not mark this package uploaded.",
+          ),
+        );
+        // A 409 says the page's picture of the package is out of date (cancelled or marked elsewhere): re-read it, keeping the
+        // reason. A busy record (a lock wait timed out) is a 409 too, but the step was not applied and the page is not stale.
+        if (isStaleVersionRefusal(reply)) await reload(null);
+      }
     } catch {
-      setActionError("Could not mark this package uploaded.");
+      // No answer at all (offline, a reset, a timeout): the package may well have been marked, and that cannot be undone.
+      setActionError(MARK_UPLOADED_UNCONFIRMED);
+      unconfirmed = true;
     } finally {
       setBusy(false);
+      // Silent (its failure must not put words on the page) and not awaited (a read nobody answers must not hold the actions shut).
+      if (unconfirmed && mounted.current) void reload(null);
     }
   };
 
@@ -230,8 +384,9 @@ export function SubmissionDetail(): JSX.Element {
                   label={stateLabel(row.status)}
                   tone={SUBMISSION_TONE[row.status] ?? "neutral"}
                 />
-                {canManage && row.packageFilename ? (
+                {canManage && row.packageFilename && row.status !== "cancelled" ? (
                   <button
+                    ref={downloadRef}
                     type="button"
                     style={button}
                     onClick={() => void downloadPackage()}
@@ -250,7 +405,7 @@ export function SubmissionDetail(): JSX.Element {
                     Record CMS result
                   </button>
                 ) : null}
-                {canManage && (row.status === "packaged" || row.status === "exported") ? (
+                {canManage && NEVER_UPLOADED.has(row.status) ? (
                   confirmingUpload ? (
                     <span
                       ref={confirmUploadRef}
@@ -282,21 +437,68 @@ export function SubmissionDetail(): JSX.Element {
                     </button>
                   )
                 ) : null}
+                {canManage && NEVER_UPLOADED.has(row.status) ? (
+                  <button
+                    type="button"
+                    style={button}
+                    onClick={() => setCancelling(true)}
+                    disabled={busy}
+                  >
+                    Cancel package
+                  </button>
+                ) : null}
               </div>
             ) : undefined
           }
         />
       }
     >
+      {notice ? (
+        <output
+          ref={noticeRef}
+          tabIndex={-1}
+          style={{
+            display: "block",
+            margin: "0 0 0.75rem",
+            color: "var(--color-success-pill-fg)",
+            fontWeight: 600,
+          }}
+        >
+          {notice}
+        </output>
+      ) : null}
       {actionError ? (
-        <p role="alert" style={{ margin: "0 0 0.75rem", color: "var(--color-error)" }}>
+        <p
+          ref={actionErrorRef}
+          tabIndex={-1}
+          role="alert"
+          style={{ margin: "0 0 0.75rem", color: "var(--color-error)" }}
+        >
           {actionError}
         </p>
       ) : null}
       {error ? (
-        <EmptyState title="Unavailable" description={error} />
+        <div ref={retry.errorRef} tabIndex={-1}>
+          <EmptyState
+            title="Unavailable"
+            description={error}
+            action={
+              retryable ? (
+                <Button
+                  tone="secondary"
+                  onClick={() => {
+                    retry.retried();
+                    setLoadAttempt((attempt) => attempt + 1);
+                  }}
+                >
+                  Try again
+                </Button>
+              ) : undefined
+            }
+          />
+        </div>
       ) : loading || !row ? (
-        <LoadingSpinner />
+        <LoadingRegion label="Loading HOPE submission" regionRef={retry.loadingRef} />
       ) : (
         <>
           <dl
@@ -337,7 +539,7 @@ export function SubmissionDetail(): JSX.Element {
             </dd>
             <dt style={dt}>Transmitted</dt>
             <dd style={dd} className="tabular-nums">
-              {row.transmittedAt ? row.transmittedAt.slice(0, 16).replace("T", " ") : "—"}
+              {row.transmittedAt ? formatInstantDateTime(row.transmittedAt) : "—"}
             </dd>
             <dt style={dt}>Transport</dt>
             <dd style={dd}>{row.transportMode ?? "manual_iqies_upload"}</dd>
@@ -352,22 +554,42 @@ export function SubmissionDetail(): JSX.Element {
             <dt style={dt}>Manual upload</dt>
             <dd style={dd}>
               {row.submittedAt
-                ? row.submittedAt.slice(0, 16).replace("T", " ")
-                : "Awaiting iQIES upload"}
+                ? formatInstantDateTime(row.submittedAt)
+                : isCancelled
+                  ? "Never uploaded"
+                  : "Awaiting iQIES upload"}
             </dd>
             <dt style={dt}>Accepted at</dt>
             <dd style={dd} className="tabular-nums">
-              {row.acceptedAt ? row.acceptedAt.slice(0, 16).replace("T", " ") : "—"}
+              {row.acceptedAt ? formatInstantDateTime(row.acceptedAt) : "—"}
             </dd>
             <dt style={dt}>CMS result recorded</dt>
             <dd style={dd} className="tabular-nums">
               {row.resultImportedAt
-                ? row.resultImportedAt.slice(0, 16).replace("T", " ")
-                : "Awaiting CMS result"}
+                ? formatInstantDateTime(row.resultImportedAt)
+                : isCancelled
+                  ? "Not applicable"
+                  : "Awaiting CMS result"}
             </dd>
             <dt style={dt}>Report reference</dt>
             <dd style={dd}>{row.resultReportReference ?? "—"}</dd>
+            {isCancelled ? (
+              <>
+                <dt style={dt}>Cancelled</dt>
+                <dd style={dd}>
+                  {row.cancelledAt ? `${formatInstantDateTime(row.cancelledAt)} — ` : ""}
+                  {CANCEL_REASON_LABEL[row.cancelReasonCode as keyof typeof CANCEL_REASON_LABEL] ??
+                    "Reason not recorded"}
+                </dd>
+              </>
+            ) : null}
           </dl>
+          {isCancelled ? (
+            <p style={meta}>
+              This package was cancelled and must not be uploaded to CMS. Its records were released:
+              generate a new package from the submissions list.
+            </p>
+          ) : null}
           <h2 style={h2}>Records in this batch</h2>
           {items.length === 0 ? (
             <p style={meta}>No records in this batch.</p>
@@ -449,7 +671,11 @@ export function SubmissionDetail(): JSX.Element {
           <h2 style={h2}>Findings</h2>
           {findings.length === 0 ? (
             <p style={meta}>
-              {row.resultImportedAt ? "No findings recorded." : "Awaiting CMS result."}
+              {row.resultImportedAt
+                ? "No findings recorded."
+                : isCancelled
+                  ? "No CMS result: this package was never uploaded."
+                  : "Awaiting CMS result."}
             </p>
           ) : (
             <div className="wx-list-table-wrap">
@@ -503,6 +729,22 @@ export function SubmissionDetail(): JSX.Element {
         </>
       )}
       {row ? (
+        <HopeActionModal
+          open={cancelling}
+          action="cancel-package"
+          targetId={row.id}
+          onClose={() => setCancelling(false)}
+          // The page may be out of date (a 409), or the outcome was not confirmed and the action may have been applied: read it again, but
+          // silently. The dialog is still open, and its own words say what happened; a page-level alert would take focus out of it (so
+          // Escape and Tab stop working) whenever this read fails too, as it usually does for a request that got no answer.
+          onConflict={() => void reload(null)}
+          onDone={() => {
+            setNotice(CANCELLED_DONE);
+            void reload();
+          }}
+        />
+      ) : null}
+      {row ? (
         <RecordCmsResultModal
           open={recording}
           submissionId={row.id}
@@ -510,9 +752,9 @@ export function SubmissionDetail(): JSX.Element {
             .filter((i) => !SETTLED_ITEM_STATUS.has(i.status))
             .map((i) => ({ assessmentId: i.assessmentId, label: itemLabel(i) }))}
           onClose={() => setRecording(false)}
-          onConflict={() => void reload()}
+          onConflict={() => void reload(null)} // silent, as for the dialog above
           onDone={() => {
-            toast?.show("CMS result recorded.", { tone: "success" });
+            setNotice(RESULT_RECORDED_DONE);
             void reload();
           }}
         />

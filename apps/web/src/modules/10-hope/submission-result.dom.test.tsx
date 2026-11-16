@@ -18,6 +18,12 @@ let calls: string[] = [];
 let posted: Record<string, unknown>[] = [];
 let detail: Record<string, unknown>;
 let resultFailure: { status: number; body: unknown } | null = null;
+let cancelFailure: { status: number; body: unknown } | null = null;
+/** Makes the detail read, or the mark-uploaded write, answer with this instead (`body: null`: an empty reply). */
+let detailReadFailure: { status: number; body: unknown } | null = null;
+let markUploadedFailure: { status: number; body: unknown } | null = null;
+/** Once the mark-uploaded write has succeeded, the detail read that follows it answers with an empty 502. */
+let breakReadAfterMarkUploaded = false;
 
 const baseDetail = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   id: SUB,
@@ -77,7 +83,36 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     });
     return json(200, detail);
   }
-  if (path === `/api/v1/hope/submissions/${SUB}`) return json(200, detail);
+  if (method === "POST" && path === `/api/v1/hope/submissions/${SUB}/cancel`) {
+    const raw = request ? await request.clone().text() : String(init?.body ?? "");
+    const body = JSON.parse(raw) as Record<string, unknown>;
+    posted.push(body);
+    if (cancelFailure) return json(cancelFailure.status, cancelFailure.body);
+    detail = baseDetail({
+      status: "cancelled",
+      cancelledAt: "2026-10-01T10:00:00Z",
+      cancelReasonCode: body.reasonCode,
+      packageFilename: "p.zip",
+      items: [item(A1, P1, "01_admission", "cancelled"), item(A2, P2, "05_discharge", "cancelled")],
+    });
+    return json(200, detail);
+  }
+  if (method === "POST" && path === `/api/v1/hope/submissions/${SUB}/mark-uploaded`) {
+    if (markUploadedFailure)
+      return markUploadedFailure.body === null
+        ? new Response(null, { status: markUploadedFailure.status })
+        : json(markUploadedFailure.status, markUploadedFailure.body);
+    detail = baseDetail({ status: "submitted_pending_result", packageFilename: "p.zip" });
+    if (breakReadAfterMarkUploaded) detailReadFailure = { status: 502, body: null };
+    return json(200, detail);
+  }
+  if (path === `/api/v1/hope/submissions/${SUB}`) {
+    if (detailReadFailure)
+      return detailReadFailure.body === null
+        ? new Response(null, { status: detailReadFailure.status })
+        : json(detailReadFailure.status, detailReadFailure.body);
+    return json(200, detail);
+  }
   if (path === `/api/v1/patients/${P1}`)
     return json(200, { firstName: "Ada", lastName: "Lovelace" });
   if (path === `/api/v1/patients/${P2}`)
@@ -115,6 +150,10 @@ beforeEach(() => {
   calls = [];
   posted = [];
   resultFailure = null;
+  cancelFailure = null;
+  detailReadFailure = null;
+  markUploadedFailure = null;
+  breakReadAfterMarkUploaded = false;
   detail = baseDetail();
 });
 afterEach(() => undefined);
@@ -186,6 +225,34 @@ describe("submission detail items and findings", () => {
     mount(MANAGE);
     await screen.findByText("Records in this batch");
     expect(screen.queryByRole("button", { name: "Record CMS result" })).toBeNull();
+  });
+});
+
+describe("the submission read", () => {
+  it.each([
+    ["an empty-bodied 502", { status: 502, body: null }],
+    ["a 503 with an empty error body", { status: 503, body: "" }],
+  ])(
+    "shows it could not be loaded, not a spinner that never ends, for %s",
+    async (_name, failure) => {
+      detailReadFailure = failure;
+      mount(MANAGE);
+      expect(await screen.findByText("Could not load the HOPE submission.")).toBeTruthy();
+      expect(screen.queryByText("Loading")).toBeNull();
+    },
+  );
+
+  it("keeps the submission on screen, and says the refresh failed, when the re-read after an action is an empty 502", async () => {
+    detail = baseDetail({ status: "packaged", packageFilename: "p.zip" });
+    breakReadAfterMarkUploaded = true; // the write succeeds; the re-read that follows it has no body
+    mount(MANAGE);
+    await screen.findByText("Lovelace, Ada");
+    fireEvent.click(screen.getByRole("button", { name: "Mark uploaded" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm: mark uploaded to CMS" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Could not refresh the HOPE submission.",
+    );
+    expect(screen.getAllByText("Lovelace, Ada").length).toBeGreaterThan(0);
   });
 });
 
@@ -462,6 +529,34 @@ describe("mark uploaded", () => {
     await waitFor(() => expect(calls.some((c) => c.endsWith("/mark-uploaded"))).toBe(true));
   });
 
+  it.each([
+    ["an empty-bodied 502", { status: 502, body: null }],
+    ["a 503 with an empty error body", { status: 503, body: "" }],
+  ])("says it could not confirm, never nothing, when the write gets %s", async (_name, failure) => {
+    detail = baseDetail({ status: "packaged", packageFilename: "p.zip" });
+    mount(MANAGE);
+    await screen.findByText("Lovelace, Ada");
+    markUploadedFailure = failure;
+    fireEvent.click(screen.getByRole("button", { name: "Mark uploaded" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm: mark uploaded to CMS" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Could not confirm that the package was marked uploaded",
+    );
+  });
+
+  it("shows the server's own reason when it refuses", async () => {
+    detail = baseDetail({ status: "packaged", packageFilename: "p.zip" });
+    mount(MANAGE);
+    await screen.findByText("Lovelace, Ada");
+    markUploadedFailure = {
+      status: 409,
+      body: { error: { code: "CONFLICT", message: "Already marked uploaded." } },
+    };
+    fireEvent.click(screen.getByRole("button", { name: "Mark uploaded" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm: mark uploaded to CMS" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Already marked uploaded.");
+  });
+
   it("labels a finding link with no matching item", async () => {
     detail = baseDetail({
       findings: [
@@ -477,5 +572,110 @@ describe("mark uploaded", () => {
     });
     mount(MANAGE);
     expect(await screen.findByRole("link", { name: "View assessment cccccccc" })).toBeTruthy();
+  });
+});
+
+describe("R-08 cancel a package that was never uploaded", () => {
+  const cancelButton = () => screen.queryByRole("button", { name: "Cancel package" });
+
+  it("offers Cancel package only to a manager, and only before the batch was marked uploaded", async () => {
+    detail = baseDetail({ status: "packaged", packageFilename: "p.zip" });
+    const { unmount } = mount([]);
+    await screen.findByText("Records in this batch");
+    expect(cancelButton()).toBeNull(); // no hope.submission.manage
+    unmount();
+
+    for (const status of ["submitted_pending_result", "accepted", "rejected", "cancelled"]) {
+      detail = baseDetail({ status, packageFilename: "p.zip" });
+      const view = mount(MANAGE);
+      await screen.findByText("Records in this batch");
+      expect(cancelButton(), `status ${status}`).toBeNull();
+      view.unmount();
+    }
+
+    for (const status of ["packaged", "exported"]) {
+      detail = baseDetail({ status, packageFilename: "p.zip" });
+      const view = mount(MANAGE);
+      await screen.findByText("Records in this batch");
+      expect(cancelButton(), `status ${status}`).not.toBeNull();
+      view.unmount();
+    }
+  });
+
+  it("asks for a reason first, writes the exact body only on confirm, then shows the cancelled batch", async () => {
+    detail = baseDetail({ status: "packaged", packageFilename: "p.zip" });
+    mount(MANAGE);
+    await screen.findByText("Lovelace, Ada");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel package" }));
+    const dialog = await screen.findByRole("dialog", { name: "Cancel HOPE package" });
+    expect(calls.some((c) => c.endsWith("/cancel"))).toBe(false);
+
+    // No default reason: confirming is disabled until one is chosen from the fixed list.
+    const confirm = within(dialog).getByRole("button", { name: "Cancel package" });
+    expect((confirm as HTMLButtonElement).disabled).toBe(true);
+    const reason = within(dialog).getByLabelText(/Reason/) as HTMLSelectElement;
+    expect([...reason.options].map((o) => o.value)).toEqual([
+      "",
+      "package_lost",
+      "never_uploaded",
+      "generated_in_error",
+      "other",
+    ]);
+    fireEvent.change(reason, { target: { value: "package_lost" } });
+    expect((confirm as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(posted).toEqual([{ reasonCode: "package_lost" }]));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(await screen.findByText(/Package lost/)).toBeTruthy();
+    expect(screen.getByText(/must not be uploaded to CMS/)).toBeTruthy();
+    // A cancelled package cannot be downloaded, marked uploaded or cancelled again from the page.
+    expect(cancelButton()).toBeNull();
+    expect(screen.queryByRole("button", { name: "Download ZIP" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Mark uploaded" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Record CMS result" })).toBeNull();
+    expect(screen.getAllByText("Cancelled").length).toBeGreaterThan(0);
+  });
+
+  it("keeping the package closes the dialog without writing", async () => {
+    detail = baseDetail({ status: "exported", packageFilename: "p.zip" });
+    mount(MANAGE);
+    await screen.findByText("Lovelace, Ada");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel package" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep package" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(posted).toHaveLength(0);
+    expect(cancelButton()).not.toBeNull();
+  });
+
+  it("shows the server's own 409 reason inline, stays open, and refreshes the batch", async () => {
+    cancelFailure = {
+      status: 409,
+      body: {
+        error: {
+          code: "M10_SUBMISSION_CANCEL_NOT_ALLOWED",
+          message: "Submission is submitted_pending_result; it was already marked uploaded.",
+        },
+      },
+    };
+    detail = baseDetail({ status: "packaged", packageFilename: "p.zip" });
+    mount(MANAGE);
+    await screen.findByText("Lovelace, Ada");
+    const loadsBefore = calls.filter((c) => c === `GET /api/v1/hope/submissions/${SUB}`).length;
+    fireEvent.click(screen.getByRole("button", { name: "Cancel package" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/Reason/), { target: { value: "other" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel package" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "Submission is submitted_pending_result; it was already marked uploaded.",
+    );
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    // 409 means the batch changed under the user: the page reloads so it stops offering the action.
+    await waitFor(() =>
+      expect(
+        calls.filter((c) => c === `GET /api/v1/hope/submissions/${SUB}`).length,
+      ).toBeGreaterThan(loadsBefore),
+    );
   });
 });

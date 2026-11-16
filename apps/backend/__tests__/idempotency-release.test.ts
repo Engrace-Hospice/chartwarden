@@ -4,12 +4,14 @@
  * idempotency middleware used to `complete` every response, so a same-key retry got the cached failure back for the
  * whole 24h TTL while the write never ran. These outcomes now RELEASE the claim, so the same key runs again, PROVIDED the
  * request committed nothing (these handlers fail before any write; the committed-then-failed half is
- * `idempotency-commit-tracker.test.ts`); every other outcome (a 201, a business-rule 409, a 4xx) is still cached and replayed.
+ * `idempotency-commit-tracker.test.ts`); every other outcome (a 201, a business-rule 409, a 4xx other than a 401/403 refusal) is still cached and replayed.
  * If the release itself fails (the store is down) the key stays pending: a retry is a 409 in flight until the TTL.
  *
  * Unit level over the in-memory store; the Postgres store's `release` is proved in
  * `gap-007-idempotency-claim.live.test.ts`.
  */
+import { HopeStateError } from "@chartwarden/hope";
+import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
@@ -102,6 +104,54 @@ describe("applyIdempotency — a retryable failure is not replayed", () => {
     const retry = await post();
     expect(retry.statusCode).toBe(201);
     expect(retry.json()).toEqual({ saved: true });
+    expect(runs).toBe(2);
+  });
+
+  it("a 409 M10_RECORD_BUSY (lock timeout) frees the key: the same-key retry runs the write", async () => {
+    await build((run, reply) => {
+      if (run === 1) throw new HopeStateError("M10_RECORD_BUSY", "The record is busy.");
+      return reply.code(201).send({ saved: true });
+    });
+    const first = await post();
+    expect(first.statusCode).toBe(409);
+    expect(first.json().error.code).toBe("M10_RECORD_BUSY");
+    const retry = await post();
+    expect(retry.statusCode).toBe(201);
+    expect(retry.json()).toEqual({ saved: true });
+    expect(runs).toBe(2);
+  });
+
+  it("a 403 refusal (STEP_UP_REQUIRED, a missing permission) frees the key: the same-key retry runs once the caller is allowed", async () => {
+    await build((run, reply) => {
+      if (run === 1) throw new ForbiddenError("step-up required");
+      return reply.code(201).send({ saved: true });
+    });
+    const first = await post();
+    expect(first.statusCode).toBe(403);
+    const retry = await post();
+    expect(retry.statusCode).toBe(201);
+    expect(retry.json()).toEqual({ saved: true });
+    expect(runs).toBe(2);
+  });
+
+  it("a 401 refusal frees the key too: the same-key retry runs after the caller signs in again", async () => {
+    await build((run, reply) => {
+      if (run === 1) throw new UnauthorizedError();
+      return reply.code(201).send({ saved: true });
+    });
+    expect((await post()).statusCode).toBe(401);
+    expect((await post()).statusCode).toBe(201);
+    expect(runs).toBe(2);
+  });
+
+  it("a 422 M10_SPEC_NOT_IN_FORCE stays cached: a same-key retry replays it (use a NEW key after the spec is loaded)", async () => {
+    await build((_run, reply) =>
+      reply.code(422).send({ error: { code: "M10_SPEC_NOT_IN_FORCE" } }),
+    );
+    expect((await post()).statusCode).toBe(422);
+    expect((await post()).statusCode).toBe(422);
+    expect(runs).toBe(1);
+    expect((await post("key-2")).statusCode).toBe(422);
     expect(runs).toBe(2);
   });
 

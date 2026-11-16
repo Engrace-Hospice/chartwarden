@@ -7,7 +7,7 @@ import {
   planDischargeTimepoint,
 } from "@chartwarden/hope";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { AdmissionStatusReader, LocalDate } from "@chartwarden/types";
+import type { AdmissionStatusReader } from "@chartwarden/types";
 import { and, eq, gt, inArray, isNull } from "drizzle-orm";
 import { anchorDateOf } from "../scheduling/schedule-writer";
 
@@ -132,6 +132,7 @@ export function buildM10AdmissionWorkflowConsumer(deps: {
                 and(
                   inArray(SCHED.rfaKind, ["02_huv1", "03_huv2"]),
                   gt(SCHED.windowOpensAt, new Date(`${dischargeDate}T23:59:59.999Z`)),
+                  eq(SCHED.organizationId, event.organizationId),
                   eq(SCHED.admissionId, admissionId),
                   eq(SCHED.status, "open"),
                   isNull(SCHED.completedByAssessmentId),

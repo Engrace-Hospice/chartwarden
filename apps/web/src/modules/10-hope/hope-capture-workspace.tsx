@@ -2,24 +2,39 @@ import {
   DetailPageLayout,
   EmptyState,
   Glyph,
-  LoadingSpinner,
   PageHeader,
+  type ReadStatus,
   StatusPill,
   cardSurface,
   formatDateOnly,
   isoToLocalInput,
+  settleRead,
   t,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { NameLabel, patientNameOf } from "../../shell/name-display";
 import { type PatientNames, usePatientNames } from "../../shell/patient-names";
+import { useSession } from "../../shell/session";
+import {
+  type AuthorDiscipline,
+  RECORD_UNCONFIRMED,
+  authorDisciplinesForRoles,
+  failedResultOutcomeUnknown,
+  recordTimepoint,
+  withRequestTimeout,
+} from "./hope-api";
+import { AuthorDisciplineField } from "./hope-author-discipline-field";
+import { completeSfvPath } from "./hope-paths";
+import { HopeListReadState } from "./hope-read-state";
+import { DEFAULT_DATE_HINT } from "./hope-record-modal";
+import { LoadingRegion, useRetryFocus } from "./hope-retry-focus";
 import { WORKFLOW_TONE, rfaLabel, stateLabel } from "./hope-status";
+import { useFocusOnNewError } from "./use-focus-on-new-error";
 
 type FixedKind = "01_admission" | "02_huv1" | "03_huv2" | "05_discharge";
-type Discipline = "RN" | "NP" | "MD";
 type DischargeReason = "death" | "revocation" | "transfer_to_hospice" | "live_discharge";
 
 interface WorkflowTimepoint {
@@ -91,28 +106,85 @@ function HopeCaptureWorkspace({
   const [state, setState] = useState<WorkflowState | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [readStatus, setReadStatus] = useState<ReadStatus>("ok");
+  const retry = useRetryFocus(loading, readStatus === "ok" ? null : readStatus);
   const [actionError, setActionError] = useState<string | null>(null);
+  // A refusal takes focus: the Create button is disabled while the write is out, and a browser that drops focus from a
+  // disabled control (Firefox, Safari) would leave the keyboard user at the top of the page.
+  const actionErrorRef = useFocusOnNewError<HTMLParagraphElement>(actionError);
   const [targetDate, setTargetDate] = useState(isoToLocalInput(new Date().toISOString()));
-  const [discipline, setDiscipline] = useState<Discipline>("RN");
+  // The date opens at the current time: said so, beside the field, until the clinician has entered one (as the record dialog does).
+  const [dateEdited, setDateEdited] = useState(false);
+  // The disciplines the ACTING user may be attributed as (their own role keys, as the server checks them): one is preselected,
+  // several make the clinician choose, none blocks the capture with a message. A fixed list sent a discipline the server then
+  // refused (403) to anyone who did not hold that exact role.
+  const session = useSession();
+  const roles = session?.roles;
+  const disciplines = useMemo(() => authorDisciplinesForRoles(roles ?? []), [roles]);
+  const [chosenDiscipline, setChosenDiscipline] = useState<AuthorDiscipline | "">("");
+  const discipline: AuthorDiscipline | "" =
+    chosenDiscipline !== ""
+      ? chosenDiscipline
+      : disciplines.length === 1
+        ? (disciplines[0] ?? "")
+        : "";
   const [lateReason, setLateReason] = useState("");
-  const [dischargeReason, setDischargeReason] = useState<DischargeReason>("live_discharge");
+  // Not pre-selected: the discharge reason decides which sections the record needs, so the clinician chooses it.
+  const [dischargeReason, setDischargeReason] = useState<DischargeReason | "">("");
+  // A reply that arrives after the clinician has left must not pull them to the draft it created, and a rejected request must not
+  // start a re-read for a screen nobody is on. (Those two guards in submitTimepoint are the only ones needed: React 18 treats a state
+  // update on an unmounted component as a no-op.)
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
+  /**
+   * The workflow read. A rejected, stalled or bodiless-502 read is a `failed` read (with Retry), never a spinner that does not
+   * end or a workflow that is "not available"; a refused one is `denied`, and so is a 404: hope.scope answers an admission
+   * outside the caller's caseload with it (deny-as-not-found), so Retry cannot make it appear.
+   */
+  const readWorkflow = useCallback(
+    async () =>
+      admissionId
+        ? await settleRead(
+            withRequestTimeout((signal) =>
+              client.GET("/api/v1/admissions/{admissionId}/hope", {
+                params: { path: { admissionId } },
+                signal,
+              }),
+            ),
+            "denied",
+          )
+        : { status: "failed" as const, res: undefined },
+    [admissionId, client],
+  );
+
+  const latestLoad = useRef(0);
   const load = useCallback(async () => {
-    if (!admissionId) return;
+    const mine = ++latestLoad.current;
     setLoading(true);
-    setError(null);
-    const { data, error: err } = await client.GET("/api/v1/admissions/{admissionId}/hope", {
-      params: { path: { admissionId } },
-    });
-    if (err || !data) {
-      setError("Unable to load HOPE workflow.");
-      setLoading(false);
-      return;
-    }
-    setState(data as WorkflowState);
+    const { status, res } = await readWorkflow();
+    if (mine !== latestLoad.current) return;
+    if (status === "ok" && res?.data) setState(res.data as WorkflowState);
+    setReadStatus(status === "ok" && !res?.data ? "failed" : status);
     setLoading(false);
-  }, [admissionId, client]);
+  }, [readWorkflow]);
+
+  /**
+   * Re-reads the workflow WITHOUT leaving the form (no loading region: the typed date, the focus and the explanation that
+   * follows stay where they are). Null when it could not be read: the page then keeps the state it has.
+   */
+  const rereadWorkflow = useCallback(async (): Promise<WorkflowState | null> => {
+    const { status, res } = await readWorkflow();
+    if (status !== "ok" || !res?.data) return null;
+    const fresh = res.data as WorkflowState;
+    setState(fresh);
+    return fresh;
+  }, [readWorkflow]);
 
   useEffect(() => {
     void load();
@@ -120,67 +192,84 @@ function HopeCaptureWorkspace({
 
   const patientNames = usePatientNames(state?.patientId ? [state.patientId] : []);
 
-  const item = useMemo(() => {
-    if (!state || !kind) return null;
-    if (kind === "01_admission") return state.admissionAssessment;
-    if (kind === "02_huv1") return state.huv1;
-    if (kind === "03_huv2") return state.huv2;
-    return state.dischargeAssessment;
-  }, [kind, state]);
+  const item = useMemo(() => (state && kind ? timepointOf(state, kind) : null), [kind, state]);
   const sfv = useMemo(() => state?.sfvs.find((s) => s.id === sfvId) ?? null, [sfvId, state]);
   const title = sfv ? "Symptom Follow-Up" : item ? `${rfaLabel(item.kind)} Assessment` : "HOPE";
 
+  const targetIso = fromDatetimeLocal(targetDate);
   const submitTimepoint = useCallback(async () => {
-    if (!admissionId || !item) return;
+    if (!admissionId || !item || discipline === "" || targetIso === null) return;
+    // The discharge reason is the clinician's choice (and the control is only there on a discharge).
+    if (item.kind === "05_discharge" && dischargeReason === "") return;
+    // The late reason is a required input of a late item, as in the record dialog: the form says so and does not send without it.
+    if (item.status === "late" && lateReason.trim() === "") return;
     setBusy(true);
     setActionError(null);
-    const { data, error: err } = await client.POST(
-      "/api/v1/admissions/{admissionId}/hope/timepoints",
-      {
-        params: { path: { admissionId } },
-        body: {
-          rfaKind: item.kind,
-          targetDate: fromDatetimeLocal(targetDate),
-          authorDiscipline: discipline,
-          data: { J: { J2051: { entries: [] } } },
-          lateCompletionReasonCode: lateReason.trim() || undefined,
-          dischargeReason: item.kind === "05_discharge" ? dischargeReason : undefined,
-        },
-      },
-    );
-    setBusy(false);
-    if (err || !data) {
-      setActionError(messageForBackendError(err, item));
-      return;
-    }
-    navigate(`/hope/assessments/${data.id}`);
-  }, [admissionId, client, discipline, dischargeReason, item, lateReason, navigate, targetDate]);
-
-  const submitSfv = useCallback(async () => {
-    if (!admissionId || !sfv) return;
-    setBusy(true);
-    setActionError(null);
-    const { data, error: err } = await client.POST("/api/v1/admissions/{admissionId}/hope/sfv", {
-      params: { path: { admissionId } },
-      body: {
-        triggeringAssessmentId: sfv.triggeringAssessmentId,
-        targetDate: fromDatetimeLocal(targetDate),
-        authorDiscipline: discipline === "MD" ? "RN" : discipline,
+    try {
+      // The same bounded, reply-classifying write the record dialog uses: a request nobody answers ends as "could not
+      // confirm" (not a form stuck on "Recording..."), and a gateway fault or an empty reply is worded as one.
+      const res = await recordTimepoint(client, admissionId, {
+        rfaKind: item.kind,
+        targetDate: targetIso,
+        authorDiscipline: discipline,
         data: { J: { J2051: { entries: [] } } },
-      },
-    });
-    setBusy(false);
-    if (err || !data) {
-      setActionError(messageForBackendError(err, null));
-      return;
+        // Only what is on screen: the reason control exists only for a late item, and the route may have moved on to another.
+        lateCompletionReasonCode:
+          item.status === "late" ? lateReason.trim() || undefined : undefined,
+        dischargeReason: item.kind === "05_discharge" ? dischargeReason || undefined : undefined,
+      });
+      if (!mounted.current) return;
+      if (!res.ok) {
+        if (isWindowRefusal(res.code, item)) {
+          // The screen's picture of the window is the one read at load, and the server judged the typed date (and a later
+          // moment). Re-read it quietly, so the controls (the late reason, or the notice that the period has ended) match the
+          // refusal, then say whose it was: a window that moved, or the date the clinician typed.
+          const fresh = await rereadWorkflow();
+          setActionError(
+            windowRefusalMessage(res.code, item, fresh ? timepointOf(fresh, item.kind) : null),
+          );
+          return;
+        }
+        setActionError(messageForBackendCode(res.code) ?? res.message);
+        // An empty 5xx or a fault of the server's own may have created the draft after all: its words say to check the record, and
+        // this page offers Create until it knows one exists, so it reads the workflow again (quietly, and not awaited: busy is freed).
+        if (failedResultOutcomeUnknown(res)) void rereadWorkflow();
+        return;
+      }
+      navigate(`/hope/assessments/${res.value.id}`);
+    } catch {
+      setActionError(RECORD_UNCONFIRMED);
+      // No answer at all (offline, a reset, a timeout): the same, unless the clinician has already left.
+      if (mounted.current) void rereadWorkflow();
+    } finally {
+      setBusy(false);
     }
-    navigate(`/admissions/${admissionId}/hope`);
-  }, [admissionId, client, discipline, navigate, sfv, targetDate]);
+  }, [
+    admissionId,
+    client,
+    discipline,
+    dischargeReason,
+    item,
+    lateReason,
+    navigate,
+    rereadWorkflow,
+    targetIso,
+  ]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error || !state)
+  if (loading) return <LoadingRegion label="Loading HOPE workflow…" regionRef={retry.loadingRef} />;
+  if (readStatus !== "ok" || !state)
     return (
-      <EmptyState title="Unable to load HOPE workflow" description={error ?? "Not available."} />
+      <div ref={retry.errorRef} tabIndex={-1}>
+        <HopeListReadState
+          status={readStatus === "denied" ? "denied" : "failed"}
+          subject="the HOPE workflow for this admission"
+          failedTitle="Unable to load HOPE workflow"
+          onRetry={() => {
+            retry.retried();
+            void load();
+          }}
+        />
+      </div>
     );
   if (!sfv && !item)
     return (
@@ -191,6 +280,14 @@ function HopeCaptureWorkspace({
   const canSubmit = sfv
     ? sfv.status === "open" || sfv.status === "overdue"
     : item?.status === "open" || item?.status === "late";
+  // What blocks Create is a missing INPUT (a discipline, a date, a discharge reason, a late reason). Whether the window is still open
+  // stays the server's call: the page's picture of it was read at load, so it is not used to predict a refusal.
+  const submitBlocked =
+    busy ||
+    discipline === "" ||
+    targetIso === null ||
+    (item?.status === "late" && lateReason.trim() === "") ||
+    (item?.kind === "05_discharge" && dischargeReason === "");
 
   return (
     <DetailPageLayout
@@ -230,6 +327,20 @@ function HopeCaptureWorkspace({
           <StatusPill label={workflowLabel(status)} tone={WORKFLOW_TONE[status] ?? "neutral"} />
         </div>
 
+        {/* Outside the form on purpose: a refusal about the window can re-read it into a state with no form, and the explanation
+            (which holds focus) must outlive that. */}
+        {actionError ? (
+          <p
+            ref={actionErrorRef}
+            tabIndex={-1}
+            role="alert"
+            aria-live="assertive"
+            style={errorText}
+          >
+            {actionError}
+          </p>
+        ) : null}
+
         {item ? (
           <div style={factsGrid}>
             <Fact label="Window" value={formatWindow(item.windowStart, item.windowEnd)} />
@@ -262,12 +373,28 @@ function HopeCaptureWorkspace({
             />
             <span>{unavailableMessage(status, item)}</span>
           </output>
+        ) : sfv ? (
+          // The follow-up is answered (J2053A-H) in the triggering assessment's "Complete SFV" dialog. This page has
+          // no such fields, and the server refuses an SFV completion without them, so it never submits one.
+          <>
+            <p style={bodyText}>
+              The follow-up questions (J2053) are answered in the assessment that triggered this
+              visit. Open it and the completion dialog opens for you.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate(completeSfvPath(sfv.triggeringAssessmentId))}
+              style={primaryBtn}
+            >
+              <Glyph name="file-text" size={14} /> Open the triggering assessment
+            </button>
+          </>
         ) : (
           <form
             style={formGrid}
             onSubmit={(ev) => {
               ev.preventDefault();
-              void (sfv ? submitSfv() : submitTimepoint());
+              void submitTimepoint();
             }}
           >
             <label style={labelStyle} htmlFor="hope-target-date">
@@ -277,22 +404,38 @@ function HopeCaptureWorkspace({
               id="hope-target-date"
               type="datetime-local"
               value={targetDate}
-              onChange={(ev) => setTargetDate(ev.target.value)}
+              onChange={(ev) => {
+                setTargetDate(ev.target.value);
+                setDateEdited(true);
+              }}
+              required
+              aria-invalid={targetIso === null}
+              aria-describedby={
+                targetIso === null
+                  ? "hope-target-date-error"
+                  : dateEdited
+                    ? undefined
+                    : "hope-target-date-hint"
+              }
               style={inputStyle}
             />
-            <label style={labelStyle} htmlFor="hope-discipline">
-              Author discipline
-            </label>
-            <select
-              id="hope-discipline"
+            {dateEdited ? null : (
+              <p id="hope-target-date-hint" style={bodyText}>
+                {DEFAULT_DATE_HINT}
+              </p>
+            )}
+            {targetIso === null ? (
+              <p id="hope-target-date-error" role="alert" style={errorText}>
+                Enter a valid target date and time.
+              </p>
+            ) : null}
+            <AuthorDisciplineField
+              disciplines={disciplines}
               value={discipline}
-              onChange={(ev) => setDiscipline(ev.target.value as Discipline)}
-              style={inputStyle}
-            >
-              <option value="RN">RN</option>
-              <option value="NP">NP</option>
-              {!sfv ? <option value="MD">MD</option> : null}
-            </select>
+              onChange={(value) => setChosenDiscipline(disciplines.find((d) => d === value) ?? "")}
+              disabled={busy}
+              noneMessage="None of your roles can be recorded as a HOPE author discipline, so this assessment cannot be attributed. Ask an administrator to review your role grants."
+            />
             {item?.status === "late" ? (
               <>
                 <label style={labelStyle} htmlFor="late-reason">
@@ -321,9 +464,10 @@ function HopeCaptureWorkspace({
                 <select
                   id="discharge-reason"
                   value={dischargeReason}
-                  onChange={(ev) => setDischargeReason(ev.target.value as DischargeReason)}
+                  onChange={(ev) => setDischargeReason(ev.target.value as DischargeReason | "")}
                   style={inputStyle}
                 >
+                  <option value="">Select a reason</option>
                   <option value="live_discharge">Live discharge</option>
                   <option value="death">Death</option>
                   <option value="revocation">Revocation</option>
@@ -331,12 +475,11 @@ function HopeCaptureWorkspace({
                 </select>
               </>
             ) : null}
-            {actionError ? (
-              <p role="alert" aria-live="assertive" style={errorText}>
-                {actionError}
-              </p>
-            ) : null}
-            <button type="submit" disabled={busy} style={busy ? disabledBtn : primaryBtn}>
+            <button
+              type="submit"
+              disabled={submitBlocked}
+              style={submitBlocked ? disabledBtn : primaryBtn}
+            >
               <Glyph name="clipboard-check" size={14} />{" "}
               {busy ? "Recording..." : "Create HOPE draft"}
             </button>
@@ -362,23 +505,66 @@ function Fact({
   );
 }
 
-function messageForBackendError(err: unknown, item: WorkflowTimepoint | null): string {
-  const code = (err as { error?: { code?: string } } | null)?.error?.code;
+/** The capture-gate refusals that are about the window (or the date typed against it) rather than about what was entered. */
+const WINDOW_MOVED =
+  "The window for this assessment changed while you were on this page. Review the updated status.";
+const WINDOW_UNREFRESHED =
+  "The server refused this target date for the assessment window, and the page could not re-read the window. Check the date, or reload the page.";
+
+/**
+ * A window refusal the page cannot answer from what it loaded. A late item's missing reason it can (the reason control is on
+ * screen), so that is not one. The server judges "before the window opens" on the typed date itself and everything else at the
+ * later of the typed date and now, so the cause is the window moving OR the date typed: {@link windowRefusalMessage} tells which.
+ */
+function isWindowRefusal(code: string | null, item: WorkflowTimepoint): boolean {
+  if (code === "M10_LATE_REASON_REQUIRED") return item.status !== "late";
+  return code === "M10_TIMEPOINT_EXPIRED" || code === "M10_TIMEPOINT_NOT_OPEN";
+}
+
+const sameWindow = (a: WorkflowTimepoint, b: WorkflowTimepoint): boolean =>
+  a.status === b.status &&
+  a.windowStart === b.windowStart &&
+  a.windowEnd === b.windowEnd &&
+  a.lateDeadline === b.lateDeadline;
+
+/**
+ * Whose a window refusal was, from the window re-read after it (`fresh`, null when that read failed). A status or window that
+ * differs from the loaded one means it moved on since; the same one means the clinician's typed date is what was refused (the
+ * status is the server's own, judged at the re-read), so the message names the date and the bound it crossed.
+ */
+function windowRefusalMessage(
+  code: string | null,
+  item: WorkflowTimepoint,
+  fresh: WorkflowTimepoint | null,
+): string {
+  if (fresh === null) return WINDOW_UNREFRESHED;
+  if (!sameWindow(item, fresh)) return WINDOW_MOVED;
+  // The bounds are instants, not calendar days: a date alone would send the clinician back with a time the server refuses again
+  // (the start of the window in a US evening is the day before in UTC), so the bound is named with its time, in their zone.
+  const at = (value: string | null): string => (value ? ` (${fmtDateTime(value)})` : "");
+  if (code === "M10_TIMEPOINT_NOT_OPEN")
+    return `The target date is before this assessment's window opens${at(item.windowStart)}. Choose a date and time at or after it.`;
+  if (code === "M10_TIMEPOINT_EXPIRED")
+    return `The target date is after the late deadline${at(item.lateDeadline)}. Choose a date and time at or before it.`;
+  return `The target date is after the normal window closed${at(item.windowEnd)}. Choose a date and time inside the window.`;
+}
+
+/** This screen's own words for the other capture-gate refusals it can act on; null for any other code (the server's own message is shown). */
+function messageForBackendCode(code: string | null): string | null {
   if (code === "M10_LATE_REASON_REQUIRED")
     return "This assessment is after the normal window. Select a late completion reason.";
   if (code === "M10_LATE_REASON_INVALID")
     return "That late completion reason is not accepted. Select a different reason.";
-  if (code === "M10_DISCIPLINE_NOT_PERMITTED")
-    return "Only an RN, NP or MD can author this HOPE assessment.";
-  if (code === "M10_TIMEPOINT_NOT_OPEN")
-    return `${item ? rfaLabel(item.kind) : "This assessment"} is not open yet.`;
-  if (code === "M10_TIMEPOINT_EXPIRED")
-    return "The allowed capture period has expired. An authorized override is required.";
-  if (code === "M10_SFV_PAST_DUE")
-    return "This follow-up is past due and needs an authorized override.";
   if (code === "M10_VERSION_CONFLICT")
     return "This assessment changed since it was loaded. Reload and try again.";
-  return "Could not record the HOPE work. Review the values and try again.";
+  return null;
+}
+
+function timepointOf(state: WorkflowState, kind: FixedKind): WorkflowTimepoint {
+  if (kind === "01_admission") return state.admissionAssessment;
+  if (kind === "02_huv1") return state.huv1;
+  if (kind === "03_huv2") return state.huv2;
+  return state.dischargeAssessment;
 }
 
 function unavailableMessage(status: string, item: WorkflowTimepoint | null): string {
@@ -438,9 +624,19 @@ function fmtDate(value: string | null | undefined): string {
   }).format(date);
 }
 
-function fromDatetimeLocal(value: string): string {
+/** An instant as the viewer's own date AND time ("Sep 1, 2026, 8:00 PM"); the value itself when it is not a date. */
+function fmtDateTime(value: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
+    date,
+  );
+}
+
+/** The instant a datetime-local value means, or null when it is cleared, part-typed or out of range (never "now"). */
+function fromDatetimeLocal(value: string): string | null {
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
 }
 
 const cardStyle: CSSProperties = {

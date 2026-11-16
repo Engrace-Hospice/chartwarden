@@ -35,6 +35,20 @@ controls:
       - script: test:object-store:conformance:live
       - script: test:object-store:resilience:live
       - file: deploy/production/object-store/app-policy.json
+      # M10 defence in depth: the id-keyed HOPE reads and writes the pre-PR reviews named (submission cancel / advance /
+      # download / skip / retry / mark-uploaded, result import (importSubmissionResult), the batch list and detail reads and
+      # the reads in hope-submission-reads-db.ts, the status writers, the id-keyed loaders, recordTimepoint lookups, the
+      # prefill UPDATE, the SFV FOR UPDATE and the validation-findings statements) carry an explicit organization_id
+      # predicate on top of RLS, and so do the assemble item subquery and the submission list (its outer statement and its
+      # subquery). The live cases act as ORG_B on ORG_A rows over a connection that BYPASSES RLS (they cover result import
+      # and the batch list too) and find 404 or nothing. Not covered, by design: org-wide list reads with no id stay
+      # RLS-only, and the hope_spec_* tables are global reference data with no org column.
+      - file: apps/backend/__tests__/hope-f2-write-route-hardening.test.ts
+      - file: apps/backend/__tests__/hope-w2b-tenant-predicates.test.ts
+      - file: apps/backend/src/modules/10-hope/hope-submission-reads-db.ts
+      - file: apps/backend/__tests__/hope-assemble-candidates.test.ts
+      - file: apps/backend/__tests__/hope-submission-list-order.test.ts
+      - script: test:m10:write:live
 
   - id: CW-AC-02
     title: Unique user identification and authorization at the route (RBAC + ABAC predicates)
@@ -54,6 +68,44 @@ controls:
       # that stored discipline. The live suite proves the resolver query as chartwarden_app/NOBYPASSRLS.
       - script: test:m10:write:live
       - file: apps/backend/src/modules/10-hope/abac-predicates.ts
+      # R-01 — completing a symptom follow-up visit is bound to the admission in the URL and to the caller's caseload
+      # (the hope.scope predicate answers 404 before the service runs). The live suite proves another admission's SFV
+      # cannot be completed by naming its triggering-assessment id.
+      - script: test:m10:sfv-sign-binding:live
+      # Eight M10 operator routes that are not signatures (skip, retry, assemble, package download, mark-uploaded, cancel,
+      # results, regenerate-schedules) refuse an ai_* principal even when it holds the permission (D13); no step-up on these,
+      # only the two signing routes have it. The guard is REJECT_AI_OPERATIONS (hope-route-guards.ts, spread into the route
+      # registrar); the "§D13" describe covers every route, the package download (a GET) included.
+      - file: apps/backend/src/modules/10-hope/routes/hope-route-guards.ts
+      - file: apps/backend/src/modules/10-hope/routes/hope-routes.ts
+      - file: apps/backend/__tests__/hope-routes.test.ts
+      # The schedule skip reason is a closed code list (no free text, a `note` is refused, the 422 never echoes input), so
+      # no PHI can enter the audit trail through it.
+      - file: packages/types/src/hope.ts
+      - file: apps/backend/src/modules/10-hope/hope-schedule-skip.ts
+      # Availability: skip, retry and regenerate-schedules wait at most 5 s for a row lock and then answer 409
+      # M10_RECORD_BUSY, so a stuck writer cannot exhaust the connection pool.
+      - file: apps/backend/src/modules/10-hope/hope-assessment-lock.ts
+      # A read-only caller (no hope.timepoint.write) makes GET .../workspace, GET .../review and GET .../validation write
+      # nothing, and a legacy spec-less draft is answered a static 409. A writer's workspace open does the spec freeze, the
+      # chart prefill refresh and the workflow-control reconcile; a writer's review open also runs the SFV self-heal of J2052
+      # and J2053; a writer's validation read persists the validation findings of a final run. mayWrite is a REQUIRED
+      # argument of getValidation, getAssessmentWorkspace, getAssessmentReview, the answer service's getWorkspace and
+      # ensureDraftSpecInitialized (no default anywhere on the read/write split), so a caller cannot forget it and write by
+      # default. A reader's workspace shows the derived workflow controls (A0050, A0250) and the chart-derived answers as
+      # stored, and its review lists no A0050 or A0250 blocker, as a writer's would; a draft that needs a prefill refresh or
+      # the self-heal reads differently for a reader until a writer opens it. The unit tests and a live case in the write
+      # suite assert it.
+      - file: apps/backend/__tests__/hope-read-only-no-writes.test.ts
+      - file: apps/backend/__tests__/hope-workspace-reader-parity.test.ts
+      - file: apps/backend/__tests__/hope-review-reader-parity.test.ts
+      - file: apps/backend/__tests__/hope-workspace-read-only.test.ts
+      # The SFV completion route is rate limited to 10 per minute per user and 100 per minute per organization (a 60 s
+      # window), which bounds the denied-probe audit rows one caseload clinician can add. It is fail-open on purpose: a
+      # signature is never refused because the limiter's store is down. The limiter is a required dependency of the route
+      # mount; with no REDIS_URL it falls back to per-replica memory, so each replica then allows its own full budget.
+      - file: apps/backend/src/bootstrap/plugins/route-rate-limit.ts
+      - file: apps/backend/__tests__/hope-routes.test.ts
       - script: test:s11:adversarial-stages:live
 
   - id: CW-AC-02A
@@ -508,6 +560,53 @@ controls:
       - file: apps/backend/src/modules/35-subscription/pricing/plan-service.ts
       - file: apps/backend/__tests__/m35-tenant-pricing.live.test.ts
 
+  - id: CW-PI-02
+    title: The manual iQIES hand-off keeps its integrity — assemble packages only records that are still packageable and have no unresolved ERROR finding, judged again under the share lock; a result import that cannot store every item verdict rolls back with a 409; and a cancelled package cannot be handed onward (download, mark-uploaded and result import refuse a cancelled HOPE batch with 409 M10_SUBMISSION_CANCELLED, and a correction whose package was cancelled is in progress again, never resubmitted)
+    hipaa: ["164.312(c)(1)"]
+    soc2: ["PI1.3"]
+    status: implemented
+    evidence:
+      # The live suite asserts all three refusals on a real cancelled batch, and that the download refuses without reading the
+      # package column. Cancel itself is limited to a batch never marked uploaded (packaged or exported), refuses an ai_*
+      # principal (CW-AC-02), purges the package bytes unless a legal hold keeps them (CW-DS-01) and writes
+      # hope.submission_cancelled (CW-AU-01).
+      - script: test:m10:write:live
+      - script: test:m10:submission-result:live
+      - file: apps/backend/src/modules/10-hope/hope-submission-cancel.ts
+      - file: apps/backend/src/modules/10-hope/hope-submission-cancel-db.ts
+      - file: apps/backend/src/modules/10-hope/hope-submission-result.ts
+      - file: apps/backend/__tests__/hope-submission-cancel.test.ts
+      # Assemble re-judges status, spec, ISC, record id, items AND unresolved ERROR findings under the FOR SHARE lock, so a
+      # record that gained an ERROR finding after validation, or was superseded meanwhile, is not packaged (the live case
+      # for the ERROR finding is in m10-hope-submission-result.live.test.ts). The ZIP is built before the share locks are
+      # taken, and built again only when the re-judgement dropped a record, so the package holds exactly the records
+      # packaged. A result import
+      # rolls back with a 409 when its bulk item UPDATE misses a row (an item gone, settled or moved meanwhile), so a batch
+      # never ends with fewer stored verdicts than its status assumes; the message asks for a reload and a NEW
+      # Idempotency-Key. The result events of one batch are append-only audit evidence. A batch holds at most 20,000
+      # recorded report rows for reports that settle no item (MAX_RESULT_EVENTS_PER_SUBMISSION in hope-submission-result.ts):
+      # an import that settles no pending item and would pass it is answered a static 409 and records nothing. The count is
+      # made only for such a report, under the batch row lock, and a replay returns before it. An import that settles an item
+      # is always recorded (a CMS verdict is final and nothing could lower the count afterwards); it is bounded by the
+      # batch's finite items, each settled once, times 2000 rows. A batch's findings read returns its newest rows, at most
+      # 20,000, oldest first, and reads only the columns it shows (raw_result only for assessmentId), with one lookup map and
+      # no per-row scan. The unit tests are in hope-g2-route-service.test.ts and the live case is in
+      # m10-hope-submission-result.live.test.ts.
+      - file: apps/backend/src/modules/10-hope/hope-assemble-candidates.ts
+      - file: apps/backend/__tests__/hope-assemble-candidates.test.ts
+      - file: apps/backend/src/modules/10-hope/hope-assemble-package.ts
+      - file: apps/backend/__tests__/hope-assemble-batch-write.test.ts
+      - file: apps/backend/src/modules/10-hope/hope-submission-result-writes.ts
+      - file: apps/backend/__tests__/hope-submission-result-writes.test.ts
+      - file: apps/backend/__tests__/hope-g2-route-service.test.ts
+      # Known limit: the upload to the CMS portal is a manual step outside ChartWarden, so a copy of the ZIP downloaded before
+      # the cancel is not recalled by it; the control stops ChartWarden itself from serving, recording or resulting a
+      # cancelled batch. Policy choice: cancelling an `exported` batch NULLs the ZIP even if the operator already uploaded it
+      # to CMS but had not yet clicked Mark uploaded; the package SHA-256 and size stay in the batch row and in the cancel
+      # audit event. Known limit: the submission list caps at 500 batches (SUBMISSION_LIST_LIMIT in hope-route-service-db.ts,
+      # no route filter or pagination yet), and `rejected` and `partially_accepted` batches are never treated as closed, so
+      # an organization with more than 500 unfinished batches at once would see newer accepted ones fall out of the list.
+
   - id: CW-AC-19
     title: >-
       Auditors are never billed or provisioned as staff: the role key external_auditor is reserved for the system auditor role (a tenant role under that key is refused with 422 RESERVED_ROLE at the route and by a trigger in the database; because the application role can write every column the system row's facts rest on, the trigger also requires the transaction-local marker only the auditor grant sets before it writes that row, which stops other application code paths from writing it, not a session that can run arbitrary SQL as the application role), so a real auditor always lands on the system role. An organisation that still holds a legacy tenant-created external_auditor role is refused at auditor redemption (role_over_privileged, 403 AUDITOR_ROLE_MISCONFIGURED, fail-closed): an administrator must remove that role before an auditor can be onboarded (CW-AU-02). Family-portal, auditor magic-link and ChartWarden support sessions never enter the staff meter at all: its ledger is fed by m2.session.created, which fires only when a staff session binds to an organisation at select-organization, so those sessions write no ledger row. The meter excludes the system auditor role and platform-owned operator roles (non_staff_observed), decided when each sign-in is observed, not from today's grants; and a month that spans a pseudonym-key rotation counts its busiest single epoch and flags the statement needs_review.
@@ -840,6 +939,56 @@ controls:
       # #909 - a returned lab's clinician review is an append-only, audited, DB-stamped record (reviewer + discipline),
       # an amended result re-opens it, and results unreviewed for 24 h alert (clinical-safety control).
       - script: test:m11:lab-result-review:live
+      # R-05 — a HOPE signature leaves an explicit audit row beside the row-diff trigger: that the signer attested, the
+      # server's attestation version and a SHA-256 of the exact wording, which step-up operation the route required, and
+      # who signed (ids and enums only).
+      - file: apps/backend/src/modules/10-hope/hope-signature-audit.ts
+      - script: test:m10:sfv-sign-binding:live
+      # The critical hope.late_deadline_override event carries the admin's typed justification (screened for SSN and MBI
+      # shapes at the route guard and again at the service, CW-AC-37). The event is immutable: the app role gets
+      # permission denied on UPDATE and DELETE (asserted in the m10-s04 live suite).
+      - file: apps/backend/src/modules/10-hope/hope-route-service-db.ts
+      - file: apps/backend/src/modules/10-hope/hope-sfv-completion-record.ts
+      - script: test:m10:s04-override:live
+      - script: test:m10:write:live
+      # M10 operator writes that the row-diff trigger alone did not explain leave an explicit event: hope.submission_cancelled,
+      # hope.schedule_skipped and hope.schedules_regenerated are written in the same transaction as the write (ids, enums
+      # and counts only); hope.sfv_completion_denied (outcome denied, warn) is written after the request transaction rolls
+      # back, best effort, when a caseload clinician names another patient's triggering assessment, and is bounded by the SFV
+      # route's rate limit (CW-AC-02; fail-open, a required dependency of the route mount, per-replica memory without
+      # REDIS_URL). Spec §8.1 lists all four. The cancel event records bytesKeptForLegalHold and
+      # packageBytesPurged (CW-DS-01), and the package download stamps exported_by_membership_id, the membership that took the
+      # package out (a hope_submission column, so the row-diff audit images carry it). The cancel event also carries
+      # bytesKeptReason (legal_hold, hold_scope_unreadable or none), bytesKeptForLegalHold (true only for legal_hold) and
+      # repeatCancel (a repeat cancel's event carries priorStatus "cancelled"). The sfv-sign-binding live suite asserts that the package download's read-audit event lands in audit_event.
+      - file: apps/backend/src/modules/10-hope/hope-operator-audit.ts
+      - file: apps/backend/__tests__/hope-operator-audit.test.ts
+      # The hope_submission write-audit trigger no longer detoasts the multi-MB package; its audit images equal the old ones
+      # (live equality test), and it scrubs acceptance_report, envelope_storage_uri, envelope_sha256 and the two
+      # operator-typed references report_reference and iqies_submission_reference (they read "<changed>" in the images and
+      # stay in the row; v_cols in migration 1497, M10_AUDIT_DENYLIST in packages/types/src/hope.ts, a unit test checks the
+      # two agree, and arch:audit-denylist-sync checks the denylist against the trigger). The hope_submission_result_event
+      # trigger scrubs raw_result, message and report_reference (migration 1499), and the live suite asserts that its INSERT,
+      # UPDATE and DELETE images are scrubbed. The hope_submission_item trigger also builds its images by name and never
+      # reads the XML column (migration 1500: no detoast, images equal the old ones, iqies_validation_result still scrubbed;
+      # unit test and a live describe). Known limit: these images are built from hand-kept column lists (migrations 1497 and
+      # 1500), so a column added to either table must be added to its trigger in the same migration or its changes stop
+      # being audited. That is guarded by the unit test and the live parity test, not by an arch gate, and
+      # jsonb_build_object takes at most 100 arguments (the migrations state it: 35 columns = 70 for hope_submission, 18 =
+      # 36 for hope_submission_item; a unit test keeps the count under the limit). The scrubs are prospective only: audit
+      # rows written before them keep any reference value (iqies_submission_reference since the column was added in
+      # migration 0226, report_reference on hope_submission_result_event since its trigger in 0234, and report_reference on
+      # hope_submission from migration 1496 until 1497), which is inherent to an append-only trail.
+      # A second known limit: hope_submission.file_level_result (jsonb, no writer today) is not in v_cols, so a change to it
+      # would be audited unscrubbed; whoever adds a writer must add it to v_cols and to M10_AUDIT_DENYLIST in the same
+      # migration (a comment at its declaration in packages/db/src/schema/hope/hope-submissions.ts says so).
+      - file: packages/db/migrations/1497_m10_hope_submission_audit_no_package_read.sql
+      - file: packages/db/migrations/1499_m10_hope_submission_result_event_audit_scrub_reference.sql
+      - file: packages/db/migrations/1500_m10_hope_submission_item_audit_no_xml_read.sql
+      - file: packages/types/src/hope.ts
+      - file: apps/backend/__tests__/hope-submission-audit-trigger.test.ts
+      - file: apps/backend/__tests__/m10-hope-submission-result.live.test.ts
+      - script: test:m10:submission-result:live
       - script: test:audit:nested-redaction:live
       - script: arch:audit-denylist-sync
       # GAP-141 download confirmation: the store's audit log reaches the api only over the internal `audit` network
@@ -859,13 +1008,16 @@ controls:
       - script: test:m3:auditor-engagement:live
 
   - id: CW-IA-01
-    title: Person/entity authentication — MFA, step-up for sensitive actions, credential throttling
+    title: Person/entity authentication — MFA, step-up for sensitive actions (signing a HOPE assessment included), credential throttling
     hipaa: ["164.312(d)", "164.308(a)(5)(ii)(D)"]
     soc2: ["CC6.1", "CC6.2"]
     status: implemented
     evidence:
       - script: test:m2:auth-hardening:live
       - script: test:m2:step-up-override:live
+      # R-05 — both HOPE signing routes (hope.timepoint.sign, hope.sfv.record) require a fresh step-up that an active
+      # break-glass grant does not satisfy; a stale step-up answers 403 STEP_UP_REQUIRED.
+      - script: test:m10:sfv-sign-binding:live
       - script: test:rate-limit-store:live
       - file: packages/auth/src/identity/credential-throttle.ts
 
@@ -928,6 +1080,31 @@ controls:
       - file: packages/audit/src/actions/m35.ts
       - file: packages/audit/__tests__/action-catalog-m35.test.ts
 
+  - id: CW-AC-46
+    title: Signing a HOPE assessment is an attested, step-up-gated act by the signed-in clinician, and the ceremony is audited
+    hipaa: ["164.312(c)(1)", "164.312(d)"]
+    soc2: ["CC6.1", "PI1.3"]
+    status: partial
+    evidence:
+      - script: test:m10:sfv-sign-binding:live
+      - file: apps/backend/src/modules/10-hope/hope-signature-audit.ts
+      - file: apps/backend/__tests__/hope-routes.test.ts
+      # The signer's `ifVersion` is refused when chart prefill rewrote an answer after the review: a workspace re-open that
+      # changes an answer bumps `version`, and so does a re-record of an existing draft (live cases in the write suite).
+      - script: test:m10:write:live
+      - file: apps/backend/__tests__/hope-admission-prefill-version.test.ts
+      - file: apps/backend/__tests__/hope-w2b-rerecord-prefill.test.ts
+      # A read-only role (no hope.timepoint.write) writes nothing on the workspace, review and validation reads. Only a
+      # writer's workspace open freezes the spec, refreshes the chart prefill and reconciles the workflow controls, only a
+      # writer's review open also runs the SFV self-heal, and only a writer's validation read persists its findings; a
+      # reader is answered a static 409 for a legacy spec-less draft instead of having its spec frozen.
+      - file: apps/backend/__tests__/hope-workspace-read-only.test.ts
+      - file: apps/backend/__tests__/hope-read-only-no-writes.test.ts
+    gap:
+      reason: The sign routes require the caller's attestation and a fresh step-up (not satisfiable by break-glass), and the ceremony is audited, but the signer is not required to be the record's author and the signer's licence is not checked at signing; the ABAC discipline check compares the signer's discipline with the discipline frozen on the record at authoring, not with a licence. `attestationVersion` is optional on the sign and SFV requests, so a signature can record "attested" without the client naming a wording version (the audit row then says `attestationVersionSupplied:false`). An attestation flag and a named version prove the string was sent, not that a human read the wording. The step-up is session recency (`hope.timepoint.sign` / `hope.sfv.record`, which break-glass cannot satisfy), not bound to the specific record being signed. The SFV completion route is gated on `hope.timepoint.write` plus caseload and discipline (spec §4.1), not on `hope.timepoint.sign`, although it inserts an already-signed record; whether it should require the sign permission is an open policy question for a human, because it would change which roles can complete an SFV.
+      owner: clinical-platform
+      review_by: 2027-04-30
+
   - id: CW-AC-42
     title: >-
       The tenant's own skip of an onboarding step removes the operator's check on that step, so it is itself a control. POST /api/v1/tenant/onboarding/:taskId/skip requires onboarding.manage_own, the literal org_admin role (the ABAC predicate tenant_org_admin_role, and the service's owner rule), a fresh step-up, a human (non-AI) actor, an Idempotency-Key and a rationale of 8 to 2000 characters, cleaned and screened for patient identifiers (422 EVIDENCE_LOOKS_LIKE_PHI). It settles only MAC credentials, payer enrollment and DoseSpot kickoff, in the strict step order; any other step, sample data, go-live and a step an operator added included, is refused with 409 ONBOARDING_STEP_NOT_TENANT_SKIPPABLE before the step's owner rule and the order are judged. The skip is reversible by re-opening the step (refused while a go-live attestation is pending; the re-open keeps who skipped, when and the rationale in the task's history) and is recorded in the task's completion evidence with the actor kind tenant, the member, the user and the rationale. The tenant's skip revokes a pending go-live attestation in the same transaction; an operator's skip and the system's clearinghouse skip do not. The three steps are gating, so an open one already rules a pending attestation out and the revocation is a guarantee the wizard does not normally reach. The rationale is free text and is copied into the tenant's audit trail: the onboarding_task row-audit trigger (audit_phi_write_onboarding_task, migration 0053, audit_scrub with an empty denylist) copies the whole completion evidence into audit_event before and after, with retention class compliance, append-only, readable in that organization by holders of audit.read; for an operator's skip the same row also names the operator's user and membership. The text is screened for SSN and MBI shapes only, which is best effort; the same exposure already exists for evidence notes, blocker reasons and operator skips. The rationale is also held in the idempotency record's response body until it expires after 24 hours and is swept hourly and, after a re-open, in the task's re-open history; no log line, outbox event, error message or 422 carries it. The platform API's view of the tenant's wizard lists the skip (skippedBy tenant, with the rationale) and the admin console's step evidence card says who skipped the step (the organization, ChartWarden operations or the system), for the go-live approver, who still evaluates every go-live guard. Nothing machine-checks that a skip is true: the approver's review is the check. The route is on the not-yet-live organization's allowlist (CW-AC-16).
@@ -979,7 +1156,7 @@ controls:
 
   - id: CW-AC-36
     title: >-
-      A failed request frees its Idempotency-Key for a retry only when it provably wrote nothing, and a duplicate of a request that is still running, or that never finished, is told so by its own code. A mutating request that carries the header and has an organization claims (organization, key) atomically in the Postgres idempotency_key table before its handler runs (a different body under the key is 409 IDEMPOTENCY_CONFLICT; a completed response is replayed; a route marked noIdempotencyCapture takes no claim). A 5xx or the deadlock/serialization 409 CONCURRENT_UPDATE RELEASES the claim only if the per-request commit tracker proves that nothing committed after the claim, and is otherwise cached and replayed like any other response. The tracker is fed by every query of the one pool builder, createDbClient (a test fails if a runtime source builds another pg Pool or Client), and counts a COMMIT of a transaction that ran a write, an autocommit write, a write transaction still open (its first write counts until its COMMIT or ROLLBACK) and a COMMIT or autocommit write the server has not answered yet; a server error with a 5-character SQLSTATE and severity ERROR (other than classes 08, 58 and XX) clears that count, a lost connection or a FATAL leaves it counted. It lexes the statement text (a string literal, a quoted identifier and a line comment are each one opaque token) and treats as a write any text with a block comment, any text with both a semicolon and a line comment, any text it cannot lex cleanly, any compound text with a statement that is not a SET/SHOW-style statement or a read, any SELECT, WITH, VALUES, TABLE or EXPLAIN that carries DML or calls anything but a short allowlist of read-only builtins (a user-defined function counts as a write, readers included), EXPLAIN ANALYZE of anything but a plain SELECT-style statement, DECLARE and FETCH. When the request's tracker is not the ambient one at the claim or at onSend, a retryable failure is cached (and a warning is logged with the key and no payload). A duplicate whose first request is still pending gets 409 IDEMPOTENCY_IN_FLIGHT (keep the key and retry), and once that claim has been pending for more than 15 minutes (the database's clock, from created_at) 409 IDEMPOTENCY_KEY_STUCK (the first request's outcome is unknown: do not retry with the key, read the resource); the stuck row is never reclaimed, released or re-run, and a row whose release or completion failed stays pending until its 24-hour expiry. In the browser, the one shared API client gives every keyless POST, PUT, PATCH and DELETE a key per method, URL, If-Match and bounded JSON-body intent; the shared attempt-key keeper covers routes whose contract requires the caller to name the header, retains only a salted opaque digest of a caller fingerprint, never evicts an active request, and keeps a key across no answer, a gateway page and IDEMPOTENCY_IN_FLIGHT while renewing it after every final answer including IDEMPOTENCY_KEY_STUCK. Held client keys have a 15-minute unanswered idle limit, a one-hour hard cap and a 64-idle-intent bound, and are cleared where web, admin and portal decide the session ended. A validate, refresh, probe or regenerate action that deliberately means run against current state sends a fresh key per click and has a pinning test. The residuals are stated, not hidden: the lost-context check holds only at those two checkpoints and does not see a context lost inside a handler; a route that answers a 5xx while its handler keeps running and has not yet issued its first write can be released and still commit; a route that hijacks its reply (the M33 CSV exports) never completes its claim, so its duplicates are IN_FLIGHT and then STUCK; an effect outside Postgres (an outbound call, a queue or object-store write made directly in a route) is not counted; a non-JSON, oversized or too-slow-to-read browser request body receives a fresh key on each call; a deliberate fresh-per-run action gives up lost-reply replay safety because rerunning is its purpose; and the client temporarily recognizes the older server's exact in-flight message until that server compatibility window closes
+      A failed request frees its Idempotency-Key for a retry only when it provably wrote nothing, and a duplicate of a request that is still running, or that never finished, is told so by its own code. A mutating request that carries the header and has an organization claims (organization, key) atomically in the Postgres idempotency_key table before its handler runs (a different body under the key is 409 IDEMPOTENCY_CONFLICT; a completed response is replayed; a route marked noIdempotencyCapture takes no claim). A 5xx, the deadlock/serialization 409 CONCURRENT_UPDATE, M10's lock-wait 409 M10_RECORD_BUSY or a 401/403 refusal (the claim is made before the route's own guards, so a refusal that a later step-up or grant would reverse must not be replayed to a same-key retry) RELEASES the claim only if the per-request commit tracker proves that nothing committed after the claim, and is otherwise cached and replayed like any other response. The tracker is fed by every query of the one pool builder, createDbClient (a test fails if a runtime source builds another pg Pool or Client), and counts a COMMIT of a transaction that ran a write, an autocommit write, a write transaction still open (its first write counts until its COMMIT or ROLLBACK) and a COMMIT or autocommit write the server has not answered yet; a server error with a 5-character SQLSTATE and severity ERROR (other than classes 08, 58 and XX) clears that count, a lost connection or a FATAL leaves it counted. It lexes the statement text (a string literal, a quoted identifier and a line comment are each one opaque token) and treats as a write any text with a block comment, any text with both a semicolon and a line comment, any text it cannot lex cleanly, any compound text with a statement that is not a SET/SHOW-style statement or a read, any SELECT, WITH, VALUES, TABLE or EXPLAIN that carries DML or calls anything but a short allowlist of read-only builtins (a user-defined function counts as a write, readers included), EXPLAIN ANALYZE of anything but a plain SELECT-style statement, DECLARE and FETCH. When the request's tracker is not the ambient one at the claim or at onSend, a retryable failure is cached (and a warning is logged with the key and no payload). A duplicate whose first request is still pending gets 409 IDEMPOTENCY_IN_FLIGHT (keep the key and retry), and once that claim has been pending for more than 15 minutes (the database's clock, from created_at) 409 IDEMPOTENCY_KEY_STUCK (the first request's outcome is unknown: do not retry with the key, read the resource); the stuck row is never reclaimed, released or re-run, and a row whose release or completion failed stays pending until its 24-hour expiry. In the browser, the one shared API client gives every keyless POST, PUT, PATCH and DELETE a key per method, URL, If-Match and bounded JSON-body intent; the shared attempt-key keeper covers routes whose contract requires the caller to name the header, retains only a salted opaque digest of a caller fingerprint, never evicts an active request, and keeps a key across no answer, a gateway page and IDEMPOTENCY_IN_FLIGHT while renewing it after every final answer including IDEMPOTENCY_KEY_STUCK. Held client keys have a 15-minute unanswered idle limit, a one-hour hard cap and a 64-idle-intent bound, and are cleared where web, admin and portal decide the session ended. A validate, refresh, probe or regenerate action that deliberately means run against current state sends a fresh key per click and has a pinning test. The residuals are stated, not hidden: the lost-context check holds only at those two checkpoints and does not see a context lost inside a handler; a route that answers a 5xx while its handler keeps running and has not yet issued its first write can be released and still commit; a route that hijacks its reply (the M33 CSV exports) never completes its claim, so its duplicates are IN_FLIGHT and then STUCK; an effect outside Postgres (an outbound call, a queue or object-store write made directly in a route) is not counted; a non-JSON, oversized or too-slow-to-read browser request body receives a fresh key on each call; a deliberate fresh-per-run action gives up lost-reply replay safety because rerunning is its purpose; and the client temporarily recognizes the older server's exact in-flight message until that server compatibility window closes
     hipaa: ["164.312(c)(1)"]
     soc2: ["PI1.3", "PI1.4"]
     status: partial
@@ -994,6 +1171,7 @@ controls:
       - file: packages/shared/src/idempotency/idempotency.ts
       - file: packages/db/__tests__/commit-tracker.test.ts
       - file: apps/backend/__tests__/idempotency-commit-tracker.test.ts
+      - file: apps/backend/__tests__/idempotency-release.test.ts
       - file: apps/backend/__tests__/idempotency-in-flight.test.ts
       - file: apps/backend/__tests__/idempotency-real-socket.test.ts
       - file: packages/ui/src/core/api/idempotency-middleware.ts
@@ -1009,13 +1187,13 @@ controls:
       - file: apps/web/src/modules/24-billing-medicaid/fresh-key-actions.dom.test.tsx
       - file: apps/web/src/modules/33-reporting/fresh-key-actions.dom.test.tsx
     gap:
-      reason: The release rule cannot prove what it cannot see. The lost-context check runs only at the claim and at onSend, so a context lost inside a handler leaves a later write unattributed; a route that answers a 5xx while its handler keeps running (a Promise.race deadline or timeout wrapper) and has not yet written can be released and still commit afterwards (the routes in apps/backend/src that answer before their work ends were reviewed on 2026-11-09 and each writes its ledger or in-doubt row, which is tracked, before it answers, or only abandons an outbound call or a read); and an outbound call, a queue write or an object-store write made directly in a route is not counted (the platform's convention puts those behind the outbox, after the commit). The browser cannot stably fingerprint non-JSON, oversized or too-slow-to-read bodies, and deliberately fresh-per-run actions trade replay safety for a current-state rerun; both receive fresh keys. During the server deployment window the client also recognizes the legacy exact in-flight message. A new route that answers early or hijacks its reply, and a new client write whose body is not bounded JSON or whose action is classified fresh-per-run, must be reviewed against this row.
+      reason: The release rule cannot prove what it cannot see. The lost-context check runs only at the claim and at onSend, so a context lost inside a handler leaves a later write unattributed; a route that answers a 5xx while its handler keeps running (a Promise.race deadline or timeout wrapper) and has not yet written can be released and still commit afterwards (the routes in apps/backend/src that answer before their work ends were reviewed on 2026-11-09 and each writes its ledger or in-doubt row, which is tracked, before it answers, or only abandons an outbound call or a read); and an outbound call, a queue write or an object-store write made directly in a route is not counted (the platform's convention puts those behind the outbox, after the commit). The browser cannot stably fingerprint non-JSON, oversized or too-slow-to-read bodies, and deliberately fresh-per-run actions trade replay safety for a current-state rerun; both receive fresh keys. During the server deployment window the client also recognizes the legacy exact in-flight message. A new route that answers early or hijacks its reply, and a new client write whose body is not bounded JSON or whose action is classified fresh-per-run, must be reviewed against this row. A cached 2xx is replayed before the route's guards run, so a same-user, same-key retry within 24 hours gets the earlier response even after a permission or caseload revocation (the fingerprint binds organization, user and actor kind; the plugin documents it and it is unchanged).
       owner: engineering
       review_by: 2027-03-31
 
   - id: CW-AC-37
     title: >-
-      Operator and tenant free text that is STORED (on a row a tenant can read, in the audit trail or in a job receipt) is screened for an SSN- or MBI-shaped value before the service runs: a 422 EVIDENCE_LOOKS_LIKE_PHI that names the field and never echoes the value (names use a name-specific refusal text). Screened in M34, platform: the tenant status-transition, offboard and shred reasons, the feature-flag rationale and every string and object key of the flag value (a value nested deeper than 8 levels, with more than 500 strings or more than 20,000 characters is refused with 422 VALIDATION_FAILED, not left partly unscreened), the signup-intent rejection reason, the oversized-export approval reason, the onboarding-template title and description, the provision legal business name and first-admin name, the qualify first-admin name, the onboarding-data reason, and the wizard's text and the org profile display name (CW-AC-15); in M34, tenant: the support-consent grant and revocation reasons, the tenant-export justification, the DSAR requestor identity-verification evidence and the DSAR denial narrative; the public self-serve signup legal business name; in M35: the refund detail and refund-denial reason, the claims-billing add-on grant reason and the plan name and description; in M23: the NPI-verification evidence; and in M12: the administrator's held-transmission resolution reason, before its transaction stores it on the transmission row. The screen reads the text NFKD-folded with combining marks and format characters dropped and each run of horizontal whitespace collapsed to one separator, judges characters of the other-number class (superscripts, subscripts, circled digits) both as the digits they fold to and as separators, and refuses nine digits as 3-2-4 groups, as 3-3-3 groups standing alone (only one separator that is not a line break continues a chain of groups), or as nine single digits, with up to ten characters that are neither letters nor numbers between groups, and any MBI-shaped window. It is a best-effort guard against an accident, not a defence against someone hiding a value; its known gaps (an unbroken run of ten to twelve digits, digits written as words, CJK numerals or enclosed forms, other groupings or encodings, more than ten non-whitespace separators, a 3-3-3 value with one separator and another number on either side, lookalike letters) are listed in packages/shared/src/text/patient-identifier.ts. NOT screened: fields the service accepts and discards (the DEK-rotation reason, the support-session close note, the DSAR extension reason), because refusing them would block an action for text nothing keeps and a change that starts storing one must screen it; the invitation-accept display name (the invitee's own name); the structured business data in the onboarding-data bodies owned by M2 and M23 (legal name, DBA, addresses, phone, NPI, CCN, tax id, MAC credential identifiers and secret), where digits are legitimate; catalogue codes, slugs, keys, ids and email addresses
+      Operator and tenant free text that is STORED (on a row a tenant can read, in the audit trail or in a job receipt) is screened for an SSN- or MBI-shaped value before the service runs: a 422 EVIDENCE_LOOKS_LIKE_PHI that names the field and never echoes the value (names use a name-specific refusal text). Screened in M34, platform: the tenant status-transition, offboard and shred reasons, the feature-flag rationale and every string and object key of the flag value (a value nested deeper than 8 levels, with more than 500 strings or more than 20,000 characters is refused with 422 VALIDATION_FAILED, not left partly unscreened), the signup-intent rejection reason, the oversized-export approval reason, the onboarding-template title and description, the provision legal business name and first-admin name, the qualify first-admin name, the onboarding-data reason, and the wizard's text and the org profile display name (CW-AC-15); in M34, tenant: the support-consent grant and revocation reasons, the tenant-export justification, the DSAR requestor identity-verification evidence and the DSAR denial narrative; the public self-serve signup legal business name; in M35: the refund detail and refund-denial reason, the claims-billing add-on grant reason and the plan name and description; in M23: the NPI-verification evidence; in M12: the administrator's held-transmission resolution reason, before its transaction stores it on the transmission row; and in M10: the late-deadline override justification (`adminOverrideJustification`), at the route guard and again at the service, before it is kept on the critical, immutable `hope.late_deadline_override` audit event; the two operator-typed submission references, the result report reference (`reportReference`) and the mark-uploaded iQIES reference (`iqiesSubmissionReference`), which the request schema restricts to letters, digits and the characters `. _ : # / -` and spaces after a non-space first character (1 to 128 characters); and the operator-typed fields of a CMS result row. The `code`, `itemCode` and `iqiesRecordId` tokens are one word (letters, digits and `. _ : # -`, no space and no slash, at most 64 characters, empty allowed); `severity` is a closed set (fatal, error or warning, in any case), so it cannot carry free text; the `status`, `result` and `outcome` phrases take the reference character set plus commas, semicolons and parentheses and reach only the scrubbed raw-result columns. Each reference and token takes its character set and then this identifier screen, in the route and again in the service (`assertSubmissionReferenceIsClean` and `assertResultRowsAreClean` in hope-reference-screen.ts: 422 EVIDENCE_LOOKS_LIKE_PHI, the field name built from a fixed key list and the row index, a static text, never the value). The three one-word tokens are also refused when they hold a calendar date (YYYY-MM-DD, DD.MM.YYYY or MM-DD-YYYY, years 1800 to 2099) or a US phone number (3-3-4 digits) set apart by any of `- . _ : #`, mixed allowed, and a uuid `iqiesRecordId` is exempt from the identifier screen. An `assessmentId` is limited to the characters of a uuid (hex digits, hyphens, braces and whitespace, `HOPE_RESULT_ASSESSMENT_ID_PATTERN`) and is stored trimmed; one that is not a uuid is still screened for SSN and MBI shapes, and the read API never returns a non-uuid id. A result-row `message` (up to 1000 characters) is screened for SSN and MBI shapes too, and a control character or a lone surrogate in either field is refused with 422 INVALID_CHARACTERS (it used to surface as a 500); the message is also scrubbed from audit images (CW-AU-01). A non-uuid `assessmentId` is screened for SSN and MBI shapes and, like a code, for a calendar date or a US phone number set apart by hyphens, blanks (a space, a no-break space), braces or any run of them (for example "1990 05 17", "555 867 5309", "{555}{867}{5309}" or "555 - 867 - 5309"), with 422 EVIDENCE_LOOKS_LIKE_PHI on the field `results.<row>.assessmentId`; only the shape test sees the normalised string, the stored value is unchanged, and compact digit forms stay a residual. A result import has a text budget of at most 2000 rows and 100,000 UTF-16 units of text the screen reads in all (each `message` and each non-uuid `assessmentId`; a canonical uuid is free), else a static 422 VALIDATION_FAILED with code TOO_LARGE, checked before any screen runs, so real capacity is about 660 rows at 150-character messages and about 330 at 300 (hope-result-report-limits.test.ts proves the screen is not invoked). The route takes a body of at most 3 MiB (a 413 in the standard error envelope, before parsing) and its request parser reads only the first schema error. The shared identifier screen (`normalise` in packages/shared/src/text/patient-identifier.ts) drops combining marks and format characters before the NFKD as well as after it, because NFKD reorders a run of combining marks quadratically and that stalled the shared event loop for seconds (a 100-row report of stacked marks about 1.9 s a request, one 20,000-character string about 2.6 s, now milliseconds); M10, M23, M34, M35 and DoseSpot all use the screen. For every well-formed string the result is identical to dropping only after the NFKD, as patient-identifier.test.ts pins against an inline copy of the previous function. It is not identical for an ill-formed string, since a lone high and a lone low surrogate with only marks or format characters between them are joined before the NFKD, so the pair is decomposed as the character it spells, as if typed whole; that is accepted because keeping the marks between the halves would bring the stall back, and M10 refuses lone surrogates before the screen. A known limit outside this change and untouched by it: the same normalise-before-bound pattern exists in M23 billing (apps/backend/src/modules/23-billing-medicare/routes/mac-credential-body.ts and tenant-clearinghouse/screening.ts) and in packages/billing/src/dde/notes.ts, so a billing administrator holding a second factor could send a long mark-stacked string to the MAC-credentials route and stall the event loop. The service rebuilds each row from the schema's keys only, refuses an unknown key, a non-object row or a non-string value with a static 422, and stores only the rebuilt row (the in-memory twin applies the same screens); a blank `code` or `itemCode` is stored as NULL, not an empty string, which used to collide in the unique import index and silently drop a second row. Residuals: a single-word surname or hyphenated name fits the `code`, `itemCode` and `iqiesRecordId` character set, and so do a date written as eight digits (YYYYMMDD, MMDDYYYY), a month-name date (12-Mar-1945) and ten unbroken digits. `code` and `itemCode` are copied unscrubbed into the append-only audit images of `hope_submission_result_event` (`cms_edit_code`, `item_code`) and into the `m10.hope.submission_rejected` outbox payload (`findings[].ruleId`), and `iqiesRecordId` into those of `hope_submission_item` and `hope_assessment` (`iqies_record_id`), so a name that fits the one-word rule stays in the audit trail and the outbox for their retention, with no eraser. Open human decisions: the CMS edit-code and record-id formats, and the closed severity set (fatal, error, warning; a row with `Info` or `Informational` makes an import 422), are unverified against real iQIES output and need confirming against a CMS sample. The override justification measures its 20-character minimum after collapsing each run of Unicode White_Space to one space (so runs of non-breaking spaces or U+2028 and U+2029 cannot pad it), and the route guard REJECTS, never strips, control and format characters and lone surrogates with 422 INVALID_CHARACTERS (Hangul fillers and the Braille blank still pass, a residual). A documented residual (the owner chose to restore the justification text with the SSN and MBI screen): the override justification is free text screened for SSN and MBI shapes only (a name or free narrative passes), and it stays in the immutable trail for the organization's audit retention with no eraser (the override modal tells the admin not to enter patient identifiers). The web client repeats the justification and reference rules only as a UX layer (hope-override-justification.ts and hope-report-reference.ts, copies of the server's rules; hope-mirror-parity.test.ts fails when a copy and the server rule diverge); the server is the control. The audit scrubs of the reference columns are prospective only, so earlier immutable audit rows keep any reference value (CW-AU-01). The request-body parser no longer echoes a client-chosen property name in a 422 (a static "(unexpected property)"). Related M10 inputs are closed or bounded instead of screened: the schedule skip reason is a closed code list (CW-AC-02), a refused coded answer is no longer echoed into the 24-hour idempotency cache, and a string answer is length-bounded (64 characters). The screen reads the text NFKD-folded with combining marks and format characters dropped and each run of horizontal whitespace collapsed to one separator, judges characters of the other-number class (superscripts, subscripts, circled digits) both as the digits they fold to and as separators, and refuses nine digits as 3-2-4 groups, as 3-3-3 groups standing alone (only one separator that is not a line break continues a chain of groups), or as nine single digits, with up to ten characters that are neither letters nor numbers between groups, and any MBI-shaped window. It is a best-effort guard against an accident, not a defence against someone hiding a value; its known gaps (an unbroken run of ten to twelve digits, digits written as words, CJK numerals or enclosed forms, other groupings or encodings, more than ten non-whitespace separators, a 3-3-3 value with one separator and another number on either side, lookalike letters) are listed in packages/shared/src/text/patient-identifier.ts. NOT screened: fields the service accepts and discards (the DEK-rotation reason, the support-session close note, the DSAR extension reason), because refusing them would block an action for text nothing keeps and a change that starts storing one must screen it; the invitation-accept display name (the invitee's own name); the structured business data in the onboarding-data bodies owned by M2 and M23 (legal name, DBA, addresses, phone, NPI, CCN, tax id, MAC credential identifiers and secret), where digits are legitimate; catalogue codes, slugs, keys, ids and email addresses
     hipaa: ["164.312(b)", "164.502(b)"]
     soc2: ["CC6.1", "C1.1"]
     status: implemented
@@ -1032,6 +1210,22 @@ controls:
       - file: apps/backend/src/modules/35-subscription/routes/service-drizzle.ts
       - file: apps/backend/src/modules/12-dosespot/tenant-config/transmission-resolve.ts
       - file: apps/backend/src/modules/12-dosespot/tenant-config/transmission-resolve.test.ts
+      - file: apps/backend/src/modules/10-hope/routes/hope-route-guards.ts
+      - file: apps/backend/__tests__/hope-route-guards.test.ts
+      - file: apps/backend/__tests__/hope-routes.test.ts
+      - file: apps/backend/__tests__/m10-s04-hope-override.live.test.ts
+      - file: apps/backend/__tests__/hope-answer-service.test.ts
+      - file: apps/backend/src/modules/10-hope/routes/hope-reference-screen.ts
+      - file: apps/backend/src/modules/10-hope/routes/hope-typebox.ts
+      - file: apps/backend/__tests__/hope-typebox-parse.test.ts
+      - file: apps/backend/__tests__/hope-result-token-screen.test.ts
+      - file: apps/backend/__tests__/hope-result-report-limits.test.ts
+      - file: apps/backend/__tests__/hope-submission-rejected-catalog.test.ts
+      - file: apps/web/src/modules/10-hope/hope-mirror-parity.test.ts
+      - file: apps/web/src/modules/10-hope/hope-override-justification.ts
+      - file: apps/web/src/modules/10-hope/hope-report-reference.ts
+      - file: apps/web/src/modules/10-hope/hope-override-justification.test.ts
+      - file: apps/web/src/modules/10-hope/hope-report-reference.test.ts
 
   # ---------------------------------------------------------------- §164.308 administrative (engineering-side)
   - id: CW-RA-01
@@ -1287,12 +1481,34 @@ controls:
     status: partial
     evidence:
       - script: test:m10:retention:live
+      # The HOPE legal hold fails CLOSED: when a held patient id is unreadable (not a uuid), that organization's retention
+      # scan flags and publishes nothing for the run (HopeLegalHoldUnreadableError) instead of judging patients against a
+      # hold of unknown scope.
+      - file: apps/backend/__tests__/hope-retention-hold-fail-closed.test.ts
       - script: test:m11:lab-result-review:live
       - script: test:m36:retention-destruction:live
       - script: test:m36:retention-governance:live
       - file: docs/runbooks/m36-retention-destruction.md
+      # A cancelled iQIES package is purged at cancel, in the same transaction: hope_submission.acceptance_report and every
+      # item's iqies_validation_result are set NULL. The package hash and size, the filename, the envelope hash and uri, the
+      # cancelled_* columns and each item's XML hash, size and filename stay as the evidence that a package existed. The
+      # purge is legal-hold aware: after the batch row lock, in its own transaction and a savepoint, the cancel reads the
+      # org's active M4 legal-hold scope (activeLegalHoldScopeInTransaction in 04-audit/legal-hold-scope.ts, bound in
+      # index.ts) and KEEPS the package bytes entirely (the ZIP cannot be partly cleared) when an org-wide hold is active,
+      # any item of the batch belongs to a held patient, a held patient id is not a uuid, the reader is unbound, or the read
+      # fails (fail closed, reason hold_scope_unreadable); the cancel itself still happens and its audit event records
+      # bytesKeptReason. A hold read that fails on the cancel's own transaction (select 1/0) still commits, keeps the bytes and
+      # records hold_scope_unreadable (live case in m10-hope-write.live.test.ts). Repeating the cancel (with a new
+      # Idempotency-Key) once the hold is released re-reads the scope and purges the kept bytes. The
+      # eraser, retention-store and eraser-registry comments now say a cancel purges "unless a hold applies".
+      - file: apps/backend/src/modules/10-hope/hope-submission-cancel-db.ts
+      - file: apps/backend/__tests__/hope-g2-cancel-legal-hold.test.ts
+      - file: apps/backend/src/modules/10-hope/M10_DR_INT_INVENTORY.md
+      - script: test:m10:write:live
+      - script: test:m10:submission-result:live
+      - script: test:m10:sfv-sign-binding:live
     gap:
-      reason: The object-store second copy (compose.object-copy.yml, a RustFS replica; NOT enabled in production) would receive a D12 shred only on its next hourly run, a large erasure is held by its mass-delete guard until an operator names the bucket, a bucket dropped on the primary is never removed there, and a --restore after a shred brings destroyed objects back (objects are plaintext, so crypto-erasure does not cover them). Before enabling it, propagate D12 shreds to the copy target and add a replica step to the destruction runbook. The legacy MinIO volume kept after the SeaweedFS cutover is also a full copy until an operator removes it (README, cutover). A closed tenant's sealed clearinghouse credential (tenant_clearinghouse_config) and its held credential fingerprints (tenant_clearinghouse_credential_reservation) have no purge path (neither table grants DELETE to the application or the destruction role, both reference the organization row with ON DELETE RESTRICT, the M23 billing eraser run by the M34 tenant shred has no step for them, and the credential is sealed under the platform KEK rather than the tenant's DEK, so destroying that DEK does not make it unreadable), so they stay, and the fingerprints keep reserving the credentials, until a database-level procedure removes them. Tenant-pricing financial records are retained records that an eraser must not delete. Published plan versions and final statements cannot be deleted through the application or platform credential (guard triggers, CW-PI-01). The signed contract, the statement and the statement review tables reference `subscription` with ON DELETE RESTRICT, and the billing-mode history references the contract, which itself restricts onto `subscription`, so deleting a subscription that has them fails. patient_census_daily has no foreign key to protect it (it is keyed by organization), and it is the input a final statement's census figure was computed from. Any future M35 offboarding eraser must therefore treat all of these as retained financial records, and decide on the census rows deliberately, not as tenant data to shred.
+      reason: The object-store second copy (compose.object-copy.yml, a RustFS replica; NOT enabled in production) would receive a D12 shred only on its next hourly run, a large erasure is held by its mass-delete guard until an operator names the bucket, a bucket dropped on the primary is never removed there, and a --restore after a shred brings destroyed objects back (objects are plaintext, so crypto-erasure does not cover them). Before enabling it, propagate D12 shreds to the copy target and add a replica step to the destruction runbook. The legacy MinIO volume kept after the SeaweedFS cutover is also a full copy until an operator removes it (README, cutover). A closed tenant's sealed clearinghouse credential (tenant_clearinghouse_config) and its held credential fingerprints (tenant_clearinghouse_credential_reservation) have no purge path (neither table grants DELETE to the application or the destruction role, both reference the organization row with ON DELETE RESTRICT, the M23 billing eraser run by the M34 tenant shred has no step for them, and the credential is sealed under the platform KEK rather than the tenant's DEK, so destroying that DEK does not make it unreadable), so they stay, and the fingerprints keep reserving the credentials, until a database-level procedure removes them. Tenant-pricing financial records are retained records that an eraser must not delete. Published plan versions and final statements cannot be deleted through the application or platform credential (guard triggers, CW-PI-01). The signed contract, the statement and the statement review tables reference `subscription` with ON DELETE RESTRICT, and the billing-mode history references the contract, which itself restricts onto `subscription`, so deleting a subscription that has them fails. patient_census_daily has no foreign key to protect it (it is keyed by organization), and it is the input a final statement's census figure was computed from. Any future M35 offboarding eraser must therefore treat all of these as retained financial records, and decide on the census rows deliberately, not as tenant data to shred. M10 iQIES submission packages are still not reached by any retention scan, eraser or purge in two cases, and no eraser or purge owner is named, which is a human decision. (a) The package ZIP (`hope_submission.acceptance_report`) of every batch that was not cancelled (a packaged or exported batch nobody cancelled, a marked-uploaded batch, which is kept for the CMS 10-year hold, and a resulted batch). (b) The per-item column `hope_submission_item.iqies_validation_result` of a patient whose `hope_record` was destroyed (`hope_submission` carries no patient id, spec §4.8); it holds the record's XML (name, date of birth, MBI or SSN) until a CMS result is recorded for that item, after which it holds the CMS report row that replaced it (assessment id and free-text message). The package ZIP in (a) still holds the XML either way, and the HOPE eraser reaches neither. The design that would close (b) is a purge keyed through `hope_submission_item.hope_assessment_id` to the patient; it is not built. Bytes that a legal hold, or an unreadable hold scope, kept at cancel are purged only when an operator REPEATS the cancel after the hold is released, by a manual, API-only step (the web offers Cancel only on a batch that was never uploaded) that needs a NEW Idempotency-Key, because a same-key repeat replays the cached 2xx for 24 hours and never reaches the purge, and that re-reads the scope, purges and writes one repeatCancel audit event. There is no automatic purge on release and M4's hold release does not signal M10, so until an operator repeats the cancel the bytes stay (the runbook paragraph is in apps/backend/src/modules/10-hope/M10_DR_INT_INVENTORY.md). The cancel reads the hold scope as one statement after the batch row lock, and nothing locks legal_hold, so a hold committed after that statement and before the cancel commits is missed (a statement-sized window), and the cancel can purge bytes that hold would have kept. The cancel purge is a logical deletion, so the NULLed jsonb leaves dead tuples until vacuum, and the old values stay in the WAL, replicas and backups until their retention expires.
       owner: platform
       review_by: 2027-01-31
 

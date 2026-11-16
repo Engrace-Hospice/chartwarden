@@ -312,6 +312,10 @@ jobs:
           - { name: "M10 HOPE submission result", scripts: "test:m10:submission-result:live" }
           # S04 (clinical workflow audit 2026-10-28, CW-CL-03) — HOPE deadline override + iQIES hand-off through the route stack.
           - { name: "M10 HOPE S04 override", scripts: "test:m10:s04-override:live" }
+          # R-01 + R-05 (HOPE audit) — SFV completion bound to the URL admission; the HOPE signature ceremony (attestation, step-up, AI block, audit).
+          - { name: "M10 HOPE SFV/sign binding", scripts: "test:m10:sfv-sign-binding:live" }
+          # HOPE lock hardening (review round g3) — canonical advisory keys, re-judged spec-freeze UPDATE, one-shot submission retry, partition-move retry.
+          - { name: "M10 HOPE lock hardening", scripts: "test:m10:g3:live" }
           - { name: "M11 Orders", scripts: "test:m11:read:live test:m11:write:live" }
           - { name: "M11 downstream signed fan-out", scripts: "test:m11:downstream-signed:live" }
           # F-152 (#248) — the §2.7 D7 order-suggestion banner (Valkey) + the D8 one-shot auto-complete.

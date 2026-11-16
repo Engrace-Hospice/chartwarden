@@ -2,6 +2,10 @@
 // The HOPE schedule / assessment / SFV / submission / finding enums each map to the §6.6 badge
 // taxonomy tone (grounded in the @chartwarden/types unions) so every M10 surface renders the same
 // StatusPill for a state.
+import type {
+  HopeScheduleSkipReasonCode,
+  HopeSubmissionCancelReasonCode,
+} from "@chartwarden/types";
 import type { StatusTone } from "@chartwarden/ui";
 
 // HopeScheduleStatus = open | completed | expired | skipped.
@@ -59,7 +63,8 @@ export const ATTENTION_TONE: Record<string, StatusTone> = {
   workflow_issue: "error",
 };
 
-// HopeSubmissionStatus = queued | in_flight | accepted | rejected | partially_accepted.
+// HopeSubmissionStatus = ready | queued | packaged | exported | in_flight | submitted_pending_result | accepted |
+// rejected | partially_accepted | accepted_with_warnings | file_error | cancelled.
 export const SUBMISSION_TONE: Record<string, StatusTone> = {
   ready: "progress",
   queued: "progress",
@@ -72,6 +77,33 @@ export const SUBMISSION_TONE: Record<string, StatusTone> = {
   rejected: "error",
   partially_accepted: "warning",
   file_error: "error",
+  cancelled: "neutral", // a package retired before upload: nothing reached CMS, its records are packaged again
+};
+
+/**
+ * R-08 — why a generated package that never reached CMS was cancelled. The keys are the server's CLOSED list
+ * (`HOPE_SUBMISSION_CANCEL_REASON_CODES`): a reason is never free text, so no PHI can be typed into it, and a
+ * missing label here is a compile error.
+ */
+export const CANCEL_REASON_LABEL: Record<HopeSubmissionCancelReasonCode, string> = {
+  package_lost: "Package lost",
+  never_uploaded: "Never uploaded to the CMS portal",
+  generated_in_error: "Generated in error",
+  other: "Other",
+};
+
+/**
+ * Why a timepoint window was skipped, worded for the clinician choosing it. The keys are the server's CLOSED list
+ * (`HOPE_SCHEDULE_SKIP_REASON_CODES`), so a code added there is a compile error here rather than a label made from its name.
+ */
+export const SKIP_REASON_LABEL: Record<HopeScheduleSkipReasonCode, string> = {
+  patient_deceased: "Patient died",
+  patient_revoked: "Patient revoked the hospice benefit",
+  patient_hospitalized: "Patient was hospitalized",
+  transferred_out: "Patient transferred out",
+  admission_discharged: "Admission was discharged",
+  duplicate_window: "Duplicate timepoint window",
+  other: "Other reason",
 };
 
 // HopeValidationSeverity = error | warning.

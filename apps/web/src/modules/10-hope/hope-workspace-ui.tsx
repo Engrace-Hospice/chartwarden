@@ -1,4 +1,4 @@
-import { Glyph, type GlyphName, t } from "@chartwarden/ui";
+import { Glyph, type GlyphName } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — presentational pieces of the redesigned HOPE workspace (2026-09-25,
 // mockups "HOPE Assessment — A. Administrative" and "J. Health Conditions"). The backend still owns
 // the CMS spec, applicability, validation and signing; these components only draw it:
@@ -136,6 +136,7 @@ export function GroupSubNav({
 
 export function ClinicalSection({
   id,
+  named = false,
   icon,
   title,
   description,
@@ -143,6 +144,8 @@ export function ClinicalSection({
   children,
 }: {
   id?: string;
+  /** Name the section by its heading, so a section that takes focus (it needs an `id`) is announced by name. */
+  named?: boolean;
   icon: GlyphName;
   title: ReactNode;
   description?: ReactNode;
@@ -151,13 +154,18 @@ export function ClinicalSection({
   children: ReactNode;
 }): JSX.Element {
   return (
-    <section id={id} tabIndex={id ? -1 : undefined} className="wx-clinical-section">
+    <section
+      id={id}
+      tabIndex={id ? -1 : undefined}
+      aria-labelledby={named && id ? `${id}-title` : undefined}
+      className="wx-clinical-section"
+    >
       <header>
         <span className="wx-clinical-section-icon" aria-hidden>
           <Glyph name={icon} size={22} strokeWidth={1.6} />
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h3>{title}</h3>
+          <h3 id={named && id ? `${id}-title` : undefined}>{title}</h3>
           {description ? <p>{description}</p> : null}
         </div>
         {aside ? <div className="wx-clinical-section-aside">{aside}</div> : null}

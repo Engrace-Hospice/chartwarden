@@ -1,16 +1,22 @@
+import { isDeepStrictEqual } from "node:util";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@chartwarden/types";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { hopeAnswerMapByCode } from "./hope-answer-map";
-import { deriveHopeWorkflowControlAnswers } from "./hope-record-initializer";
+import { HopeInvalidAnswerValueError, normalizeHopeAnswerValue } from "./hope-answer-value";
+import { persistTouchedAnswers, reconcileWithApplicability } from "./hope-answer-writes";
+import { type LockedAssessment, lockAssessmentRow, lockTriggeredSfv } from "./hope-assessment-lock";
+import {
+  HopeUnsupportedOfficialRecordKindError,
+  deriveHopeWorkflowControlAnswers,
+} from "./hope-record-initializer";
 import {
   HOPE_J2051_ITEM_CODES,
   createHopeSfvService,
   deriveHopeJ2051TriggerState,
   hopeSfvDueAtFromJ2050B,
 } from "./hope-sfv-service";
-import { isCmsSkipBlankOption } from "./hope-spec-registry";
 import type { HopeIsc } from "./hope-spec-registry";
 import type {
   HopeAnswerMap,
@@ -24,6 +30,9 @@ type AssessmentRow = typeof schema.hopeAssessments.$inferSelect;
 type SpecItemRow = typeof schema.hopeSpecItems.$inferSelect;
 type OptionRow = typeof schema.hopeSpecItemOptions.$inferSelect;
 type AnswerRow = typeof schema.hopeAssessmentAnswers.$inferSelect;
+
+// The value validator lives in ./hope-answer-value.ts; re-exported so existing importers keep working.
+export { HopeInvalidAnswerValueError, normalizeHopeAnswerValue };
 
 export type HopeCanonicalAnswerState = "unanswered" | "answered" | "skipped";
 export type HopeAnswerPatchAction = "set" | "clear";
@@ -139,15 +148,6 @@ export class HopeItemInactiveForIscError extends ValidationError {
   }
 }
 
-export class HopeInvalidAnswerValueError extends ValidationError {
-  constructor(itemCode: string, message: string) {
-    super("Invalid HOPE answer value", [
-      { field: itemCode, code: "HOPE_INVALID_ANSWER_VALUE", message },
-    ]);
-    this.name = "HopeInvalidAnswerValueError";
-  }
-}
-
 export class HopeProtectedItemWriteError extends ForbiddenError {
   constructor(itemCode: string) {
     super(
@@ -217,9 +217,6 @@ const PROTECTED_PUBLIC_ITEMS = new Set([
   "Z0500B",
 ]);
 const J2051_TRIGGER_INPUT_ITEMS = new Set<string>(["J2050A", "J2050B", ...HOPE_J2051_ITEM_CODES]);
-const DATE_TYPE_HINTS = ["date", "dt", "dte"];
-const NUMERIC_TYPE_HINTS = ["int", "num", "dec", "numeric", "integer", "decimal"];
-const DATE_FORMAT_PLACEHOLDERS = new Set(["YYYYMMDD", "YYYYMM", "YYYY"]);
 const RFA_REASON_VALUES: Partial<Record<AssessmentRow["rfaKind"], string>> = {
   "01_admission": "1",
   "02_huv1": "2",
@@ -229,11 +226,6 @@ const RFA_REASON_VALUES: Partial<Record<AssessmentRow["rfaKind"], string>> = {
 
 function asDate(value: Date | null): string | null {
   return value ? value.toISOString() : null;
-}
-
-function isDateCode(item: SpecItemRow): boolean {
-  const type = item.cmsItemTypeCode.toLowerCase();
-  return DATE_TYPE_HINTS.some((hint) => type.includes(hint));
 }
 
 function normalizeSectionLabel(item: SpecItemRow): string {
@@ -250,93 +242,24 @@ function workspaceGroupForItem(itemCode: string): string | null {
   return null;
 }
 
-function workflowControlAnswers(assessment: AssessmentRow) {
+/**
+ * The workflow-control answers (A0050, A0250) a record of this RFA kind carries, or `null` for the one kind that has none
+ * (an RFA-04 SFV completion is not an official CMS record kind). ONLY that refusal is the "no controls" answer; any other
+ * failure is a defect and reaches the caller instead of reading as "this record needs no control answers".
+ */
+export function workflowControlAnswers(
+  assessment: Pick<AssessmentRow, "rfaKind" | "isc" | "correctsAssessmentId">,
+) {
   try {
     return deriveHopeWorkflowControlAnswers({
       rfaKind: assessment.rfaKind,
       isc: assessment.isc as HopeIsc | null,
       correctsAssessmentId: assessment.correctsAssessmentId ?? null,
     });
-  } catch {
-    return null;
+  } catch (error) {
+    if (error instanceof HopeUnsupportedOfficialRecordKindError) return null;
+    throw error;
   }
-}
-
-export function normalizeHopeAnswerValue(input: {
-  readonly item: SpecItemRow;
-  readonly options: readonly OptionRow[];
-  readonly inputValue: unknown;
-}): unknown {
-  const { item, options, inputValue } = input;
-  if (inputValue == null) {
-    throw new HopeInvalidAnswerValueError(item.itemCode, "answered values cannot be null");
-  }
-  const hasDatePlaceholder = options.some((option) => option.valueCode === "YYYYMMDD");
-  if (hasDatePlaceholder || isDateCode(item)) {
-    if (typeof inputValue !== "string") {
-      throw new HopeInvalidAnswerValueError(item.itemCode, "date values must be YYYY-MM-DD");
-    }
-    if (DATE_FORMAT_PLACEHOLDERS.has(inputValue)) return inputValue;
-    if (/^\d{8}$/.test(inputValue)) {
-      return `${inputValue.slice(0, 4)}-${inputValue.slice(4, 6)}-${inputValue.slice(6, 8)}`;
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(inputValue)) {
-      throw new HopeInvalidAnswerValueError(item.itemCode, "date values must be YYYY-MM-DD");
-    }
-    return inputValue;
-  }
-  const acceptsFreeText = options.some((option) => option.valueCode === "Text");
-  if (acceptsFreeText) {
-    if (typeof inputValue !== "string") {
-      throw new HopeInvalidAnswerValueError(item.itemCode, "text HOPE values must be strings");
-    }
-    if (inputValue === "^" && isCmsSkipBlankOption(options)) {
-      throw new HopeInvalidAnswerValueError(
-        item.itemCode,
-        "CMS ^ is represented as skipped + null, not as a normal answer value",
-      );
-    }
-    if (item.fixedRecordLength && inputValue.length > item.fixedRecordLength) {
-      throw new HopeInvalidAnswerValueError(
-        item.itemCode,
-        `text values must not exceed ${item.fixedRecordLength} characters`,
-      );
-    }
-    return inputValue;
-  }
-  if (options.length > 0) {
-    if (typeof inputValue !== "string") {
-      throw new HopeInvalidAnswerValueError(item.itemCode, "coded HOPE values must be strings");
-    }
-    if (inputValue === "^" && isCmsSkipBlankOption(options)) {
-      throw new HopeInvalidAnswerValueError(
-        item.itemCode,
-        "CMS ^ is represented as skipped + null, not as a normal answer value",
-      );
-    }
-    if (!options.some((option) => option.valueCode === inputValue)) {
-      throw new HopeInvalidAnswerValueError(
-        item.itemCode,
-        `${inputValue} is not an allowed CMS value`,
-      );
-    }
-    return inputValue;
-  }
-  const type = item.cmsItemTypeCode.toLowerCase();
-  if (NUMERIC_TYPE_HINTS.some((hint) => type.includes(hint))) {
-    if (typeof inputValue !== "number" || !Number.isFinite(inputValue)) {
-      throw new HopeInvalidAnswerValueError(item.itemCode, "numeric values must be finite numbers");
-    }
-    return inputValue;
-  }
-  if (
-    typeof inputValue !== "string" &&
-    typeof inputValue !== "number" &&
-    typeof inputValue !== "boolean"
-  ) {
-    throw new HopeInvalidAnswerValueError(item.itemCode, "HOPE answers must be scalar values");
-  }
-  return inputValue;
 }
 
 const DEFAULT_APPLICABILITY: HopeApplicabilityItemResult = {
@@ -374,8 +297,59 @@ function j2051Projection(answers: HopeAnswerMap): {
   };
 }
 
+/** A patch must name at least one change, and no item twice. */
+function assertPatchShape(changes: readonly HopeAnswerPatchChange[]): void {
+  if (changes.length === 0) {
+    throw new ValidationError("At least one HOPE answer change is required", [
+      {
+        field: "changes",
+        code: "HOPE_EMPTY_ANSWER_PATCH",
+        message: "changes must not be empty",
+      },
+    ]);
+  }
+  const seen = new Set<string>();
+  for (const change of changes) {
+    if (seen.has(change.itemCode)) throw new HopeDuplicateAnswerChangeError(change.itemCode);
+    seen.add(change.itemCode);
+  }
+}
+
+/** A change whose item and value were validated against the frozen spec. */
+type PreparedChange =
+  | { readonly itemCode: string; readonly action: "clear" }
+  | { readonly itemCode: string; readonly action: "set"; readonly value: unknown };
+
+/** Every item a `set` names must be applicable under the proposed answers. */
+function assertSetItemsApplicable(
+  changes: readonly PreparedChange[],
+  applicability: { readonly items: ReadonlyMap<string, HopeApplicabilityItemResult> },
+): void {
+  for (const change of changes) {
+    if (change.action !== "set") continue;
+    const itemState = applicability.items.get(change.itemCode);
+    if (!itemState || itemState.applicability !== "applicable") {
+      throw new HopeItemNotApplicableError(
+        change.itemCode,
+        itemState?.applicability ?? "not_applicable",
+        itemState?.reason,
+      );
+    }
+  }
+}
+
 export interface HopeAssessmentAnswerService {
-  getWorkspace(organizationId: string, assessmentId: string): Promise<HopeAssessmentWorkspace>;
+  /**
+   * `options.mayWrite` (REQUIRED, no default): whether the caller holds `hope.timepoint.write`. A draft's out-of-date workflow
+   * control answers are rewritten on open (a write under no actor) only for a caller who may write; any other caller is shown
+   * those controls derived in memory from the assessment row (their item states and the progress counts that follow), and
+   * nothing is stored. A reader's view equals a writer's only for the workflow-control items (A0050, A0250) and the progress counts derived from them; the chart refresh and the workflow-control reconcile are done for a writer only, so a reader sees chart-derived answers as stored and the workflow controls derived on the fly, and a draft that needs a chart refresh reads differently for a reader until a writer opens it.
+   */
+  getWorkspace(
+    organizationId: string,
+    assessmentId: string,
+    options: { readonly mayWrite: boolean },
+  ): Promise<HopeAssessmentWorkspace>;
   patchAnswers(
     organizationId: string,
     membershipId: string,
@@ -502,18 +476,52 @@ export function createHopeAssessmentAnswerService(
     return new Map(rows.map((answer) => [answer.specItemId, answer]));
   }
 
-  async function reconcileWorkflowControlAnswers(
+  /** The row fields the control-answer reconcile reads. */
+  type ControlAssessment = Pick<
+    LockedAssessment,
+    | "id"
+    | "status"
+    | "rfaKind"
+    | "isc"
+    | "correctsAssessmentId"
+    | "specVersionId"
+    | "organizationId"
+    | "providerEntityId"
+    | "locationId"
+  >;
+
+  /** The workflow-control answers this draft should carry and does not carry yet (a read; takes no lock). */
+  async function outOfDateControls(
     tx: DbClient,
-    assessment: AssessmentRow,
+    assessment: ControlAssessment,
     itemsByCode: ReadonlyMap<string, SpecItemRow>,
   ) {
-    if (assessment.status !== "draft" || !assessment.specVersionId) return;
+    if (assessment.status !== "draft" || !assessment.specVersionId) return [];
     const controls = workflowControlAnswers(assessment);
-    if (!controls) return;
-    const now = new Date();
-    for (const control of controls) {
+    if (!controls) return [];
+    const answers = await answersForAssessment(tx, assessment.id);
+    return controls.flatMap((control) => {
       const item = itemsByCode.get(control.itemCode);
-      if (!item) continue;
+      if (!item) return [];
+      const current = answers.get(item.id);
+      const inPlace =
+        current?.state === "answered" && isDeepStrictEqual(current.value, control.value);
+      return inPlace ? [] : [{ item, value: control.value }];
+    });
+  }
+
+  /**
+   * Write the control answers `outOfDateControls` finds. Called on the LOCKED row: what is out of date is worked out
+   * again here, because a concurrent open may have written them since the unlocked check, and a control already in place
+   * is left alone (rewriting it only churns the PHI audit trail).
+   */
+  async function reconcileWorkflowControlAnswers(
+    tx: DbClient,
+    assessment: ControlAssessment,
+    itemsByCode: ReadonlyMap<string, SpecItemRow>,
+  ) {
+    const now = new Date();
+    for (const { item, value } of await outOfDateControls(tx, assessment, itemsByCode)) {
       await tx
         .insert(ANS)
         .values({
@@ -521,10 +529,10 @@ export function createHopeAssessmentAnswerService(
           providerEntityId: assessment.providerEntityId,
           locationId: assessment.locationId,
           hopeAssessmentId: assessment.id,
-          specVersionId: assessment.specVersionId,
+          specVersionId: assessment.specVersionId!,
           specItemId: item.id,
           state: "answered",
-          value: control.value,
+          value,
           source: "derived",
           sourceReference: { reason: "workflow_control_reconciled" },
           answeredAt: now,
@@ -533,7 +541,7 @@ export function createHopeAssessmentAnswerService(
           target: [ANS.hopeAssessmentId, ANS.specItemId],
           set: {
             state: "answered",
-            value: control.value,
+            value,
             source: "derived",
             sourceReference: { reason: "workflow_control_reconciled" },
             answeredAt: now,
@@ -542,6 +550,22 @@ export function createHopeAssessmentAnswerService(
           },
         });
     }
+  }
+
+  /**
+   * Two phases, as the admission prefill does: an unlocked read finds whether any control answer is out of date (the
+   * common case after the first open: none), and only then is the assessment row taken (M10's lock order: before the
+   * first answer write) and the reconcile run on the locked row. Status is judged again on that row.
+   */
+  async function reconcileControlsWhenNeeded(
+    tx: DbClient,
+    organizationId: string,
+    assessment: ControlAssessment,
+    itemsByCode: ReadonlyMap<string, SpecItemRow>,
+  ): Promise<void> {
+    if ((await outOfDateControls(tx, assessment, itemsByCode)).length === 0) return;
+    const locked = await lockAssessmentRow(tx, organizationId, assessment.id);
+    if (locked?.status === "draft") await reconcileWorkflowControlAnswers(tx, locked, itemsByCode);
   }
 
   async function requireWritableItem(
@@ -695,14 +719,71 @@ export function createHopeAssessmentAnswerService(
     };
   }
 
+  /**
+   * Validate every requested change against the frozen spec BEFORE any lock is taken: a protected or unknown item, a value
+   * that is not allowed for its item. None of it depends on the record's mutable state, so a bad request is refused
+   * without ever queueing behind another writer (a patch that cannot succeed must not hold up, or wait for, a valid one).
+   */
+  async function prepareChanges(
+    tx: DbClient,
+    assessment: Pick<AssessmentRow, "specVersionId">,
+    isc: HopeIsc,
+    changes: readonly HopeAnswerPatchChange[],
+    itemsByCode: ReadonlyMap<string, SpecItemRow>,
+  ): Promise<PreparedChange[]> {
+    const prepared: PreparedChange[] = [];
+    for (const change of changes) {
+      const item = itemsByCode.get(change.itemCode);
+      if (PROTECTED_PUBLIC_ITEMS.has(change.itemCode))
+        throw new HopeProtectedItemWriteError(change.itemCode);
+      if (!item) {
+        await requireWritableItem(tx, assessment as AssessmentRow, isc, change.itemCode, true);
+        throw new NotFoundError("HOPE spec item", change.itemCode);
+      }
+      if (change.action === "clear") {
+        prepared.push({ itemCode: change.itemCode, action: "clear" });
+        continue;
+      }
+      const value = normalizeHopeAnswerValue({
+        item,
+        options: await optionList(tx, item.id),
+        inputValue: change.value,
+      });
+      prepared.push({ itemCode: change.itemCode, action: "set", value });
+    }
+    return prepared;
+  }
+
+  /**
+   * The assessment row, locked, and judged AGAIN: a writer that committed since the unlocked read (another patch, a heal,
+   * a sign) is only visible on the locked row. The version bump at the end of the patch then updates a row this
+   * transaction already holds.
+   */
+  async function lockDraftAtVersion(
+    tx: DbClient,
+    organizationId: string,
+    assessmentId: string,
+    ifVersion: number,
+  ): Promise<LockedAssessment> {
+    const locked = await lockAssessmentRow(tx, organizationId, assessmentId);
+    if (!locked) throw new NotFoundError("HOPE assessment", assessmentId);
+    if (locked.status !== "draft")
+      throw new HopeAssessmentImmutableError(assessmentId, locked.status);
+    if (locked.version !== ifVersion) throw new HopeAnswerVersionConflictError(assessmentId);
+    return locked;
+  }
+
   return {
-    async getWorkspace(organizationId, assessmentId) {
+    async getWorkspace(organizationId, assessmentId, options) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const loaded = await loadModernAssessment(t, organizationId, assessmentId);
         const items = await activeItems(t, loaded.assessment.specVersionId!, loaded.isc);
         const itemsByCode = new Map(items.map((item) => [item.itemCode, item]));
-        await reconcileWorkflowControlAnswers(t, loaded.assessment, itemsByCode);
+        // The control answers are written only for a DRAFT, only when one is out of date (see the function), and only for a
+        // caller who may write. A reader gets those controls derived below, in memory, with no stored copy. A reader's view equals a writer's only for the workflow-control items (A0050, A0250) and the progress counts derived from them; the chart refresh and the workflow-control reconcile are done for a writer only, so a reader sees chart-derived answers as stored and the workflow controls derived on the fly, and a draft that needs a chart refresh reads differently for a reader until a writer opens it.
+        if (options.mayWrite)
+          await reconcileControlsWhenNeeded(t, organizationId, loaded.assessment, itemsByCode);
         const itemsById = new Map(items.map((item) => [item.id, item]));
         const optionsByItem = await optionsForItems(
           t,
@@ -711,8 +792,9 @@ export function createHopeAssessmentAnswerService(
         const answersByItem = await answersForAssessment(t, assessmentId);
 
         const canonicalAnswersByItem = new Map(answersByItem);
-
         const controls = workflowControlAnswers(loaded.assessment);
+        // The workflow controls this record should carry, as answer rows, by item id: what a writer's open would have stored.
+        const derivedControls = new Map<string, AnswerRow>();
 
         if (controls) {
           for (const control of controls) {
@@ -720,7 +802,7 @@ export function createHopeAssessmentAnswerService(
 
             if (!item) continue;
 
-            canonicalAnswersByItem.set(item.id, {
+            const derived = {
               ...(answersByItem.get(item.id) ?? {}),
               organizationId: loaded.assessment.organizationId,
               providerEntityId: loaded.assessment.providerEntityId,
@@ -736,9 +818,26 @@ export function createHopeAssessmentAnswerService(
               },
               answeredAt: new Date(),
               answeredByMembershipId: null,
-            } as AnswerRow);
+            } as AnswerRow;
+            derivedControls.set(item.id, derived);
+            canonicalAnswersByItem.set(item.id, derived);
           }
         }
+        // What the response shows. A writer's open has just reconciled (a draft), so its stored answers ARE the controls. A reader's
+        // open stores nothing, so a draft's out-of-date control answers (never opened by a writer) are shown as the derived ones: the
+        // item states, the progress counts and the HUV state then equal a writer's. A control already in place keeps its stored row
+        // (and its own timestamp); a signed or inactivated record is shown as stored, as a writer's open shows it.
+        const inPlace = (stored: AnswerRow | undefined, derived: AnswerRow): boolean =>
+          stored?.state === "answered" && isDeepStrictEqual(stored.value, derived.value);
+        const displayAnswersByItem =
+          options.mayWrite || loaded.assessment.status !== "draft"
+            ? answersByItem
+            : new Map([
+                ...answersByItem,
+                ...[...derivedControls].filter(
+                  ([id, derived]) => !inPlace(answersByItem.get(id), derived),
+                ),
+              ]);
 
         const applicability = createHopeApplicabilityEngine(loaded.specCode).evaluate({
           isc: loaded.isc,
@@ -761,7 +860,7 @@ export function createHopeAssessmentAnswerService(
           const base = stateOf(
             item.itemCode,
             true,
-            answersByItem.get(item.id),
+            displayAnswersByItem.get(item.id),
             applicability.items.get(item.itemCode),
           );
           if (base.applicability === "applicable") progress.applicable += 1;
@@ -806,7 +905,7 @@ export function createHopeAssessmentAnswerService(
           progress,
           huv: await huvWorkspaceState(t, loaded.assessment, {
             itemsById,
-            answersByItem,
+            answersByItem: displayAnswersByItem,
           }),
         };
       });
@@ -815,172 +914,62 @@ export function createHopeAssessmentAnswerService(
     async patchAnswers(organizationId, membershipId, assessmentId, input) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        if (input.changes.length === 0) {
-          throw new ValidationError("At least one HOPE answer change is required", [
-            {
-              field: "changes",
-              code: "HOPE_EMPTY_ANSWER_PATCH",
-              message: "changes must not be empty",
-            },
-          ]);
-        }
-        const seen = new Set<string>();
-        for (const change of input.changes) {
-          if (seen.has(change.itemCode)) throw new HopeDuplicateAnswerChangeError(change.itemCode);
-          seen.add(change.itemCode);
-        }
+        assertPatchShape(input.changes);
         const loaded = await loadModernAssessment(t, organizationId, assessmentId);
-        const assessment = loaded.assessment;
-        if (assessment.status !== "draft")
-          throw new HopeAssessmentImmutableError(assessmentId, assessment.status);
-        if (assessment.version !== input.ifVersion)
+        if (loaded.assessment.status !== "draft")
+          throw new HopeAssessmentImmutableError(assessmentId, loaded.assessment.status);
+        if (loaded.assessment.version !== input.ifVersion)
           throw new HopeAnswerVersionConflictError(assessmentId);
-        const now = new Date();
-        const items = await activeItems(t, assessment.specVersionId!, loaded.isc);
+        const items = await activeItems(t, loaded.assessment.specVersionId!, loaded.isc);
         const itemsByCode = new Map(items.map((item) => [item.itemCode, item]));
+        // A request that can never succeed is refused before it takes (or waits for) any lock.
+        const prepared = await prepareChanges(
+          t,
+          loaded.assessment,
+          loaded.isc,
+          input.changes,
+          itemsByCode,
+        );
+        await lockTriggeredSfv(t, organizationId, loaded.assessment, loaded.isc); // before any answer write
+        // From here on the LOCKED row is the record: status, version and the siting columns below come from it, not from
+        // the unlocked read above, which a writer that committed in between may have made stale.
+        const assessment = await lockDraftAtVersion(
+          t,
+          organizationId,
+          assessmentId,
+          input.ifVersion,
+        );
+        const now = new Date();
         const itemsById = new Map(items.map((item) => [item.id, item]));
-        const currentAnswersByItem = await answersForAssessment(t, assessmentId);
         const proposedAnswers = hopeAnswerMapByCode({
           itemsById,
-          answersByItem: currentAnswersByItem,
+          answersByItem: await answersForAssessment(t, assessmentId),
         });
-        const touched = new Set<string>();
-
-        for (const change of input.changes) {
-          const item = itemsByCode.get(change.itemCode);
-          if (PROTECTED_PUBLIC_ITEMS.has(change.itemCode))
-            throw new HopeProtectedItemWriteError(change.itemCode);
-          if (!item) {
-            await requireWritableItem(t, assessment, loaded.isc, change.itemCode, true);
-            throw new NotFoundError("HOPE spec item", change.itemCode);
-          }
-          touched.add(change.itemCode);
-          if (change.action === "clear") {
-            proposedAnswers.delete(change.itemCode);
-            continue;
-          }
-          const options = await optionList(t, item.id);
-          const value = normalizeHopeAnswerValue({
-            item,
-            options,
-            inputValue: change.value,
-          });
-          proposedAnswers.set(change.itemCode, { state: "answered", value });
+        for (const change of prepared) {
+          if (change.action === "clear") proposedAnswers.delete(change.itemCode);
+          else proposedAnswers.set(change.itemCode, { state: "answered", value: change.value });
         }
-
-        const engine = createHopeApplicabilityEngine(loaded.specCode);
-        const applicability = engine.evaluate({
+        const applicability = createHopeApplicabilityEngine(loaded.specCode).evaluate({
           isc: loaded.isc,
           activeItemCodes: items.map((item) => item.itemCode),
           answers: proposedAnswers,
         });
-
-        for (const change of input.changes) {
-          if (change.action !== "set") continue;
-          const itemState = applicability.items.get(change.itemCode);
-          if (!itemState || itemState.applicability !== "applicable") {
-            throw new HopeItemNotApplicableError(
-              change.itemCode,
-              itemState?.applicability ?? "not_applicable",
-              itemState?.reason,
-            );
-          }
-        }
-
-        const reconciledAnswers = new Map(proposedAnswers);
-        for (const [itemCode, itemState] of applicability.items) {
-          if (itemState.applicability === "applicable") {
-            const proposed = reconciledAnswers.get(itemCode);
-            if (proposed?.state === "skipped") {
-              reconciledAnswers.delete(itemCode);
-              touched.add(itemCode);
-            }
-            continue;
-          }
-          if (itemState.applicability === "not_applicable") {
-            reconciledAnswers.set(itemCode, { state: "skipped", value: null });
-            touched.add(itemCode);
-            continue;
-          }
-          if (reconciledAnswers.has(itemCode)) {
-            reconciledAnswers.delete(itemCode);
-            touched.add(itemCode);
-          }
-        }
-
-        for (const itemCode of touched) {
-          const item = itemsByCode.get(itemCode);
-          if (!item) continue;
-          const answer = reconciledAnswers.get(itemCode);
-          if (!answer) {
-            await t
-              .delete(ANS)
-              .where(and(eq(ANS.hopeAssessmentId, assessmentId), eq(ANS.specItemId, item.id)));
-            continue;
-          }
-          if (answer.state === "skipped") {
-            const reason = applicability.items.get(itemCode)?.reason;
-            await t
-              .insert(ANS)
-              .values({
-                organizationId,
-                providerEntityId: assessment.providerEntityId,
-                locationId: assessment.locationId,
-                hopeAssessmentId: assessmentId,
-                specVersionId: assessment.specVersionId!,
-                specItemId: item.id,
-                state: "skipped",
-                value: null,
-                source: "derived",
-                sourceReference: reason
-                  ? { reason: "skip_pattern", ...reason }
-                  : { reason: "skip_pattern" },
-                answeredAt: now,
-              })
-              .onConflictDoUpdate({
-                target: [ANS.hopeAssessmentId, ANS.specItemId],
-                set: {
-                  state: "skipped",
-                  value: null,
-                  source: "derived",
-                  sourceReference: reason
-                    ? { reason: "skip_pattern", ...reason }
-                    : { reason: "skip_pattern" },
-                  answeredAt: now,
-                  answeredByMembershipId: null,
-                  updatedAt: now,
-                },
-              });
-            continue;
-          }
-          await t
-            .insert(ANS)
-            .values({
-              organizationId,
-              providerEntityId: assessment.providerEntityId,
-              locationId: assessment.locationId,
-              hopeAssessmentId: assessmentId,
-              specVersionId: assessment.specVersionId!,
-              specItemId: item.id,
-              state: "answered",
-              value: answer.value,
-              source: "user",
-              answeredAt: now,
-              answeredByMembershipId: membershipId,
-            })
-            .onConflictDoUpdate({
-              target: [ANS.hopeAssessmentId, ANS.specItemId],
-              set: {
-                state: "answered",
-                value: answer.value,
-                source: "user",
-                sourceReference: null,
-                answeredAt: now,
-                answeredByMembershipId: membershipId,
-                updatedAt: now,
-              },
-            });
-        }
+        assertSetItemsApplicable(prepared, applicability);
+        const { answers: reconciledAnswers, touched } = reconcileWithApplicability(
+          proposedAnswers,
+          applicability,
+          new Set(prepared.map((change) => change.itemCode)),
+        );
+        await persistTouchedAnswers({
+          tx: t,
+          assessment,
+          membershipId,
+          itemsByCode,
+          touched,
+          answers: reconciledAnswers,
+          applicability,
+          now,
+        });
 
         const projection = [...touched].some((itemCode) => J2051_TRIGGER_INPUT_ITEMS.has(itemCode))
           ? j2051Projection(reconciledAnswers)
@@ -1081,6 +1070,11 @@ export function createHopeAssessmentAnswerService(
         const loaded = await loadModernAssessment(t, organizationId, assessmentId);
         if (loaded.assessment.status !== "draft") {
           throw new HopeAssessmentImmutableError(assessmentId, loaded.assessment.status);
+        }
+        // The assessment row BEFORE the answer write (it is UPDATEd at the end), judged again on the locked row.
+        const locked = await lockAssessmentRow(t, organizationId, assessmentId);
+        if (locked?.status !== "draft") {
+          throw new HopeAssessmentImmutableError(assessmentId, locked?.status ?? "missing");
         }
         const item = await requireWritableItem(t, loaded.assessment, loaded.isc, itemCode, false);
         const now = new Date();

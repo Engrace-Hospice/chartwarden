@@ -11,8 +11,8 @@
 //
 // Two callers share it: the `m6.admission.activated` / `m6.admission.discharged` outbox consumer
 // (../outbox-consumers/m6-admission-scheduling.ts — the normal path), and the §4.1 route 20 admin
-// regenerate, which is how an operator materializes windows for an admission that was activated before
-// this shipped or whose dates were corrected after the fact.
+// regenerate, which is how an operator materializes the windows an admission still lacks (one activated before
+// this shipped, or one that never got them). It creates what is missing and never moves an existing window.
 //
 // FAILS CLOSED — an admission the M6 seam cannot project, or one still missing its provider entity /
 // location, throws. `hope_timepoint_schedule.provider_entity_id` / `.location_id` are NOT NULL precisely
@@ -30,6 +30,8 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { HopeRfaKind, LocalDate } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
+import { takeBoundedLock } from "../hope-assessment-lock";
+import { idForLog } from "../hope-log-id";
 import type { HopeWriteOutboxPort } from "../outbox-port";
 
 const SCHED = schema.hopeTimepointSchedules;
@@ -55,6 +57,15 @@ export interface SchedulingSiting {
 function gap(message: string): never {
   throw new HopeStateError("M10_ADMISSION_PROJECTION_GAP", message);
 }
+
+/**
+ * What the regenerate route's client is told after an admission that cannot be projected: the idempotency layer replays
+ * a 422 for 24 h on the same key, so the retry needs a new one. The SFV completion route's gap message ends the same way
+ * (hope-sfv-completion-guards.ts); keep the two sentences identical. Only a REQUEST has a key to renew: the outbox consumer
+ * calls {@link schedulingSitingFor} without `requestRetryNote`, so the message it dead-letters carries no such advice.
+ */
+const ADMISSION_REPAIRED_RETRY_NOTE =
+  "Once the admission is repaired, send the request again with a NEW Idempotency-Key (the idempotency layer replays this 422 for 24 h on the same key).";
 
 /**
  * The raw admission projection this module sites a schedule from, BEFORE the non-null demands below.
@@ -119,15 +130,20 @@ export async function schedulingSitingFor(
   organizationId: string,
   admissionId: string,
   resolve: AdmissionSitingResolver = seamAdmissionSitingResolver,
+  options: {
+    /** Append {@link ADMISSION_REPAIRED_RETRY_NOTE}: set by the request path (route 20), never by a consumer delivery. */
+    readonly requestRetryNote?: boolean;
+  } = {},
 ): Promise<SchedulingSiting> {
+  const retryNote = options.requestRetryNote ? ` ${ADMISSION_REPAIRED_RETRY_NOTE}` : "";
   const facts = await resolve(organizationId, admissionId);
   if (!facts) {
-    gap(`Admission ${admissionId} is not visible in this organization.`);
+    gap(`Admission ${admissionId} is not visible in this organization.${retryNote}`);
   }
   const { patientId, providerEntityId, locationId } = facts;
   if (!providerEntityId || !locationId) {
     gap(
-      `Admission ${admissionId} is not sited (provider_entity_id=${providerEntityId ?? "null"}, location_id=${locationId ?? "null"}) — refusing to create a HOPE timepoint schedule with a guessed provider entity or location.`,
+      `Admission ${admissionId} is not sited (provider_entity_id=${providerEntityId ?? "null"}, location_id=${locationId ?? "null"}) — refusing to create a HOPE timepoint schedule with a guessed provider entity or location.${retryNote}`,
     );
   }
   return {
@@ -171,12 +187,29 @@ export async function writeSchedules(
     readonly admissionId: string;
     readonly siting: SchedulingSiting;
     readonly descriptors: readonly TimepointScheduleDescriptor[];
+    /**
+     * Wait at most `M10_LOCK_TIMEOUT_MS` for a lock another transaction holds on the insert (a concurrent regenerate of the
+     * same admission), then answer `M10_RECORD_BUSY` (nothing was written). Set by the REQUEST path (route 20), whose
+     * pool connection must not queue behind a stuck transaction; the outbox consumer leaves it off, so a slow delivery
+     * is retried by the dispatcher as before rather than failed with a request-shaped error.
+     */
+    readonly boundLockWait?: boolean;
+    /**
+     * Runs on the write's own transaction with the ids it created (none when nothing was missing), so evidence of the
+     * run (the admin regenerate's audit event) commits or rolls back with the windows. Set by the REQUEST path only; when
+     * it is set the transaction opens even for a run with nothing to plan, which is the run the event still records.
+     */
+    readonly afterWrite?: (t: DbClient, createdScheduleIds: readonly string[]) => Promise<void>;
   },
 ): Promise<readonly string[]> {
-  if (input.descriptors.length === 0) return [];
+  if (input.descriptors.length === 0 && !input.afterWrite) return [];
   const wanted = input.descriptors.map((d) => d.rfaKind);
   return withOrgContext(db, { organizationId: input.organizationId, userId: "" }, async (tx) => {
     const t = tx as unknown as DbClient;
+    if (wanted.length === 0) {
+      await input.afterWrite?.(t, []);
+      return [];
+    }
     const existing = (await t
       .select({ rfaKind: SCHED.rfaKind })
       .from(SCHED)
@@ -189,33 +222,43 @@ export async function writeSchedules(
       )) as { rfaKind: HopeRfaKind }[];
     const already = new Set(existing.map((r) => r.rfaKind));
     const todo = input.descriptors.filter((d) => !already.has(d.rfaKind));
-    if (todo.length === 0) return [];
+    if (todo.length === 0) {
+      await input.afterWrite?.(t, []);
+      return [];
+    }
 
-    const rows = (await t
-      .insert(SCHED)
-      .values(
-        todo.map((d) => ({
-          organizationId: input.organizationId,
-          providerEntityId: input.siting.providerEntityId,
-          locationId: input.siting.locationId,
-          patientId: input.siting.patientId,
-          admissionId: input.admissionId,
-          rfaKind: d.rfaKind,
-          windowOpensAt: new Date(d.window.windowOpensAt),
-          windowClosesAt: new Date(d.window.windowClosesAt),
-          lateDeadlineAt: new Date(d.window.lateDeadlineAt),
-          alertCadence: d.alertCadence as unknown as Record<string, unknown>,
-          generatedBy: d.generatedBy,
-        })),
-      )
-      .onConflictDoNothing()
-      .returning({
-        id: SCHED.id,
-        rfaKind: SCHED.rfaKind,
-        windowOpensAt: SCHED.windowOpensAt,
-        windowClosesAt: SCHED.windowClosesAt,
-        lateDeadlineAt: SCHED.lateDeadlineAt,
-      })) as {
+    const insertMissing = (executor: DbClient) =>
+      executor
+        .insert(SCHED)
+        .values(
+          todo.map((d) => ({
+            organizationId: input.organizationId,
+            providerEntityId: input.siting.providerEntityId,
+            locationId: input.siting.locationId,
+            patientId: input.siting.patientId,
+            admissionId: input.admissionId,
+            rfaKind: d.rfaKind,
+            windowOpensAt: new Date(d.window.windowOpensAt),
+            windowClosesAt: new Date(d.window.windowClosesAt),
+            lateDeadlineAt: new Date(d.window.lateDeadlineAt),
+            alertCadence: d.alertCadence as unknown as Record<string, unknown>,
+            generatedBy: d.generatedBy,
+          })),
+        )
+        .onConflictDoNothing()
+        .returning({
+          id: SCHED.id,
+          rfaKind: SCHED.rfaKind,
+          windowOpensAt: SCHED.windowOpensAt,
+          windowClosesAt: SCHED.windowClosesAt,
+          lateDeadlineAt: SCHED.lateDeadlineAt,
+        });
+    // The conflict check queues behind a concurrent insert of the same window, so the request path bounds that wait.
+    const rows = (await (input.boundLockWait
+      ? takeBoundedLock(t, insertMissing, {
+          lock: `schedule insert for admission ${idForLog(input.admissionId)} (org ${idForLog(input.organizationId)})`,
+        })
+      : insertMissing(t))) as {
       id: string;
       rfaKind: HopeRfaKind;
       windowOpensAt: Date;
@@ -240,15 +283,17 @@ export async function writeSchedules(
         },
       });
     }
-    return rows.map((r) => r.id);
+    const createdIds = rows.map((r) => r.id);
+    await input.afterWrite?.(t, createdIds);
+    return createdIds;
   });
 }
 
 /**
  * Materialize every window an admission is currently entitled to, from its own state — the §4.1 route 20
  * admin regenerate. Idempotent, so an operator can run it on an admission that already has some windows
- * (a post-hoc date correction, or a backfill for an admission activated before #48 shipped) and only the
- * missing ones are created.
+ * (a backfill for an admission activated before #48 shipped) and only the missing ones are created: a row
+ * in any status is left exactly as it is, so a window computed from a wrong date stays as it was.
  *
  * An admission with no activation date yet has no anchor and gets nothing: the CMS windows count from
  * SOC, and there is no honest window before there is a start of care.
@@ -261,6 +306,8 @@ export async function regenerateSchedulesForAdmission(
     readonly admissionId: string;
     readonly timeZone?: string;
     readonly resolveSiting?: AdmissionSitingResolver;
+    /** See {@link writeSchedules}: the route's audit event, written on the transaction that creates the windows. */
+    readonly afterWrite?: (t: DbClient, createdScheduleIds: readonly string[]) => Promise<void>;
   },
 ): Promise<readonly string[]> {
   const timeZone = input.timeZone ?? HOPE_SCHEDULE_TIME_ZONE;
@@ -268,18 +315,27 @@ export async function regenerateSchedulesForAdmission(
     input.organizationId,
     input.admissionId,
     input.resolveSiting,
+    { requestRetryNote: true },
   );
   const descriptors: TimepointScheduleDescriptor[] = [];
+  // M6's seam answers `activatedAt` / `dischargedAt` as instants (or a date): the CMS windows count in org-local calendar
+  // days, so both go through the same normaliser the outbox consumer uses (an ISO instant is a date by the org's day,
+  // a `yyyy-mm-dd` passes unchanged, anything else is a typed 422 rather than "Invalid time value").
   if (siting.anchorDate !== null) {
-    descriptors.push(...planAdmissionTimepoints({ anchorDate: siting.anchorDate, timeZone }));
+    const anchorDate = anchorDateOf(siting.anchorDate, timeZone, "activatedAt");
+    descriptors.push(...planAdmissionTimepoints({ anchorDate, timeZone }));
   }
   if (siting.dischargeDate !== null) {
-    descriptors.push(planDischargeTimepoint({ dischargeDate: siting.dischargeDate, timeZone }));
+    const dischargeDate = anchorDateOf(siting.dischargeDate, timeZone, "dischargeDate");
+    descriptors.push(planDischargeTimepoint({ dischargeDate, timeZone }));
   }
+  // Only the route (a request holding a pool connection) calls this: it bounds the insert's lock wait.
   return writeSchedules(db, outbox, {
     organizationId: input.organizationId,
     admissionId: input.admissionId,
     siting,
     descriptors,
+    boundLockWait: true,
+    ...(input.afterWrite ? { afterWrite: input.afterWrite } : {}),
   });
 }

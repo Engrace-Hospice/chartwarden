@@ -34,9 +34,10 @@ import { useNavigate } from "react-router-dom";
 import { NameLabel, matchesAllTokens, patientNameOf } from "../../shell/name-display";
 import { usePatientNames } from "../../shell/patient-names";
 import { type HopeAction, HopeActionModal } from "./hope-action-modal";
-import type { RfaKind } from "./hope-api";
+import { type RfaKind, withRequestTimeout } from "./hope-api";
 import { HopeListReadState } from "./hope-read-state";
-import { HopeRecordModal, type RecordWindow } from "./hope-record-modal";
+import { HopeRecordModal } from "./hope-record-modal";
+import type { RecordWindow } from "./hope-record-window";
 import { BUCKET_TONE, rfaLabel, stateLabel } from "./hope-status";
 
 interface ScheduleRow {
@@ -85,9 +86,11 @@ export function HopeDashboard(): JSX.Element {
     // Drop the previous outcome so an old Retry cannot be pressed while this load is in flight.
     setLoading(true);
     setReadStatus("ok");
-    // 404 = deny-as-not-found for a caller who is not org-wide scoped. A rejected request is `failed`.
+    // 404 = deny-as-not-found for a caller who is not org-wide scoped. A rejected or unanswered (bounded) request is `failed`.
     const { status, res } = await settleRead(
-      client.GET("/api/v1/hope/schedules", { params: { query: {} } }),
+      withRequestTimeout((signal) =>
+        client.GET("/api/v1/hope/schedules", { params: { query: {} }, signal }),
+      ),
       "denied",
     );
     if (mine !== latestLoad.current) return;
@@ -137,8 +140,7 @@ export function HopeDashboard(): JSX.Element {
           patientNames[t.row.patientId]?.mrn,
           t.row.rfaKind,
           t.row.status,
-          t.row.windowOpensAt,
-          t.row.windowClosesAt,
+          // Not windowOpensAt / windowClosesAt: the table shows only a countdown, so a raw UTC instant is text nobody sees.
         ],
         q,
       );
@@ -471,6 +473,9 @@ export function HopeDashboard(): JSX.Element {
           onDone={() => {
             void load();
           }}
+          onOpenExisting={(draft) => navigate(`/hope/assessments/${draft.id}`)}
+          // A capture nobody confirmed may have recorded the window the row still offers to record.
+          onOutcomeUnknown={() => void load()}
         />
       ) : null}
       {acting !== null ? (
@@ -482,6 +487,10 @@ export function HopeDashboard(): JSX.Element {
           onDone={() => {
             void load();
           }}
+          // The page may be out of date: the server says the schedule is no longer open (409: completed or skipped since this page
+          // loaded), or the outcome could not be confirmed (no answer, a timeout, a faulting 5xx) so the action may have been applied.
+          // Re-read so the row shows what is true instead of offering Record and Skip.
+          onConflict={() => void load()}
         />
       ) : null}
     </>

@@ -4,6 +4,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { ConflictError, ValidationError } from "@chartwarden/types";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { hopeAnswerMapByCode } from "./hope-answer-map";
+import { HOPE_J2053_ITEM_CODES } from "./hope-sfv-completion-plan";
 import {
   type HopeJ2051TriggerState,
   canonicalAnsweredString,
@@ -135,17 +136,6 @@ export function effectiveHopeJ2051TriggerStateForReview(
     triggerFired: true,
   };
 }
-
-const HOPE_J2053_ITEM_CODES = [
-  "J2053A",
-  "J2053B",
-  "J2053C",
-  "J2053D",
-  "J2053E",
-  "J2053F",
-  "J2053G",
-  "J2053H",
-] as const;
 
 /**
  * Active items sign-readiness lets stay UNANSWERED (the CMS spec offers `^` "Blank (not available or

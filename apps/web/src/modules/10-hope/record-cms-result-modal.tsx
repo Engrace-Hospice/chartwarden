@@ -4,11 +4,41 @@ import { Button, Modal, TextAreaField, TextField, t, useApiClient } from "@chart
 // either per item or by pasting it (parsed defensively by cms-result-parser.ts, which only PRE-FILLS the form
 // so the user reviews before anything is sent). Recording flips the batch status and the HQRP acceptance rate,
 // so a confirmation step sits between the form and the POST. Matching/validation stay the server's (ADR-0030):
-// its 409/422 reasons are shown inline verbatim.
-import { useEffect, useRef, useState } from "react";
+// its 409/422 reasons are shown inline verbatim, except a refusal of the report reference, which is said on that field.
+import { useEffect, useId, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
-import { type CmsItemOutcome, normalizeOutcome, parseCmsReport } from "./cms-result-parser";
-import { type SubmissionResultBody, recordSubmissionResult } from "./hope-api";
+import { type CmsItemOutcome, parseCmsReport } from "./cms-result-parser";
+import {
+  RECORD_BUSY_CODE,
+  type SubmissionResultBody,
+  failedResultOutcomeUnknown,
+  recordSubmissionResult,
+} from "./hope-api";
+import { errorText, meta } from "./hope-dialog-styles";
+import { notifyDone } from "./hope-notify-done";
+import {
+  MAX_REFERENCE,
+  MESSAGE_WORDS,
+  REFERENCE_HINT,
+  REFERENCE_REFUSAL_WORDS,
+  RESULT_CODE_WORDS,
+  type ReferenceRefusal,
+  type RowRefusal,
+  hasForbiddenReferenceCharacter,
+  hasForbiddenResultCode,
+  hasUnstorableMessage,
+  referenceRefusalOf,
+  rowRefusalOf,
+} from "./hope-report-reference";
+import {
+  BLANK_ROW,
+  CELL_TOKENS,
+  OUTCOME_OPTIONS,
+  ResultRow,
+  type RowState,
+  cellIdOf,
+  describeRows,
+} from "./hope-result-row";
 
 export interface ResultItem {
   readonly assessmentId: string;
@@ -16,27 +46,12 @@ export interface ResultItem {
   readonly label: string;
 }
 
-interface RowState {
-  /** "" until the user (or the pasted report) sets it: nothing defaults to Accepted, because a result is final. */
-  status: CmsItemOutcome | "";
-  code: string;
-  itemCode: string;
-  message: string;
-}
-
-const OUTCOME_OPTIONS: ReadonlyArray<{ value: CmsItemOutcome; label: string }> = [
-  { value: "accepted", label: "Accepted" },
-  { value: "accepted_with_warnings", label: "Accepted with warnings" },
-  { value: "rejected", label: "Rejected" },
-];
-const MAX_REFERENCE = 128;
 const MAX_SHOWN_ERRORS = 3;
 const OUTCOME_RANK: Record<CmsItemOutcome, number> = {
   accepted: 1,
   accepted_with_warnings: 2,
   rejected: 3,
 };
-const BLANK_ROW: RowState = { status: "", code: "", itemCode: "", message: "" };
 
 export function buildResultBody(
   items: readonly ResultItem[],
@@ -66,7 +81,10 @@ export interface RecordCmsResultModalProps {
   readonly items: readonly ResultItem[];
   readonly onClose: () => void;
   readonly onDone: () => void;
-  /** The server said 409 (already recorded / status changed): refresh the page so it stops offering Record. */
+  /**
+   * The page behind the dialog may be out of date: the server said 409 (already recorded / status changed), or the outcome could not be
+   * confirmed (no answer, a timeout, an empty or faulting 5xx), so the result may have landed. Refresh so the page shows what is true.
+   */
   readonly onConflict?: () => void;
 }
 
@@ -87,6 +105,15 @@ export function RecordCmsResultModal({
   const [discarding, setDiscarding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What the server's last refusal said about the report reference: said on the field, which the clinician is taken back to.
+  const [referenceRefusal, setReferenceRefusal] = useState<ReferenceRefusal | null>(null);
+  const referenceId = useId();
+  // The one cell of a row that the server's last refusal named (code, item code, message): marked, focused, and the alert says its row.
+  const [rowRefusal, setRowRefusal] = useState<RowRefusal | null>(null);
+  const cellIdBase = useId();
+  const codeErrorId = useId();
+  const messageErrorId = useId();
+  const rowErrorId = useId();
   // Synchronous guard: `busy` only lands on the next render, and this is a final, non-editable write.
   const submitting = useRef(false);
   // Focus targets: the step heading (confirm / discard) when a step opens, the dialog title when it closes.
@@ -94,10 +121,11 @@ export function RecordCmsResultModal({
   const stepRef = useRef<HTMLHeadingElement>(null);
   const hadStep = useRef(false);
 
-  // Reset only when the dialog opens: `items` is a fresh array each render (names load late) and must not wipe edits.
+  // Reset when the dialog opens AND when it closes (never on a re-render): `items` is a fresh array each render (names load late)
+  // and must not wipe edits. Resetting on close matters because the caller keeps this mounted while it is shut: the last use's
+  // error, discard question and typed outcomes would otherwise show for the first frame of the next open.
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional, see above
   useEffect(() => {
-    if (!open) return;
     setRows(Object.fromEntries(items.map((i) => [i.assessmentId, { ...BLANK_ROW }])));
     setReference("");
     setPaste("");
@@ -106,21 +134,36 @@ export function RecordCmsResultModal({
     setDiscarding(false);
     setBusy(false);
     setError(null);
+    setReferenceRefusal(null);
+    setRowRefusal(null);
   }, [open]);
 
   const inStep = confirming || discarding;
   // Keyed on the step's identity so confirm <-> discard moves focus too (inStep alone stays true across them).
   const step = discarding ? "discard" : confirming ? "confirm" : null;
+  // ONE effect decides where focus goes, so which of the four wins is read here and not from the order of effects: a step that opens
+  // takes it on its heading; back on the form, a refusal of the reference takes it on that field, and one that names a cell of a row
+  // takes it on that cell (scrolled into view); otherwise a step that just closed returns it to the title. (The pressed button was
+  // disabled while the request was out, which can drop focus to the page.)
   useEffect(() => {
     if (step) stepRef.current?.focus();
+    else if (referenceRefusal !== null) document.getElementById(referenceId)?.focus();
+    else if (rowRefusal !== null && CELL_TOKENS.has(rowRefusal.token))
+      document.getElementById(cellIdOf(cellIdBase, rowRefusal.row, rowRefusal.token))?.focus();
     else if (hadStep.current) titleRef.current?.focus();
     hadStep.current = step !== null;
-  }, [step]);
+  }, [step, referenceRefusal, referenceId, rowRefusal, cellIdBase]);
 
   if (!open) return null;
 
-  const patchRow = (id: string, patch: Partial<RowState>): void =>
+  const patchRow = (id: string, patch: Partial<RowState>): void => {
     setRows((prev) => ({ ...prev, [id]: { ...(prev[id] ?? BLANK_ROW), ...patch } }));
+    // Editing the row a refusal named answers it: the mark and the alert (which was that refusal's) go.
+    if (rowRefusal !== null && items[rowRefusal.row]?.assessmentId === id) {
+      setRowRefusal(null);
+      setError(null);
+    }
+  };
 
   function importPaste(): void {
     const parsed = parseCmsReport(paste);
@@ -139,11 +182,17 @@ export function RecordCmsResultModal({
       };
     }
     setRows((prev) => ({ ...prev, ...merged }));
+    // A paste that fills the row a refusal named answers it, as editing the row does: its mark and its alert go.
+    const refusedId = rowRefusal === null ? undefined : items[rowRefusal.row]?.assessmentId;
+    if (refusedId !== undefined && refusedId in merged) {
+      setRowRefusal(null);
+      setError(null);
+    }
     const skipped = parsed.rows.length - matched.length;
     const notes = [
       `Imported ${matched.length} of ${items.length} item${items.length === 1 ? "" : "s"}.`,
       ...(skipped > 0
-        ? [`${skipped} row${skipped === 1 ? "" : "s"} not in this batch ignored.`]
+        ? [`${skipped} row${skipped === 1 ? "" : "s"} not awaiting a result in this batch ignored.`]
         : []),
       ...parsed.errors.slice(0, MAX_SHOWN_ERRORS),
       ...(parsed.errors.length > MAX_SHOWN_ERRORS
@@ -172,10 +221,14 @@ export function RecordCmsResultModal({
   }
 
   async function submit(): Promise<void> {
-    if (!allSet || submitting.current) return;
+    if (!allSet || referenceInvalid || rowsInvalid || submitting.current) return;
     submitting.current = true;
     setBusy(true);
     setError(null);
+    // A refusal never outlives the request it answered. (The field is not on screen during the confirmation step, so the next refusal
+    // mounts the field, and its alert, afresh: that is what is announced again, with or without this.)
+    setReferenceRefusal(null);
+    setRowRefusal(null);
     let res: Awaited<ReturnType<typeof recordSubmissionResult>>;
     try {
       res = await recordSubmissionResult(
@@ -187,23 +240,56 @@ export function RecordCmsResultModal({
       // The request may have reached the server: reload so the page reflects a result that did land.
       setError("The result may not have been recorded; refresh to check.");
       setConfirming(false);
-      onConflict?.();
+      notifyDone(() => onConflict?.());
       return;
     } finally {
       submitting.current = false;
       setBusy(false);
     }
     if (!res.ok) {
-      setError(res.message);
       setConfirming(false);
-      if (res.status === 409) onConflict?.();
+      // A refusal of the reference itself (its characters, or a patient identifier) is definite: nothing changed, so it is said on the
+      // field in the dialog's own words, never the server's (which name the wire field), and the page is not re-read.
+      const refusal = referenceRefusalOf(res);
+      if (refusal !== null) {
+        setReferenceRefusal(refusal);
+        return;
+      }
+      // A refusal that names a cell of a row (a validation or patient-identifier refusal of its code, item or message) keeps the
+      // server's words in the alert and says which row; a row the dialog does not have names nothing.
+      const named = rowRefusalOf(res);
+      setRowRefusal(named !== null && named.row < items.length ? named : null);
+      setError(res.message);
+      // A 409 means the page is out of date, unless the record was only busy (a lock wait timed out: nothing was applied). An empty
+      // 5xx or a fault of the server's own may have recorded the result after all, as a rejected request may: re-read like that path.
+      const changed = res.status === 409 && res.code !== RECORD_BUSY_CODE;
+      if (changed || failedResultOutcomeUnknown(res)) notifyDone(() => onConflict?.());
       return;
     }
     // Outside the try: a throwing callback must not read as "nothing was recorded".
-    onDone();
-    onClose();
+    notifyDone(onDone, onClose);
   }
 
+  const referenceInvalid = hasForbiddenReferenceCharacter(reference.trim());
+  // A row's CMS code, item code and message are sent trimmed: refused here first when the server would refuse them (a code is one
+  // word of a fixed charset; a message holds nothing the database cannot store). Nothing at all is fine.
+  const codeInvalid = (value: string): boolean => hasForbiddenResultCode(value.trim());
+  const messageInvalid = (value: string): boolean => hasUnstorableMessage(value.trim());
+  const rowOf = (item: ResultItem): RowState => rows[item.assessmentId] ?? BLANK_ROW;
+  // The offending rows (1-based, as the table numbers them): the alerts list them all, so each refused cell is described truthfully.
+  const rowNumbersWhere = (offends: (row: RowState) => boolean): number[] =>
+    items.flatMap((item, i) => (offends(rowOf(item)) ? [i + 1] : []));
+  const codeRows = rowNumbersWhere((r) => codeInvalid(r.code) || codeInvalid(r.itemCode));
+  const messageRows = rowNumbersWhere((r) => messageInvalid(r.message));
+  const rowsInvalid = codeRows.length > 0 || messageRows.length > 0;
+  const shownError =
+    error !== null && rowRefusal !== null ? `Row ${rowRefusal.row + 1}: ${error}` : error;
+  const referenceError =
+    referenceRefusal !== null
+      ? REFERENCE_REFUSAL_WORDS[referenceRefusal]
+      : referenceInvalid
+        ? REFERENCE_REFUSAL_WORDS.invalid_characters
+        : undefined;
   const statusOf = (id: string): RowState["status"] => rows[id]?.status ?? "";
   const unsetCount = items.filter((i) => statusOf(i.assessmentId) === "").length;
   const allSet = items.length > 0 && unsetCount === 0;
@@ -262,10 +348,16 @@ export function RecordCmsResultModal({
         ) : (
           <>
             <TextField
+              id={referenceId}
               label="Report reference (optional)"
+              hint={REFERENCE_HINT}
+              error={referenceError}
               value={reference}
               maxLength={MAX_REFERENCE}
-              onChange={(e) => setReference(e.target.value)}
+              onChange={(e) => {
+                setReference(e.target.value);
+                setReferenceRefusal(null);
+              }}
             />
             <TextAreaField
               label="Paste CMS report (JSON, CSV, or one line per record)"
@@ -283,6 +375,7 @@ export function RecordCmsResultModal({
               <table className="wx-list-table" style={{ width: "100%" }}>
                 <thead>
                   <tr>
+                    <th scope="col">Row</th>
                     <th scope="col">Record</th>
                     <th scope="col">Outcome</th>
                     <th scope="col">CMS code</th>
@@ -292,68 +385,38 @@ export function RecordCmsResultModal({
                 </thead>
                 <tbody>
                   {items.map((item, idx) => {
-                    const r = rows[item.assessmentId] ?? BLANK_ROW;
-                    // Labels can repeat (same patient + RFA): the row number keeps each accessible name unique.
-                    const name = `${item.label}, row ${idx + 1}`;
+                    const r = rowOf(item);
                     return (
-                      <tr key={item.assessmentId}>
-                        <td>{item.label}</td>
-                        <td>
-                          <select
-                            className="wx-select"
-                            aria-label={`Outcome for ${name}`}
-                            value={r.status}
-                            onChange={(e) =>
-                              patchRow(item.assessmentId, {
-                                status: normalizeOutcome(e.target.value) ?? "",
-                              })
-                            }
-                          >
-                            <option value="">Select outcome</option>
-                            {OUTCOME_OPTIONS.map((o) => (
-                              <option key={o.value} value={o.value}>
-                                {o.label}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>
-                          <input
-                            className="wx-select"
-                            aria-label={`CMS code for ${name}`}
-                            value={r.code}
-                            maxLength={64}
-                            onChange={(e) => patchRow(item.assessmentId, { code: e.target.value })}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            className="wx-select"
-                            aria-label={`Item for ${name}`}
-                            value={r.itemCode}
-                            maxLength={64}
-                            onChange={(e) =>
-                              patchRow(item.assessmentId, { itemCode: e.target.value })
-                            }
-                          />
-                        </td>
-                        <td>
-                          <input
-                            className="wx-select"
-                            aria-label={`Message for ${name}`}
-                            value={r.message}
-                            maxLength={1000}
-                            onChange={(e) =>
-                              patchRow(item.assessmentId, { message: e.target.value })
-                            }
-                          />
-                        </td>
-                      </tr>
+                      <ResultRow
+                        key={item.assessmentId}
+                        idBase={cellIdBase}
+                        index={idx}
+                        label={item.label}
+                        state={r}
+                        onPatch={(patch) => patchRow(item.assessmentId, patch)}
+                        codeRefused={codeInvalid(r.code)}
+                        itemRefused={codeInvalid(r.itemCode)}
+                        messageRefused={messageInvalid(r.message)}
+                        serverRefusedToken={rowRefusal?.row === idx ? rowRefusal.token : null}
+                        codeErrorId={codeErrorId}
+                        messageErrorId={messageErrorId}
+                        serverErrorId={rowErrorId}
+                      />
                     );
                   })}
                 </tbody>
               </table>
             </div>
+            {codeRows.length > 0 ? (
+              <p id={codeErrorId} role="alert" style={errorText}>
+                {`${describeRows(codeRows)}: ${RESULT_CODE_WORDS}`}
+              </p>
+            ) : null}
+            {messageRows.length > 0 ? (
+              <p id={messageErrorId} role="alert" style={errorText}>
+                {`${describeRows(messageRows)}: ${MESSAGE_WORDS}`}
+              </p>
+            ) : null}
           </>
         )}
 
@@ -363,9 +426,9 @@ export function RecordCmsResultModal({
           </p>
         ) : null}
 
-        {error ? (
-          <p role="alert" style={errorText}>
-            {error}
+        {shownError ? (
+          <p id={rowErrorId} role="alert" style={errorText}>
+            {shownError}
           </p>
         ) : null}
 
@@ -396,9 +459,11 @@ export function RecordCmsResultModal({
               tone="primary"
               onClick={() => {
                 setError(null);
+                // A refusal the server made of the last send is answered by sending again, not by what the dialog still shows of it.
+                setRowRefusal(null);
                 setConfirming(true);
               }}
-              disabled={!allSet}
+              disabled={!allSet || referenceInvalid || rowsInvalid}
             >
               Review and record
             </Button>
@@ -417,9 +482,3 @@ const body: CSSProperties = {
 };
 const stepTitle: CSSProperties = { margin: 0, fontSize: "0.95rem", fontWeight: 600 };
 const title: CSSProperties = { margin: 0, fontSize: "1.05rem", fontWeight: 600 };
-const meta: CSSProperties = {
-  margin: 0,
-  fontSize: "0.75rem",
-  color: "var(--color-on-surface-variant)",
-};
-const errorText: CSSProperties = { margin: 0, fontSize: "0.8rem", color: "var(--color-error)" };

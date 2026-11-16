@@ -8,23 +8,16 @@
 // end-to-end. The server IGNORES any client-sent trigger flag (D4); the `data` object is otherwise carried
 // opaquely and narrowed by the per-section validators server-side.
 import "@chartwarden/shared/route-kit";
-import { HOPE_J2051_SYMPTOM_CODES, HOPE_RFA_KINDS } from "@chartwarden/types";
+import {
+  HOPE_J2051_SYMPTOM_CODES,
+  HOPE_RFA_KINDS,
+  HOPE_SCHEDULE_SKIP_REASON_CODES,
+  HOPE_SUBMISSION_CANCEL_REASON_CODES,
+} from "@chartwarden/types";
 import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { ValueErrorType } from "@sinclair/typebox/errors";
 import { Value } from "@sinclair/typebox/value";
-import type {
-  HopeAnswerPatchResult as ServiceAnswerPatchResult,
-  HopeAssessmentView as ServiceAssessmentView,
-  HopeAssessmentWorkspace as ServiceAssessmentWorkspace,
-  HopeComplianceView as ServiceComplianceView,
-  HopeReviewReadModel as ServiceReviewReadModel,
-  HopeScheduleView as ServiceScheduleView,
-  HopeSfvView as ServiceSfvView,
-  HopeSignResult as ServiceSignResult,
-  HopeSubmissionView as ServiceSubmissionView,
-  HopeValidationRunView as ServiceValidationRunView,
-  HopeWorkflowStateView as ServiceWorkflowStateView,
-} from "./service";
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -35,19 +28,11 @@ const AUTHOR_DISCIPLINE = Type.Union([Type.Literal("RN"), Type.Literal("NP"), Ty
 /** SFV (RFA-04) authors additionally allow LPN/LVN (CMS HOPE Guidance Manual v1.03); MD stays accepted at
  *  the boundary so it is refused by the ABAC predicate (403), as before. */
 const SFV_AUTHOR_DISCIPLINE = lit(["RN", "NP", "MD", "LPN", "LVN"] as const);
-const AMENDMENT_AUTHOR_DISCIPLINE = Type.Union(
-  [
-    Type.Literal("RN"),
-    Type.Literal("NP"),
-    Type.Literal("MD"),
-    Type.Literal("LPN"),
-    Type.Literal("LVN"),
-  ],
-  {
-    description:
-      "RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline.",
-  },
-);
+// The same five members as SFV_AUTHOR_DISCIPLINE, with the description the correction routes document.
+const AMENDMENT_AUTHOR_DISCIPLINE = Type.Union(SFV_AUTHOR_DISCIPLINE.anyOf, {
+  description:
+    "RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline.",
+});
 /** The §4.3 J2051 per-symptom severity vocabulary. */
 const J2051_SEVERITY = Type.Union([
   Type.Literal("none"),
@@ -179,10 +164,16 @@ export const SubmissionParamsSchema = Type.Object({
 });
 
 // ── Bodies ────────────────────────────────────────────────────────────────────────────────────────────
-export const SkipScheduleSchema = Type.Object({
-  reasonCode: Type.String({ minLength: 1, maxLength: 64 }),
-  note: Type.Optional(Type.String({ maxLength: 2000 })),
-});
+/**
+ * The reason is one of a fixed code list (no free text, so no PHI rides along into `skip_reason_code` or the audit before/after),
+ * and there is no `note`: nothing kept it, so a body that carries one is refused rather than accepted and silently dropped.
+ */
+export const SkipScheduleSchema = Type.Object(
+  {
+    reasonCode: lit(HOPE_SCHEDULE_SKIP_REASON_CODES),
+  },
+  { additionalProperties: false },
+);
 export const RecordTimepointSchema = Type.Object({
   rfaKind: RFA_KIND,
   targetDate: Type.String({ format: "date-time" }),
@@ -201,15 +192,30 @@ export const RecordTimepointSchema = Type.Object({
   data: HopeData,
 });
 export const RecordSfvSchema = Type.Object({
-  triggeringAssessmentId: Type.String({ minLength: 1, maxLength: 64 }),
+  // A uuid on the wire: `symptom_follow_up_visit.triggering_assessment_id` is a uuid column, so a
+  // non-uuid used to reach the cast and surface as a 500 instead of a 422.
+  triggeringAssessmentId: Type.String({ format: "uuid" }),
   targetDate: Type.String({ format: "date-time" }),
   authorDiscipline: SFV_AUTHOR_DISCIPLINE,
   adminOverride: Type.Optional(Type.Boolean()),
   adminOverrideJustification: Type.Optional(Type.String({ minLength: 20, maxLength: 1000 })),
+  // R-05: completing an SFV inserts an already-SIGNED RFA-04, so it carries the sign attestation.
+  attestationConfirmed: Type.Literal(true),
+  // The wording version the signer was shown; optional, and refused (409 M10_ATTESTATION_STALE) when it is not current.
+  attestationVersion: Type.Optional(Type.String({ maxLength: 32 })),
   data: HopeData,
 });
 export const UpdateDraftSchema = Type.Object({ data: HopeData });
-const AnswerValueSchema = Type.Union([Type.String(), Type.Number(), Type.Boolean()]);
+// A string answer is at most 18 characters in the HOPE v1.00.1 spec (A0500C, the longest assessment text item; dates are
+// 10, codes fewer), and no non-filler field of the CMS record layout exceeds 50 (the vendor e-mail). 64 leaves headroom
+// for a later spec without letting a request body (bounded only by the 10 MB body limit) become the value of an answer.
+// Per-item lengths are still enforced by the answer engine (`fixedRecordLength`).
+const ANSWER_VALUE_MAX_LENGTH = 64;
+const AnswerValueSchema = Type.Union([
+  Type.String({ maxLength: ANSWER_VALUE_MAX_LENGTH }),
+  Type.Number(),
+  Type.Boolean(),
+]);
 export const PatchAnswersSchema = Type.Object({
   ifVersion: Type.Integer({ minimum: 1 }),
   changes: Type.Array(
@@ -229,7 +235,10 @@ export const PatchAnswersSchema = Type.Object({
 });
 export const SignTimepointSchema = Type.Object({
   ifVersion: Type.Integer({ minimum: 1 }),
-  attestationConfirmed: Type.Optional(Type.Literal(true)),
+  // R-05: REQUIRED. Optional meant the field was accepted and never read, so `{ ifVersion }` signed.
+  attestationConfirmed: Type.Literal(true),
+  // The wording version the signer was shown; optional, and refused (409 M10_ATTESTATION_STALE) when it is not current.
+  attestationVersion: Type.Optional(Type.String({ maxLength: 32 })),
 });
 export const SetHuvCompletionDateSchema = Type.Object({
   ifVersion: Type.Integer({ minimum: 1 }),
@@ -250,34 +259,107 @@ export const InactivateTimepointSchema = Type.Object({
 export const SummaryPdfSchema = Type.Object({});
 export const RetrySubmissionSchema = Type.Object({});
 export const AssembleSubmissionSchema = Type.Object({
-  providerEntityId: Type.String({ minLength: 1, maxLength: 64 }),
+  // A uuid on the wire: assembling reads `provider_entity_id` (a uuid column), so a value that is none used to reach the
+  // cast and answer a 500 instead of a 422. The two list/dashboard query filters stay free text: the service answers
+  // "matches nothing" for a non-uuid there, so a mistyped filter is an empty read, not an error.
+  providerEntityId: Type.String({ format: "uuid" }),
 });
+/** R-08 — the reason is one of a fixed code list: no free text, so no PHI can ride along. */
+export const CancelSubmissionSchema = Type.Object(
+  {
+    reasonCode: lit(HOPE_SUBMISSION_CANCEL_REASON_CODES),
+  },
+  { additionalProperties: false },
+);
+/**
+ * The characters an operator-typed submission reference or CMS result token may hold (an iQIES upload id, a CMS report reference,
+ * an edit code): letters, digits and ` . _ : # / -`, the FIRST of them never a space (a whitespace-only value is no value), so
+ * markup, control characters and quotes never reach a stored row or an audit image. The schema does not echo the value in its
+ * 422. A patient identifier shaped from these characters is refused by the route AND the service (hope-reference-screen.ts).
+ * The web client's copy (apps/web hope-report-reference.ts) must use the same pattern and limits.
+ */
+export const HOPE_TOKEN_PATTERN = "^[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/-]*$";
+/** A submission reference (`reportReference`, `iqiesSubmissionReference`): at most this many characters. */
+export const HOPE_REFERENCE_MAX_LENGTH = 128;
+/** One CMS result-row token (`status`, `result`, `outcome`, `severity`, `code`, `itemCode`, `iqiesRecordId`): at most this many. */
+export const HOPE_RESULT_TOKEN_MAX_LENGTH = 64;
+const referenceString = () =>
+  Type.Union([
+    Type.String({
+      minLength: 1,
+      maxLength: HOPE_REFERENCE_MAX_LENGTH,
+      pattern: HOPE_TOKEN_PATTERN,
+    }),
+    Type.Null(),
+  ]);
 export const MarkSubmissionUploadedSchema = Type.Object({
   submittedAt: Type.Optional(Type.String({ format: "date-time" })),
-  iqiesSubmissionReference: Type.Optional(
-    Type.Union([Type.String({ maxLength: 200 }), Type.Null()]),
-  ),
+  iqiesSubmissionReference: Type.Optional(referenceString()),
 });
-const CMS_TOKEN = { maxLength: 64 };
+/**
+ * A CMS edit code, an item code or an iQIES record id (`code`, `itemCode`, `iqiesRecordId`) is ONE word: letters, digits and
+ * `. _ : # -` (a leading `-` is allowed, CMS edit codes look like `-3015`), NO space and NO slash, or EMPTY (a blank cell of a
+ * pasted report names nothing, as an absent key does: a blank `iqiesRecordId` is never stored). These land unscrubbed in the
+ * audit images of the result event, the item and the assessment and in the `m10.hope.submission_rejected` payload (`ruleId`), so a
+ * phrase, a name with spaces or a `MM/DD/YYYY` date cannot be written at all; a date or phone shape that still fits is refused by
+ * the screen (hope-reference-screen.ts), whatever separator of `. _ : # -` sets the groups apart. RESIDUAL, not closeable here: a
+ * single-word surname or a hyphenated name passes the charset, a compact date or number (`19900517`, `5558675309`, `05-17-90`) is
+ * no shape the screen can tell from a code, and the real iQIES edit-code and record-id formats are unverified, so this stays
+ * permissive within the rule; a human should confirm the formats against a CMS sample and tighten it. The web client's copy must
+ * use the same pattern.
+ */
+export const HOPE_RESULT_CODE_PATTERN = "^(?:[A-Za-z0-9._:#-]{1,64})?$";
+/**
+ * The status text of a row (`status`, `result`, `outcome`) is a phrase CMS wrote ("received, pending review", "Accepted (2
+ * warnings)"), classified by words (`classifyStatusText`): the reference charset plus `, ; ( )` after the first character. It is
+ * kept only in the scrubbed raw-result columns, never in a column the audit trail copies, and the identifier screen still reads it.
+ */
+export const HOPE_RESULT_STATUS_PATTERN = "^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/(),;-]*)?$";
+/**
+ * A report row's `assessmentId` is an assessment id, so it may hold only what a uuid is spelt with (Postgres reads hex digits,
+ * hyphens and one pair of braces; `canonicalUuidOrNull`), padded with whitespace a pasted CSV cell carries (it is trimmed before it
+ * is read): 1 to 64 characters. Text outside a uuid's characters is refused, so a name cannot be written into the stored report
+ * or echoed by the read API. A hex-only word ("Ada", "Dee Cafe") does fit the charset and can still be stored in the raw report;
+ * a value that is no uuid is stored as an unmatched row and never returned by a read.
+ */
+export const HOPE_RESULT_ASSESSMENT_ID_PATTERN = "^[\\s{}0-9A-Fa-f-]{1,64}$";
+/** The most rows one result import takes, and the longest `message` of a row. */
+export const HOPE_RESULT_MAX_ROWS = 2000;
+export const HOPE_RESULT_MESSAGE_MAX_LENGTH = 1000;
+/**
+ * The severities a report row may carry: exactly the values the import acts on (`classifyCmsResult` rejects on `fatal` and
+ * `error`, reads `warning` as accepted with warnings; `findingSeverity` maps the same), compared case-insensitively, or empty.
+ * The pattern is spelled out (a JSON-schema pattern has no case flag); a unit test pins it to the list.
+ */
+export const HOPE_RESULT_SEVERITIES = ["fatal", "error", "warning"] as const;
+export const HOPE_RESULT_SEVERITY_PATTERN =
+  "^(?:[Ff][Aa][Tt][Aa][Ll]|[Ee][Rr][Rr][Oo][Rr]|[Ww][Aa][Rr][Nn][Ii][Nn][Gg])?$";
+const resultString = (pattern: string) =>
+  Type.Optional(Type.String({ maxLength: HOPE_RESULT_TOKEN_MAX_LENGTH, pattern }));
+const resultCode = () => resultString(HOPE_RESULT_CODE_PATTERN);
+const resultStatusText = () => resultString(HOPE_RESULT_STATUS_PATTERN);
+const resultSeverity = () => resultString(HOPE_RESULT_SEVERITY_PATTERN);
 export const ImportSubmissionResultSchema = Type.Object({
-  reportReference: Type.Optional(Type.Union([Type.String({ maxLength: 500 }), Type.Null()])),
+  reportReference: Type.Optional(referenceString()),
   // Bounded: every row is stored (report, item result, finding), so an unbounded body is a write amplifier.
   results: Type.Array(
     Type.Object(
       {
-        assessmentId: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
-        status: Type.Optional(Type.String(CMS_TOKEN)),
-        result: Type.Optional(Type.String(CMS_TOKEN)),
-        outcome: Type.Optional(Type.String(CMS_TOKEN)),
-        severity: Type.Optional(Type.String(CMS_TOKEN)),
-        code: Type.Optional(Type.String(CMS_TOKEN)),
-        itemCode: Type.Optional(Type.String(CMS_TOKEN)),
-        message: Type.Optional(Type.String({ maxLength: 1000 })),
-        iqiesRecordId: Type.Optional(Type.String(CMS_TOKEN)),
+        assessmentId: Type.Optional(
+          Type.String({ minLength: 1, maxLength: 64, pattern: HOPE_RESULT_ASSESSMENT_ID_PATTERN }),
+        ),
+        status: resultStatusText(),
+        result: resultStatusText(),
+        outcome: resultStatusText(),
+        severity: resultSeverity(),
+        code: resultCode(),
+        itemCode: resultCode(),
+        message: Type.Optional(Type.String({ maxLength: HOPE_RESULT_MESSAGE_MAX_LENGTH })),
+        iqiesRecordId: resultCode(),
       },
       { additionalProperties: false },
     ),
-    { maxItems: 2000 },
+    { maxItems: HOPE_RESULT_MAX_ROWS },
   ),
 });
 export const RegenerateSchedulesSchema = Type.Object({
@@ -292,6 +374,9 @@ export const ScheduleListQuerySchema = Type.Object({
 });
 export const SfvWorklistQuerySchema = Type.Object({
   state: Type.Optional(Type.String({ maxLength: 32 })),
+  // The SFV that one assessment triggered (the capture workspace asks for exactly that one); an unknown id is an
+  // empty list. A uuid on the wire: the column is one.
+  triggeringAssessmentId: Type.Optional(Type.String({ format: "uuid" })),
 });
 export const SubmissionListQuerySchema = Type.Object({
   providerEntityId: Type.Optional(Type.String({ maxLength: 64 })),
@@ -308,7 +393,7 @@ export const ValidationQuerySchema = Type.Object({
 // The read + write routes returned typed service view shapes (`HopeAssessmentView` / `HopeScheduleView` /
 // `HopeSfvView` / `HopeSubmissionView` / `HopeComplianceView` and their `{ items }` envelopes) but published
 // NO response contract, so the generated client typed every body as `never`. These DTOs mirror the service's
-// read views 1:1 and are pinned to them by the compile-time `Conforms` aliases below, so a view field added
+// read views 1:1 and are pinned to them by the compile-time `Conforms` aliases in `hope-typebox-conformance.ts`, so a view field added
 // or renamed breaks `bun run build` rather than silently drifting from the client.
 const ASSESSMENT_STATUS = lit(["draft", "signed", "superseded"] as const);
 const SCHEDULE_STATUS = lit(["open", "completed", "expired", "skipped"] as const);
@@ -325,6 +410,7 @@ const SUBMISSION_STATUS = lit([
   "partially_accepted",
   "accepted_with_warnings",
   "file_error",
+  "cancelled",
 ] as const);
 const SCHEDULE_GENERATED_BY = lit([
   "auto_admission",
@@ -621,6 +707,11 @@ export const HopeSubmissionResponseSchema = Type.Object({
   submittedAt: Type.Optional(NullableString()),
   acceptedAt: NullableString(),
   iqiesSubmissionReference: Type.Optional(NullableString()),
+  /** R-08 — set only on a package cancelled before upload; the reason is a fixed code, never free text. */
+  cancelledAt: Type.Optional(NullableString()),
+  cancelReasonCode: Type.Optional(
+    Type.Union([lit(HOPE_SUBMISSION_CANCEL_REASON_CODES), Type.Null()]),
+  ),
   /** Rejected items still awaiting a correction assessment. */
   needsCorrectionCount: Type.Integer(),
   /** Rejected items whose correction exists but is not yet in a batch. */
@@ -635,6 +726,7 @@ const SUBMISSION_ITEM_STATUS = Type.Union([
   Type.Literal("pending"),
   Type.Literal("blocked"),
   Type.Literal("unmatched"),
+  Type.Literal("cancelled"),
 ]);
 /** One assessment inside a batch with its CMS outcome (patient NAME is not resolved by M10). */
 export const HopeSubmissionItemResponseSchema = Type.Object({
@@ -874,65 +966,29 @@ export const HopeValidationResponseSchema = Type.Object({
     }),
   ),
 });
-/** Route 20 — the admin schedule-recompute result (rows touched). */
+/** Route 20 — the admin regenerate result: the admission's schedule count AFTER the missing windows were created. */
 export const HopeRegenerateResponseSchema = Type.Object({
   admissionId: Type.String(),
   scheduleCount: Type.Integer(),
 });
 
-// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
-type Conforms<T extends V, V> = T;
-type _Assessment = Conforms<Static<typeof HopeAssessmentResponseSchema>, ServiceAssessmentView>;
-type _Workspace = Conforms<
-  Static<typeof HopeAssessmentWorkspaceResponseSchema>,
-  ServiceAssessmentWorkspace
->;
-type _Review = Conforms<Static<typeof HopeAssessmentReviewResponseSchema>, ServiceReviewReadModel>;
-type _AnswerPatch = Conforms<
-  Static<typeof HopeAnswerPatchResponseSchema>,
-  ServiceAnswerPatchResult
->;
-type _Sign = Conforms<Static<typeof HopeSignResponseSchema>, ServiceSignResult>;
-type _Schedule = Conforms<Static<typeof HopeScheduleResponseSchema>, ServiceScheduleView>;
-type _Sfv = Conforms<Static<typeof HopeSfvResponseSchema>, ServiceSfvView>;
-type _Submission = Conforms<Static<typeof HopeSubmissionResponseSchema>, ServiceSubmissionView>;
-type _Compliance = Conforms<Static<typeof HopeComplianceResponseSchema>, ServiceComplianceView>;
-type _WorkflowState = Conforms<
-  Static<typeof HopeWorkflowStateResponseSchema>,
-  ServiceWorkflowStateView
->;
-type _Validation = Conforms<Static<typeof HopeValidationResponseSchema>, ServiceValidationRunView>;
-type _ScheduleList = Conforms<
-  Static<typeof HopeScheduleListResponseSchema>,
-  { readonly schedules: readonly ServiceScheduleView[] }
->;
-type _AssessmentList = Conforms<
-  Static<typeof HopeAssessmentListResponseSchema>,
-  { readonly assessments: readonly ServiceAssessmentView[] }
->;
-type _SfvList = Conforms<
-  Static<typeof HopeSfvListResponseSchema>,
-  { readonly sfvs: readonly ServiceSfvView[] }
->;
-type _SubmissionList = Conforms<
-  Static<typeof HopeSubmissionListResponseSchema>,
-  { readonly submissions: readonly ServiceSubmissionView[] }
->;
-type _SummaryRequested = Conforms<
-  Static<typeof HopeSummaryRequestedResponseSchema>,
-  { assessmentId: string; requested: true }
->;
-type _Regenerate = Conforms<
-  Static<typeof HopeRegenerateResponseSchema>,
-  { admissionId: string; scheduleCount: number }
->;
-
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
+/**
+ * Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. For an `additionalProperties: false`
+ * schema the error's path IS the property name the client chose, which would be echoed into the 422 (and cached by the
+ * idempotency layer for 24 h): an unexpected property is reported as the static `(unexpected property)`, never by name.
+ */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});
   if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
+    // The FIRST error only: spreading the iterator builds one error object per offending element, which for an oversized array in a
+    // request body is millions of them (hundreds of milliseconds and hundreds of megabytes on the shared event loop).
+    const first = Value.Errors(schema, converted).First();
+    const field =
+      first?.type === ValueErrorType.ObjectAdditionalProperties
+        ? "(unexpected property)"
+        : first
+          ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)"
+          : "(root)";
     throw new ValidationError("request validation failed", [
       { field, code: "INVALID", message: first?.message ?? "invalid request" },
     ]);

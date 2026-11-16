@@ -536,6 +536,9 @@ async function main(): Promise<void> {
       throw new Error(`HOPE timepoint create failed: ${JSON.stringify(hope.error)}`);
 
     const signVersion = await answerForSign(rn, hopeData.id, targetDate.slice(0, 10));
+    // HOPE signing is step-up gated (`hope.timepoint.sign`); see lib/step-up.ts. Immediately before the
+    // request, after the answers: the freshness window is short and answering can take a while.
+    await stepUpSession(rn.userId);
     const sign = await rn.client.POST("/api/v1/hope/assessments/{id}/sign", {
       params: { path: { id: hopeData.id } },
       body: { ifVersion: signVersion, attestationConfirmed: true },

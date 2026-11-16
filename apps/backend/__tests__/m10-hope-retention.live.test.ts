@@ -223,9 +223,14 @@ describe.skipIf(!DB_URL)("M10 hope-retention-scan — LIVE Postgres (GAP-181)", 
       blockers: ["pending_correction"],
     });
 
-    // Re-running does not re-announce, and nothing clinical was ever deleted.
+    // Re-running does not re-announce, keeps the instant the patient was first flagged (an update must not overwrite
+    // `flagged_at` with NULL), and nothing clinical was ever deleted.
+    const firstFlaggedAt = (e.flagged_at as Date).getTime();
     await runHopeRetentionCron(deps());
     expect(await events(e.id)).toEqual(["m10.hope.retention_eligible"]);
+    const rescanned = await review(eligible);
+    expect(rescanned.status).toBe("eligible");
+    expect((rescanned.flagged_at as Date | null)?.getTime()).toBe(firstFlaggedAt);
     expect(await assessmentCount()).toBe(before);
 
     // Releasing the hold lets the held patient be flagged on the next scan.
@@ -240,6 +245,82 @@ describe.skipIf(!DB_URL)("M10 hope-retention-scan — LIVE Postgres (GAP-181)", 
     await runHopeRetentionCron(deps());
     expect((await review(eligible)).status).toBe("blocked");
     orgWideHold = false;
+  });
+
+  it("a hold whose creator typed the patient id in upper case or in braces still blocks the flag", async () => {
+    // `legalHoldScopeOf` keeps the id as the hold's creator typed it (the uuid format check accepts upper case), and the
+    // scan compares it with `hope_assessment.patient_id` IN SQL: compared in JavaScript an upper-case id matched nothing
+    // and the held patient was flagged eligible for destruction.
+    const heldUpper = randomUUID();
+    const heldBraced = randomUUID();
+    const unheld = randomUUID();
+    for (const patient of [heldUpper, heldBraced, unheld]) {
+      await seedAssessment(patient, { effective: "2018-01-01T00:00:00Z" });
+    }
+    const before = await assessmentCount();
+    orgWideHold = false; // this case is about a patient-scoped hold only, whatever an earlier case left behind
+    holdPatients = new Set([heldUpper.toUpperCase(), `{${heldBraced}}`]);
+    try {
+      await runHopeRetentionCron(deps());
+    } finally {
+      holdPatients = new Set();
+    }
+
+    expect(await review(heldUpper)).toMatchObject({ status: "blocked", blockers: ["legal_hold"] });
+    expect(await review(heldBraced)).toMatchObject({ status: "blocked", blockers: ["legal_hold"] });
+    expect((await review(heldUpper)).flagged_at).toBeNull();
+    // the readable hold does not stop an unheld patient from being flagged, once
+    const flagged = await review(unheld);
+    expect(flagged).toMatchObject({ status: "eligible" });
+    expect(await events(flagged.id)).toEqual(["m10.hope.retention_eligible"]);
+    expect(await events((await review(heldUpper)).id)).toEqual([]);
+    expect(await assessmentCount()).toBe(before);
+  });
+
+  it("a hold that names a patient with something that is no uuid fails the organisation closed: nothing is flagged or published, even for a patient no readable hold names", async () => {
+    // Dropping the unreadable id would compare that patient against nothing and flag them eligible for destruction.
+    const unheld = randomUUID();
+    await seedAssessment(unheld, { effective: "2018-01-01T00:00:00Z" });
+    const before = await assessmentCount();
+    const reviewsBefore = Number(
+      (await admin.query("SELECT count(*)::int AS n FROM hope_retention_review")).rows[0].n,
+    );
+    const eventsBefore = Number(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m10.hope.retention_eligible'",
+        )
+      ).rows[0].n,
+    );
+    orgWideHold = false;
+    holdPatients = new Set([randomUUID(), "not-a-uuid"]);
+    try {
+      await expect(runHopeRetentionCron(deps())).rejects.toBeInstanceOf(AggregateError);
+    } finally {
+      holdPatients = new Set();
+    }
+
+    const reviewsAfter = Number(
+      (await admin.query("SELECT count(*)::int AS n FROM hope_retention_review")).rows[0].n,
+    );
+    const eventsAfter = Number(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m10.hope.retention_eligible'",
+        )
+      ).rows[0].n,
+    );
+    expect(reviewsAfter).toBe(reviewsBefore);
+    expect(eventsAfter).toBe(eventsBefore);
+    expect(
+      (await admin.query("SELECT 1 FROM hope_retention_review WHERE patient_id=$1", [unheld])).rows,
+    ).toEqual([]);
+    expect(await assessmentCount()).toBe(before);
+    // Once the hold is readable again the next scan flags the patient, once.
+    await runHopeRetentionCron(deps());
+    const flagged = await review(unheld);
+    expect(flagged).toMatchObject({ status: "eligible" });
+    expect(await events(flagged.id)).toEqual(["m10.hope.retention_eligible"]);
   });
 
   it("refuses to run without the legal-hold port (fail-closed, never guesses nothing is held)", async () => {

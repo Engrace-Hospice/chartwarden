@@ -4,6 +4,8 @@
 // size- and row-limited, never evaluated; rows it cannot understand are reported, not guessed at. The server
 // remains the authority on matching and validation.
 
+import { MAX_RESULT_MESSAGE } from "./hope-report-reference";
+
 export type CmsItemOutcome = "accepted" | "accepted_with_warnings" | "rejected";
 
 export interface ParsedCmsRow {
@@ -20,9 +22,8 @@ export interface ParsedCmsReport {
 }
 
 export const MAX_REPORT_CHARS = 200_000;
+/** The server's limit on the rows of one result (`HOPE_RESULT_MAX_ROWS`): a longer paste is refused whole. */
 export const MAX_REPORT_ROWS = 2_000;
-const MAX_CODE = 64;
-const MAX_MESSAGE = 1_000;
 
 /** Polarity-safe: a negated acceptance ("not accepted") is a rejection, and "0 errors" is not an error.
  * Anything unrecognised is null (the row is reported, never guessed). Mirrors the server's classifyStatusText. */
@@ -45,8 +46,19 @@ export function normalizeOutcome(raw: unknown): CmsItemOutcome | null {
   return null;
 }
 
-const text = (v: unknown, max: number): string =>
-  typeof v === "string" || typeof v === "number" ? String(v).trim().slice(0, max) : "";
+const HIGH_SURROGATE = /[\uD800-\uDBFF]$/;
+
+/**
+ * A cell as trimmed text, cut to `max` UTF-16 units when a limit is given (the server counts units). A cut can land between the two
+ * halves of an emoji: the lone half that is left would be refused by the server, so it is dropped with the rest. A cell with NO limit
+ * (a code) is kept whole: cutting a long code would make it pass the one-word check as a different, valid code, so the dialog refuses it.
+ */
+const text = (v: unknown, max = Number.POSITIVE_INFINITY): string => {
+  if (typeof v !== "string" && typeof v !== "number") return "";
+  const trimmed = String(v).trim();
+  if (trimmed.length <= max) return trimmed;
+  return trimmed.slice(0, max).replace(HIGH_SURROGATE, "");
+};
 
 function fromRecord(raw: Record<string, unknown>, label: string): ParsedCmsRow | string {
   // Keys are matched case- and separator-insensitively (assessment_id, Assessment ID, assessmentId).
@@ -61,9 +73,9 @@ function fromRecord(raw: Record<string, unknown>, label: string): ParsedCmsRow |
   return {
     assessmentId,
     status,
-    code: text(pick("code", "errorcode"), MAX_CODE),
-    itemCode: text(pick("itemcode", "item"), MAX_CODE),
-    message: text(pick("message", "description", "text"), MAX_MESSAGE),
+    code: text(pick("code", "errorcode")),
+    itemCode: text(pick("itemcode", "item")),
+    message: text(pick("message", "description", "text"), MAX_RESULT_MESSAGE),
   };
 }
 

@@ -15,7 +15,7 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 // pinned to that window's schedule id and RFA; Patient HOPE Timeline, unscheduled); the SFV completion
 // through its own `POST …/hope/sfv` endpoint (SFV Worklist, per open obligation); sign, correct
 // (append-only, D7) and request-summary (Assessment Detail, each offered only in the status the server
-// accepts); schedule skip (Timepoint Dashboard); and the route-20 schedule recompute (Patient Timeline).
+// accepts); schedule skip (Timepoint Dashboard); and the route-20 create-missing-windows write (Patient Timeline).
 //
 // WHAT IS DELIBERATELY NOT BUILT, AND WHY — one is an absence of a PRODUCER, the other a deliberate omission:
 //
@@ -111,7 +111,7 @@ export const hopeScreens: ScreenRegistryModule<ComponentType> = {
       screen: HopeTimepointCapture,
     },
     {
-      // Contextual SFV capture through the real recordSfv workflow.
+      // Contextual SFV hub: the open follow-up's facts, and the way to the triggering assessment where it is completed.
       id: "hope.sfv-capture",
       path: "/admissions/:admissionId/hope/sfv/:sfvId",
       title: "SFV Capture",

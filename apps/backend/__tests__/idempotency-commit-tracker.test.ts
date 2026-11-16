@@ -16,6 +16,8 @@ import {
   instrumentPoolForCommits,
   runWithCommitTracker,
 } from "@chartwarden/db";
+import { HopeStateError } from "@chartwarden/hope";
+import { ForbiddenError } from "@chartwarden/types";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
@@ -187,6 +189,30 @@ describe("idempotency release needs proof that nothing committed", () => {
     expect(first.json().error.code).toBe("CONCURRENT_UPDATE");
     const retry = await post();
     expect(retry.statusCode).toBe(409);
+    expect(runs).toBe(1);
+    expect(pool.inserts()).toBe(1);
+  });
+
+  it("(c3) a commit followed by a 409 M10_RECORD_BUSY from a LATER lock: cached, not released (the earlier step is durable)", async () => {
+    await build(async () => {
+      await transaction(pool, ["insert into t (n) values (1)"]); // e.g. a legacy draft's spec initialisation committed
+      throw new HopeStateError("M10_RECORD_BUSY", "The record is busy."); // the next lock timed out
+    });
+    const first = await post();
+    expect(first.statusCode).toBe(409);
+    expect(first.json().error.code).toBe("M10_RECORD_BUSY");
+    expect((await post()).statusCode).toBe(409);
+    expect(runs).toBe(1);
+    expect(pool.inserts()).toBe(1);
+  });
+
+  it("(c4) a commit followed by a 403 refusal: cached, not released (the write is durable, so a retry must not run it again)", async () => {
+    await build(async () => {
+      await transaction(pool, ["insert into t (n) values (1)"]);
+      throw new ForbiddenError("a later check refused");
+    });
+    expect((await post()).statusCode).toBe(403);
+    expect((await post()).statusCode).toBe(403);
     expect(runs).toBe(1);
     expect(pool.inserts()).toBe(1);
   });
