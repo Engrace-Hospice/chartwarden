@@ -14,21 +14,12 @@ import {
 } from "./hope-override-justification";
 
 /**
- * The permission the server requires for `adminOverride` (hope-routes.ts `ADMIN_LATE_OVERRIDE`): a request that asks for the override
- * without it is refused 403, after the clinician has typed a justification. A session known to lack it is not offered the control.
- */
-export const OVERRIDE_PERMISSION = "hope.admin.late_deadline_override";
-/**
  * What a clinician who cannot tick the override is told: only what is certain. Who else could record the visit is not (recording
  * needs the author discipline of the recorder's OWN roles, and files the visit under the recorder), so nobody is named to do it: the
  * administrator decides how it is to be recorded.
  */
 const OVERRIDE_NOT_PERMITTED =
   "Only an administrator with override permission can override the late deadline. Ask your administrator how this visit should be recorded.";
-/** What the refusal M10_TIMEPOINT_EXPIRED says to a clinician who cannot tick the override (instead of telling them to). */
-export const OVERRIDE_NOT_PERMITTED_ASKED =
-  "This visit is past the late deadline, so recording it needs an administrative override. Only an administrator with override permission can give one: ask your administrator how this visit should be recorded.";
-
 const JUSTIFICATION_HINT = `Between ${OVERRIDE_JUSTIFICATION_MIN} and ${OVERRIDE_JUSTIFICATION_MAX} characters (a run of spaces or line breaks counts as one). It is recorded in the audit trail when the override is used and cannot be changed later, so do not enter a patient's name or a Social Security or Medicare number.`;
 
 /** What the dialog holds of the override: the tick, the text as typed, and what the server's last refusal said about it. */

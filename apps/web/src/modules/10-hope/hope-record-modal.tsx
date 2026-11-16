@@ -65,17 +65,14 @@ import {
   failedResultOutcomeUnknown,
   recordTimepoint,
 } from "./hope-api";
-import { checkRow, lateBox, meta } from "./hope-dialog-styles";
+import { checkRow, errorText, lateBox, meta } from "./hope-dialog-styles";
 import { notifyDone } from "./hope-notify-done";
 import { type JustificationRefusal, justificationRefusalOf } from "./hope-override-justification";
-import {
-  HopeOverrideSection,
-  OVERRIDE_NOT_PERMITTED_ASKED,
-  OVERRIDE_PERMISSION,
-  judgeOverride,
-} from "./hope-override-section";
+import { HopeOverrideSection, judgeOverride } from "./hope-override-section";
 import {
   ASKED_MESSAGES,
+  OVERRIDE_NOT_PERMITTED_ASKED,
+  OVERRIDE_PERMISSION,
   type RecordWindow,
   SPAN_ASKED_BY_CODE,
   asksForMore,
@@ -753,4 +750,3 @@ const symptomGrid: CSSProperties = {
   gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))",
   gap: "0.5rem",
 };
-const errorText: CSSProperties = { margin: 0, fontSize: "0.8rem", color: "var(--color-error)" };

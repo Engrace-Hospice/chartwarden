@@ -14,6 +14,7 @@ import {
   failedResultOutcomeUnknown,
   recordSubmissionResult,
 } from "./hope-api";
+import { errorText, meta } from "./hope-dialog-styles";
 import { notifyDone } from "./hope-notify-done";
 import {
   MAX_REFERENCE,
@@ -502,9 +503,3 @@ const body: CSSProperties = {
 };
 const stepTitle: CSSProperties = { margin: 0, fontSize: "0.95rem", fontWeight: 600 };
 const title: CSSProperties = { margin: 0, fontSize: "1.05rem", fontWeight: 600 };
-const meta: CSSProperties = {
-  margin: 0,
-  fontSize: "0.75rem",
-  color: "var(--color-on-surface-variant)",
-};
-const errorText: CSSProperties = { margin: 0, fontSize: "0.8rem", color: "var(--color-error)" };

@@ -1,7 +1,9 @@
 import { t } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — inline styles shared by the HOPE assessment workspace and the dialogs it opens
-// (`hope-sign-dialog.tsx`, `hope-sfv-complete-dialog.tsx`). They live apart from the screen so a dialog can be its own
-// file without importing the 5,000-line screen back (an import cycle).
+// (`hope-sign-dialog.tsx`, `hope-sfv-complete-dialog.tsx`, and the small write dialogs: `hope-record-modal.tsx`,
+// `hope-override-section.tsx`, `hope-action-modal.tsx`, `record-cms-result-modal.tsx`, which share `meta`, `lateBox`, `checkRow` and
+// `errorText` at the end). They live apart from the screen so a dialog can be its own file without importing the 5,000-line screen
+// back (an import cycle).
 import type { CSSProperties } from "react";
 
 export const muted: CSSProperties = {
@@ -451,4 +453,11 @@ export const checkRow: CSSProperties = {
   alignItems: "center",
   gap: "0.5rem",
   fontSize: "0.85rem",
+};
+
+/** A refusal in a dialog's own alert (the paragraph that takes focus after a failed write). */
+export const errorText: CSSProperties = {
+  margin: 0,
+  fontSize: "0.8rem",
+  color: "var(--color-error)",
 };

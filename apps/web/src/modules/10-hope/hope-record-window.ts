@@ -1,6 +1,14 @@
 // apps/web/src/modules/10-hope — where a capture falls against its schedule window, and what a refusal of the server's asks for that this
 // picture could not (split from the recording dialog, which is about the form). The SERVER judges the window; this decides only what to ASK for.
-import { OVERRIDE_NOT_PERMITTED_ASKED } from "./hope-override-section";
+
+/**
+ * The permission the server requires for `adminOverride` (hope-routes.ts `ADMIN_LATE_OVERRIDE`): a request that asks for the override
+ * without it is refused 403, after the clinician has typed a justification. A session known to lack it is not offered the control.
+ */
+export const OVERRIDE_PERMISSION = "hope.admin.late_deadline_override";
+/** What the refusal M10_TIMEPOINT_EXPIRED says to a clinician who cannot tick the override (instead of telling them to). */
+export const OVERRIDE_NOT_PERMITTED_ASKED =
+  "This visit is past the late deadline, so recording it needs an administrative override. Only an administrator with override permission can give one: ask your administrator how this visit should be recorded.";
 
 /** The window a schedule row publishes; supplied when the capture completes a known timepoint. */
 export interface RecordWindow {

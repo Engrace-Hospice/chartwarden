@@ -26,6 +26,7 @@ import {
   requestSummaryPdf,
   skipSchedule,
 } from "./hope-api";
+import { errorText, meta } from "./hope-dialog-styles";
 import { notifyDone } from "./hope-notify-done";
 import { CANCEL_REASON_LABEL, SKIP_REASON_LABEL } from "./hope-status";
 import { useFocusOnNewError } from "./use-focus-on-new-error";
@@ -253,9 +254,3 @@ const body: CSSProperties = {
   gap: "0.875rem",
 };
 const title: CSSProperties = { margin: 0, fontSize: "1.05rem", fontWeight: 600 };
-const meta: CSSProperties = {
-  margin: 0,
-  fontSize: "0.75rem",
-  color: "var(--color-on-surface-variant)",
-};
-const errorText: CSSProperties = { margin: 0, fontSize: "0.8rem", color: "var(--color-error)" };
