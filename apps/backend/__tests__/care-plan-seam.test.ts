@@ -140,6 +140,34 @@ describe("CarePlanReader.relevantElementsForEncounter (§7.8)", () => {
     expect(out?.redacted).toBe(true);
   });
 
+  it("a per-actor viewer verdict decides SUD visibility, not the patient-level release fact", async () => {
+    // The store says "a release exists" (patient-level allow), but this caller is not named on it.
+    const named = createCarePlanReader(store({ sudReadAllowed: true }));
+    const denied = await named.relevantElementsForEncounter(
+      PAT,
+      "rn_routine_visit",
+      "rn",
+      undefined,
+      { sudDisclosureAllowed: false },
+    );
+    expect(denied?.problems.map((p) => p.problemId)).toEqual(["prob-pain"]);
+    expect(denied?.interventions.map((i) => i.interventionId)).toEqual(["iv-rn"]);
+    expect(denied?.goals.map((g) => g.goalId)).toEqual(["goal-pain"]);
+    expect(denied?.redacted).toBe(true);
+
+    // …and the converse: a caller the release names sees it though the store's fact was "denied".
+    const cleared = createCarePlanReader(store({ sudReadAllowed: false }));
+    const allowed = await cleared.relevantElementsForEncounter(
+      PAT,
+      "rn_routine_visit",
+      "rn",
+      undefined,
+      { sudDisclosureAllowed: true },
+    );
+    expect(allowed?.problems.map((p) => p.problemId).sort()).toEqual(["prob-pain", "prob-sud"]);
+    expect(allowed?.redacted).toBe(false);
+  });
+
   it("filters by discipline (msw sees only the msw intervention)", async () => {
     const reader = createCarePlanReader(store({ sudReadAllowed: true }));
     const out = await reader.relevantElementsForEncounter(PAT, "msw_visit", "msw");

@@ -5,6 +5,7 @@
 // the two derived rules with one home each: the §7.8 encounter-relevance filter and the §2.6 overdue
 // gate (delegated to the pure lifecycle/overdue-gate helper).
 import type {
+  CarePlanElementsViewer,
   CarePlanReader,
   InterventionDiscipline,
   PatientId,
@@ -35,8 +36,9 @@ export function createCarePlanReader(
       _encounterType: string,
       discipline: InterventionDiscipline,
       admissionId?: string,
+      viewer?: CarePlanElementsViewer,
     ): Promise<RelevantCarePlanElements | null> {
-      const record = await store.activeCarePlanElements(patientId, admissionId);
+      const record = await store.activeCarePlanElements(patientId, admissionId, viewer);
       if (record === null) return null;
 
       // D7: when not entitled, SUD problems (and their goals/interventions) never enter the projection.

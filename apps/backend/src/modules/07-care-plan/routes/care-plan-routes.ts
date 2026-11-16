@@ -674,13 +674,26 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
       },
     },
     async (request) => {
-      actorOf(request);
+      const { organizationId } = actorOf(request);
       const q = parse(RelevantElementsQuerySchema, request.query);
+      // The per-ACTOR Part 2 verdict, the same closure every other M7 read redacts by: the reader's own check is
+      // patient-level ("some release has an active recipient"), which would show a nurse the release does not
+      // name. Fail-closed default (no closure bound) is deny.
+      const viewer = {
+        sudDisclosureAllowed: await sudDisclosureAllowed({
+          organizationId,
+          patientId: q.patientId,
+          planId: "",
+          roles: request.context.roles,
+          membershipId: membershipIdOf(request.context),
+        }),
+      };
       return getSeam("CarePlanReader").relevantElementsForEncounter(
         q.patientId,
         q.encounterType ?? "routine",
         (q.discipline ?? "rn") as InterventionDiscipline,
         q.admissionId,
+        viewer,
       );
     },
   );

@@ -131,7 +131,11 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
   }
 
   return {
-    async activeCarePlanElements(patientId, admissionId): Promise<CarePlanElementsRecord | null> {
+    async activeCarePlanElements(
+      patientId,
+      admissionId,
+      viewer,
+    ): Promise<CarePlanElementsRecord | null> {
       return withOrgContextFromRequest(db, async (tx) => {
         const t = tx as unknown as DbClient;
         const plan = await loadActivePlan(t, patientId, admissionId);
@@ -154,9 +158,13 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
         }));
         // The D7 decision is only observable when SUD content exists — skip the M39 round-trip otherwise.
         const sudPresent = problems.some((p) => p.containsSud);
-        const sudReadAllowed = sudPresent
-          ? await part2ReleaseAllowed(plan.organizationId, patientId)
-          : true;
+        // A human caller's per-ACTOR verdict (the route resolved it) outranks the patient-level release fact: a
+        // release that names other staff redacts this caller even though "a release exists".
+        const sudReadAllowed = !sudPresent
+          ? true
+          : viewer
+            ? viewer.sudDisclosureAllowed
+            : await part2ReleaseAllowed(plan.organizationId, patientId);
         return {
           planId: plan.id,
           patientId: plan.patientId,

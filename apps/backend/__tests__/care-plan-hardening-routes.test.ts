@@ -93,9 +93,11 @@ const key = (): { "idempotency-key": string } => ({ "idempotency-key": randomUUI
 
 function makeServer(
   // The §7.6 closure: only a session carrying the (test) `sud_cleared` role may see SUD content.
-  sudDisclosureAllowed: (input: { roles: readonly string[] }) => Promise<boolean> = async ({
-    roles,
-  }) => roles.includes("sud_cleared"),
+  sudDisclosureAllowed: (input: {
+    roles: readonly string[];
+    patientId: string;
+    membershipId: string | null;
+  }) => Promise<boolean> = async ({ roles }) => roles.includes("sud_cleared"),
 ) {
   const backend = createInMemoryCarePlanBackend();
   registerEffectivePermissionResolver(
@@ -757,5 +759,56 @@ describe("CP-15 — a stale ifVersion sign is rejected and attaches nothing", ()
     expect(after.json().version).toBe(2); // untouched
 
     expect((await sign(2)).statusCode).toBe(201);
+  });
+});
+
+describe("the internal relevant-elements read redacts per ACTOR (compliance review of D-2)", () => {
+  const url = `/api/v1/internal/care-plan/relevant-elements?patientId=${PATIENT}&encounterType=routine`;
+  const picker = {
+    planId: "cp_x",
+    patientId: PATIENT,
+    problems: [],
+    goals: [],
+    interventions: [],
+    redacted: false,
+  };
+
+  async function readAs(headers: Record<string, string>) {
+    const viewers: unknown[] = [];
+    registerSeam("CarePlanReader", {
+      ...carePlanReaderDenyStub,
+      relevantElementsForEncounter: async (_patient, _type, _discipline, _admission, viewer) => {
+        viewers.push(viewer);
+        return picker as never;
+      },
+    });
+    const asked: { patientId: string; roles: readonly string[]; membershipId: string | null }[] =
+      [];
+    const { app } = makeServer(async (q) => {
+      asked.push(q);
+      return q.roles.includes("sud_cleared");
+    });
+    const res = await app.inject({ method: "GET", url, headers });
+    return { res, viewers, asked };
+  }
+
+  it("asks the per-actor closure about THIS caller and hands the reader its verdict", async () => {
+    const { res, viewers, asked } = await readAs(RN);
+    expect(res.statusCode).toBe(200);
+    expect(asked).toEqual([
+      {
+        organizationId: ORG,
+        patientId: PATIENT,
+        planId: "",
+        roles: ["rn", "rn_case_manager"],
+        membershipId: "rn_1_membership",
+      },
+    ]);
+    expect(viewers).toEqual([{ sudDisclosureAllowed: false }]);
+  });
+
+  it("passes an allowing verdict through, so only the cleared caller sees Part 2 content", async () => {
+    const { viewers } = await readAs(RN_SUD_CLEARED);
+    expect(viewers).toEqual([{ sudDisclosureAllowed: true }]);
   });
 });

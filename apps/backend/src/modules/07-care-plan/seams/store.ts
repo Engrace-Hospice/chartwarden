@@ -10,6 +10,7 @@
 // tests can exercise both the entitled and the redacted paths.
 import type {
   CarePlanCodeUsageRecord,
+  CarePlanElementsViewer,
   CarePlanId,
   ClinicalLinkSummary,
   IsoInstant,
@@ -64,6 +65,8 @@ export interface CarePlanReaderStore {
   activeCarePlanElements(
     patientId: PatientId,
     admissionId?: string,
+    /** The caller's per-actor Part 2 verdict; when given it replaces the patient-level release check. */
+    viewer?: CarePlanElementsViewer,
   ): Promise<CarePlanElementsRecord | null>;
   /** The active care plan's overdue-gate clock facts for a patient (initial/review due columns). */
   activeCarePlanClock(patientId: PatientId): Promise<CarePlanClockRecord | null>;
@@ -113,8 +116,12 @@ export function createInMemoryCarePlanReaderStore(seed: CarePlanReaderSeed = {})
   const links = seed.links ?? [];
   return {
     store: {
-      async activeCarePlanElements(patientId, _admissionId) {
-        return elements.find((e) => e.patientId === patientId) ?? null;
+      async activeCarePlanElements(patientId, _admissionId, viewer) {
+        const record = elements.find((e) => e.patientId === patientId) ?? null;
+        // Same rule as the Drizzle store: a per-actor verdict, when given, decides SUD visibility.
+        return record && viewer
+          ? { ...record, sudReadAllowed: viewer.sudDisclosureAllowed }
+          : record;
       },
       async activeCarePlanClock(patientId) {
         return clocks.find((c) => c.patientId === patientId) ?? null;

@@ -33,7 +33,9 @@ import { buildServer } from "../src/bootstrap/index";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
   buildCarePlanAbacPredicates,
+  createCarePlanReader,
   createDbCarePlanAbacResolver,
+  createDrizzleCarePlanReaderStore,
   mountCarePlanRoutes,
 } from "../src/modules/07-care-plan/index";
 import {
@@ -435,6 +437,132 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
         "Opioid use disorder",
       ]);
       await app.close();
+    });
+  });
+
+  // Compliance review of D-2 (HIGH). The internal relevant-elements read asked the PATIENT-level question ("does the
+  // release have any active recipient?"), so a nurse the release does not name still received the SUD problem and the
+  // interventions that serve it. It now takes the caller's per-ACTOR verdict, the one every other M7 read redacts by.
+  // Real routes, real evaluator (in-memory consent store), real CarePlanReader over the Drizzle store.
+  describe("relevant-elements — per-ACTOR Part 2 redaction", () => {
+    const SUD_PROBLEM = "SYNTHETIC-SUD-PROBLEM";
+    const PLAIN_PROBLEM = "SYNTHETIC-PLAIN-PROBLEM";
+    const releaseNaming = (membershipId: string): StoredConsent => ({
+      ...activeConsent("42_cfr_part_2_release"),
+      recipients: [
+        {
+          removedAtMs: null,
+          expiresAtMs: null,
+          recipientResolvedKind: "workforce_member",
+          recipientResolvedId: membershipId,
+        },
+      ],
+    });
+
+    /** A plan with one SUD problem and one plain problem, each served by an `rn` intervention, read as `caller`. */
+    async function readAs(
+      caller: { membership: string; roles: string },
+      release: ((membershipId: string) => StoredConsent) | null,
+    ) {
+      await seedTenant();
+      const app = bootApp({
+        grants: {
+          author_1: ["care_plan.bootstrap", "care_plan.author", "care_plan.read"],
+          reader_1: ["care_plan.read"],
+        },
+        consents: release ? [release("member-b")] : [],
+      });
+      registerSeam(
+        "CarePlanReader",
+        createCarePlanReader(createDrizzleCarePlanReaderStore(handle.db)),
+      );
+      const AUTHOR = { "x-test-user": "author_1", "x-test-org": org, "x-test-roles": "rn" };
+      const boot = await app.inject({
+        method: "POST",
+        url: `/api/v1/patients/${patientId}/care-plan`,
+        headers: AUTHOR,
+        payload: { admissionId: randomUUID() },
+      });
+      const planId = boot.json().id as string;
+      for (const [description, sudRelated] of [
+        [SUD_PROBLEM, true],
+        [PLAIN_PROBLEM, false],
+      ] as const) {
+        await app.inject({
+          method: "POST",
+          url: `/api/v1/care-plans/${planId}/problems`,
+          headers: AUTHOR,
+          payload: { description, kind: "related", source: "clinical", sudRelated },
+        });
+      }
+      const { rows } = await admin.query(
+        "SELECT id, description FROM problem WHERE care_plan_id = $1",
+        [planId],
+      );
+      for (const row of rows as { id: string; description: string }[]) {
+        const res = await app.inject({
+          method: "POST",
+          url: `/api/v1/care-plans/${planId}/interventions`,
+          headers: AUTHOR,
+          payload: {
+            problemId: row.id,
+            scopeText: `visit for ${row.description}`,
+            frequencyText: "weekly",
+            frequencyValue: "1/week",
+            discipline: "rn",
+          },
+        });
+        expect(res.statusCode, row.description).toBe(201);
+      }
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/internal/care-plan/relevant-elements?patientId=${patientId}&encounterType=routine&discipline=rn`,
+        headers: {
+          "x-test-user": "reader_1",
+          "x-test-org": org,
+          "x-test-roles": caller.roles,
+          "x-test-membership": caller.membership,
+        },
+      });
+      await app.close();
+      expect(res.statusCode).toBe(200);
+      return res.json() as {
+        redacted: boolean;
+        problems: { description: string }[];
+        interventions: { scopeText: string }[];
+      };
+    }
+
+    it("withholds the SUD problem and its intervention from a nurse the release does NOT name", async () => {
+      const body = await readAs({ membership: "member-a", roles: "rn" }, releaseNaming);
+      expect(body.redacted).toBe(true);
+      expect(body.problems.map((p) => p.description)).toEqual([PLAIN_PROBLEM]);
+      expect(body.interventions.map((i) => i.scopeText)).toEqual([`visit for ${PLAIN_PROBLEM}`]);
+    });
+
+    it("shows them to the workforce member the release names", async () => {
+      const body = await readAs({ membership: "member-b", roles: "rn" }, releaseNaming);
+      expect(body.redacted).toBe(false);
+      expect(body.problems.map((p) => p.description).sort()).toEqual([PLAIN_PROBLEM, SUD_PROBLEM]);
+      expect(body.interventions).toHaveLength(2);
+    });
+
+    it("withholds them from a plain nurse when there is no release at all", async () => {
+      const body = await readAs({ membership: "member-a", roles: "rn" }, null);
+      expect(body.redacted).toBe(true);
+      expect(body.problems.map((p) => p.description)).toEqual([PLAIN_PROBLEM]);
+    });
+
+    it("treats the RN case manager as every other M7 read does: §7.6 carve-out only where no release names others", async () => {
+      const noRelease = await readAs({ membership: "member-a", roles: "rn,rn_case_manager" }, null);
+      expect(noRelease.redacted).toBe(false);
+      expect(noRelease.problems).toHaveLength(2);
+      const namesOthers = await readAs(
+        { membership: "member-a", roles: "rn,rn_case_manager" },
+        releaseNaming,
+      );
+      expect(namesOthers.redacted).toBe(true);
+      expect(namesOthers.problems.map((p) => p.description)).toEqual([PLAIN_PROBLEM]);
     });
   });
 

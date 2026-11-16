@@ -301,6 +301,11 @@ export interface CarePlanCodeUsageRecord {
 
 // ── §7.8 CarePlanReader seam interface ──────────────────────────────────────────────────────────────
 
+/** The caller's per-actor Part 2 verdict for an element read (the M39 `evaluateForInternalAccess` answer). */
+export interface CarePlanElementsViewer {
+  readonly sudDisclosureAllowed: boolean;
+}
+
 /**
  * §7.8 — the read surface M8 (encounter authoring + sign gate), M14 (IDG packet), and M15 (discipline
  * care plans) consume. Resolved within the consumer's tenant context (the reader does not switch
@@ -309,12 +314,15 @@ export interface CarePlanCodeUsageRecord {
  */
 export interface CarePlanReader {
   /** Populate the encounter form's element picker — active problems, the active interventions tagged
-   * with `discipline`, and their parent problems' goals (§7.8). */
+   * with `discipline`, and their parent problems' goals (§7.8). `viewer` is the caller's PER-ACTOR 42 CFR
+   * Part 2 verdict, resolved by the route that serves a human; when given it decides SUD visibility in
+   * place of the patient-level release check, so a release that names other staff redacts this caller. */
   relevantElementsForEncounter(
     patientId: PatientId,
     encounterType: string,
     discipline: InterventionDiscipline,
     admissionId?: string,
+    viewer?: CarePlanElementsViewer,
   ): Promise<RelevantCarePlanElements | null>;
 
   /** Whether the patient's active care plan is past a CoP 418.56 gate (5-day initial / 15-day review).
