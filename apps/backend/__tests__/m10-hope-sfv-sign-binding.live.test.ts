@@ -53,6 +53,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { importHopeSpec } from "../../../scripts/db/import-hope-spec";
 import { __resetSeamsForTest, buildServer, registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { activeLegalHoldScopeForOrg } from "../src/modules/04-audit/legal-hold-scope";
 import { registerPatientSeams } from "../src/modules/05-patient/index";
 import {
   createAdmissionStatusReader,
@@ -492,7 +493,11 @@ describe.skipIf(!DB_URL)(
       };
       // A fixed clock BEFORE every fixture window (as m10-hope-write): the answer engine picks the spec version
       // effective at the server clock, and the capture gate judges lateness on the later of this and `targetDate`.
-      svc = createDbHopeBackend(handle.db, outbox, () => new Date("2026-06-01T00:00:00.000Z"));
+      // The cancel's byte purge reads the REAL M4 legal-hold scope (the retention cron's own reader) as the app role.
+      svc = createDbHopeBackend(handle.db, outbox, () => new Date("2026-06-01T00:00:00.000Z"), {
+        activeLegalHoldScopeForOrg: (organizationId) =>
+          activeLegalHoldScopeForOrg(handle.db, organizationId),
+      });
     }, 120_000);
 
     afterAll(async () => {
@@ -2729,6 +2734,7 @@ describe.skipIf(!DB_URL)(
           providerEntityId: provider,
           packageSha256: "b".repeat(64),
           packageBytesPurged: true,
+          bytesKeptForLegalHold: false,
           itemsCancelled: 1,
         });
         // CW-DS-01: the bytes are gone, the evidence that the package existed stays, and the batch cannot go onward.
@@ -2778,6 +2784,77 @@ describe.skipIf(!DB_URL)(
         );
         expect(replay.statusCode).toBe(200);
         expect(await eventRows(CANCEL_AUDIT, batch)).toHaveLength(1);
+      });
+
+      it("a cancel under an org-wide legal hold still cancels but keeps every byte, and the event says so", async () => {
+        const adm = await admitted();
+        const draft = await recordDraft(adm, member.victim, QUIET_DATA);
+        const batch = await packagedBatch(draft.id);
+        const hold = (
+          await q<{ id: string }>(
+            "INSERT INTO legal_hold (organization_id, name, criteria, status, reason) VALUES ($1,'sfv suite hold','{}'::jsonb,'active','litigation hold for the test') RETURNING id",
+            [ORG],
+          )
+        )[0]?.id as string;
+        try {
+          const res = await postAs(`/api/v1/hope/submissions/${batch}/cancel`, as(member.orgwide), {
+            reasonCode: "package_lost",
+          });
+
+          expect(res.statusCode).toBe(200);
+          expect(res.json<{ status: string }>().status).toBe("cancelled");
+        } finally {
+          await q("UPDATE legal_hold SET status='released', released_at=now() WHERE id=$1", [hold]);
+        }
+        const [event] = await eventRows(CANCEL_AUDIT, batch);
+        expect(event?.context).toMatchObject({
+          packageBytesPurged: false,
+          bytesKeptForLegalHold: true,
+        });
+        const stored = (
+          await q<{ acceptance_report: { packageContentBase64?: string } | null }>(
+            "SELECT acceptance_report FROM hope_submission WHERE id=$1",
+            [batch],
+          )
+        )[0];
+        expect(stored?.acceptance_report?.packageContentBase64).toBe("UEs=");
+        const item = (
+          await q<{ iqies_validation_result: { xmlContentBase64?: string } | null }>(
+            "SELECT iqies_validation_result FROM hope_submission_item WHERE hope_submission_id=$1",
+            [batch],
+          )
+        )[0];
+        expect(item?.iqies_validation_result?.xmlContentBase64).toBe("PHhtbC8+");
+      });
+
+      it("the package download stamps the acting membership as the exporter and refuses an AI principal", async () => {
+        const adm = await admitted();
+        const draft = await recordDraft(adm, member.victim, QUIET_DATA);
+        const batch = await packagedBatch(draft.id);
+        const exporter = () =>
+          q<{ status: string; exported_by_membership_id: string | null }>(
+            "SELECT status, exported_by_membership_id FROM hope_submission WHERE id=$1",
+            [batch],
+          ).then((rows) => rows[0]);
+
+        const ai = await app.inject({
+          method: "GET",
+          url: `/api/v1/hope/submissions/${batch}/package`,
+          headers: as(member.orgwide, { "x-test-actor-kind": "ai_agent" }),
+        });
+        expect(ai.statusCode).toBe(403);
+        expect(await exporter()).toEqual({ status: "packaged", exported_by_membership_id: null });
+
+        const first = await app.inject({
+          method: "GET",
+          url: `/api/v1/hope/submissions/${batch}/package`,
+          headers: as(member.orgwide),
+        });
+        expect(first.statusCode).toBe(200);
+        expect(await exporter()).toEqual({
+          status: "exported",
+          exported_by_membership_id: member.orgwide,
+        });
       });
 
       it("a regenerate writes hope.schedules_regenerated naming the windows it created; a repeat run is a recorded no-op", async () => {
