@@ -792,7 +792,13 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
   });
 
   describe("audit_phi_write_hope_submission: the audit rows are exactly what audit_scrub(to_jsonb(row)) wrote", () => {
-    const DENYLIST = ["acceptance_report", "envelope_storage_uri", "envelope_sha256"];
+    const DENYLIST = [
+      "acceptance_report",
+      "envelope_storage_uri",
+      "envelope_sha256",
+      "report_reference",
+      "iqies_submission_reference",
+    ];
     const image = async (id: string): Promise<string> =>
       (
         await admin.query(
@@ -962,6 +968,94 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
         )
       ).rows.map((r) => r.column_name as string);
       expect(keys).toEqual(columns);
+    });
+
+    it("the operator-typed references read <changed> in the images and stay in the row", async () => {
+      const id = await seedBatch("packaged", [await seedAssessment()]);
+      await admin.query(
+        "UPDATE hope_submission SET report_reference='FVR-2026-06', iqies_submission_reference='UP-77' WHERE id=$1",
+        [id],
+      );
+      const { after } = await auditOf(id, "update");
+      expect(JSON.parse(after as string)).toMatchObject({
+        report_reference: "<changed>",
+        iqies_submission_reference: "<changed>",
+      });
+      expect(after).not.toContain("FVR-2026-06");
+      expect(after).not.toContain("UP-77");
+      expect(await row(id)).toMatchObject({
+        report_reference: "FVR-2026-06",
+        iqies_submission_reference: "UP-77",
+      });
+    });
+  });
+
+  describe("audit_phi_write_hope_submission_result_event: the CMS response, its message and the report reference are scrubbed (1499)", () => {
+    it("an INSERT's audit image holds none of the three values, whatever the row held", async () => {
+      const batch = await seedBatch("exported", [await seedAssessment()]);
+      const id = uuid(++seq);
+      await admin.query(
+        `INSERT INTO hope_submission_result_event
+           (id, organization_id, hope_submission_id, report_hash, report_reference, result_status, message, raw_result)
+         VALUES ($1,$2,$3,$4,'FVR-AUDIT-9','rejected','free text from CMS',$5::jsonb)`,
+        [id, ORG_A, batch, "d".repeat(64), JSON.stringify({ note: "raw CMS row" })],
+      );
+      const { rows } = await admin.query(
+        "SELECT after::text AS after FROM audit_event WHERE resource_id=$1 AND event_type='hope_submission_result_event.insert'",
+        [id],
+      );
+      expect(rows).toHaveLength(1);
+      const image = rows[0].after as string;
+      expect(JSON.parse(image)).toMatchObject({
+        report_reference: "<changed>",
+        message: "<changed>",
+        raw_result: "<changed>",
+        result_status: "rejected",
+      });
+      for (const typed of ["FVR-AUDIT-9", "free text from CMS", "raw CMS row"])
+        expect(image).not.toContain(typed);
+    });
+  });
+
+  describe("migration 1498: the report-reference backfill", () => {
+    const BACKFILL = readFileSync(
+      join(MIGRATIONS_DIR, "1498_m10_hope_submission_report_reference_backfill.sql"),
+      "utf8",
+    );
+    const batchWithReport = async (
+      report: Record<string, unknown>,
+      columns: { imported: boolean; reference?: string },
+    ): Promise<string> => {
+      const id = await seedBatch("submitted_pending_result", [await seedAssessment()]);
+      await admin.query(
+        `UPDATE hope_submission
+            SET acceptance_report = $2::jsonb,
+                result_imported_at = CASE WHEN $3::boolean THEN now() ELSE NULL END,
+                report_reference = $4::text,
+                updated_at = '2026-01-01T00:00:00Z'
+          WHERE id=$1`,
+        [id, JSON.stringify(report), columns.imported, columns.reference ?? null],
+      );
+      return id;
+    };
+
+    it("fills a recorded batch from the jsonb copy, never overwrites, skips batches with no result, and leaves updated_at alone", async () => {
+      const recorded = await batchWithReport({ reportReference: "FVR-A" }, { imported: true });
+      const noResult = await batchWithReport({ reportReference: "FVR-B" }, { imported: false });
+      const kept = await batchWithReport(
+        { reportReference: "FVR-OTHER" },
+        { imported: true, reference: "KEEP" },
+      );
+      const noReference = await batchWithReport({ files: [] }, { imported: true });
+
+      await admin.query(BACKFILL);
+      await admin.query(BACKFILL); // replay-safe: the second run changes nothing
+
+      expect((await row(recorded)).report_reference).toBe("FVR-A");
+      expect((await row(noResult)).report_reference).toBeNull();
+      expect((await row(kept)).report_reference).toBe("KEEP");
+      expect((await row(noReference)).report_reference).toBeNull();
+      expect((await row(recorded)).updated_at.toISOString()).toBe("2026-01-01T00:00:00.000Z");
     });
   });
 });

@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { schema } from "@chartwarden/db";
+import { M10_AUDIT_DENYLIST } from "@chartwarden/types";
 import { getTableColumns } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
@@ -53,9 +54,22 @@ describe("audit_phi_write_hope_submission: the row images list every column of t
   it("never reads acceptance_report off the row: it is a placeholder the scrub list replaces", () => {
     expect(body).not.toMatch(/(OLD|NEW)\.acceptance_report/);
     expect(body).toContain("'acceptance_report', NULL::text");
-    expect(body).toMatch(
-      /v_cols text\[\] := ARRAY\['acceptance_report', 'envelope_storage_uri', 'envelope_sha256'\]::text\[\]/,
+    expect(body).toMatch(/v_cols text\[\] := ARRAY\['acceptance_report', /);
+  });
+
+  it("scrubs exactly the columns M10_AUDIT_DENYLIST names, the two operator-typed references included", () => {
+    const scrubbed = [
+      ...(body.match(/v_cols text\[\] := ARRAY\[([^\]]*)\]/)?.[1] ?? "").matchAll(/'([a-z_0-9]+)'/g),
+    ].map((m) => m[1] as string);
+    expect(scrubbed.sort()).toEqual([...M10_AUDIT_DENYLIST.hope_submission].sort());
+    expect(scrubbed).toEqual(
+      expect.arrayContaining(["report_reference", "iqies_submission_reference"]),
     );
+  });
+
+  it("keeps jsonb_build_object under its 100-argument limit (a column added to the table must not push it over)", () => {
+    const pairs = imageKeys(body, "NEW").length + 1; // + the acceptance_report placeholder
+    expect(pairs * 2).toBeLessThanOrEqual(100);
   });
 
   it("keeps the audit event the old trigger wrote: type, resource, retention class and the scrubbed images", () => {
@@ -64,5 +78,35 @@ describe("audit_phi_write_hope_submission: the row images list every column of t
     expect(body).toContain("'compliance'");
     expect(body).toContain("public.audit_scrub(");
     expect(body).toContain("), v_cols);");
+  });
+});
+
+describe("audit_phi_write_hope_submission_result_event: the report reference is scrubbed with the CMS response and message", () => {
+  const text = readFileSync(
+    join(MIGRATIONS, "1499_m10_hope_submission_result_event_audit_scrub_reference.sql"),
+    "utf8",
+  );
+
+  it("both images scrub exactly the columns M10_AUDIT_DENYLIST names", () => {
+    const lists = [...text.matchAll(/audit_scrub\(to_jsonb\((OLD|NEW)\), ARRAY\[([^\]]*)\]/g)];
+    expect(lists.map((m) => m[1])).toEqual(["OLD", "NEW"]);
+    for (const m of lists) {
+      const columns = [...(m[2] as string).matchAll(/'([a-z_0-9]+)'/g)].map((c) => c[1] as string);
+      expect(columns.sort()).toEqual([...M10_AUDIT_DENYLIST.hope_submission_result_event].sort());
+    }
+  });
+
+  it("is the last definition of the function (no later migration restores the old scrub list)", () => {
+    const definitions = readdirSync(MIGRATIONS)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .filter((f) =>
+        readFileSync(join(MIGRATIONS, f), "utf8").includes(
+          "CREATE OR REPLACE FUNCTION audit_phi_write_hope_submission_result_event()",
+        ),
+      );
+    expect(definitions.at(-1)).toBe(
+      "1499_m10_hope_submission_result_event_audit_scrub_reference.sql",
+    );
   });
 });

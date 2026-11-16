@@ -171,10 +171,17 @@ export const M10_AUDIT_DENYLIST: { readonly [K in M10TableName]: readonly string
   hope_assessment: ["data", "clinical_context_snapshot", "late_completion_reason_code"],
   symptom_follow_up_visit: ["alert_cadence"],
   hope_validation_finding: ["message"],
-  hope_submission: ["acceptance_report", "envelope_storage_uri", "envelope_sha256"],
+  // `report_reference` / `iqies_submission_reference` are operator-typed free text (migration 1497).
+  hope_submission: [
+    "acceptance_report",
+    "envelope_storage_uri",
+    "envelope_sha256",
+    "report_reference",
+    "iqies_submission_reference",
+  ],
   hope_submission_item: ["iqies_validation_result"],
-  // The iQIES result as received and its free-text CMS message (migration 0234).
-  hope_submission_result_event: ["raw_result", "message"],
+  // The iQIES result as received, its free-text CMS message (migration 0234) and the operator-typed report reference (1499).
+  hope_submission_result_event: ["raw_result", "message", "report_reference"],
   hope_retention_review: [],
 } as const;
 
