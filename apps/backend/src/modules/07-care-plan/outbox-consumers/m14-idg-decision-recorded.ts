@@ -551,11 +551,15 @@ export function buildM7IdgDecisionConsumer(deps: {
             sourceEventId: event.id,
           });
 
+          // Locked like finalize/sign (plan first, then version): the draft-version read and the inserts below
+          // are check-then-insert, so without it a finalize committing between them leaves a `proposed`
+          // application inside an `in_review` version, and the last signer gets IDG_PROPOSAL_CONFLICT.
           const [plan] = await t
             .select()
             .from(CP)
             .where(and(eq(CP.patientId, patientId), eq(CP.status, "active")))
-            .limit(1);
+            .limit(1)
+            .for("update");
           if (!plan) {
             // A plan that exists but is not active (draft/unsigned, discharged) can never take this decision:
             // record it. No plan at all means the M6 bootstrap has not run yet: transient, so throw and retry.
@@ -615,8 +619,10 @@ export function buildM7IdgDecisionConsumer(deps: {
           // sequence: a terminal move (goal `met`, problem `inactive`, intervention discontinued) followed by
           // another change to the same element would pass the builder and then fail `finalizeVersion` for good,
           // wedging the plan's single open-version slot. So an element is changed at most once per version.
+          // Lowercased: the payload schema's `uuid` format accepts either case and Postgres compares uuids
+          // case-insensitively, so `ABC…` and `abc…` are one element.
           const targets = drafts.flatMap((draft) =>
-            typeof draft.targetEntityId === "string" ? [draft.targetEntityId] : [],
+            typeof draft.targetEntityId === "string" ? [draft.targetEntityId.toLowerCase()] : [],
           );
           const repeated = targets.find((id, index) => targets.indexOf(id) !== index);
           if (repeated !== undefined) {

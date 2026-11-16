@@ -221,7 +221,8 @@ export function createDbCarePlanRouteService(
   const versionDto = (
     v: typeof CPV.$inferSelect,
     sigs: { signerRole: string; signedAt: string | null }[],
-    allowSud = true,
+    // Fail closed: a caller that does not say it may see Part 2 content gets the redacted snapshot.
+    allowSud = false,
   ) => ({
     id: v.id,
     planId: v.carePlanId,
@@ -908,7 +909,7 @@ export function createDbCarePlanRouteService(
   }
 
   /** Load every version of a plan (seq asc) with its signatures, projected to the version DTO. */
-  async function versionsForPlan(tx: DbClient, planId: string, allowSud = true) {
+  async function versionsForPlan(tx: DbClient, planId: string, allowSud = false) {
     const rows = await tx
       .select()
       .from(CPV)
@@ -1336,7 +1337,7 @@ export function createDbCarePlanRouteService(
       });
     },
 
-    async finalizeVersion(org, planId, versionId, ifVersion, set) {
+    async finalizeVersion(org, planId, versionId, ifVersion, set, viewer?: CarePlanViewer) {
       const outcome = await withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // Same lock order as signVersion (plan, then version): the three writers of a version's IDG rows
@@ -1384,7 +1385,13 @@ export function createDbCarePlanRouteService(
             .set({ status: "in_review", inReviewAt: new Date() })
             .where(and(eq(IDG_APP.carePlanVersionId, versionId), eq(IDG_APP.status, "proposed")));
         }
-        return { dto: versionDto(updated, await sigsFor(t, versionId)) } as const;
+        return {
+          dto: versionDto(
+            updated,
+            await sigsFor(t, versionId),
+            viewer?.sudDisclosureAllowed ?? false,
+          ),
+        } as const;
       });
       // Thrown AFTER the commit so the application's `conflict` / `baseline_changed` state is durable.
       if ("conflict" in outcome)
@@ -1404,6 +1411,7 @@ export function createDbCarePlanRouteService(
       at,
       actor: CarePlanSignActor,
       patientUnderstandingText?: string | null,
+      viewer?: CarePlanViewer,
     ) {
       const outcome = await withOrgContext(
         db,
@@ -1563,7 +1571,13 @@ export function createDbCarePlanRouteService(
               );
             }
           }
-          return { dto: versionDto(updated, await sigsFor(t, versionId)) } as const;
+          return {
+            dto: versionDto(
+              updated,
+              await sigsFor(t, versionId),
+              viewer?.sudDisclosureAllowed ?? false,
+            ),
+          } as const;
         },
       );
       if ("conflict" in outcome)

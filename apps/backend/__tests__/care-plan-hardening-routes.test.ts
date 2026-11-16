@@ -90,7 +90,12 @@ const MSW = { "x-test-user": "msw_1", "x-test-org": ORG, "x-test-roles": "msw" }
 
 const key = (): { "idempotency-key": string } => ({ "idempotency-key": randomUUID() });
 
-function makeServer() {
+function makeServer(
+  // The §7.6 closure: only a session carrying the (test) `sud_cleared` role may see SUD content.
+  sudDisclosureAllowed: (input: { roles: readonly string[] }) => Promise<boolean> = async ({
+    roles,
+  }) => roles.includes("sud_cleared"),
+) {
   const backend = createInMemoryCarePlanBackend();
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore(
@@ -121,8 +126,7 @@ function makeServer() {
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerCarePlanRoutes(app, {
     service: backend.service,
-    // The §7.6 closure: only a session carrying the (test) `sud_cleared` role may see SUD content.
-    sudDisclosureAllowed: async ({ roles }) => roles.includes("sud_cleared"),
+    sudDisclosureAllowed,
     admissionPatientCare: async (_org, admissionId) => admissions.get(admissionId) ?? null,
   });
   return { app, svc: backend.service };
@@ -546,6 +550,37 @@ describe("§7.6 SUD content is redacted from every version projection (#2)", () 
     // The non-SUD content is still there, so the redaction is a filter and not a blanket null.
     expect(responses[2]?.body).toContain("Comfort at home");
     expect(responses[2]?.body).toContain("Terminal CA (synthetic)");
+  });
+
+  it("a failing disclosure lookup does not fail a committed finalize and leaks no SUD text", async () => {
+    // The lookup runs before the write, so an outage there must degrade to the redacted view, not a 500.
+    const { app, svc } = makeServer(async () => {
+      throw new Error("consent store unavailable");
+    });
+    const { planId, versionId } = await seedPlan(svc);
+    await svc.addProblem(ORG, planId, {
+      description: SUD_TEXT,
+      kind: "related",
+      source: "clinical",
+      sudRelated: true,
+    });
+    const res = await finalize(app, planId, versionId, RN_SUD_CLEARED);
+    expect(res.statusCode).toBeLessThan(300);
+    expect(res.body).not.toContain(SUD_TEXT);
+    expect(res.body).toContain("Terminal CA (synthetic)");
+  });
+
+  it("the service redacts a finalize result for a caller that names no viewer", async () => {
+    const { svc } = makeServer();
+    const { planId, versionId } = await seedPlan(svc);
+    await svc.addProblem(ORG, planId, {
+      description: SUD_TEXT,
+      kind: "related",
+      source: "clinical",
+      sudRelated: true,
+    });
+    const result = await svc.finalizeVersion(ORG, planId, versionId, 1, null);
+    expect(JSON.stringify(result)).not.toContain(SUD_TEXT);
   });
 
   it("a caller WITH disclosure sees the full snapshot on each projection", async () => {

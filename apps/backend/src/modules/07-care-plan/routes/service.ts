@@ -213,13 +213,16 @@ export interface CarePlanRouteService {
     idgMeetingId: string | null,
     actor?: CarePlanWriteActor,
   ): Promise<unknown>;
+  /** §7.6: the returned version's `stateSnapshot` is redacted unless `viewer` grants disclosure (fail-closed). */
   finalizeVersion(
     org: string,
     planId: string,
     versionId: string,
     ifVersion: number,
     set: RequiredSignerSet | null,
+    viewer?: CarePlanViewer,
   ): Promise<unknown>;
+  /** §7.6: as `finalizeVersion` — the signed version's snapshot is redacted unless `viewer` grants disclosure. */
   signVersion(
     org: string,
     planId: string,
@@ -229,6 +232,7 @@ export interface CarePlanRouteService {
     at: string,
     actor: CarePlanSignActor,
     patientUnderstandingText?: string | null,
+    viewer?: CarePlanViewer,
   ): Promise<unknown>;
   returnVersionToDraft(
     org: string,
@@ -757,7 +761,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       return versionDto(row);
     },
 
-    async finalizeVersion(org, planId, versionId, ifVersion, set) {
+    async finalizeVersion(org, planId, versionId, ifVersion, set, viewer) {
       const p = plan(org, planId);
       if (p.status === "discharged") {
         throw new CarePlanStateError("CARE_PLAN_CLOSED", "discharged care plans cannot be mutated");
@@ -824,7 +828,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
           })),
       };
       v.version += 1;
-      return versionDto(v);
+      return redactVersionForViewer(versionDto(v), viewer?.sudDisclosureAllowed ?? false);
     },
 
     async signVersion(
@@ -836,6 +840,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       at,
       actor,
       patientUnderstandingText,
+      viewer,
     ) {
       const p = plan(org, planId);
       if (p.status === "discharged") {
@@ -883,7 +888,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
         p.version += 1;
       }
       v.version += 1;
-      return versionDto(v);
+      return redactVersionForViewer(versionDto(v), viewer?.sudDisclosureAllowed ?? false);
     },
 
     async returnVersionToDraft(org, planId, versionId, ifVersion) {

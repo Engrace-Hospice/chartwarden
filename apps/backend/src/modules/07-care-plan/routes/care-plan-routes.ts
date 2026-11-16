@@ -58,7 +58,6 @@ import type {
   CarePlanViewer,
   CarePlanWriteActor,
 } from "./service";
-import { redactVersionForViewer } from "./snapshot-redaction";
 
 export interface CarePlanRouteDeps {
   service: CarePlanRouteService;
@@ -216,18 +215,22 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
       membershipId: membershipIdOf(request.context),
     }),
   });
-  /** A write result that carries a version's `stateSnapshot` is redacted like the reads are. */
-  const redactedVersionResult = async (
+  /**
+   * The viewer a finalize/sign result is redacted for. Resolved BEFORE the write and handed to the service,
+   * which redacts the version it returns. A failed consent lookup falls back to "no disclosure" (as M15 does):
+   * it must neither fail a request whose write already committed nor leak Part 2 content.
+   */
+  const writeViewerOf = async (
     request: FastifyRequest,
     organizationId: string,
     planId: string,
-    result: unknown,
-  ): Promise<unknown> => {
-    const viewer = await viewerOf(request, organizationId, planId);
-    return redactVersionForViewer(
-      result as { stateSnapshot?: unknown },
-      viewer.sudDisclosureAllowed,
-    );
+  ): Promise<CarePlanViewer> => {
+    try {
+      return await viewerOf(request, organizationId, planId);
+    } catch {
+      request.log.warn({ planId }, "care-plan: §7.6 disclosure lookup failed; result is redacted");
+      return { sudDisclosureAllowed: false };
+    }
   };
 
   // ── Care plan (patient-scoped) ─────────────────────────────────────────────────────────────────
@@ -345,14 +348,15 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
       const { organizationId } = actorOf(request);
       const { planId, versionId } = parse(PlanVersionParamsSchema, request.params);
       const body = parse(FinalizeVersionSchema, request.body);
-      const res = await service.finalizeVersion(
+      const viewer = await writeViewerOf(request, organizationId, planId);
+      return service.finalizeVersion(
         organizationId,
         planId,
         versionId,
         body.ifVersion,
         body.requiredSignerSet ?? null,
+        viewer,
       );
-      return redactedVersionResult(request, organizationId, planId, res);
     },
   );
 
@@ -364,6 +368,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
       const actor = await signingActorOf(request);
       const { planId, versionId } = parse(PlanVersionParamsSchema, request.params);
       const body = parse(SignVersionSchema, request.body);
+      const viewer = await writeViewerOf(request, organizationId, planId);
       const res = await service.signVersion(
         organizationId,
         planId,
@@ -373,10 +378,9 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
         new Date().toISOString(),
         actor,
         body.patientUnderstandingText,
+        viewer,
       );
-      return reply
-        .code(201)
-        .send(await redactedVersionResult(request, organizationId, planId, res));
+      return reply.code(201).send(res);
     },
   );
 

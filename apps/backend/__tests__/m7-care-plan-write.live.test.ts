@@ -281,13 +281,9 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       kind: "terminal",
       source: "clinical",
     });
-    const ready = (await svc.finalizeVersion(
-      ORG_A,
-      boot.id,
-      boot.initialVersionId,
-      1,
-      null,
-    )) as Version;
+    const ready = (await svc.finalizeVersion(ORG_A, boot.id, boot.initialVersionId, 1, null, {
+      sudDisclosureAllowed: true,
+    })) as Version;
     expect(ready.status).toBe("in_review");
     expect(ready.stateSnapshot).toMatchObject({
       schemaVersion: "2026-08-m7-v1",
@@ -468,13 +464,9 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
     );
     expect(Number(invalidated.rows[0].n)).toBe(1);
 
-    const next = (await svc.finalizeVersion(
-      ORG_A,
-      boot.id,
-      boot.initialVersionId,
-      4,
-      null,
-    )) as Version;
+    const next = (await svc.finalizeVersion(ORG_A, boot.id, boot.initialVersionId, 4, null, {
+      sudDisclosureAllowed: true,
+    })) as Version;
     expect(next.stateSnapshot).toMatchObject({
       problems: [expect.objectContaining({ description: "Mutated working problem" })],
     });
@@ -623,13 +615,9 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
         [boot.id],
       )
     ).rows;
-    const finalized = (await svc.finalizeVersion(
-      ORG_A,
-      boot.id,
-      review.id,
-      review.version,
-      null,
-    )) as Version | { stateSnapshot: { problems: { description: string }[] } };
+    const finalized = (await svc.finalizeVersion(ORG_A, boot.id, review.id, review.version, null, {
+      sudDisclosureAllowed: true,
+    })) as Version | { stateSnapshot: { problems: { description: string }[] } };
     expect(JSON.stringify(finalized.stateSnapshot)).toContain("IDG candidate terminal wording");
     const [problemRow] = (
       await admin.query("SELECT description FROM problem WHERE id=$1", [problem.id])
@@ -939,6 +927,36 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       [boot.id],
     );
     expect(Number(opened.rows[0].n)).toBe(0);
+    const changes = await admin.query(
+      "SELECT count(*)::int AS n FROM care_plan_idg_proposed_change WHERE care_plan_id=$1",
+      [boot.id],
+    );
+    expect(Number(changes.rows[0].n)).toBe(0);
+  });
+
+  it("the same element named in two letter cases is still one element (uuid ids compare case-insensitively)", async () => {
+    const { boot, patientId, problem } = await activePlanWithTerminalProblem("Baseline terminal");
+    const consumer = buildM7IdgDecisionConsumer({ db: handle.db, outbox: svcOutbox() });
+    const event = idgEvent({
+      patientId,
+      mutations: [
+        { op: "problem_update", problemId: problem.id, updates: { description: "First wording" } },
+        {
+          op: "problem_update",
+          problemId: problem.id.toUpperCase(),
+          updates: { description: "Second wording" },
+        },
+      ],
+    });
+    await consumer.handle(event);
+
+    const apps = await admin.query(
+      "SELECT status, conflict_reason FROM care_plan_idg_decision_application WHERE idg_decision_id=$1",
+      [event.payload.decisionId],
+    );
+    expect(apps.rows).toHaveLength(1);
+    expect(apps.rows[0].status).toBe("conflict");
+    expect(apps.rows[0].conflict_reason).toContain("element_targeted_twice");
     const changes = await admin.query(
       "SELECT count(*)::int AS n FROM care_plan_idg_proposed_change WHERE care_plan_id=$1",
       [boot.id],
