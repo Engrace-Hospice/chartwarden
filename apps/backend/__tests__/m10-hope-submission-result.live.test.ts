@@ -643,13 +643,10 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
   });
 
   it("migration 1498 backfills the reference of a recorded batch from the jsonb, once, without overwriting or touching updated_at", async () => {
-    const backfill = /\nUPDATE "hope_submission"[\s\S]*?;\n/.exec(
-      readFileSync(
-        join(MIGRATIONS_DIR, "1498_m10_hope_submission_report_reference_backfill.sql"),
-        "utf8",
-      ),
-    )?.[0];
-    expect(backfill).toBeDefined();
+    const backfill = readFileSync(
+      join(MIGRATIONS_DIR, "1498_m10_hope_submission_report_reference_backfill.sql"),
+      "utf8",
+    );
     const make = async (
       imported: boolean,
       column: string | null,
@@ -673,14 +670,57 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
     const noReference = await make(true, null, null);
     const neverRecorded = await make(false, null, "NOT-READ");
 
-    await admin.query(backfill as string);
-    await admin.query(backfill as string); // replay-safe
+    await admin.query(backfill);
+    await admin.query(backfill); // replay-safe
 
     expect((await row(recorded)).report_reference).toBe("OLD-REF");
     expect((await row(alreadySet)).report_reference).toBe("NEW-COLUMN");
     expect((await row(noReference)).report_reference).toBeNull();
     expect((await row(neverRecorded)).report_reference).toBeNull();
     expect((await row(recorded)).updated_at).toEqual(new Date("2026-01-01T00:00:00Z"));
+  });
+
+  it("migration 1498 reads the package of a recorded batch ONCE (the reference is computed once, not again for the WHERE and the SET)", async () => {
+    const backfill = readFileSync(
+      join(MIGRATIONS_DIR, "1498_m10_hope_submission_report_reference_backfill.sql"),
+      "utf8",
+    );
+    const id = await seedBatch("accepted", [await seedAssessment()]);
+    await admin.query(
+      `UPDATE hope_submission SET result_imported_at = '2026-06-01T00:00:00Z', report_reference = NULL,
+              acceptance_report = $2::jsonb WHERE id = $1`,
+      [
+        id,
+        JSON.stringify({
+          reportReference: "BIG-REF",
+          packageContentBase64: randomBytes(1_500_000).toString("base64"),
+        }),
+      ],
+    );
+    // pg_stat counters are flushed on demand: read them before and after each statement
+    const toastBlocks = async (): Promise<number> => {
+      await admin.query("SELECT pg_stat_force_next_flush()");
+      const { rows } = await admin.query(
+        "SELECT coalesce(toast_blks_hit,0) + coalesce(toast_blks_read,0) AS n FROM pg_statio_all_tables WHERE relid = 'hope_submission'::regclass",
+      );
+      return Number(rows[0].n);
+    };
+    // control: ONE read of the package's reference is what a single detoast costs
+    const beforeControl = await toastBlocks();
+    await admin.query(
+      "SELECT acceptance_report->>'reportReference' FROM hope_submission WHERE id=$1",
+      [id],
+    );
+    const oneRead = (await toastBlocks()) - beforeControl;
+    expect(oneRead).toBeGreaterThan(100);
+
+    const before = await toastBlocks();
+    await admin.query(backfill);
+    const backfillReads = (await toastBlocks()) - before;
+
+    expect((await row(id)).report_reference).toBe("BIG-REF");
+    // evaluated in the WHERE and again in the SET it would read the package twice (>= 2x): once is well under 1.5x
+    expect(backfillReads).toBeLessThan(oneRead * 1.5);
   });
 
   describe("assemble candidates: a bounded read of ids, and the re-assertion under a share lock", () => {
