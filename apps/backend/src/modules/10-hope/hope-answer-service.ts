@@ -20,7 +20,6 @@ import {
 import type { HopeIsc } from "./hope-spec-registry";
 import type {
   HopeAnswerMap,
-  HopeAnswerSnapshot,
   HopeApplicabilityItemResult,
   HopeApplicabilityReason,
   HopeApplicabilityState,

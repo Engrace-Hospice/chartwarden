@@ -43,7 +43,7 @@ import { type SQL, and, count, desc, eq, inArray, isNull, notInArray, or, sql } 
 import { type AnyPgColumn, QueryBuilder } from "drizzle-orm/pg-core";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";
-import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "./abac-predicates";
+import type { HopeAssessmentAbacFacts } from "./abac-predicates";
 import { createHopeAdmissionPrefillService } from "./hope-admission-prefill-service";
 import { createHopeAssessmentAnswerService } from "./hope-answer-service";
 import {
@@ -145,7 +145,6 @@ import type {
   HopeSubmissionDetailView,
   HopeSubmissionView,
   HopeWorkflowStateView,
-  RecordSfvArgs,
   RecordTimepointArgs,
 } from "./routes/service";
 import { buildWorkflowState, rateOf } from "./routes/service";

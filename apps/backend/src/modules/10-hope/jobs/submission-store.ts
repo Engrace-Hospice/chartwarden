@@ -27,7 +27,7 @@
 // `withOrgContext` RLS envelope — the org-rollup store's HARD RULE 1, as in ./assemble-store.ts.
 import { type DbClient, schema } from "@chartwarden/db";
 import type { HopeDischargeReason, HopeRfaKind, HopeSubmissionStatus } from "@chartwarden/types";
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull } from "drizzle-orm";
 import { correctsIqiesRecordIdSql } from "./correlated-sql";
 
 const ASSESS = schema.hopeAssessments;

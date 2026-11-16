@@ -7,7 +7,7 @@ import {
   planDischargeTimepoint,
 } from "@chartwarden/hope";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { AdmissionStatusReader, LocalDate } from "@chartwarden/types";
+import type { AdmissionStatusReader } from "@chartwarden/types";
 import { and, eq, gt, inArray, isNull } from "drizzle-orm";
 import { anchorDateOf } from "../scheduling/schedule-writer";
 
