@@ -44,12 +44,12 @@ found defects that are independent of any redesign.
    read returning the *discharged* plan after readmission; a problem-source dropdown that sent three
    values the server rejects; a network failure that locked the whole workspace; and the M15 discipline
    plans never being discharged.
-6. **Nobody can sign in a fresh tenant.** No clinical role template grants any `care_plan.*` key (D-2).
+6. **Nobody could sign in a fresh tenant.** No clinical role template granted any `care_plan.*` key. Fixed by D-2 (R-66).
 7. **The audit is static plus unit tests.** No authenticated browser journey ran (section 2).
 
-**Recommendation:** accept the defect track as applied. Every decision in section 9 is closed; two need you:
-D-2 (grant `care_plan.*` to the clinical roles, a new control) and D-8 (the workspace rebuild was reshaped into
-smaller changes, not built). Because `care-plan-view.tsx` grew from about 3.2k to 3.8k lines during the fixes,
+**Recommendation:** accept the defect track as applied. Every decision in section 9 is closed; one needs you:
+D-8 (the workspace rebuild was reshaped into smaller changes, not built). D-2 (default `care_plan.*` grants) is
+implemented as a new control, `CW-AC-44`, which needs your approval. Because `care-plan-view.tsx` grew from about 3.2k to 3.8k lines during the fixes,
 extract it the next time it is touched.
 
 ## 2. Method, limits and evidence status
@@ -122,11 +122,17 @@ return-to-draft, problems, resolve, goals, interventions, discontinue); the thre
 
 ## 6. Default role grants (as seeded) **[A]**
 
-`administrator` and `org_admin` receive every non-platform key (all seven `care_plan.*`); `director_of_nursing`
-receives `care_plan.finalize` only. **No clinical role template** (`rn`, `rn_case_manager`, `hospice_physician`,
-`nurse_practitioner`, `msw`, `chaplain`, `clinical_supervisor`, `idg_coordinator`, `lpn`) grants any
-`care_plan.*` key, and the sign path requires the caller to hold the signer role key. A freshly provisioned
-tenant therefore cannot author or sign a care plan (D-2).
+Before D-2: `administrator` and `org_admin` receive every non-platform key (all seven `care_plan.*`);
+`director_of_nursing` received `care_plan.finalize` only. **No clinical role template** (`rn`, `rn_case_manager`,
+`hospice_physician`, `nurse_practitioner`, `msw`, `chaplain`, `clinical_supervisor`, `idg_coordinator`, `lpn`)
+granted any `care_plan.*` key, and the sign path requires the caller to hold the signer role key. A freshly
+provisioned tenant therefore could not author or sign a care plan.
+
+After D-2 (R-66, control `CW-AC-44`): read and read-summary for the clinical roles; author and finalize for the
+nurse case manager, the clinical supervisor and the DON; sign for exactly the six signer roles; never bootstrap or
+IDG revise. Source: `packages/auth/src/roles/care-plan-grants.ts`, backfill migration 1494, and the DON template for
+a fresh tenant. A role created after the migration does not receive them (the admitting-clinician and code-status
+grants behave the same way).
 
 ## 7. Test coverage against CP-01…CP-32 (before this change) **[A]**
 
@@ -160,7 +166,7 @@ done, reason given.
 | B-12 | MED | Intervention patch/discontinue skipped discipline scope (an MSW could edit an RN intervention) | Fixed |
 | B-13 | MED | Only PATCH routes enforced `Idempotency-Key`; retried POSTs duplicated rows and events | Fixed (all POST write routes) |
 | B-14 | MED | `added_by`/`drafted_by` membership never set (NULL authorship on domain rows) | Fixed |
-| B-15 | MED | No default clinical role grants (section 6) | **Decision D-2** |
+| B-15 | MED | No default clinical role grants (section 6) | Fixed: D-2 (R-66) |
 | B-16 | LOW | `initial_overdue` emitted at warning-open (T-2d); nothing at real overdue | Closed without code (D-7): the spec contradicts itself and no consumer subscribes, so a migration for a marker nobody reads is not justified |
 | B-17 | LOW | `signatureMethod` hard-coded `password_step_up` | Fixed (resolved from the step-up factor, fallback unchanged) |
 | B-18 | LOW | IDG `conflict` status rolled back with the throwing transaction | Fixed (persisted; 409 after commit) |
@@ -294,20 +300,20 @@ done, reason given.
 | R-63 | LOW | A redacted plan PDF read as complete; a snapshot of unrecognised shape rendered a blank PDF | Fixed: a redacted snapshot carries a notice sentence (printed as a field by the generic renderer) when anything was dropped, and an unrecognised snapshot is not rendered at all |
 | R-64 | LOW | A goal added by an IDG decision under a Part 2 M7 problem was stored as not Part 2 in M15 | Fixed: the consumer reads the patient's Part 2 problem ids through a second org-explicit M7 port and the goal inherits the flag; the decider compares ids case-insensitively. Live test |
 | R-65 | LOW | A signature recorded `password_step_up` when the session id was missing or the seam threw, so an unverified WebAuthn or TOTP signer read as a password signer | Fixed: `step_up_unverified` (and `sms_step_up` for SMS); the column is free text |
+| R-66 | MED | D-2: no clinical role held any `care_plan.*` key by default, so a fresh tenant's nurse case manager could not author or sign | Fixed: `CARE_PLAN_DEFAULT_GRANTS` (least privilege, sign only for the six signer roles), backfill migration 1494 (insert-only, idempotent), the DON template, a pin test and a live proof that re-runs the migration over staged roles. New control `CW-AC-44` |
 
 ## 9. Decisions (all closed)
 
-Each decision below is closed: it says what was decided and what changed. **D-2 and D-8 are the two that still
-need you**, because each is yours to make and neither is implemented.
+Each decision below is closed: it says what was decided and what changed. **D-8 is the one that still
+needs you**; D-2 is now implemented.
 
 - **D-1 Signature integrity.** *Closed: the 409 guard.* Element writes answer `VERSION_IN_REVIEW` while a
   version is `in_review` (R-47).
-- **D-2 Default clinical grants.** *Decided: no automatic grant in this change.* Granting `care_plan.*` to
-  clinical roles is a new security control: the repo's precedent (`CODE_STATUS_EDITOR_ROLE_KEYS`, migration 1294)
-  is a code list of role keys plus a migration pinned to it, and a `compliance/controls.yaml` row that needs
-  your approval. A fresh tenant still needs its roles granted by hand. **Needs you:** say yes and I will add
-  `care-plan-grants.ts` (author and sign for the nurse case manager, the clinical supervisor and the DON, read for
-  the clinical roles), the pinned migration and the control row, as their own commit.
+- **D-2 Default clinical grants.** *Closed: granted by default* (R-66). The repo's precedent
+  (`CODE_STATUS_EDITOR_ROLE_KEYS`, migration 1294): a code list of role keys, a backfill migration pinned to it, a
+  pin test, and a control row (`CW-AC-44`, needs your approval). The grant is least-privilege: read for the clinical
+  roles; author and finalize for the nurse case manager, clinical supervisor and DON; **sign for exactly the six
+  roles `signer_role_match` accepts** (a grant to the DON would never pass that rule, so it is not given).
 - **D-3 Measurable goals.** *Closed: a blocker on initial versions* (R-48), after checking 42 CFR 418.56(c)(3) on
   eCFR. IDG review versions keep their own rule (`goal_add` already requires an outcome); an old goal with none
   never blocks a review.
@@ -368,7 +374,8 @@ Run on `develop` after merging `origin/main` (which carries the migration 1489/1
 - The in-memory twin of the care plan service (`routes/service.ts`, used by slice tests) does not enforce the D-1
   and D-3 rules; production uses the database service, which does.
 - `compliance/controls.yaml`: `CW-AC-43` is `implemented`, its four gaps closed (R-43 to R-52). It needs your
-  approval, which you gave on condition that the gaps were fixed. D-2 needs its own row and a decision first.
+  approval, which you gave on condition that the gaps were fixed. `CW-AC-44` (D-2, the default clinical grants) is a
+  new `implemented` row and needs your approval too.
 - **No CMS rule beyond 42 CFR 418.56(c)(3) was checked** (D-3, on eCFR). The clock constants stay CMS-VERIFY.
 - **Review before the PR.** `/ecc:security-scan` (AgentShield: D, 56/100, no finding in a file this branch
   changes), `/ecc:react-review` (one HIGH, the Part 2 box not clearing when the IDG form reopens, fixed with a
