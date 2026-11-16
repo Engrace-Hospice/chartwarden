@@ -160,11 +160,11 @@ describe("parallelExtras cuts the data off the command and says what to judge", 
 
   it("replacementTags reads -I, -i, --replace and the tag of --rpl", () => {
     const tags = replacementTags([
-      { name: "I", value: "@@" },
-      { name: "i", value: "##" },
-      { name: "replace", value: "%%" },
-      { name: "rpl", value: "{x} s/a/b/" },
-      { name: "j", value: "4" },
+      { name: "I", at: 0, value: "@@" },
+      { name: "i", at: 0, value: "##" },
+      { name: "replace", at: 0, value: "%%" },
+      { name: "rpl", at: 0, value: "{x} s/a/b/" },
+      { name: "j", at: 0, value: "4" },
     ]);
     expect(tags).toEqual(["@@", "##", "%%", "{x}"]);
   });

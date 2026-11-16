@@ -47,11 +47,15 @@ export interface OptionGrammar {
   readonly lax?: boolean;
   /** The tool takes no abbreviation of a long option (BSD and Go tools): only exact names count. */
   readonly exact?: boolean;
+  /** A value option does not take a next word that starts with a dash (commander, clap: `dotenv -c -- cmd`). */
+  readonly softValues?: boolean;
 }
 
 export interface ReadOption {
   /** The option's name as the table spells it: the short letter, or the long name without `--`. */
   readonly name: string;
+  /** Index of the word the option starts in. */
+  readonly at: number;
   /** Its value, when the word carried one or the next word was taken. */
   readonly value: string | undefined;
 }
@@ -92,6 +96,16 @@ export function resolveLong(grammar: OptionGrammar, given: string): LongKind {
   return candidates.every((c) => c.kind === first.kind) ? first : "ambiguous";
 }
 
+/** The word after a value option, unless the grammar says a dash word is no value (`dotenv -c -- cmd`). */
+const valueWord = (
+  grammar: OptionGrammar,
+  words: readonly string[],
+  k: number,
+): string | undefined => {
+  const next = words[k + 1];
+  return grammar.softValues === true && next?.startsWith("-") ? undefined : next;
+};
+
 /** Read one long option word at `k`; returns the words it used and the option. */
 function readLong(
   grammar: OptionGrammar,
@@ -107,14 +121,16 @@ function readLong(
     const unplaced = eq >= 0 || (grammar.lax === true && found === undefined) ? undefined : word;
     return {
       used: 1,
-      option: { name: given, value: eq < 0 ? undefined : word.slice(eq + 1) },
+      option: { name: given, at: k, value: eq < 0 ? undefined : word.slice(eq + 1) },
       ...(unplaced === undefined ? {} : { unplaced }),
     };
   }
-  if (eq >= 0) return { used: 1, option: { name: found.name, value: word.slice(eq + 1) } };
-  if (found.kind === "flag") return { used: 1, option: { name: found.name, value: undefined } };
-  const next = words[k + 1];
-  return { used: next === undefined ? 1 : 2, option: { name: found.name, value: next } };
+  if (eq >= 0) return { used: 1, option: { name: found.name, at: k, value: word.slice(eq + 1) } };
+  if (found.kind === "flag") {
+    return { used: 1, option: { name: found.name, at: k, value: undefined } };
+  }
+  const value = valueWord(grammar, words, k);
+  return { used: value === undefined ? 1 : 2, option: { name: found.name, at: k, value } };
 }
 
 /** Read one short cluster (`-nu`, `-upostgres`, `-n5`) at `k`. */
@@ -129,28 +145,27 @@ function readCluster(
   for (let p = 1; p < word.length; p++) {
     const letter = word[p] as string;
     if (grammar.values.includes(letter)) {
-      const attached = word.slice(p + 1).replace(/^=/, "");
       if (p + 1 < word.length) {
-        options.push({ name: letter, value: attached });
+        options.push({ name: letter, at: k, value: word.slice(p + 1).replace(/^=/, "") });
         return { used: 1 };
       }
-      const next = words[k + 1];
-      options.push({ name: letter, value: next });
-      return { used: next === undefined ? 1 : 2 };
+      const value = valueWord(grammar, words, k);
+      options.push({ name: letter, at: k, value });
+      return { used: value === undefined ? 1 : 2 };
     }
     if (grammar.optional?.includes(letter) === true) {
       const attached = p + 1 < word.length ? word.slice(p + 1) : undefined;
-      options.push({ name: letter, value: attached });
+      options.push({ name: letter, at: k, value: attached });
       return { used: 1 };
     }
-    if (grammar.flags.includes(letter)) options.push({ name: letter, value: undefined });
-    else if (grammar.lax === true) options.push({ name: letter, value: undefined });
-    else unplaced ??= word;
+    if (grammar.flags.includes(letter) || grammar.lax === true) {
+      options.push({ name: letter, at: k, value: undefined });
+    } else unplaced ??= word;
   }
   return { used: 1, ...(unplaced === undefined ? {} : { unplaced }) };
 }
 
-/** Read one single-dash whole-word option (`arch -arm64`, `-arch x86_64`). */
+/** Read one single-dash whole-word option (`arch -arm64`, `-arch x86_64`, `dotenvx -fk FILE`). */
 function readWholeWord(
   grammar: OptionGrammar,
   words: readonly string[],
@@ -158,10 +173,10 @@ function readWholeWord(
 ): { used: number; option: ReadOption } {
   const word = words[k] as string;
   if (grammar.wordValues?.includes(word) === true) {
-    const next = words[k + 1];
-    return { used: next === undefined ? 1 : 2, option: { name: word, value: next } };
+    const value = valueWord(grammar, words, k);
+    return { used: value === undefined ? 1 : 2, option: { name: word, at: k, value } };
   }
-  return { used: 1, option: { name: word, value: undefined } };
+  return { used: 1, option: { name: word, at: k, value: undefined } };
 }
 
 /** The options at `words[from..]`, per the grammar; see the header for what ends them. */
@@ -193,7 +208,7 @@ export function readOptions(
       k += read.used;
     } else if (grammar.numeric === true && /^-\d+$/.test(word)) {
       k++;
-    } else if (grammar.wholeWords === true) {
+    } else if (grammar.wholeWords === true || grammar.wordValues?.includes(word) === true) {
       const read = readWholeWord(grammar, words, k);
       options.push(read.option);
       k += read.used;
