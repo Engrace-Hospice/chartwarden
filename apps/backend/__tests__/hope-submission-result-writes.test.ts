@@ -116,6 +116,10 @@ describe("writeItemOutcomes — one UPDATE per chunk, scoped to the organization
     expect(failure).toMatchObject({ statusCode: 409 });
     for (const value of [ORG, SUBMISSION, uuid(1), uuid(2), "REC-1"])
       expect(failure?.message).not.toContain(value);
+    // a plain CONFLICT is replayed on a reused key (only M10_RECORD_BUSY / CONCURRENT_UPDATE free it): no promise of a same-key retry
+    expect(failure?.message).toContain("new Idempotency-Key");
+    expect(failure?.message).toContain("replays this answer");
+    expect(failure?.message).not.toMatch(/record the result again/i);
   });
 
   it("checks each chunk: a miss in the second chunk of a long report still throws", async () => {

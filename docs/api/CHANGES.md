@@ -64,15 +64,15 @@ its full description there. Newest first.
   (every entity at once), so 500 is not a long history per entity: once 500 newer batches exist, an old `exported` or `rejected`
   batch would have dropped off the worklist while it still needed someone. The cap is therefore applied with the unfinished batches
   first (every status but `accepted`, `accepted_with_warnings` and `cancelled`), newest first within each group, and the answer is
-  then put back newest first. A batch that still needs an operator can be cut only when more than 500 of them are unfinished at once.
+  then put back newest first. A batch that still needs an operator can be cut only when more than 500 of them are unfinished at once. `rejected` and `partially_accepted` batches are never treated as finished (a correction is a NEW batch; the old one stays `rejected`), so an organization with 500 or more of them would lose its newer accepted batches from this list: that needs a filter or pagination on the route, which this change does not add.
 - **`POST /api/v1/hope/submissions/{id}/results` no longer stores a blank `iqiesRecordId`.** An empty or whitespace-only id in a report
   row is treated as no id: it is not written on the item or on the assessment (it used to be, and an empty `iqies_record_id` made
   every `IS NULL` eligibility test read the record as already recorded). A non-blank id is stored exactly as sent. The
   recording itself is the same operation, written in bulk (one statement per 500 rows) so a long report holds the batch row lock
   for far less time; its result and error codes are unchanged, with one addition: if the bulk update of the items stores fewer
   items than the report named (an item gone or settled meanwhile), nothing of the import is kept and the call answers `409 CONFLICT`
-  ("The batch's items changed while the result was being recorded ..."), naming no id or value: reload the batch and record the
-  result again.
+  ("The batch's items changed while the result was being recorded ..."), naming no id or value: reload the batch, then record the
+  result with a NEW `Idempotency-Key` (a plain `409 CONFLICT` is replayed for 24 h on the same key).
 - **`reportReference` (`POST .../results`) and `iqiesSubmissionReference` (`POST .../mark-uploaded`) are limited to letters, digits and
   ` . _ : # / -`, and refused when they look like a patient identifier.** Both are operator-typed free text that is stored on the
   batch (the report reference also on every stored report row). A value with any other character, or an empty string, answers
@@ -83,7 +83,8 @@ its full description there. Newest first.
 - **Assemble now records the batch's items in one statement and re-checks the records after the package is serialised.** The request,
   the response and the codes are unchanged. A record superseded while the package was being serialised is dropped as before (it
   is now judged and share-locked just before the batch is written, not before the serialising, so a correction's signature waits
-  for the lock for a much shorter time).
+  for the lock for a much shorter time; the ZIP is built before the lock, and the same re-judgement now also drops a record that
+  gained an unresolved error finding since it was validated).
 - **A legacy record whose `iqies_record_id` is an empty string is not packaged by assemble**, as the candidate scan of the assemble
   job already did not: a blank id is not "no id". Such a record needs its id cleared (set to `NULL`) to be packaged; the result import no longer
   writes blank ids.

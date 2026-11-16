@@ -45,7 +45,9 @@ const chunksOf = <T>(rows: readonly T[]): T[][] => {
  * keeps a settled one from being rewritten whatever the caller sends). The statement RETURNS the ids it updated and their count
  * must equal the outcomes sent: a predicate that misses (an item gone, settled or moved meanwhile) would otherwise leave fewer
  * items stored than the batch status the caller derives from `finalStatus` assumes. A mismatch throws a 409 that names no id or
- * value, and the transaction rolls back, so nothing of the import is kept.
+ * value, and the transaction rolls back, so nothing of the import is kept. It is a plain `CONFLICT`, which the idempotency layer
+ * replays for 24 h on a reused key (only `M10_RECORD_BUSY` and `CONCURRENT_UPDATE` free the key), so the message must not promise
+ * that a same-key retry will run: it asks for a reload and a NEW key.
  */
 export async function writeItemOutcomes(
   t: DbClient,
@@ -80,7 +82,7 @@ export async function writeItemOutcomes(
        RETURNING i.id`);
     if (updated.rows.length !== rows.length) {
       throw new ConflictError(
-        "The batch's items changed while the result was being recorded, so nothing was saved. Reload the batch and record the result again.",
+        "The batch's items changed while the result was being recorded, so nothing was saved. Reload the batch to see where it stands, then record the result with a new Idempotency-Key (a retry with the same key replays this answer).",
       );
     }
   }
