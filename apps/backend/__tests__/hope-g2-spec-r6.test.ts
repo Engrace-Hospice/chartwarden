@@ -292,11 +292,15 @@ describe("spec 4.1 / 4.4 regenerate-schedules: an admission the caller cannot se
     );
     const gap = line(ERRORS, "| `M10_ADMISSION_PROJECTION_GAP`");
     expect(gap).toContain("on that route only for a visible admission that is not sited");
-    const routes = read(`${M10_SRC}/routes/hope-routes.ts`);
-    expect(routes).toMatch(
-      /preHandler: \[\s*ADMIN_REGEN,\s*REJECT_AI_OPERATIONS,\s*SCOPE_BODY_ADMISSION\("hope\.admin\.regenerate_schedules"\),?\s*\]/,
+    // The registrar spreads the shared guard list; the list (permission, AI refusal, scope) lives in the guards file.
+    expect(read(`${M10_SRC}/routes/hope-routes.ts`)).toMatch(
+      /"\/api\/v1\/hope\/admin\/regenerate-schedules",\s*\{ preHandler: \[\.\.\.REGENERATE_SCHEDULES_GUARDS\] \}/,
     );
-    expect(routes).toMatch(/SCOPE_BODY_ADMISSION = [\s\S]*?notFoundOnDeny: true/);
+    const guards = read(`${M10_SRC}/routes/hope-route-guards.ts`);
+    expect(guards).toMatch(
+      /REGENERATE_SCHEDULES_GUARDS: readonly PreHandler\[\] = \[\s*ADMIN_REGEN,\s*REJECT_AI_OPERATIONS,\s*SCOPE_BODY_ADMISSION\("hope\.admin\.regenerate_schedules"\),?\s*\]/,
+    );
+    expect(guards).toMatch(/SCOPE_BODY_ADMISSION = [\s\S]*?notFoundOnDeny: true/);
     expect(read(`${M10_SRC}/abac-predicates.ts`)).toMatch(/if \(!facts\) return false;/);
   });
 });

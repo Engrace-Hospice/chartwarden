@@ -41,12 +41,16 @@ describe("regenerate-schedules: 404 from the scope guard vs 422 for a visible, u
   });
 
   it("the route binds hope.scope with notFoundOnDeny on the body's admissionId, ahead of the service", () => {
-    const routes = source(`${HOPE}/routes/hope-routes.ts`);
-    expect(routes).toMatch(
+    // The registrar spreads the shared guard list; the list and the scope guard live in the guards file.
+    expect(source(`${HOPE}/routes/hope-routes.ts`)).toContain(
+      "{ preHandler: [...REGENERATE_SCHEDULES_GUARDS] }",
+    );
+    const guards = source(`${HOPE}/routes/hope-route-guards.ts`);
+    expect(guards).toMatch(
       /const SCOPE_BODY_ADMISSION = [\s\S]*?"hope\.scope", \{\s*notFoundOnDeny: true,[\s\S]*?admissionId: \(request\.body/,
     );
-    expect(routes).toMatch(
-      /preHandler: \[\s*ADMIN_REGEN,\s*REJECT_AI_OPERATIONS,\s*SCOPE_BODY_ADMISSION\("hope\.admin\.regenerate_schedules"\),?\s*\]/,
+    expect(guards).toMatch(
+      /REGENERATE_SCHEDULES_GUARDS: readonly PreHandler\[\] = \[\s*ADMIN_REGEN,\s*REJECT_AI_OPERATIONS,\s*SCOPE_BODY_ADMISSION\("hope\.admin\.regenerate_schedules"\),?\s*\]/,
     );
   });
 
