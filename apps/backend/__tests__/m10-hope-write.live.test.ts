@@ -1322,6 +1322,48 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect(await outcome(svc.getAssessmentReview(ORG_A, id, readOnly))).toBeNull();
     });
 
+    it("a read-only caller's workspace and validation reads store nothing: no control answer is rewritten and no validation finding is reconciled", async () => {
+      const id = await freshDraft();
+      await svc.getAssessmentWorkspace(ORG_A, id); // a writer's first open writes the workflow-control answers
+      const controlAnswers = () =>
+        admin
+          .query(
+            `SELECT count(*)::int AS n FROM hope_assessment_answer a
+               JOIN hope_spec_item i ON i.id = a.spec_item_id
+              WHERE a.hope_assessment_id=$1 AND i.item_code IN ('A0050','A0250')`,
+            [id],
+          )
+          .then((r) => r.rows[0].n as number);
+      const findings = () =>
+        admin
+          .query(
+            "SELECT count(*)::int AS n FROM hope_validation_finding WHERE hope_assessment_id=$1",
+            [id],
+          )
+          .then((r) => r.rows[0].n as number);
+      expect(await controlAnswers()).toBe(2);
+      // Make the controls out of date (the state a read-only open must leave alone).
+      await admin.query(
+        `DELETE FROM hope_assessment_answer a USING hope_spec_item i
+          WHERE a.spec_item_id = i.id AND a.hope_assessment_id=$1 AND i.item_code IN ('A0050','A0250')`,
+        [id],
+      );
+      expect(await controlAnswers()).toBe(0);
+      const findingsBefore = await findings();
+
+      const readOnly = { mayWrite: false };
+      await svc.getAssessmentWorkspace(ORG_A, id, readOnly);
+      await svc.getValidation(ORG_A, id, { mode: "final", ...readOnly });
+
+      expect(await controlAnswers()).toBe(0);
+      expect(await findings()).toBe(findingsBefore);
+      // Not vacuous: the same open by a writer restores the control answers and stores the findings.
+      await svc.getAssessmentWorkspace(ORG_A, id);
+      await svc.getValidation(ORG_A, id, { mode: "final" });
+      expect(await controlAnswers()).toBe(2);
+      expect(await findings()).toBeGreaterThan(findingsBefore);
+    });
+
     it("a sign behind a long-held assessment lock answers a retryable 409 instead of waiting for the lock and leaves the draft a draft", async () => {
       const id = await freshDraft();
       const before = (

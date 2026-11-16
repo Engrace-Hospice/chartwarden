@@ -48,11 +48,16 @@ function server() {
   registerAbacRegistry(registry);
   const getAssessmentWorkspace = vi.fn(async () => ({}));
   const getAssessmentReview = vi.fn(async () => ({}));
+  const getValidation = vi.fn(async () => ({}));
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerHopeRoutes(app, {
-    service: { getAssessmentWorkspace, getAssessmentReview } as unknown as HopeRouteService,
+    service: {
+      getAssessmentWorkspace,
+      getAssessmentReview,
+      getValidation,
+    } as unknown as HopeRouteService,
   });
-  return { app, getAssessmentWorkspace, getAssessmentReview };
+  return { app, getAssessmentWorkspace, getAssessmentReview, getValidation };
 }
 
 beforeEach(() => {
@@ -100,6 +105,28 @@ describe("workspace / review reads — only a writer's open may refresh the draf
       await harness.app.close();
     });
   }
+});
+
+describe("GET validation — a final run is stored only for a caller who may write", () => {
+  it.each([
+    ["reader", false],
+    ["writer", true],
+  ])("a %s is served with mayWrite: %s", async (user, mayWrite) => {
+    const harness = server();
+
+    await harness.app.inject({
+      method: "GET",
+      url: `/api/v1/hope/assessments/${ASSESSMENT}/validation`,
+      headers: { "x-test-user": user },
+    });
+
+    expect(harness.getValidation).toHaveBeenCalledWith(
+      ORG,
+      ASSESSMENT,
+      expect.objectContaining({ mayWrite }),
+    );
+    await harness.app.close();
+  });
 });
 
 // The same promise one layer down: a read-only caller opening a LEGACY SPEC-LESS draft must not trigger the spec-freezing

@@ -441,7 +441,12 @@ export interface HopeRouteService extends HopeAbacResolver {
   getValidation(
     organizationId: string,
     id: string,
-    options?: { readonly mode?: "draft" | "final"; readonly submissionDate?: string },
+    options?: {
+      readonly mode?: "draft" | "final";
+      readonly submissionDate?: string;
+      /** Whether the caller holds `hope.timepoint.write` (default true); `false` returns the findings without storing them. */
+      readonly mayWrite?: boolean;
+    },
   ): Promise<HopeValidationRunView>;
   listSubmissions(
     organizationId: string,

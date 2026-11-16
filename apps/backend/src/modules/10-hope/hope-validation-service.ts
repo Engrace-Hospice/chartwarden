@@ -39,6 +39,12 @@ export interface HopeValidationService {
     readonly assessmentId: string;
     readonly mode?: HopeValidationMode;
     readonly submissionDate?: string;
+    /**
+     * Whether a `final` run reconciles (writes) the assessment's stored findings. Default `true`: the write paths (a draft's
+     * validation after a patch, the sign gate) persist. `false` computes the findings and returns them as a draft run does,
+     * writing nothing: the on-demand read of a caller who does not hold `hope.timepoint.write`.
+     */
+    readonly persist?: boolean;
   }): Promise<HopeValidationRunView>;
 }
 
@@ -270,7 +276,7 @@ export function createHopeValidationService(db: DbClient): HopeValidationService
             applicability,
             submissionDate: input.submissionDate,
           });
-          if (mode === "draft") {
+          if (mode === "draft" || input.persist === false) {
             return {
               assessmentId: assessment.id,
               mode,

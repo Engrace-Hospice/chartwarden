@@ -597,6 +597,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       return service.getValidation(organizationId, id, {
         mode: query.mode,
         submissionDate: query.submissionDate,
+        mayWrite: await callerMayWrite(request),
       });
     },
   );

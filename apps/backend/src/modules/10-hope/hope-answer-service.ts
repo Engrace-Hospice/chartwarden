@@ -340,7 +340,16 @@ function assertSetItemsApplicable(
 }
 
 export interface HopeAssessmentAnswerService {
-  getWorkspace(organizationId: string, assessmentId: string): Promise<HopeAssessmentWorkspace>;
+  /**
+   * `options.mayWrite` (default `true`): whether the caller holds `hope.timepoint.write`. A draft's out-of-date workflow
+   * control answers are rewritten on open (a write under no actor) only for a caller who may write; any other caller is shown
+   * the same controls overlaid in memory from the assessment row, and nothing is stored.
+   */
+  getWorkspace(
+    organizationId: string,
+    assessmentId: string,
+    options?: { readonly mayWrite?: boolean },
+  ): Promise<HopeAssessmentWorkspace>;
   patchAnswers(
     organizationId: string,
     membershipId: string,
@@ -765,14 +774,16 @@ export function createHopeAssessmentAnswerService(
   }
 
   return {
-    async getWorkspace(organizationId, assessmentId) {
+    async getWorkspace(organizationId, assessmentId, options) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const loaded = await loadModernAssessment(t, organizationId, assessmentId);
         const items = await activeItems(t, loaded.assessment.specVersionId!, loaded.isc);
         const itemsByCode = new Map(items.map((item) => [item.itemCode, item]));
-        // The control answers are written only for a DRAFT, and only when one is out of date (see the function).
-        await reconcileControlsWhenNeeded(t, organizationId, loaded.assessment, itemsByCode);
+        // The control answers are written only for a DRAFT, only when one is out of date (see the function), and only for a
+        // caller who may write: the display overlays `workflowControlAnswers` below, so a reader needs no stored copy.
+        if (options?.mayWrite !== false)
+          await reconcileControlsWhenNeeded(t, organizationId, loaded.assessment, itemsByCode);
         const itemsById = new Map(items.map((item) => [item.id, item]));
         const optionsByItem = await optionsForItems(
           t,

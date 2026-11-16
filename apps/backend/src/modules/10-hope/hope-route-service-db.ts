@@ -1021,6 +1021,8 @@ export function createDbHopeBackend(
         assessmentId,
         mode: options?.mode ?? "final",
         submissionDate: options?.submissionDate,
+        // A final run reconciles the stored findings (a write, under no actor): only a caller who can write persists it.
+        persist: options?.mayWrite !== false,
       });
     },
 
@@ -1714,7 +1716,7 @@ export function createDbHopeBackend(
           refreshChartPrefill(tx as unknown as DbClient, organizationId, assessment),
         );
       }
-      return answerService.getWorkspace(organizationId, id);
+      return answerService.getWorkspace(organizationId, id, { mayWrite });
     },
 
     async getAssessmentReview(organizationId, urlId, options) {
@@ -2412,7 +2414,10 @@ export function createDbHopeBackend(
       // A date that does not exist (or has no explicit offset) is refused, never stored as the next valid one.
       if (args.submittedAt !== undefined) requireCalendarDateTime(args.submittedAt, "submittedAt");
       // The route screened the reference already; the service screens it again, so a second caller cannot store an identifier.
-      assertReferenceHasNoPatientIdentifier("iqiesSubmissionReference", args.iqiesSubmissionReference);
+      assertReferenceHasNoPatientIdentifier(
+        "iqiesSubmissionReference",
+        args.iqiesSubmissionReference,
+      );
       const id = uuidOrNotFound(urlId, `HOPE submission ${urlId} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
