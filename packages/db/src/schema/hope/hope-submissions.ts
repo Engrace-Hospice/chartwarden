@@ -39,6 +39,10 @@ export const hopeSubmissions = pgTable(
     resultImportedAt: timestamp("result_imported_at", { withTimezone: true }),
     resultImportedByMembershipId: uuid("result_imported_by_membership_id"),
     resultReportHash: text("result_report_hash"),
+    // The report reference the operator typed on the LATEST result import (migration 1496). It lives in its own column so the
+    // worklist reads it without detoasting `acceptance_report` (the multi-MB base64 ZIP); the same value is still kept in
+    // `acceptance_report->>'reportReference'`. Free text up to 500 chars, as `hope_submission_result_event.report_reference`.
+    reportReference: text("report_reference"),
     // R-08 — a package cancelled before upload (migration 1495). `cancel_reason_code` is a fixed code list
     // (HOPE_SUBMISSION_CANCEL_REASON_CODES), never free text, so the audit trigger needs no scrub entry.
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
