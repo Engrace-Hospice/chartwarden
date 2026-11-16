@@ -387,6 +387,26 @@ export function databaseTarget(
   return findingOf(found, database);
 }
 
+/**
+ * The finding for targets a client's own command language names (`\c host=H`, `dblink_connect('...')`, `connect("H")`;
+ * `db-connect-commands.ts`): a `string` is a connection string (a URI, a libpq string, a bare address by the client's
+ * grammar), a `host` is a host value.
+ */
+export function databaseTargetOfText(
+  prog: string,
+  targets: ReadonlyArray<readonly [text: string, role: "string" | "host"]>,
+): DatabaseTarget | null {
+  const spec = TARGET_CLIENTS.get(prog);
+  if (spec === undefined) return null;
+  const found: Found = { hosts: [], unparsed: [], indirect: [], variables: [] };
+  const r: Reader = { spec, found, vars: new Map() };
+  for (const [text, role] of targets) {
+    if (role === "host") addHosts(r, text);
+    else readTargetString(text, r);
+  }
+  return findingOf(found, undefined);
+}
+
 /** The reason shown to the agent; `show` redacts a token (userinfo, length) as `patterns.ts` does for every reason. */
 export function databaseTargetReason(
   finding: DatabaseTarget,

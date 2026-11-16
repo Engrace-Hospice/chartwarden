@@ -152,7 +152,8 @@ export {
   describeFindings,
 } from "./content-scan";
 import { LOCAL_HOST, MBI, scanContent, secretPathReason } from "./content-scan";
-import { databaseTarget, databaseTargetReason } from "./db-target";
+import { connectTargetOf } from "./db-connect-commands";
+import { type DatabaseTarget, databaseTarget, databaseTargetReason } from "./db-target";
 import { variableStatementWords } from "./db-variables";
 
 // ---------------------------------------------------------------------------------------------------
@@ -899,6 +900,12 @@ function envWriteVerdicts(
   return out;
 }
 
+/** A database target the guard found: a remote or unreadable one is refused, one that waits on a human asks. */
+function databaseTargetVerdict(target: DatabaseTarget): BashVerdict {
+  const reason = databaseTargetReason(target, echo);
+  return target.kind === "remote" || target.kind === "unparsed" ? deny(reason) : ask(reason);
+}
+
 const DB_SHELL_REASON =
   "A database client's own command (`.shell`, `.system`, `\\!`, `system`, a pipe target) runs an operating-system command from inside the client, and the guard cannot see what it runs: it can overwrite the guard or any file the guard protects. A human decides.";
 const DB_WRITE_REASON =
@@ -919,11 +926,13 @@ function dbClientVerdicts(
   const client = parsed[index] as Parsed;
   if (!isDbClient(client.prog)) return [];
   const stages = parsed.map((q, i) => ({ ...q, joiner: parts[i]?.joiner ?? "" }));
-  const found = clientFindings(client.prog, clientTexts(stages, index, bodies), client.args);
+  const texts = clientTexts(stages, index, bodies);
+  const found = clientFindings(client.prog, texts, client.args);
   if (found === null) return [];
-  const out: BashVerdict[] = found.shell
-    .slice(0, 1)
-    .map((what) => ask(`${DB_SHELL_REASON} (${what})`));
+  // A reconnection from inside the client (`\c host=H`, `dblink_connect('...')`, `connect("H")`) is a target too.
+  const reconnect = connectTargetOf(client.prog, texts);
+  const out: BashVerdict[] = reconnect === null ? [] : [databaseTargetVerdict(reconnect)];
+  out.push(...found.shell.slice(0, 1).map((what) => ask(`${DB_SHELL_REASON} (${what})`)));
   for (const target of found.writes) {
     const hit = writesProtectedPath({ ...NO_COMMAND, outs: [target] }, here, ctx);
     if (hit) out.push(ask(`${DB_WRITE_REASON} ${writeHitReason(hit)}`));
@@ -2902,10 +2911,7 @@ function classifySegment(
 
   // --- Production data access. An agent session connecting to a non-local database is PHI access (`db-target.ts`).
   const dbTarget = databaseTarget(prog, args, [...assigns, ...variableStatements]);
-  if (dbTarget) {
-    const reason = databaseTargetReason(dbTarget, echo);
-    return dbTarget.kind === "remote" || dbTarget.kind === "unparsed" ? deny(reason) : ask(reason);
-  }
+  if (dbTarget) return databaseTargetVerdict(dbTarget);
 
   // --- Remote shells: production access must be a human decision every time.
   if (/^(ssh|scp|sftp|rsync)$/.test(prog)) {
