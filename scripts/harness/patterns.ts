@@ -120,16 +120,17 @@ import {
   trimSlashes,
   work,
 } from "./work-budget";
+import { wrapperFiles, wrapperTakesValue } from "./wrapper-options";
 import {
-  RUNS_COMMAND_STRING,
   WRAPPER_OPERANDS,
   WRAPPER_VALUE_FLAG,
   containerExec,
   containerRun,
+  gnuName,
   shellQuote,
   shellStrings,
   sshHost,
-  wrapperOutput,
+  staysProgram,
 } from "./wrappers";
 import { extraOutputFiles, localPath } from "./writers";
 import { moreGitWrites, moreWriterTargets } from "./writers-more";
@@ -355,15 +356,18 @@ function program(seg: string): {
   chdir?: string;
   /** Files a wrapper's own option writes (`time -o F`): judged like redirect targets. */
   writes: string[];
+  /** Secret-named files a wrapper's own option reads (`xargs -a F`): judged like input redirects. */
+  reads: string[];
 } {
   let w = words(seg);
   const writes: string[] = [];
+  const reads: string[] = [];
   let k = 0;
   let lastWrapper = "";
   let chdir: string | undefined;
   while (k < w.length) {
     const word = w[k] ?? "";
-    const bare = unescapeWord(word);
+    const bare = gnuName(unescapeWord(word));
     if (/^g?timeout$/.test(bare.replace(/^.*\//, ""))) {
       lastWrapper = "timeout";
       k++;
@@ -390,32 +394,31 @@ function program(seg: string): {
     const takesValue = WRAPPER_FLAG_VALUE.get(bare);
     if (ASSIGNMENT.test(word)) k++;
     else if (takesValue && k + 1 < w.length) {
-      // `flock -c 'cmd' file`: the string is the command, so the wrapper stays the program and its string is read.
-      if (
-        RUNS_COMMAND_STRING.has(bare) &&
-        w.slice(k + 1).some((x) => /^-c$|^--command(?:=|$)/.test(x))
-      ) {
-        break;
-      }
+      // `flock -c 'cmd' file`, `sudo -e FILE`: the words are a string or files, not a command: the wrapper stays the program.
+      if (staysProgram(bare, w.slice(k + 1))) break;
       lastWrapper = bare;
       k++;
       const operands = WRAPPER_OPERANDS.get(bare);
       let supplied = false;
+      const flagStart = k;
       while (k < w.length && /^-/.test(w[k] ?? "") && (w[k] ?? "") !== "--") {
         const flag = w[k] ?? "";
-        const written = wrapperOutput(bare, flag, w[k + 1]);
-        if (written !== undefined) writes.push(written);
         supplied ||= operands?.suppliedBy?.test(flag) ?? false;
         const attached = CHDIR_ATTACHED.get(bare)?.exec(flag);
         if (attached) chdir = attached[1] ?? attached[2] ?? "";
         else if (CHDIR_FLAG.get(bare)?.test(flag)) chdir = w[k + 1] ?? "";
-        // `--chdir DIR` takes its value from the next word as `-C DIR` does.
-        k += takesValue.test(flag) || flag === "--chdir" ? 2 : 1;
+        k += wrapperTakesValue(bare, takesValue, flag) ? 2 : 1;
       }
+      const flagEnd = k;
       // `sudo -- rm x`: `--` ends the wrapper's options, and the command follows it.
       if (w[k] === "--") k++;
       // `flock lockfile cmd`, `chrt -f 1 cmd`, `taskset 0x1 cmd`: operands before the command.
-      if (operands && !supplied) k += operands.count;
+      const operandWords = operands && !supplied ? w.slice(k, k + operands.count) : [];
+      k += operandWords.length;
+      // The files a wrapper's own options and operands name (`xargs -a F`, `parallel --joblog F`, `flock F`).
+      const files = wrapperFiles(bare, w.slice(flagStart, flagEnd), operandWords);
+      writes.push(...files.writes);
+      reads.push(...files.reads);
     } else {
       // `bunx git push`, `npx -c '…'`, `bun run cp …`: the program the runner starts is the command (`runners.ts`).
       const peeled = peelRunner(w.slice(k), isPackageScript);
@@ -432,6 +435,7 @@ function program(seg: string): {
     args: prog === "env" && k >= w.length ? [] : w.slice(k + 1),
     assigns: w.slice(0, k).filter((x) => ASSIGNMENT.test(x)),
     writes,
+    reads,
     ...(chdir === undefined ? {} : { chdir }),
   };
 }
@@ -532,8 +536,8 @@ interface Parsed {
 /** Program, arguments and redirections of one simple command. */
 function parseSegment(seg: string): Parsed {
   const { rest, outs, ins, docs, strings } = splitRedirects(seg);
-  const { writes, ...command } = program(rest);
-  return { ...command, outs: [...outs, ...writes], ins, docs, strings };
+  const { writes, reads, ...command } = program(rest);
+  return { ...command, outs: [...outs, ...writes], ins: [...ins, ...reads], docs, strings };
 }
 
 /**

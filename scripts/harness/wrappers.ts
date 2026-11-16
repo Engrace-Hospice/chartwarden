@@ -17,18 +17,20 @@ export const WRAPPER_VALUE_FLAG: ReadonlyMap<string, RegExp> = new Map([
     "sudo",
     /^-[ughpCDRTUrt]$|^--(?:user|group|host|prompt|chdir|role|type|other-user|login-class|close-from|command-timeout)$/,
   ],
-  ["env", /^-[uCSP]$|^--(?:unset|chdir|split-string)$/],
+  ["env", /^-[uCSPa]$|^--(?:unset|chdir|split-string|argv0)$/],
   // GNU time: `-o FILE` and `-f FORMAT`; a word that is none of these is the command.
   ["time", /^-[of]$|^--(?:output|format)$/],
   ["nice", /^-n$/],
-  ["ionice", /^-[cnp]$/],
-  ["xargs", /^-[InPLsdEa]$/],
+  ["ionice", /^-[cnpPu]$/],
+  // GNU `-a FILE`, `-I R`, `-E EOF`, `-d D`; BSD `-J R`, `-R N`, `-S N`. `-i`, `-e` and `-l` carry their value attached.
+  ["xargs", /^-[InPLsdEaJRS]$/],
   ["exec", /^-a$/],
   ["stdbuf", /^-[ioe]$/],
   ["caffeinate", /^-[tw]$/],
   ["arch", /^-(?:arch|e|d)$/],
   ["unbuffer", /^$/],
-  ["strace", /^-[oepsuaPEkSTDIX]$/],
+  // strace: `-T`, `-D`, `-k`, `-f`, `-c`, `-v`, `-x` are flags; these take a value.
+  ["strace", /^-[oepsuaPEbIOSUX]$/],
   ["doas", /^-[uC]$/],
   ["pkexec", /^--user$/],
   ["taskset", /^-c$|^--cpu-list$/],
@@ -38,40 +40,30 @@ export const WRAPPER_VALUE_FLAG: ReadonlyMap<string, RegExp> = new Map([
   ["xcrun", /^-(?:-?sdk|-?toolchain)$/],
   ["lima", /^--workdir$/],
   ["flock", /^-[cEw]$|^--(?:command|conflict-exit-code|timeout|wait)$/],
-  ["parallel", /^-[jnNSaIXZ]$|^--(?:jobs|max-args|sshlogin|arg-file)$/],
+  // GNU parallel: `-X`, `-m`, `-q`, `-k`, `-u`, `-t`, `-v`, `-0` are flags; these take a value.
+  ["parallel", /^-[jnNSaILECdPJs]$|^--(?:jobs|max-args|sshlogin|arg-file)$/],
+  ["chroot", /^-[ug]$/],
+  ["unshare", /^-[SGwR]$/],
+  // moreutils `chronic`, proxychains-ng (`-f CONFIG`) and `ssh-agent CMD` each run the command that follows.
+  ["chronic", /^$/],
+  ["proxychains", /^-f$/],
+  ["proxychains4", /^-f$/],
+  ["ssh-agent", /^-[aEPtO]$/],
 ]);
+
+/** Homebrew's GNU tools carry a `g` prefix on macOS (`gxargs -a FILE`, `gnice`): each is the wrapper it prefixes. */
+const GNU_PREFIXED = /^g(xargs|nice|stdbuf|env|nohup|time)$/;
+export const gnuName = (program: string): string => GNU_PREFIXED.exec(program)?.[1] ?? program;
 
 /** Operands a wrapper takes before the command (a lock file, a CPU mask, a priority), unless a flag supplies them. */
 export const WRAPPER_OPERANDS: ReadonlyMap<string, { count: number; suppliedBy?: RegExp }> =
   new Map([
     ["flock", { count: 1, suppliedBy: /^-c$|^--command(?:=.*)?$/ }],
-    ["taskset", { count: 1, suppliedBy: /^-c$|^--cpu-list$/ }],
+    ["taskset", { count: 1, suppliedBy: /^-c|^--cpu-list(?:=.*)?$/ }],
     ["chrt", { count: 1 }],
+    // `chroot NEWROOT cmd`
+    ["chroot", { count: 1 }],
   ]);
-
-/**
- * Wrapper options that name a file the wrapper itself WRITES (`time -o F`, `strace -o F`), spelled `-o F`, `-oF`, `--output F`
- * or `--output=F`. The classifier judges the file like a redirect target; the options are otherwise dropped with the wrapper.
- */
-const WRAPPER_OUTPUT_OPTION: ReadonlyMap<string, RegExp> = new Map([
-  ["time", /^(?:-o|--output)$/],
-  ["strace", /^-o$/],
-]);
-
-/** The file `flag` (followed by `next`) makes `wrapper` write, or undefined when it names none. */
-export function wrapperOutput(
-  wrapper: string,
-  flag: string,
-  next: string | undefined,
-): string | undefined {
-  const names = WRAPPER_OUTPUT_OPTION.get(wrapper);
-  if (names === undefined) return undefined;
-  if (names.test(flag)) return next;
-  const attached = /^(?:--output|-o)=?(.+)$/s.exec(flag);
-  return attached !== null && names.test(flag.startsWith("--") ? "--output" : "-o")
-    ? attached[1]
-    : undefined;
-}
 
 /** A word as the shell must read it back as one word. */
 export const shellQuote = (w: string): string =>
@@ -88,7 +80,16 @@ function afterOptions(args: readonly string[], valueFlag: RegExp): string[] {
 }
 
 /** Wrappers that, given `-c STR`, run the string and not a command word: they stay the program, so the string is read. */
-export const RUNS_COMMAND_STRING: ReadonlySet<string> = new Set(["flock", "runuser"]);
+const RUNS_COMMAND_STRING: ReadonlySet<string> = new Set(["flock", "runuser"]);
+
+/**
+ * Does this wrapper, given these words, run no command word? `flock -c STR` runs the string, and `sudo -e FILE` (`--edit`,
+ * `sudoedit`) edits the files that follow: it stays the program, so the string is judged as a command line and the files
+ * are judged as the operands they are.
+ */
+export const staysProgram = (wrapper: string, words: readonly string[]): boolean =>
+  (RUNS_COMMAND_STRING.has(wrapper) && words.some((x) => /^-c$|^--command(?:=|$)/.test(x))) ||
+  (wrapper === "sudo" && words.some((x) => /^-[A-Za-z]*e[A-Za-z]*$|^--edit$/.test(x)));
 
 /** The value of `-c STR`, `-cSTR`, `--command STR` and `--command=STR`. */
 function commandOption(args: readonly string[]): string[] {
@@ -172,6 +173,9 @@ export function shellStrings(
   switch (prog) {
     case "watch":
       return [afterOptions(args, /^-(?:n|-interval)$|^--interval$/).join(" ")];
+    case "entr":
+      // `entr [-acdnprsxz] utility [args]` (`-s` makes the words one shell command): the words are a command line.
+      return [afterOptions(args, /^$/).join(" ")];
     case "su":
     case "runuser":
     case "flock":

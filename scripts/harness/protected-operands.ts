@@ -220,7 +220,7 @@ const READER_ENTRIES: readonly ReaderEntry[] = [
   [
     "cd pushd popd echo printf true false test [ [[ source . bash sh zsh dash ksh exec nohup set export",
   ],
-  // `time -o FILE` is a wrapper option: the classifier reads it where it peels the wrapper (`wrapperOutput`)
+  // `time -o FILE` is a wrapper option: the classifier reads it where it peels the wrapper (`wrapperFiles`)
   ["time"],
   // interpreters, runners and checkers: they run a script or check files; their own writes are judged elsewhere
   [
