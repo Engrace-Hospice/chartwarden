@@ -168,6 +168,16 @@ export function SubmissionWorklist(): JSX.Element {
   // Synchronous guard: `disabled={generating}` only takes effect after the next render, so a fast second click
   // (or a key-repeat) could otherwise start a second batch.
   const generatingRef = useRef(false);
+  // The package build is deliberately unbounded, so the clinician may have left the list by the time it answers: a late answer
+  // must not pull them to the batch's page (the observable effect), nor re-read a list nobody is looking at. A state update after
+  // unmount is a no-op on React 18, so only `navigate` and the re-reads are guarded.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const generatePackage = async (): Promise<void> => {
     if (generatingRef.current) return;
     generatingRef.current = true;
@@ -179,17 +189,17 @@ export function SubmissionWorklist(): JSX.Element {
         setError(result.message);
         // An unconfirmed result (an empty 5xx, a fault of the server's own) may still have built the package: re-read the list the
         // message says to check, as for a rejected request below. A refusal that was answered built nothing.
-        if (failedResultOutcomeUnknown(result)) void load();
+        if (failedResultOutcomeUnknown(result) && mounted.current) void load();
         return;
       }
-      navigate(`/hope/submissions/${encodeURIComponent(result.value.id)}`);
+      if (mounted.current) navigate(`/hope/submissions/${encodeURIComponent(result.value.id)}`);
     } catch {
       // No usable answer (offline, a reset): the package may have been built, and generating again (a fresh key, by design)
       // would build a second one. Say so, and re-read the list so the batch shows if it was.
       setError(
         "Could not confirm that the iQIES package was generated. Check the submissions list before trying again.",
       );
-      void load();
+      if (mounted.current) void load();
     } finally {
       generatingRef.current = false;
       setGenerating(false);

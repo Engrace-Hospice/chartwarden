@@ -287,7 +287,13 @@ export function SubmissionDetail(): JSX.Element {
         // re-read, and `busy` must not be held for the read).
         const { status, body } = answer.refused;
         setActionError((isClientRefusal(status) ? refusalWordsOf(body) : null) ?? DOWNLOAD_FAILED);
-        if (isStaleVersionRefusal({ error: body, response: { status } })) await reload(null);
+        // A fault of the server's own (not a refusal) may have come after it advanced a packaged batch to exported, which is what
+        // lets Record CMS result appear: re-read, so a download that failed on the way back does not leave the page behind it.
+        if (
+          isStaleVersionRefusal({ error: body, response: { status } }) ||
+          !isClientRefusal(status)
+        )
+          await reload(null);
         return;
       }
       const url = URL.createObjectURL(answer.blob);
@@ -299,6 +305,9 @@ export function SubmissionDetail(): JSX.Element {
       await reload(); // the download advances a packaged batch to exported
     } catch {
       setActionError(DOWNLOAD_FAILED);
+      // No usable answer (a rejection, a timeout that includes the body): the server may have advanced the batch before the reply
+      // was lost, so the page is read again, silently, as after a download that failed on the server's side.
+      await reload(null);
     } finally {
       setBusy(false);
     }

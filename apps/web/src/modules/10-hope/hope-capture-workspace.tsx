@@ -201,6 +201,8 @@ function HopeCaptureWorkspace({
     if (!admissionId || !item || discipline === "" || targetIso === null) return;
     // The discharge reason is the clinician's choice (and the control is only there on a discharge).
     if (item.kind === "05_discharge" && dischargeReason === "") return;
+    // The late reason is a required input of a late item, as in the record dialog: the form says so and does not send without it.
+    if (item.status === "late" && lateReason.trim() === "") return;
     setBusy(true);
     setActionError(null);
     try {
@@ -278,10 +280,13 @@ function HopeCaptureWorkspace({
   const canSubmit = sfv
     ? sfv.status === "open" || sfv.status === "overdue"
     : item?.status === "open" || item?.status === "late";
+  // What blocks Create is a missing INPUT (a discipline, a date, a discharge reason, a late reason). Whether the window is still open
+  // stays the server's call: the page's picture of it was read at load, so it is not used to predict a refusal.
   const submitBlocked =
     busy ||
     discipline === "" ||
     targetIso === null ||
+    (item?.status === "late" && lateReason.trim() === "") ||
     (item?.kind === "05_discharge" && dischargeReason === "");
 
   return (

@@ -7,7 +7,8 @@
 // FETCH CALLS, so a button re-wired to a handler that never issues the request still fails.
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import type { ReactNode } from "react";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { SubmissionWorklist } from "./submission-worklist";
@@ -23,6 +24,8 @@ let bodies: Record<string, unknown>[] = [];
 let providerEntities: Array<{ id: string; legalName: string; ccn: string }> = [];
 let assembleFailure: { status: number; body: unknown } | null = null;
 let assembleThrows = false;
+/** When set, the assemble answer waits for it: the package build is out until the test releases it. */
+let assembleGate: Promise<void> | null = null;
 
 async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const request = input instanceof Request ? input : null;
@@ -40,6 +43,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     if (assembleThrows) throw new TypeError("network down");
     const raw = request ? await request.clone().text() : String(init?.body ?? "");
     bodies.push(JSON.parse(raw) as Record<string, unknown>);
+    if (assembleGate) await assembleGate;
     if (assembleFailure) return json(assembleFailure.status, assembleFailure.body);
     return json(201, {
       id: SUBMISSION,
@@ -54,7 +58,8 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   return json(404, { message: `unstubbed ${method} ${path}` });
 }
 
-function mount(permissions: string[]) {
+/** `leaving` is drawn outside the routes, so it stays on screen after the worklist is gone. */
+function mount(permissions: string[], leaving: ReactNode = null) {
   return render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <SessionProvider
@@ -69,9 +74,11 @@ function mount(permissions: string[]) {
       >
         <ToastProvider>
           <MemoryRouter initialEntries={["/hope/submissions"]}>
+            {leaving}
             <Routes>
               <Route path="/hope/submissions" element={<SubmissionWorklist />} />
               <Route path="/hope/submissions/:id" element={<div>Submission detail page</div>} />
+              <Route path="/hope/elsewhere" element={<div>Somewhere else</div>} />
             </Routes>
           </MemoryRouter>
         </ToastProvider>
@@ -87,10 +94,12 @@ beforeEach(() => {
   bodies = [];
   assembleFailure = null;
   assembleThrows = false;
+  assembleGate = null;
   providerEntities = [{ id: PROVIDER_ENTITY, legalName: "Engrace Hospice", ccn: "123456" }];
 });
 afterEach(() => {
   assembleFailure = null;
+  assembleGate = null;
 });
 
 describe("HOPE Submissions — generate the iQIES upload package", () => {
@@ -105,6 +114,32 @@ describe("HOPE Submissions — generate the iQIES upload package", () => {
     expect(bodies[0]).toEqual({ providerEntityId: PROVIDER_ENTITY });
     // Landing on the detail page is the point: that is where "Download ZIP" lives.
     expect(await screen.findByText("Submission detail page")).toBeTruthy();
+  });
+
+  it("does not pull the clinician to the new batch when it is built after they left the list", async () => {
+    let release: () => void = () => undefined;
+    assembleGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mount(["hope.submission.manage"], <Link to="/hope/elsewhere">Leave the list</Link>);
+    const button = await screen.findByRole("button", { name: generateLabel });
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+
+    fireEvent.click(button);
+    await waitFor(() => expect(bodies).toHaveLength(1)); // the build is out, unbounded by design
+    fireEvent.click(screen.getByRole("link", { name: "Leave the list" }));
+    expect(await screen.findByText("Somewhere else")).toBeTruthy();
+    const readsBefore = calls.filter((c) => c === "GET /api/v1/hope/submissions").length;
+
+    await act(async () => {
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    // The late answer neither navigates to the batch nor re-reads a list nobody is looking at.
+    expect(screen.queryByText("Submission detail page")).toBeNull();
+    expect(screen.getByText("Somewhere else")).toBeTruthy();
+    expect(calls.filter((c) => c === "GET /api/v1/hope/submissions")).toHaveLength(readsBefore);
   });
 
   it("asks which provider entity when the organisation has several, and sends the chosen one", async () => {

@@ -73,8 +73,11 @@ export interface HopeActionModalProps {
   /** The subject: a schedule id, assessment id, submission id, admission id or provider-entity id. */
   readonly targetId: string;
   readonly onClose: () => void;
-  /** Called after a successful commit so the caller can refresh without guessing at the new state. */
-  readonly onDone: () => void;
+  /**
+   * Called after a successful commit so the caller can refresh without guessing at the new state. `value` is what the route answered
+   * with (`regenerate`: `{ admissionId, scheduleCount }`, the windows the admission has afterwards), for a caller that says what happened.
+   */
+  readonly onDone: (value: unknown) => void;
   /**
    * The page behind the dialog may be out of date: the server said 409 (the record's state changed under the user), or the outcome could
    * not be confirmed (no answer, a timeout, a faulting 5xx), so the action may have been applied. Refresh so the page shows what is true.
@@ -100,9 +103,10 @@ export function HopeActionModal({
   // A failure takes focus: the pressed button is disabled while the request is out, which drops focus to the page.
   const alertRef = useFocusOnNewError<HTMLParagraphElement>(error);
 
-  // Reset only when the dialog opens.
+  // Reset when the dialog closes as well as when it opens. A caller that keeps this mounted while it is shut would otherwise show
+  // the last use's error and chosen reason for the first frame of the next open, before an effect on open cleared them.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `open` is the trigger; the effect reads no other reactive value
   useEffect(() => {
-    if (!open) return;
     setError(null);
     setBusy(false);
     setReasonCode(NO_REASON);
@@ -155,7 +159,8 @@ export function HopeActionModal({
       if (changed || failedResultOutcomeUnknown(res)) notifyDone(() => onConflict?.());
       return;
     }
-    notifyDone(onDone, onClose);
+    const { value } = res;
+    notifyDone(() => onDone(value), onClose);
   }
 
   return (

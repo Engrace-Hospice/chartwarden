@@ -98,7 +98,12 @@ function PatientHopeTimelineView({ patientId }: { patientId: string | undefined 
   const [retryable, setRetryable] = useState(true);
   const [recording, setRecording] = useState(false);
   const [patientAdmissionId, setPatientAdmissionId] = useState<string | null>(null);
+  // The admissions read has answered (or failed): until then the controls are not offered, because the admission they would act on
+  // is not known yet, and one opened on the timeline's own newest row would switch to the open admission under the clinician.
+  const [admissionsRead, setAdmissionsRead] = useState(false);
   const [acting, setActing] = useState<HopeAction | null>(null);
+  // What the last "Create missing timepoint windows" answered, so the clinician can tell it ran.
+  const [windowsNote, setWindowsNote] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const retry = useRetryFocus(loading, error);
 
@@ -160,15 +165,21 @@ function PatientHopeTimelineView({ patientId }: { patientId: string | undefined 
         );
         // An unreadable answer (an error reply, not only a throw) keeps the admission already known: it is not "no open
         // admission", and treating it as one would take Record timepoint away from a patient with no timepoints.
-        if (!readSucceeded(result)) return;
+        if (!readSucceeded(result)) {
+          if (active) setAdmissionsRead(true);
+          return;
+        }
         rows = (result.data?.items ?? []) as { id: string; dischargedAt: string | null }[];
       } catch {
         // Best-effort: without the admissions read the controls fall back to the timeline's own newest row.
+        if (active) setAdmissionsRead(true);
         return;
       }
       if (!active) return;
+      setAdmissionsRead(true);
       // ONLY an open admission. The capture route refuses a closed one outright
-      // (`409 M10_ADMISSION_NOT_ACTIVE`), so offering the control for a discharged admission would be
+      // (`409 M10_ADMISSION_NOT_ACTIVE`, raised by the recording gate in `packages/hope/src/recording/timepoint-gate.ts`), so
+      // offering the control for a discharged admission would be
       // an enabled button whose route always denies — and a patient whose only admission is closed
       // falls back to the timeline's own `items[0]`, i.e. exactly the behaviour that was there before.
       setPatientAdmissionId(rows.find((r) => r.dischargedAt === null)?.id ?? null);
@@ -181,7 +192,7 @@ function PatientHopeTimelineView({ patientId }: { patientId: string | undefined 
   const triggered = items.filter((a) => a.j2051TriggerFired).length;
   // The patient's admission, or — if that read is unavailable — the newest timepoint's, which is where
   // this used to come from and which is still correct whenever there IS a timepoint.
-  const admissionId = patientAdmissionId ?? items[0]?.admissionId ?? null;
+  const admissionId = admissionsRead ? (patientAdmissionId ?? items[0]?.admissionId ?? null) : null;
 
   // The shared chart banner and summary rail, so this tab reads like every other chart tab (the
   // patient's identity stays on screen; the page's own title and actions live in the content pane).
@@ -227,13 +238,25 @@ function PatientHopeTimelineView({ patientId }: { patientId: string | undefined 
                   Record timepoint
                 </Button>
                 {canRegenerate ? (
-                  <Button size="sm" tone="tertiary" onClick={() => setActing("regenerate")}>
+                  <Button
+                    size="sm"
+                    tone="tertiary"
+                    onClick={() => {
+                      setWindowsNote(null);
+                      setActing("regenerate");
+                    }}
+                  >
                     Create missing timepoint windows
                   </Button>
                 ) : null}
               </div>
             ) : null}
           </div>
+          {windowsNote ? (
+            <output style={{ ...meta, display: "block", marginBottom: "1rem" }}>
+              {windowsNote}
+            </output>
+          ) : null}
           {error ? (
             <div ref={retry.errorRef} tabIndex={-1}>
               <InlineAlert tone="error">
@@ -363,7 +386,10 @@ function PatientHopeTimelineView({ patientId }: { patientId: string | undefined 
           action={acting}
           targetId={admissionId}
           onClose={() => setActing(null)}
-          onDone={() => setReloadKey((k) => k + 1)}
+          onDone={(value) => {
+            if (acting === "regenerate") setWindowsNote(windowsNoteOf(value));
+            setReloadKey((k) => k + 1);
+          }}
           // The page may be out of date: the server said 409 (the record changed under the clinician), or the outcome could not be
           // confirmed (no answer, a timeout, a faulting 5xx) so the action may have been applied. Re-read so the page shows what is true.
           onConflict={() => setReloadKey((k) => k + 1)}
@@ -371,6 +397,16 @@ function PatientHopeTimelineView({ patientId }: { patientId: string | undefined 
       ) : null}
     </PatientWorkspaceLayout>
   );
+}
+
+/**
+ * What a window regeneration answered, in words. The route returns how many windows the admission has AFTERWARDS, not how many it
+ * added, so that is all this can honestly say.
+ */
+function windowsNoteOf(value: unknown): string {
+  const count = (value as { scheduleCount?: unknown } | null)?.scheduleCount;
+  if (typeof count !== "number") return "Timepoint windows checked.";
+  return `Timepoint windows checked: this admission now has ${count} ${count === 1 ? "window" : "windows"}.`;
 }
 
 const headingRow = {

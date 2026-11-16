@@ -7,7 +7,9 @@ import {
   type RecordSfvBody,
   isClientRefusal,
   isRefusalBody,
+  isStaleVersionRefusal,
   withRequestTimeout,
+  writeOutcomeUnknown,
   writeSucceeded,
 } from "./hope-api";
 import { useStepUpRedirect } from "./hope-attestation";
@@ -41,6 +43,12 @@ interface SubmitInputs {
   readonly wordingChanged: boolean;
   readonly onWordingChanged: () => void;
   readonly onCompleted: () => Promise<void>;
+  /**
+   * The screen behind the dialog may be out of date: the write may have been applied (no usable answer, a fault of the server's
+   * own) or the record changed under it (a stale-version 409). The caller re-reads it quietly; the dialog stays open with its
+   * words. Never rejects.
+   */
+  readonly onReread: () => void;
 }
 
 export function useSfvSubmit(inputs: SubmitInputs): {
@@ -48,7 +56,7 @@ export function useSfvSubmit(inputs: SubmitInputs): {
   error: SfvError | null;
   submit: () => void;
 } {
-  const { assessment, api, form, wordingChanged, onWordingChanged, onCompleted } = inputs;
+  const { assessment, api, form, wordingChanged, onWordingChanged, onCompleted, onReread } = inputs;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<SfvError | null>(null);
   const redirectToStepUp = useStepUpRedirect();
@@ -94,6 +102,7 @@ export function useSfvSubmit(inputs: SubmitInputs): {
       // so a retry is safe, but the clinician is told to check before trying again.
       setSaving(false);
       setError(SFV_UNCONFIRMED);
+      if (mounted.current) onReread();
       return;
     }
     if (writeSucceeded(res)) {
@@ -102,8 +111,11 @@ export function useSfvSubmit(inputs: SubmitInputs): {
       await onCompleted();
       return;
     }
-    if (!mounted.current) return; // before the step-up navigation and `onWordingChanged` below
+    if (!mounted.current) return; // before the step-up navigation, `onReread` and `onWordingChanged` below
     setSaving(false);
+    // The words below tell the clinician to check the worklist or refresh the assessment: do that for them, behind the dialog, so
+    // the card no longer says "Required" for a visit that was recorded and a conflict shows the record as it now is.
+    if (writeOutcomeUnknown(res) || isStaleVersionRefusal(res)) onReread();
     if (!isRefusalBody(res.error)) {
       // No refusal body to read. A 4xx was still an answer (refused, reason not given); anything else (an empty or
       // gateway reply) leaves it unknown whether the write landed.

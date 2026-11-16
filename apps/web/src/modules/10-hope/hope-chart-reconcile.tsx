@@ -15,7 +15,7 @@ import {
 } from "@chartwarden/types";
 import { Button, Modal, useApiClient } from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { MdmEntityLookupField } from "../../shell/entity-lookups";
 import {
@@ -154,11 +154,27 @@ export function ChartReconcileDialog(props: {
   // The button that was pressed goes away with the options it sat in (and a cleared field disables its button): the outcome
   // takes focus, so Escape and Tab keep working inside the dialog instead of falling to the page behind it.
   const outcomeRef = useRef<HTMLOutputElement>(null);
+  const invalidId = useId();
   useEffect(() => {
     if (done !== null || note !== null) outcomeRef.current?.focus();
   }, [done, note]);
 
   const post = client.POST as unknown as (path: string, init: unknown) => Promise<PostReply>;
+
+  /**
+   * A coverage write nobody confirmed may have landed (the reply was lost), so the chart behind the dialog is re-read: the page
+   * note and the chart column must not keep saying "Not on the chart" for a row that is there. Not awaited, so it never holds the
+   * dialog shut, and a failed re-read adds nothing: the dialog's own words already say the result is unconfirmed and to check.
+   */
+  function rereadChartQuietly(): void {
+    void (async () => {
+      try {
+        await props.onChartUpdated();
+      } catch {
+        // The words already say the outcome is unconfirmed; there is nothing more a failed re-read could add.
+      }
+    })();
+  }
 
   /**
    * Files a coverage row: null when it was written, else why it was not (or could not be confirmed). Never rejects, so the
@@ -175,13 +191,16 @@ export function ChartReconcileDialog(props: {
         }),
       );
     } catch {
+      rereadChartQuietly();
       return { message: CHART_UNCONFIRMED, outcomeUnknown: true };
     }
     // Not `error` alone: openapi-fetch leaves it undefined (or "") for a non-OK reply with no body.
     if (!writeSucceeded(reply)) {
+      const outcomeUnknown = writeOutcomeUnknown(reply);
+      if (outcomeUnknown) rereadChartQuietly();
       return {
         message: failedWriteMessage(reply, CHART_UNCONFIRMED, CHART_REFUSED),
-        outcomeUnknown: writeOutcomeUnknown(reply),
+        outcomeUnknown,
       };
     }
     try {
@@ -277,7 +296,12 @@ export function ChartReconcileDialog(props: {
     if (props.canEditHope) setHopeValue(enteredNumber);
     if (!chart && props.canEditHope) {
       setEntered("");
-      setNote(`Saved in HOPE. Add it to the patient's chart below.`);
+      // Said only of what was written: a number HOPE already held was not saved again.
+      setNote(
+        wrote.length > 0
+          ? `Saved in HOPE. Add it to the patient's chart below.`
+          : `HOPE already has that ${meta.noun}. Add it to the patient's chart below.`,
+      );
       return;
     }
     setDone(
@@ -495,10 +519,14 @@ export function ChartReconcileDialog(props: {
                   autoComplete="off"
                   spellCheck={false}
                   aria-invalid={entered.trim() !== "" && !enteredValid}
+                  aria-describedby={entered.trim() !== "" && !enteredValid ? invalidId : undefined}
                 />
               </label>
               {entered.trim() !== "" && !enteredValid ? (
-                <p style={warn}>Not a valid {numberKind}.</p>
+                // A status, so it is read when it appears while typing, and tied to the field for a keyboard user who returns to it.
+                <output id={invalidId} style={{ ...warn, display: "block" }}>
+                  Not a valid {numberKind}.
+                </output>
               ) : null}
               <p style={muted}>
                 {props.canEditHope && coverage

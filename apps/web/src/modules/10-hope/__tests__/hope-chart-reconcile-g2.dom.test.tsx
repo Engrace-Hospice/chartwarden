@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { REQUEST_TIMEOUT_MS } from "../hope-api";
@@ -98,23 +98,28 @@ describe("ChartReconcileDialog chart write", () => {
     ["an empty 502 with error undefined", empty(502)],
     ["an empty 503 with error ''", empty(503, "")],
     ["an empty 504", empty(504)],
-  ])("does not call %s an update", async (_name, reply) => {
-    const { onChartUpdated } = renderDialog(async () => reply);
-    fireEvent.click(updateChart());
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("Could not confirm");
-    expect(screen.queryByText("The chart's Medicare number is updated.")).toBeNull();
-    expect(onChartUpdated).not.toHaveBeenCalled();
-    // The buttons are the retry: they come back.
-    expect((updateChart() as HTMLButtonElement).disabled).toBe(false);
-  });
+  ])(
+    "does not call %s an update, but re-reads the chart it may have changed",
+    async (_name, reply) => {
+      const { onChartUpdated } = renderDialog(async () => reply);
+      fireEvent.click(updateChart());
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toContain("Could not confirm");
+      expect(screen.queryByText("The chart's Medicare number is updated.")).toBeNull();
+      // The reply may have been lost after the row landed: the page behind must not keep saying "Not on the chart".
+      await waitFor(() => expect(onChartUpdated).toHaveBeenCalledTimes(1));
+      // The buttons are the retry: they come back.
+      expect((updateChart() as HTMLButtonElement).disabled).toBe(false);
+    },
+  );
 
-  it("words a bodiless 4xx as a refusal, not as unconfirmed", async () => {
-    renderDialog(async () => empty(403));
+  it("words a bodiless 4xx as a refusal, not as unconfirmed, and re-reads nothing: it applied nothing", async () => {
+    const { onChartUpdated } = renderDialog(async () => empty(403));
     fireEvent.click(updateChart());
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("refused the request without saying why");
     expect(alert.textContent).not.toContain("Could not confirm");
+    expect(onChartUpdated).not.toHaveBeenCalled();
   });
 
   it("shows the server's own words for a refusal it explained", async () => {
@@ -137,7 +142,8 @@ describe("ChartReconcileDialog chart write", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("Could not confirm");
     expect((updateChart() as HTMLButtonElement).disabled).toBe(false);
     expect((cancel() as HTMLButtonElement).disabled).toBe(false);
-    expect(onChartUpdated).not.toHaveBeenCalled();
+    // A request that got no answer at all may still have landed: the chart behind the dialog is re-read.
+    await waitFor(() => expect(onChartUpdated).toHaveBeenCalledTimes(1));
   });
 
   it("is freed after the wait when the request is never answered, and holds Cancel shut until then", async () => {
@@ -230,9 +236,20 @@ describe("ChartReconcileDialog chart write", () => {
     fireEvent.click(updateChart());
     view.unmount();
     await act(async () => {
-      release(empty(502));
+      release(empty(403));
     });
     expect(onChartUpdated).not.toHaveBeenCalled();
+  });
+
+  it("re-reads the parent's chart summary when the dialog unmounts and the write then comes back unconfirmed", async () => {
+    const { post, release } = heldPost();
+    const { onChartUpdated, view } = renderDialog(post);
+    fireEvent.click(updateChart());
+    view.unmount();
+    await act(async () => {
+      release(empty(502));
+    });
+    expect(onChartUpdated).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -242,6 +259,21 @@ describe("ChartReconcileDialog member-card number", () => {
       target: { value },
     });
   const saveCorrect = () => screen.getByRole("button", { name: /Save the correct number|Saving/ });
+
+  it("ties the 'not a valid number' message to the field and announces it as a status", () => {
+    renderDialog(async () => created);
+    const field = screen.getByRole("textbox", { name: "Correct Medicare number" });
+    expect(field.getAttribute("aria-describedby")).toBeNull();
+
+    typeCorrect("not a number");
+
+    const message = screen.getByText("Not a valid MBI.");
+    expect(message.tagName).toBe("OUTPUT"); // an implicit status role: read when it appears while typing
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(field.getAttribute("aria-describedby")).toBe(message.id);
+    typeCorrect("1AA1AA1AA11");
+    expect(field.getAttribute("aria-describedby")).toBeNull();
+  });
 
   it("keeps the dialog usable and says HOPE was saved when the chart write is rejected", async () => {
     const { onUseChart } = renderDialog(async () => {

@@ -61,6 +61,7 @@ function renderDialog(
 ) {
   const onCancel = vi.fn();
   const onCompleted = vi.fn(async () => undefined);
+  const onReread = vi.fn();
   const onWordingChanged = vi.fn();
   // The page owns the wording flag (the Sign dialog shares it), so the test page holds it too.
   let setShown: (show: boolean) => void = () => undefined;
@@ -80,6 +81,7 @@ function renderDialog(
         }}
         onCancel={onCancel}
         onCompleted={onCompleted}
+        onReread={onReread}
       />
     ) : (
       <span>dialog gone</span>
@@ -100,6 +102,7 @@ function renderDialog(
     post,
     onCancel,
     onCompleted,
+    onReread,
     onWordingChanged,
     hide: () => act(() => setShown(false)),
     dialog: screen.getByRole("dialog", { name: "Complete SFV" }),
@@ -475,6 +478,72 @@ describe("CompleteSfvDialog", () => {
     );
   });
 
+  // The words tell the clinician to check the worklist (or refresh the assessment): the screen behind the dialog is re-read for
+  // them, so the card stops saying "Required" for a visit that was recorded, and shows the record as a conflict found it. The
+  // dialog stays open with its words. A refusal that applied nothing, and a busy record, leave the screen as it was.
+  describe("re-reading the screen behind the dialog", () => {
+    const refused = (status: number, code: string): Reply & { response: object } => ({
+      error: { error: { code, message: "words" } },
+      response: { ok: false, status },
+    });
+
+    it.each([
+      ["a request that is rejected", () => Promise.reject(new TypeError("offline"))],
+      ["an empty 502", async () => ({ response: { ok: false, status: 502 } }) as Reply],
+      ["a fault of the server's own", async () => refused(500, "INTERNAL")],
+      ["a stale-version conflict", async () => refused(409, "CONFLICT")],
+    ])("re-reads once after %s, and keeps the dialog open", async (_name, answer) => {
+      const post = vi.fn<SfvDialogApi["POST"]>(answer);
+      const { dialog, onReread, onCompleted } = renderDialog(["rn"], post);
+      answerAndAttest(dialog);
+      fireEvent.click(submitButton(dialog));
+
+      await within(dialog).findByRole("alert");
+      expect(onReread).toHaveBeenCalledTimes(1);
+      expect(onCompleted).not.toHaveBeenCalled();
+      expect(screen.getByRole("dialog", { name: "Complete SFV" })).toBeTruthy();
+    });
+
+    it.each([
+      ["a validation refusal", async () => refused(422, "VALIDATION_FAILED")],
+      ["a refusal of permission", async () => refused(403, "FORBIDDEN")],
+      ["a busy record (the step was not applied)", async () => refused(409, "M10_RECORD_BUSY")],
+      ["a degraded dependency", async () => refused(503, "DEGRADED")],
+      ["a bodiless 4xx", async () => ({ response: { ok: false, status: 400 } }) as Reply],
+    ])("does not re-read after %s: nothing was applied", async (_name, answer) => {
+      const post = vi.fn<SfvDialogApi["POST"]>(answer);
+      const { dialog, onReread } = renderDialog(["rn"], post);
+      answerAndAttest(dialog);
+      fireEvent.click(submitButton(dialog));
+
+      await within(dialog).findByRole("alert");
+      expect(onReread).not.toHaveBeenCalled();
+    });
+
+    it("leaves the re-read to the completion when the visit was recorded", async () => {
+      const { dialog, onReread, onCompleted } = renderDialog(["rn"]);
+      answerAndAttest(dialog);
+      fireEvent.click(submitButton(dialog));
+
+      await waitFor(() => expect(onCompleted).toHaveBeenCalledTimes(1));
+      expect(onReread).not.toHaveBeenCalled();
+    });
+
+    it("does not re-read for an answer that arrives after the dialog is gone", async () => {
+      const held = deferred<Reply>();
+      const post = vi.fn<SfvDialogApi["POST"]>(() => held.promise);
+      const { dialog, onReread, hide } = renderDialog(["rn"], post);
+      answerAndAttest(dialog);
+      fireEvent.click(submitButton(dialog));
+      hide();
+      await act(async () => {
+        held.resolve(refused(500, "INTERNAL"));
+      });
+
+      expect(onReread).not.toHaveBeenCalled();
+    });
+  });
+
   describe("a server fault", () => {
     it.each([
       ["500", 500, { error: { code: "INTERNAL", message: "ECONNREFUSED 10.0.0.5:5432 pg_pool" } }],
@@ -555,6 +624,7 @@ describe("CompleteSfvDialog", () => {
                 onWordingChanged={() => undefined}
                 onCancel={() => undefined}
                 onCompleted={async () => undefined}
+                onReread={() => undefined}
               />
             </ApiClientProvider>
           </MemoryRouter>

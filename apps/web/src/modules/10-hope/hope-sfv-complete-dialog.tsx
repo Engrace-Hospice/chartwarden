@@ -36,6 +36,8 @@ interface CompleteSfvDialogProps {
   readonly onCancel: () => void;
   /** Called once the SFV is recorded. The caller owns refreshing what it shows, and must not reject. */
   readonly onCompleted: () => Promise<void>;
+  /** Called when a refusal or a missing answer leaves the screen behind the dialog possibly out of date: re-read it. Never rejects. */
+  readonly onReread: () => void;
 }
 
 const WORDING_CHANGED_BLOCKER = "reload the page to review the new attestation wording";

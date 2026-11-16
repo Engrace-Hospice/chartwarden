@@ -378,4 +378,64 @@ describe("PatientHopeTimeline", () => {
       await act(async () => finish({ data: { assessments: [] } }));
     });
   });
+
+  // The controls act on an admission. Until the admissions read answers, the only one known is the timeline's own newest row, which
+  // may not be the open one: a dialog opened on it would switch admissions under the clinician when the read lands.
+  describe("the controls wait for the admissions read", () => {
+    it("offers neither control while that read is out, then offers both", async () => {
+      let finish: (reply: Reply) => void = () => undefined;
+      renderTimeline(
+        clientWith({
+          timeline: () => ({ data: { assessments: [row("a-1", "adm-old")] } }),
+          admissions: () =>
+            new Promise<Reply>((resolve) => {
+              finish = resolve;
+            }),
+        }),
+      );
+      await screen.findByText(/1 timepoint\b/);
+      expect(screen.queryByRole("button", { name: "Record timepoint" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Create missing timepoint windows" })).toBeNull();
+
+      await act(async () => finish({ data: { items: [{ id: "adm-open", dischargedAt: null }] } }));
+      expect(await screen.findByRole("button", { name: "Record timepoint" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Create missing timepoint windows" })).toBeTruthy();
+    });
+
+    it("falls back to the timeline's own row once that read has failed", async () => {
+      renderTimeline(
+        clientWith({
+          timeline: () => ({ data: { assessments: [row("a-1", "adm-old")] } }),
+          admissions: () => emptyReply(502),
+        }),
+      );
+      expect(await screen.findByRole("button", { name: "Record timepoint" })).toBeTruthy();
+    });
+  });
+
+  describe("Create missing timepoint windows", () => {
+    // The route answers with the windows the admission has AFTERWARDS, not how many it added, so that is what is said.
+    it.each([
+      [3, "Timepoint windows checked: this admission now has 3 windows."],
+      [1, "Timepoint windows checked: this admission now has 1 window."],
+    ])("says how many windows the admission has afterwards (%s)", async (scheduleCount, words) => {
+      const client = clientWith({
+        timeline: () => ({ data: { assessments: [row("a-1")] } }),
+        admissions: () => ({ data: { items: [{ id: "adm-1", dischargedAt: null }] } }),
+      });
+      (client as unknown as { POST: unknown }).POST = vi.fn(async () => ({
+        data: { admissionId: "adm-1", scheduleCount },
+        error: undefined,
+        response: new Response(null, { status: 200 }),
+      }));
+      renderTimeline(client);
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Create missing timepoint windows" }),
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "Create missing windows" }));
+
+      expect(await screen.findByText(words)).toBeTruthy();
+    });
+  });
 });

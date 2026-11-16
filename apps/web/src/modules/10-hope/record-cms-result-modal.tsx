@@ -103,10 +103,11 @@ export function RecordCmsResultModal({
   const stepRef = useRef<HTMLHeadingElement>(null);
   const hadStep = useRef(false);
 
-  // Reset only when the dialog opens: `items` is a fresh array each render (names load late) and must not wipe edits.
+  // Reset when the dialog opens AND when it closes (never on a re-render): `items` is a fresh array each render (names load late)
+  // and must not wipe edits. Resetting on close matters because the caller keeps this mounted while it is shut: the last use's
+  // error, discard question and typed outcomes would otherwise show for the first frame of the next open.
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional, see above
   useEffect(() => {
-    if (!open) return;
     setRows(Object.fromEntries(items.map((i) => [i.assessmentId, { ...BLANK_ROW }])));
     setReference("");
     setPaste("");
@@ -152,7 +153,7 @@ export function RecordCmsResultModal({
     const notes = [
       `Imported ${matched.length} of ${items.length} item${items.length === 1 ? "" : "s"}.`,
       ...(skipped > 0
-        ? [`${skipped} row${skipped === 1 ? "" : "s"} not in this batch ignored.`]
+        ? [`${skipped} row${skipped === 1 ? "" : "s"} not awaiting a result in this batch ignored.`]
         : []),
       ...parsed.errors.slice(0, MAX_SHOWN_ERRORS),
       ...(parsed.errors.length > MAX_SHOWN_ERRORS

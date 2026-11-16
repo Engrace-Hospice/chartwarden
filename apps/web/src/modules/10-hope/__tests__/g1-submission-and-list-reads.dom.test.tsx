@@ -139,16 +139,39 @@ describe("submission detail: a package refused after this page loaded", () => {
     expect(button("Download ZIP").disabled).toBe(false);
   });
 
-  it("keeps the plain message, and does not re-read, for a download that failed with no reason", async () => {
+  // The download advances a packaged batch to exported (which is what lets Record CMS result appear) before the package is sent, so a
+  // download that failed on the way back, or never got an answer, may have changed the batch: the page is re-read, quietly (the
+  // plain message stays). A refusal that was answered applied nothing.
+  it.each([
+    ["a gateway fault with no body", async () => new Response(null, { status: 502 })],
+    ["a request that is rejected", async () => Promise.reject(new TypeError("offline"))],
+  ])(
+    "keeps the plain message and re-reads the page for a download that failed with %s",
+    async (_name, answer) => {
+      detailRoutes({});
+      vi.stubGlobal("fetch", vi.fn(answer));
+      mountDetail();
+      await screen.findByRole("button", { name: "Download ZIP" });
+      fireEvent.click(button("Download ZIP"));
+      expect((await screen.findByRole("alert")).textContent).toBe(
+        "Could not download the package.",
+      );
+      await waitFor(() => expect(detailReads()).toBe(2));
+      expect(button("Download ZIP").disabled).toBe(false);
+    },
+  );
+
+  it("keeps the plain message, and does not re-read, for a download refused with no reason", async () => {
     detailRoutes({});
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response(null, { status: 502 })),
+      vi.fn(async () => new Response(null, { status: 403 })),
     );
     mountDetail();
     await screen.findByRole("button", { name: "Download ZIP" });
     fireEvent.click(button("Download ZIP"));
     expect((await screen.findByRole("alert")).textContent).toBe("Could not download the package.");
+    expect(button("Download ZIP").disabled).toBe(false);
     expect(detailReads()).toBe(1);
   });
 

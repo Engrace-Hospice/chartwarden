@@ -77,6 +77,13 @@ export function useSfvFlow(inputs: FlowInputs) {
     setFocusDue(true);
   }, [refresh]);
 
+  // The dialog's write got no usable answer (it may have been applied) or hit a stale version: re-read the screen and a locked
+  // record's queue row quietly, with the dialog still open and still saying what happened. `refresh` never rejects.
+  const reread = useCallback(() => {
+    setLookupKey((key) => key + 1);
+    void refresh();
+  }, [refresh]);
+
   // Focus waits for the answer the card will show: a locked record's queue row is re-read after a completion, and
   // moving focus before it settles would land on a card that still says "Required".
   useEffect(() => {
@@ -93,6 +100,7 @@ export function useSfvFlow(inputs: FlowInputs) {
       setReturnFocusKey((key) => key + 1);
     }, []),
     complete,
+    reread,
     locked,
     lookup,
     retryLookup,

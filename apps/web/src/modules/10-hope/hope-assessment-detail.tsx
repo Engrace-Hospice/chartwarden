@@ -1733,6 +1733,7 @@ function HopeAssessmentWorkspace(): JSX.Element {
           }
           onCancel={sfv.close}
           onCompleted={sfv.complete}
+          onReread={sfv.reread}
         />
       ) : null}
 

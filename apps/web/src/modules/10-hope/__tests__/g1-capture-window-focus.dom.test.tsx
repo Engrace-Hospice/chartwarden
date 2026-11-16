@@ -75,6 +75,11 @@ const workflowReads = (GET: ReturnType<typeof vi.fn>) =>
   GET.mock.calls.filter(([path]) => String(path).includes("/hope")).length;
 const create = () => screen.getByRole("button", { name: /Create HOPE draft/ }) as HTMLButtonElement;
 const ready = () => screen.findByRole("heading", { name: "HUV1 Assessment" });
+/** A late item asks for its reason before Create can send (the form's own required input, as in the record dialog). */
+const chooseLateReason = () =>
+  fireEvent.change(screen.getByLabelText("Late completion reason"), {
+    target: { value: "hospitalization" },
+  });
 
 describe("a refusal about a window that moved on since the page loaded", () => {
   it("shows that the period has ended, not an override instruction the page cannot follow, for an expired window", async () => {
@@ -83,6 +88,7 @@ describe("a refusal about a window that moved on since the page loaded", () => {
       vi.fn(async () => refusal(409, "M10_TIMEPOINT_EXPIRED")),
     );
     await ready();
+    chooseLateReason();
     fireEvent.click(create());
     expect(await screen.findByText("The allowed capture period has expired.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Create HOPE draft/ })).toBeNull();
@@ -103,16 +109,15 @@ describe("a refusal about a window that moved on since the page loaded", () => {
     expect(workflowReads(GET)).toBe(2);
   });
 
-  it("does not re-read for a late item whose reason was simply not chosen", async () => {
-    const GET = mount(
-      ["late"],
-      vi.fn(async () => refusal(400, "M10_LATE_REASON_REQUIRED")),
-    );
+  it("holds Create shut for a late item until its reason is chosen, and sends nothing before that", async () => {
+    const POST = vi.fn(async () => refusal(400, "M10_LATE_REASON_REQUIRED"));
+    const GET = mount(["late"], POST);
     await ready();
+    expect(create().disabled).toBe(true);
     fireEvent.click(create());
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "Select a late completion reason",
-    );
+    expect(POST).not.toHaveBeenCalled();
+    chooseLateReason();
+    expect(create().disabled).toBe(false);
     expect(workflowReads(GET)).toBe(1);
   });
 
@@ -124,6 +129,8 @@ describe("a refusal about a window that moved on since the page loaded", () => {
     await ready();
     fireEvent.click(create());
     await screen.findByLabelText("Late completion reason");
+    // Create now waits for the reason the re-read just asked for; once it is chosen, the form is free to send.
+    chooseLateReason();
     await waitFor(() => expect(create().disabled).toBe(false));
   });
 });
