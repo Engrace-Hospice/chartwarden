@@ -89,6 +89,18 @@ describe("the aggregate text budget of a result import", () => {
     expect(screen.calls).toBeGreaterThan(0); // not vacuous: the screens did run
   });
 
+  it("100 rows of combining marks in descending class order, under the budget, are screened fast (NFKD reordering is quadratic: 0.6 s a pass, run by the route and again by the service)", () => {
+    const marks = ["ͅ", "̕", "̀", "̖", "̛", "̡", "ّ", "ً", "ְ", "̴"];
+    const message = `a${marks.map((mark) => mark.repeat(99)).join("")}`.slice(0, 955);
+    const rows = Array.from({ length: 100 }, () => ({ assessmentId: ID, message }));
+    const started = performance.now();
+
+    assertResultRowsAreClean(rows);
+
+    expect(screen.calls).toBe(100); // the screens ran (not vacuous), once per message
+    expect(performance.now() - started).toBeLessThan(250);
+  });
+
   it("more rows than the schema's limit is refused by the service's own check, before any screen", () => {
     const failure = failureOf(() =>
       cleanResultRows(

@@ -263,3 +263,49 @@ describe("assertNoPatientIdentifierInValue: a structured value is screened leaf 
     expect(refused(nested)).toEqual({});
   });
 });
+
+// The screen drops combining marks and format characters before it judges, and it drops them BEFORE the NFKD as well as after:
+// NFKD reorders a run of marks by combining class (quadratic in the run), so a string of marks in descending class order held the
+// event loop for seconds although the marks are discarded anyway. The output must not change, and the work must stay linear.
+describe("marks and format characters, before and after the NFKD", () => {
+  const MARKS = ["ͅ", "̕", "̀", "̖", "̛", "̡", "ّ", "ً", "ְ", "̴"];
+  /** `a` followed by many marks of each class, in descending class order: the worst case for the canonical reordering. */
+  const markRun = (units: number, perMark = 99): string =>
+    `a${MARKS.map((m) => m.repeat(perMark)).join("")}`.slice(0, units);
+
+  it.each([
+    ["a combining acute after each digit", "9́0́0́1́2́3́4́5́6́"],
+    [
+      "a run of descending-class marks after each digit",
+      `9${markRun(40).slice(1)}0${markRun(40).slice(1)}0${markRun(40).slice(1)}-12-3456`,
+    ],
+    ["marks between the groups", "900ͅ-̕12̀-̖3456"],
+    ["a zero-width joiner and marks together", "900‍́-12​́-3456"],
+    ["Arabic-Indic digits with marks", "٩٠٠ً-١٢ً-٣٤٥٦"],
+    ["full-width digits with marks", "９００́-１２-３４５６"],
+    ["superscript separators with marks", "900́²12́²3456"],
+  ])("still refuses an SSN with %s", (_label, text) => {
+    expect(looksLikeSsn(text)).toBe(true);
+    expect(looksLikePatientIdentifier(text)).toBe(true);
+  });
+
+  it("still refuses an MBI with marks and zero-width characters between its characters", () => {
+    expect(looksLikeMbi("1́E​Ǵ4TE5ͅMK‍73")).toBe(true);
+  });
+
+  it("leaves ordinary text with marks alone", () => {
+    expect(looksLikePatientIdentifier("café résumé näive 12 of 45")).toBe(false);
+    expect(looksLikePatientIdentifier(markRun(2000))).toBe(false);
+  });
+
+  it("a 20,000-unit string of marks in descending class order is screened in well under a second (it took 2.6 s)", () => {
+    const text = markRun(20_000, 2000);
+    const started = performance.now();
+
+    const verdict = looksLikePatientIdentifier(text);
+    expect(() => assertNoPatientIdentifier("note", text)).not.toThrow();
+
+    expect(verdict).toBe(false);
+    expect(performance.now() - started).toBeLessThan(250);
+  });
+});
