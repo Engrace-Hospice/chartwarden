@@ -196,7 +196,11 @@ describe("the CMS result dialog's mirrors of hope-typebox.ts", () => {
   // fails until it does. Code only: a comment that mentions the word is not a use of it (the DOM test "sends no severity and no
   // record id" is the behavioural guard).
   it("does not carry a severity or an iQIES record id, which it would have to mirror", () => {
-    for (const file of ["cms-result-parser.ts", "record-cms-result-modal.tsx"]) {
+    for (const file of [
+      "cms-result-parser.ts",
+      "record-cms-result-modal.tsx",
+      "hope-result-row.tsx",
+    ]) {
       expect(withoutComments(WEB(file)), file).not.toMatch(/severity|iqiesRecordId/i);
     }
     // And the closed set it would have to mirror is still the one this test was written against.
