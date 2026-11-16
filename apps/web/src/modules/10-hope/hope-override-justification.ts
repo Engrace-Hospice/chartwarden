@@ -43,7 +43,8 @@ export type JustificationRefusal = "looks_like_phi" | "invalid_characters" | "no
  * told the words below instead, on the field. Static on purpose: the field's error is an alert, announced again on every change.
  */
 export const JUSTIFICATION_FIELD = "adminOverrideJustification";
-const INVALID_CHARACTERS_CODE = "INVALID_CHARACTERS";
+/** The detail code the server gives a justification with control or format characters (matched, never shown). */
+export const INVALID_CHARACTERS_CODE = "INVALID_CHARACTERS";
 
 export const JUSTIFICATION_REFUSAL_WORDS: Readonly<Record<JustificationRefusal, string>> = {
   looks_like_phi:
