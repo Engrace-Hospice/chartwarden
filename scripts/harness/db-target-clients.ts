@@ -9,6 +9,7 @@
  * redis-cli entries are widened by the options the real programs report (`db-target-flags.ts`). The other clients' tables
  * are from their documentation and unverified: none of them is installed on the machine this was written on.
  */
+import { MORE_CLIENT_SPECS } from "./db-target-clients-more";
 import { VERIFIED_OPTIONS } from "./db-target-flags";
 
 /** How a client's non-option words are read. */
@@ -63,8 +64,10 @@ export interface TargetClient {
   readonly positionalVariable?: boolean;
 }
 
-const LIBPQ_ENV: Pick<TargetClient, "hostEnv" | "indirectEnv"> = {
+const LIBPQ_ENV: Pick<TargetClient, "hostEnv" | "urlEnv" | "indirectEnv"> = {
   hostEnv: ["PGHOST", "PGHOSTADDR"],
+  // libpq expands a URI or a connection string held in PGDATABASE the way it expands the dbname argument (R7-ADV-23, unverified).
+  urlEnv: ["PGDATABASE"],
   indirectEnv: ["PGSERVICE", "PGSERVICEFILE", "PGPASSFILE"],
 };
 
@@ -668,6 +671,7 @@ const CLIENT_SPECS: ReadonlyArray<readonly [string, TargetClient]> = [
       positionalVariable: true,
     },
   ],
+  ...MORE_CLIENT_SPECS,
 ];
 
 const unique = (text: string): string => [...new Set(text)].join("");

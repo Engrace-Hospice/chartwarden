@@ -416,6 +416,32 @@ export function databaseTargetOfText(
   return findingOf(found, undefined);
 }
 
+/** A client-neutral reader: URIs and host values of a program the table does not name (`db-any-program.ts`). */
+const NEUTRAL: TargetClient = {
+  valueShort: "",
+  valueLong: [],
+  hostLong: [],
+  stringLong: [],
+  positional: "uri",
+  hostEnv: [],
+  indirectEnv: [],
+};
+
+/**
+ * The finding for database URIs and host values found in the words of any program (`db-any-program.ts`): each `uris` entry is
+ * a `scheme://` URI (a remote host, a `?host=` or a `service=` in it is a finding), each `hosts` entry a host value.
+ */
+export function databaseTargetOfWords(
+  uris: readonly string[],
+  hosts: readonly string[],
+): DatabaseTarget | null {
+  const found: Found = { hosts: [], unparsed: [], indirect: [], variables: [] };
+  const r: Reader = { spec: NEUTRAL, found, vars: new Map() };
+  for (const uri of uris) readUri(uri, r);
+  for (const host of hosts) addHosts(r, host);
+  return findingOf(found, undefined);
+}
+
 /** The reason shown to the agent; `show` redacts a token (userinfo, length) as `patterns.ts` does for every reason. */
 export function databaseTargetReason(
   finding: DatabaseTarget,

@@ -1,0 +1,278 @@
+/**
+ * More clients whose connection target the guard reads (wave 10, B8; round-7 R7-ADV-16, R7-CR-15). Data only, in the same
+ * shape as `db-target-clients.ts`. The option tables here are from each tool's documentation and UNVERIFIED: none of these
+ * programs is installed on the machine they were written on (a `--help` check, as `harness-db-target-help.test.ts` does for
+ * PostgreSQL's tools, is the way to confirm one). A host option is also looked for in every word (`db-target.ts`
+ * `scanAnywhere`), and a database URI in any program's arguments is read by `db-any-program.ts`, so a wrong flag/value entry
+ * here cannot hide a later host. Single-dash long options (`flyway -url=...`, `influx -host H`) are read by the URI rule only.
+ */
+import type { TargetClient } from "./db-target-clients";
+
+/** A migration or schema tool that takes its database as a URL option and from `DATABASE_URL`. */
+const urlTool = (stringLong: readonly string[], stringShort?: string): TargetClient => ({
+  valueShort: stringShort ?? "",
+  valueLong: [...stringLong],
+  hostLong: [],
+  stringLong,
+  ...(stringShort === undefined ? {} : { stringShort }),
+  positional: "none",
+  hostEnv: [],
+  urlEnv: ["DATABASE_URL"],
+  indirectEnv: [],
+  exactLong: true,
+});
+
+const MYSQL_BINLOG: TargetClient = {
+  valueShort: "hPuRSp",
+  attachedShort: "p",
+  valueLong: [
+    "host",
+    "port",
+    "user",
+    "socket",
+    "protocol",
+    "defaults-file",
+    "read-from-remote-source",
+  ],
+  hostShort: "h",
+  hostLong: ["host"],
+  stringLong: [],
+  indirectLong: ["defaults-file", "login-path"],
+  positional: "none",
+  hostEnv: ["MYSQL_HOST"],
+  indirectEnv: [],
+};
+
+export const MORE_CLIENT_SPECS: ReadonlyArray<readonly [string, TargetClient]> = [
+  [
+    "pgmetrics",
+    {
+      valueShort: "hpUdfo",
+      valueLong: ["host", "port", "user", "dbname", "output", "format", "input"],
+      hostShort: "h",
+      hostLong: ["host"],
+      stringLong: [],
+      positional: "libpq",
+      positionalVariable: true,
+      hostEnv: ["PGHOST", "PGHOSTADDR"],
+      indirectEnv: ["PGSERVICE", "PGSERVICEFILE", "PGPASSFILE"],
+    },
+  ],
+  [
+    "pgweb",
+    {
+      valueShort: "",
+      valueLong: [
+        "url",
+        "host",
+        "port",
+        "user",
+        "pass",
+        "db",
+        "ssl",
+        "bind",
+        "listen",
+        "sessions",
+        "bookmark",
+        "sock",
+      ],
+      hostLong: ["host"],
+      stringLong: ["url"],
+      positional: "none",
+      hostEnv: [],
+      urlEnv: ["DATABASE_URL"],
+      indirectEnv: [],
+      exactLong: true,
+    },
+  ],
+  [
+    "harlequin",
+    {
+      valueShort: "aPtT",
+      valueLong: ["adapter", "profile", "theme", "export-format"],
+      hostLong: ["host"],
+      stringLong: [],
+      positional: "uri",
+      positionalVariable: true,
+      hostEnv: [],
+      indirectEnv: [],
+      exactLong: true,
+    },
+  ],
+  [
+    "iredis",
+    {
+      valueShort: "hpnsaudD",
+      valueLong: [
+        "url",
+        "socket",
+        "password",
+        "db",
+        "user",
+        "host",
+        "port",
+        "rainbow",
+        "decode",
+        "raw",
+      ],
+      hostShort: "h",
+      hostLong: ["host"],
+      stringLong: ["url"],
+      positional: "none",
+      hostEnv: [],
+      indirectEnv: [],
+      exactLong: true,
+    },
+  ],
+  ["mysqlbinlog", MYSQL_BINLOG],
+  ["mariadb-binlog", MYSQL_BINLOG],
+  [
+    "influx",
+    {
+      valueShort: "t",
+      valueLong: ["host", "token", "org", "active-config", "configs-path", "bucket"],
+      hostLong: ["host"],
+      stringLong: [],
+      positional: "none",
+      hostEnv: ["INFLUX_HOST"],
+      indirectEnv: [],
+      exactLong: true,
+    },
+  ],
+  [
+    "nodetool",
+    {
+      valueShort: "hpu",
+      valueLong: ["host", "port", "username", "password", "password-file"],
+      hostShort: "h",
+      hostLong: ["host"],
+      stringLong: [],
+      positional: "none",
+      hostEnv: [],
+      indirectEnv: [],
+      exactLong: true,
+    },
+  ],
+  [
+    "cypher-shell",
+    {
+      valueShort: "aupdf",
+      valueLong: [
+        "address",
+        "username",
+        "password",
+        "database",
+        "fail-at-end",
+        "format",
+        "file",
+        "param",
+      ],
+      hostLong: [],
+      stringShort: "a",
+      stringLong: ["address"],
+      bareStringIsHost: true,
+      positional: "none",
+      hostEnv: [],
+      urlEnv: ["NEO4J_ADDRESS"],
+      indirectEnv: [],
+      exactLong: true,
+    },
+  ],
+  [
+    "etcdctl",
+    {
+      valueShort: "",
+      valueLong: [
+        "endpoints",
+        "user",
+        "password",
+        "cacert",
+        "cert",
+        "key",
+        "dial-timeout",
+        "command-timeout",
+        "write-out",
+        "discovery-srv",
+      ],
+      hostLong: ["endpoints"],
+      stringLong: [],
+      positional: "none",
+      hostEnv: ["ETCDCTL_ENDPOINTS"],
+      indirectEnv: [],
+      exactLong: true,
+    },
+  ],
+  [
+    "kcat",
+    {
+      valueShort: "bXtPCGfoqkKQEzZpeJ",
+      valueLong: [],
+      hostShort: "b",
+      hostLong: [],
+      stringLong: [],
+      positional: "none",
+      hostEnv: [],
+      indirectEnv: [],
+    },
+  ],
+  [
+    "kafkacat",
+    {
+      valueShort: "bXtPCGfoqkKQEzZpeJ",
+      valueLong: [],
+      hostShort: "b",
+      hostLong: [],
+      stringLong: [],
+      positional: "none",
+      hostEnv: [],
+      indirectEnv: [],
+    },
+  ],
+  [
+    "dbmate",
+    urlTool(["url", "migrations-dir", "migrations-table", "env", "env-file", "wait-timeout"], "u"),
+  ],
+  [
+    "goose",
+    {
+      valueShort: "d",
+      valueLong: ["dir", "table", "s", "allow-missing", "no-versioning"],
+      hostLong: [],
+      stringLong: [],
+      // `goose postgres "host=H user=u dbname=d" up`: the driver, then a DSN (a libpq string or a URL).
+      positional: "libpq",
+      positionalVariable: false,
+      hostEnv: [],
+      urlEnv: ["GOOSE_DBSTRING"],
+      indirectEnv: [],
+      exactLong: true,
+    },
+  ],
+  ["atlas", urlTool(["url", "dev-url", "to", "from", "config", "env", "schema", "dir"], "u")],
+  [
+    "prisma",
+    urlTool(["url", "shadow-database-url", "to-url", "from-url", "schema", "datasource", "config"]),
+  ],
+  [
+    "drizzle-kit",
+    {
+      ...urlTool([
+        "url",
+        "config",
+        "dialect",
+        "schema",
+        "out",
+        "host",
+        "port",
+        "user",
+        "password",
+        "database",
+      ]),
+      hostLong: ["host"],
+    },
+  ],
+  ["sqlx", urlTool(["database-url", "source", "target-dir"], "D")],
+  ["diesel", urlTool(["database-url", "migration-dir", "config-file", "schema-file"])],
+  // `alembic -x url=postgresql://H/db` and `flyway -url=jdbc:postgresql://H/db` carry their URL inside an option: they have no table
+  // entry, and the URI rule of `db-any-program.ts` reads it.
+];
