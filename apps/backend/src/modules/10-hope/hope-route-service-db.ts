@@ -49,6 +49,7 @@ import { createHopeAssessmentAnswerService } from "./hope-answer-service";
 import {
   lockPackageableRecords,
   readAssembleCandidateIds,
+  readPackageableRecords,
   validateCandidates,
 } from "./hope-assemble-candidates";
 import {
@@ -2192,9 +2193,10 @@ export function createDbHopeBackend(
               `m10: assemble skipped assessment ${idForLog(assessmentId)} (org ${idForLog(organizationId)}): it has no provider entity / location siting, so its validation findings cannot be stored.`,
             ),
         );
-        // The candidates were read, and validated one by one, a while ago: judge them again just before the package is
-        // written (a correction signed meanwhile has superseded its original), and share-lock the rows.
-        const eligible = await lockPackageableRecords(
+        // The rows the package is serialised from (full rows, NOT locked: a share lock held through the serialising would
+        // stall a correction's signature for as long as it takes). They are judged again, and share-locked, just before the
+        // batch is written (below): a correction signed meanwhile has superseded its original by then.
+        const eligible = await readPackageableRecords(
           t,
           organizationId,
           providerEntityId,
@@ -2232,6 +2234,24 @@ export function createDbHopeBackend(
           }
           throw error;
         }
+        // Judged again and share-locked now, just before the batch and its items are written: only the records that are still
+        // packageable go in (the lock keeps a correction's supersede UPDATE behind this transaction until it ends).
+        const stillPackageable = new Set(
+          await lockPackageableRecords(
+            t,
+            organizationId,
+            providerEntityId,
+            serialized.map(({ assessment }) => assessment.id),
+          ),
+        );
+        const toPackage = serialized.filter(({ assessment }) =>
+          stillPackageable.has(assessment.id),
+        );
+        if (toPackage.length === 0) {
+          throw new ConflictError(
+            "No signed HOPE assessments are eligible for iQIES package generation",
+          );
+        }
         const row = firstOrThrow(
           await t
             .insert(SUB)
@@ -2240,27 +2260,29 @@ export function createDbHopeBackend(
               providerEntityId,
               submissionPeriod: period,
               status: "packaged",
-              itemCount: serialized.length,
+              itemCount: toPackage.length,
               transportMode: "manual_iqies_upload",
-              validationProfile: serialized[0]?.payload.validationProfile ?? null,
+              validationProfile: toPackage[0]?.payload.validationProfile ?? null,
             })
             .returning(),
           "hope_submission insert returned no row",
         );
         const zip = buildDeterministicZip(
-          serialized.map(({ payload }) => ({
+          toPackage.map(({ payload }) => ({
             filename: payload.filename,
             content: payload.bytes,
           })),
         );
         // The id the database stored, not the spelling of the request body, for the package name and the event.
         const filename = submissionPackageName(row.providerEntityId, period, row.id);
-        for (const { assessment, payload } of serialized) {
-          await t.insert(SUBITEM).values({
+        // ONE multi-row insert (at most ASSEMBLE_CANDIDATE_LIMIT rows of 13 binds), not a round trip per item while the 200 share
+        // locks and the advisory key are held.
+        await t.insert(SUBITEM).values(
+          toPackage.map(({ assessment, payload }) => ({
             organizationId,
             hopeSubmissionId: row.id,
             hopeAssessmentId: assessment.id,
-            itemStatus: "pending",
+            itemStatus: "pending" as const,
             operation: payload.operation,
             specVersionId: assessment.specVersionId,
             assessmentVersion: String(assessment.version),
@@ -2272,8 +2294,8 @@ export function createDbHopeBackend(
             iqiesValidationResult: {
               xmlContentBase64: payload.bytes.toString("base64"),
             },
-          });
-        }
+          })),
+        );
         const [packaged] = (await t
           .update(SUB)
           .set({
@@ -2286,7 +2308,7 @@ export function createDbHopeBackend(
             acceptanceReport: {
               transportMode: "manual_iqies_upload",
               packageContentBase64: zip.bytes.toString("base64"),
-              files: serialized.map(({ payload }) => ({
+              files: toPackage.map(({ payload }) => ({
                 filename: payload.filename,
                 sha256: payload.sha256,
                 operation: payload.operation,
@@ -2300,7 +2322,7 @@ export function createDbHopeBackend(
           submissionId: row.id,
           providerEntityId: row.providerEntityId,
           transportMode: "manual_iqies_upload",
-          itemCount: serialized.length,
+          itemCount: toPackage.length,
           packageSha256: zip.sha256,
         });
         return toSubmissionView(packaged ?? row);

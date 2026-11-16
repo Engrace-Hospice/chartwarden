@@ -4,6 +4,7 @@ import {
   ASSEMBLE_CANDIDATE_LIMIT,
   lockPackageableRecords,
   readAssembleCandidateIds,
+  readPackageableRecords,
   validateCandidates,
 } from "../src/modules/10-hope/hope-assemble-candidates";
 import { createDbHopeBackend } from "../src/modules/10-hope/hope-route-service-db";
@@ -12,7 +13,8 @@ import { SCRIPT_EXHAUSTED, renderSql, scriptedDb } from "./_hope-g3-fake-db";
 
 // assembleSubmission (database review, pre-PR): (1) a record the validator cannot site (no location) is skipped, never a 409 for
 // the whole entity; (2) a call looks at a bounded number of records, ids only, the known-refused ones last; (7) the records
-// that passed are judged again, under the key, just before the package is written. The validator is stubbed (it needs the
+// that passed are read (unlocked) for the serialiser and judged again, under the key and share-locked, just before the batch is
+// written (the batch-write half is in hope-assemble-batch-write.test.ts). The validator is stubbed (it needs the
 // spec corpus); the database is scripted, so the statements and their order are asserted here and the behaviour against a real
 // Postgres is the live suite's (m10-hope-submission-result.live.test.ts).
 const validate = vi.hoisted(() => vi.fn());
@@ -157,17 +159,17 @@ describe("assembleSubmission — a record without siting is skipped, not a 409 f
       return clean;
     });
     const rowB = { id: B, status: "signed", specVersionId: "s", isc: "HA", version: 1 };
-    // the candidate read, then the re-assertion; the script ends at the first statement of the package build
+    // the candidate read, then the read of the validated rows; the script ends at the first statement of the package build
     const { svc, statements, selects } = backend([[{ id: A }, { id: B }], [rowB]]);
 
     const failure = await outcome(svc.assembleSubmission(ORG, PE));
 
     expect(validate.mock.calls.map(([input]) => input.assessmentId)).toEqual([A, B]);
     expect(failure?.message).toBe(SCRIPT_EXHAUSTED); // it went on to build the package from B, not a 409 from A
-    const relock = statements.filter((s) => s.kind === "select")[1];
-    expect(relock?.rendered?.params).toContain(B);
-    expect(relock?.rendered?.params).not.toContain(A);
-    expect(selects[1]?.lock).toBe("share");
+    const rowRead = statements.filter((s) => s.kind === "select")[1];
+    expect(rowRead?.rendered?.params).toContain(B);
+    expect(rowRead?.rendered?.params).not.toContain(A);
+    expect(selects[1]?.lock).toBeUndefined(); // no lock while the package is serialised: it is taken just before the write
     // the skip leaves a line naming ids only, no record content
     const lines = warn.mock.calls.map((call) => String(call[0])).join("\n");
     expect(lines).toContain(`assessment ${A}`);
@@ -188,10 +190,10 @@ describe("assembleSubmission — a record without siting is skipped, not a 409 f
   });
 });
 
-describe("assembleSubmission — the records are judged again under the key, just before the package is written", () => {
+describe("assembleSubmission — the validated records are read again, unlocked, for the serialiser", () => {
   it("a record superseded after it was read and validated (a correction signed meanwhile) is not packaged", async () => {
     validate.mockResolvedValue(clean);
-    // the candidate read still sees A; the re-assertion no longer does (the supersede trigger flipped it)
+    // the candidate read still sees A; the read of the validated rows no longer does (the supersede trigger flipped it)
     const { svc, statements, selects } = backend([[{ id: A }], []]);
 
     const failure = await outcome(svc.assembleSubmission(ORG, PE));
@@ -206,7 +208,7 @@ describe("assembleSubmission — the records are judged again under the key, jus
     expect(where?.sql).toContain("not exists (select 1 from");
     expect(where?.sql).toContain('"id" in (');
     expect(where?.params).toEqual(expect.arrayContaining([ORG, PE, "signed", A]));
-    expect(selects[1]?.lock).toBe("share");
+    expect(selects[1]?.lock).toBeUndefined();
     // nothing was written
     expect(statements.some((s) => s.kind === "insert" || s.kind === "update")).toBe(false);
   });
@@ -214,7 +216,24 @@ describe("assembleSubmission — the records are judged again under the key, jus
   it("reads no row lock when nothing passed validation (an empty id list is no statement)", async () => {
     const { tx, statements } = backend([]);
 
+    expect(await readPackageableRecords(tx, ORG, PE, [])).toEqual([]);
     expect(await lockPackageableRecords(tx, ORG, PE, [])).toEqual([]);
     expect(statements).toEqual([]);
+  });
+
+  it("the lock read selects ONLY ids under FOR SHARE, with the same packageable test as the row read", async () => {
+    const { tx, statements, selects } = backend([[{ id: A }], [{ id: A }]]);
+
+    const rows = await readPackageableRecords(tx, ORG, PE, [A]);
+    const ids = await lockPackageableRecords(tx, ORG, PE, [A]);
+
+    expect(rows.map((r) => (r as { id: string }).id)).toEqual([A]);
+    expect(ids).toEqual([A]);
+    expect(statements[0]?.columns).toBeUndefined(); // the row read: whole rows, the serialiser needs `data`
+    expect(statements[1]?.columns).toEqual(["id"]); // the lock read: ids only, the rows are already in hand
+    expect(selects[0]?.lock).toBeUndefined();
+    expect(selects[1]?.lock).toBe("share");
+    expect(statements[1]?.rendered?.sql).toBe(statements[0]?.rendered?.sql);
+    expect(statements[1]?.rendered?.params).toEqual(statements[0]?.rendered?.params);
   });
 });

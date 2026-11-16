@@ -770,7 +770,7 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
         lockPackageableRecords(tx as unknown as DbClient, ORG_A, provider, [original, stable]),
       );
 
-      expect(kept.map((r) => r.id)).toEqual([stable]);
+      expect(kept).toEqual([stable]);
     });
 
     it("share-locks the rows it returns: another connection's UPDATE of one waits for this transaction (the lock timeout answers 55P03)", async () => {
@@ -779,7 +779,7 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
         const locked = await lockPackageableRecords(tx as unknown as DbClient, ORG_A, provider, [
           id,
         ]);
-        expect(locked.map((r) => r.id)).toEqual([id]);
+        expect(locked).toEqual([id]);
         const other = new Client({ connectionString: DB_URL });
         await other.connect();
         try {

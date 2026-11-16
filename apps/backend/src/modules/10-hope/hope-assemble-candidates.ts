@@ -53,7 +53,7 @@ const knownRefused = sql`(${ASSESS.locationId} is null or exists (select 1 from 
 
 /**
  * The ids of the records to validate, in the order to try them: not known-refused first, then oldest signed first. Ids only:
- * the `data` payload of the rows is read once, for the records that pass (`lockPackageableRecords`).
+ * the `data` payload of the rows is read once, for the records that pass (`readPackageableRecords`).
  */
 export async function readAssembleCandidateIds(
   t: DbClient,
@@ -95,16 +95,25 @@ export async function validateCandidates(
   return passed;
 }
 
+/** The WHERE and ORDER BY both reads of the validated records share: still packageable, among `validatedIds`, oldest signed first. */
+const validatedPackageable = (
+  organizationId: string,
+  providerEntityId: string,
+  validatedIds: readonly string[],
+): SQL =>
+  and(
+    packageableRecords(organizationId, providerEntityId),
+    inArray(ASSESS.id, [...validatedIds]),
+  ) as SQL;
+
 /**
- * The validated records that are STILL packageable, locked `FOR SHARE`, as full rows (the serializer reads `data`), oldest
- * first. The candidates were read, and validated one by one, before this: a correction SIGNED meanwhile has already flipped
- * its original to `superseded` (migration 0225: the trigger fires when the correction goes draft -> signed), and a record
- * that fell out of the test for any other reason must not be packaged either. Judging again here, under the advisory key and
- * just before the items are written, closes that window; the share lock keeps the trigger's UPDATE of these rows behind this
- * transaction (a wait bounded by the lock timeout the advisory key already set), so none is superseded between this read and
- * the item inserts.
+ * The validated records that are packageable NOW, as full rows (the serializer reads `data`), oldest first, with NO lock: the
+ * package is serialised from these (a read per record), and holding a share lock on every one of them through that would stall a
+ * correction's signature (its supersede trigger UPDATE waits on the lock) for as long as the serialising takes. The lock and the
+ * final judgement come after it (`lockPackageableRecords`). A signed record's `data` never changes, so the rows read here are
+ * what the later lock re-judges: only the record's status (superseded) or an item can move.
  */
-export async function lockPackageableRecords(
+export async function readPackageableRecords(
   t: DbClient,
   organizationId: string,
   providerEntityId: string,
@@ -114,12 +123,31 @@ export async function lockPackageableRecords(
   return (await t
     .select()
     .from(ASSESS)
-    .where(
-      and(
-        packageableRecords(organizationId, providerEntityId),
-        inArray(ASSESS.id, [...validatedIds]),
-      ),
-    )
+    .where(validatedPackageable(organizationId, providerEntityId, validatedIds))
+    .orderBy(asc(ASSESS.signedAt), asc(ASSESS.id))) as AssessmentRow[];
+}
+
+/**
+ * The ids, of those given, that are STILL packageable, locked `FOR SHARE`, oldest first. The candidates were read, validated one
+ * by one and serialised before this: a correction SIGNED meanwhile has already flipped its original to `superseded` (migration
+ * 0225: the trigger fires when the correction goes draft -> signed), and a record that fell out of the test for any other reason
+ * must not be packaged either. Judging again here, under the advisory key and just before the batch and its items are written,
+ * closes that window; the share lock keeps the trigger's UPDATE of these rows behind this transaction (a wait bounded by the lock
+ * timeout the advisory key already set), so none is superseded between this read and the item insert. Ids only: the rows were
+ * read, with their `data`, by `readPackageableRecords`.
+ */
+export async function lockPackageableRecords(
+  t: DbClient,
+  organizationId: string,
+  providerEntityId: string,
+  recordIds: readonly string[],
+): Promise<string[]> {
+  if (recordIds.length === 0) return [];
+  const rows = await t
+    .select({ id: ASSESS.id })
+    .from(ASSESS)
+    .where(validatedPackageable(organizationId, providerEntityId, recordIds))
     .orderBy(asc(ASSESS.signedAt), asc(ASSESS.id))
-    .for("share")) as AssessmentRow[];
+    .for("share");
+  return rows.map((row) => row.id);
 }

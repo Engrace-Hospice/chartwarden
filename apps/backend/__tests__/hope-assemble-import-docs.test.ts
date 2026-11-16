@@ -29,16 +29,27 @@ describe("assemble: the documents quote the code's cap", () => {
     expect(ENRICHMENTS).toContain("a second call packages the rest");
   });
 
-  it("the route reads its candidates through the capped read and re-judges them before the package is built", () => {
+  it("the route reads its candidates through the capped read, serialises unlocked, and re-judges and share-locks them just before the batch is written", () => {
     const body = SERVICE.slice(SERVICE.indexOf("async assembleSubmission("));
-    const read_ = body.indexOf("readAssembleCandidateIds(");
-    const validated = body.indexOf("validateCandidates(");
-    const relock = body.indexOf("lockPackageableRecords(");
-    const build = body.indexOf("buildHopeSubmissionHeader(");
+    const at = (needle: string): number => body.indexOf(needle);
+    const read_ = at("readAssembleCandidateIds(");
+    const validated = at("validateCandidates(");
+    const rows = at("readPackageableRecords(");
+    const serialised = at("serializeHopeAssessmentXml(");
+    const relock = at("lockPackageableRecords(");
+    const insertBatch = at(".insert(SUB)");
+    const insertItems = at(".insert(SUBITEM)");
     expect(read_).toBeGreaterThan(-1);
     expect(validated).toBeGreaterThan(read_);
-    expect(relock).toBeGreaterThan(validated);
-    expect(build).toBeGreaterThan(relock);
+    expect(rows).toBeGreaterThan(validated);
+    expect(serialised).toBeGreaterThan(rows);
+    // the share lock is NOT held through the serialising: it is taken after it and before the first write
+    expect(relock).toBeGreaterThan(serialised);
+    expect(insertBatch).toBeGreaterThan(relock);
+    expect(insertItems).toBeGreaterThan(insertBatch);
+    // one multi-row insert of the items, not a statement per item
+    expect(body.slice(insertItems, insertItems + 200)).toContain("toPackage.map(");
+    expect(body.slice(insertBatch, insertItems)).not.toMatch(/for \(const/);
   });
 });
 

@@ -107,7 +107,7 @@ describe("spec 1.1: the double-batching guard is the one the code has; the idemp
     const assemble = slice(
       read(`${M10_SRC}/hope-route-service-db.ts`),
       "async assembleSubmission(",
-      "const eligible = await lockPackageableRecords",
+      "await lockPackageableRecords(",
     );
     expect(assemble).toContain("readAssembleCandidateIds(");
     // The manual route (its candidate read, hope-assemble-candidates.ts) and the cron scan share one list
