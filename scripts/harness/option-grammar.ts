@@ -103,7 +103,8 @@ function readLong(
   const given = word.slice(2, eq < 0 ? undefined : eq);
   const found = resolveLong(grammar, given);
   if (found === undefined || found === "ambiguous") {
-    const unplaced = grammar.lax === true && found === undefined ? undefined : word;
+    // `--name=value` is one word whatever the option is: only a bare unknown option leaves its value in doubt.
+    const unplaced = eq >= 0 || (grammar.lax === true && found === undefined) ? undefined : word;
     return {
       used: 1,
       option: { name: given, value: eq < 0 ? undefined : word.slice(eq + 1) },
