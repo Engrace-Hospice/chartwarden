@@ -205,7 +205,7 @@ function VersionDetail({ version }: { version: Version | null }): JSX.Element {
       ) : (
         <div style={legacyNotice}>
           <Glyph name="clock" size={16} />
-          No snapshot was recorded for this version.
+          No snapshot is available for this version.
         </div>
       )}
     </article>
@@ -251,20 +251,23 @@ function roleLabel(role: string): string {
 }
 
 function Snapshot({ snapshot }: { snapshot: ClinicalSnapshot }): JSX.Element {
+  const redacted = snapshot.redacted === true;
   return (
     <div style={{ display: "grid", gap: t.space3 }}>
-      {snapshot.redacted === true ? <RestrictedContentNote /> : null}
+      {redacted ? <RestrictedContentNote /> : null}
       <SnapshotGroup
         title="Problems at signing"
         items={(snapshot.problems ?? []).map(
           (p) => `${p.description} · ${cap(p.kind)} · ${cap(p.status)}`,
         )}
+        redacted={redacted}
       />
       <SnapshotGroup
         title="Goals at signing"
         items={(snapshot.goals ?? []).map(
           (g) => `${g.revisedText ?? g.originalText} · ${cap(g.status)}`,
         )}
+        redacted={redacted}
       />
       <SnapshotGroup
         title="Interventions at signing"
@@ -272,12 +275,22 @@ function Snapshot({ snapshot }: { snapshot: ClinicalSnapshot }): JSX.Element {
           (i) =>
             `${i.scopeText} · ${disciplineLabel(i.discipline)} · ${i.frequencyText} · ${cap(i.status)}`,
         )}
+        redacted={redacted}
       />
     </div>
   );
 }
 
-function SnapshotGroup({ title: heading, items }: { title: string; items: string[] }): JSX.Element {
+function SnapshotGroup({
+  title: heading,
+  items,
+  redacted = false,
+}: {
+  title: string;
+  items: string[];
+  /** The server withheld content from this snapshot, so an empty list does not mean nothing was recorded. */
+  redacted?: boolean;
+}): JSX.Element {
   return (
     <section style={subPanel}>
       <h3 style={smallTitle}>{heading}</h3>
@@ -288,7 +301,7 @@ function SnapshotGroup({ title: heading, items }: { title: string; items: string
           ))}
         </ul>
       ) : (
-        <p style={muted}>None recorded.</p>
+        <p style={muted}>{redacted ? "None shown to your role." : "None recorded."}</p>
       )}
     </section>
   );

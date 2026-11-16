@@ -8,6 +8,7 @@ import {
   createProblem,
   errorMessage,
   fieldErrorsOf,
+  isKeyStuck,
   isStaleVersion,
   loadPatientAdmissions,
   resolveProblem,
@@ -78,6 +79,31 @@ describe("the two idempotency 409s read as plain words, not the server's jargon"
       expect(errorMessage(envelope, "fallback")).toBe(res.message);
     });
   }
+
+  it("also reads the in-flight duplicate an older server answers as a plain CONFLICT", async () => {
+    // Deploy window: before the server answers IDEMPOTENCY_IN_FLIGHT it sends this exact sentence under CONFLICT.
+    const envelope = { error: { code: "CONFLICT", message: SERVER_SENTENCE } };
+    const res = await bootstrapCarePlan(clientWith(answer(409, { error: envelope })), "p", "a");
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.message).toMatch(/still being saved/);
+    expect(res.message).not.toMatch(/idempotency/i);
+  });
+
+  it("keeps a CONFLICT that is about the plan, not the key", async () => {
+    const envelope = { error: { code: "CONFLICT", message: "a plan already exists" } };
+    const res = await bootstrapCarePlan(clientWith(answer(409, { error: envelope })), "p", "a");
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.message).toBe("a plan already exists");
+  });
+
+  it("recognises only the stuck-key refusal as stuck", () => {
+    expect(isKeyStuck({ error: { code: "IDEMPOTENCY_KEY_STUCK" } })).toBe(true);
+    expect(isKeyStuck({ error: { code: "IDEMPOTENCY_IN_FLIGHT" } })).toBe(false);
+    expect(isKeyStuck({ error: { code: "STALE_VERSION" } })).toBe(false);
+    expect(isKeyStuck(null)).toBe(false);
+  });
 
   it("keeps the server's own reason for any other 409", async () => {
     const envelope = { error: { code: "OPEN_VERSION_EXISTS", message: "a draft is already open" } };

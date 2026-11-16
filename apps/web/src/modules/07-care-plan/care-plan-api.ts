@@ -26,7 +26,12 @@
 // row in `GET /patients/:patientId/care-plan` carries its own `version`. Nothing here invents one, and
 // nothing re-reads to "refresh" it before writing — that would defeat the check, since the point of
 // optimistic concurrency is to fail when the row moved under the caller.
-import { describeOpsError, sharedAttemptKeys } from "@chartwarden/ui";
+import {
+  describeOpsError,
+  isInFlightDuplicate,
+  isKeyStuck as isKeyStuckRefusal,
+  sharedAttemptKeys,
+} from "@chartwarden/ui";
 import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── READ side (the Care Plan workspace screens: plan + readiness + review status + proposed changes) ──
@@ -402,19 +407,25 @@ export function isStaleVersion(error: unknown): boolean {
   return (b?.error?.code ?? b?.code) === "STALE_VERSION";
 }
 
-const IDEMPOTENCY_409_CODES: ReadonlySet<string> = new Set([
-  "IDEMPOTENCY_IN_FLIGHT",
-  "IDEMPOTENCY_KEY_STUCK",
-]);
+/**
+ * True for the 409 that says the first request under an Idempotency-Key never finished and its outcome is unknown.
+ * The client renews the key after it, so the next click would be a new write: the caller re-reads the plan first.
+ */
+export function isKeyStuck(body: unknown): boolean {
+  return isKeyStuckRefusal(409, body);
+}
 
 /**
- * The server words these two 409s for an API client ("Idempotency-Key request is still being processed"). The ops
- * screens give them plain copy in `describeOpsError`; this reuses that copy (never a second wording) and returns
- * null for any other refusal, so the caller keeps its own message. Retry behaviour lives in the client middleware.
+ * The server words the in-flight and key-stuck 409s for an API client ("Idempotency-Key request is still being
+ * processed"). The ops screens give them plain copy in `describeOpsError`; this reuses that copy (never a second
+ * wording) and returns null for any other refusal, so the caller keeps its own message. It matches on the shared
+ * predicates, not the error code alone: a server from before the deploy answers the in-flight duplicate as a plain
+ * `CONFLICT` with that sentence. Retry behaviour lives in the client middleware.
  */
 function idempotencyRefusalCopy(body: unknown): string | null {
-  const refusal = describeOpsError(body, { status: 409 });
-  return refusal.code !== null && IDEMPOTENCY_409_CODES.has(refusal.code) ? refusal.message : null;
+  return isInFlightDuplicate(409, body) || isKeyStuckRefusal(409, body)
+    ? describeOpsError(body, { status: 409 }).message
+    : null;
 }
 
 /**

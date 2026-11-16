@@ -63,6 +63,7 @@ import {
   finalizeVersion,
   getCarePlanWorkspace,
   getProposedChanges,
+  isKeyStuck,
   isStaleVersion,
   loadPatientAdmissions,
   patchGoal,
@@ -440,6 +441,12 @@ function CarePlanWorkspace(): JSX.Element {
   // the workspace on each write would drop focus to <body>, reset scroll and remount the status notice.
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  /**
+   * A write committed but the re-read after it failed, so what is on screen is stale. Authoring, finalize and
+   * sign stay off until a re-read succeeds: re-entering a row that did save would create it a second time under
+   * a new Idempotency-Key.
+   */
+  const [needsRefresh, setNeedsRefresh] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
@@ -464,7 +471,7 @@ function CarePlanWorkspace(): JSX.Element {
   const canFinalize = hasPerm(session?.permissions, "care_plan.finalize");
   const canSign = hasPerm(session?.permissions, "care_plan.sign");
   const canBootstrap = hasPerm(session?.permissions, "care_plan.bootstrap");
-  const pending = busy || refreshing;
+  const pending = busy || refreshing || needsRefresh;
 
   const openVersion = useMemo(
     () => plan?.versions.find((v) => v.status === "draft" || v.status === "in_review") ?? null,
@@ -495,6 +502,9 @@ function CarePlanWorkspace(): JSX.Element {
         ? errorMessage(res.error, "Could not load the Care Plan workspace.")
         : null;
       if (loadError) setError(message ? SAVED_REFRESH_FAILED_MESSAGE : loadError);
+      // Stale only after a write that committed; a failed ordinary read does not make the screen newly stale.
+      if (!loadError) setNeedsRefresh(false);
+      else if (message) setNeedsRefresh(true);
       // A refresh that could not read the plan keeps the workspace on screen (with the error) rather than blanking it.
       if (loadError && !res.plan && !first) return null;
       setPlan(res.plan);
@@ -537,6 +547,7 @@ function CarePlanWorkspace(): JSX.Element {
     } catch {
       if (seq === reloadSeq.current) {
         setError(message ? SAVED_REFRESH_NO_RESPONSE_MESSAGE : LOAD_NO_RESPONSE_MESSAGE);
+        if (message) setNeedsRefresh(true);
       }
       return null;
     } finally {
@@ -631,6 +642,13 @@ function CarePlanWorkspace(): JSX.Element {
       // A re-read that failed (offline, superseded) left the dialog on the old version: do not claim the latest is loaded.
       reportFailure(fresh ? STALE_MESSAGE : STALE_RELOAD_FAILED_MESSAGE);
       return false;
+    }
+    if (isKeyStuck(res.body)) {
+      // The first attempt may have committed after the key gave up, and the client renews the key now, so the
+      // next click would be a NEW write. Show what the server holds before the user decides to repeat it.
+      const fresh = await reload();
+      const current = modalRef.current;
+      if (fresh && current && writeOriginStillOpen()) setModal(reseeded(current, fresh));
     }
     reportFailure(
       carePlanErrorMessage(
@@ -769,6 +787,7 @@ function CarePlanWorkspace(): JSX.Element {
   const blockers = attentionBlockers(readiness, proposed, Boolean(activeVersion));
   const editable =
     canAuthor &&
+    !needsRefresh &&
     plan.status !== "discharged" &&
     Boolean(openVersion) &&
     openVersion?.status !== "in_review";
@@ -835,7 +854,24 @@ function CarePlanWorkspace(): JSX.Element {
 
           {/* While a dialog is open its own copy of the error is shown inside it (the page one would sit
               behind the modal scrim, unseen and outside the aria-modal tree). */}
-          {error && !modal ? <Notice tone="error">{error}</Notice> : null}
+          {error && !modal ? (
+            <Notice tone="error">
+              {error}
+              {needsRefresh ? (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    className="wx-btn-secondary"
+                    disabled={refreshing}
+                    onClick={() => void reload()}
+                  >
+                    Refresh
+                  </button>
+                </>
+              ) : null}
+            </Notice>
+          ) : null}
           {proposedError ? <Notice tone="error">{proposedError}</Notice> : null}
           {notice ? <Notice tone="success">{notice}</Notice> : null}
 
@@ -1848,7 +1884,7 @@ function VersionSnapshot({
       {snapshot ? (
         <SnapshotLists snapshot={snapshot} />
       ) : (
-        <Notice tone="warning">No snapshot was recorded for this version.</Notice>
+        <Notice tone="warning">No snapshot is available for this version.</Notice>
       )}
     </article>
   );
@@ -1868,16 +1904,19 @@ function SnapshotLists({
       <SnapshotGroup
         title="Problems"
         items={problems.map((p) => `${p.description} · ${cap(p.kind)} · ${cap(p.status)}`)}
+        redacted={snapshot.redacted === true}
       />
       <SnapshotGroup
         title="Goals"
         items={goals.map((g) => `${g.revisedText ?? g.originalText} · ${cap(g.status)}`)}
+        redacted={snapshot.redacted === true}
       />
       <SnapshotGroup
         title="Interventions"
         items={interventions.map(
           (i) => `${i.scopeText} · ${cap(i.discipline)} · ${i.frequencyText} · ${cap(i.status)}`,
         )}
+        redacted={snapshot.redacted === true}
       />
     </div>
   );
@@ -3119,9 +3158,12 @@ function Select({
 function SnapshotGroup({
   title: heading,
   items,
+  redacted = false,
 }: {
   title: string;
   items: string[];
+  /** The server withheld content from this snapshot, so an empty list does not mean nothing was recorded. */
+  redacted?: boolean;
 }): JSX.Element {
   return (
     <div>
@@ -3133,7 +3175,7 @@ function SnapshotGroup({
           ))}
         </ul>
       ) : (
-        <p style={muted}>None recorded.</p>
+        <p style={muted}>{redacted ? "None shown to your role." : "None recorded."}</p>
       )}
     </div>
   );

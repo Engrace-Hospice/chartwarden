@@ -514,9 +514,10 @@ describe("M7 Care Plan version history", () => {
 
     await screen.findByRole("heading", { name: "Care Plan Version History" });
     fireEvent.click(screen.getByRole("button", { name: /v0/ }));
-    // A null snapshot cannot be told apart from a legacy one, so the label claims no more than "none recorded".
+    // A null snapshot is either a legacy version or one the server withheld, and the screen cannot tell which:
+    // the label claims no more than "not available".
     await waitFor(() =>
-      expect(screen.getByText("No snapshot was recorded for this version.")).toBeTruthy(),
+      expect(screen.getByText("No snapshot is available for this version.")).toBeTruthy(),
     );
   });
 
@@ -557,6 +558,34 @@ describe("M7 Care Plan version history", () => {
     it("shows no omission notice when nothing was withheld", async () => {
       await openHistory(withRedacted(false));
       expect(screen.queryByRole("note")).toBeNull();
+    });
+
+    it("does not call an emptied group 'None recorded' when content was withheld from it", async () => {
+      const emptied = (redacted: boolean): Version => ({
+        ...signedInitial,
+        stateSnapshot: {
+          ...(signedInitial.stateSnapshot as object),
+          goals: [],
+          interventions: [],
+          redacted,
+        },
+      });
+      await openHistory(emptied(true));
+      expect(screen.getAllByText("None shown to your role.").length).toBe(2);
+      expect(screen.queryByText("None recorded.")).toBeNull();
+    });
+
+    it("still says 'None recorded' for an empty group when nothing was withheld", async () => {
+      await openHistory({
+        ...signedInitial,
+        stateSnapshot: {
+          ...(signedInitial.stateSnapshot as object),
+          goals: [],
+          interventions: [],
+          redacted: false,
+        },
+      });
+      expect(screen.getAllByText("None recorded.").length).toBe(2);
     });
   });
 });

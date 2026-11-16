@@ -440,6 +440,43 @@ describe("a stale write", () => {
   });
 });
 
+describe("a write whose outcome the server could not confirm (IDEMPOTENCY_KEY_STUCK)", () => {
+  it("re-reads the plan first, so the next click is judged against what the server holds", async () => {
+    const world = draftWorld({
+      plan: planOf([signedInitial, openDraft()], { problems: [problem({ version: 1 })] }),
+    });
+    world.PATCH.mockImplementationOnce(async () => {
+      // The first attempt did commit, after its idempotency key gave up.
+      world.plan = planOf([signedInitial, openDraft()], {
+        problems: [problem({ version: 2, description: "Terminal cancer (committed late)" })],
+      });
+      return refused(409, envelope("IDEMPOTENCY_KEY_STUCK", "unknown outcome"));
+    });
+    mount(world);
+    await openProblemsTab();
+    fireEvent.click(screen.getByLabelText("Actions for Terminal cancer"));
+    fireEvent.click(screen.getByRole("button", { name: "Edit problem" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit problem" });
+    describeIt(dialog, "My careful rewrite");
+    save(dialog);
+
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toMatch(/could not confirm/);
+    // The workspace behind the dialog now shows the row as the server holds it.
+    await waitFor(() => expect(screen.queryAllByText(/committed late/).length).toBeGreaterThan(0));
+
+    // …and a repeat quotes that version, not the one read before the write.
+    await waitFor(() =>
+      expect(within(dialog).getByRole("button", { name: "Save problem" })).toBeEnabled(),
+    );
+    save(dialog);
+    await waitFor(() => expect(world.PATCH).toHaveBeenCalledTimes(2));
+    expect(world.PATCH.mock.calls[1]?.[1]).toMatchObject({
+      params: { header: { "If-Match": "2" } },
+    });
+  });
+});
+
 describe("a stale write does not revert what the user never edited", () => {
   const openGoalEditor = async (world: World) => {
     mount(world);
@@ -774,6 +811,17 @@ describe("signing", () => {
     expect(
       screen.queryByText(/No response — the Care Plan workspace could not be loaded/),
     ).toBeNull();
+
+    // What is on screen is stale, so nothing writable stays live: a repeat of an entry that did save would
+    // create it a second time under a new key.
+    const guide = screen.getByRole("region", { name: "Care Plan next step" });
+    for (const button of within(guide).getAllByRole("button")) expect(button).toBeDisabled();
+
+    // Refresh re-reads, takes the warning away and hands the controls back.
+    world.intercept = () => undefined;
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull());
+    expect(screen.queryByText(/could not be refreshed/)).toBeNull();
   });
 
   it("says the same when the re-read is refused, keeping the recorded notice", async () => {
