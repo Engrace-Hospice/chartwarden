@@ -86,9 +86,11 @@ export function CarePlanSummary(): JSX.Element {
       title="Care Plan Summary"
       actions={
         summary.versionId ? (
-          <Button type="button" tone="secondary" onClick={() => window.print()}>
-            <Glyph name="printer" size={16} /> Print summary
-          </Button>
+          <span className="wx-print-hide">
+            <Button type="button" tone="secondary" onClick={() => window.print()}>
+              <Glyph name="printer" size={16} /> Print summary
+            </Button>
+          </span>
         ) : null
       }
     />

@@ -89,7 +89,10 @@ describe("Care Plan summary with a signed version", () => {
     const print = vi.spyOn(window, "print").mockImplementation(() => undefined);
     renderSummary(clientReturning(async () => ok(signedSummary)));
 
-    fireEvent.click(await screen.findByRole("button", { name: /Print summary/ }));
+    const printButton = await screen.findByRole("button", { name: /Print summary/ });
+    // The handout must not print its own button: the shared print stylesheet hides this wrapper class.
+    expect(printButton.closest(".wx-print-hide")).not.toBeNull();
+    fireEvent.click(printButton);
 
     expect(print).toHaveBeenCalledTimes(1);
     print.mockRestore();
