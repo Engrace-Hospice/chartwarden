@@ -243,13 +243,26 @@ function closingQuote(text: string, from: number): number {
   return text.length;
 }
 
-function words(seg: string): string[] {
+/** What a backslash removes inside double quotes (`\"`, `\\`, `\$`, a backtick), and a line continuation: the rest stays. */
+const DOUBLE_QUOTE_ESCAPES = new Set(['"', "\\", "$", "`"]);
+
+/**
+ * The words of one simple command. With `values`, a word is what the program is handed, so a string it runs as a command
+ * line can be read again: `\x` is `x` outside quotes, `\"` `\\` `\$` `` \` `` lose their backslash inside double quotes, a
+ * backslash-newline is gone, and single quotes keep every backslash (R7-CR-1). Without it a backslash pair stays as typed.
+ */
+function words(seg: string, values = false): string[] {
   const out: string[] = [];
   let cur = "";
   let started = false;
   let quote: string | null = null;
   let depth = 0; // inside `$( … )`
   let tick = false; // inside `…`
+  const escaped = (backslash: string, next: string, doubleQuoted: boolean): string => {
+    if (!values) return backslash + next;
+    if (next === "\n") return "";
+    return !doubleQuoted || DOUBLE_QUOTE_ESCAPES.has(next) ? next : backslash + next;
+  };
   for (let i = 0; i < seg.length; i++) {
     const ch = seg[i] as string;
     if (tick || depth > 0) {
@@ -277,7 +290,7 @@ function words(seg: string): string[] {
     }
     if (quote === '"') {
       if (ch === '"') quote = null;
-      else if (ch === "\\" && i + 1 < seg.length) cur += ch + seg[++i];
+      else if (ch === "\\" && i + 1 < seg.length) cur += escaped(ch, seg[++i] as string, true);
       else cur += ch;
       continue;
     }
@@ -294,8 +307,9 @@ function words(seg: string): string[] {
       cur = "";
       started = false;
     } else if (ch === "\\" && i + 1 < seg.length) {
-      cur += ch + seg[++i];
-      started = true;
+      const text = escaped(ch, seg[++i] as string, false);
+      cur += text;
+      started ||= text !== "";
     } else {
       cur += ch;
       started = true;
@@ -347,7 +361,10 @@ const CHDIR_ATTACHED: ReadonlyMap<string, RegExp> = new Map([
  * A name the shell would unquote (`\cd`, `c\d`) is the program it names. `chdir` is the directory a wrapper moves
  * the command into, when it names one.
  */
-function program(seg: string): {
+function program(
+  seg: string,
+  values = false,
+): {
   prog: string;
   /** The program as typed, before its directory is dropped (`./x.sh`, `/tmp/x.sh`). */
   word: string;
@@ -359,7 +376,7 @@ function program(seg: string): {
   /** Secret-named files a wrapper's own option reads (`xargs -a F`): judged like input redirects. */
   reads: string[];
 } {
-  let w = words(seg);
+  let w = words(seg, values);
   const writes: string[] = [];
   const reads: string[] = [];
   let k = 0;
@@ -528,6 +545,11 @@ interface Parsed {
   /** The directory a wrapper (`env -C`, `sudo -D`) runs the command in, as written. */
   readonly chdir?: string;
   readonly args: string[];
+  /**
+   * The program and arguments as the program is HANDED them (a backslash is read once: an escaped quote inside double quotes is
+   * the quote), where that differs from `word` and `args`: a string it runs as a command line is judged from these (R7-CR-1).
+   */
+  readonly handed?: { readonly prog: string; readonly word: string; readonly args: string[] };
   readonly assigns: string[];
   readonly outs: string[];
   readonly ins: string[];
@@ -539,7 +561,17 @@ interface Parsed {
 function parseSegment(seg: string): Parsed {
   const { rest, outs, ins, docs, strings } = splitRedirects(seg);
   const { writes, reads, ...command } = program(rest);
-  return { ...command, outs: [...outs, ...writes], ins: [...ins, ...reads], docs, strings };
+  const handed = /\\/.test(rest) ? program(rest, true) : undefined;
+  return {
+    ...command,
+    ...(handed === undefined
+      ? {}
+      : { handed: { prog: handed.prog, word: handed.word, args: handed.args } }),
+    outs: [...outs, ...writes],
+    ins: [...ins, ...reads],
+    docs,
+    strings,
+  };
 }
 
 /**
@@ -1062,24 +1094,26 @@ function nestedCommandVerdicts(
   here: readonly Cwd[],
 ): BashVerdict[] {
   const verdicts: BashVerdict[] = [];
-  if (parsed.prog === "eval") {
-    verdicts.push(judge(parsed.args.join(" "), ctx, depth + 1, here));
-  } else if (NESTED_SHELL.test(parsed.prog)) {
-    const k = parsed.args.findIndex((a) => /^-[a-z]*c$/.test(a));
-    if (k >= 0) verdicts.push(judge(parsed.args[k + 1] ?? "", ctx, depth + 1, here));
-  } else if (parsed.prog === "find") {
-    for (const run of findExecCommands(parsed.args))
+  // A string the command runs as a command line is read from the words it is HANDED (an escaped quote is the quote).
+  const { prog, args } = parsed.handed ?? parsed;
+  if (prog === "eval") {
+    verdicts.push(judge(args.join(" "), ctx, depth + 1, here));
+  } else if (NESTED_SHELL.test(prog)) {
+    const k = args.findIndex((a) => /^-[a-z]*c$/.test(a));
+    if (k >= 0) verdicts.push(judge(args[k + 1] ?? "", ctx, depth + 1, here));
+  } else if (prog === "find") {
+    for (const run of findExecCommands(args))
       verdicts.push(judge(run.command, ctx, depth + 1, run.inFileDir ? [null] : here));
   }
   // A command line a wrapper hands to a shell (`watch 'x'`, `su -c 'x'`, `ssh h 'x'`, `rsync -e 'x'`), and a
   // command run in a container that mounts the repo (its paths read as the host's).
-  for (const text of shellStrings(parsed.prog, parsed.args, isLocalHost)) {
+  for (const text of shellStrings(prog, args, isLocalHost)) {
     if (text.trim() !== "") verdicts.push(judge(text, ctx, depth + 1, here));
   }
   verdicts.push(...gitExecVerdicts(parsed, ctx, depth, here));
-  const inContainer = containerExec(parsed.prog, parsed.args);
+  const inContainer = containerExec(prog, args);
   if (inContainer !== null) verdicts.push(judge(inContainer, ctx, depth + 1, here));
-  const container = containerRun(parsed.prog, parsed.args);
+  const container = containerRun(prog, args);
   if (container) {
     const inside = container.workdir === undefined ? here : runIn(here, container.workdir, ctx);
     verdicts.push(judge(container.command, ctx, depth + 1, inside));
