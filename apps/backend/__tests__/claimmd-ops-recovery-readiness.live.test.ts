@@ -49,6 +49,10 @@ describe.skipIf(!DB_URL)("BIL-5.5 central Claim.MD HTTP/PostgreSQL boundary", ()
         `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${role}') THEN EXECUTE 'DROP OWNED BY ${role} CASCADE'; EXECUTE 'DROP ROLE ${role}'; END IF; END $$;`,
       );
     }
+    // Production migrations conditionally grant central Claim.MD access to the platform carrier.
+    // Recreate that carrier before migrations, matching the deployed ordering; provisioning only
+    // the login after migrations would skip those grants on this fresh test cluster.
+    await admin.query("CREATE ROLE chartwarden_platform NOLOGIN");
     for (const file of readdirSync(MIGRATIONS)
       .filter((name) => name.endsWith(".sql"))
       .sort())
@@ -100,7 +104,9 @@ describe.skipIf(!DB_URL)("BIL-5.5 central Claim.MD HTTP/PostgreSQL boundary", ()
       auditBypass: m34PlatformBypassAuditor,
       keyRing: { activeId: "test-key", byId: new Map([["test-key", Buffer.alloc(32, 7)]]) },
     });
-    app = Fastify();
+    // Keep Fastify's server-side exception (including the DB error code, when applicable) in
+    // failed live-suite output; the default 500 response intentionally hides that detail.
+    app = Fastify({ logger: { level: "error" } });
     app.addHook("onRequest", async (request: FastifyRequest) => {
       const principal = request.headers["x-test-principal"];
       if (principal !== "platform" && principal !== "tenant-admin") return;
@@ -149,7 +155,7 @@ describe.skipIf(!DB_URL)("BIL-5.5 central Claim.MD HTTP/PostgreSQL boundary", ()
       url: "/api/v1/ops/claimmd/observability",
       headers: { "x-test-principal": "platform" },
     });
-    expect(ok.statusCode).toBe(200);
+    expect(ok.statusCode, `response body: ${ok.body}`).toBe(200);
     expect(ok.json()).toMatchObject({
       scope: "central_claimmd_account",
       accountReferenceExposed: false,
@@ -185,7 +191,7 @@ describe.skipIf(!DB_URL)("BIL-5.5 central Claim.MD HTTP/PostgreSQL boundary", ()
       url,
       headers: { "x-test-principal": "platform" },
     });
-    expect(preflight.statusCode).toBe(200);
+    expect(preflight.statusCode, `response body: ${preflight.body}`).toBe(200);
     expect(preflight.json()).toMatchObject({
       disposition: "eligible_for_simulation",
       simulation: {
@@ -226,7 +232,7 @@ describe.skipIf(!DB_URL)("BIL-5.5 central Claim.MD HTTP/PostgreSQL boundary", ()
       url: `/api/v1/ops/claimmd/eras/${ERA}/recovery-preflight?usage=test&stage=capture`,
       headers: { "x-test-principal": "platform" },
     });
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode, `response body: ${response.body}`).toBe(200);
     expect(response.json()).toMatchObject({
       disposition: "blocked",
       leaseActive: true,

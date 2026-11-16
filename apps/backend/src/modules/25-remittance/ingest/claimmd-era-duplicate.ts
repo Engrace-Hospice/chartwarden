@@ -1,6 +1,9 @@
 export interface ClaimMdEraRemittanceIdentity {
   readonly rawFileDigest: string;
   readonly interchangeControlNumber: string;
+  readonly interchangeSenderCode?: string | null;
+  readonly interchangeReceiverCode?: string | null;
+  readonly functionalGroupControlNumber?: string | null;
   readonly transactionSetControlNumber: string;
   readonly paymentTrace: string | null;
   readonly paymentAmount: string | null;
@@ -14,17 +17,20 @@ export function claimMdEraM25SerializationKey(input: {
   readonly providerEntityId: string;
   readonly paymentTrace: string | null;
   readonly interchangeControlNumber: string;
+  readonly interchangeSenderCode?: string | null;
+  readonly interchangeReceiverCode?: string | null;
+  readonly functionalGroupControlNumber?: string | null;
   readonly transactionSetControlNumber: string;
 }): string {
   const identity = input.paymentTrace
     ? `TRN:${input.paymentTrace}`
-    : `ISA:${input.interchangeControlNumber}|ST:${input.transactionSetControlNumber}`;
+    : `ISA:${input.interchangeSenderCode ?? ""}:${input.interchangeReceiverCode ?? ""}:${input.interchangeControlNumber}|GS:${input.functionalGroupControlNumber ?? ""}|ST:${input.transactionSetControlNumber}`;
   return `${input.organizationId}|${input.providerEntityId}|${identity}`;
 }
 
 /**
- * Cross-channel identity is deliberately conservative: exact requires the same raw file and ISA/ST identity.
- * Reused ISA/ST controls or TRN+amount are review holds because the legacy M25 row has no vendor payer identity
+ * Cross-channel identity is deliberately conservative: exact requires the same raw file and ISA/GS/ST identity.
+ * Reused scoped controls or TRN+amount are review holds because the legacy M25 row has no vendor payer identity
  * that can safely distinguish an unrelated payer. Amount/date alone never establish a duplicate.
  */
 export function classifyClaimMdEraCrossSourceDuplicate(
@@ -36,6 +42,9 @@ export function classifyClaimMdEraCrossSourceDuplicate(
       (row) =>
         row.rawFileDigest === candidate.rawFileDigest &&
         row.interchangeControlNumber === candidate.interchangeControlNumber &&
+        row.interchangeSenderCode === candidate.interchangeSenderCode &&
+        row.interchangeReceiverCode === candidate.interchangeReceiverCode &&
+        row.functionalGroupControlNumber === candidate.functionalGroupControlNumber &&
         row.transactionSetControlNumber === candidate.transactionSetControlNumber,
     )
   )
@@ -44,6 +53,9 @@ export function classifyClaimMdEraCrossSourceDuplicate(
     existing.some(
       (row) =>
         (row.interchangeControlNumber === candidate.interchangeControlNumber &&
+          row.interchangeSenderCode === candidate.interchangeSenderCode &&
+          row.interchangeReceiverCode === candidate.interchangeReceiverCode &&
+          row.functionalGroupControlNumber === candidate.functionalGroupControlNumber &&
           row.transactionSetControlNumber === candidate.transactionSetControlNumber) ||
         (candidate.paymentTrace !== null &&
           candidate.paymentAmount !== null &&

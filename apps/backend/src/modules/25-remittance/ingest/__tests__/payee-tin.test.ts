@@ -4,9 +4,11 @@ import type { ParsedRemittanceAdvice, X12835WorkerClient } from "@chartwarden/x1
 import { describe, expect, it } from "vitest";
 import { parsePayeeTinPolicy } from "../payee-tin-policy";
 import {
+  type PayeeNpiLookup,
   type PayeeTinLookup,
   type PayeeTinPolicy,
   buildDrizzleM25IngestService,
+  normaliseTin,
 } from "../service-drizzle";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -42,20 +44,23 @@ function receive(
   policy?: PayeeTinPolicy,
   payerKind: "medicare" | "medicaid" = "medicaid",
   client?: X12835WorkerClient,
+  npiLookup: PayeeNpiLookup = async () => NPI,
+  organizationId = ORG,
+  providerEntityId = PE,
 ) {
   const service = buildDrizzleM25IngestService({} as never, {
     client: client ?? {
       parse835: async () => ({ ok: true, value: advice(payee) }),
       parse277ca: noMore,
     },
-    payeeNpi: async () => NPI,
+    payeeNpi: npiLookup,
     ...(tin ? { payeeTin: tin } : {}),
     ...(policy ? { payeeTinPolicy: policy } : {}),
   });
   return service.receiveAdvice(
-    { organizationId: ORG },
+    { organizationId },
     {
-      providerEntityId: PE,
+      providerEntityId,
       payerId: PE,
       payerKind,
       minioObjectKey: "k",
@@ -95,6 +100,13 @@ describe("835 payee TIN (#671)", () => {
     const r = await receive(fiPayee, async () => "123456789", allowMedicaid, "medicare");
     expect(r).toMatchObject({ outcome: "malformed", reason: expect.stringContaining("no NPI") });
   });
+  it("denies FI-only for another organization and for an unknown program", async () => {
+    const allowOther = parsePayeeTinPolicy(JSON.stringify({ [OTHER_ORG]: ["medicaid"] }));
+    expect(await receive(fiPayee, async () => "123456789", allowOther)).toMatchObject({
+      outcome: "malformed",
+    });
+    expect(allowMedicaid(ORG, "unknown")).toBe(false);
+  });
   it("on an allowed program refuses a wrong or unreadable TIN", async () => {
     expect(await receive(fiPayee, async () => "987654321", allowMedicaid)).toMatchObject({
       outcome: "malformed",
@@ -127,6 +139,63 @@ describe("835 payee TIN (#671)", () => {
     expect(() => parsePayeeTinPolicy("{")).toThrow();
     expect(() => parsePayeeTinPolicy(JSON.stringify({ nope: ["medicaid"] }))).toThrow();
     expect(() => parsePayeeTinPolicy(JSON.stringify({ [ORG]: ["cash"] }))).toThrow();
+    const caseVariant = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    expect(
+      () =>
+        parsePayeeTinPolicy(
+          JSON.stringify({ [caseVariant.toUpperCase()]: ["medicaid"], [caseVariant]: ["commercial"] }),
+        ),
+    ).toThrow();
+  });
+
+  it("normalizes only bare nine-digit, EIN, or SSN forms", () => {
+    expect(normaliseTin("123456789")).toBe("123456789");
+    expect(normaliseTin("12-3456789")).toBe("123456789");
+    expect(normaliseTin("123-45-6789")).toBe("123456789");
+    expect(normaliseTin("12/3456789")).toBeNull();
+    expect(normaliseTin("TIN:123456789")).toBeNull();
+    expect(normaliseTin("1-23456789")).toBeNull();
+  });
+
+  it("verifies both N104 FI and REF*TJ when FI-only use is authorized", async () => {
+    await expect(
+      receive({ ...fiPayee, taxId: "12-3456789" }, async () => "123456789", allowMedicaid),
+    ).rejects.toThrow();
+    expect(
+      await receive({ ...fiPayee, taxId: "12-3456788" }, async () => "123456789", allowMedicaid),
+    ).toMatchObject({ outcome: "malformed", reason: expect.stringContaining("tax id is not") });
+  });
+
+  it("rejects malformed NPIs and refuses REF*TJ when no secure TIN seam is bound", async () => {
+    expect(
+      await receive({ ...npiPayee, id: "1234567890" }, async () => NPI),
+    ).toMatchObject({ outcome: "malformed", reason: expect.stringContaining("NPI is invalid") });
+    expect(
+      await receive({ ...npiPayee, taxId: "123456789" }, undefined),
+    ).toMatchObject({ outcome: "malformed", reason: expect.stringContaining("no tax id lookup") });
+    expect(
+      await receive(npiPayee, undefined, undefined, "medicaid", undefined, async () => "1234567890"),
+    ).toMatchObject({ outcome: "malformed", reason: expect.stringContaining("no valid NPI") });
+  });
+
+  it("queries authoritative NPI using the authenticated organization and selected provider", async () => {
+    let seen: readonly [string, string] | undefined;
+    await expect(
+      receive(
+        npiPayee,
+        undefined,
+        undefined,
+        "medicaid",
+        undefined,
+        async (organizationId, providerEntityId) => {
+          seen = [organizationId, providerEntityId];
+          return NPI;
+        },
+        OTHER_ORG,
+        "44444444-4444-4444-8444-444444444444",
+      ),
+    ).rejects.toThrow();
+    expect(seen).toEqual([OTHER_ORG, "44444444-4444-4444-8444-444444444444"]);
   });
 });
 

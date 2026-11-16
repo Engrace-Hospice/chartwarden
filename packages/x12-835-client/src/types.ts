@@ -114,7 +114,7 @@ export interface ParsedRemittanceParty {
   id?: string;
   /** REF*TJ — federal tax id (payee). */
   taxId?: string;
-  /** REF*PQ — payee id assigned by the payer, i.e. the PTAN (payee loop). */
+  /** REF*PQ — payer-assigned payee identifier; its presence does not establish that it is a PTAN. */
   payerAssignedId?: string;
   /** REF*2U — additional payer identification (payer loop). */
   additionalPayerId?: string;
@@ -144,10 +144,22 @@ export interface ParsedRemittanceAdvice {
   payerProgram: PayerProgram;
   /** ISA13 — interchange control number. */
   interchangeControlNumber: string;
+  /** ISA06/ISA08 — envelope sender/receiver identity used to scope control-number dedupe. */
+  interchangeSenderCode?: string;
+  interchangeReceiverCode?: string;
   /** ST02 — transaction set control number. */
   transactionSetControlNumber: string;
   /** GS06 functional group control number for the original transaction set. */
   functionalGroupControlNumber?: string;
+  /** GS01/02/03/05/08 and one-based group position preserve the transaction's enclosing group provenance. */
+  functionalGroupIdentifierCode?: string;
+  functionalGroupSenderCode?: string;
+  functionalGroupReceiverCode?: string;
+  functionalGroupCreationTime?: string;
+  functionalGroupVersion?: string;
+  functionalGroupPosition?: number;
+  /** One-based transaction position within its GS/GE group. */
+  transactionSetPosition?: number;
   /** TRN02 — the check / EFT trace number. */
   checkOrEftTraceNumber?: string;
   /** BPR04 — the payment method. */
@@ -176,6 +188,27 @@ export interface ParsedRemittanceAdvice {
   payee?: ParsedRemittanceParty;
   /** The CLP claim-payment segments. */
   claims: ParsedClaim835[];
+}
+
+/** One fully normalized functional group with its own unmerged 835 transaction sets. */
+export interface Parsed835FunctionalGroup {
+  readonly functionalIdentifierCode: string;
+  readonly applicationSenderCode: string;
+  readonly applicationReceiverCode: string;
+  readonly creationDate: string;
+  readonly creationTime: string;
+  readonly controlNumber: string;
+  readonly version: string;
+  readonly position: number;
+  readonly transactionSets: readonly ParsedRemittanceAdvice[];
+}
+
+/** Explicit interchange hierarchy for consumers that need group provenance rather than a flat projection. */
+export interface Parsed835Interchange {
+  readonly interchangeControlNumber: string;
+  readonly senderCode: string;
+  readonly receiverCode: string;
+  readonly functionalGroups: readonly Parsed835FunctionalGroup[];
 }
 
 /** One claim rejection inside a 277CA (used by M23; M25 reads the M23-published `m23.claim.rejected`). */

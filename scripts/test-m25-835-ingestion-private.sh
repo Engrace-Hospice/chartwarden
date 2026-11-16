@@ -50,6 +50,10 @@ if [[ "${BIL_TEST_ONLY:-}" == "claimmd-ops" ]]; then
   bunx vitest run apps/backend/__tests__/claimmd-ops-recovery-readiness.live.test.ts
   exit 0
 fi
+if [[ "${BIL_TEST_ONLY:-}" == "migrations" ]]; then
+  bunx vitest run scripts/__tests__/db-migrate.live.test.ts
+  exit 0
+fi
 
 # The suite resets public and drops its application roles. This cluster is disposable and private.
 bunx vitest run apps/backend/__tests__/m25-835-ingestion.live.test.ts

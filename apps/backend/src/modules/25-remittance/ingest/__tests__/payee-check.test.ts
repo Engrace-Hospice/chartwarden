@@ -52,6 +52,35 @@ function receive(payee: ParsedRemittanceAdvice["payee"], tenantNpi: string | nul
 }
 
 describe("835 payee identity (#659)", () => {
+  it("returns unsupported routing separately from malformed X12 and never reaches persistence", async () => {
+    const client: X12835WorkerClient = {
+      parse835: async () => ({
+        ok: false,
+        degraded: {
+          code: "X12_835_UNSUPPORTED_ROUTING",
+          reason: "functional group 2 is not owned by M25",
+          integration: "x12-835-parser",
+          operation: "parse835",
+          retryable: false,
+        },
+      }),
+      parse277ca: async () => { throw new Error("unused"); },
+    };
+    const service = buildDrizzleM25IngestService({} as never, { client, payeeNpi: async () => null });
+    const result = await service.receiveAdvice(
+      { organizationId: ORG },
+      {
+        providerEntityId: PE,
+        payerId: PE,
+        payerKind: "medicare",
+        minioObjectKey: "k",
+        fileSha256: createHash("sha256").update(RAW, "utf8").digest("hex"),
+        rawEdi: RAW,
+      },
+    );
+    expect(result).toMatchObject({ outcome: "unsupported", code: "X12_835_UNSUPPORTED_ROUTING" });
+  });
+
   it("refuses a payee NPI that is not the provider entity's", async () => {
     const r = await receive({ name: "OTHER", idQualifier: "XX", id: "1999999984" }, "1234567893");
     expect(r).toMatchObject({
@@ -71,7 +100,7 @@ describe("835 payee identity (#659)", () => {
     const r = await receive({ name: "X", idQualifier: "XX", id: "1234567893" }, null);
     expect(r).toMatchObject({
       outcome: "malformed",
-      reason: expect.stringContaining("no NPI on file"),
+      reason: expect.stringContaining("no valid NPI on file"),
     });
   });
 });

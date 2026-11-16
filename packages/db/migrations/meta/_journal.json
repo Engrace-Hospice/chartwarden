@@ -2374,6 +2374,27 @@
       "when": 1794754300458,
       "tag": "1494_m25_835_date_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 339,
+      "version": "7",
+      "when": 1794754300459,
+      "tag": "1495_m25_835_group_scoped_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 340,
+      "version": "7",
+      "when": 1794754300460,
+      "tag": "1496_m25_835_payee_identity_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 341,
+      "version": "7",
+      "when": 1794786680476,
+      "tag": "1475_m23_mac_jurisdiction_type",
+      "breakpoints": true
     }
   ]
 }

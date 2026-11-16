@@ -106,6 +106,13 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
         if (result.outcome === "malformed") {
           return reply.code(422).send({ outcome: result.outcome, reason: result.reason });
         }
+        if (result.outcome === "unsupported") {
+          return reply.code(422).send({
+            outcome: result.outcome,
+            code: result.code,
+            reason: result.reason,
+          });
+        }
         if (result.outcome === "duplicate") {
           return reply
             .code(409)
@@ -115,6 +122,14 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
           return reply
             .code(409)
             .send({ outcome: result.outcome, stageId: result.stageId, reason: result.reason });
+        }
+        if (result.outcome === "held_duplicate") {
+          return reply.code(409).send({
+            outcome: result.outcome,
+            adviceId: result.adviceId,
+            existingAdviceId: result.existingAdviceId,
+            reason: result.reason,
+          });
         }
         return reply.code(202).send({ outcome: result.outcome, adviceId: result.adviceId });
       },

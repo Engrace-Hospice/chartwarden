@@ -116,11 +116,11 @@ describe("committed .835 samples", () => {
     expect(refusal(raw, "0003")).toMatch(/no transaction set/);
   });
 
-  it("01 + an injected second GS group is refused (still unsupported)", () => {
+  it("01 + a malformed appended GS group is rejected by the interchange count", () => {
     const raw = SAMPLES["01-clean-routine-home-care"].replace(
       "GE*1*77~",
       "GE*1*77~\nGS*HP*A*B*20260616*1200*78*X*005010X221A1~",
     );
-    expect(refusal(raw)).toMatch(/exactly one GS\/GE/);
+    expect(refusal(raw)).toMatch(/IEA01 functional-group count/);
   });
 });

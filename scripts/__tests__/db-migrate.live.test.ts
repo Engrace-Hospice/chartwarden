@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -119,6 +120,224 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
       await rm(migrationsDir, { force: true, recursive: true });
     }
   }, 60_000);
+
+  it("rolls back a failed migration body and does not record its ledger row", async () => {
+    const migrationsDir = await mkdtemp(join(tmpdir(), "chartwarden-migrate-rollback-"));
+    const filename = "9003_rollback_probe.sql";
+    const tableName = "migrate_rollback_probe";
+
+    try {
+      await writeFile(
+        join(migrationsDir, filename),
+        `CREATE TABLE ${tableName} (id integer);\nSELECT 1 / 0;\n`,
+      );
+      await expect(applyMigrations(db, { migrationsDir })).rejects.toThrow(
+        /9003_rollback_probe\.sql failed \(rolled back\)/,
+      );
+      const relation = await db.query<{ relation: string | null }>(
+        "SELECT to_regclass($1) AS relation",
+        [`public.${tableName}`],
+      );
+      expect(relation.rows[0]!.relation).toBeNull();
+      const ledger = await db.query(
+        "SELECT 1 FROM _chartwarden_migration WHERE filename = $1",
+        [filename],
+      );
+      expect(ledger.rowCount).toBe(0);
+    } finally {
+      await db.query(`DROP TABLE IF EXISTS ${tableName}`);
+      await db.query("DELETE FROM _chartwarden_migration WHERE filename = $1", [filename]);
+      await rm(migrationsDir, { force: true, recursive: true });
+    }
+  }, 60_000);
+
+  it("upgrades a deployed-through-1494 schema with historical remittances and late 1475", async () => {
+    await resetSchema();
+    const earlyDir = await mkdtemp(join(tmpdir(), "chartwarden-migrate-historical-early-"));
+    const lateDir = await mkdtemp(join(tmpdir(), "chartwarden-migrate-historical-late-"));
+    const repairDir = await mkdtemp(join(tmpdir(), "chartwarden-migrate-historical-repair-"));
+    const m25Dir = await mkdtemp(join(tmpdir(), "chartwarden-migrate-historical-m25-"));
+    const allFiles = readdirSync(MIGRATIONS_DIR)
+      .filter((file) => file.endsWith(".sql"))
+      .sort();
+    const writeMigration = async (dir: string, filename: string) =>
+      writeFile(join(dir, filename), readFileSync(join(MIGRATIONS_DIR, filename), "utf8"));
+
+    try {
+      for (const file of allFiles.filter((name) => Number(name.slice(0, 4)) <= 74)) {
+        await writeMigration(earlyDir, file);
+      }
+      await applyMigrations(db, { migrationsDir: earlyDir });
+
+      // Model deployed installations where the distinct enum/cast existed before 1489/1490,
+      // while this repository's repair file 1475 was absent from the migration ledger.
+      await db.query(`CREATE TYPE public.m23_mac_jurisdiction AS ENUM (
+        'ngs_j6','ngs_jk','cgs_j15','palmetto_jj','palmetto_jm','noridian_jf','noridian_je'
+      )`);
+      await db.query(`CREATE FUNCTION public.m23_mac_jurisdiction_from_legacy(value public.mac_jurisdiction)
+        RETURNS public.m23_mac_jurisdiction LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE
+        AS $$ SELECT value::text::public.m23_mac_jurisdiction $$`);
+      await db.query(`CREATE CAST (public.mac_jurisdiction AS public.m23_mac_jurisdiction)
+        WITH FUNCTION public.m23_mac_jurisdiction_from_legacy(public.mac_jurisdiction) AS ASSIGNMENT`);
+
+      for (const file of allFiles.filter((name) => {
+        const ordinal = Number(name.slice(0, 4));
+        return ordinal > 74 && ordinal <= 1494 && ordinal !== 1475;
+      })) {
+        await writeMigration(lateDir, file);
+      }
+      const preUpgrade = await applyMigrations(db, { migrationsDir: lateDir });
+      expect(preUpgrade.ran).toContain("1494_m25_835_date_provenance.sql");
+      expect(preUpgrade.ran).not.toContain("1475_m23_mac_jurisdiction_type.sql");
+
+      const organizationId = "71000000-0000-4000-8000-000000000001";
+      await db.query(
+        `INSERT INTO organization (id, slug, legal_name, display_name)
+         VALUES ($1, 'm25-historical-upgrade-test', 'Synthetic Historical Org', 'Synthetic Historical Org')`,
+        [organizationId],
+      );
+      await db.query(
+        `INSERT INTO remittance_advice (
+          organization_id, provider_entity_id, payer_id, payer_kind,
+          interchange_control_number, transaction_set_control_number, payment_method,
+          total_payment_amount, production_date, minio_object_key, file_sha256
+        ) VALUES ($1, $2, $3, 'medicare', '700000001', '700000001', 'check', 12.34,
+          '2025-02-03T00:00:00Z', 'synthetic/historical-835', repeat('a', 64))`,
+        [
+          organizationId,
+          "72000000-0000-4000-8000-000000000001",
+          "73000000-0000-4000-8000-000000000001",
+        ],
+      );
+
+      await writeMigration(repairDir, "1475_m23_mac_jurisdiction_type.sql");
+      const lateRepair = await applyMigrations(db, { migrationsDir: repairDir });
+      expect(lateRepair.ran).toEqual(["1475_m23_mac_jurisdiction_type.sql"]);
+      const enumLabels = await db.query<{ label: string }>(
+        `SELECT e.enumlabel AS label FROM pg_enum e
+         JOIN pg_type t ON t.oid = e.enumtypid JOIN pg_namespace n ON n.oid = t.typnamespace
+         WHERE n.nspname = 'public' AND t.typname = 'm23_mac_jurisdiction'
+         ORDER BY e.enumsortorder`,
+      );
+      expect(enumLabels.rows.map((row) => row.label)).toEqual([
+        "ngs_j6",
+        "ngs_jk",
+        "cgs_j15",
+        "palmetto_jj",
+        "palmetto_jm",
+        "noridian_jf",
+        "noridian_je",
+      ]);
+
+      await writeMigration(m25Dir, "1495_m25_835_group_scoped_identity.sql");
+      await writeMigration(m25Dir, "1496_m25_835_payee_identity_evidence.sql");
+      const m25Upgrade = await applyMigrations(db, { migrationsDir: m25Dir });
+      expect(m25Upgrade.ran).toEqual([
+        "1495_m25_835_group_scoped_identity.sql",
+        "1496_m25_835_payee_identity_evidence.sql",
+      ]);
+
+      const historical = await db.query<{
+        interchange_sender_code: string | null;
+        interchange_receiver_code: string | null;
+        functional_group_control_number: string | null;
+        payment_effective_date: string | null;
+        adjudication_cutoff_date: string | null;
+        payee_identity_evidence: unknown;
+        production_date: Date;
+      }>(
+        `SELECT interchange_sender_code, interchange_receiver_code, functional_group_control_number,
+                payment_effective_date, adjudication_cutoff_date, payee_identity_evidence, production_date
+           FROM remittance_advice WHERE organization_id = $1`,
+        [organizationId],
+      );
+      expect(historical.rows).toHaveLength(1);
+      expect(historical.rows[0]).toMatchObject({
+        interchange_sender_code: null,
+        interchange_receiver_code: null,
+        functional_group_control_number: null,
+        payment_effective_date: null,
+        adjudication_cutoff_date: null,
+        payee_identity_evidence: null,
+      });
+      expect(historical.rows[0]!.production_date.toISOString()).toBe("2025-02-03T00:00:00.000Z");
+
+      const index = await db.query<{ indexdef: string }>(
+        `SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'ux_remittance_envelope_dedupe'`,
+      );
+      expect(index.rows[0]?.indexdef).toContain("NULLS NOT DISTINCT");
+
+      const duplicateHistorical = await db.query(
+        `INSERT INTO remittance_advice (
+          organization_id, provider_entity_id, payer_id, payer_kind,
+          interchange_control_number, transaction_set_control_number, payment_method,
+          total_payment_amount, production_date, minio_object_key, file_sha256
+        ) VALUES ($1, $2, $3, 'medicare', '700000001', '700000001', 'check', 12.34,
+          '2025-02-03T00:00:00Z', 'synthetic/historical-duplicate', repeat('b', 64))
+        ON CONFLICT DO NOTHING RETURNING id`,
+        [
+          organizationId,
+          "72000000-0000-4000-8000-000000000001",
+          "73000000-0000-4000-8000-000000000001",
+        ],
+      );
+      expect(duplicateHistorical.rowCount).toBe(0);
+
+      for (const [group, fileKey, digest] of [
+        ["700000101", "synthetic/group-a", "c"],
+        ["700000102", "synthetic/group-b", "d"],
+      ] as const) {
+        await db.query(
+          `INSERT INTO remittance_advice (
+            organization_id, provider_entity_id, payer_id, payer_kind,
+            interchange_control_number, interchange_sender_code, interchange_receiver_code,
+            functional_group_control_number, transaction_set_control_number,
+            payment_method, total_payment_amount, production_date, minio_object_key, file_sha256
+          ) VALUES ($1, $2, $3, 'medicare', '700000002', 'SYNTH-PAYER', 'SYNTH-PROVIDER',
+            $4, '700000001', 'check', 12.34, '2025-02-03T00:00:00Z', $5, repeat($6, 64))`,
+          [
+            organizationId,
+            "72000000-0000-4000-8000-000000000001",
+            "73000000-0000-4000-8000-000000000001",
+            group,
+            fileKey,
+            digest,
+          ],
+        );
+      }
+      const groupedCount = await db.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM remittance_advice
+          WHERE organization_id = $1 AND interchange_control_number = '700000002'`,
+        [organizationId],
+      );
+      expect(groupedCount.rows[0]!.count).toBe(2);
+
+      // The old release targets the old three-column index. Its writes cannot cross the 1495
+      // contract boundary, which is why production must drain old writers before this migration.
+      await expect(
+        db.query(
+          `INSERT INTO remittance_advice (
+            organization_id, provider_entity_id, payer_id, payer_kind,
+            interchange_control_number, transaction_set_control_number, payment_method,
+            total_payment_amount, production_date, minio_object_key, file_sha256
+          ) VALUES ($1, $2, $3, 'medicare', '700000003', '700000001', 'check', 12.34,
+            '2025-02-03T00:00:00Z', 'synthetic/old-app-target', repeat('e', 64))
+          ON CONFLICT (interchange_control_number, transaction_set_control_number, provider_entity_id)
+          DO NOTHING`,
+          [
+            organizationId,
+            "72000000-0000-4000-8000-000000000001",
+            "73000000-0000-4000-8000-000000000001",
+          ],
+        ),
+      ).rejects.toMatchObject({ code: "42P10" });
+    } finally {
+      await rm(earlyDir, { force: true, recursive: true });
+      await rm(lateDir, { force: true, recursive: true });
+      await rm(repairDir, { force: true, recursive: true });
+      await rm(m25Dir, { force: true, recursive: true });
+    }
+  }, 300_000);
 });
 
 // The ledger rename (_wardenx_migration -> _chartwarden_migration) must keep rows/checksums, and the

@@ -5,8 +5,8 @@
 // Money is parsed from the decimal text into integer cents (no float math) and emitted as cents/100.
 //
 // Current-behavior limits (deliberate; tracked as follow-ups, not silent):
-//  - one ISA and one GS/GE group per file; several ST/SE transaction sets inside that group are split, each
-//    balanced on its own, and selected by ST02 (a second ISA or GS is rejected);
+//  - one ISA/IEA per input; one or more HP GS/GE groups each containing one or more ST/SE sets are supported.
+//    ST02 is unique within a group and may repeat in another group; multiple ISA envelopes are rejected;
 //  - the SVC01 qualifier is validated AND kept (`serviceIdQualifier`: HC/NU/...), so a HCPCS and an
 //    revenue/other id with the same text are never confused downstream;
 //  - BPR16 (payment effective date), DTM*405 (adjudication cutoff) and GS04 (functional-group creation date)
@@ -17,6 +17,7 @@
 import { type CentsAdjustment, checkClaimBalance, checkPaymentBalance } from "./balance-835";
 import {
   type ParsedAdjustment,
+  type Parsed835Interchange,
   type ParsedCasGroupCode,
   type ParsedClaim835,
   type ParsedPaymentMethod,
@@ -86,6 +87,10 @@ export interface ParseX12835Options {
 
 function fail(message: string): never {
   throw new X12ParseError("X12_835_PARSE_FAILED", message);
+}
+
+function countMatches(value: string, expected: number): boolean {
+  return /^\d{1,9}$/.test(value) && Number(value) === expected;
 }
 
 /** Decimal text -> integer cents. At most 2 significant decimals; anything else fails closed. */
@@ -304,69 +309,98 @@ const toClaim = (c: ClaimDraft): ParsedClaim835 => ({
 interface TransactionSet {
   readonly st02: string;
   readonly body: readonly X12Segment[];
+  readonly group: {
+    readonly gs01: string; readonly gs02: string; readonly gs03: string; readonly gs04: string;
+    readonly gs05: string; readonly gs06: string; readonly gs08: string; readonly position: number;
+  };
+  readonly position: number;
 }
 
 /** Validate ISA..IEA / GS..GE and every ST..SE; returns each transaction set's segments between ST and SE. */
 function unwrapEnvelope(
   segs: readonly X12Segment[],
   opts: ParseX12835Options,
-): { isa13: string; groupCreationDate: string; sets: readonly TransactionSet[] } {
+): { isa13: string; sets: readonly TransactionSet[] } {
   const ids = segs.map(segId);
-  const pos = (id: string): number[] => ids.flatMap((x, i) => (x === id ? [i] : []));
   if (ids[0] !== "ISA" || ids[ids.length - 1] !== "IEA")
     fail("interchange is not wrapped in ISA..IEA");
-  const only = (id: string, msg: string): number => {
-    const at = pos(id);
-    if (at.length !== 1) fail(msg);
-    return at[0] as number;
-  };
-  only("ISA", "expected exactly one ISA/IEA");
-  only("IEA", "expected exactly one ISA/IEA");
-  const gsAt = only("GS", "expected exactly one GS/GE functional group");
-  const geAt = only("GE", "expected exactly one GS/GE functional group");
-  const stAts = pos("ST");
-  const seAts = pos("SE");
-  if (stAts.length === 0 || stAts.length !== seAts.length)
-    fail("ST and SE segments are not paired");
-  const inOrder = stAts.every(
-    (st, i) =>
-      st < (seAts[i] as number) &&
-      (i === 0 ? gsAt < st : (seAts[i - 1] as number) + 1 === st) &&
-      (i < stAts.length - 1 || (seAts[i] as number) < geAt),
-  );
-  if (!(inOrder && geAt < segs.length - 1)) fail("envelope segments are out of order");
-  const [isa, gs, ge, iea] = [0, gsAt, geAt, segs.length - 1].map((i) => segs[i] as X12Segment) as [
-    X12Segment,
-    X12Segment,
-    X12Segment,
-    X12Segment,
-  ];
+  if (ids.filter((id) => id === "ISA").length !== 1 || ids.filter((id) => id === "IEA").length !== 1)
+    fail("exactly one ISA/IEA interchange is supported");
+  const isa = segs[0] as X12Segment;
+  const iea = segs[segs.length - 1] as X12Segment;
   const isa13 = elem(isa, 13);
   if (!isa13) fail("missing ISA13 interchange control number");
+  if (!elem(isa, 6) || !elem(isa, 8)) fail("ISA sender or receiver identifier is missing");
+  if (elem(isa, 12) !== "00501") fail("ISA12 is not a supported 00501 interchange version");
   if (!opts.allowTestFiles && elem(isa, 15) !== "P")
     fail("interchange is not flagged production (ISA15 != P)");
-  if (elem(gs, 1) !== "HP") fail("functional group is not a health care payment (GS01 != HP)");
-  if (!elem(gs, 8).startsWith("005010X221")) fail("GS08 is not a 005010X221 (5010 835) version");
-  const groupCreationDate = toIsoDate(elem(gs, 4), "GS04");
-  if (elem(gs, 6) === "" || elem(ge, 2) !== elem(gs, 6)) fail("GE02 does not match GS06");
-  if (elem(ge, 1) !== String(stAts.length)) fail("GE01 transaction-set count does not match");
   if (elem(iea, 2) !== isa13) fail("IEA02 does not match ISA13");
-  if (elem(iea, 1) !== "1") fail("IEA01 functional-group count is not 1");
-  const sets = stAts.map((stAt, i): TransactionSet => {
-    const seAt = seAts[i] as number;
-    const st = segs[stAt] as X12Segment;
-    const se = segs[seAt] as X12Segment;
-    const st02 = elem(st, 2);
-    if (!st02) fail("missing ST02 transaction set control number");
-    if (elem(st, 1) !== "835") fail("transaction set is not an 835");
-    if (elem(se, 2) !== st02) fail("SE02 does not match ST02");
-    if (elem(se, 1) !== String(seAt - stAt + 1))
-      fail("SE01 segment count does not match the transaction set");
-    return { st02, body: segs.slice(stAt + 1, seAt) };
-  });
-  if (new Set(sets.map((x) => x.st02)).size !== sets.length)
-    fail("two transaction sets share an ST02");
-  return { isa13, groupCreationDate, sets };
+  if (!/^\d{1,9}$/.test(isa13) || !countMatches(elem(iea, 1), ids.filter((id) => id === "GS").length))
+    fail("IEA01 functional-group count does not match");
+  const sets: TransactionSet[] = [];
+  let currentGroup: TransactionSet["group"] | undefined;
+  let groupSets: TransactionSet[] = [];
+  let groupStControls = new Set<string>();
+  let transactionStart = -1;
+  let groupPosition = 0;
+  const groupControlNumbers = new Set<string>();
+  const finishGroup = (end: number) => {
+    if (!currentGroup) fail("GE has no matching GS");
+    if (transactionStart !== -1) fail("functional group ended with an unclosed ST/SE");
+    const ge = segs[end] as X12Segment;
+    if (elem(ge, 2) !== currentGroup.gs06) fail(`functional group ${currentGroup.position}: GE02 does not match GS06`);
+    if (!countMatches(elem(ge, 1), groupSets.length)) fail(`functional group ${currentGroup.position}: GE01 transaction-set count does not match`);
+    if (!groupSets.length) fail(`functional group ${currentGroup.position} contains no transaction sets`);
+    sets.push(...groupSets);
+    groupSets = [];
+    groupStControls = new Set<string>();
+    currentGroup = undefined;
+  };
+  for (let i = 1; i < segs.length - 1; i++) {
+    const id = ids[i];
+    if (id === "ISA" || id === "IEA") fail("multiple or nested interchange envelope");
+    if (id === "GS") {
+      if (currentGroup || transactionStart !== -1) fail("functional groups are improperly nested");
+      groupPosition++;
+      const gs = segs[i] as X12Segment;
+      if (elem(gs, 1) !== "HP")
+        throw new X12ParseError("X12_835_UNSUPPORTED_ROUTING", `functional group ${groupPosition} is not owned by M25`);
+      const version = elem(gs, 8);
+      if (!version.startsWith("005010X221")) fail(`functional group ${groupPosition}: GS08 is not a 005010X221 (5010 835) version`);
+      if (!elem(gs, 2) || !elem(gs, 3) || !elem(gs, 5)) fail(`functional group ${groupPosition}: GS sender, receiver, or creation time is missing`);
+      const gs06 = elem(gs, 6);
+      if (!/^\d{1,9}$/.test(gs06)) fail(`functional group ${groupPosition}: GS06 control number is invalid`);
+      if (groupControlNumbers.has(gs06)) fail(`functional group ${groupPosition}: GS06 is reused within one interchange`);
+      groupControlNumbers.add(gs06);
+      groupStControls = new Set<string>();
+      currentGroup = { gs01: elem(gs, 1), gs02: elem(gs, 2), gs03: elem(gs, 3), gs04: toIsoDate(elem(gs, 4), "GS04"), gs05: elem(gs, 5), gs06, gs08: version, position: groupPosition };
+      continue;
+    }
+    if (id === "GE") { finishGroup(i); continue; }
+    if (!currentGroup) fail("segment is outside a functional group");
+    if (id === "ST") {
+      if (transactionStart !== -1) fail("nested ST transaction set");
+      transactionStart = i;
+    } else if (id === "SE") {
+      if (transactionStart === -1) fail("orphan SE transaction set");
+      const st = segs[transactionStart] as X12Segment;
+      const se = segs[i] as X12Segment;
+      const st02 = elem(st, 2);
+      const transactionPosition = groupSets.length + 1;
+      const context = `functional group ${currentGroup.position}, transaction ${transactionPosition}`;
+      if (!/^\d{1,9}$/.test(st02)) fail(`${context}: ST02 control number is invalid`);
+      if (elem(st, 1) !== "835") fail(`${context}: transaction set is not an 835`);
+      if (elem(se, 2) !== st02) fail(`${context}: SE02 does not match ST02`);
+      if (!countMatches(elem(se, 1), i - transactionStart + 1)) fail(`${context}: SE01 segment count does not match`);
+      if (groupStControls.has(st02)) fail(`${context}: ST02 is duplicated within its functional group`);
+      groupStControls.add(st02);
+      groupSets.push({ st02, body: segs.slice(transactionStart + 1, i), group: currentGroup, position: groupSets.length + 1 });
+      transactionStart = -1;
+    } else if (transactionStart === -1) fail("envelope segments are out of order");
+  }
+  if (currentGroup) fail(`functional group ${currentGroup.position} is missing GE`);
+  if (!sets.length) fail("interchange contains no supported 835 transaction sets");
+  return { isa13, sets };
 }
 
 function parsePlb(
@@ -430,24 +464,21 @@ function partyOf(seg: X12Segment): ParsedRemittanceParty {
   };
 }
 
-/** Party-loop REF segments (payee tax id / PTAN, payer additional id); other REFs are left alone. */
+/** Party-loop REF segments (payee TIN / payer-assigned id, payer additional id); other REFs are left alone. */
 function applyPartyRef(party: ParsedRemittanceParty, kind: "PR" | "PE", seg: X12Segment): void {
   const q = elem(seg, 1);
   const v = elem(seg, 2);
   if (!v) return;
   party.references ??= [];
-  // Identity-bearing references must be unambiguous. In particular, consumers use the normalized
-  // `taxId` / `payerAssignedId` fields; silently letting a later REF overwrite an earlier value
-  // could make a contradictory payee identity pass verification.
-  if (
-    kind === "PE" &&
-    (q === "TJ" || q === "PQ") &&
-    party.references.some((ref) => ref.qualifier === q)
-  )
-    fail(`duplicate payee REF ${q} identity`);
+  // TJ participates in payee verification: repeated identical values are harmless, conflicting values
+  // must fail closed. PQ is preserved as payer-assigned data only; it is not assumed to be PTAN and may
+  // repeat because the REF segment itself is repeatable in the payee loop.
+  const prior = party.references.filter((ref) => ref.qualifier === q);
+  if (kind === "PE" && q === "TJ" && prior.some((ref) => ref.value !== v))
+    fail("conflicting payee REF TJ identities");
   party.references.push({ qualifier: q, value: v });
-  if (kind === "PE" && q === "TJ") party.taxId = v;
-  else if (kind === "PE" && q === "PQ") party.payerAssignedId = v;
+  if (kind === "PE" && q === "TJ") party.taxId ??= v;
+  else if (kind === "PE" && q === "PQ") party.payerAssignedId ??= v;
   else if (kind === "PR" && q === "2U") party.additionalPayerId = v;
 }
 
@@ -565,10 +596,10 @@ function checkBalances(b: Body, total: number): void {
 function buildSet(
   doc: { readonly componentSeparator: string },
   isa13: string,
-  gs06: string,
+  isaSender: string,
+  isaReceiver: string,
   chosen: TransactionSet,
   payerProgram: PayerProgram,
-  groupCreationDate: string,
 ): ParsedRemittanceAdvice {
   const { st02, body } = chosen;
   const b = walkBody(body, doc.componentSeparator);
@@ -589,8 +620,17 @@ function buildSet(
   return {
     payerProgram,
     interchangeControlNumber: isa13,
+    interchangeSenderCode: isaSender,
+    interchangeReceiverCode: isaReceiver,
     transactionSetControlNumber: st02,
-    functionalGroupControlNumber: gs06,
+    functionalGroupControlNumber: chosen.group.gs06,
+    functionalGroupIdentifierCode: chosen.group.gs01,
+    functionalGroupSenderCode: chosen.group.gs02,
+    functionalGroupReceiverCode: chosen.group.gs03,
+    functionalGroupCreationTime: chosen.group.gs05,
+    functionalGroupVersion: chosen.group.gs08,
+    functionalGroupPosition: chosen.group.position,
+    transactionSetPosition: chosen.position,
     checkOrEftTraceNumber: trace,
     ...(elem(b.trn, 3) ? { originatingCompanyId: elem(b.trn, 3) } : {}),
     payer: b.parties.PR as ParsedRemittanceParty,
@@ -622,7 +662,7 @@ function buildSet(
       : {}),
     paymentEffectiveDate: b.paymentEffectiveDate,
     adjudicationCutoffDate: b.adjudicationCutoffDate,
-    functionalGroupCreationDate: groupCreationDate,
+    functionalGroupCreationDate: chosen.group.gs04,
     productionDate: b.paymentEffectiveDate ? `${b.paymentEffectiveDate}T00:00:00Z` : null,
     claims: b.claims.map(toClaim),
   };
@@ -635,16 +675,20 @@ function build(
   transactionSetControlNumber?: string,
 ): ParsedRemittanceAdvice {
   const doc = tokenizeX12(raw);
-  const { isa13, groupCreationDate, sets } = unwrapEnvelope(doc.segments, opts);
+  const { isa13, sets } = unwrapEnvelope(doc.segments, opts);
   const chosen =
     transactionSetControlNumber === undefined
       ? sets.length === 1
         ? sets[0]
         : fail("the file holds several transaction sets; select one by ST02")
-      : sets.find((x) => x.st02 === transactionSetControlNumber);
+      : sets.filter((x) => x.st02 === transactionSetControlNumber).length === 1
+        ? sets.find((x) => x.st02 === transactionSetControlNumber)
+        : sets.some((x) => x.st02 === transactionSetControlNumber)
+          ? fail("ST02 is ambiguous across functional groups; use parseX12835AllSets")
+          : fail("no transaction set with that ST02 in the file");
   if (!chosen) return fail("no transaction set with that ST02 in the file");
-  const gs = doc.segments.find((segment) => segId(segment) === "GS");
-  return buildSet(doc, isa13, gs ? elem(gs, 6) : "", chosen, payerProgram, groupCreationDate);
+  const isa = doc.segments[0] as X12Segment;
+  return buildSet(doc, isa13, elem(isa, 6), elem(isa, 8), chosen, payerProgram);
 }
 
 /** Parse raw 835 text. Never throws: any failure is a non-retryable degraded envelope (PHI-free reason). */
@@ -676,13 +720,58 @@ export function parseX12835AllSets(
 ): X12WorkerResult<ParsedRemittanceAdvice[]> {
   try {
     const doc = tokenizeX12(raw);
-    const { isa13, groupCreationDate, sets } = unwrapEnvelope(doc.segments, opts);
+    const { isa13, sets } = unwrapEnvelope(doc.segments, opts);
     return {
       ok: true,
       value: sets.map((set) => {
-        const gs = doc.segments.find((segment) => segId(segment) === "GS");
-        return buildSet(doc, isa13, gs ? elem(gs, 6) : "", set, payerProgram, groupCreationDate);
+        const isa = doc.segments[0] as X12Segment;
+        return buildSet(doc, isa13, elem(isa, 6), elem(isa, 8), set, payerProgram);
       }),
+    };
+  } catch (err) {
+    if (err instanceof X12ParseError) return degraded835(err.code, err.message, "parse835", false);
+    return degraded835("X12_835_PARSE_FAILED", "unexpected parser failure", "parse835", false);
+  }
+}
+
+/** Parse one interchange and retain the complete ISA → GS → ST hierarchy in one tokenization pass. */
+export function parseX12835Grouped(
+  raw: string,
+  payerProgram: PayerProgram,
+  opts: ParseX12835Options = {},
+): X12WorkerResult<Parsed835Interchange> {
+  try {
+    const doc = tokenizeX12(raw);
+    const { isa13, sets } = unwrapEnvelope(doc.segments, opts);
+    const isa = doc.segments[0] as X12Segment;
+    const parsed = sets.map((set) => buildSet(doc, isa13, elem(isa, 6), elem(isa, 8), set, payerProgram));
+    const groups = new Map<number, { metadata: TransactionSet["group"]; transactionSets: (typeof parsed)[number][] }>();
+    for (let i = 0; i < sets.length; i++) {
+      const group = sets[i]!.group;
+      const aggregate = groups.get(group.position) ?? { metadata: group, transactionSets: [] };
+      aggregate.transactionSets.push(parsed[i]!);
+      groups.set(group.position, aggregate);
+    }
+    return {
+      ok: true,
+      value: {
+        interchangeControlNumber: isa13,
+        senderCode: elem(isa, 6),
+        receiverCode: elem(isa, 8),
+        functionalGroups: [...groups.values()].map(({ metadata: group, transactionSets }) => {
+          return {
+            functionalIdentifierCode: group.gs01,
+            applicationSenderCode: group.gs02,
+            applicationReceiverCode: group.gs03,
+            creationDate: group.gs04,
+            creationTime: group.gs05,
+            controlNumber: group.gs06,
+            version: group.gs08,
+            position: group.position,
+            transactionSets,
+          };
+        }),
+      },
     };
   } catch (err) {
     if (err instanceof X12ParseError) return degraded835(err.code, err.message, "parse835", false);

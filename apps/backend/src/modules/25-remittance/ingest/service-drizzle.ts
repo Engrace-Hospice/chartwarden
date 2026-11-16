@@ -8,7 +8,8 @@ import {
   parseX12TransactionSetControlNumbers,
 } from "@chartwarden/x12-835-client";
 import type { ParsedClaim835, ParsedRemittanceAdvice } from "@chartwarden/x12-835-client";
-import { and, eq, or, sql } from "drizzle-orm";
+import { isValidNpi } from "@chartwarden/x12-837-client";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { autoMatch, classifyPostingOutcome, effectiveCategory, routeAdjustment } from "../domain";
 import type { DenialCategory } from "../domain";
 import { decimalDollarsToCents } from "../domain/era-match-review";
@@ -178,11 +179,21 @@ type AdviceContext = {
   totalPaymentAmount: string;
 };
 
-const TIN_DIGITS = 9;
-/** Digits only (REF*TJ and the sealed EIN may carry a hyphen); null unless exactly nine remain. */
+function heldDuplicateReason(summary: unknown): NonNullable<Extract<PostAdviceResult, { outcome: "held_duplicate" }>["reason"]> {
+  const reason =
+    summary && typeof summary === "object" ? (summary as { reason?: unknown }).reason : null;
+  if (reason === "MISSING_FINANCIAL_IDENTITY" || reason === "LEGACY_IDENTITY_AMBIGUOUS")
+    return reason;
+  return "CROSS_SOURCE_POSTED_IDENTITY";
+}
+
+/** Accept a bare TIN, a canonical EIN, or a canonical SSN; reject arbitrary punctuation/characters. */
 export function normaliseTin(raw: string | null | undefined): string | null {
-  const digits = (raw ?? "").replace(/\D/g, "");
-  return digits.length === TIN_DIGITS ? digits : null;
+  const value = raw?.trim() ?? "";
+  if (/^\d{9}$/.test(value)) return value;
+  if (/^\d{2}-\d{7}$/.test(value)) return value.replace("-", "");
+  if (/^\d{3}-\d{2}-\d{4}$/.test(value)) return value.replaceAll("-", "");
+  return null;
 }
 
 export type PayeeNpiLookup = (
@@ -207,6 +218,20 @@ export type PayeeTinPolicy = (
   organizationId: string,
   payerKind: string,
 ) => boolean | Promise<boolean>;
+type PayeeIdentityEvidence = {
+  readonly version: 1;
+  readonly method: "npi" | "fi_tin";
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly payerProgram: string;
+  readonly tinVerified: boolean | null;
+  readonly authorizationSource?: "M25_PAYEE_TIN_POLICY";
+  readonly verifiedAt: string;
+};
+type PayeeIdentityCheck = {
+  readonly reason: string | null;
+  readonly evidence: PayeeIdentityEvidence | null;
+};
 /** Explicit opt-out of the payee check, for tests that are not about it. */
 export const PAYEE_UNCHECKED = "unchecked" as const;
 
@@ -363,8 +388,22 @@ export function buildDrizzleM25IngestService(
     providerEntityId: string,
     payee: ParsedRemittanceAdvice["payee"],
     payerKind: string,
-  ): Promise<string | null> {
-    if (deps.payeeNpi === PAYEE_UNCHECKED) return null;
+  ): Promise<PayeeIdentityCheck> {
+    if (deps.payeeNpi === PAYEE_UNCHECKED) return { reason: null, evidence: null };
+    const evidence = (
+      method: PayeeIdentityEvidence["method"],
+      tinVerified: boolean | null,
+      authorizationSource?: PayeeIdentityEvidence["authorizationSource"],
+    ): PayeeIdentityEvidence => ({
+      version: 1,
+      method,
+      organizationId,
+      providerEntityId,
+      payerProgram: payerKind,
+      tinVerified,
+      ...(authorizationSource ? { authorizationSource } : {}),
+      verifiedAt: new Date().toISOString(),
+    });
     // A tax-id-only payee (N103=FI) is compared on the TIN alone, only when the tenant's policy allows it.
     if (
       payee?.idQualifier === "FI" &&
@@ -374,21 +413,39 @@ export function buildDrizzleM25IngestService(
       (await deps.payeeTinPolicy(organizationId, payerKind))
     ) {
       const identifierMismatch = await tinMismatch(organizationId, providerEntityId, payee.id);
-      if (identifierMismatch) return identifierMismatch;
+      if (identifierMismatch) return { reason: identifierMismatch, evidence: null };
       // Some senders include both N104 (FI) and REF*TJ. If both are present, both must identify
       // the same provider; accepting one while ignoring a contradictory second value is unsafe.
-      return payee.taxId ? tinMismatch(organizationId, providerEntityId, payee.taxId) : null;
+      const additionalTinMismatch = payee.taxId
+        ? await tinMismatch(organizationId, providerEntityId, payee.taxId)
+        : null;
+      return additionalTinMismatch
+        ? { reason: additionalTinMismatch, evidence: null }
+        : {
+            reason: null,
+            evidence: evidence("fi_tin", true, "M25_PAYEE_TIN_POLICY"),
+          };
     }
-    const expected = (await deps.payeeNpi(organizationId, providerEntityId))?.trim();
-    if (!expected) return "payee check: the provider entity has no NPI on file";
+    let expected: string | null;
+    try {
+      expected = (await deps.payeeNpi(organizationId, providerEntityId))?.trim() ?? null;
+    } catch {
+      return { reason: "payee check: the provider entity NPI could not be read", evidence: null };
+    }
+    if (!expected || !isValidNpi(expected))
+      return { reason: "payee check: the provider entity has no valid NPI on file", evidence: null };
     if (payee?.idQualifier !== "XX" || !payee.id)
-      return "payee check: the 835 payee carries no NPI (N103 XX)";
+      return { reason: "payee check: the 835 payee carries no NPI (N103 XX)", evidence: null };
+    if (!isValidNpi(payee.id)) return { reason: "payee check: the 835 payee NPI is invalid", evidence: null };
     if (payee.id !== expected)
-      return "payee check: the 835 payee NPI is not this provider entity's";
+      return { reason: "payee check: the 835 payee NPI is not this provider entity's", evidence: null };
     // NPI matched: a REF*TJ the payer sent must also be this tenant's (a mismatch is a mis-addressed file).
-    return deps.payeeTin && payee.taxId
-      ? tinMismatch(organizationId, providerEntityId, payee.taxId)
+    const taxMismatch = payee.taxId
+      ? await tinMismatch(organizationId, providerEntityId, payee.taxId)
       : null;
+    return taxMismatch
+      ? { reason: taxMismatch, evidence: null }
+      : { reason: null, evidence: evidence("npi", payee.taxId ? true : null) };
   }
 
   async function resolveCategory(carcCode: string): Promise<DenialCategory | null> {
@@ -1025,6 +1082,61 @@ export function buildDrizzleM25IngestService(
     }
   }
 
+  async function insertEnvelopeRow(
+    tx: M25Tx,
+    actor: M25IngestActor,
+    input: ReceiveAdviceInput,
+    parsed: ParsedRemittanceAdvice,
+    digest: string,
+    identityEvidence: PayeeIdentityEvidence | null,
+    state: "queued" | "held_duplicate",
+    summary: Readonly<Record<string, string>> | null = null,
+  ): Promise<string | null> {
+    const [row] = await tx
+      .insert(RA)
+      .values({
+        organizationId: actor.organizationId,
+        providerEntityId: input.providerEntityId,
+        payerId: input.payerId,
+        payerKind: input.payerKind,
+        interchangeControlNumber: parsed.interchangeControlNumber,
+        interchangeSenderCode: parsed.interchangeSenderCode ?? null,
+        interchangeReceiverCode: parsed.interchangeReceiverCode ?? null,
+        functionalGroupControlNumber: parsed.functionalGroupControlNumber ?? null,
+        functionalGroupMetadata: {
+          identifierCode: parsed.functionalGroupIdentifierCode ?? null,
+          senderCode: parsed.functionalGroupSenderCode ?? null,
+          receiverCode: parsed.functionalGroupReceiverCode ?? null,
+          creationTime: parsed.functionalGroupCreationTime ?? null,
+          version: parsed.functionalGroupVersion ?? null,
+          position: parsed.functionalGroupPosition ?? null,
+        },
+        transactionSetPosition: parsed.transactionSetPosition ?? null,
+        transactionSetControlNumber: parsed.transactionSetControlNumber,
+        checkOrEftTraceNumber: parsed.checkOrEftTraceNumber ?? null,
+        paymentMethod: parsed.paymentMethod,
+        totalPaymentAmount: money(parsed.totalPaymentAmount),
+        plbTotalAmount: money(parsed.providerAdjustmentTotal ?? 0),
+        contentDigest: digest,
+        payeeIdentityEvidence: identityEvidence,
+        paymentEffectiveDate: parsed.paymentEffectiveDate,
+        adjudicationCutoffDate: parsed.adjudicationCutoffDate,
+        functionalGroupCreationDate: parsed.functionalGroupCreationDate,
+        productionDate: parsed.paymentEffectiveDate
+          ? productionDay(parsed.paymentEffectiveDate)
+          : null,
+        minioObjectKey: input.minioObjectKey,
+        fileSha256: input.fileSha256,
+        parseStatus: state,
+        parseSummary: summary,
+      })
+      .onConflictDoNothing({
+        target: [RA.organizationId, RA.providerEntityId, RA.interchangeControlNumber, RA.interchangeSenderCode, RA.interchangeReceiverCode, RA.functionalGroupControlNumber, RA.transactionSetControlNumber],
+      })
+      .returning({ id: RA.id });
+    return row?.id ?? null;
+  }
+
   /**
    * Insert one transaction set's envelope row + its `m25.edi.835_received` event (tx-bound). The DB's
    * `ux_remittance_envelope_dedupe` unique index is the real dedup enforcement (§2.6) — a conflicting insert is
@@ -1036,6 +1148,7 @@ export function buildDrizzleM25IngestService(
     actor: M25IngestActor,
     input: ReceiveAdviceInput,
     parsed: ParsedRemittanceAdvice,
+    identityEvidence: PayeeIdentityEvidence | null,
   ): Promise<ReceiveAdviceResult> {
     // A clearinghouse resend carries NEW ISA13/ST02 control numbers, so the unique index above cannot see it.
     // The payment itself is identified by TRN02 + payer + payee + amount: the same payment is never posted twice.
@@ -1047,6 +1160,9 @@ export function buildDrizzleM25IngestService(
       providerEntityId: input.providerEntityId,
       paymentTrace: trace ?? null,
       interchangeControlNumber: parsed.interchangeControlNumber,
+      interchangeSenderCode: parsed.interchangeSenderCode ?? null,
+      interchangeReceiverCode: parsed.interchangeReceiverCode ?? null,
+      functionalGroupControlNumber: parsed.functionalGroupControlNumber ?? null,
       transactionSetControlNumber: parsed.transactionSetControlNumber,
     });
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${serializationKey}, 1))`);
@@ -1063,6 +1179,9 @@ export function buildDrizzleM25IngestService(
           or(
             and(
               eq(CLAIMMD_ERA_STAGE.interchangeControlNumber, parsed.interchangeControlNumber),
+              eq(CLAIMMD_ERA_STAGE.interchangeSenderCode, parsed.interchangeSenderCode ?? ""),
+              eq(CLAIMMD_ERA_STAGE.interchangeReceiverCode, parsed.interchangeReceiverCode ?? ""),
+              eq(CLAIMMD_ERA_STAGE.functionalGroupControlNumber, parsed.functionalGroupControlNumber ?? ""),
               eq(CLAIMMD_ERA_STAGE.transactionSetControlNumber, parsed.transactionSetControlNumber),
             ),
             ...(trace
@@ -1083,6 +1202,61 @@ export function buildDrizzleM25IngestService(
         stageId: stagedIdentity[0].id,
         reason: "CLAIMMD_ERA_STAGE_MATCH",
       };
+    // Historical rows have no reliable GS06/sender provenance. Conservatively treat a matching
+    // ISA13/ST02 legacy row as a duplicate; never allow the new wider key to repost it.
+    const [legacyControls] = await tx
+      .select({ id: RA.id, fileSha256: RA.fileSha256 })
+      .from(RA)
+      .where(
+        and(
+          eq(RA.organizationId, actor.organizationId),
+          eq(RA.providerEntityId, input.providerEntityId),
+          eq(RA.interchangeControlNumber, parsed.interchangeControlNumber),
+          eq(RA.transactionSetControlNumber, parsed.transactionSetControlNumber),
+          isNull(RA.functionalGroupControlNumber),
+        ),
+      )
+      .limit(1);
+    if (legacyControls) {
+      if (legacyControls.fileSha256.toLowerCase() === input.fileSha256.toLowerCase())
+        return { outcome: "duplicate", existingAdviceId: legacyControls.id };
+      const heldAdviceId = await insertEnvelopeRow(
+        tx,
+        actor,
+        input,
+        parsed,
+        digest,
+        identityEvidence,
+        "held_duplicate",
+        { reason: "LEGACY_IDENTITY_AMBIGUOUS", existingAdviceId: legacyControls.id },
+      );
+      if (!heldAdviceId) {
+        const [scopedDuplicate] = await tx
+          .select({ id: RA.id })
+          .from(RA)
+          .where(
+            and(
+              eq(RA.organizationId, actor.organizationId),
+              eq(RA.providerEntityId, input.providerEntityId),
+              eq(RA.interchangeControlNumber, parsed.interchangeControlNumber),
+              eq(RA.interchangeSenderCode, parsed.interchangeSenderCode ?? ""),
+              eq(RA.interchangeReceiverCode, parsed.interchangeReceiverCode ?? ""),
+              eq(RA.functionalGroupControlNumber, parsed.functionalGroupControlNumber ?? ""),
+              eq(RA.transactionSetControlNumber, parsed.transactionSetControlNumber),
+            ),
+          )
+          .limit(1);
+        if (!scopedDuplicate) throw new Error("m25-ingest: legacy hold insert conflicted but no row found");
+        return { outcome: "duplicate", existingAdviceId: scopedDuplicate.id };
+      }
+      await deps.rawStore?.put(actor.organizationId, heldAdviceId, input.rawEdi);
+      return {
+        outcome: "held_duplicate",
+        adviceId: heldAdviceId,
+        existingAdviceId: legacyControls.id,
+        reason: "LEGACY_IDENTITY_AMBIGUOUS",
+      };
+    }
     if (trace) {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}|${input.providerEntityId}|${input.payerId}|${trace}`}, 0))`,
@@ -1104,41 +1278,26 @@ export function buildDrizzleM25IngestService(
         .limit(1);
       if (same) return { outcome: "duplicate", existingAdviceId: same.id };
     }
-    const [row] = await tx
-      .insert(RA)
-      .values({
-        organizationId: actor.organizationId,
-        providerEntityId: input.providerEntityId,
-        payerId: input.payerId,
-        payerKind: input.payerKind,
-        interchangeControlNumber: parsed.interchangeControlNumber,
-        transactionSetControlNumber: parsed.transactionSetControlNumber,
-        checkOrEftTraceNumber: parsed.checkOrEftTraceNumber ?? null,
-        paymentMethod: parsed.paymentMethod,
-        totalPaymentAmount: money(parsed.totalPaymentAmount),
-        plbTotalAmount: money(parsed.providerAdjustmentTotal ?? 0),
-        contentDigest: digest,
-        paymentEffectiveDate: parsed.paymentEffectiveDate,
-        adjudicationCutoffDate: parsed.adjudicationCutoffDate,
-        functionalGroupCreationDate: parsed.functionalGroupCreationDate,
-        productionDate: parsed.paymentEffectiveDate
-          ? productionDay(parsed.paymentEffectiveDate)
-          : null,
-        minioObjectKey: input.minioObjectKey,
-        fileSha256: input.fileSha256,
-        parseStatus: "queued",
-      })
-      .onConflictDoNothing({
-        target: [RA.interchangeControlNumber, RA.transactionSetControlNumber, RA.providerEntityId],
-      })
-      .returning({ id: RA.id });
-    if (!row) {
+    const rowId = await insertEnvelopeRow(
+      tx,
+      actor,
+      input,
+      parsed,
+      digest,
+      identityEvidence,
+      "queued",
+    );
+    if (!rowId) {
       const [dup] = await tx
         .select({ id: RA.id })
         .from(RA)
         .where(
           and(
+            eq(RA.organizationId, actor.organizationId),
             eq(RA.interchangeControlNumber, parsed.interchangeControlNumber),
+            eq(RA.interchangeSenderCode, parsed.interchangeSenderCode ?? ""),
+            eq(RA.interchangeReceiverCode, parsed.interchangeReceiverCode ?? ""),
+            eq(RA.functionalGroupControlNumber, parsed.functionalGroupControlNumber ?? ""),
             eq(RA.transactionSetControlNumber, parsed.transactionSetControlNumber),
             eq(RA.providerEntityId, input.providerEntityId),
           ),
@@ -1149,14 +1308,14 @@ export function buildDrizzleM25IngestService(
     }
     // Staged inside the transaction under the new row's id: a store failure rolls the receive back, so
     // nothing is queued whose raw text cannot be read at post time (every set of a file stages the whole file).
-    await deps.rawStore?.put(actor.organizationId, row.id, input.rawEdi);
+    await deps.rawStore?.put(actor.organizationId, rowId, input.rawEdi);
     await outbox.publish(tx, {
       eventName: "m25.edi.835_received",
       organizationId: actor.organizationId,
       aggregateKind: "remittance_advice",
-      aggregateId: row.id,
+      aggregateId: rowId,
       payload: {
-        remittanceAdviceId: row.id,
+        remittanceAdviceId: rowId,
         providerEntityId: input.providerEntityId,
         payerId: input.payerId,
         payerProgram: input.payerKind,
@@ -1164,7 +1323,7 @@ export function buildDrizzleM25IngestService(
         fileSha256: input.fileSha256,
       },
     });
-    return { outcome: "queued", adviceId: row.id };
+    return { outcome: "queued", adviceId: rowId };
   }
 
   /**
@@ -1370,7 +1529,7 @@ export function buildDrizzleM25IngestService(
       }
       // One file may hold several ST/SE sets; each is its own advice (its own dedup key and event). Every set is
       // parsed and payee-checked BEFORE anything is stored, so one bad set refuses the whole file.
-      const parsedSets: ParsedRemittanceAdvice[] = [];
+      const parsedSets: { advice: ParsedRemittanceAdvice; identityEvidence: PayeeIdentityEvidence | null }[] = [];
       const st02s = parseX12TransactionSetControlNumbers(input.rawEdi);
       const request = {
         minioObjectKey: input.minioObjectKey,
@@ -1380,6 +1539,12 @@ export function buildDrizzleM25IngestService(
       // One tokenize for the whole file when the client can; else one parse per ST02 (test doubles).
       const all = client.parse835All ? await client.parse835All(request) : undefined;
       if (all && !all.ok) {
+        if (all.degraded.code === "X12_835_UNSUPPORTED_ROUTING")
+          return {
+            outcome: "unsupported",
+            code: "X12_835_UNSUPPORTED_ROUTING",
+            reason: all.degraded.reason,
+          };
         // A retryable degraded result is a parser/transport outage, not a property of the file.
         return {
           outcome: "malformed",
@@ -1405,6 +1570,12 @@ export function buildDrizzleM25IngestService(
               transactionSetControlNumber: st02,
             });
         if (!parsed.ok) {
+          if (parsed.degraded.code === "X12_835_UNSUPPORTED_ROUTING")
+            return {
+              outcome: "unsupported",
+              code: "X12_835_UNSUPPORTED_ROUTING",
+              reason: parsed.degraded.reason,
+            };
           return {
             outcome: "malformed",
             reason: parsed.degraded.reason,
@@ -1421,20 +1592,20 @@ export function buildDrizzleM25IngestService(
             cause: "content",
           };
         }
-        const mismatch = await payeeMismatch(
+        const identity = await payeeMismatch(
           actor.organizationId,
           input.providerEntityId,
           parsed.value.payee,
           input.payerKind,
         );
         // Payee/NPI checks depend on tenant configuration: transient, never counted toward quarantine.
-        if (mismatch)
+        if (identity.reason)
           return {
             outcome: "malformed",
-            reason: mismatch,
+            reason: identity.reason,
             cause: "environment",
           };
-        parsedSets.push(parsed.value);
+        parsedSets.push({ advice: parsed.value, identityEvidence: identity.evidence });
       }
 
       // The response carries the first set's advice (queued if any set is new, else the existing duplicate);
@@ -1444,7 +1615,8 @@ export function buildDrizzleM25IngestService(
         { organizationId: actor.organizationId, userId: "" },
         async (tx) => {
           const out: ReceiveAdviceResult[] = [];
-          for (const parsed of parsedSets) out.push(await queueEnvelope(tx, actor, input, parsed));
+          for (const item of parsedSets)
+            out.push(await queueEnvelope(tx, actor, input, item.advice, item.identityEvidence));
           return out;
         },
       );
@@ -1479,12 +1651,7 @@ export function buildDrizzleM25IngestService(
       if (!advice) return { outcome: "not_found", adviceId };
       if (advice.parseStatus !== "queued" && advice.parseStatus !== "failed") {
         if ((advice.parseStatus as string) === "held_duplicate") {
-          const reason =
-            advice.parseSummary &&
-            typeof advice.parseSummary === "object" &&
-            (advice.parseSummary as { reason?: unknown }).reason === "MISSING_FINANCIAL_IDENTITY"
-              ? ("MISSING_FINANCIAL_IDENTITY" as const)
-              : ("CROSS_SOURCE_POSTED_IDENTITY" as const);
+          const reason = heldDuplicateReason(advice.parseSummary);
           return { outcome: "held_duplicate", adviceId, reason };
         }
         // A redelivery retries a delete that failed after the original post (delete is idempotent).
@@ -1532,15 +1699,15 @@ export function buildDrizzleM25IngestService(
         return { outcome: "failed", adviceId, reason: parsed.degraded.reason };
       }
 
-      const mismatch = await payeeMismatch(
+      const identity = await payeeMismatch(
         actor.organizationId,
         advice.providerEntityId,
         parsed.value.payee,
         advice.payerKind,
       );
-      if (mismatch) {
-        await markFailed(actor, adviceId, mismatch);
-        return { outcome: "failed", adviceId, reason: mismatch };
+      if (identity.reason) {
+        await markFailed(actor, adviceId, identity.reason);
+        return { outcome: "failed", adviceId, reason: identity.reason };
       }
 
       try {
@@ -1560,13 +1727,7 @@ export function buildDrizzleM25IngestService(
               if ((currentGuard.parseStatus as string) === "held_duplicate")
                 return {
                   outcome: "held_duplicate" as const,
-                  reason:
-                    currentGuard.parseSummary &&
-                    typeof currentGuard.parseSummary === "object" &&
-                    (currentGuard.parseSummary as { reason?: unknown }).reason ===
-                      "MISSING_FINANCIAL_IDENTITY"
-                      ? ("MISSING_FINANCIAL_IDENTITY" as const)
-                      : ("CROSS_SOURCE_POSTED_IDENTITY" as const),
+                  reason: heldDuplicateReason(currentGuard.parseSummary),
                 };
               return { outcome: "already_posted" as const };
             }
@@ -1627,6 +1788,10 @@ export function buildDrizzleM25IngestService(
                 };
               }
             }
+            await tx
+              .update(RA)
+              .set({ payeeIdentityEvidence: identity.evidence })
+              .where(eq(RA.id, adviceId));
             return postClaimsInTransaction(
               tx,
               actor,

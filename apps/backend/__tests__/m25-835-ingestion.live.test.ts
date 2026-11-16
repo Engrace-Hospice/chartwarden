@@ -551,6 +551,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       const pcn = `SYNTHETIC-CLAIMMD-PCN-${stageId.slice(0, 8)}`;
       const trace = `SYNTHETIC-CLAIMMD-TRACE-${stageId.slice(0, 8)}`;
       const transactionSetControlNumber = String(Date.now() % 100_000_000).padStart(8, "0");
+      const historicalSubmissionEvidenceId = crypto.randomUUID();
       const parsed: ParsedRemittanceAdvice = {
         payerProgram: "commercial",
         payer: { name: "Synthetic Payer", id: payerId },
@@ -564,6 +565,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         checkOrEftTraceNumber: trace,
         paymentMethod: "eft",
         totalPaymentAmount: 42,
+        paymentEffectiveDate: "2026-03-01",
         productionDate: "2026-03-01",
         claims: [
           {
@@ -612,6 +614,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
                 billingModule: "M41",
                 fileIndex: 0,
                 transactionSetControlNumber,
+                submissionEvidenceIds: [historicalSubmissionEvidenceId],
               },
             ],
           }),
@@ -703,7 +706,6 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
           crypto.randomUUID(),
         ],
       );
-      const historicalSubmissionEvidenceId = crypto.randomUUID();
       await admin.query(
         `INSERT INTO claimmd_submission_evidence
           (id,organization_id,provider_entity_id,claim_id,billing_module,submission_id,attempt_key,vendor,
@@ -1504,6 +1506,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       const trace = `SYNTHETIC-LEGACY-FIRST-${suffix}`;
       const pcn = `SYNTHETIC-LEGACY-PCN-${suffix}`;
       const st02 = String(Date.now() % 100_000_000).padStart(8, "0");
+      const historicalSubmissionEvidenceId = crypto.randomUUID();
       const parsed: ParsedRemittanceAdvice = {
         payerProgram: "commercial",
         payer: { name: "Synthetic Legacy-First Payer", id: payerId },
@@ -1517,6 +1520,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         checkOrEftTraceNumber: trace,
         paymentMethod: "eft",
         totalPaymentAmount: 42,
+        paymentEffectiveDate: "2026-03-01",
         productionDate: "2026-03-01",
         claims: [
           {
@@ -1594,7 +1598,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
          VALUES ($1,$2,$3,$4,'M41',$5,$6,'claimmd','synthetic-legacy-account','test','1999999999',repeat('x',48),
            $7,'institutional',$8,'000000941',$9,$10,'20260301','20260331',$11,'x12',$12,now())`,
         [
-          crypto.randomUUID(),
+          historicalSubmissionEvidenceId,
           ORG_A,
           PE_A,
           claimId,
@@ -1690,6 +1694,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
                 billingModule: "M41",
                 fileIndex: 0,
                 transactionSetControlNumber: st02,
+                submissionEvidenceIds: [historicalSubmissionEvidenceId],
               },
             ],
           }),

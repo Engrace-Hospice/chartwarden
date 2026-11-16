@@ -179,7 +179,7 @@ export function createClaimMdEraDeliveryService(input: {
     if (!heldReason)
       for (const component of parsedSets) {
         const componentId = sha256(
-          `${prepared.idempotencyKey}\0${component.fileIndex}\0${component.advice.transactionSetControlNumber}`,
+          `${prepared.idempotencyKey}\0${component.fileIndex}\0${component.advice.functionalGroupControlNumber}\0${component.advice.transactionSetControlNumber}`,
         );
         const rawDigest = sha256(component.raw);
         const trace = component.advice.checkOrEftTraceNumber ?? null;
@@ -187,12 +187,14 @@ export function createClaimMdEraDeliveryService(input: {
         const resolutionComponent = (components as readonly Record<string, unknown>[]).find(
           (entry) =>
             entry.fileIndex === component.fileIndex &&
+            entry.functionalGroupControlNumber === component.advice.functionalGroupControlNumber &&
             entry.transactionSetControlNumber === component.advice.transactionSetControlNumber,
         );
         const claimEvidence =
           (resolution.decision as { claims?: readonly Record<string, unknown>[] }).claims?.filter(
             (entry) =>
               entry.fileIndex === component.fileIndex &&
+              entry.functionalGroupControlNumber === component.advice.functionalGroupControlNumber &&
               entry.transactionSetControlNumber === component.advice.transactionSetControlNumber,
           ) ?? [];
         if (
@@ -229,6 +231,9 @@ export function createClaimMdEraDeliveryService(input: {
             contentDigest: m25ContentDigestOf(component.advice),
             paymentTraceDigest: traceDigest,
             interchangeControlNumber: component.advice.interchangeControlNumber,
+            interchangeSenderCode: component.advice.interchangeSenderCode!,
+            interchangeReceiverCode: component.advice.interchangeReceiverCode!,
+            functionalGroupControlNumber: component.advice.functionalGroupControlNumber!,
             transactionSetControlNumber: component.advice.transactionSetControlNumber,
             evidenceCodes,
           },

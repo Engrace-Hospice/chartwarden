@@ -6,7 +6,7 @@
 export class X12ParseError extends Error {
   public override readonly name: string = "X12ParseError";
   constructor(
-    public readonly code: "X12_835_PARSE_FAILED" | "X12_835_UNBALANCED",
+    public readonly code: "X12_835_PARSE_FAILED" | "X12_835_UNBALANCED" | "X12_835_UNSUPPORTED_ROUTING",
     message: string,
   ) {
     super(message);

@@ -105,6 +105,8 @@ function safeComponent(advice: ParsedRemittanceAdvice, fileIndex: number) {
   return {
     fileIndex,
     interchangeControlNumber: advice.interchangeControlNumber,
+    interchangeSenderCode: advice.interchangeSenderCode ?? null,
+    interchangeReceiverCode: advice.interchangeReceiverCode ?? null,
     functionalGroupControlNumber: advice.functionalGroupControlNumber ?? null,
     transactionSetControlNumber: advice.transactionSetControlNumber,
     payer: advice.payer
@@ -304,6 +306,7 @@ export function decideClaimMdEraOwnership(input: {
           : [];
       return {
         fileIndex,
+        functionalGroupControlNumber: advice.functionalGroupControlNumber ?? null,
         transactionSetControlNumber: advice.transactionSetControlNumber,
         pcn: pcn ?? null,
         payerIcn: claim.payerIcn ?? null,

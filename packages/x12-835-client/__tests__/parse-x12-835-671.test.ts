@@ -1,7 +1,7 @@
 // #671 — SVC01 qualifier kept, production-date preference, BPR02=0 pinned, one-pass multi-set parse.
 import { describe, expect, it } from "vitest";
-import { createX12835Client, parseX12835, parseX12835AllSets } from "../src/index";
-import { CLEAN_BODY, DENIAL_BODY, replaceSeg, wrap835, wrap835Sets } from "./fixtures-835";
+import { createX12835Client, parseX12835, parseX12835AllSets, parseX12835Grouped } from "../src/index";
+import { CLEAN_BODY, DENIAL_BODY, replaceSeg, wrap835, wrap835Groups, wrap835Sets } from "./fixtures-835";
 
 describe("SVC01 qualifier is kept (#671)", () => {
   it("surfaces HC and NU per line", () => {
@@ -103,5 +103,61 @@ describe("parseX12835AllSets (#671)", () => {
     expect(ok?.ok && ok.value.length).toBe(2);
     const missing = await c.parse835All?.({ minioObjectKey: "k", payerProgram: "medicare" });
     expect(missing && !missing.ok && missing.degraded.retryable).toBe(true);
+  });
+  it("keeps multiple groups and repeated ST02 scoped to each group", () => {
+    const interchange = wrap835Groups([
+      { gs06: "77", gs04: "20260616", sets: [["0001", CLEAN_BODY]] },
+      { gs06: "78", gs04: "20260617", sets: [["0001", DENIAL_BODY], ["0002", CLEAN_BODY]] },
+    ]);
+    const result = parseX12835AllSets(interchange, "medicare");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.map((x) => [x.functionalGroupControlNumber, x.transactionSetControlNumber, x.functionalGroupCreationDate])).toEqual([
+      ["77", "0001", "2026-06-16"], ["78", "0001", "2026-06-17"], ["78", "0002", "2026-06-17"],
+    ]);
+    expect(parseX12835(interchange, "medicare", {}, "0001").ok).toBe(false);
+    const grouped = parseX12835Grouped(interchange, "medicare");
+    expect(grouped.ok && grouped.value.functionalGroups.map((group) => [group.controlNumber, group.creationDate, group.transactionSets.length])).toEqual([
+      ["77", "2026-06-16", 1], ["78", "2026-06-17", 2],
+    ]);
+  });
+  it("refuses mixed functional group types before returning any 835 result", () => {
+    const mixed = wrap835Groups([
+      { gs06: "77", gs04: "20260616", sets: [["0001", CLEAN_BODY]] },
+      { gs06: "78", gs04: "20260617", sets: [["0002", DENIAL_BODY]] },
+    ]).replace("GS*HP*SYNTHMAC*SYNTHHOSPICE*20260617", "GS*HN*SYNTHMAC*SYNTHHOSPICE*20260617");
+    const result = parseX12835AllSets(mixed, "medicare");
+    expect(!result.ok && result.degraded.code).toBe("X12_835_UNSUPPORTED_ROUTING");
+  });
+  it("rejects bad functional-group counts, unclosed groups, and a second ISA", () => {
+    const interchange = wrap835Groups([
+      { gs06: "77", gs04: "20260616", sets: [["0001", CLEAN_BODY]] },
+      { gs06: "78", gs04: "20260617", sets: [["0002", DENIAL_BODY]] },
+    ]);
+    expect(parseX12835AllSets(interchange.replace("IEA*2*", "IEA*1*"), "medicare").ok).toBe(false);
+    expect(parseX12835AllSets(interchange.replace("GE*1*78~", ""), "medicare").ok).toBe(false);
+    expect(parseX12835AllSets(interchange.replace("IEA*2*", "ISA*" + "IEA*2*"), "medicare").ok).toBe(false);
+    const reusedGroupControl = wrap835Groups([
+      { gs06: "77", gs04: "20260616", sets: [["0001", CLEAN_BODY]] },
+      { gs06: "77", gs04: "20260617", sets: [["0002", DENIAL_BODY]] },
+    ]);
+    expect(parseX12835AllSets(reusedGroupControl, "medicare").ok).toBe(false);
+    expect(parseX12835AllSets(wrap835(CLEAN_BODY).replace("^*00501*", "^*00401*"), "medicare").ok).toBe(false);
+  });
+  it("parses many groups and transaction sets deterministically", () => {
+    const interchange = wrap835Groups(Array.from({ length: 8 }, (_, groupIndex) => ({
+      gs06: String(70 + groupIndex),
+      gs04: "20260616",
+      sets: Array.from({ length: 4 }, (_, setIndex) => [
+        String(setIndex + 1).padStart(4, "0"),
+        setIndex % 2 === 0 ? CLEAN_BODY : DENIAL_BODY,
+      ] as const),
+    })));
+    const result = parseX12835Grouped(interchange, "medicare");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.functionalGroups).toHaveLength(8);
+    expect(result.value.functionalGroups.map((group) => group.transactionSets.length)).toEqual(Array(8).fill(4));
+    expect(result.value.functionalGroups[7]?.transactionSets[3]?.transactionSetControlNumber).toBe("0004");
   });
 });

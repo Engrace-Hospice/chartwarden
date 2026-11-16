@@ -180903,6 +180903,72 @@
                           "type": "string"
                         }
                       }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "outcome",
+                        "code",
+                        "reason"
+                      ],
+                      "properties": {
+                        "outcome": {
+                          "const": "unsupported",
+                          "type": "string"
+                        },
+                        "code": {
+                          "const": "X12_835_UNSUPPORTED_ROUTING",
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "outcome",
+                        "stageId",
+                        "reason"
+                      ],
+                      "properties": {
+                        "outcome": {
+                          "const": "review_required",
+                          "type": "string"
+                        },
+                        "stageId": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "outcome",
+                        "adviceId",
+                        "existingAdviceId",
+                        "reason"
+                      ],
+                      "properties": {
+                        "outcome": {
+                          "const": "held_duplicate",
+                          "type": "string"
+                        },
+                        "adviceId": {
+                          "type": "string"
+                        },
+                        "existingAdviceId": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "const": "LEGACY_IDENTITY_AMBIGUOUS",
+                          "type": "string"
+                        }
+                      }
                     }
                   ]
                 }
@@ -181005,6 +181071,9 @@
                             "payerKind",
                             "paymentMethod",
                             "totalPaymentAmount",
+                            "paymentEffectiveDate",
+                            "adjudicationCutoffDate",
+                            "functionalGroupCreationDate",
                             "parseStatus",
                             "receivedAt"
                           ],
@@ -181029,6 +181098,39 @@
                             "totalPaymentAmount": {
                               "description": "Decimal string — never a float",
                               "type": "string"
+                            },
+                            "paymentEffectiveDate": {
+                              "anyOf": [
+                                {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "adjudicationCutoffDate": {
+                              "anyOf": [
+                                {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "functionalGroupCreationDate": {
+                              "anyOf": [
+                                {
+                                  "format": "date",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             },
                             "parseStatus": {
                               "type": "string"
@@ -313393,6 +313495,9 @@
                           "payerKind",
                           "paymentMethod",
                           "totalPaymentAmount",
+                          "paymentEffectiveDate",
+                          "adjudicationCutoffDate",
+                          "functionalGroupCreationDate",
                           "parseStatus",
                           "receivedAt"
                         ],
@@ -313417,6 +313522,39 @@
                           "totalPaymentAmount": {
                             "description": "Decimal string — never a float",
                             "type": "string"
+                          },
+                          "paymentEffectiveDate": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "adjudicationCutoffDate": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "functionalGroupCreationDate": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "parseStatus": {
                             "type": "string"
@@ -313483,6 +313621,9 @@
                     "payerKind",
                     "paymentMethod",
                     "totalPaymentAmount",
+                    "paymentEffectiveDate",
+                    "adjudicationCutoffDate",
+                    "functionalGroupCreationDate",
                     "parseStatus",
                     "receivedAt"
                   ],
@@ -313507,6 +313648,39 @@
                     "totalPaymentAmount": {
                       "description": "Decimal string — never a float",
                       "type": "string"
+                    },
+                    "paymentEffectiveDate": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "adjudicationCutoffDate": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "functionalGroupCreationDate": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "parseStatus": {
                       "type": "string"

@@ -18,6 +18,7 @@ export interface WrapOptions {
   isa15?: string;
   gs01?: string;
   gs08?: string;
+  gs04?: string;
 }
 
 /** Build a full interchange around `body` (the segments strictly between ST and SE). */
@@ -48,7 +49,7 @@ export function wrap835(body: readonly string[], o: WrapOptions = {}): string {
     comp,
   ].join(el);
   const segs = [
-    `GS*${o.gs01 ?? "HP"}*SYNTHMAC*SYNTHHOSPICE*20260616*1200*${gs06}*X*${o.gs08 ?? "005010X221A1"}`,
+    `GS*${o.gs01 ?? "HP"}*SYNTHMAC*SYNTHHOSPICE*${o.gs04 ?? "20260616"}*1200*${gs06}*X*${o.gs08 ?? "005010X221A1"}`,
     `ST*${o.st01 ?? "835"}*${st02}`,
     ...body,
     `SE*${o.seCount ?? body.length + 2}*${o.se02 ?? st02}`,
@@ -68,6 +69,20 @@ export function wrap835Sets(sets: readonly (readonly [string, readonly string[]]
     .map((segs) => segs.map((x) => `${x}~`).join(""))
     .join("");
   return open + mid + tail.replace("GE*1*", `GE*${sets.length}*`);
+}
+
+/** Several independent GS/GE groups under one ISA/IEA interchange. */
+export function wrap835Groups(groups: readonly { gs06: string; gs04: string; sets: readonly (readonly [string, readonly string[]])[] }[]): string {
+  const first = wrap835(groups[0]?.sets[0]?.[1] ?? [], { gs06: groups[0]?.gs06, gs04: groups[0]?.gs04 });
+  const isa = first.slice(0, first.indexOf("GS*"));
+  const iea = first.slice(first.indexOf("IEA*")).replace("IEA*1*", `IEA*${groups.length}*`);
+  const chunks = groups.map((group) => {
+    const wrapped = wrap835Sets(group.sets);
+    const start = wrapped.indexOf("GS*");
+    const end = wrapped.indexOf("IEA*");
+    return wrapped.slice(start, end).replace("20260616", group.gs04).replace("*77*X*", `*${group.gs06}*X*`).replace(/GE\*\d+\*77~/, `GE*${group.sets.length}*${group.gs06}~`);
+  });
+  return isa + chunks.join("") + iea;
 }
 
 const HEADER = [

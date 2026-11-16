@@ -333,41 +333,41 @@ export function createClaimMdEraStore(input: {
             )
             .limit(1);
           if (!source) throw new Error("CLAIMMD_ERA_PREFLIGHT_NOT_FOUND");
-          const [[stream], [resolution], [delivery], prior] = await Promise.all([
-            tx
-              .select({ leaseUntil: S.leaseUntil })
-              .from(S)
-              .where(eq(S.id, source.streamId))
-              .limit(1),
-            tx
-              .select({
-                state: R.status,
-                version: R.resolutionVersion,
-                organizationId: R.organizationId,
-                providerEntityId: R.providerEntityId,
-                digest: R.original835Digest,
-              })
-              .from(R)
-              .where(eq(R.inboxId, source.id))
-              .limit(1),
-            tx
-              .select({
-                state: D.state,
-                attemptCount: D.attemptCount,
-                safeErrorCode: D.safeErrorCode,
-                tenantFinalized: D.tenantFinalized,
-                resolutionVersion: D.resolutionVersion,
-                organizationId: D.organizationId,
-                providerEntityId: D.providerEntityId,
-              })
-              .from(D)
-              .where(eq(D.inboxId, source.id))
-              .limit(1),
-            tx
-              .select({ outcome: REC.outcome, stage: REC.stage })
-              .from(REC)
-              .where(eq(REC.inboxId, source.id)),
-          ]);
+          // These queries share one transaction/client. pg does not support concurrent queries
+          // on a single client; keep them sequential while retaining the transaction snapshot.
+          const [stream] = await tx
+            .select({ leaseUntil: S.leaseUntil })
+            .from(S)
+            .where(eq(S.id, source.streamId))
+            .limit(1);
+          const [resolution] = await tx
+            .select({
+              state: R.status,
+              version: R.resolutionVersion,
+              organizationId: R.organizationId,
+              providerEntityId: R.providerEntityId,
+              digest: R.original835Digest,
+            })
+            .from(R)
+            .where(eq(R.inboxId, source.id))
+            .limit(1);
+          const [delivery] = await tx
+            .select({
+              state: D.state,
+              attemptCount: D.attemptCount,
+              safeErrorCode: D.safeErrorCode,
+              tenantFinalized: D.tenantFinalized,
+              resolutionVersion: D.resolutionVersion,
+              organizationId: D.organizationId,
+              providerEntityId: D.providerEntityId,
+            })
+            .from(D)
+            .where(eq(D.inboxId, source.id))
+            .limit(1);
+          const prior = await tx
+            .select({ outcome: REC.outcome, stage: REC.stage })
+            .from(REC)
+            .where(eq(REC.inboxId, source.id));
           const leaseActive = Boolean(stream?.leaseUntil && stream.leaseUntil > new Date());
           const priorStageAttempts = prior.filter(
             (row) => row.stage === inputPreflight.stage,

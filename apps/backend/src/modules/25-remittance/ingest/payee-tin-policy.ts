@@ -28,6 +28,8 @@ export function parsePayeeTinPolicy(raw: string | undefined): PayeeTinPolicy {
   for (const [org, kinds] of Object.entries(parsed)) {
     if (!UUID.test(org))
       throw new Error(`${M25_PAYEE_TIN_POLICY_ENV} key is not an organization uuid`);
+    if (allowed.has(org.toLowerCase()))
+      throw new Error(`${M25_PAYEE_TIN_POLICY_ENV} repeats an organization key`);
     if (!Array.isArray(kinds) || kinds.some((k) => typeof k !== "string" || !PAYER_KINDS.has(k)))
       throw new Error(`${M25_PAYEE_TIN_POLICY_ENV} lists an unknown payer kind`);
     allowed.set(org.toLowerCase(), new Set(kinds as string[]));

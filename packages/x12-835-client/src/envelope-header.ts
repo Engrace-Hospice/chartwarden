@@ -11,14 +11,14 @@
 export interface X12EnvelopeHeader {
   /** ISA13 — the interchange control number (9 digits, left-padded with the segment's own formatting). */
   readonly interchangeControlNumber: string;
-  /** ST02 — the transaction set control number of the FIRST ST segment (one 835 file = one ST envelope). */
+  /** ST02 — the transaction set control number of the first transaction set (diagnostic/preflight only). */
   readonly transactionSetControlNumber: string;
 }
 
 const ISA_SEGMENT_LENGTH = 106;
 const ISA13_ELEMENT_INDEX = 13;
 
-/** Extract ISA13 + the first ST segment's ST02 from a raw X12 835 document. Returns null when malformed. */
+/** Extract ISA13 + the first ST segment's ST02 for preflight. Full group-aware validation belongs to the 835 parser. */
 export function parseX12EnvelopeHeader(raw: string): X12EnvelopeHeader | null {
   if (raw.length < ISA_SEGMENT_LENGTH) return null;
   const head = raw.slice(0, ISA_SEGMENT_LENGTH);
@@ -31,7 +31,7 @@ export function parseX12EnvelopeHeader(raw: string): X12EnvelopeHeader | null {
   const interchangeControlNumber = isaElements[ISA13_ELEMENT_INDEX]?.trim();
   if (!interchangeControlNumber) return null;
 
-  // Segments after ISA are terminator-delimited; find the first ST segment (one 835 = one ST envelope).
+  // Segments after ISA are terminator-delimited; find the first ST segment for cheap receive preflight.
   const rest = raw.slice(ISA_SEGMENT_LENGTH);
   const segments = rest.split(segmentTerm);
   const stSegment = segments.find((s) => s.trim().startsWith(`ST${elementSep}`));

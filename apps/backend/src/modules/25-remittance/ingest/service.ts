@@ -5,8 +5,8 @@
 //   receiveAdvice — "Secure receive; validate; dedup" (§2.2 `queued`). Takes a raw 835 file ALREADY staged
 //     in MinIO (this package does not itself speak to a clearinghouse/SFTP — the actual external pull
 //     transport is a separate, unbuilt concern, same posture as every other unwired M25 forward seam) plus
-//     its bytes (to derive the ISA/ST dedup key locally — @chartwarden/x12-835-client's
-//     `parseX12EnvelopeHeader`, no sidecar round-trip needed for just the header) and its sha256. Inserts
+//     its bytes (a lightweight ISA/ST preflight via @chartwarden/x12-835-client; authoritative
+//     ISA/GS/ST identity comes from the full group-aware parse) and its sha256. Inserts
 //     the `remittance_advice` envelope row; the DB's `ux_remittance_envelope_dedupe` unique index is the
 //     actual dedup enforcement (§2.6) — a caught unique-violation means "already ingested", not an error,
 //     and creates NO second row. On success, emits `m25.edi.835_received` in the SAME tx (D2 outbox
@@ -54,7 +54,7 @@ export interface ReceiveAdviceInput {
   readonly payerKind: "medicare" | "medicaid" | "commercial";
   readonly minioObjectKey: string;
   readonly fileSha256: string;
-  /** The raw 835 text — parsed locally for the ISA13/ST02 dedup key and staged in the `RawAdviceStore`; never stored in the database. */
+  /** The raw X12 interchange (one ISA/IEA, potentially many GS/GE and ST/SE sets), staged in RawAdviceStore. */
   readonly rawEdi: string;
 }
 
@@ -62,9 +62,20 @@ export type ReceiveAdviceResult =
   | { readonly outcome: "queued"; readonly adviceId: string }
   | { readonly outcome: "duplicate"; readonly existingAdviceId: string }
   | {
+      readonly outcome: "unsupported";
+      readonly code: "X12_835_UNSUPPORTED_ROUTING";
+      readonly reason: string;
+    }
+  | {
       readonly outcome: "review_required";
       readonly stageId: string;
       readonly reason: "CLAIMMD_ERA_STAGE_MATCH";
+    }
+  | {
+      readonly outcome: "held_duplicate";
+      readonly adviceId: string;
+      readonly existingAdviceId: string;
+      readonly reason: "LEGACY_IDENTITY_AMBIGUOUS";
     }
   | {
       readonly outcome: "malformed";
@@ -88,7 +99,10 @@ export type PostAdviceResult =
   | {
       readonly outcome: "held_duplicate";
       readonly adviceId: string;
-      readonly reason: "CROSS_SOURCE_POSTED_IDENTITY" | "MISSING_FINANCIAL_IDENTITY";
+      readonly reason:
+        | "CROSS_SOURCE_POSTED_IDENTITY"
+        | "MISSING_FINANCIAL_IDENTITY"
+        | "LEGACY_IDENTITY_AMBIGUOUS";
     }
   | { readonly outcome: "not_found"; readonly adviceId: string }
   /** Already posted/partial_posted — a re-delivery of `m25.edi.835_received` (dispatcher retry) is a no-op. */

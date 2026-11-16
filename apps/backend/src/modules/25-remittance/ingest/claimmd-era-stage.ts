@@ -25,6 +25,9 @@ export interface VerifiedClaimMdEraSource {
   readonly contentDigest: string;
   readonly paymentTraceDigest: string | null;
   readonly interchangeControlNumber: string;
+  readonly interchangeSenderCode: string;
+  readonly interchangeReceiverCode: string;
+  readonly functionalGroupControlNumber: string;
   readonly transactionSetControlNumber: string;
   readonly evidenceCodes: readonly (
     | "EXACT_PAYEE_NPI"
@@ -91,6 +94,9 @@ export async function stageVerifiedClaimMdEra(input: {
         providerEntityId: input.owner.providerEntityId,
         paymentTrace: input.duplicateFacts.paymentTrace,
         interchangeControlNumber: input.source.interchangeControlNumber,
+        interchangeSenderCode: input.source.interchangeSenderCode,
+        interchangeReceiverCode: input.source.interchangeReceiverCode,
+        functionalGroupControlNumber: input.source.functionalGroupControlNumber,
         transactionSetControlNumber: input.source.transactionSetControlNumber,
       });
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${serializationKey}, 1))`);
@@ -103,6 +109,9 @@ export async function stageVerifiedClaimMdEra(input: {
             eq(ADVICE.providerEntityId, input.owner.providerEntityId),
             eq(ADVICE.fileSha256, input.source.fileDigest),
             eq(ADVICE.interchangeControlNumber, input.source.interchangeControlNumber),
+            eq(ADVICE.interchangeSenderCode, input.source.interchangeSenderCode),
+            eq(ADVICE.interchangeReceiverCode, input.source.interchangeReceiverCode),
+            eq(ADVICE.functionalGroupControlNumber, input.source.functionalGroupControlNumber),
             eq(ADVICE.transactionSetControlNumber, input.source.transactionSetControlNumber),
             ne(ADVICE.parseStatus, "failed"),
           ),
@@ -115,6 +124,9 @@ export async function stageVerifiedClaimMdEra(input: {
               id: ADVICE.id,
               fileSha256: ADVICE.fileSha256,
               interchangeControlNumber: ADVICE.interchangeControlNumber,
+              interchangeSenderCode: ADVICE.interchangeSenderCode,
+              interchangeReceiverCode: ADVICE.interchangeReceiverCode,
+              functionalGroupControlNumber: ADVICE.functionalGroupControlNumber,
               transactionSetControlNumber: ADVICE.transactionSetControlNumber,
               checkOrEftTraceNumber: ADVICE.checkOrEftTraceNumber,
               totalPaymentAmount: ADVICE.totalPaymentAmount,
@@ -126,6 +138,9 @@ export async function stageVerifiedClaimMdEra(input: {
                 eq(ADVICE.organizationId, input.owner.organizationId),
                 eq(ADVICE.providerEntityId, input.owner.providerEntityId),
                 eq(ADVICE.interchangeControlNumber, input.source.interchangeControlNumber),
+                eq(ADVICE.interchangeSenderCode, input.source.interchangeSenderCode),
+                eq(ADVICE.interchangeReceiverCode, input.source.interchangeReceiverCode),
+                eq(ADVICE.functionalGroupControlNumber, input.source.functionalGroupControlNumber),
                 eq(ADVICE.transactionSetControlNumber, input.source.transactionSetControlNumber),
               ),
             )
@@ -138,6 +153,9 @@ export async function stageVerifiedClaimMdEra(input: {
                 id: ADVICE.id,
                 fileSha256: ADVICE.fileSha256,
                 interchangeControlNumber: ADVICE.interchangeControlNumber,
+                interchangeSenderCode: ADVICE.interchangeSenderCode,
+                interchangeReceiverCode: ADVICE.interchangeReceiverCode,
+                functionalGroupControlNumber: ADVICE.functionalGroupControlNumber,
                 transactionSetControlNumber: ADVICE.transactionSetControlNumber,
                 checkOrEftTraceNumber: ADVICE.checkOrEftTraceNumber,
                 totalPaymentAmount: ADVICE.totalPaymentAmount,
@@ -165,6 +183,9 @@ export async function stageVerifiedClaimMdEra(input: {
           and(
             eq(STAGE.sourceInboxId, input.source.inboxId),
             eq(STAGE.fileIndex, input.source.fileIndex),
+            eq(STAGE.interchangeSenderCode, input.source.interchangeSenderCode),
+            eq(STAGE.interchangeReceiverCode, input.source.interchangeReceiverCode),
+            eq(STAGE.functionalGroupControlNumber, input.source.functionalGroupControlNumber),
             eq(STAGE.transactionSetControlNumber, input.source.transactionSetControlNumber),
           ),
         )
@@ -216,6 +237,9 @@ export async function stageVerifiedClaimMdEra(input: {
         {
           rawFileDigest: input.source.fileDigest,
           interchangeControlNumber: input.source.interchangeControlNumber,
+          interchangeSenderCode: input.source.interchangeSenderCode,
+          interchangeReceiverCode: input.source.interchangeReceiverCode,
+          functionalGroupControlNumber: input.source.functionalGroupControlNumber,
           transactionSetControlNumber: input.source.transactionSetControlNumber,
           paymentTrace: input.duplicateFacts.paymentTrace,
           paymentAmount: input.duplicateFacts.paymentAmount,
@@ -224,6 +248,9 @@ export async function stageVerifiedClaimMdEra(input: {
         [...sameControls, ...traceCandidates].map((row) => ({
           rawFileDigest: row.fileSha256,
           interchangeControlNumber: row.interchangeControlNumber,
+          interchangeSenderCode: row.interchangeSenderCode,
+          interchangeReceiverCode: row.interchangeReceiverCode,
+          functionalGroupControlNumber: row.functionalGroupControlNumber,
           transactionSetControlNumber: row.transactionSetControlNumber,
           paymentTrace: row.checkOrEftTraceNumber,
           paymentAmount: row.totalPaymentAmount,
@@ -241,11 +268,17 @@ export async function stageVerifiedClaimMdEra(input: {
           (row) =>
             row.fileSha256 === input.source.fileDigest &&
             row.interchangeControlNumber === input.source.interchangeControlNumber &&
+            row.interchangeSenderCode === input.source.interchangeSenderCode &&
+            row.interchangeReceiverCode === input.source.interchangeReceiverCode &&
+            row.functionalGroupControlNumber === input.source.functionalGroupControlNumber &&
             row.transactionSetControlNumber === input.source.transactionSetControlNumber,
         ) ??
         [...sameControls, ...traceCandidates].find(
           (row) =>
             row.interchangeControlNumber === input.source.interchangeControlNumber &&
+            row.interchangeSenderCode === input.source.interchangeSenderCode &&
+            row.interchangeReceiverCode === input.source.interchangeReceiverCode &&
+            row.functionalGroupControlNumber === input.source.functionalGroupControlNumber &&
             row.transactionSetControlNumber === input.source.transactionSetControlNumber,
         ) ??
         [...sameControls, ...traceCandidates].find(
@@ -275,6 +308,9 @@ export async function stageVerifiedClaimMdEra(input: {
           eraId: input.source.eraId,
           fileIndex: input.source.fileIndex,
           interchangeControlNumber: input.source.interchangeControlNumber,
+          interchangeSenderCode: input.source.interchangeSenderCode,
+          interchangeReceiverCode: input.source.interchangeReceiverCode,
+          functionalGroupControlNumber: input.source.functionalGroupControlNumber,
           transactionSetControlNumber: input.source.transactionSetControlNumber,
           original835Digest: input.source.digest,
           sourceFileDigest: input.source.fileDigest,
@@ -311,6 +347,9 @@ export async function stageVerifiedClaimMdEra(input: {
           and(
             eq(STAGE.sourceInboxId, input.source.inboxId),
             eq(STAGE.fileIndex, input.source.fileIndex),
+            eq(STAGE.interchangeSenderCode, input.source.interchangeSenderCode),
+            eq(STAGE.interchangeReceiverCode, input.source.interchangeReceiverCode),
+            eq(STAGE.functionalGroupControlNumber, input.source.functionalGroupControlNumber),
             eq(STAGE.transactionSetControlNumber, input.source.transactionSetControlNumber),
           ),
         )
