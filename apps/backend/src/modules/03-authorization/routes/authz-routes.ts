@@ -5,6 +5,7 @@ import {
   isSystemLocked,
   isSystemManagedRoleKey,
   isTenantRoleReserved,
+  platformPermissionKeysIn,
   requirePermission,
   requireSession,
   validateRoleGrant,
@@ -34,7 +35,6 @@ import {
 import type { PreHandler } from "@chartwarden/shared/route-kit";
 import {
   ChartWardenError,
-  ForbiddenError,
   type HttpRequestContext,
   UnauthorizedError,
   ValidationError,
@@ -131,7 +131,19 @@ const lastRequiredRole = (roleKey: string) =>
 const reservedRole = () =>
   new ChartWardenError(
     "RESERVED_ROLE",
-    "platform role keys (platform_*, ai_safety_owner) and the platform_staff category are reserved to the platform",
+    "platform role keys (platform_*, ai_safety_owner, superadmin) and the platform_staff category are reserved to the platform",
+    422,
+  );
+
+// ADR-0112: anti-escalation compares permission keys only, so a holder of the platform-category keys (`superadmin`,
+// `platform_ops`) could otherwise mint a tenant-owned role carrying them and assign it with no operator CLI, ticket or
+// passkey. A tenant-owned role never carries a platform-category key; those live on platform-owned rows only.
+// Names the keys (catalog identifiers, never record content) so the admin can see what to remove. An EDIT refuses only
+// keys it would ADD: a role seeded with the whole catalog already carries them, and the editor sends the full set back.
+const platformPermissionReserved = (keys: readonly string[]) =>
+  new ChartWardenError(
+    "RESERVED_ROLE",
+    `platform permission keys are held only by platform-owned roles and cannot be put on a tenant role: ${keys.join(", ")}`,
     422,
   );
 
@@ -171,8 +183,29 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       await auditEscalationBlocked(deps.audit, auditContextFor(request), {
         attemptedPermission: escalated,
       });
-      throw new ForbiddenError(`cannot grant permission '${escalated}' you do not hold`);
+      // Same code as the invite path's ceiling check, so a client can tell an anti-escalation refusal from any
+      // other 403 (a missing permission, a step-up, an ABAC deny) by the code alone.
+      throw new ChartWardenError(
+        "ESCALATION_BLOCKED",
+        `cannot grant permission '${escalated}' you do not hold`,
+        403,
+      );
     }
+  }
+
+  /**
+   * An actor who HOLDS platform-category keys (`superadmin`, `platform_ops`) asking to put them on a tenant role passes
+   * anti-escalation, so it is the one case that would otherwise leave no trace: refuse it (422) and audit it the same
+   * way, since it is exactly the attempt to mint platform authority without the operator CLI.
+   */
+  async function refusePlatformKeys(
+    request: FastifyRequest,
+    keys: readonly string[],
+  ): Promise<never> {
+    await auditEscalationBlocked(deps.audit, auditContextFor(request), {
+      attemptedPermission: String(keys[0]),
+    });
+    throw platformPermissionReserved(keys);
   }
 
   // --- §6 role catalog (read) -------------------------------------------------------------
@@ -205,8 +238,11 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       if (isTenantRoleReserved(body)) throw reservedRole();
       if (ORG_WIDE_SCOPE_ROLES.includes(body.key)) throw orgWideKeyReserved();
       if (isSystemManagedRoleKey(body.key)) throw systemManagedKeyReserved();
-
+      // Anti-escalation first: an actor who does not hold a key gets the audited 403 (a probe for a platform grant is
+      // exactly what that audit row is for); only one who does hold it is told the key is reserved.
       await assertNoEscalation(request, organizationId, userId, permissionKeys);
+      const platformKeys = platformPermissionKeysIn(permissionKeys);
+      if (platformKeys.length > 0) await refusePlatformKeys(request, platformKeys);
 
       const role = await deps.roles.createCustom({
         organizationId,
@@ -256,7 +292,13 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       if (body.permissionKeys !== undefined) {
         patch.permissionKeys = body.permissionKeys;
         changedFields.push("permissionKeys");
+        // Same order as create: the audited anti-escalation refusal first, then the reserved-key one.
         await assertNoEscalation(request, organizationId, userId, patch.permissionKeys);
+        const alreadyHeld = new Set(existing.permissionKeys);
+        const addedPlatformKeys = platformPermissionKeysIn(
+          body.permissionKeys.filter((key) => !alreadyHeld.has(key)),
+        );
+        if (addedPlatformKeys.length > 0) await refusePlatformKeys(request, addedPlatformKeys);
       }
 
       let updated: Awaited<ReturnType<typeof deps.roles.update>>;

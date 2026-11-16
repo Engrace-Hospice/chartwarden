@@ -140,7 +140,7 @@ export function createDbOrgRoleLookup(db: DbClient): OrgRoleLookup {
 const reservedRole = () =>
   new ChartWardenError(
     "RESERVED_ROLE",
-    "platform role keys (platform_*, ai_safety_owner) and the platform_staff category are reserved to the platform",
+    "platform role keys (platform_*, ai_safety_owner, superadmin) and the platform_staff category are reserved to the platform",
     422,
   );
 
