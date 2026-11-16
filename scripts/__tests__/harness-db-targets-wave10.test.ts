@@ -485,3 +485,37 @@ describe("B6 corpus regressions: a variable the guard cannot place is asked abou
     expect(decide(fill(template)), template).toBe("deny");
   });
 });
+
+/** B13: spellings the round-7 review showed untested, each pinned by a mutant that survived. */
+describe("B13: option abbreviations, the sqlcmd transport prefix and libpq's unquoted backslash", () => {
+  it("an abbreviated value option consumes its value (the value of --output is a file name, not a target)", () => {
+    expect(decide(fill("psql --out {PG}{H}/x -c 'select 1'"))).toBe("allow");
+    expect(decide(fill("psql --outp {PG}{H}/x -c 'select 1'"))).toBe("allow");
+    expect(decide(fill("pg_dump --fil {PG}{H}/x db"))).toBe("allow");
+    // two characters are below the minimum for a plain value option: `--ou` may be anything, so the word after it is read
+    expect(decide(fill("psql --ou {PG}{H}/x -c 'select 1'"))).toBe("deny");
+  });
+
+  it.each([
+    "sqlcmd -S tcp:localhost,1433 -Q 'select 1'",
+    "sqlcmd -S tcp:127.0.0.1,1433",
+    "sqlcmd -S np:localhost",
+    "sqlcmd -S lpc:localhost",
+    "sqlcmd -S tcp:localhost",
+  ])("%s allows (a transport prefix is not part of the host)", (cmd) => {
+    expect(decide(cmd), cmd).toBe("allow");
+  });
+
+  it.each(["sqlcmd -S tcp:{H},1433", "sqlcmd -S np:{H}", "sqlcmd -S lpc:{H},1433"])(
+    "%s is refused",
+    (template) => {
+      expect(decide(fill(template))).toBe("deny");
+    },
+  );
+
+  it("an unquoted conninfo value keeps libpq's backslash (a space and a backslash can be escaped)", () => {
+    expect(databaseTarget("psql", [fill("host={H}\\ x")], [])?.kind).toBe("remote");
+    expect(databaseTarget("psql", ["host=localhost\\ x host=localhost"], [])?.kind).toBe("remote");
+    expect(databaseTarget("psql", ["dbname=a\\ b host=localhost"], [])).toBeNull();
+  });
+});
