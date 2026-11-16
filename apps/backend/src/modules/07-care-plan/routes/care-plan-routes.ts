@@ -148,26 +148,26 @@ const planIdOf = (request: FastifyRequest): string =>
 
 /**
  * The method recorded on a care-plan signature for the step-up factor that proved it: a WebAuthn ceremony is a
- * `passkey`, a TOTP code `totp_step_up`, anything else `password_step_up` (the column's historic value, also the
- * fallback when the session carries no id / the seam is unbound, as in the in-memory slice). The signed record
- * says how the signer was authenticated, so a TOTP signer must not read as a password one.
+ * `passkey`, a TOTP code `totp_step_up`, an SMS code `sms_step_up`. A session that carries no id, an unbound
+ * seam, a lookup that throws, or a factor this code does not know is `step_up_unverified`: the signed record says
+ * how the signer was authenticated, so an unverified method must never read as a password (or any stronger) one.
  */
-export function signatureMethodForFactor(
-  factor: unknown,
-): "passkey" | "totp_step_up" | "password_step_up" {
+export type SignatureMethod = "passkey" | "totp_step_up" | "sms_step_up" | "step_up_unverified";
+
+export function signatureMethodForFactor(factor: unknown): SignatureMethod {
   return factor === "webauthn"
     ? "passkey"
     : factor === "totp"
       ? "totp_step_up"
-      : "password_step_up";
+      : factor === "sms"
+        ? "sms_step_up"
+        : "step_up_unverified";
 }
 
 /** How the caller's fresh step-up was proven, from the same M2 session seam `requireStepUp` reads. */
-async function stepUpSignatureMethod(
-  request: FastifyRequest,
-): Promise<"passkey" | "totp_step_up" | "password_step_up"> {
+async function stepUpSignatureMethod(request: FastifyRequest): Promise<SignatureMethod> {
   const sessionId = request.context?.attributes?.sessionId;
-  if (typeof sessionId !== "string" || !request.context.organizationId) return "password_step_up";
+  if (typeof sessionId !== "string" || !request.context.organizationId) return "step_up_unverified";
   try {
     const state = await getSeam("SessionContextResolver").resolveStepUpState(
       { orgId: request.context.organizationId },
@@ -175,7 +175,7 @@ async function stepUpSignatureMethod(
     );
     return signatureMethodForFactor(state?.lastStepUpFactor);
   } catch {
-    return "password_step_up";
+    return "step_up_unverified";
   }
 }
 
@@ -667,7 +667,11 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
     // query's `patientId` (org-wide scope roles pass; everyone else needs the patient on their caseload).
     {
       preHandler: [READ, SCOPE_BY_QUERY_PATIENT("care_plan.read")],
-      config: { auditRead: { resourceKind: "care_plan_element" } },
+      // Names its patient in the query, so the read is accounted against the patient (§164.528); without it
+      // the emitter had no resource id and no patient and wrote nothing.
+      config: {
+        auditRead: { resourceKind: "care_plan_element", patientIdQueryParam: "patientId" },
+      },
     },
     async (request) => {
       actorOf(request);

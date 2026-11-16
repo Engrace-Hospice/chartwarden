@@ -247,12 +247,14 @@ export function createDbCarePlanRouteService(
     message: "at least one active terminal problem is required",
   } as const;
 
-  /** 42 CFR 418.56(c)(3): the plan carries measurable outcomes. `count` is how many live goals have none. */
-  const goalOutcomeBlocker = (count: number) =>
-    ({
-      code: "GOAL_OUTCOME_REQUIRED",
-      message: `${count} goal${count === 1 ? " needs" : "s need"} a measurable outcome (42 CFR 418.56(c)(3))`,
-    }) as const;
+  /**
+   * 42 CFR 418.56(c)(3): the plan carries measurable outcomes. The message names no count: a caller without a
+   * Part 2 disclosure must not learn from it how many hidden goals the plan holds.
+   */
+  const goalOutcomeBlocker = {
+    code: "GOAL_OUTCOME_REQUIRED",
+    message: "every live goal needs a measurable outcome (42 CFR 418.56(c)(3))",
+  } as const;
 
   const openVersionBlocker = {
     code: "OPEN_VERSION_REQUIRED",
@@ -330,14 +332,13 @@ export function createDbCarePlanRouteService(
   async function initialBlockers(
     tx: DbClient,
     v: Pick<typeof CPV.$inferSelect, "kind" | "carePlanId">,
-  ): Promise<Array<ReturnType<typeof goalOutcomeBlocker> | typeof terminalProblemBlocker>> {
+  ): Promise<Array<typeof goalOutcomeBlocker | typeof terminalProblemBlocker>> {
     if (v.kind !== "initial") return [];
-    const blockers: Array<ReturnType<typeof goalOutcomeBlocker> | typeof terminalProblemBlocker> =
-      [];
+    const blockers: Array<typeof goalOutcomeBlocker | typeof terminalProblemBlocker> = [];
     if ((await activeTerminalProblemCount(tx, v.carePlanId)) < 1)
       blockers.push(terminalProblemBlocker);
     const missing = await goalsMissingOutcomeCount(tx, v.carePlanId);
-    if (missing > 0) blockers.push(goalOutcomeBlocker(missing));
+    if (missing > 0) blockers.push(goalOutcomeBlocker);
     return blockers;
   }
 
@@ -1283,9 +1284,7 @@ export function createDbCarePlanRouteService(
           };
         }
         const blockers = [...(await initialBlockers(t, open))] as Array<
-          | typeof terminalProblemBlocker
-          | ReturnType<typeof goalOutcomeBlocker>
-          | typeof idgProposalBlocker
+          typeof terminalProblemBlocker | typeof goalOutcomeBlocker | typeof idgProposalBlocker
         >;
         if (open.kind === "idg_review") {
           const { applications, changes } = await loadIdgProposalBundle(t, open.id);
@@ -1580,7 +1579,7 @@ export function createDbCarePlanRouteService(
               locationId: v.locationId,
               membershipId: actor.membershipId,
               signerRole,
-              signatureMethod: actor.signatureMethod ?? "password_step_up",
+              signatureMethod: actor.signatureMethod ?? "step_up_unverified",
               signedAt: new Date(at),
             });
           } catch (err) {

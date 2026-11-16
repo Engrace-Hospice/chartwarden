@@ -333,7 +333,10 @@ export async function buildProposedChange(
       return { ...common, entityType: "problem", targetEntityId: id, before, proposed };
     }
     case "goal_add": {
-      const problemId = stringOf(mutation, "problemId");
+      // A uuid is case-insensitive and the payload's format check accepts either case, so the anchor is stored
+      // lower-cased: the Part 2 anchor match (`withoutSudAnchoredChanges`, `filterAnchoredToVisible`) and the
+      // post-apply snapshot comparison all compare against the database's lower-case form.
+      const problemId = stringOf(mutation, "problemId").toLowerCase();
       await requireProblem(tx, input.plan.id, problemId);
       const proposed = {
         id: randomUUID(),
@@ -372,13 +375,15 @@ export async function buildProposedChange(
       return { ...common, entityType: "goal", targetEntityId: id, before, proposed };
     }
     case "intervention_add": {
-      const problemId = stringOf(mutation, "problemId");
+      const problemId = stringOf(mutation, "problemId").toLowerCase();
       await requireProblem(tx, input.plan.id, problemId);
       const rawGoalRefs = mutation.goalRefs;
       if (!Array.isArray(rawGoalRefs) || rawGoalRefs.some((id) => typeof id !== "string")) {
         throw invalidPayload("'goalRefs' must be an array of ids");
       }
-      const goalRefs = rawGoalRefs.filter((id): id is string => typeof id === "string");
+      const goalRefs = rawGoalRefs
+        .filter((id): id is string => typeof id === "string")
+        .map((id) => id.toLowerCase());
       if (goalRefs.length > 0) {
         const found = await tx
           .select({ id: GOAL.id })

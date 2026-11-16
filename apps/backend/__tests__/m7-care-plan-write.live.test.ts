@@ -2103,6 +2103,67 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       expect(readiness.blockers.map((b) => b.code)).toContain("GOAL_OUTCOME_REQUIRED");
     });
 
+    it("an upper-case problemId on an IDG goal_add anchored to a Part 2 problem is hidden without disclosure, and the review still signs (compliance finding 1)", async () => {
+      const { boot, patientId } = await activePlanWithTerminalProblem("Baseline terminal");
+      const sud = (await svc.addProblem(ORG_A, boot.id, {
+        description: SUD_TEXT,
+        kind: "related",
+        source: "clinical",
+        sudRelated: true,
+      })) as Element;
+      const consumer = buildM7IdgDecisionConsumer({ db: handle.db, outbox: svcOutbox() });
+      await consumer.handle(
+        idgEvent({
+          patientId,
+          mutations: [
+            {
+              op: "goal_add",
+              problemId: sud.id.toUpperCase(),
+              originalText: SUD_GOAL_TEXT,
+              revisedText: null,
+              source: "clinical",
+              measurableOutcome: "weekly attendance",
+            },
+          ],
+        }),
+      );
+      const [review] = (
+        await admin.query(
+          "SELECT id,version FROM care_plan_version WHERE care_plan_id=$1 AND kind='idg_review'",
+          [boot.id],
+        )
+      ).rows;
+      // Stored in the database's own (lower-case) form.
+      const stored = (
+        await admin.query(
+          "SELECT proposed->>'problemId' AS problem_id FROM care_plan_idg_proposed_change WHERE care_plan_version_id=$1",
+          [review.id],
+        )
+      ).rows[0];
+      expect(stored.problem_id).toBe(sud.id.toLowerCase());
+      expect(
+        JSON.stringify(await svc.getProposedChanges(ORG_A, boot.id, review.id, DENY_SUD)),
+      ).not.toContain(SUD_GOAL_TEXT);
+      // The sealed candidate matches what the apply writes, so the review can be signed at quorum.
+      await svc.finalizeVersion(ORG_A, boot.id, review.id, review.version, null, ALLOW_SUD);
+      let version = review.version + 1;
+      for (const role of ["rn_case_manager", "msw", "chaplain", "medical_director"] as const) {
+        await svc.signVersion(
+          ORG_A,
+          boot.id,
+          review.id,
+          version,
+          role,
+          "2026-06-22T12:00:00.000Z",
+          signerFor(role),
+        );
+        version++;
+      }
+      expect(((await svc.getVersion(ORG_A, boot.id, review.id, ALLOW_SUD)) as Version).status).toBe(
+        "signed",
+      );
+    });
+
     it("#18 a stale IDG proposal's conflict is DURABLE: finalize is 409 AND the application row says conflict/baseline_changed", async () => {
       const { boot, patientId, problem } = await activePlanWithTerminalProblem("Baseline terminal");
       const consumer = buildM7IdgDecisionConsumer({ db: handle.db, outbox: svcOutbox() });
@@ -2488,10 +2549,11 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
         "SELECT signer_role, signature_method FROM care_plan_signature WHERE care_plan_version_id=$1 ORDER BY signed_at",
         [boot.initialVersionId],
       );
-      // Signed order: the RN (passkey) at 12:00, then the physician (password step-up) at 12:05.
+      // Signed order: the RN (passkey) at 12:00, then the physician at 12:05 with no proven factor on the actor:
+      // recorded as unverified, never as a password step-up.
       expect(methods.rows).toEqual([
         { signer_role: "rn_case_manager", signature_method: "passkey" },
-        { signer_role: "hospice_physician", signature_method: "password_step_up" },
+        { signer_role: "hospice_physician", signature_method: "step_up_unverified" },
       ]);
     });
   });

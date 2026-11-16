@@ -651,11 +651,12 @@ describe("§7.6 SUD content is redacted from every version projection (#2)", () 
 });
 
 describe("the method recorded on a care-plan signature names the factor that proved it", () => {
-  it("maps WebAuthn to passkey, TOTP to totp_step_up, and anything else to password_step_up", () => {
+  it("maps WebAuthn, TOTP and SMS to their own method, and anything unproven to step_up_unverified", () => {
     expect(signatureMethodForFactor("webauthn")).toBe("passkey");
     expect(signatureMethodForFactor("totp")).toBe("totp_step_up");
-    for (const other of ["sms", "password", "", null, undefined, 7]) {
-      expect(signatureMethodForFactor(other)).toBe("password_step_up");
+    expect(signatureMethodForFactor("sms")).toBe("sms_step_up");
+    for (const other of ["password", "", null, undefined, 7]) {
+      expect(signatureMethodForFactor(other)).toBe("step_up_unverified");
     }
   });
 });
