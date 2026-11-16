@@ -832,22 +832,44 @@ describe("the default care_plan grants at the route edge (CW-AC-44)", () => {
   };
   const problem = { description: "Dyspnea (synthetic)", kind: "related", source: "clinical" };
 
-  it("an LPN holding only the default read keys reads the plan and is refused every authoring write", async () => {
+  it("an LPN holding only the default read keys reads the plan and is refused EVERY M7 write route", async () => {
     const { app, svc } = makeServer();
-    const { planId } = await seedPlan(svc);
+    const { planId, versionId } = await seedPlan(svc);
     const read = await app.inject({
       method: "GET",
       url: `/api/v1/patients/${PATIENT}/care-plan`,
       headers: LPN,
     });
-    const write = await app.inject({
-      method: "POST",
-      url: `/api/v1/care-plans/${planId}/problems`,
-      headers: { ...LPN, ...key() },
-      payload: problem,
-    });
     expect(read.statusCode).toBe(200);
-    expect(write.statusCode).toBe(403);
+    // Every write route of care-plan-routes.ts (bootstrap, version, finalize, sign, return-to-draft and the three
+    // element kinds' add / revise / close). The permission guard runs before the body is read, so the payload is
+    // a placeholder. A route added later that this list misses is the gap to close here.
+    const plan = `/api/v1/care-plans/${planId}`;
+    const element = "00000000-0000-4000-8000-0000000000e1";
+    const writes: ReadonlyArray<readonly ["POST" | "PATCH", string]> = [
+      ["POST", `/api/v1/patients/${PATIENT}/care-plan`],
+      ["POST", `${plan}/versions`],
+      ["POST", `${plan}/versions/${versionId}/finalize`],
+      ["POST", `${plan}/versions/${versionId}/signatures`],
+      ["POST", `${plan}/versions/${versionId}/return-to-draft`],
+      ["POST", `${plan}/problems`],
+      ["PATCH", `${plan}/problems/${element}`],
+      ["POST", `${plan}/problems/${element}/resolve`],
+      ["POST", `${plan}/goals`],
+      ["PATCH", `${plan}/goals/${element}`],
+      ["POST", `${plan}/interventions`],
+      ["PATCH", `${plan}/interventions/${element}`],
+      ["POST", `${plan}/interventions/${element}/discontinue`],
+    ];
+    for (const [method, url] of writes) {
+      const res = await app.inject({
+        method,
+        url,
+        headers: { ...LPN, ...key(), "if-match": "1" },
+        payload: problem,
+      });
+      expect(res.statusCode, `${method} ${url}`).toBe(403);
+    }
   });
 
   it("the DON may author but never sign: the key is not granted, and the signer predicate would refuse the role", async () => {

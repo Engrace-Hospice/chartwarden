@@ -69,14 +69,20 @@ describe("CARE_PLAN_DEFAULT_GRANTS", () => {
       for (const key of keys) expect(registered.has(key), key).toBe(true);
   });
 
-  it("every template that is also a grantee carries its care plan grants for a fresh tenant", () => {
+  it("every template that is also a grantee carries EXACTLY its care plan grants for a fresh tenant", () => {
     // Only the DON and the Medical Director are templates today; any role promoted to a template later is held to it.
     const templated = ROLE_TEMPLATES.filter((t) => t.key in CARE_PLAN_DEFAULT_GRANTS);
     expect(templated.map((t) => t.key).sort()).toEqual(["director_of_nursing", "medical_director"]);
-    for (const template of templated)
-      for (const key of CARE_PLAN_DEFAULT_GRANTS[template.key] ?? [])
-        expect([...(template.grants ?? []), ...template.floor], `${template.key} ${key}`).toContain(
-          key,
-        );
+    // Equality, not containment: a hand-added care_plan.* key on a template (the DON given care_plan.sign, say) would
+    // otherwise pass while the migration and the constant stay narrower, and a fresh tenant would get more than
+    // an existing one.
+    for (const template of templated) {
+      const carried = [...(template.grants ?? []), ...template.floor].filter((k) =>
+        k.startsWith("care_plan."),
+      );
+      expect([...new Set(carried)].sort(), template.key).toEqual(
+        [...(CARE_PLAN_DEFAULT_GRANTS[template.key] ?? [])].sort(),
+      );
+    }
   });
 });
