@@ -74,7 +74,9 @@ function normalizeCoded(
   if (typeof inputValue !== "string") throw invalid(item, "coded HOPE values must be strings");
   if (inputValue === "^" && isCmsSkipBlankOption(options)) throw invalid(item, SKIP_CARET_MESSAGE);
   if (!options.some((option) => option.valueCode === inputValue)) {
-    throw invalid(item, `${inputValue} is not an allowed CMS value`);
+    // The item code, never the value: this envelope is cached by the idempotency layer for 24 hours, and a clinician
+    // who pastes a note into a coded field would otherwise have it (possibly PHI) echoed into the body and the cache.
+    throw invalid(item, `the value is not an allowed CMS value for ${item.itemCode}`);
   }
   return inputValue;
 }

@@ -211,7 +211,16 @@ export const RecordSfvSchema = Type.Object({
   data: HopeData,
 });
 export const UpdateDraftSchema = Type.Object({ data: HopeData });
-const AnswerValueSchema = Type.Union([Type.String(), Type.Number(), Type.Boolean()]);
+// A string answer is at most 18 characters in the HOPE v1.00.1 spec (A0500C, the longest assessment text item; dates are
+// 10, codes fewer), and no non-filler field of the CMS record layout exceeds 50 (the vendor e-mail). 64 leaves headroom
+// for a later spec without letting a request body (bounded only by the 10 MB body limit) become the value of an answer.
+// Per-item lengths are still enforced by the answer engine (`fixedRecordLength`).
+const ANSWER_VALUE_MAX_LENGTH = 64;
+const AnswerValueSchema = Type.Union([
+  Type.String({ maxLength: ANSWER_VALUE_MAX_LENGTH }),
+  Type.Number(),
+  Type.Boolean(),
+]);
 export const PatchAnswersSchema = Type.Object({
   ifVersion: Type.Integer({ minimum: 1 }),
   changes: Type.Array(

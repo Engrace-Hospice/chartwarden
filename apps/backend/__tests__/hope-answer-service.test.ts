@@ -3,6 +3,7 @@ import {
   HopeInvalidAnswerValueError,
   normalizeHopeAnswerValue,
 } from "../src/modules/10-hope/hope-answer-service";
+import { PatchAnswersSchema, parse } from "../src/modules/10-hope/routes/hope-typebox";
 
 function item(overrides: Record<string, unknown>) {
   return {
@@ -77,5 +78,58 @@ describe("normalizeHopeAnswerValue", () => {
     ])("accepts %s", (_label, value, expected) => {
       expect(normalize(value)).toBe(expected);
     });
+  });
+});
+
+describe("a refused coded answer never echoes what the caller sent", () => {
+  // The 422 envelope is replayed from the idempotency cache for 24 hours: a clinician's pasted note must not be in it.
+  it("names the item code, not the value", () => {
+    const a1400a = item({ itemCode: "A1400A", cmsItemTypeCode: "Code" });
+    const note = "pt reports chest pain at 3am, wife Jane at bedside";
+
+    const refusal = (() => {
+      try {
+        normalizeHopeAnswerValue({
+          item: a1400a,
+          options: [option("0"), option("1")],
+          inputValue: note,
+        });
+      } catch (error) {
+        return error as HopeInvalidAnswerValueError;
+      }
+      throw new Error("expected a refusal");
+    })();
+
+    expect(refusal).toBeInstanceOf(HopeInvalidAnswerValueError);
+    expect(JSON.stringify(refusal)).not.toContain("chest pain");
+    expect(refusal.message).not.toContain("chest pain");
+    expect(JSON.stringify((refusal as { details?: unknown }).details)).toContain("A1400A");
+    expect(JSON.stringify((refusal as { details?: unknown }).details)).not.toContain("Jane");
+  });
+});
+
+describe("PatchAnswersSchema bounds a string answer", () => {
+  const patch = (value: unknown) => ({
+    ifVersion: 1,
+    changes: [{ itemCode: "A0500C", action: "set", value }],
+  });
+
+  it("accepts the longest legitimate text item (A0500C, 18 characters) and the 64-character cap", () => {
+    expect(() => parse(PatchAnswersSchema, patch("x".repeat(18)))).not.toThrow();
+    expect(() => parse(PatchAnswersSchema, patch("x".repeat(64)))).not.toThrow();
+  });
+
+  it("refuses a longer string, without echoing it", () => {
+    const pasted = "free text that should never be a coded answer ".repeat(5);
+
+    let failure: unknown;
+    try {
+      parse(PatchAnswersSchema, patch(pasted));
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({ statusCode: 422 });
+    expect(JSON.stringify(failure)).not.toContain("free text");
   });
 });
