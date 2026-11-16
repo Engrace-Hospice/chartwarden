@@ -123,6 +123,9 @@ describe("tree sweeps that carry every file out", () => {
     "7z l /tmp/o.7z",
     "hdiutil create -srcfolder lib /tmp/o",
     "hdiutil attach /tmp/o.dmg",
+    "find . -exec sh -c 'echo {}' \\;",
+    "find . -name '*.tmp' -exec sh -c 'rm -f {}' \\;",
+    "find . -maxdepth 0 -exec sh -c 'cd apps && ls' \\;",
     "echo . | cat",
     "cpio -t < /tmp/o.cpio",
   ])("%s keeps allowing", (cmd) => {
