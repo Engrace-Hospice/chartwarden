@@ -17,6 +17,7 @@ import { join } from "node:path";
 import type { AbacContext } from "@chartwarden/auth";
 import { createDbClient } from "@chartwarden/db";
 import type { LatestAssessment, ScaleType } from "@chartwarden/types";
+import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { importHopeSpec } from "../../../scripts/db/import-hope-spec";
@@ -2014,6 +2015,52 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       // Purged: a further repeat writes nothing.
       await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, { reasonCode: "other" });
       expect(await cancelEvents(id)).toHaveLength(2);
+    });
+
+    it("a hold read that FAILS on the cancel's transaction (select 1/0) does not abort the cancel: it commits (200), keeps the bytes, and the event says the scope was unreadable", async () => {
+      const id = await freshPackage();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      // A reader that fails INSIDE the cancel's transaction: Postgres aborts a transaction after an error, so the cancel can only
+      // go on if the read ran in a SAVEPOINT that was rolled back.
+      const failingRead = createDbHopeBackend(
+        handle.db,
+        { publish: async () => undefined },
+        () => liveNow,
+        {
+          activeLegalHoldScopeInTransaction: async (tx) => {
+            await tx.execute(sql`select 1/0`);
+            return { orgWide: false, patientIds: new Set<string>() };
+          },
+        },
+      );
+      let logged = "";
+      try {
+        const cancelled = await failingRead.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, {
+          reasonCode: "package_lost",
+        });
+
+        expect(cancelled.status).toBe("cancelled");
+        logged = warn.mock.calls.map((call) => String(call[0])).join("\n");
+      } finally {
+        warn.mockRestore();
+      }
+      const row = await subRow(id);
+      expect(row.status).toBe("cancelled"); // committed
+      expect(row.acceptance_report.packageContentBase64).toEqual(expect.any(String)); // kept
+      for (const i of await itemRows(id)) {
+        expect(i.item_status).toBe("cancelled"); // the transaction went on after the failed read
+        expect(i.iqies_validation_result.xmlContentBase64).toEqual(expect.any(String));
+      }
+      const [event] = await cancelEvents(id);
+      expect(event.context).toMatchObject({
+        packageBytesPurged: false,
+        bytesKeptForLegalHold: false,
+        bytesKeptReason: "hold_scope_unreadable",
+      });
+      // The read's failure was logged by the error class and the organisation, nothing else.
+      expect(logged).toContain("legal-hold read failed");
+      expect(logged).not.toContain("1/0");
+      expect(logged).not.toContain("division");
     });
 
     it("an org-wide hold seen only AFTER the batch row lock keeps the bytes: a hold committed while the cancel waited for the row", async () => {
