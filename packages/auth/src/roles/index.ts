@@ -71,6 +71,8 @@ export {
   RESERVED_PLATFORM_ROLE_CATEGORY,
   RESERVED_PLATFORM_ROLE_KEYS,
   RESERVED_PLATFORM_ROLE_PREFIX,
+  SUPERADMIN_ROLE_KEY,
+  expandSuperadminRoles,
   isPlatformGrantableRoleKey,
   isReservedPlatformRoleKey,
   isTenantRoleReserved,
@@ -78,6 +80,7 @@ export {
 } from "./platform-reserved";
 export {
   ADMINISTRATOR_EXCLUDED_KEYS,
+  FULL_CATALOG_EXCLUDED_KEYS,
   FULL_CATALOG_ROLE_KEYS,
   type MirrorPermission,
   PLATFORM_PERMISSION_CATEGORY,

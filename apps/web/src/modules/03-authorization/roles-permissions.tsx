@@ -19,6 +19,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { NewRoleModal, RoleActions, deleteRole, patchRole } from "./role-writes";
 
+// Mirrors of what the server reserves to the platform (the browser imports no server code): the permission category
+// a tenant role never carries (PLATFORM_PERMISSION_CATEGORY) and the role category no tenant role is created under
+// (RESERVED_PLATFORM_ROLE_CATEGORY). The server refuses both with 422 RESERVED_ROLE; these keep the form from offering them.
+const PLATFORM_PERMISSION_CATEGORY = "platform";
+const PLATFORM_ROLE_CATEGORY = "platform_staff";
+
 interface RoleView {
   roleId: string;
   organizationId: string | null;
@@ -46,6 +52,12 @@ export function RolesPermissions(): JSX.Element {
   const client = useApiClient();
   const [roles, setRoles] = useState<RoleView[] | null>(null);
   const [catalog, setCatalog] = useState<PermissionRow[]>([]);
+  // Cross-tenant keys: a tenant role never carries them, so a clone leaves them behind (the server refuses them).
+  const platformKeys = useMemo(
+    () =>
+      new Set(catalog.filter((p) => p.category === PLATFORM_PERMISSION_CATEGORY).map((p) => p.key)),
+    [catalog],
+  );
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -197,9 +209,14 @@ export function RolesPermissions(): JSX.Element {
         />
       )}
       <NewRoleModal
+        // A fresh form per selected role, so the category default follows the role being cloned.
+        key={selectedId ?? "none"}
         open={creating}
         base={selected}
-        categories={[...new Set(roles.map((r) => r.category))].sort()}
+        categories={[...new Set(roles.map((r) => r.category))]
+          .filter((category) => category !== PLATFORM_ROLE_CATEGORY)
+          .sort()}
+        platformKeys={platformKeys}
         onClose={() => setCreating(false)}
         onCreated={(role) => {
           setRoles((current) => [...(current ?? []), role]);

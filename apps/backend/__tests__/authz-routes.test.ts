@@ -57,6 +57,13 @@ const PERMISSION_SEED = [
     permissions: ["breakglass.read", "breakglass.cosign", "engagement.manage", "engagement.read"],
   },
   { organizationId: "org_a", userId: "rn_1", permissions: ["breakglass.invoke"] },
+  // A holder of a platform-category key (what `superadmin` and `platform_ops` are): anti-escalation alone lets
+  // this actor put that key on a tenant-owned role.
+  {
+    organizationId: "org_a",
+    userId: "plat_1",
+    permissions: ["role.read", "role.manage", "role.assign", "mdm.merge.approve"],
+  },
   // The actor the §7.4 two-person control exists for: one user holding BOTH halves. Nothing stops
   // a tenant granting `breakglass.invoke` and `breakglass.cosign` to the same person — the
   // distinctness check is what stops that person from approving their own emergency PHI access.
@@ -130,6 +137,11 @@ function makeServer(
 }
 
 const ADMIN = { "x-test-user": "admin_1", "x-test-org": "org_a", "x-test-roles": "org_admin" };
+const PLATFORM_KEY_HOLDER = {
+  "x-test-user": "plat_1",
+  "x-test-org": "org_a",
+  "x-test-roles": "superadmin",
+};
 const COMPLIANCE = { "x-test-user": "co_1", "x-test-org": "org_a", "x-test-roles": "compliance" };
 const CLINICIAN = { "x-test-user": "rn_1", "x-test-org": "org_a", "x-test-roles": "clinical_rn" };
 /** Holds `breakglass.invoke` AND `breakglass.cosign` — the self-cosign case (§7.4). */
@@ -235,6 +247,7 @@ describe("M3-T08 authorization route inventory", () => {
         },
       });
       expect(res.statusCode).toBe(403);
+      expect(res.json().error.code).toBe("ESCALATION_BLOCKED");
       expect(auditSink.rows.some((r) => r.eventType === "m3.authz.escalation_blocked")).toBe(true);
       await app.close();
     });
@@ -275,6 +288,118 @@ describe("M3-T08 authorization route inventory", () => {
         await app.close();
       },
     );
+
+    it("ADR-0112: an admin who does NOT hold a platform key asking for it gets the audited anti-escalation 403, not the bare 422", async () => {
+      // The ordinary case (a materialized tenant admin holds no platform key) is a probe, and the escalation audit row
+      // is what records it; the reserved-key refusal is only for an actor who passed anti-escalation.
+      const { app, auditSink } = makeServer();
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/v1/roles",
+        headers: ADMIN,
+        payload: {
+          key: "probe",
+          name: "Probe",
+          category: "operations",
+          permissionKeys: ["mdm.merge.approve"],
+        },
+      });
+      expect(created.statusCode).toBe(403);
+      expect(created.json().error.code).toBe("ESCALATION_BLOCKED");
+      expect(auditSink.rows.some((r) => r.eventType === "m3.authz.escalation_blocked")).toBe(true);
+
+      const ordinary = await app.inject({
+        method: "POST",
+        url: "/api/v1/roles",
+        headers: ADMIN,
+        payload: { key: "probe_two", name: "Probe", category: "operations", permissionKeys: [] },
+      });
+      const edited = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/roles/${ordinary.json().roleId}`,
+        headers: ADMIN,
+        payload: { permissionKeys: ["mdm.merge.approve"] },
+      });
+      expect(edited.statusCode).toBe(403);
+      expect(edited.json().error.code).toBe("ESCALATION_BLOCKED");
+      await app.close();
+    });
+
+    it("ADR-0112: a holder of a platform key cannot put it on a tenant-owned role, at create or on edit → 422 RESERVED_ROLE", async () => {
+      const { app, auditSink } = makeServer();
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/v1/roles",
+        headers: PLATFORM_KEY_HOLDER,
+        // The actor HOLDS this key, so anti-escalation passes; only the platform-key rule refuses it, and it is audited
+        // too (a holder minting platform authority without the operator CLI is the attempt the audit exists for).
+        payload: {
+          key: "mint_platform",
+          name: "Mint",
+          category: "operations",
+          permissionKeys: ["mdm.merge.approve"],
+        },
+      });
+      expect(created.statusCode).toBe(422);
+      expect(created.json().error.code).toBe("RESERVED_ROLE");
+      expect(auditSink.rows.some((r) => r.eventType === "m3.role.created")).toBe(false);
+      expect(auditSink.rows.some((r) => r.eventType === "m3.authz.escalation_blocked")).toBe(true);
+
+      // Same actor, ordinary role: still allowed, and the edit then cannot smuggle the key in.
+      const ordinary = await app.inject({
+        method: "POST",
+        url: "/api/v1/roles",
+        headers: PLATFORM_KEY_HOLDER,
+        payload: { key: "plain_role", name: "Plain", category: "operations", permissionKeys: [] },
+      });
+      expect(ordinary.statusCode).toBe(201);
+      const edited = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/roles/${ordinary.json().roleId}`,
+        headers: PLATFORM_KEY_HOLDER,
+        payload: { permissionKeys: ["mdm.merge.approve"] },
+      });
+      expect(edited.statusCode).toBe(422);
+      expect(edited.json().error.code).toBe("RESERVED_ROLE");
+      await app.close();
+    });
+
+    it("ADR-0112: an edit that keeps the platform keys a seeded role already carries still saves; it names a key it would add", async () => {
+      // The dev seed (and db:sync:permissions) gives a demo tenant's admin roles every catalog key, platform ones
+      // included, and the editor sends the whole set back, so refusing what is already there would lock those roles.
+      const { app, roles } = makeServer();
+      const seeded = await roles.store.createCustom({
+        organizationId: "org_a",
+        key: "seeded_admin",
+        name: "Seeded admin",
+        category: "operations",
+        scopeLevel: "organization",
+        permissionKeys: ["role.read", "mdm.merge.approve"],
+      });
+      const kept = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/roles/${seeded.roleId}`,
+        headers: PLATFORM_KEY_HOLDER,
+        payload: { permissionKeys: ["mdm.merge.approve"] }, // drops role.read, keeps the platform key
+      });
+      expect(kept.statusCode).toBe(200);
+
+      const plain = await app.inject({
+        method: "POST",
+        url: "/api/v1/roles",
+        headers: PLATFORM_KEY_HOLDER,
+        payload: { key: "plain_two", name: "Plain", category: "operations", permissionKeys: [] },
+      });
+      const added = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/roles/${plain.json().roleId}`,
+        headers: PLATFORM_KEY_HOLDER,
+        payload: { permissionKeys: ["mdm.merge.approve"] },
+      });
+      expect(added.statusCode).toBe(422);
+      expect(added.json().error.message).toContain("mdm.merge.approve");
+      await app.close();
+    });
 
     it("slice 2: a tenant can still create an ordinary role, and a role whose key merely CONTAINS the word is not the reserved key", async () => {
       const { app } = makeServer();

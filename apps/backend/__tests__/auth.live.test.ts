@@ -399,6 +399,7 @@ describe.skipIf(!DB_URL)(
         ["platform_admin", "admin_executive"],
         ["helpdesk", "platform_staff"],
         ["ai_safety_owner", "clinical_staff"], // 0321
+        ["superadmin", "clinical_staff"], // 1495
       ]) {
         await expect(
           admin.query(
@@ -486,7 +487,7 @@ describe.skipIf(!DB_URL)(
           "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
           [org, membershipId, roleId],
         );
-      for (const key of ["g96.spoof", "g96.legacy", "g96.real"]) {
+      for (const key of ["g96.spoof", "g96.legacy", "g96.real", "g96.super"]) {
         await admin.query(
           "INSERT INTO permission (key,resource,action,category) VALUES ($1,'g96','x','clinical') ON CONFLICT (key) DO NOTHING",
           [key],
@@ -504,6 +505,9 @@ describe.skipIf(!DB_URL)(
       await admin.query("ALTER TABLE role DROP CONSTRAINT role_platform_authority_platform_owned");
       const spoof = await newRole("ai_safety_owner", "clinical_staff");
       const legacy = await newRole("platform_ops", "admin_executive");
+      // A tenant-owned `superadmin` (1495): it would otherwise read as administrator + org_admin + every platform
+      // role with the whole catalog, so it must confer neither its key, its expansion nor its permissions.
+      const superSpoof = await newRole("superadmin", "clinical_staff");
       await admin.query(
         `ALTER TABLE role ADD CONSTRAINT role_platform_authority_platform_owned ${checkDef}`,
       );
@@ -512,6 +516,7 @@ describe.skipIf(!DB_URL)(
         [spoof, "g96.spoof"],
         [legacy, "g96.legacy"],
         [real, "g96.real"],
+        [superSpoof, "g96.super"],
       ] as const) {
         await admin.query(
           "INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,$3)",
@@ -520,7 +525,7 @@ describe.skipIf(!DB_URL)(
       }
       const userId = await newUser("g96");
       const membership = await newMembership(userId);
-      for (const roleId of [spoof, legacy, real]) await grant(membership, roleId);
+      for (const roleId of [spoof, legacy, real, superSpoof]) await grant(membership, roleId);
 
       // M3 effective-permission store: neither the reserved KEY nor the spoof row's PERMISSIONS survive.
       const grants = await createDbEffectivePermissionStore(db).loadGrants(org, userId);
@@ -566,6 +571,406 @@ describe.skipIf(!DB_URL)(
       });
 
       await handleR.close();
+    });
+
+    it("superadmin (migration 1495): ChartWarden's own org, supersedes administrator and org_admin, reaches no tenant's rows", async () => {
+      const { createDbClient: mkDbS } = await import("@chartwarden/db");
+      const {
+        FULL_CATALOG_EXCLUDED_KEYS,
+        PLATFORM_GRANTABLE_ROLE_KEYS,
+        allPermissionMirrorRows,
+        createDbActorEnrichmentReader,
+        createDbEffectivePermissionStore,
+      } = await import("@chartwarden/auth");
+      const { withOrgContext } = await import("@chartwarden/tenancy");
+      const { grantPlatformRole, platformRoleLabel, revokePlatformRole } = await import(
+        "../../../scripts/db/lib/platform-role"
+      );
+      const handleS = mkDbS({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
+      const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const newOrg = async (slug: string) =>
+        (
+          await admin.query(
+            "INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'SA','SA') RETURNING id",
+            [slug],
+          )
+        ).rows[0].id as string;
+      // ChartWarden's own org (never a tenant) and a tenant the superadmin does not belong to.
+      const platformOrg = await newOrg(`cw-platform-${stamp}`);
+      const tenantOrg = await newOrg(`tenant-${stamp}`);
+      await admin.query(
+        "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'tenant_only','Tenant only','clinical_staff',true)",
+        [tenantOrg],
+      );
+      const userId = (
+        await admin.query(`INSERT INTO "user" (email,name) VALUES ($1,'Super') RETURNING id`, [
+          `superadmin-${stamp}@example.test`,
+        ])
+      ).rows[0].id as string;
+      const membership = (
+        await admin.query(
+          "INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active') RETURNING id",
+          [userId, platformOrg],
+        )
+      ).rows[0].id as string;
+
+      await grantPlatformRole(admin, {
+        organizationId: platformOrg,
+        membershipId: membership,
+        key: "superadmin",
+        ...platformRoleLabel("superadmin"),
+      });
+
+      // It reads as the two admin roles it supersedes and as every platform role.
+      const roles =
+        (
+          await createDbActorEnrichmentReader(handleS.db as never).read(
+            { orgId: platformOrg },
+            userId,
+          )
+        )?.roles ?? [];
+      for (const key of [
+        "superadmin",
+        "administrator",
+        "org_admin",
+        ...PLATFORM_GRANTABLE_ROLE_KEYS,
+      ]) {
+        expect(roles).toContain(key);
+      }
+
+      // Its permissions are the code catalog, not stored rows: with every row deleted it still holds all of it.
+      await admin.query(
+        "DELETE FROM role_permission WHERE role_id IN (SELECT id FROM role WHERE organization_id IS NULL AND key = 'superadmin')",
+      );
+      const grants = await createDbEffectivePermissionStore(handleS.db as never).loadGrants(
+        platformOrg,
+        userId,
+      );
+      const held = new Set(grants.find((g) => g.roleKey === "superadmin")?.permissionKeys);
+      for (const { key } of allPermissionMirrorRows()) {
+        // ...less the keys withheld from the admin roles it supersedes: it must not hold both halves of a two-person control.
+        expect(held.has(key)).toBe(!FULL_CATALOG_EXCLUDED_KEYS.has(key));
+      }
+
+      // The Roles screen reports what the resolver grants, not the stored rows (all deleted above), so its "permission
+      // coverage" for superadmin is the real figure: the catalog less the withheld keys.
+      const { createDbRoleStore } = await import("../src/modules/03-authorization/role-store");
+      const views = await createDbRoleStore(handleS.db as never).listForOrg(platformOrg);
+      expect(new Set(views.find((v) => v.key === "superadmin")?.permissionKeys)).toEqual(held);
+
+      // ...and it reaches no tenant's rows: scoped to the platform org as chartwarden_app, the tenant's role is invisible.
+      const visible = await withOrgContext(
+        handleS.db as never,
+        { organizationId: platformOrg, userId },
+        async (tx) => {
+          const res = (await tx.execute(
+            sql`SELECT key FROM role WHERE organization_id = ${tenantOrg}`,
+          )) as unknown as { rows: unknown[] };
+          return res.rows;
+        },
+      );
+      expect(visible).toEqual([]);
+
+      // It belongs to ChartWarden, never a tenant: an organization with a tenant_account refuses the binding, in the
+      // operator CLI's guard and, for ad-hoc SQL and seeds, in the membership_role trigger (1495).
+      await admin.query(
+        "INSERT INTO tenant_account (organization_id, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,'T','t@example.test','t@example.test')",
+        [tenantOrg],
+      );
+      const tenantUser = (
+        await admin.query(`INSERT INTO "user" (email,name) VALUES ($1,'Tenant') RETURNING id`, [
+          `tenant-user-${stamp}@example.test`,
+        ])
+      ).rows[0].id as string;
+      const tenantMembership = (
+        await admin.query(
+          "INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active') RETURNING id",
+          [tenantUser, tenantOrg],
+        )
+      ).rows[0].id as string;
+      // RLS, not just the role catalog: scoped to the platform org as chartwarden_app, a superadmin reads none of the
+      // tenant's memberships, while the same query scoped to the tenant sees its row (so the empty result is not vacuous).
+      const membersSeenFrom = (organizationId: string) =>
+        withOrgContext(handleS.db as never, { organizationId, userId }, async (tx) => {
+          const res = (await tx.execute(
+            sql`SELECT id FROM membership WHERE organization_id = ${tenantOrg}`,
+          )) as unknown as { rows: unknown[] };
+          return res.rows;
+        });
+      expect(await membersSeenFrom(platformOrg)).toEqual([]);
+      expect(await membersSeenFrom(tenantOrg)).toHaveLength(1);
+      await expect(
+        grantPlatformRole(admin, {
+          organizationId: tenantOrg,
+          membershipId: tenantMembership,
+          key: "superadmin",
+          ...platformRoleLabel("superadmin"),
+        }),
+      ).rejects.toThrow(/not a tenant/);
+      const superadminRoleId = (
+        await admin.query(
+          "SELECT id FROM role WHERE organization_id IS NULL AND key = 'superadmin'",
+        )
+      ).rows[0].id as string;
+      await expect(
+        admin.query(
+          "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+          [tenantOrg, tenantMembership, superadminRoleId],
+        ),
+      ).rejects.toThrow(/belongs to the ChartWarden platform org/);
+
+      // The trigger is not a superuser-INSERT-only check. It also refuses: an UPDATE that swaps a tenant member's
+      // ordinary role for superadmin; a row filed under the platform org but pointing at a tenant's membership (no
+      // composite FK ties the two); a session that skips ordinary triggers (the seeds run as `replica`); and the
+      // same INSERT made as chartwarden_app inside the tenant's own context, where RLS hides other tenants' rows.
+      const ordinaryRoleId = (
+        await admin.query(
+          "SELECT id FROM role WHERE organization_id = $1 AND key = 'tenant_only'",
+          [tenantOrg],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+        [tenantOrg, tenantMembership, ordinaryRoleId],
+      );
+      await expect(
+        admin.query(
+          "UPDATE membership_role SET role_id = $3 WHERE membership_id = $1 AND organization_id = $2",
+          [tenantMembership, tenantOrg, superadminRoleId],
+        ),
+      ).rejects.toThrow(/belongs to the ChartWarden platform org/);
+      await expect(
+        admin.query(
+          "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+          [platformOrg, tenantMembership, superadminRoleId],
+        ),
+      ).rejects.toThrow(/belongs to the ChartWarden platform org/);
+      await admin.query("SET session_replication_role = replica");
+      try {
+        await expect(
+          admin.query(
+            "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+            [tenantOrg, tenantMembership, superadminRoleId],
+          ),
+        ).rejects.toThrow(/belongs to the ChartWarden platform org/);
+      } finally {
+        await admin.query("SET session_replication_role = DEFAULT");
+      }
+      // The driver wraps the database error, so read the cause too: the refusal must be OURS, not a permission error.
+      const refusal = async (attempt: Promise<unknown>): Promise<string | null> => {
+        try {
+          await attempt;
+          return null;
+        } catch (error) {
+          const cause = (error as { cause?: { message?: string } }).cause;
+          return `${(error as Error).message} ${cause?.message ?? ""}`;
+        }
+      };
+      expect(
+        await refusal(
+          withOrgContext(
+            handleS.db as never,
+            { organizationId: tenantOrg, userId: tenantUser },
+            async (tx) => {
+              await tx.execute(
+                sql`INSERT INTO membership_role (organization_id, membership_id, role_id)
+                    VALUES (${tenantOrg}, ${tenantMembership}, ${superadminRoleId})`,
+              );
+            },
+          ),
+        ),
+      ).toMatch(/belongs to the ChartWarden platform org/);
+      // Where DEFINER rights are what refuse it: chartwarden_app in the PLATFORM org's own context files the row under
+      // that org but points it at a tenant's membership. Under invoker rights RLS hides that membership, the lookup
+      // returns no organization, and the binding would pass.
+      expect(
+        await refusal(
+          withOrgContext(
+            handleS.db as never,
+            { organizationId: platformOrg, userId },
+            async (tx) => {
+              await tx.execute(
+                sql`INSERT INTO membership_role (organization_id, membership_id, role_id)
+                    VALUES (${platformOrg}, ${tenantMembership}, ${superadminRoleId})`,
+              );
+            },
+          ),
+        ),
+      ).toMatch(/belongs to the ChartWarden platform org/);
+
+      // The reverse order: an organization that already holds a superadmin binding cannot be made a tenant.
+      const futureTenant = await newOrg(`future-${stamp}`);
+      const futureUser = (
+        await admin.query(`INSERT INTO "user" (email,name) VALUES ($1,'Future') RETURNING id`, [
+          `future-${stamp}@example.test`,
+        ])
+      ).rows[0].id as string;
+      const futureMembership = (
+        await admin.query(
+          "INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active') RETURNING id",
+          [futureUser, futureTenant],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+        [futureTenant, futureMembership, superadminRoleId],
+      );
+      await expect(
+        admin.query(
+          "INSERT INTO tenant_account (organization_id, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,'F','f@example.test','f@example.test')",
+          [futureTenant],
+        ),
+      ).rejects.toThrow(/cannot become a tenant/);
+      await admin.query("DELETE FROM membership_role WHERE membership_id = $1", [futureMembership]);
+
+      // The same two checks at the same instant: each passes alone because neither sees the other's uncommitted row.
+      // The organization-row locks make the second wait for the first, then re-read it.
+      const { Client: PgClient } = await import("pg");
+      const raceOrg = await newOrg(`race-${stamp}`);
+      const raceUser = (
+        await admin.query(`INSERT INTO "user" (email,name) VALUES ($1,'Race') RETURNING id`, [
+          `race-${stamp}@example.test`,
+        ])
+      ).rows[0].id as string;
+      const raceMembership = (
+        await admin.query(
+          "INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active') RETURNING id",
+          [raceUser, raceOrg],
+        )
+      ).rows[0].id as string;
+      const other = new PgClient({ connectionString: DB_URL as string });
+      await other.connect();
+      try {
+        await admin.query("BEGIN");
+        await admin.query(
+          "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+          [raceOrg, raceMembership, superadminRoleId],
+        );
+        await other.query("BEGIN");
+        let settled = false;
+        const outcome = other
+          .query(
+            "INSERT INTO tenant_account (organization_id, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,'R','r@example.test','r@example.test')",
+            [raceOrg],
+          )
+          .then(
+            () => "inserted",
+            (error: Error) => error.message,
+          )
+          .finally(() => {
+            settled = true;
+          });
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        expect(settled).toBe(false); // blocked on the binding's lock, not racing past it
+        await admin.query("COMMIT");
+        expect(await outcome).toMatch(/cannot become a tenant/);
+      } finally {
+        await admin.query("ROLLBACK"); // a no-op warning once committed; clears the shared connection if an assertion threw
+        await other.query("ROLLBACK");
+        await other.end();
+      }
+      await admin.query("DELETE FROM membership_role WHERE membership_id = $1", [raceMembership]);
+
+      // The resolver, over the real store, never caches a superadmin set: it holds the catalog now, and the very next
+      // call after the revoke below is denied with no invalidation, though the first call would have cached it.
+      const { createEffectivePermissionResolver } = await import("@chartwarden/auth");
+      const resolve = createEffectivePermissionResolver(
+        createDbEffectivePermissionStore(handleS.db as never),
+      ).resolver;
+      const requestContext = { organizationId: platformOrg, userId } as never;
+      expect((await resolve(requestContext)).size).toBe(held.size);
+
+      // Revoking it ends the holder's sessions, so a session minted while they held it does not outlive it.
+      await admin.query(
+        "INSERT INTO session (id,user_id,token,expires_at) VALUES ($1,$2,$1,now() + interval '1 day')",
+        [`sa-session-${stamp}`, userId],
+      );
+      await revokePlatformRole(admin, { membershipId: membership, key: "superadmin" });
+      const count = async (table: "session" | "membership_role", column: string, id: string) =>
+        Number(
+          (await admin.query(`SELECT count(*)::int AS n FROM ${table} WHERE ${column} = $1`, [id]))
+            .rows[0].n,
+        );
+      expect(await count("session", "user_id", userId)).toBe(0);
+      expect(await count("membership_role", "membership_id", membership)).toBe(0);
+      expect((await resolve(requestContext)).size).toBe(0);
+
+      // A second revoke removes nothing and must not sign anyone out.
+      await admin.query(
+        "INSERT INTO session (id,user_id,token,expires_at) VALUES ($1,$2,$1,now() + interval '1 day')",
+        [`sa-session-again-${stamp}`, userId],
+      );
+      expect(await revokePlatformRole(admin, { membershipId: membership, key: "superadmin" })).toBe(
+        false,
+      );
+      expect(await count("session", "user_id", userId)).toBe(1);
+
+      // An offboarded (suspended) holder can still be revoked: the binding must not stay dormant.
+      const { resolveActiveMembership } = await import("../../../scripts/db/lib/platform-role");
+      await admin.query("UPDATE membership SET status = 'suspended' WHERE id = $1", [membership]);
+      const holderEmail = `superadmin-${stamp}@example.test`;
+      await expect(
+        resolveActiveMembership(admin, holderEmail, `cw-platform-${stamp}`),
+      ).rejects.toThrow(/not active/);
+      expect(
+        (
+          await resolveActiveMembership(admin, holderEmail, `cw-platform-${stamp}`, {
+            allowInactive: true,
+          })
+        ).membershipId,
+      ).toBe(membership);
+
+      // Through the CLI itself (the unit above is only its helper): a grant needs an active member, a revoke does not.
+      const { runPlatformRoleCommand } = await import("../../../scripts/db/lib/platform-role-cli");
+      const command = (action: "grant" | "revoke") => ({
+        action,
+        email: holderEmail,
+        org: `cw-platform-${stamp}`,
+        role: "superadmin" as const,
+        ticket: `CHG-${stamp}`,
+      });
+      // Every write the operator action makes lands in audit_event under the change ticket (M4 triggers, live).
+      const audited = async (eventType: string): Promise<number> =>
+        Number(
+          (
+            await admin.query(
+              `SELECT count(*)::int AS n FROM audit_event
+                WHERE event_type = $1 AND correlation_id LIKE $2`,
+              [eventType, `ops-cli:platform-role:%:CHG-${stamp}:%`],
+            )
+          ).rows[0].n,
+        );
+      const said: string[] = [];
+      await admin.query("UPDATE membership SET status = 'active' WHERE id = $1", [membership]);
+      await runPlatformRoleCommand(admin, command("grant"), (line) => said.push(line));
+      expect(said.join("\n")).toMatch(/granted:/);
+      expect(await audited("membership_role.insert")).toBeGreaterThanOrEqual(1);
+      await admin.query("UPDATE membership SET status = 'suspended' WHERE id = $1", [membership]);
+      await expect(
+        runPlatformRoleCommand(admin, command("grant"), () => undefined),
+      ).rejects.toThrow(/not active/);
+      const sessionDeletesAudited = async (): Promise<number> =>
+        Number(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM audit_event WHERE event_type = 'session.delete'",
+            )
+          ).rows[0].n,
+        );
+      const sessionDeletesBefore = await sessionDeletesAudited();
+      const revoked: string[] = [];
+      await runPlatformRoleCommand(admin, command("revoke"), (line) => revoked.push(line));
+      expect(revoked.join("\n")).toMatch(/revoked:/);
+      expect(revoked.join("\n")).toMatch(/ended every session/);
+      expect(await count("membership_role", "membership_id", membership)).toBe(0);
+      // The binding delete is on the ticket's trail. The session delete is audited by the session trigger under its own
+      // correlation id (not the ticket's), so it is counted, not matched to the ticket.
+      expect(await audited("membership_role.delete")).toBeGreaterThanOrEqual(1);
+      expect(await sessionDeletesAudited()).toBeGreaterThan(sessionDeletesBefore);
+
+      await handleS.close();
     });
 
     it("platform-role CLI: idempotent grant, refusals, audit trail and revoke (GAP-003 follow-up)", async () => {

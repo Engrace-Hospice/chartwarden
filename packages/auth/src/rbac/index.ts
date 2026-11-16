@@ -16,6 +16,8 @@ export {
   resolveActorPermissions,
   setEffectivePermissionResolver,
 } from "./require-role";
+// `superadmin` supersedes the two full-catalog admin roles: its permissions come from the code catalog, not stored rows.
+export { effectivePermissionKeys, platformPermissionKeysIn } from "./superadmin-permissions";
 // M3-T06 — the cached effective-permission resolver (the real seam M3-T05 deny-stubbed).
 export {
   type Clock,

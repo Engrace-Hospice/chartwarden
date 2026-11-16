@@ -23,8 +23,11 @@ const tenantRole = {
 const catalog = [
   { key: "patient.read", resource: "patient", action: "read", category: "clinical" },
   { key: "patient.create", resource: "patient", action: "create", category: "clinical" },
+  { key: "mdm.merge.approve", resource: "mdm", action: "approve", category: "platform" },
 ];
 
+// A role the dev seed gave the whole catalog carries platform keys; the stub serves whatever this holds.
+let rolePermissionKeys: string[] = ["patient.read"];
 let calls: string[] = [];
 let bodies: unknown[] = [];
 let myPermissions: string[] = [];
@@ -60,9 +63,17 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       permissionKeys: sent.permissionKeys ?? tenantRole.permissionKeys,
     });
   }
+  if (method === "POST" && path === "/api/v1/roles") {
+    const sent = bodies[bodies.length - 1] as { key: string; permissionKeys?: string[] };
+    return json(
+      { ...tenantRole, roleId: "role-new", key: sent.key, permissionKeys: sent.permissionKeys },
+      201,
+    );
+  }
   if (method === "DELETE") return json({ deleted: true });
   if (path === "/api/v1/me/permissions") return json({ permissions: myPermissions });
-  if (path === "/api/v1/roles") return json({ roles: [tenantRole] });
+  if (path === "/api/v1/roles")
+    return json({ roles: [{ ...tenantRole, permissionKeys: rolePermissionKeys }] });
   if (path === "/api/v1/permissions") return json({ permissions: catalog });
   return json({});
 }
@@ -86,6 +97,7 @@ beforeEach(() => {
   bodies = [];
   myPermissions = ["role.read", "role.manage"];
   patchFailure = null;
+  rolePermissionKeys = ["patient.read"];
 });
 
 describe("GAP-116 — role writes", () => {
@@ -121,6 +133,20 @@ describe("GAP-116 — role writes", () => {
       observer.observe(container, { childList: true, subtree: true });
     });
     expect(await screen.findByRole("checkbox", { name: "patient.create" })).toBeTruthy();
+  });
+
+  it("a clone leaves the platform keys behind, so a role seeded with the whole catalog can still be copied", async () => {
+    rolePermissionKeys = ["patient.read", "mdm.merge.approve"];
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "New role" }));
+    fireEvent.change(await screen.findByLabelText("Role key"), {
+      target: { value: "copy_of_nurse" },
+    });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Copy" } });
+    expect(screen.getByText(/1 platform permission is not copied/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Create role" }));
+    await waitFor(() => expect(writes()).toContain("POST /api/v1/roles"));
+    expect((bodies[0] as { permissionKeys: string[] }).permissionKeys).toEqual(["patient.read"]);
   });
 
   it("shows the server's refusal in place when the save is denied", async () => {

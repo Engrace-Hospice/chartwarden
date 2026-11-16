@@ -20,6 +20,7 @@
 //     The cache TTL is capped by the soonest upcoming expiry so caching cannot serve a grant
 //     past its window.
 import type { HttpRequestContext } from "@chartwarden/types";
+import { SUPERADMIN_ROLE_KEY } from "../roles/platform-reserved";
 import {
   type Clock,
   type EffectivePermissionCache,
@@ -137,7 +138,11 @@ export function createEffectivePermissionResolver(
     // window; otherwise use the default freshness bound.
     const ttlMs =
       soonestExpiryMs === null ? defaultTtlMs : Math.min(defaultTtlMs, soonestExpiryMs - nowMs);
-    cache.set(key, permissions, ttlMs);
+    // `superadmin` is never cached. The key is (org, user), not session-bound, and the CLI that
+    // revokes the role runs in another process that cannot invalidate this replica's entry, so a
+    // cached set would outlive the revoke (and survive a fresh sign-in) for up to the TTL. At most
+    // two people hold it; one extra grant read per request is the price of an immediate revoke.
+    if (!grants.some((g) => g.roleKey === SUPERADMIN_ROLE_KEY)) cache.set(key, permissions, ttlMs);
     return permissions;
   };
 
