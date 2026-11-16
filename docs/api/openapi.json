@@ -138774,7 +138774,7 @@
                           "source": {
                             "anyOf": [
                               {
-                                "const": "clinician_authored",
+                                "const": "clinical",
                                 "type": "string"
                               },
                               {
@@ -138787,10 +138787,6 @@
                               },
                               {
                                 "const": "agent_stated",
-                                "type": "string"
-                              },
-                              {
-                                "const": "idg_directed",
                                 "type": "string"
                               }
                             ]
@@ -140282,7 +140278,7 @@
                     "source": {
                       "anyOf": [
                         {
-                          "const": "clinician_authored",
+                          "const": "clinical",
                           "type": "string"
                         },
                         {
@@ -140295,10 +140291,6 @@
                         },
                         {
                           "const": "agent_stated",
-                          "type": "string"
-                        },
-                        {
-                          "const": "idg_directed",
                           "type": "string"
                         }
                       ]
@@ -140424,7 +140416,7 @@
                   "source": {
                     "anyOf": [
                       {
-                        "const": "clinician_authored",
+                        "const": "clinical",
                         "type": "string"
                       },
                       {
@@ -140437,10 +140429,6 @@
                       },
                       {
                         "const": "agent_stated",
-                        "type": "string"
-                      },
-                      {
-                        "const": "idg_directed",
                         "type": "string"
                       }
                     ]
@@ -140608,7 +140596,7 @@
                     "source": {
                       "anyOf": [
                         {
-                          "const": "clinician_authored",
+                          "const": "clinical",
                           "type": "string"
                         },
                         {
@@ -140621,10 +140609,6 @@
                         },
                         {
                           "const": "agent_stated",
-                          "type": "string"
-                        },
-                        {
-                          "const": "idg_directed",
                           "type": "string"
                         }
                       ]
@@ -401365,7 +401349,7 @@
                                 "source": {
                                   "anyOf": [
                                     {
-                                      "const": "clinician_authored",
+                                      "const": "clinical",
                                       "type": "string"
                                     },
                                     {
@@ -401378,10 +401362,6 @@
                                     },
                                     {
                                       "const": "agent_stated",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "idg_directed",
                                       "type": "string"
                                     }
                                   ]

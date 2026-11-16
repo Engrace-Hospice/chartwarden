@@ -968,9 +968,7 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
           },
           payload: {
             parentProblemId,
-            // `patient_stated`: the one source value both the route schema and the DB enum accept for a human-authored goal
-            // (the schema's `clinician_authored` is not a `discipline_goal_source` value, so it would 500 on insert).
-            source: "patient_stated",
+            source: "clinical",
             originalText: "SYNTHETIC-GOAL-UNDER-PART2",
             addedByDiscipline: "msw",
           },

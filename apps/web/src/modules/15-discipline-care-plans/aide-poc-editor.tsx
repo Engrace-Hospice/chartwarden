@@ -60,13 +60,12 @@ import {
   th,
 } from "./discipline-ui";
 
-/** `discipline_goal_source` as the §4.2 `CreateGoalBody` accepts it (the route's union, not the pgEnum —
- *  the route layer is the contract the browser talks to). */
+/** `discipline_goal_source` values this form may send (`agent_stated` needs an acting consent this form does
+ *  not collect). The route union and the pgEnum are pinned equal by `m15-goal-source-parity.test.ts`. */
 const SOURCE_OPTIONS = [
-  { value: "clinician_authored", label: "Clinician authored" },
+  { value: "clinical", label: "Clinician authored" },
   { value: "patient_stated", label: "Patient stated" },
   { value: "family_stated", label: "Family stated" },
-  { value: "idg_directed", label: "IDG directed" },
 ];
 
 /** The §4.2 `UpdateGoalBody.event.type` ladder. */
@@ -93,7 +92,7 @@ export function AidePocEditor(): JSX.Element {
   const [frequencyValue, setFrequencyValue] = useState("");
   // New goal draft.
   const [goalText, setGoalText] = useState("");
-  const [goalSource, setGoalSource] = useState("clinician_authored");
+  const [goalSource, setGoalSource] = useState("clinical");
   const [goalProblemId, setGoalProblemId] = useState("");
 
   const load = useCallback(async () => {

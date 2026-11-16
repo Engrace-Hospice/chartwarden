@@ -64237,7 +64237,7 @@ export interface operations {
                             goalId: string;
                             parentProblemId: string | null;
                             parentGoalId: string | null;
-                            source: "clinician_authored" | "patient_stated" | "family_stated" | "agent_stated" | "idg_directed";
+                            source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
                             status: string;
                             originalText: string;
                             revisedText: string | null;
@@ -64587,7 +64587,7 @@ export interface operations {
                     /** Format: uuid */
                     parentProblemId: string;
                     parentGoalId?: string | null;
-                    source: "clinician_authored" | "patient_stated" | "family_stated" | "agent_stated" | "idg_directed";
+                    source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
                     originalText: string;
                     measurableOutcome?: string | null;
                     targetAt?: string | null;
@@ -64611,7 +64611,7 @@ export interface operations {
                         goalId: string;
                         parentProblemId: string | null;
                         parentGoalId: string | null;
-                        source: "clinician_authored" | "patient_stated" | "family_stated" | "agent_stated" | "idg_directed";
+                        source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
                         status: string;
                         originalText: string;
                         revisedText: string | null;
@@ -64668,7 +64668,7 @@ export interface operations {
                         goalId: string;
                         parentProblemId: string | null;
                         parentGoalId: string | null;
-                        source: "clinician_authored" | "patient_stated" | "family_stated" | "agent_stated" | "idg_directed";
+                        source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
                         status: string;
                         originalText: string;
                         revisedText: string | null;
@@ -127094,7 +127094,7 @@ export interface operations {
                                 goalId: string;
                                 parentProblemId: string | null;
                                 parentGoalId: string | null;
-                                source: "clinician_authored" | "patient_stated" | "family_stated" | "agent_stated" | "idg_directed";
+                                source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
                                 status: string;
                                 originalText: string;
                                 revisedText: string | null;
