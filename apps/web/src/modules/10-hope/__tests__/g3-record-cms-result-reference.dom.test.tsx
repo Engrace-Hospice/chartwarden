@@ -258,16 +258,31 @@ describe.each([
     expect(within(dialog).queryByRole("alert")).toBeNull();
   });
 
-  it("is said again when the same reference is sent again and refused again", async () => {
-    const { dialog, field, POST } = mount(async () => refusal());
+  it("is answered on the field again, with focus, when the same reference is sent again and refused again", async () => {
+    let answer: (reply: Reply) => void = () => undefined;
+    const replies: Array<() => Promise<Reply>> = [
+      async () => refusal(),
+      () =>
+        new Promise<Reply>((resolve) => {
+          answer = resolve;
+        }),
+    ];
+    const { dialog, field, POST } = mount(() => (replies.shift() as () => Promise<Reply>)());
     typeReference(field(), "REF 123");
     await reviewAndConfirm(dialog);
     await waitFor(() => expect(field().getAttribute("aria-invalid")).toBe("true"));
+    const firstAlert = within(dialog).getByRole("alert");
 
     await reviewAndConfirm(dialog);
 
+    // While the second request is out the form is not on screen: no stale refusal is shown beside the confirmation.
     await waitFor(() => expect(POST).toHaveBeenCalledTimes(2));
+    expect(within(dialog).queryByLabelText(/Report reference/)).toBeNull();
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    answer(refusal());
     await waitFor(() => expect(within(dialog).getAllByRole("alert")).toHaveLength(1));
+    // The refusal is announced afresh (a new alert on the re-mounted field), and focus is on that field again.
+    expect(within(dialog).getByRole("alert")).not.toBe(firstAlert);
     expect(field().getAttribute("aria-invalid")).toBe("true");
     expect(document.activeElement).toBe(field());
   });
@@ -305,6 +320,85 @@ describe("a patient-identifier refusal of a result row's token", () => {
     expect((await within(dialog).findByRole("alert")).textContent).toBe(ROW_PHI_WORDS);
     expect(field().getAttribute("aria-invalid")).toBeNull();
   });
+});
+
+// The server takes a row's `code` and `itemCode` in the same charset as the reference (empty allowed, 64 characters:
+// HOPE_RESULT_TOKEN_PATTERN), and the dialog says so before the Review step instead of sending what is refused.
+describe.each([["CMS code"], ["Item"]])("the %s of a result row", (label) => {
+  const TOKEN_WORDS =
+    "A code or item has a character that is not allowed. Use only letters, digits, spaces and . _ : # / -, up to 64 characters.";
+  const tokenField = (dialog: HTMLElement) =>
+    within(dialog).getByLabelText(`${label} for ${ITEM.label}, row 1`) as HTMLInputElement;
+  const typeToken = (dialog: HTMLElement, value: string) =>
+    fireEvent.change(tokenField(dialog), { target: { value } });
+
+  it.each([
+    ["markup", "<b>x</b>"],
+    ["a comma", "E,12"],
+    ["a quote", 'E"1'],
+    ["an accented letter", "réf"],
+    ["a zero-width space", "E\u200b1"],
+    ["more than 64 characters", "a".repeat(65)],
+  ])("refuses %s with a static sentence, marks the field, and blocks the review", (_n, value) => {
+    const { dialog, review, POST } = mount(async () => ({}));
+
+    typeToken(dialog, value);
+
+    expect(tokenField(dialog).getAttribute("aria-invalid")).toBe("true");
+    const alert = within(dialog).getByRole("alert");
+    expect(alert.textContent).toBe(TOKEN_WORDS);
+    expect(tokenField(dialog).getAttribute("aria-describedby")).toContain(alert.id);
+    expect(review().disabled).toBe(true);
+    fireEvent.click(review());
+    expect(POST).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a code", "E-123 a.b_c:d#e/f"],
+    ["exactly 64 characters", "a".repeat(64)],
+    ["nothing", ""],
+    ["spaces only (no value once trimmed)", "   "],
+    ["a value with surrounding spaces", "  X1  "],
+  ])("takes %s", (_n, value) => {
+    const { dialog, review } = mount(async () => ({}));
+
+    typeToken(dialog, value);
+
+    expect(tokenField(dialog).getAttribute("aria-invalid")).toBeNull();
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    expect(review().disabled).toBe(false);
+  });
+
+  it("lets the review through again once the value is fixed", () => {
+    const { dialog, review } = mount(async () => ({}));
+    typeToken(dialog, "bad<code>");
+    expect(review().disabled).toBe(true);
+
+    typeToken(dialog, "good-code");
+
+    expect(tokenField(dialog).getAttribute("aria-invalid")).toBeNull();
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    expect(review().disabled).toBe(false);
+  });
+});
+
+it("checks a pasted report's codes the same way: an import that fills a refused value blocks the review", () => {
+  const { dialog, review } = mount(async () => ({}));
+  const report = JSON.stringify([
+    { assessmentId: ITEM.assessmentId, status: "rejected", code: "E<1>", itemCode: "J2030" },
+  ]);
+
+  fireEvent.change(within(dialog).getByLabelText(/Paste CMS report/), {
+    target: { value: report },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Import pasted report" }));
+
+  expect(
+    (
+      within(dialog).getByLabelText(`CMS code for ${ITEM.label}, row 1`) as HTMLInputElement
+    ).getAttribute("aria-invalid"),
+  ).toBe("true");
+  expect(review().disabled).toBe(true);
 });
 
 describe("another refusal of the result", () => {

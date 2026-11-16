@@ -17,10 +17,13 @@ import {
 import { notifyDone } from "./hope-notify-done";
 import {
   MAX_REFERENCE,
+  MAX_RESULT_TOKEN,
   REFERENCE_HINT,
   REFERENCE_REFUSAL_WORDS,
+  RESULT_TOKEN_WORDS,
   type ReferenceRefusal,
   hasForbiddenReferenceCharacter,
+  hasForbiddenResultToken,
   referenceRefusalOf,
 } from "./hope-report-reference";
 
@@ -106,6 +109,7 @@ export function RecordCmsResultModal({
   // What the server's last refusal said about the report reference: said on the field, which the clinician is taken back to.
   const [referenceRefusal, setReferenceRefusal] = useState<ReferenceRefusal | null>(null);
   const referenceId = useId();
+  const tokenErrorId = useId();
   // Synchronous guard: `busy` only lands on the next render, and this is a final, non-editable write.
   const submitting = useRef(false);
   // Focus targets: the step heading (confirm / discard) when a step opens, the dialog title when it closes.
@@ -132,19 +136,15 @@ export function RecordCmsResultModal({
   const inStep = confirming || discarding;
   // Keyed on the step's identity so confirm <-> discard moves focus too (inStep alone stays true across them).
   const step = discarding ? "discard" : confirming ? "confirm" : null;
+  // ONE effect decides where focus goes, so which of the three wins is read here and not from the order of two effects: a step that
+  // opens takes it on its heading; back on the form, a refusal of the reference takes it on that field (the pressed button was disabled
+  // while the request was out, which can drop focus to the page); otherwise a step that just closed returns it to the title.
   useEffect(() => {
     if (step) stepRef.current?.focus();
+    else if (referenceRefusal !== null) document.getElementById(referenceId)?.focus();
     else if (hadStep.current) titleRef.current?.focus();
     hadStep.current = step !== null;
-  }, [step]);
-
-  // The refusal is answered on the reference field, which is not on screen during the confirmation step: once the form is back,
-  // the field takes focus (the pressed button was disabled while the request was out, which can drop focus to the page). Declared
-  // AFTER the step effect above, which sends focus to the title when a step closes: the later effect of one commit wins.
-  const backOnForm = !inStep;
-  useEffect(() => {
-    if (referenceRefusal !== null && backOnForm) document.getElementById(referenceId)?.focus();
-  }, [referenceRefusal, backOnForm, referenceId]);
+  }, [step, referenceRefusal, referenceId]);
 
   if (!open) return null;
 
@@ -201,11 +201,12 @@ export function RecordCmsResultModal({
   }
 
   async function submit(): Promise<void> {
-    if (!allSet || referenceInvalid || submitting.current) return;
+    if (!allSet || referenceInvalid || tokensInvalid || submitting.current) return;
     submitting.current = true;
     setBusy(true);
     setError(null);
-    // Each attempt clears the field's refusal first, so a second refusal of the same reference is announced again.
+    // A refusal never outlives the request it answered. (The field is not on screen during the confirmation step, so the next refusal
+    // mounts the field, and its alert, afresh: that is what is announced again, with or without this.)
     setReferenceRefusal(null);
     let res: Awaited<ReturnType<typeof recordSubmissionResult>>;
     try {
@@ -245,6 +246,12 @@ export function RecordCmsResultModal({
   }
 
   const referenceInvalid = hasForbiddenReferenceCharacter(reference.trim());
+  // A row's CMS code and item code are sent trimmed, in the charset the server takes (nothing at all is fine).
+  const tokenInvalid = (value: string): boolean => hasForbiddenResultToken(value.trim());
+  const tokensInvalid = items.some((item) => {
+    const row = rows[item.assessmentId] ?? BLANK_ROW;
+    return tokenInvalid(row.code) || tokenInvalid(row.itemCode);
+  });
   const referenceError =
     referenceRefusal !== null
       ? REFERENCE_REFUSAL_WORDS[referenceRefusal]
@@ -374,8 +381,10 @@ export function RecordCmsResultModal({
                           <input
                             className="wx-select"
                             aria-label={`CMS code for ${name}`}
+                            aria-invalid={tokenInvalid(r.code) || undefined}
+                            aria-describedby={tokenInvalid(r.code) ? tokenErrorId : undefined}
                             value={r.code}
-                            maxLength={64}
+                            maxLength={MAX_RESULT_TOKEN}
                             onChange={(e) => patchRow(item.assessmentId, { code: e.target.value })}
                           />
                         </td>
@@ -383,8 +392,10 @@ export function RecordCmsResultModal({
                           <input
                             className="wx-select"
                             aria-label={`Item for ${name}`}
+                            aria-invalid={tokenInvalid(r.itemCode) || undefined}
+                            aria-describedby={tokenInvalid(r.itemCode) ? tokenErrorId : undefined}
                             value={r.itemCode}
-                            maxLength={64}
+                            maxLength={MAX_RESULT_TOKEN}
                             onChange={(e) =>
                               patchRow(item.assessmentId, { itemCode: e.target.value })
                             }
@@ -407,6 +418,11 @@ export function RecordCmsResultModal({
                 </tbody>
               </table>
             </div>
+            {tokensInvalid ? (
+              <p id={tokenErrorId} role="alert" style={errorText}>
+                {RESULT_TOKEN_WORDS}
+              </p>
+            ) : null}
           </>
         )}
 
@@ -451,7 +467,7 @@ export function RecordCmsResultModal({
                 setError(null);
                 setConfirming(true);
               }}
-              disabled={!allSet || referenceInvalid}
+              disabled={!allSet || referenceInvalid || tokensInvalid}
             >
               Review and record
             </Button>
