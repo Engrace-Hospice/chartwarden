@@ -1832,7 +1832,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     const cancelEvents = async (id: string) =>
       (
         await admin.query(
-          "SELECT outcome, actor_user_id, organization_id, resource_kind, context FROM audit_event WHERE event_type='hope.submission_cancelled' AND resource_id=$1",
+          "SELECT outcome, actor_user_id, organization_id, resource_kind, context FROM audit_event WHERE event_type='hope.submission_cancelled' AND resource_id=$1 ORDER BY created_at, id",
           [id],
         )
       ).rows;
