@@ -107,6 +107,14 @@ export const isSettledItemStatus = (status: string): boolean =>
 export const nonBlankRecordId = (value: unknown): string | null =>
   typeof value === "string" && value.trim() !== "" ? value : null;
 
+/**
+ * A report row's edit code or item code as stored: the trimmed text, or NULL for a blank cell. The result-event table's unique
+ * index (`uniq_hope_sub_result_event_import`) is partial on `cms_edit_code IS NOT NULL`, so a stored `""` would be a key: two rows
+ * of one assessment in one report with blank codes and different messages would collide, and the second would be silently dropped.
+ */
+export const nullIfBlank = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+
 const sha256Hex = (text: string): string => createHash("sha256").update(text).digest("hex");
 
 /**

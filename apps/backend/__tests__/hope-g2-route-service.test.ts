@@ -211,7 +211,7 @@ describe("importSubmissionResult — a report row's assessment id matches its it
   });
 
   it.each([
-    ["a word", "not-a-uuid"],
+    ["hex digits that are no uuid", "abc123"],
     ["a different uuid", "11111111-2222-4333-8444-555555555555"],
   ])("%s is no match (the 422), never a database cast error", async (_label, assessmentId) => {
     const { svc, statements } = backend([...script]);
@@ -224,6 +224,89 @@ describe("importSubmissionResult — a report row's assessment id matches its it
 
     expect(failure).toMatchObject({ code: "M10_SUBMISSION_RESULT_NO_MATCH", statusCode: 422 });
     expect(itemUpdateOf(statements)).toBeUndefined();
+  });
+
+  it.each([
+    ["a name", "Jane Q Public"],
+    ["a word", "not-a-uuid"],
+    ["only blanks", "   "],
+  ])(
+    "%s is no assessment id at all: a static 422 before any statement, never stored or echoed",
+    async (_label, assessmentId) => {
+      const { svc, statements } = backend([...script]);
+
+      const failure = await outcome(
+        svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, {
+          results: [{ assessmentId, status: "accepted" }],
+        }),
+      );
+
+      expect(failure).toMatchObject({ code: "VALIDATION_FAILED", statusCode: 422 });
+      expect(JSON.stringify(failure)).not.toContain("Jane");
+      expect(statements).toEqual([]);
+    },
+  );
+
+  it("a trailing line break (a CRLF-split CSV) is a blank: it still settles the item, stored trimmed", async () => {
+    const { svc, written } = backend([...script]);
+
+    const failure = await outcome(
+      svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, {
+        results: [{ assessmentId: `${CANONICAL}\r`, status: "accepted" }],
+      }),
+    );
+
+    expect(failure?.code).not.toBe("M10_SUBMISSION_RESULT_NO_MATCH");
+    expect(failure?.code).not.toBe("VALIDATION_FAILED");
+    const events = written.find((w) => Array.isArray(w)) as unknown as { rawResult: unknown }[];
+    expect(events[0]?.rawResult).toEqual({ assessmentId: CANONICAL, status: "accepted" });
+  });
+
+  it("two rows of one assessment with blank codes both keep a NULL code and item code (a stored '' would be a unique key)", async () => {
+    const { svc, written } = backend([...script]);
+
+    await outcome(
+      svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, {
+        results: [
+          { assessmentId: CANONICAL, status: "rejected", code: "", itemCode: "", message: "first" },
+          {
+            assessmentId: CANONICAL,
+            status: "rejected",
+            code: "",
+            itemCode: "",
+            message: "second",
+          },
+        ],
+      }),
+    );
+
+    const events = written.find((w) => Array.isArray(w)) as unknown as Record<string, unknown>[];
+    expect(events.map((e) => [e.cmsEditCode, e.itemCode, e.message])).toEqual([
+      [null, null, "first"],
+      [null, null, "second"],
+    ]);
+  });
+
+  it("stores the REBUILT row, never the caller's object: a key the schema has not is refused, a value that is no string is refused", async () => {
+    const unknownKey = backend([...script]);
+    const notAString = backend([...script]);
+
+    const a = await outcome(
+      unknownKey.svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, {
+        results: [{ assessmentId: CANONICAL, status: "accepted", extra: "x" }],
+      }),
+    );
+    const b = await outcome(
+      notAString.svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, {
+        results: [{ assessmentId: CANONICAL, severity: 3 as never }],
+      }),
+    );
+
+    expect(a).toMatchObject({ code: "VALIDATION_FAILED", statusCode: 422 });
+    expect(b).toMatchObject({ code: "VALIDATION_FAILED", statusCode: 422 });
+    expect(JSON.stringify([a, b])).not.toContain("extra");
+    expect(unknownKey.statements).toEqual([]);
+    expect(notAString.statements).toEqual([]);
   });
 });
 

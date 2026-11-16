@@ -15,7 +15,9 @@
 // evidence. M10 purges no envelope content and the spec records that no purge job exists (§8.4 #3), so the
 // package bytes in `hope_submission.acceptance_report` of a batch that was NOT cancelled outlive the destruction
 // certificate (a cancel deletes its own batch's bytes at cancel time, §4.8, unless an M4 legal hold applies; a repeat cancel
-// purges them once the hold is released).
+// purges them once the hold is released). The per-record XML in `hope_submission_item.iqies_validation_result` lasts only until an
+// item gets a CMS verdict: a result import overwrites it with the CMS report row (assessment id, free-text message), which no
+// eraser reaches either.
 // Both `signed` AND `superseded` assessments are erased so a correction-supersede chain is removed at both
 // ends and no orphaned half survives. The sibling clinical erasers are disjoint by table ownership: M5
 // destroys the patient demographics subtree, M6 the admission subtree, M7 the care-plan subtree, M8 the

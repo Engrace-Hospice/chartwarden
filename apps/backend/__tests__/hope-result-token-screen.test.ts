@@ -1,11 +1,13 @@
 import { looksLikeMbi } from "@chartwarden/shared";
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
-import { createDbHopeBackend } from "../src/modules/10-hope/index";
+import { loadSubmissionFindings } from "../src/modules/10-hope/hope-submission-reads-db";
+import { createDbHopeBackend, createInMemoryHopeBackend } from "../src/modules/10-hope/index";
 import {
   RESULT_ROW_TOKENS,
   assertResultRowsAreClean,
   assertSubmissionReferenceIsClean,
+  cleanResultRows,
 } from "../src/modules/10-hope/routes/hope-reference-screen";
 import {
   HOPE_RESULT_CODE_PATTERN,
@@ -155,7 +157,7 @@ describe("assertResultRowsAreClean: identifiers", () => {
           message:
             "Item A0050 (Enter Type of Record) must be 1, 2 or 3.\n\tCheck the admission date entered for this record.",
         },
-        { status: "", code: undefined, severity: 3, message: "" },
+        { status: "", code: undefined, severity: "", message: "" },
       ]),
     ).not.toThrow();
   });
@@ -302,4 +304,198 @@ describe("the service re-applies all of it before any statement", () => {
       expect(statements).toEqual([]);
     },
   );
+});
+
+describe("date and phone shapes with every separator a code may hold", () => {
+  it.each([
+    "1990_05_17",
+    "1990:05:17",
+    "1990#05#17",
+    "05_17_1990",
+    "05:17:1990",
+    "05#17#1990",
+    "1990-05_17",
+    "555_867_5309",
+    "555:867:5309",
+    "555#867#5309",
+    "1_555_867_5309",
+  ])("refuses %s in a code (a date or a phone number)", (value) => {
+    expect(failureOf(() => assertResultRowsAreClean([row({ code: value })]))).toMatchObject({
+      code: "EVIDENCE_LOOKS_LIKE_PHI",
+      statusCode: 422,
+    });
+  });
+
+  it.each(["-3015", "A0050", "J2051", "ERR-0012", "REC-2026.06:a#3"])(
+    "still accepts %s",
+    (value) => {
+      expect(() => assertResultRowsAreClean([row({ code: value })])).not.toThrow();
+    },
+  );
+
+  it("compact digit runs and month-name dates stay a documented residual (they pass)", () => {
+    for (const value of ["19900517", "5558675309", "05-17-90", "12-Mar-1945"])
+      expect(() => assertResultRowsAreClean([row({ code: value })]), value).not.toThrow();
+  });
+});
+
+describe("an assessmentId is spelt like an id, and is trimmed before it is read", () => {
+  it("a trailing CR, LF or tab (a CRLF-split CSV) is a blank: it passes and is stored trimmed", () => {
+    for (const blank of ["\r", "\n", "\t", " \r\n"]) {
+      const [clean] = cleanResultRows([
+        { assessmentId: `${ASSESSMENT}${blank}`, status: "accepted" },
+      ]);
+      expect(clean).toEqual({ assessmentId: ASSESSMENT, status: "accepted" });
+    }
+  });
+
+  it("a control character INSIDE the id, a NUL and a lone surrogate are still refused", () => {
+    for (const bad of [
+      `${ASSESSMENT.slice(0, 8)}\u0000${ASSESSMENT.slice(8)}`,
+      `${ASSESSMENT}\uD83D`,
+      `abc\ndef`,
+    ]) {
+      expect(failureOf(() => assertResultRowsAreClean([{ assessmentId: bad }]))).toMatchObject({
+        statusCode: 422,
+      });
+    }
+  });
+
+  it.each([
+    ["a name", "Jane Q Public"],
+    ["a word", "not-a-uuid"],
+    ["only blanks", "   "],
+    ["a slash", "a/b"],
+  ])("%s is no assessment id (a static 422, never echoed)", (_label, assessmentId) => {
+    const failure = failureOf(() => assertResultRowsAreClean([{ assessmentId }]));
+
+    expect(failure).toMatchObject({ code: "VALIDATION_FAILED", statusCode: 422 });
+    expect(JSON.stringify(failure)).not.toContain(assessmentId.trim() || "unreachable-marker");
+  });
+
+  it("any spelling Postgres reads as a uuid passes: upper case, braces, no hyphens, blanks around it", () => {
+    for (const spelled of [
+      ASSESSMENT.toUpperCase(),
+      `{${ASSESSMENT}}`,
+      ASSESSMENT.replace(/-/g, ""),
+      `  ${ASSESSMENT}  `,
+    ])
+      expect(() => assertResultRowsAreClean([{ assessmentId: spelled }])).not.toThrow();
+  });
+});
+
+describe("the service stores only what it rebuilt", () => {
+  it.each([
+    ["null", [null]],
+    ["a string", ["x"]],
+    ["an array", [[]]],
+    ["a number", [3]],
+  ])("a row that is %s is a static 422, never a TypeError", (_label, rows) => {
+    expect(failureOf(() => cleanResultRows(rows))).toMatchObject({ statusCode: 422 });
+  });
+
+  it("results that is no array is a static 422", () => {
+    expect(failureOf(() => cleanResultRows({ length: 1 }))).toMatchObject({ statusCode: 422 });
+    expect(failureOf(() => cleanResultRows(undefined))).toMatchObject({ statusCode: 422 });
+  });
+
+  it.each([
+    ["a number", { severity: 3 }],
+    ["a boolean", { status: true }],
+    ["null", { code: null }],
+    ["an object", { message: { a: 1 } }],
+  ])("a value that is %s is refused (the schema's types)", (_label, fields) => {
+    const failure = failureOf(() => cleanResultRows([row(fields)]));
+
+    expect(failure).toMatchObject({ code: "VALIDATION_FAILED", statusCode: 422 });
+    expect(failure?.details).toEqual([
+      expect.objectContaining({ field: `results.0.${Object.keys(fields)[0]}` }),
+    ]);
+  });
+
+  it("an unknown key is refused without naming it, and the rebuilt row holds the schema's keys only", () => {
+    const failure = failureOf(() => cleanResultRows([row({ zzextra: "x" })]));
+
+    expect(failure).toMatchObject({ code: "VALIDATION_FAILED", statusCode: 422 });
+    expect(JSON.stringify(failure)).not.toContain("zzextra");
+    const input = { assessmentId: ` ${ASSESSMENT} `, status: "accepted", code: "-3015" };
+    const [clean] = cleanResultRows([input]);
+    expect(clean).toEqual({ assessmentId: ASSESSMENT, status: "accepted", code: "-3015" });
+    expect(clean).not.toBe(input);
+    expect(input.assessmentId).toBe(` ${ASSESSMENT} `); // the caller's object is not touched
+  });
+});
+
+describe("the in-memory twin refuses what the database backend refuses", () => {
+  const twin = () =>
+    createInMemoryHopeBackend({
+      submissions: [
+        {
+          id: SUB,
+          organizationId: ORG,
+          providerEntityId: "pe-1",
+          status: "packaged",
+          items: [],
+        },
+      ],
+    } as never);
+
+  it("markSubmissionUploaded: an identifier-shaped or malformed reference is a 422, nothing changes", async () => {
+    const svc = twin();
+
+    for (const [ref, code] of [
+      [SSN, "EVIDENCE_LOOKS_LIKE_PHI"],
+      [" UP-1", "VALIDATION_FAILED"],
+    ] as const)
+      expect(
+        await refusal(() =>
+          svc.markSubmissionUploaded(ORG, MEMBERSHIP, SUB, { iqiesSubmissionReference: ref }),
+        ),
+      ).toMatchObject({ code, statusCode: 422 });
+  });
+
+  it("importSubmissionResult: a report reference, a non-string value and an unknown key are 422s", async () => {
+    const svc = twin();
+
+    for (const args of [
+      { reportReference: SSN, results: [{ assessmentId: ASSESSMENT }] },
+      { results: [{ assessmentId: ASSESSMENT, severity: 3 as never }] },
+      { results: [{ assessmentId: ASSESSMENT, extra: "x" }] },
+      { results: [{ assessmentId: ASSESSMENT, code: SSN }] },
+    ])
+      expect(
+        await refusal(() => svc.importSubmissionResult(ORG, MEMBERSHIP, SUB, args)),
+      ).toMatchObject({
+        statusCode: 422,
+      });
+  });
+});
+
+describe("the read API returns an assessment id only when it is one", () => {
+  const readWith = async (rawAssessmentId: unknown) => {
+    const fake = scriptedDb([
+      [
+        {
+          id: "r1",
+          hopeSubmissionItemId: null,
+          rawResult: { assessmentId: rawAssessmentId },
+          cmsEditCode: "-3015",
+          itemCode: null,
+          message: "m",
+          resultStatus: "rejected",
+          cmsSeverity: null,
+        },
+      ],
+      [],
+    ]);
+    return (await loadSubmissionFindings(fake.tx, ORG, SUB))[0]?.assessmentId;
+  };
+
+  it("an unmatched row's uuid is returned canonical; a name, a word or a non-string is not returned", async () => {
+    expect(await readWith(` {${ASSESSMENT.toUpperCase()}} `)).toBe(ASSESSMENT);
+    expect(await readWith("Jane Q Public")).toBeNull();
+    expect(await readWith("abc123")).toBeNull();
+    expect(await readWith(7)).toBeNull();
+    expect(await readWith(undefined)).toBeNull();
+  });
 });

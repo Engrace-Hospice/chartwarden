@@ -315,9 +315,11 @@ export const MarkSubmissionUploadedSchema = Type.Object({
  * pasted report names nothing, as an absent key does: a blank `iqiesRecordId` is never stored). These land unscrubbed in the
  * audit images of the result event, the item and the assessment and in the `m10.hope.submission_rejected` payload (`ruleId`), so a
  * phrase, a name with spaces or a `MM/DD/YYYY` date cannot be written at all; a date or phone shape that still fits is refused by
- * the screen (hope-reference-screen.ts). RESIDUAL, not closeable here: a single-word surname or a hyphenated name passes the
- * charset, and the real iQIES edit-code and record-id formats are unverified, so this stays permissive within the rule; a human
- * should confirm the formats against a CMS sample and tighten it. The web client's copy must use the same pattern.
+ * the screen (hope-reference-screen.ts), whatever separator of `. _ : # -` sets the groups apart. RESIDUAL, not closeable here: a
+ * single-word surname or a hyphenated name passes the charset, a compact date or number (`19900517`, `5558675309`, `05-17-90`) is
+ * no shape the screen can tell from a code, and the real iQIES edit-code and record-id formats are unverified, so this stays
+ * permissive within the rule; a human should confirm the formats against a CMS sample and tighten it. The web client's copy must
+ * use the same pattern.
  */
 export const HOPE_RESULT_CODE_PATTERN = "^(?:[A-Za-z0-9._:#-]{1,64})?$";
 /**
@@ -326,6 +328,16 @@ export const HOPE_RESULT_CODE_PATTERN = "^(?:[A-Za-z0-9._:#-]{1,64})?$";
  * kept only in the scrubbed raw-result columns, never in a column the audit trail copies, and the identifier screen still reads it.
  */
 export const HOPE_RESULT_STATUS_PATTERN = "^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/(),;-]*)?$";
+/**
+ * A report row's `assessmentId` is an assessment id, so it may hold only what a uuid is spelt with (Postgres reads hex digits,
+ * hyphens and one pair of braces; `canonicalUuidOrNull`), padded with whitespace a pasted CSV cell carries (it is trimmed before it
+ * is read): 1 to 64 characters. A name or any other text cannot be written into the stored report or echoed by the read API; a
+ * value that fits the charset but is no uuid is stored as an unmatched row and never returned by a read.
+ */
+export const HOPE_RESULT_ASSESSMENT_ID_PATTERN = "^[\\s{}0-9A-Fa-f-]{1,64}$";
+/** The most rows one result import takes, and the longest `message` of a row. */
+export const HOPE_RESULT_MAX_ROWS = 2000;
+export const HOPE_RESULT_MESSAGE_MAX_LENGTH = 1000;
 /**
  * The severities a report row may carry: exactly the values the import acts on (`classifyCmsResult` rejects on `fatal` and
  * `error`, reads `warning` as accepted with warnings; `findingSeverity` maps the same), compared case-insensitively, or empty.
@@ -345,19 +357,21 @@ export const ImportSubmissionResultSchema = Type.Object({
   results: Type.Array(
     Type.Object(
       {
-        assessmentId: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+        assessmentId: Type.Optional(
+          Type.String({ minLength: 1, maxLength: 64, pattern: HOPE_RESULT_ASSESSMENT_ID_PATTERN }),
+        ),
         status: resultStatusText(),
         result: resultStatusText(),
         outcome: resultStatusText(),
         severity: resultSeverity(),
         code: resultCode(),
         itemCode: resultCode(),
-        message: Type.Optional(Type.String({ maxLength: 1000 })),
+        message: Type.Optional(Type.String({ maxLength: HOPE_RESULT_MESSAGE_MAX_LENGTH })),
         iqiesRecordId: resultCode(),
       },
       { additionalProperties: false },
     ),
-    { maxItems: 2000 },
+    { maxItems: HOPE_RESULT_MAX_ROWS },
   ),
 });
 export const RegenerateSchedulesSchema = Type.Object({

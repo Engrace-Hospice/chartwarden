@@ -343,8 +343,8 @@ export interface HopeAssessmentAnswerService {
   /**
    * `options.mayWrite` (REQUIRED, no default): whether the caller holds `hope.timepoint.write`. A draft's out-of-date workflow
    * control answers are rewritten on open (a write under no actor) only for a caller who may write; any other caller is shown
-   * the SAME workspace, the out-of-date controls derived in memory from the assessment row (item states, progress and all),
-   * and nothing is stored.
+   * those controls derived in memory from the assessment row (their item states and the progress counts that follow), and
+   * nothing is stored. A reader's view equals a writer's only for the workflow-control items (A0050, A0250) and the progress counts derived from them; what only a writer's open does (the chart refresh, the SFV self-heal of J2052/J2053, the validation-finding reconcile) is shown as stored, so a draft that needs one of those reads differently for a reader until a writer opens it.
    */
   getWorkspace(
     organizationId: string,
@@ -782,7 +782,7 @@ export function createHopeAssessmentAnswerService(
         const items = await activeItems(t, loaded.assessment.specVersionId!, loaded.isc);
         const itemsByCode = new Map(items.map((item) => [item.itemCode, item]));
         // The control answers are written only for a DRAFT, only when one is out of date (see the function), and only for a
-        // caller who may write. A reader gets the same workspace from the controls derived below, in memory, with no stored copy.
+        // caller who may write. A reader gets those controls derived below, in memory, with no stored copy. A reader's view equals a writer's only for the workflow-control items (A0050, A0250) and the progress counts derived from them; what only a writer's open does (the chart refresh, the SFV self-heal of J2052/J2053, the validation-finding reconcile) is shown as stored, so a draft that needs one of those reads differently for a reader until a writer opens it.
         if (options.mayWrite)
           await reconcileControlsWhenNeeded(t, organizationId, loaded.assessment, itemsByCode);
         const itemsById = new Map(items.map((item) => [item.id, item]));

@@ -74,6 +74,7 @@ import {
 import { canonicalUuidOrNull } from "../hope-uuid";
 import type { HopeValidationRunView } from "../hope-validation-service";
 import { submissionPeriodFor } from "../jobs/submission";
+import { assertSubmissionReferenceIsClean, cleanResultRows } from "./hope-reference-screen";
 
 import {
   type HopeAssessmentView,
@@ -377,8 +378,10 @@ export interface HopeRouteService extends HopeAbacResolver {
   /**
    * `options.mayWrite` (REQUIRED): whether the caller holds `hope.timepoint.write`. A caller that does not gets a pure read: the
    * open runs no spec freeze, chart refresh (prefill), control-answer rewrite or SFV self-heal, which would write on the
-   * strength of a read permission. A reader's workspace shows what a writer's would for the same draft (the workflow-control
-   * items are derived from the record in memory, not stored); a legacy spec-less draft, which cannot be shown without freezing
+   * strength of a read permission. A reader's view equals a writer's only for the workflow-control items (A0050, A0250, derived
+   * from the record in memory, not stored) and the progress counts that follow from them; what only a writer's open does (the chart
+   * refresh, the SFV self-heal of J2052/J2053, the validation-finding reconcile) is shown as stored, so a draft that needs one of
+   * those reads differently for a reader until a writer opens it. A legacy spec-less draft, which cannot be shown without freezing
    * its spec, is a static 409. The route resolves it from the caller's grants.
    */
   getAssessmentWorkspace(
@@ -1947,6 +1950,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     },
     async markSubmissionUploaded(organizationId, userId, id, args) {
       if (args.submittedAt !== undefined) requireCalendarDateTime(args.submittedAt, "submittedAt");
+      // As in the DB backend (and the route): the reference's pattern and the identifier screen, before anything changes.
+      assertSubmissionReferenceIsClean("iqiesSubmissionReference", args.iqiesSubmissionReference);
       const r = findSub(organizationId, id);
       requireNotCancelled(id, r.status); // R-08: its own 409 code, before the generic "wrong status" conflict
       if (r.status !== "packaged" && r.status !== "exported") {
@@ -1978,6 +1983,10 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       return viewSub(r);
     },
     async importSubmissionResult(organizationId, userId, id, args) {
+      // As in the DB backend: the reference, and the REBUILT rows (schema keys, string values, a trimmed assessment id; the same
+      // patterns and screens), before anything changes. The report is hashed as sent, as there.
+      assertSubmissionReferenceIsClean("reportReference", args.reportReference);
+      const results = cleanResultRows(args.results);
       const r = findSub(organizationId, id);
       const { canonical: reportHash, legacy: legacyReportHash } = reportHashes(args.results);
       const isKnown = (hash: string | null | undefined): boolean =>
@@ -1995,11 +2004,11 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         const wanted = canonicalText(raw.assessmentId.trim());
         return r.items.find((i) => i.assessmentId === wanted);
       };
-      const matched = args.results.filter((raw) => itemOf(raw) !== undefined);
+      const matched = results.filter((raw) => itemOf(raw) !== undefined);
       require_(
         matched.length > 0,
         "M10_SUBMISSION_RESULT_NO_MATCH",
-        `None of the ${args.results.length} report rows names an assessment in submission ${id}.`,
+        `None of the ${results.length} report rows names an assessment in submission ${id}.`,
       );
       const at = now();
       const findings: HopeSubmissionFindingView[] = [];
@@ -2010,7 +2019,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         string,
         { status: ReturnType<typeof classifyCmsResult>; raw: Record<string, unknown> }
       >();
-      for (const raw of args.results) {
+      for (const raw of results) {
         const status = classifyCmsResult(raw);
         const current = itemOf(raw);
         const prev = current ? worst.get(current.assessmentId) : undefined;
@@ -2034,7 +2043,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         const recordId = nonBlankRecordId(winner.raw.iqiesRecordId);
         if (recordId !== null) item.iqiesRecordId = recordId;
       }
-      for (const raw of args.results) {
+      for (const raw of results) {
         const item = itemOf(raw);
         const resultStatus = classifyCmsResult(raw);
         const code = typeof raw.code === "string" ? raw.code : null;
@@ -2046,7 +2055,9 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
             // A matched row names the stored assessment, not the spelling the report used.
             assessmentId:
               item?.assessmentId ??
-              (typeof raw.assessmentId === "string" ? raw.assessmentId : null),
+              (typeof raw.assessmentId === "string"
+                ? canonicalUuidOrNull(raw.assessmentId.trim())
+                : null),
             severity: findingSeverity({
               resultStatus,
               cmsSeverity: typeof raw.severity === "string" ? raw.severity : null,
@@ -2067,7 +2078,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       r.resultImportedAt = at;
       if (outcome.pendingCount === 0) {
         r.acceptedAt = outcome.rejectedCount === 0 ? at : null;
-        const event = settledBatchEvent(id, r.providerEntityId, outcome, args.results);
+        const event = settledBatchEvent(id, r.providerEntityId, outcome, results);
         emit(event.eventName, event.payload, `${id}:result-imported`);
       }
       return viewSubDetail(r);

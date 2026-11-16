@@ -25,7 +25,9 @@ const REVIEW = schema.hopeRetentionReviews;
  * batch's ZIP and per-record XML (spec §4.8 "Cancelled packages"), unless an M4 legal hold applies (a repeat cancel purges
  * them once it is released): no scan, eraser or purge job could ever select them (`hope_submission` has no patient id), and a
  * cancelled package has no CMS 10-year hold. The bytes of a batch that was NOT cancelled are not reached by any of them
- * either (CW-DS-01).
+ * either (CW-DS-01). The per-record XML lives in `hope_submission_item.iqies_validation_result` only until an item gets a CMS
+ * verdict: a result import OVERWRITES that column with the CMS report row (the assessment id and the free-text message), which no
+ * eraser reaches either.
  */
 const OPEN_ERROR_ITEM_STATUSES: ReadonlySet<string> = new Set(["rejected", "blocked", "unmatched"]);
 

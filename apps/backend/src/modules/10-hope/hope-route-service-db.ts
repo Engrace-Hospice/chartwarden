@@ -113,6 +113,7 @@ import {
   isSettledItemStatus,
   manualUploadTransmittedPayload,
   nonBlankRecordId,
+  nullIfBlank,
   reportHashes,
   resultRefusalCode,
   settledBatchEvent,
@@ -130,10 +131,7 @@ import {
   createHopeValidationService,
 } from "./hope-validation-service";
 import type { HopeWriteOutboxPort } from "./outbox-port";
-import {
-  assertResultRowsAreClean,
-  assertSubmissionReferenceIsClean,
-} from "./routes/hope-reference-screen";
+import { assertSubmissionReferenceIsClean, cleanResultRows } from "./routes/hope-reference-screen";
 import type {
   CorrectTimepointArgs,
   HopeAssessmentView,
@@ -664,7 +662,8 @@ export function createDbHopeBackend(
     tx: DbClient,
     organizationId: string,
     id: string,
-    mayWrite = true,
+    /** Whether the caller may write (`hope.timepoint.write`): REQUIRED, so a caller cannot write by forgetting to say so. */
+    mayWrite: boolean,
   ): Promise<AssessmentRow> {
     const assessment = await loadA(tx, organizationId, id);
     if (assessment.specVersionId && assessment.isc) return assessment;
@@ -1499,10 +1498,12 @@ export function createDbHopeBackend(
             .orderBy(desc(ASSESS.createdAt))
             .limit(1)) as AssessmentRow[];
           if (existingDraft) {
+            // A record write: the caller holds the write permission (the route's guard).
             const normalized = await ensureDraftSpecInitialized(
               t,
               organizationId,
               existingDraft.id,
+              true,
             );
 
             // A re-record of an existing draft is a re-open: the chart's answers are re-synced in `refreshOnly` mode, so a
@@ -1703,13 +1704,15 @@ export function createDbHopeBackend(
       // review and sign do: the prefill below makes seam calls on their own pooled connections, and left in the same
       // transaction the UPDATE's row lock and connection would be held across them (a bounded self-starvation on a
       // draft's first open).
-      // A read-only caller never runs it: it is shown the stored state, and a spec-less draft is a 409 for it.
+      // A read-only caller never runs it: a spec-less draft is a 409 for it, and the rest is shown as stored except the workflow
+      // controls, which the answer service derives in memory (a reader equals a writer only there; see HopeReadOptions).
       const { mayWrite } = options;
       const assessment = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
         ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id, mayWrite),
       );
       // The chart refresh REWRITES draft answers (and bumps `version` when it changes one), so it is a write: only a caller
-      // holding `hope.timepoint.write` runs it. A read-only caller (an auditor included) is shown the stored state.
+      // holding `hope.timepoint.write` runs it. A read-only caller (an auditor included) is shown the chart-derived answers as
+      // stored, so a draft whose chart changed reads differently for a reader until a writer opens it.
       if (mayWrite) {
         await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
           refreshChartPrefill(tx as unknown as DbClient, organizationId, assessment),
@@ -1729,7 +1732,8 @@ export function createDbHopeBackend(
         ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id, mayWrite),
       );
       // The self-heal writes draft answers, so only a caller holding `hope.timepoint.write` runs it; a read-only caller
-      // reads the stored state (the next writer to open the review repairs it).
+      // reads the stored state (the next writer to open the review repairs it): a draft that needs the heal reads differently for a
+      // reader until then. The workflow controls are derived in memory by the readiness service for every caller.
       if (!mayWrite) return readinessService.getReview({ organizationId, assessmentId: id });
       const healed = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
         reconcileCompletedSfvRegulatoryAnswers(tx as unknown as DbClient, organizationId, id),
@@ -1833,7 +1837,8 @@ export function createDbHopeBackend(
       // here, before the write transaction, and the assessment is re-read inside it so the draft guard
       // and the UPDATE still see one consistent row.
       const pre = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
-        ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id),
+        // The sign route needs `hope.timepoint.sign` and the write guard of the chain: a writer.
+        ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id, true),
       );
       const snapshot = pre.status === "draft" ? await d8Snapshot(pre.patientId) : null;
       // A snapshot with no PPS reading is the case §D8 names: "if no PPS is on file at the time of
@@ -2470,9 +2475,12 @@ export function createDbHopeBackend(
     async importSubmissionResult(organizationId, userId, urlId, args) {
       const id = uuidOrNotFound(urlId, `HOPE submission ${urlId} not found`);
       // Checked by the route too (schema, then these); here so a second caller of the service cannot store a malformed or
-      // identifying reference, token, assessment id or message: the patterns, what the database cannot store, and the screens.
+      // identifying reference, token, assessment id or message: the structure, the patterns, what the database cannot store, and
+      // the screens. `results` is the REBUILT rows (schema keys, string values, a trimmed assessment id): the only rows stored or
+      // read from here on, never the caller's objects. A report is HASHED as the caller sent it, so an import recorded before
+      // this check is still recognised as the same report when it is sent again.
       assertSubmissionReferenceIsClean("reportReference", args.reportReference);
-      assertResultRowsAreClean(args.results);
+      const results = cleanResultRows(args.results);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // Row lock: serialises concurrent recordings of one batch (waits at most `M10_LOCK_TIMEOUT_MS`, then `M10_RECORD_BUSY`).
@@ -2523,9 +2531,9 @@ export function createDbHopeBackend(
           return canonical === null ? undefined : byAssessmentId.get(canonical);
         };
         require_(
-          args.results.some((raw) => itemOf(raw) !== undefined),
+          results.some((raw) => itemOf(raw) !== undefined),
           "M10_SUBMISSION_RESULT_NO_MATCH",
-          `None of the ${args.results.length} report rows names an assessment in submission ${id}.`,
+          `None of the ${results.length} report rows names an assessment in submission ${id}.`,
         );
         const now = new Date();
         const finalStatus = new Map<string, string>(items.map((i) => [i.id, i.itemStatus]));
@@ -2534,7 +2542,7 @@ export function createDbHopeBackend(
           string,
           { status: ReturnType<typeof classifyCmsResult>; raw: Record<string, unknown> }
         >();
-        for (const raw of args.results) {
+        for (const raw of results) {
           const item = itemOf(raw);
           const status = classifyCmsResult(raw);
           const prev = item ? worst.get(item.id) : undefined;
@@ -2569,7 +2577,7 @@ export function createDbHopeBackend(
         await stampAssessmentRecordIds(t, organizationId, stamps, now);
         await insertResultEvents(
           t,
-          args.results.map((raw) => {
+          results.map((raw) => {
             const item = itemOf(raw);
             return {
               organizationId,
@@ -2580,8 +2588,8 @@ export function createDbHopeBackend(
               resultScope: item ? "record" : "unmatched",
               resultStatus: classifyCmsResult(raw),
               cmsSeverity: typeof raw.severity === "string" ? raw.severity : null,
-              cmsEditCode: typeof raw.code === "string" ? raw.code : null,
-              itemCode: typeof raw.itemCode === "string" ? raw.itemCode : null,
+              cmsEditCode: nullIfBlank(raw.code),
+              itemCode: nullIfBlank(raw.itemCode),
               message: typeof raw.message === "string" ? raw.message : null,
               rawResult: raw,
               processedAt: now,
@@ -2613,7 +2621,7 @@ export function createDbHopeBackend(
               reportHash,
               results: appendReportResults(
                 (r.acceptanceReport as { results?: unknown } | null)?.results,
-                args.results,
+                results,
               ),
             },
             updatedAt: now,
@@ -2621,12 +2629,7 @@ export function createDbHopeBackend(
           .where(and(eq(SUB.id, id), eq(SUB.organizationId, organizationId)))
           .returning()) as SubmissionRow[];
         if (settled && updated) {
-          const event = settledBatchEvent(
-            updated.id,
-            updated.providerEntityId,
-            outcome,
-            args.results,
-          );
+          const event = settledBatchEvent(updated.id, updated.providerEntityId, outcome, results);
           await emit(
             t,
             organizationId,

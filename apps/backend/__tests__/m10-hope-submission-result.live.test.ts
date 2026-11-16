@@ -582,6 +582,27 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
     });
   });
 
+  it("two rows of one assessment with blank codes both land: a blank code cell is stored as NULL, not as an empty unique key", async () => {
+    const a = await seedAssessment();
+    const b = await seedBatch("submitted_pending_result", [a]);
+
+    await svc.importSubmissionResult(ORG_A, member, b, {
+      results: [
+        { assessmentId: a, status: "rejected", code: "", itemCode: "", message: "first finding" },
+        { assessmentId: a, status: "rejected", code: "", itemCode: "", message: "second finding" },
+      ],
+    });
+
+    const { rows } = await admin.query(
+      "SELECT message, cms_edit_code, item_code FROM hope_submission_result_event WHERE hope_submission_id=$1 ORDER BY message",
+      [b],
+    );
+    expect(rows).toEqual([
+      { message: "first finding", cms_edit_code: null, item_code: null },
+      { message: "second finding", cms_edit_code: null, item_code: null },
+    ]);
+  });
+
   it("the report reference is its own column: written with the import, kept in the jsonb too, and the light reads never touch acceptance_report", async () => {
     const a = await seedAssessment();
     const b = await seedBatch("submitted_pending_result", [a]);

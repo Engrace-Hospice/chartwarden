@@ -10,6 +10,7 @@ import {
   resolveRejectedItem,
   terminalCorrection,
 } from "./hope-submission-result";
+import { canonicalUuidOrNull } from "./hope-uuid";
 import type { HopeSubmissionFindingView, HopeSubmissionItemView } from "./routes/service";
 
 const SUB = schema.hopeSubmissions;
@@ -201,9 +202,13 @@ export async function loadSubmissionFindings(
       const raw = (r.rawResult ?? {}) as { assessmentId?: unknown };
       return {
         id: r.id,
+        // The matched item's assessment, else the id the report named, but only when it IS an id (a uuid, read as Postgres reads
+        // one): what an operator typed into an unmatched row is not returned to every `hope.submission.read` caller.
         assessmentId:
           items.find((i) => i.id === r.hopeSubmissionItemId)?.assessmentId ??
-          (typeof raw.assessmentId === "string" ? raw.assessmentId : null),
+          (typeof raw.assessmentId === "string"
+            ? canonicalUuidOrNull(raw.assessmentId.trim())
+            : null),
         severity: findingSeverity(r),
         code: r.cmsEditCode ?? null,
         itemCode: r.itemCode ?? null,

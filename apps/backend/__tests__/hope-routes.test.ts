@@ -2799,17 +2799,28 @@ describe("the CMS result-row tokens: a format in the schema, patient identifiers
   );
 
   it.each([
-    ["a NUL in a message", { message: "edit\u0000zzmarker" }],
-    ["a lone surrogate in a message", { message: "edit \uD83D zzmarker" }],
-    ["a NUL in an assessmentId", { assessmentId: "abc\u0000zzmarker" }],
-  ])("%s is a static 422, never a database error", async (_label, fields) => {
+    ["a NUL in a message", { message: "edit\u0000zzmarker" }, "INVALID_CHARACTERS"],
+    ["a lone surrogate in a message", { message: "edit \uD83D zzmarker" }, "INVALID_CHARACTERS"],
+    // An assessment id is spelt with a uuid's characters (and blanks): anything else is the schema's own refusal.
+    ["a NUL in an assessmentId", { assessmentId: "abc\u0000zzmarker" }, "INVALID"],
+    ["a name as an assessmentId", { assessmentId: "Jane Q zzmarker" }, "INVALID"],
+  ])("%s is a static 422, never a database error", async (_label, fields, detail) => {
     const ctx = makeServer({ packagedSubmission: true });
 
     const res = await importRows(ctx, [fields]);
 
     expect(res.statusCode).toBe(422);
-    expect(res.json().error.details[0].code).toBe("INVALID_CHARACTERS");
+    expect(res.json().error.details[0].code).toBe(detail);
     expect(res.body).not.toContain("zzmarker");
+    await ctx.app.close();
+  });
+
+  it("an assessmentId with a trailing carriage return (a CRLF-split CSV) is a blank, as the importer reads it", async () => {
+    const ctx = makeServer({ packagedSubmission: true });
+
+    const res = await importRows(ctx, [{ assessmentId: `${SIGNED_A}\r` }]);
+
+    expect(res.statusCode).toBe(409); // past the schema and the screens: a packaged batch refuses the import for its status
     await ctx.app.close();
   });
 
