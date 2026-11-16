@@ -42,9 +42,10 @@ export const RESULT_CODE_WORDS = `A CMS code or item is one word: letters, digit
 
 /**
  * Mirror of `UNSTORABLE_MESSAGE` in hope-reference-screen.ts: a control character other than tab, line feed and carriage return, or a
- * lone surrogate (the database cannot store them: the server refuses with a 422 INVALID_CHARACTERS). A pasted report or a truncation
- * at the length limit can leave one. The server's patient-identifier screen of the message is its own, and its refusal is shown as
- * the server's words (it names the row and the field, never the text).
+ * lone surrogate. The server refuses them with a 422 INVALID_CHARACTERS. Only NUL and an unpaired surrogate are what Postgres cannot
+ * store (they would be a 500); refusing every other control character is the server's own policy choice, mirrored so the operator is
+ * told on the row before confirming. A pasted report, or a cut at the length limit, can leave one. The server's patient-identifier
+ * screen of the message is its own, and its refusal is shown as the server's words (it names the row and the field, never the text).
  */
 export const UNSTORABLE_MESSAGE =
   /(?![\t\n\r])\p{Cc}|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
@@ -81,4 +82,25 @@ export function referenceRefusalOf(
 ): ReferenceRefusal | null {
   if (refusal.invalidField?.field !== REFERENCE_FIELD) return null;
   return refusal.code === PHI_REFUSAL_CODE ? "looks_like_phi" : "invalid_characters";
+}
+
+/** The one cell of a result row a refusal names (`results.<row>.<token>`): `row` is 0-based, as the server counts the rows it was sent. */
+export interface RowRefusal {
+  readonly row: number;
+  readonly token: string;
+}
+
+const ROW_FIELD = /^results\.(\d+)\.([A-Za-z]+)$/;
+
+/**
+ * Which cell of which row a refused result names, or null (the refusal names no row: the server's words stand alone). The server's words
+ * name the row and the field but not WHERE it is on a long, scrolling table, so the dialog marks the cell and says "Row N" itself. The
+ * dialog sends one row per item, in order, so the server's row index is the item's index.
+ */
+export function rowRefusalOf(
+  refusal: Extract<WriteResult<unknown>, { ok: false }>,
+): RowRefusal | null {
+  const found = ROW_FIELD.exec(refusal.invalidField?.field ?? "");
+  if (found === null) return null;
+  return { row: Number(found[1]), token: found[2] as string };
 }

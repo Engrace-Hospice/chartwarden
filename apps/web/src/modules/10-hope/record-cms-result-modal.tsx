@@ -24,10 +24,12 @@ import {
   REFERENCE_REFUSAL_WORDS,
   RESULT_CODE_WORDS,
   type ReferenceRefusal,
+  type RowRefusal,
   hasForbiddenReferenceCharacter,
   hasForbiddenResultCode,
   hasUnstorableMessage,
   referenceRefusalOf,
+  rowRefusalOf,
 } from "./hope-report-reference";
 
 export interface ResultItem {
@@ -79,6 +81,15 @@ export function buildResultBody(
   };
 }
 
+/** The DOM id of one typed cell of a row (the server's row index is the item's index), so a refusal can take focus to it. */
+const cellIdOf = (base: string, row: number, token: string): string => `${base}-${row}-${token}`;
+
+/** The cells a refusal can name that the dialog has an input for. */
+const CELL_TOKENS: ReadonlySet<string> = new Set(["code", "itemCode", "message"]);
+
+/** The red border of a refused cell: the table's inputs sit outside the shared `.wx-form-field [aria-invalid]` rule, so it is drawn here. */
+const invalidCell: CSSProperties = { borderColor: "var(--color-error)" };
+
 export interface RecordCmsResultModalProps {
   readonly open: boolean;
   readonly submissionId: string;
@@ -112,8 +123,12 @@ export function RecordCmsResultModal({
   // What the server's last refusal said about the report reference: said on the field, which the clinician is taken back to.
   const [referenceRefusal, setReferenceRefusal] = useState<ReferenceRefusal | null>(null);
   const referenceId = useId();
+  // The one cell of a row that the server's last refusal named (code, item code, message): marked, focused, and the alert says its row.
+  const [rowRefusal, setRowRefusal] = useState<RowRefusal | null>(null);
+  const cellIdBase = useId();
   const codeErrorId = useId();
   const messageErrorId = useId();
+  const rowErrorId = useId();
   // Synchronous guard: `busy` only lands on the next render, and this is a final, non-editable write.
   const submitting = useRef(false);
   // Focus targets: the step heading (confirm / discard) when a step opens, the dialog title when it closes.
@@ -135,25 +150,35 @@ export function RecordCmsResultModal({
     setBusy(false);
     setError(null);
     setReferenceRefusal(null);
+    setRowRefusal(null);
   }, [open]);
 
   const inStep = confirming || discarding;
   // Keyed on the step's identity so confirm <-> discard moves focus too (inStep alone stays true across them).
   const step = discarding ? "discard" : confirming ? "confirm" : null;
-  // ONE effect decides where focus goes, so which of the three wins is read here and not from the order of two effects: a step that
-  // opens takes it on its heading; back on the form, a refusal of the reference takes it on that field (the pressed button was disabled
-  // while the request was out, which can drop focus to the page); otherwise a step that just closed returns it to the title.
+  // ONE effect decides where focus goes, so which of the four wins is read here and not from the order of effects: a step that opens
+  // takes it on its heading; back on the form, a refusal of the reference takes it on that field, and one that names a cell of a row
+  // takes it on that cell (scrolled into view); otherwise a step that just closed returns it to the title. (The pressed button was
+  // disabled while the request was out, which can drop focus to the page.)
   useEffect(() => {
     if (step) stepRef.current?.focus();
     else if (referenceRefusal !== null) document.getElementById(referenceId)?.focus();
+    else if (rowRefusal !== null && CELL_TOKENS.has(rowRefusal.token))
+      document.getElementById(cellIdOf(cellIdBase, rowRefusal.row, rowRefusal.token))?.focus();
     else if (hadStep.current) titleRef.current?.focus();
     hadStep.current = step !== null;
-  }, [step, referenceRefusal, referenceId]);
+  }, [step, referenceRefusal, referenceId, rowRefusal, cellIdBase]);
 
   if (!open) return null;
 
-  const patchRow = (id: string, patch: Partial<RowState>): void =>
+  const patchRow = (id: string, patch: Partial<RowState>): void => {
     setRows((prev) => ({ ...prev, [id]: { ...(prev[id] ?? BLANK_ROW), ...patch } }));
+    // Editing the row a refusal named answers it: the mark and the alert (which was that refusal's) go.
+    if (rowRefusal !== null && items[rowRefusal.row]?.assessmentId === id) {
+      setRowRefusal(null);
+      setError(null);
+    }
+  };
 
   function importPaste(): void {
     const parsed = parseCmsReport(paste);
@@ -212,6 +237,7 @@ export function RecordCmsResultModal({
     // A refusal never outlives the request it answered. (The field is not on screen during the confirmation step, so the next refusal
     // mounts the field, and its alert, afresh: that is what is announced again, with or without this.)
     setReferenceRefusal(null);
+    setRowRefusal(null);
     let res: Awaited<ReturnType<typeof recordSubmissionResult>>;
     try {
       res = await recordSubmissionResult(
@@ -238,6 +264,10 @@ export function RecordCmsResultModal({
         setReferenceRefusal(refusal);
         return;
       }
+      // A refusal that names a cell of a row (a validation or patient-identifier refusal of its code, item or message) keeps the
+      // server's words in the alert and says which row; a row the dialog does not have names nothing.
+      const named = rowRefusalOf(res);
+      setRowRefusal(named !== null && named.row < items.length ? named : null);
       setError(res.message);
       // A 409 means the page is out of date, unless the record was only busy (a lock wait timed out: nothing was applied). An empty
       // 5xx or a fault of the server's own may have recorded the result after all, as a rejected request may: re-read like that path.
@@ -255,11 +285,17 @@ export function RecordCmsResultModal({
   const codeInvalid = (value: string): boolean => hasForbiddenResultCode(value.trim());
   const messageInvalid = (value: string): boolean => hasUnstorableMessage(value.trim());
   const rowOf = (item: ResultItem): RowState => rows[item.assessmentId] ?? BLANK_ROW;
-  const codesInvalid = items.some(
-    (item) => codeInvalid(rowOf(item).code) || codeInvalid(rowOf(item).itemCode),
-  );
-  const messagesInvalid = items.some((item) => messageInvalid(rowOf(item).message));
-  const rowsInvalid = codesInvalid || messagesInvalid;
+  // The first offending row (1-based, as the table numbers them; 0 for none): the alerts name it, and the table scrolls.
+  const firstRowWhere = (offends: (row: RowState) => boolean): number =>
+    items.findIndex((item) => offends(rowOf(item))) + 1;
+  const firstCodeRow = firstRowWhere((r) => codeInvalid(r.code) || codeInvalid(r.itemCode));
+  const firstMessageRow = firstRowWhere((r) => messageInvalid(r.message));
+  const rowsInvalid = firstCodeRow > 0 || firstMessageRow > 0;
+  // The cell the server's last refusal named is marked like one the dialog refused itself.
+  const refusedCell = (idx: number, token: string): boolean =>
+    rowRefusal !== null && rowRefusal.row === idx && rowRefusal.token === token;
+  const shownError =
+    error !== null && rowRefusal !== null ? `Row ${rowRefusal.row + 1}: ${error}` : error;
   const referenceError =
     referenceRefusal !== null
       ? REFERENCE_REFUSAL_WORDS[referenceRefusal]
@@ -363,6 +399,41 @@ export function RecordCmsResultModal({
                     const r = rows[item.assessmentId] ?? BLANK_ROW;
                     // Labels can repeat (same patient + RFA): the row number keeps each accessible name unique.
                     const name = `${item.label}, row ${idx + 1}`;
+                    // One typed cell: marked invalid (for assistive technology AND with a red border) when the dialog refuses its value
+                    // or the server's last refusal named it.
+                    const textCell = (
+                      token: "code" | "itemCode" | "message",
+                      label: string,
+                      refusedByDialog: boolean,
+                      dialogErrorId: string,
+                      max: number,
+                    ): JSX.Element => {
+                      const refusedByServer = refusedCell(idx, token);
+                      const invalid = refusedByDialog || refusedByServer;
+                      return (
+                        <td>
+                          <input
+                            id={cellIdOf(cellIdBase, idx, token)}
+                            className="wx-select"
+                            aria-label={`${label} for ${name}`}
+                            aria-invalid={invalid || undefined}
+                            aria-describedby={
+                              refusedByDialog
+                                ? dialogErrorId
+                                : refusedByServer
+                                  ? rowErrorId
+                                  : undefined
+                            }
+                            style={invalid ? invalidCell : undefined}
+                            value={r[token]}
+                            maxLength={max}
+                            onChange={(e) =>
+                              patchRow(item.assessmentId, { [token]: e.target.value })
+                            }
+                          />
+                        </td>
+                      );
+                    };
                     return (
                       <tr key={item.assessmentId}>
                         <td>{item.label}</td>
@@ -385,59 +456,41 @@ export function RecordCmsResultModal({
                             ))}
                           </select>
                         </td>
-                        <td>
-                          <input
-                            className="wx-select"
-                            aria-label={`CMS code for ${name}`}
-                            aria-invalid={codeInvalid(r.code) || undefined}
-                            aria-describedby={codeInvalid(r.code) ? codeErrorId : undefined}
-                            value={r.code}
-                            maxLength={MAX_RESULT_TOKEN}
-                            onChange={(e) => patchRow(item.assessmentId, { code: e.target.value })}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            className="wx-select"
-                            aria-label={`Item for ${name}`}
-                            aria-invalid={codeInvalid(r.itemCode) || undefined}
-                            aria-describedby={codeInvalid(r.itemCode) ? codeErrorId : undefined}
-                            value={r.itemCode}
-                            maxLength={MAX_RESULT_TOKEN}
-                            onChange={(e) =>
-                              patchRow(item.assessmentId, { itemCode: e.target.value })
-                            }
-                          />
-                        </td>
-                        <td>
-                          <input
-                            className="wx-select"
-                            aria-label={`Message for ${name}`}
-                            aria-invalid={messageInvalid(r.message) || undefined}
-                            aria-describedby={
-                              messageInvalid(r.message) ? messageErrorId : undefined
-                            }
-                            value={r.message}
-                            maxLength={1000}
-                            onChange={(e) =>
-                              patchRow(item.assessmentId, { message: e.target.value })
-                            }
-                          />
-                        </td>
+                        {textCell(
+                          "code",
+                          "CMS code",
+                          codeInvalid(r.code),
+                          codeErrorId,
+                          MAX_RESULT_TOKEN,
+                        )}
+                        {textCell(
+                          "itemCode",
+                          "Item",
+                          codeInvalid(r.itemCode),
+                          codeErrorId,
+                          MAX_RESULT_TOKEN,
+                        )}
+                        {textCell(
+                          "message",
+                          "Message",
+                          messageInvalid(r.message),
+                          messageErrorId,
+                          1000,
+                        )}
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
-            {codesInvalid ? (
+            {firstCodeRow > 0 ? (
               <p id={codeErrorId} role="alert" style={errorText}>
-                {RESULT_CODE_WORDS}
+                {`Row ${firstCodeRow}: ${RESULT_CODE_WORDS}`}
               </p>
             ) : null}
-            {messagesInvalid ? (
+            {firstMessageRow > 0 ? (
               <p id={messageErrorId} role="alert" style={errorText}>
-                {MESSAGE_WORDS}
+                {`Row ${firstMessageRow}: ${MESSAGE_WORDS}`}
               </p>
             ) : null}
           </>
@@ -449,9 +502,9 @@ export function RecordCmsResultModal({
           </p>
         ) : null}
 
-        {error ? (
-          <p role="alert" style={errorText}>
-            {error}
+        {shownError ? (
+          <p id={rowErrorId} role="alert" style={errorText}>
+            {shownError}
           </p>
         ) : null}
 

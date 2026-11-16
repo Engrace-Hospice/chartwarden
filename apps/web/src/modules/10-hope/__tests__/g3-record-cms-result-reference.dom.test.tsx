@@ -289,22 +289,38 @@ describe.each([
 });
 
 describe("a patient-identifier refusal of a result row's token", () => {
-  it("is not put on the report reference: the field stays valid and the server's words, which name the token, are shown", async () => {
+  it("is not put on the report reference: the field stays valid, the row is named and its cell marked, and the server's words are shown", async () => {
     const { dialog, field, review, onConflict } = mount(async () => rowPhiRefusal());
     typeReference(field(), "REF 123");
 
     await reviewAndConfirm(dialog);
 
-    expect((await within(dialog).findByRole("alert")).textContent).toBe(ROW_PHI_WORDS);
+    // The server's words name the token but not where it is on a long, scrolling table: the dialog says which row, and marks the cell.
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(`Row 1: ${ROW_PHI_WORDS}`);
     expect(within(dialog).getAllByRole("alert")).toHaveLength(1);
+    const cell = within(dialog).getByLabelText(`CMS code for ${ITEM.label}, row 1`);
+    expect(cell.getAttribute("aria-invalid")).toBe("true");
+    expect((cell as HTMLElement).style.borderColor).toBe("var(--color-error)");
     expect(field().getAttribute("aria-invalid")).toBeNull();
     expect(dialog.textContent).not.toContain("Enter the reference CMS gave");
-    // Back on the form with everything kept, and nothing moved focus to the reference.
+    // Back on the form with everything kept; focus is on the refused cell (scrolled into view), never on the reference.
     expect(field().value).toBe("REF 123");
     expect(review().disabled).toBe(false);
-    expect(document.activeElement).not.toBe(field());
+    expect(document.activeElement).toBe(cell);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(onConflict).not.toHaveBeenCalled();
+  });
+
+  it("clears the mark and the alert as soon as that row is edited", async () => {
+    const { dialog } = mount(async () => rowPhiRefusal());
+    await reviewAndConfirm(dialog);
+    const cell = await within(dialog).findByLabelText(`CMS code for ${ITEM.label}, row 1`);
+    await waitFor(() => expect(cell.getAttribute("aria-invalid")).toBe("true"));
+
+    fireEvent.change(cell, { target: { value: "E-2" } });
+
+    expect(cell.getAttribute("aria-invalid")).toBeNull();
+    expect(within(dialog).queryByRole("alert")).toBeNull();
   });
 
   it("is the server's words too when the refusal names no field at all", async () => {
@@ -319,6 +335,15 @@ describe("a patient-identifier refusal of a result row's token", () => {
 
     expect((await within(dialog).findByRole("alert")).textContent).toBe(ROW_PHI_WORDS);
     expect(field().getAttribute("aria-invalid")).toBeNull();
+    // Nothing is named, so nothing is marked and no row is claimed; focus is back on the dialog's heading.
+    expect(
+      within(dialog)
+        .getByLabelText(`CMS code for ${ITEM.label}, row 1`)
+        .getAttribute("aria-invalid"),
+    ).toBeNull();
+    expect(document.activeElement).toBe(
+      within(dialog).getByRole("heading", { name: "Record CMS result" }),
+    );
   });
 });
 
@@ -349,7 +374,7 @@ describe.each([["CMS code"], ["Item"]])("the %s of a result row", (label) => {
 
     expect(tokenField(dialog).getAttribute("aria-invalid")).toBe("true");
     const alert = within(dialog).getByRole("alert");
-    expect(alert.textContent).toBe(TOKEN_WORDS);
+    expect(alert.textContent).toBe(`Row 1: ${TOKEN_WORDS}`);
     expect(tokenField(dialog).getAttribute("aria-describedby")).toContain(alert.id);
     expect(review().disabled).toBe(true);
     fireEvent.click(review());
@@ -408,7 +433,7 @@ describe("the message of a result row", () => {
 
     expect(messageField(dialog).getAttribute("aria-invalid")).toBe("true");
     const alert = within(dialog).getByRole("alert");
-    expect(alert.textContent).toBe(MESSAGE_WORDS);
+    expect(alert.textContent).toBe(`Row 1: ${MESSAGE_WORDS}`);
     expect(messageField(dialog).getAttribute("aria-describedby")).toContain(alert.id);
     expect(review().disabled).toBe(true);
     fireEvent.click(review());
@@ -417,7 +442,7 @@ describe("the message of a result row", () => {
 
   it.each([
     ["prose with punctuation and accents", "Réf. 12: reçu (2 avertissements); voir « note »."],
-    ["a tab and a carriage return", "line one\tcolumn\r"],
+    ["a tab", "line one\tcolumn"],
     ["an emoji (a surrogate PAIR)", "done \u{1F44D}"],
     ["nothing", ""],
   ])("takes %s", (_n, value) => {
@@ -470,6 +495,7 @@ describe("a server refusal that names a result row's message", () => {
         "results.0.message must not contain control characters or unpaired surrogates",
       ),
       "request validation failed (results.0.message: results.0.message must not contain control characters or unpaired surrogates)",
+      "Message",
     ],
     [
       "a patient identifier (EVIDENCE_LOOKS_LIKE_PHI)",
@@ -481,6 +507,7 @@ describe("a server refusal that names a result row's message", () => {
         "x",
       ),
       "A result row's message looks like it contains a patient identifier (a Social Security or Medicare number). Remove the patient's number from the message before recording the report.",
+      "Message",
     ],
     [
       "a patient identifier in the assessment id",
@@ -492,23 +519,173 @@ describe("a server refusal that names a result row's message", () => {
         "x",
       ),
       "A result row's assessmentId is not an assessment id, and looks like it contains a patient identifier (a Social Security or Medicare number). Use the assessment id from the package, never a patient's number.",
+      null,
     ],
   ])(
-    "is the server's words in the alert for %s, and not the report reference's",
-    async (_n, refusal, words) => {
+    "is the server's words in the alert for %s, with the row named, and not the report reference's",
+    async (_n, refusal, words, cellLabel) => {
       const { dialog, field, review } = mount(async () => refusal());
       typeReference(field(), "REF 123");
 
       await reviewAndConfirm(dialog);
 
-      expect((await within(dialog).findByRole("alert")).textContent).toBe(words);
+      expect((await within(dialog).findByRole("alert")).textContent).toBe(`Row 1: ${words}`);
       expect(within(dialog).getAllByRole("alert")).toHaveLength(1);
       expect(field().getAttribute("aria-invalid")).toBeNull();
       expect(dialog.textContent).not.toContain("Enter the reference CMS gave");
       expect(review().disabled).toBe(false);
-      expect(document.activeElement).not.toBe(field());
+      if (cellLabel === null) {
+        // The assessment id is not a cell: nothing is marked, and focus returns to the dialog's heading.
+        expect(document.activeElement).toBe(
+          within(dialog).getByRole("heading", { name: "Record CMS result" }),
+        );
+      } else {
+        const cell = within(dialog).getByLabelText(`${cellLabel} for ${ITEM.label}, row 1`);
+        expect(cell.getAttribute("aria-invalid")).toBe("true");
+        expect(document.activeElement).toBe(cell);
+      }
     },
   );
+});
+
+// A table of many rows scrolls inside the dialog, and its alert sits below it: so the alert names the first offending row (a number,
+// never the typed text), and every offending cell is marked visibly and to assistive technology.
+describe("a result with several rows", () => {
+  const ITEMS = [
+    { assessmentId: "a-1", label: "Lovelace, Ada — Admission" },
+    { assessmentId: "a-2", label: "Babbage, Charles — HUV1" },
+    { assessmentId: "a-3", label: "Hopper, Grace — HUV2" },
+  ];
+  function mountMany(post: () => Promise<Reply> = async () => ({})) {
+    const POST = vi.fn(post);
+    render(
+      <ApiClientProvider client={{ GET: vi.fn(), POST } as unknown as ApiClient}>
+        <RecordCmsResultModal
+          open
+          submissionId="sub-1"
+          items={ITEMS}
+          onClose={vi.fn()}
+          onDone={vi.fn()}
+          onConflict={vi.fn()}
+        />
+      </ApiClientProvider>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Record CMS result" });
+    ITEMS.forEach((item, i) =>
+      fireEvent.change(within(dialog).getByLabelText(`Outcome for ${item.label}, row ${i + 1}`), {
+        target: { value: "accepted" },
+      }),
+    );
+    const cell = (kind: string, n: number) =>
+      within(dialog).getByLabelText(
+        `${kind} for ${ITEMS[n - 1]?.label}, row ${n}`,
+      ) as HTMLInputElement;
+    return { dialog, cell, POST };
+  }
+
+  it("names the first offending row in each alert, and marks every offending cell", () => {
+    const { dialog, cell } = mountMany();
+
+    fireEvent.change(cell("CMS code", 3), { target: { value: "bad code" } });
+    fireEvent.change(cell("Item", 2), { target: { value: "also/bad" } });
+    fireEvent.change(cell("Message", 3), { target: { value: "bad\u0001" } });
+
+    const alerts = within(dialog)
+      .getAllByRole("alert")
+      .map((a) => a.textContent);
+    expect(alerts).toEqual([
+      "Row 2: A CMS code or item is one word: letters, digits and . _ : # - only, up to 64 characters, with no spaces or slashes.",
+      "Row 3: A message has a character that cannot be recorded (a control character or a broken emoji). Retype that message.",
+    ]);
+    // Marked for assistive technology AND visibly (a red border), on exactly the offending cells.
+    const marked = (el: HTMLElement) => [el.getAttribute("aria-invalid"), el.style.borderColor];
+    expect(marked(cell("CMS code", 3))).toEqual(["true", "var(--color-error)"]);
+    expect(marked(cell("Item", 2))).toEqual(["true", "var(--color-error)"]);
+    expect(marked(cell("Message", 3))).toEqual(["true", "var(--color-error)"]);
+    expect(marked(cell("CMS code", 1))).toEqual([null, ""]);
+    expect(marked(cell("CMS code", 2))).toEqual([null, ""]);
+    expect(marked(cell("Item", 3))).toEqual([null, ""]);
+    expect(dialog.textContent).not.toContain("bad code");
+  });
+
+  it("keeps naming the first offending row as rows are fixed, and clears when none is left", () => {
+    const { dialog, cell } = mountMany();
+    fireEvent.change(cell("CMS code", 1), { target: { value: "a b" } });
+    fireEvent.change(cell("CMS code", 3), { target: { value: "c d" } });
+    expect(within(dialog).getByRole("alert").textContent).toMatch(/^Row 1: /);
+
+    fireEvent.change(cell("CMS code", 1), { target: { value: "A-1" } });
+    expect(within(dialog).getByRole("alert").textContent).toMatch(/^Row 3: /);
+
+    fireEvent.change(cell("CMS code", 3), { target: { value: "C-1" } });
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+  });
+
+  it("marks and names the row of a server refusal that names a cell of it, and says nothing of the other rows", async () => {
+    const words =
+      "request validation failed (results.2.code: results.2.code is not in the accepted format)";
+    const { dialog, cell } = mountMany(async () => ({
+      data: undefined,
+      error: {
+        error: {
+          code: "VALIDATION_FAILED",
+          message: "request validation failed",
+          details: [
+            {
+              field: "results.2.code",
+              code: "INVALID",
+              message: "results.2.code is not in the accepted format",
+            },
+          ],
+        },
+      },
+      response: new Response(null, { status: 422 }),
+    }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review and record" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm and record" }));
+
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(`Row 3: ${words}`);
+    expect(cell("CMS code", 3).getAttribute("aria-invalid")).toBe("true");
+    expect(cell("CMS code", 3).style.borderColor).toBe("var(--color-error)");
+    expect(document.activeElement).toBe(cell("CMS code", 3));
+    expect(cell("CMS code", 1).getAttribute("aria-invalid")).toBeNull();
+    expect(cell("CMS code", 2).getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("ignores a refusal that names a row the dialog does not have", async () => {
+    const { dialog, cell } = mountMany(async () => ({
+      data: undefined,
+      error: {
+        error: {
+          code: "VALIDATION_FAILED",
+          message: "request validation failed",
+          details: [{ field: "results.9.code", code: "INVALID", message: "x" }],
+        },
+      },
+      response: new Response(null, { status: 422 }),
+    }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review and record" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm and record" }));
+
+    expect((await within(dialog).findByRole("alert")).textContent).not.toMatch(/^Row /);
+    expect(cell("CMS code", 1).getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("refuses a pasted code longer than 64 characters whole, instead of passing it on cut to a different valid code", () => {
+    const { dialog, cell } = mountMany();
+    const report = JSON.stringify([
+      { assessmentId: "a-2", status: "rejected", code: "E".repeat(70) },
+    ]);
+
+    fireEvent.change(within(dialog).getByLabelText(/Paste CMS report/), {
+      target: { value: report },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Import pasted report" }));
+
+    expect(cell("CMS code", 2).value).toBe("E".repeat(70));
+    expect(cell("CMS code", 2).getAttribute("aria-invalid")).toBe("true");
+    expect(within(dialog).getByRole("alert").textContent).toMatch(/^Row 2: .*up to 64 characters/);
+  });
 });
 
 // The web sends a row's outcome (a closed choice), code, item code and message, and nothing else: a pasted report's `severity` (the

@@ -5,6 +5,7 @@ import {
   hasForbiddenResultCode,
   hasUnstorableMessage,
   referenceRefusalOf,
+  rowRefusalOf,
 } from "./hope-report-reference";
 
 // The mirror of the server's report-reference rule: `^[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/-]*$`, 1 to 128 characters.
@@ -124,5 +125,36 @@ describe("hasUnstorableMessage", () => {
     ["a low surrogate alone", "a\udc4db"],
   ])("refuses %s", (_name, value) => {
     expect(hasUnstorableMessage(value)).toBe(true);
+  });
+});
+
+// Which cell of which row a refusal names (`results.<row>.<token>`, the row 0-based as the server counts the rows it was sent).
+describe("rowRefusalOf", () => {
+  const naming = (field: string | undefined) =>
+    ({
+      ok: false,
+      status: 422,
+      message: "m",
+      code: "VALIDATION_FAILED",
+      ...(field === undefined ? {} : { invalidField: { field, code: "INVALID" } }),
+    }) as const;
+
+  it.each([
+    ["a code", "results.0.code", { row: 0, token: "code" }],
+    ["an item code", "results.12.itemCode", { row: 12, token: "itemCode" }],
+    ["a message", "results.3.message", { row: 3, token: "message" }],
+    ["an assessment id", "results.7.assessmentId", { row: 7, token: "assessmentId" }],
+  ])("reads the row and the token of %s", (_name, field, expected) => {
+    expect(rowRefusalOf(naming(field))).toEqual(expected);
+  });
+
+  it.each([
+    ["no field", undefined],
+    ["the report reference", "reportReference"],
+    ["a field that is not a row's", "results.x.code"],
+    ["a field with more path", "results.0.code.extra"],
+    ["a field with no token", "results.0"],
+  ])("names no row for %s", (_name, field) => {
+    expect(rowRefusalOf(naming(field))).toBeNull();
   });
 });
