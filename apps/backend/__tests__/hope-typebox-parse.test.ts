@@ -50,3 +50,18 @@ describe("parse — an unexpected property is never echoed by name", () => {
     expect(parse(SkipScheduleSchema, { reasonCode: "other" })).toEqual({ reasonCode: "other" });
   });
 });
+
+describe("parse reads the first error only", () => {
+  it("an oversized array in a body is refused fast and without building an error per element (3.3M rows took 0.6 s and 600 MB)", () => {
+    const rows = Array.from({ length: 3_300_000 }, () => ({}));
+    const started = performance.now();
+    const rssBefore = process.memoryUsage().rss;
+
+    const err = capture(() => parse(ImportSubmissionResultSchema, { results: rows }));
+
+    expect(err.statusCode).toBe(422);
+    expect(err.details).toEqual([expect.objectContaining({ field: "results" })]);
+    expect(performance.now() - started).toBeLessThan(400);
+    expect(process.memoryUsage().rss - rssBefore).toBeLessThan(300 * 1024 * 1024);
+  });
+});

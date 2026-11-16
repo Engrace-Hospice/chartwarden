@@ -384,6 +384,26 @@ describe("an assessmentId is spelt like an id, and is trimmed before it is read"
   });
 });
 
+describe("a non-uuid assessmentId is screened for a date or a phone number too", () => {
+  it.each(["555-867-5309", "1-555-867-5309", "1990-05-17", "05-17-1990", "{1990-05-17}"])(
+    "refuses %s (the id charset holds hex digits and hyphens: a date or a phone number fits it)",
+    (assessmentId) => {
+      const failure = failureOf(() => assertResultRowsAreClean([{ assessmentId }]));
+
+      expect(failure).toMatchObject({ code: "EVIDENCE_LOOKS_LIKE_PHI", statusCode: 422 });
+      expect(failure?.details).toEqual([
+        expect.objectContaining({ field: "results.0.assessmentId" }),
+      ]);
+      expect(JSON.stringify(failure)).not.toContain("1990");
+    },
+  );
+
+  it("compact digit forms and a uuid pass (a documented residual, and an id)", () => {
+    for (const ok of ["5558675309", "19900517", ASSESSMENT])
+      expect(() => assertResultRowsAreClean([{ assessmentId: ok }]), ok).not.toThrow();
+  });
+});
+
 describe("the service stores only what it rebuilt", () => {
   it.each([
     ["null", [null]],

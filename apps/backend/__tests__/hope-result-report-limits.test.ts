@@ -74,6 +74,22 @@ describe("the aggregate text budget of a result import", () => {
     });
   });
 
+  it("counts only the text the screen reads: a uuid assessment id is free, a non-uuid one and every message count", () => {
+    const uuidRows = Array.from({ length: HOPE_RESULT_MAX_ROWS }, () => ({
+      assessmentId: ID,
+      message: "x".repeat(50),
+    }));
+    // 2000 uuids are 72,000 units, and 2000 x 50 is 100,000: over the budget only if the uuids counted.
+    expect(() => assertResultRowsAreClean(uuidRows)).not.toThrow();
+    // A non-uuid id of 60 hex units is text the screen reads: 2000 of them are 120,000.
+    const idRows = Array.from({ length: HOPE_RESULT_MAX_ROWS }, () => ({
+      assessmentId: "a".repeat(60),
+    }));
+    expect(failureOf(() => assertResultRowsAreClean(idRows))?.details).toEqual([
+      expect.objectContaining({ code: "TOO_LARGE" }),
+    ]);
+  });
+
   it("a normal report passes: 200 rows of ordinary CMS prose", () => {
     const rows = Array.from({ length: 200 }, (_, i) => ({
       assessmentId: `77777777-7777-4777-8777-77777777${String(i).padStart(4, "0")}`,

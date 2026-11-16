@@ -318,8 +318,9 @@ export const HOPE_RESULT_STATUS_PATTERN = "^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/
 /**
  * A report row's `assessmentId` is an assessment id, so it may hold only what a uuid is spelt with (Postgres reads hex digits,
  * hyphens and one pair of braces; `canonicalUuidOrNull`), padded with whitespace a pasted CSV cell carries (it is trimmed before it
- * is read): 1 to 64 characters. A name or any other text cannot be written into the stored report or echoed by the read API; a
- * value that fits the charset but is no uuid is stored as an unmatched row and never returned by a read.
+ * is read): 1 to 64 characters. Text outside a uuid's characters is refused, so a name cannot be written into the stored report
+ * or echoed by the read API. A hex-only word ("Ada", "Dee Cafe") does fit the charset and can still be stored in the raw report;
+ * a value that is no uuid is stored as an unmatched row and never returned by a read.
  */
 export const HOPE_RESULT_ASSESSMENT_ID_PATTERN = "^[\\s{}0-9A-Fa-f-]{1,64}$";
 /** The most rows one result import takes, and the longest `message` of a row. */
@@ -979,7 +980,9 @@ export const HopeRegenerateResponseSchema = Type.Object({
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});
   if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
+    // The FIRST error only: spreading the iterator builds one error object per offending element, which for an oversized array in a
+    // request body is millions of them (hundreds of milliseconds and hundreds of megabytes on the shared event loop).
+    const first = Value.Errors(schema, converted).First();
     const field =
       first?.type === ValueErrorType.ObjectAdditionalProperties
         ? "(unexpected property)"

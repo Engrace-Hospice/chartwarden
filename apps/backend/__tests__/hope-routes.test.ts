@@ -2824,6 +2824,46 @@ describe("the CMS result-row tokens: a format in the schema, patient identifiers
     await ctx.app.close();
   });
 
+  it("a body over 3 MiB is a 413 in the standard error envelope, before it is parsed", async () => {
+    const ctx = makeServer({ packagedSubmission: true });
+
+    const res = await ctx.app.inject({
+      method: "POST",
+      url: `/api/v1/hope/submissions/${SUB_PACKAGED}/results`,
+      headers: { ...RN, "content-type": "application/json" },
+      payload: `{"reportReference":"${"a".repeat(3 * 1024 * 1024)}"}`,
+    });
+
+    expect(res.statusCode).toBe(413);
+    expect(res.json().error).toMatchObject({
+      code: expect.any(String),
+      message: expect.any(String),
+    });
+    await ctx.app.close();
+  });
+
+  it("the largest legitimate import (2000 rows with every field at its limit) is under the body limit and is read", async () => {
+    const ctx = makeServer({ packagedSubmission: true });
+    const full = {
+      assessmentId: SIGNED_A,
+      status: "s".repeat(64),
+      result: "r".repeat(64),
+      outcome: "o".repeat(64),
+      severity: "warning",
+      code: "c".repeat(64),
+      itemCode: "i".repeat(64),
+      iqiesRecordId: "q".repeat(64),
+      message: "m".repeat(40),
+    };
+    const results = Array.from({ length: 2000 }, () => full);
+    expect(JSON.stringify({ results }).length).toBeLessThan(3 * 1024 * 1024);
+
+    const res = await importRows(ctx, results);
+
+    expect(res.statusCode).toBe(409); // past the body limit, the schema and the screens: a packaged batch refuses it for its status
+    await ctx.app.close();
+  });
+
   it("a status phrase may carry commas, semicolons and parentheses (a code may not)", async () => {
     const ctx = makeServer({ packagedSubmission: true });
 

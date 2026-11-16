@@ -208,6 +208,9 @@ const SCOPE_QUERY_PE = (action: string): PreHandler =>
     }),
   }) as PreHandler;
 
+/** The body limit of `POST /hope/submissions/:id/results` (see the route). */
+const HOPE_RESULT_BODY_LIMIT_BYTES = 3 * 1024 * 1024;
+
 export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): void {
   const { service } = deps;
   const caseloadPatientIds =
@@ -718,7 +721,10 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
 
   app.post(
     "/api/v1/hope/submissions/:id/results",
-    { preHandler: [...SUBMISSION_OPERATION_GUARDS] },
+    // 3 MiB, not the 10 MiB default: the largest legitimate import is about 1.9 MB (2000 rows of about 650 bytes, and at most
+    // 100,000 units of message and assessment id text, even if a client escapes every one as \uXXXX). A bigger body is a 413 in the
+    // standard error envelope, before it is parsed (a 10 MB array of `{}` rows is millions of objects on the shared event loop).
+    { preHandler: [...SUBMISSION_OPERATION_GUARDS], bodyLimit: HOPE_RESULT_BODY_LIMIT_BYTES },
     async (request) => {
       const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);

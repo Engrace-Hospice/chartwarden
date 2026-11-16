@@ -42,11 +42,14 @@ import {
 export type SubmissionReferenceField = "reportReference" | "iqiesSubmissionReference";
 
 /**
- * The most `message` plus `assessmentId` text (UTF-16 units, summed over every row) one result import may carry. The identifier
- * screen normalises text (NFKD, which expands some characters up to 18 times), so its cost follows the text, and it runs on the
- * shared event loop: 2000 rows of 1000 compatibility characters (about 6 MB, under the body limit) held the loop for seconds. A
- * real report row is 100 to 300 characters, so a 2000-row report is far under this; an import over it is refused BEFORE any
- * screen runs and is split by the operator. The tokens are bounded by their own 64-character patterns.
+ * The most text the identifier screen has to READ in one result import, in UTF-16 units summed over every row: each `message`, and
+ * each `assessmentId` that is not a uuid (a uuid is not screened, so it does not count). The screen normalises text (NFKD, which
+ * expands some characters up to 18 times), so its cost follows the text, and it runs on the shared event loop: 2000 rows of 1000
+ * compatibility characters (about 6 MB) held the loop for seconds. Measured at this budget, per pass (the route and the service
+ * each run one): 79 ms for U+FDFA, the worst expansion, 15 ms for Hangul, 3 ms for runs of combining marks (which the screen now
+ * drops before the NFKD), under 1 ms for ASCII. An import over it is refused BEFORE any screen runs and is split by the operator.
+ * REAL CAPACITY: the budget is shared by the messages, so about 660 rows fit at 150-character messages and about 330 at 300; the
+ * 2000-row limit is reachable only when messages average 50 characters. The tokens are bounded by their own 64-character patterns.
  */
 export const HOPE_RESULT_TEXT_BUDGET = 100_000;
 
@@ -107,7 +110,7 @@ const messageRefusal =
   "A result row's message looks like it contains a patient identifier (a Social Security or Medicare number). Remove the patient's number from the message before recording the report.";
 
 const assessmentIdRefusal =
-  "A result row's assessmentId is not an assessment id, and looks like it contains a patient identifier (a Social Security or Medicare number). Use the assessment id from the package, never a patient's number.";
+  "A result row's assessmentId is not an assessment id, and looks like it contains a patient identifier (a Social Security or Medicare number, a date or a phone number). Use the assessment id from the package, never a patient's number.";
 
 const malformed = (field: string): ValidationError =>
   new ValidationError("request validation failed", [
@@ -173,7 +176,9 @@ function rebuildRows(results: unknown): CleanResultRow[] {
       if (value === undefined) continue;
       if (typeof value !== "string") throw malformed(`results.${index}.${key}`);
       out[key] = key === "assessmentId" ? value.trim() : value;
-      if (key === "assessmentId" || key === "message") text += value.length;
+      // Only what the screen reads counts: a message, and an assessment id that is no uuid (a uuid is skipped by the screen).
+      if (key === "message" || (key === "assessmentId" && canonicalUuidOrNull(out[key]) === null))
+        text += value.length;
     }
     if (text > HOPE_RESULT_TEXT_BUDGET)
       throw tooLarge(
@@ -229,8 +234,12 @@ function assertRowsHaveNoPatientIdentifier(rows: readonly CleanResultRow[]): voi
     }
     // A uuid is the only value an assessment id should be, and the only one the MBI window false-positives on: screen the rest.
     const assessmentId = row.assessmentId;
-    if (assessmentId !== undefined && canonicalUuidOrNull(assessmentId) === null)
-      assertNoPatientIdentifier(`results.${index}.assessmentId`, assessmentId, assessmentIdRefusal);
+    if (assessmentId !== undefined && canonicalUuidOrNull(assessmentId) === null) {
+      const field = `results.${index}.assessmentId`;
+      assertNoPatientIdentifier(field, assessmentId, assessmentIdRefusal);
+      // The id's charset (hex digits, hyphens) still holds a date or a phone number set apart by hyphens.
+      if (looksLikeDateOrPhone(assessmentId)) refuseAsPatientIdentifier(field, assessmentIdRefusal);
+    }
     const message = row.message;
     if (message !== undefined && message !== "")
       assertNoPatientIdentifier(`results.${index}.message`, message, messageRefusal);
