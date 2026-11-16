@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RecordCmsResultModal } from "../record-cms-result-modal";
 
 // Group g3: the CMS-result dialog's "Report reference (optional)" field. The server accepts letters, digits, spaces and `. _ : # / -`
-// up to 500 characters (REFERENCE_CHARSET in hope-typebox.ts) and screens the rest for patient identifiers, so the dialog says so
+// up to 128 characters, the first one not a space (REFERENCE_CHARSET in hope-typebox.ts) and screens the rest for patient identifiers, so the dialog says so
 // beside the field, refuses a character the server would refuse before anything is confirmed, and answers a server refusal on the
 // field (its words name the wire field `reportReference` and, for the charset, say only "Expected union value").
 
@@ -15,7 +15,7 @@ afterEach(cleanup);
 type Reply = { data?: unknown; error?: unknown; response?: Response };
 const ITEM = { assessmentId: "a-1", label: "Lovelace, Ada — Admission" };
 const REFERENCE_WORDS =
-  "That reference has a character that is not allowed. Use only letters, digits, spaces and . _ : # / -, up to 500 characters.";
+  "That reference has a character that is not allowed. Use only letters, digits, spaces and . _ : # / -, up to 128 characters.";
 const PHI_WORDS =
   "This looks like it contains a Social Security or Medicare number. Enter the reference CMS gave for the report, never a patient's number.";
 
@@ -84,9 +84,9 @@ describe("the report reference field", () => {
 
     const hint = within(dialog).getByText(/Letters, digits, spaces and/);
     expect(hint.textContent).toBe(
-      "Letters, digits, spaces and . _ : # / - only, up to 500 characters.",
+      "Letters, digits, spaces and . _ : # / - only, up to 128 characters.",
     );
-    expect(field().getAttribute("maxlength")).toBe("500");
+    expect(field().getAttribute("maxlength")).toBe("128");
     expect(field().getAttribute("aria-describedby")).toContain(hint.id);
   });
 
@@ -121,6 +121,53 @@ describe("the report reference field", () => {
     expect(review().disabled).toBe(true);
     fireEvent.click(review());
     expect(POST).not.toHaveBeenCalled();
+  });
+
+  it("blocks a reference longer than the server takes (128 characters), and takes exactly 128", () => {
+    const { dialog, field, review, POST } = mount(async () => ({}));
+
+    typeReference(field(), "a".repeat(129));
+
+    expect(field().getAttribute("aria-invalid")).toBe("true");
+    expect(
+      within(dialog)
+        .getAllByRole("alert")
+        .map((a) => a.textContent),
+    ).toEqual([REFERENCE_WORDS]);
+    expect(review().disabled).toBe(true);
+    fireEvent.click(review());
+    expect(POST).not.toHaveBeenCalled();
+
+    typeReference(field(), "a".repeat(128));
+
+    expect(field().getAttribute("aria-invalid")).toBeNull();
+    expect(review().disabled).toBe(false);
+  });
+
+  it("measures the reference trimmed: surrounding spaces are neither refused nor sent, and spaces alone are no reference", async () => {
+    const { dialog, field, review, POST } = mount(async () => ({ data: { ok: true } }));
+
+    // The server refuses a value that starts with a space, so the dialog trims first; nothing but spaces is left as no reference.
+    typeReference(field(), "   ");
+    expect(field().getAttribute("aria-invalid")).toBeNull();
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    expect(review().disabled).toBe(false);
+    await reviewAndConfirm(dialog);
+    await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
+    const [, init] = POST.mock.calls[0] as unknown as [string, { body: Record<string, unknown> }];
+    expect(init.body).not.toHaveProperty("reportReference");
+  });
+
+  it("sends the reference without its surrounding spaces", async () => {
+    const { dialog, field, POST } = mount(async () => ({ data: { ok: true } }));
+    typeReference(field(), "  REF 1  ");
+    expect(field().getAttribute("aria-invalid")).toBeNull();
+
+    await reviewAndConfirm(dialog);
+
+    await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
+    const [, init] = POST.mock.calls[0] as unknown as [string, { body: Record<string, unknown> }];
+    expect(init.body.reportReference).toBe("REF 1");
   });
 
   it("lets Review and record through again once the reference is fixed or cleared", () => {

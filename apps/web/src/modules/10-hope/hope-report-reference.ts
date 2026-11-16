@@ -4,18 +4,24 @@
 // matching, never for showing.
 import type { WriteResult } from "./hope-api";
 
-/** The server's length limit on a report reference (`referenceString(500)` in `ImportSubmissionResultSchema`, hope-typebox.ts). */
-export const MAX_REFERENCE = 500;
+/** The server's length limit on a report reference (`referenceString(128)` in `ImportSubmissionResultSchema`, hope-typebox.ts). */
+export const MAX_REFERENCE = 128;
 
 /**
- * Mirror of `REFERENCE_CHARSET` in `apps/backend/src/modules/10-hope/routes/hope-typebox.ts` (web does not import backend code: keep the
- * two identical): letters, digits, space and `. _ : # / -`, so markup, control characters and quotes never reach a stored row.
+ * Mirror of the server's reference pattern in `apps/backend/src/modules/10-hope/routes/hope-typebox.ts` (web does not import backend code:
+ * keep the two identical): letters, digits and `. _ : # / -`, with spaces allowed after the FIRST character, so markup, control
+ * characters and quotes never reach a stored row and a value of spaces is refused. The dialog trims first, so a reference of spaces
+ * alone is left empty (no reference), never sent.
  */
-const REFERENCE_PATTERN = /^[A-Za-z0-9 ._:#/-]+$/;
+const REFERENCE_PATTERN = /^[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/-]*$/;
 
-/** Whether a (trimmed) reference holds a character the server refuses. Nothing at all is fine: the reference is optional and then not sent. */
+/**
+ * Whether a (trimmed) reference is one the server refuses: a character outside the pattern, or more than {@link MAX_REFERENCE}.
+ * Nothing at all is fine: the reference is optional and then not sent.
+ */
 export const hasForbiddenReferenceCharacter = (trimmedText: string): boolean =>
-  trimmedText !== "" && !REFERENCE_PATTERN.test(trimmedText);
+  trimmedText !== "" &&
+  (trimmedText.length > MAX_REFERENCE || !REFERENCE_PATTERN.test(trimmedText));
 
 export const REFERENCE_HINT = `Letters, digits, spaces and . _ : # / - only, up to ${MAX_REFERENCE} characters.`;
 
