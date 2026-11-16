@@ -97,6 +97,23 @@ describe("the dashboard's Skip dialog", () => {
     await waitFor(() => expect(reads.length).toBe(2));
   });
 
+  it("re-reads the schedules when the window is no longer available (404), so the row stops offering Skip", async () => {
+    const reads = mountDashboard(json({ error: { code: "NOT_FOUND", message: "gone" } }, 404));
+    const dialog = await skipWithReason();
+
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("gone");
+    await waitFor(() => expect(reads.length).toBe(2));
+  });
+
+  it("does not re-read the schedules for a refusal that says nothing changed (403)", async () => {
+    const reads = mountDashboard(json({ error: { code: "FORBIDDEN", message: "no" } }, 403));
+    const dialog = await skipWithReason();
+
+    await within(dialog).findByRole("alert");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(reads.length).toBe(1);
+  });
+
   it("does not re-read the schedules for a busy record (the skip was not applied)", async () => {
     const reads = mountDashboard(json(BUSY, 409));
     const dialog = await skipWithReason();

@@ -27,7 +27,7 @@ import {
   skipSchedule,
 } from "./hope-api";
 import { notifyDone } from "./hope-notify-done";
-import { CANCEL_REASON_LABEL } from "./hope-status";
+import { CANCEL_REASON_LABEL, SKIP_REASON_LABEL } from "./hope-status";
 import { useFocusOnNewError } from "./use-focus-on-new-error";
 
 /** The ceremonies this modal performs. Each is one route; none needs a form of its own. */
@@ -57,9 +57,6 @@ const SUBMIT: Record<HopeAction, string> = {
 /** The request got no answer (offline, a reset, a timeout): the server may or may not have applied it. */
 const ACTION_UNCONFIRMED =
   "Could not confirm that the action was applied. Check the record before trying again.";
-
-const humanize = (k: string): string =>
-  k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 export interface HopeActionModalProps {
   readonly open: boolean;
@@ -148,9 +145,10 @@ export function HopeActionModal({
     if (!res.ok) {
       setError(res.message); // the server's own reason (e.g. "already marked uploaded"), except where `refusalWordsOf` words it for a clinician
       // A 409 M10_RECORD_BUSY is a lock wait that timed out and the step was NOT applied: the page is not stale, so it is
-      // not re-read (the server's words say to send the request again). Any other 409 is the record having changed. An
-      // empty 5xx or a fault of the server's own may have been applied after all: re-read what the words say to check.
-      const changed = res.status === 409 && res.code !== RECORD_BUSY_CODE;
+      // not re-read (the server's words say to send the request again). Any other 409 is the record having changed. A 404 says
+      // the record is gone (or no longer readable by this user), yet the row behind the dialog still offers the action: re-read.
+      // An empty 5xx or a fault of the server's own may have been applied after all: re-read what the words say to check.
+      const changed = (res.status === 409 && res.code !== RECORD_BUSY_CODE) || res.status === 404;
       if (changed || failedResultOutcomeUnknown(res)) notifyDone(() => onConflict?.());
       return;
     }
@@ -178,7 +176,7 @@ export function HopeActionModal({
               required
               options={[
                 { value: NO_REASON, label: "Select a reason" },
-                ...SKIP_REASONS.map((r) => ({ value: r, label: humanize(r) })),
+                ...SKIP_REASONS.map((r) => ({ value: r, label: SKIP_REASON_LABEL[r] })),
               ]}
             />
             <p style={meta}>

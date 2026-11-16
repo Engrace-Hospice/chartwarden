@@ -2,7 +2,10 @@
 // The HOPE schedule / assessment / SFV / submission / finding enums each map to the §6.6 badge
 // taxonomy tone (grounded in the @chartwarden/types unions) so every M10 surface renders the same
 // StatusPill for a state.
-import type { HopeSubmissionCancelReasonCode } from "@chartwarden/types";
+import type {
+  HopeScheduleSkipReasonCode,
+  HopeSubmissionCancelReasonCode,
+} from "@chartwarden/types";
 import type { StatusTone } from "@chartwarden/ui";
 
 // HopeScheduleStatus = open | completed | expired | skipped.
@@ -87,6 +90,20 @@ export const CANCEL_REASON_LABEL: Record<HopeSubmissionCancelReasonCode, string>
   never_uploaded: "Never uploaded to the CMS portal",
   generated_in_error: "Generated in error",
   other: "Other",
+};
+
+/**
+ * Why a timepoint window was skipped, worded for the clinician choosing it. The keys are the server's CLOSED list
+ * (`HOPE_SCHEDULE_SKIP_REASON_CODES`), so a code added there is a compile error here rather than a label made from its name.
+ */
+export const SKIP_REASON_LABEL: Record<HopeScheduleSkipReasonCode, string> = {
+  patient_deceased: "Patient died",
+  patient_revoked: "Patient revoked the hospice benefit",
+  patient_hospitalized: "Patient was hospitalized",
+  transferred_out: "Patient transferred out",
+  admission_discharged: "Admission was discharged",
+  duplicate_window: "Duplicate timepoint window",
+  other: "Other reason",
 };
 
 // HopeValidationSeverity = error | warning.
