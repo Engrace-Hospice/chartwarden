@@ -97,11 +97,14 @@ const key = (): { "idempotency-key": string } => ({ "idempotency-key": randomUUI
 
 function makeServer(
   // The §7.6 closure: only a session carrying the (test) `sud_cleared` role may see SUD content.
-  sudDisclosureAllowed: (input: {
-    roles: readonly string[];
-    patientId: string;
-    membershipId: string | null;
-  }) => Promise<boolean> = async ({ roles }) => roles.includes("sud_cleared"),
+  // `null` mounts the routes with NO closure bound, so the route's own default (deny) is what is under test.
+  sudDisclosureAllowed:
+    | ((input: {
+        roles: readonly string[];
+        patientId: string;
+        membershipId: string | null;
+      }) => Promise<boolean>)
+    | null = async ({ roles }) => roles.includes("sud_cleared"),
 ) {
   const backend = createInMemoryCarePlanBackend();
   registerEffectivePermissionResolver(
@@ -133,7 +136,7 @@ function makeServer(
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerCarePlanRoutes(app, {
     service: backend.service,
-    sudDisclosureAllowed,
+    ...(sudDisclosureAllowed ? { sudDisclosureAllowed } : {}),
     admissionPatientCare: async (_org, admissionId) => admissions.get(admissionId) ?? null,
   });
   return { app, svc: backend.service };
@@ -814,6 +817,21 @@ describe("the internal relevant-elements read redacts per ACTOR (compliance revi
   it("passes an allowing verdict through, so only the cleared caller sees Part 2 content", async () => {
     const { viewers } = await readAs(RN_SUD_CLEARED);
     expect(viewers).toEqual([{ sudDisclosureAllowed: true }]);
+  });
+
+  it("fails closed when no per-actor closure is bound: even a caller holding the cleared role is handed a denying verdict", async () => {
+    const viewers: unknown[] = [];
+    registerSeam("CarePlanReader", {
+      ...carePlanReaderDenyStub,
+      relevantElementsForEncounter: async (_patient, _type, _discipline, _admission, viewer) => {
+        viewers.push(viewer);
+        return picker as never;
+      },
+    });
+    const { app } = makeServer(null);
+    const res = await app.inject({ method: "GET", url, headers: RN_SUD_CLEARED });
+    expect(res.statusCode).toBe(200);
+    expect(viewers).toEqual([{ sudDisclosureAllowed: false }]);
   });
 });
 

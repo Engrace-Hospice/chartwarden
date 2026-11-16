@@ -459,16 +459,30 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
       ],
     });
 
-    /** A plan with one SUD problem and one plain problem, each served by an `rn` intervention, read as `caller`. */
+    // A real uuid: the read-audit row casts the acting user to uuid, and the best-effort emitter swallows a failure,
+    // so a non-uuid reader would leave no trail and the audit assertion below would be vacuous.
+    const READER = "44444444-4444-4444-8444-444444444444";
+
+    /**
+     * A plan with one SUD problem and one plain problem, each served by an `rn` intervention, read as `caller`.
+     * `membership: null` sends no membership id; `evaluator: "unbound"` unregisters the M39 evaluator after the
+     * plan is seeded, so the read itself meets the outage.
+     */
     async function readAs(
-      caller: { membership: string; roles: string },
+      caller: { membership: string | null; roles: string },
       release: ((membershipId: string) => StoredConsent) | null,
+      opts: { evaluator?: "bound" | "unbound" } = {},
     ) {
       await seedTenant();
+      // The audit row's actor is a foreign key to `user`: without this row the insert fails and is swallowed.
+      await admin.query(
+        `INSERT INTO "user" (id,email) VALUES ($1,'reader@gap013.test') ON CONFLICT DO NOTHING`,
+        [READER],
+      );
       const app = bootApp({
         grants: {
           author_1: ["care_plan.bootstrap", "care_plan.author", "care_plan.read"],
-          reader_1: ["care_plan.read"],
+          [READER]: ["care_plan.read"],
         },
         consents: release ? [release("member-b")] : [],
       });
@@ -514,27 +528,63 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
         });
         expect(res.statusCode, row.description).toBe(201);
       }
+      if (opts.evaluator === "unbound") {
+        __resetSeamsForTest();
+        registerSeam(
+          "CarePlanReader",
+          createCarePlanReader(createDrizzleCarePlanReaderStore(handle.db)),
+        );
+      }
       const res = await app.inject({
         method: "GET",
         url: `/api/v1/internal/care-plan/relevant-elements?patientId=${patientId}&encounterType=routine&discipline=rn`,
         headers: {
-          "x-test-user": "reader_1",
+          "x-test-user": READER,
           "x-test-org": org,
           "x-test-roles": caller.roles,
-          "x-test-membership": caller.membership,
+          ...(caller.membership ? { "x-test-membership": caller.membership } : {}),
         },
       });
       await app.close();
       expect(res.statusCode).toBe(200);
-      return res.json() as {
-        redacted: boolean;
-        problems: { description: string }[];
-        interventions: { scopeText: string }[];
+      // The read is accounted against the patient (§164.528): `resource_id` falls back to the patient id.
+      const { rows: audit } = await admin.query(
+        `SELECT event_type, resource_id, context FROM audit_event WHERE resource_kind = 'care_plan_element' AND resource_id = $1`,
+        [patientId],
+      );
+      return {
+        ...(res.json() as {
+          redacted: boolean;
+          problems: { description: string }[];
+          interventions: { scopeText: string }[];
+        }),
+        audit: audit as { event_type: string; resource_id: string; context: unknown }[],
       };
     }
 
-    it("withholds the SUD problem and its intervention from a nurse the release does NOT name", async () => {
+    it("withholds the SUD problem and its intervention from a nurse the release does NOT name, and the read leaves its audit event", async () => {
       const body = await readAs({ membership: "member-a", roles: "rn" }, releaseNaming);
+      expect(body.redacted).toBe(true);
+      expect(body.problems.map((p) => p.description)).toEqual([PLAIN_PROBLEM]);
+      expect(body.interventions.map((i) => i.scopeText)).toEqual([`visit for ${PLAIN_PROBLEM}`]);
+      // CW-AU-01: this route is reachable by default now, and a read-audit config that cannot write is swallowed.
+      expect(body.audit).toHaveLength(1);
+      expect(body.audit[0]?.event_type).toBe("care_plan_element.viewed");
+      expect(JSON.stringify(body.audit[0]?.context)).toContain(patientId);
+    });
+
+    it("fails closed with no membership id against a release that names staff (actor_unidentified), even for the RN case manager", async () => {
+      // A plain `rn` is redacted whatever the restriction flag says; the case manager is the one the carve-out would
+      // let through, so this is the caller that proves an unidentified actor counts as "restricted to named staff".
+      const body = await readAs({ membership: null, roles: "rn,rn_case_manager" }, releaseNaming);
+      expect(body.redacted).toBe(true);
+      expect(body.problems.map((p) => p.description)).toEqual([PLAIN_PROBLEM]);
+    });
+
+    it("fails closed when the M39 evaluator is unbound: the outage narrows the read, never widens it", async () => {
+      const body = await readAs({ membership: "member-b", roles: "rn" }, releaseNaming, {
+        evaluator: "unbound",
+      });
       expect(body.redacted).toBe(true);
       expect(body.problems.map((p) => p.description)).toEqual([PLAIN_PROBLEM]);
       expect(body.interventions.map((i) => i.scopeText)).toEqual([`visit for ${PLAIN_PROBLEM}`]);
