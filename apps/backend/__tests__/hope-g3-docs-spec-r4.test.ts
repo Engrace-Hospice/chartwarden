@@ -128,7 +128,7 @@ describe("spec 4.1 / 4.1.1: lock coverage names what the code does", () => {
     const body = slice(
       read(`${M10_SRC}/hope-route-service-db.ts`),
       "async assembleSubmission(",
-      "const candidates",
+      "const candidateIds",
     );
     expect(body).toContain("lockRecordKey(t, `m10:assemble:");
     expect(row(LOCKS, "`POST /hope/submissions/assemble`")).toContain("the first statement");

@@ -10,13 +10,18 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m10:submission-result:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@chartwarden/db";
+import { type DbClient, createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import {
+  lockPackageableRecords,
+  readAssembleCandidateIds,
+} from "../src/modules/10-hope/hope-assemble-candidates";
 import {
   type HopeWriteOutboxPort,
   M10_OUTBOX_EVENTS,
@@ -448,5 +453,504 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
       await errorCode(svc.importSubmissionResult(ORG_B, member, b, { results: [] })),
     ).not.toBeNull();
     expect((await row(b)).status).toBe("submitted_pending_result");
+  });
+
+  // ── database review (pre-PR): bulk import, the report-reference column, the assemble candidate read, the audit trigger ──
+
+  /** Run `run` on a backend whose pool is opened AFTER the statement spy is installed (`createDbClient` binds `query` at connect). */
+  async function statementsDuring<T>(
+    run: (backend: typeof svc) => Promise<T>,
+  ): Promise<{ out: T; sql: string[] }> {
+    const sql: string[] = [];
+    const original = Client.prototype.query;
+    const spy = vi.spyOn(Client.prototype, "query").mockImplementation(function (
+      this: Client,
+      ...args: unknown[]
+    ) {
+      const first = args[0] as string | { text?: string } | undefined;
+      sql.push(typeof first === "string" ? first : (first?.text ?? ""));
+      return (original as (...a: unknown[]) => unknown).apply(this, args);
+    } as never);
+    const probe = createDbClient({ connectionString: appRoleUrl(DB_URL as string), max: 1 });
+    try {
+      const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M10_OUTBOX_EVENTS]));
+      const backend = createDbHopeBackend(
+        probe.db,
+        { publish: (tx, e) => publisher.publish(tx as never, { ...e, callerModule: "m10" }) },
+        () => new Date("2026-06-08T12:00:00.000Z"),
+      );
+      return { out: await run(backend), sql };
+    } finally {
+      spy.mockRestore();
+      await probe.close();
+    }
+  }
+
+  it("a report is written in bulk: a 1100-row report settles every item, stamps every assessment and stores every row in a few statements", async () => {
+    const count = 1100;
+    const assessments: string[] = [];
+    for (let i = 0; i < count; i += 1) assessments.push(await seedAssessment());
+    const b = await seedBatch("submitted_pending_result", assessments);
+    const results = assessments.map((assessmentId, i) => ({
+      assessmentId,
+      status: "accepted",
+      iqiesRecordId: `REC-BULK-${i}`,
+    }));
+
+    const { out, sql } = await statementsDuring((backend) =>
+      backend.importSubmissionResult(ORG_A, member, b, { reportReference: "FVR-BULK", results }),
+    );
+
+    expect(out.status).toBe("accepted");
+    expect(out.acceptedCount).toBe(count);
+    const one = async (text: string): Promise<number> =>
+      (await admin.query(text, [b])).rows[0].n as number;
+    expect(
+      await one(
+        "SELECT count(*)::int AS n FROM hope_submission_item WHERE hope_submission_id=$1 AND item_status='accepted' AND iqies_record_id LIKE 'REC-BULK-%' AND processed_at IS NOT NULL",
+      ),
+    ).toBe(count);
+    expect(
+      await one(
+        `SELECT count(*)::int AS n FROM hope_assessment a JOIN hope_submission_item i ON i.hope_assessment_id=a.id
+          WHERE i.hope_submission_id=$1 AND a.iqies_record_id = i.iqies_record_id`,
+      ),
+    ).toBe(count);
+    expect(
+      await one(
+        "SELECT count(*)::int AS n FROM hope_submission_result_event WHERE hope_submission_id=$1 AND result_scope='record'",
+      ),
+    ).toBe(count);
+    // one statement per chunk of 500 rows, not one per row
+    const starting = (prefix: RegExp) => sql.filter((text) => prefix.test(text.trim())).length;
+    expect(starting(/^update "hope_submission_item"/i)).toBe(3);
+    expect(starting(/^update "hope_assessment"/i)).toBe(3);
+    expect(starting(/^insert into "hope_submission_result_event"/i)).toBe(3);
+  }, 120_000);
+
+  it("a blank iQIES record id is not stamped on the item or the assessment, and a real one is", async () => {
+    const blank = await seedAssessment();
+    const spaces = await seedAssessment();
+    const real = await seedAssessment();
+    const b = await seedBatch("submitted_pending_result", [blank, spaces, real]);
+
+    await svc.importSubmissionResult(ORG_A, member, b, {
+      results: [
+        { assessmentId: blank, status: "accepted", iqiesRecordId: "" },
+        { assessmentId: spaces, status: "accepted", iqiesRecordId: "   " },
+        { assessmentId: real, status: "accepted", iqiesRecordId: "REC-REAL" },
+      ],
+    });
+
+    const stamped = async (id: string) =>
+      (
+        await admin.query(
+          `SELECT a.iqies_record_id AS assessment, i.iqies_record_id AS item, i.item_status
+             FROM hope_assessment a JOIN hope_submission_item i ON i.hope_assessment_id=a.id
+            WHERE a.id=$1 AND i.hope_submission_id=$2`,
+          [id, b],
+        )
+      ).rows[0];
+    expect(await stamped(blank)).toEqual({ assessment: null, item: null, item_status: "accepted" });
+    expect(await stamped(spaces)).toEqual({
+      assessment: null,
+      item: null,
+      item_status: "accepted",
+    });
+    expect(await stamped(real)).toEqual({
+      assessment: "REC-REAL",
+      item: "REC-REAL",
+      item_status: "accepted",
+    });
+  });
+
+  it("the report reference is its own column: written with the import, kept in the jsonb too, and the light reads never touch acceptance_report", async () => {
+    const a = await seedAssessment();
+    const b = await seedBatch("submitted_pending_result", [a]);
+    await svc.importSubmissionResult(ORG_A, member, b, {
+      reportReference: "FVR-COL",
+      results: [{ assessmentId: a, status: "rejected", code: "-7" }],
+    });
+    const stored = await row(b);
+    expect(stored.report_reference).toBe("FVR-COL");
+    expect((stored.acceptance_report as { reportReference: string }).reportReference).toBe(
+      "FVR-COL",
+    );
+
+    const { out, sql } = await statementsDuring(async (backend) => ({
+      list: await backend.listSubmissions(ORG_A),
+      detail: await backend.getSubmission(ORG_A, b),
+    }));
+
+    expect(out.detail.resultReportReference).toBe("FVR-COL");
+    expect(out.list.submissions.find((x) => x.id === b)).toMatchObject({ id: b });
+    const readsOfBatches = sql.filter((text) => /from "hope_submission"/i.test(text));
+    expect(readsOfBatches.length).toBeGreaterThan(0);
+    for (const text of readsOfBatches) {
+      expect(text).not.toContain('"acceptance_report"');
+      expect(text).not.toContain("->>");
+    }
+    // the list is bounded and newest first
+    const listRead = readsOfBatches.find((text) => /order by/i.test(text));
+    expect(listRead).toMatch(/order by "hope_submission"\."created_at" desc/i);
+    expect(listRead).toMatch(/limit \$\d+/i);
+  });
+
+  it("migration 1496 backfills the reference of a recorded batch from the jsonb, once, without overwriting or touching updated_at", async () => {
+    const backfill = /\nUPDATE "hope_submission"[\s\S]*?;\n/.exec(
+      readFileSync(join(MIGRATIONS_DIR, "1496_m10_hope_submission_report_reference.sql"), "utf8"),
+    )?.[0];
+    expect(backfill).toBeDefined();
+    const make = async (
+      imported: boolean,
+      column: string | null,
+      reference: string | null,
+    ): Promise<string> => {
+      const id = await seedBatch("accepted", [await seedAssessment()]);
+      await admin.query(
+        `UPDATE hope_submission SET result_imported_at = $2, report_reference = $3,
+                acceptance_report = $4::jsonb, updated_at = '2026-01-01T00:00:00Z' WHERE id = $1`,
+        [
+          id,
+          imported ? "2026-06-01T00:00:00Z" : null,
+          column,
+          JSON.stringify({ reportReference: reference, packageContentBase64: ZIP_B64 }),
+        ],
+      );
+      return id;
+    };
+    const recorded = await make(true, null, "OLD-REF");
+    const alreadySet = await make(true, "NEW-COLUMN", "OLD-REF");
+    const noReference = await make(true, null, null);
+    const neverRecorded = await make(false, null, "NOT-READ");
+
+    await admin.query(backfill as string);
+    await admin.query(backfill as string); // replay-safe
+
+    expect((await row(recorded)).report_reference).toBe("OLD-REF");
+    expect((await row(alreadySet)).report_reference).toBe("NEW-COLUMN");
+    expect((await row(noReference)).report_reference).toBeNull();
+    expect((await row(neverRecorded)).report_reference).toBeNull();
+    expect((await row(recorded)).updated_at).toEqual(new Date("2026-01-01T00:00:00Z"));
+  });
+
+  describe("assemble candidates: a bounded read of ids, and the re-assertion under a share lock", () => {
+    let specVersion = "";
+    const at = (minutes: number): string =>
+      new Date(Date.UTC(2026, 5, 1, 0, minutes)).toISOString();
+
+    /** A signed, packageable record; `signedAtMinute` orders them, `withLocation` false leaves the siting out. */
+    async function seedPackageable(
+      signedAtMinute: number,
+      options: { withLocation?: boolean; recordId?: string | null } = {},
+    ): Promise<string> {
+      seq += 1;
+      const id = uuid(seq);
+      await admin.query(
+        `INSERT INTO hope_assessment (id, organization_id, provider_entity_id, location_id, patient_id,
+           admission_id, rfa_kind, status, data, target_date, signed_at, created_by_membership_id,
+           signed_by_membership_id, spec_version_id, isc, iqies_record_id)
+         VALUES ($1,$2,$3,$4,$5,$6,'01_admission','signed','{}'::jsonb,$7,$8,$9,$9,$10,'HA',$11)`,
+        [
+          id,
+          ORG_A,
+          provider,
+          options.withLocation === false ? null : location,
+          uuid(5000 + seq),
+          uuid(6000 + seq),
+          TARGET,
+          at(signedAtMinute),
+          member,
+          specVersion,
+          options.recordId ?? null,
+        ],
+      );
+      return id;
+    }
+    const candidatesOf = (limit?: number): Promise<string[]> =>
+      withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        readAssembleCandidateIds(tx as unknown as DbClient, ORG_A, provider, limit),
+      );
+
+    beforeAll(async () => {
+      // the migrated database holds no spec version of its own: a packageable record only needs one to point at
+      specVersion = (
+        await admin.query(
+          `INSERT INTO hope_spec_version (code, item_set_version, effective_from, source_label)
+           VALUES ('HOPE-LIVE-SR', '1.00', '2026-01-01', 'live test') RETURNING id`,
+        )
+      ).rows[0].id as string;
+    });
+
+    it("lists healthy records first (oldest signed first), then the known-refused ones: no siting, or an unresolved ERROR finding", async () => {
+      const unsited = await seedPackageable(1, { withLocation: false });
+      const refused = await seedPackageable(2);
+      await admin.query(
+        `INSERT INTO hope_validation_finding (organization_id, provider_entity_id, location_id, hope_assessment_id,
+           rule_id, severity, section, message, fingerprint, resolved)
+         VALUES ($1,$2,$3,$4,'r1','error','A','refused','fp-1',false)`,
+        [ORG_A, provider, location, refused],
+      );
+      const resolvedError = await seedPackageable(3); // its error finding is resolved: a healthy record again
+      await admin.query(
+        `INSERT INTO hope_validation_finding (organization_id, provider_entity_id, location_id, hope_assessment_id,
+           rule_id, severity, section, message, fingerprint, resolved)
+         VALUES ($1,$2,$3,$4,'r1','error','A','fixed','fp-2',true)`,
+        [ORG_A, provider, location, resolvedError],
+      );
+      const healthyOld = await seedPackageable(4);
+      const healthyNew = await seedPackageable(5);
+
+      const all = await candidatesOf();
+      const mine = all.filter((id) =>
+        [unsited, refused, resolvedError, healthyOld, healthyNew].includes(id),
+      );
+
+      expect(mine).toEqual([resolvedError, healthyOld, healthyNew, unsited, refused]);
+      // the cap: with room for two, the two oldest HEALTHY records fill it and the refused ones cannot hide them
+      const capped = await candidatesOf(2);
+      expect(capped).toEqual(all.slice(0, 2));
+      expect(capped).not.toContain(unsited);
+      expect(capped).not.toContain(refused);
+    });
+
+    it("excludes what cannot be packaged: a blank-id record is read as recorded (IS NULL only), a record with a live item, a superseded one", async () => {
+      const recorded = await seedPackageable(6, { recordId: "" });
+      const inBatch = await seedPackageable(7);
+      await seedBatch("packaged", [inBatch]);
+      const superseded = await seedPackageable(8);
+      await admin.query("UPDATE hope_assessment SET status='superseded' WHERE id=$1", [superseded]);
+      const fine = await seedPackageable(9);
+
+      const ids = await candidatesOf(1000);
+
+      expect(ids).toContain(fine);
+      for (const excluded of [recorded, inBatch, superseded]) expect(ids).not.toContain(excluded);
+    });
+
+    it("the re-assertion drops a record superseded after the read (a correction signed meanwhile)", async () => {
+      const original = await seedPackageable(10);
+      const stable = await seedPackageable(11);
+      const seen = await candidatesOf(1000);
+      expect(seen).toEqual(expect.arrayContaining([original, stable]));
+      // a correction of `original` is drafted, then SIGNED while the packager is busy validating: migration 0225's trigger
+      // flips the original to superseded on that UPDATE
+      const correction = uuid(++seq);
+      await admin.query(
+        `INSERT INTO hope_assessment (id, organization_id, provider_entity_id, location_id, patient_id,
+           admission_id, rfa_kind, status, data, target_date, created_by_membership_id, corrects_assessment_id)
+         SELECT $1, organization_id, provider_entity_id, location_id, patient_id, admission_id, rfa_kind, 'draft',
+                '{}'::jsonb, target_date, $3, id FROM hope_assessment WHERE id = $2`,
+        [correction, original, member],
+      );
+      await admin.query(
+        "UPDATE hope_assessment SET status='signed', signed_at=now(), signed_by_membership_id=$2 WHERE id=$1",
+        [correction, member],
+      );
+      expect(
+        (await admin.query("SELECT status FROM hope_assessment WHERE id=$1", [original])).rows[0]
+          .status,
+      ).toBe("superseded");
+
+      const kept = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        lockPackageableRecords(tx as unknown as DbClient, ORG_A, provider, [original, stable]),
+      );
+
+      expect(kept.map((r) => r.id)).toEqual([stable]);
+    });
+
+    it("share-locks the rows it returns: another connection's UPDATE of one waits for this transaction (the lock timeout answers 55P03)", async () => {
+      const id = await seedPackageable(12);
+      await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, async (tx) => {
+        const locked = await lockPackageableRecords(tx as unknown as DbClient, ORG_A, provider, [
+          id,
+        ]);
+        expect(locked.map((r) => r.id)).toEqual([id]);
+        const other = new Client({ connectionString: DB_URL });
+        await other.connect();
+        try {
+          await other.query("SET lock_timeout = '300ms'");
+          await expect(
+            other.query("UPDATE hope_assessment SET updated_at = now() WHERE id=$1", [id]),
+          ).rejects.toMatchObject({ code: "55P03" });
+        } finally {
+          await other.end();
+        }
+      });
+    });
+  });
+
+  describe("audit_phi_write_hope_submission: the audit rows are exactly what audit_scrub(to_jsonb(row)) wrote", () => {
+    const DENYLIST = ["acceptance_report", "envelope_storage_uri", "envelope_sha256"];
+    const image = async (id: string): Promise<string> =>
+      (
+        await admin.query(
+          "SELECT audit_scrub(to_jsonb(h), $2::text[])::text AS image FROM hope_submission h WHERE id=$1",
+          [id, DENYLIST],
+        )
+      ).rows[0].image as string;
+    const auditOf = async (id: string, op: "insert" | "update" | "delete") =>
+      (
+        await admin.query(
+          `SELECT before::text AS before, after::text AS after, event_type, resource_kind, retention_class, outcome, severity
+             FROM audit_event WHERE resource_id=$1 AND event_type=$2 ORDER BY created_at DESC, id DESC LIMIT 1`,
+          [id, `hope_submission.${op}`],
+        )
+      ).rows[0];
+    const SHAPES: readonly (readonly [string, Record<string, unknown>])[] = [
+      [
+        "every column filled (an accepted batch)",
+        {
+          status: "accepted",
+          iqies_batch_id: "B-1",
+          transport_mode: "manual_iqies_upload",
+          validation_profile: "profile-1",
+          package_filename: "p.zip",
+          package_storage_uri: "db://p",
+          package_sha256: "a".repeat(64),
+          package_size_bytes: 123,
+          exported_at: "2026-06-01T01:02:03.123456Z",
+          exported_by_membership_id: "member",
+          submitted_at: "2026-06-02T01:02:03.5Z",
+          submitted_by_membership_id: "member",
+          iqies_submission_reference: "ref-1",
+          result_imported_at: "2026-06-03T00:00:00Z",
+          result_imported_by_membership_id: "member",
+          result_report_hash: "b".repeat(64),
+          report_reference: "FVR-AUDIT",
+          file_level_result: { ok: true, n: [1, 2, 3] },
+          envelope_storage_uri: "db://env",
+          envelope_sha256: "c".repeat(64),
+          accepted_count: 2,
+          rejected_count: 1,
+          transmitted_at: "2026-06-02T02:00:00Z",
+          accepted_at: "2026-06-04T00:00:00Z",
+          acceptance_report: { reportReference: "FVR-AUDIT", results: [{ a: 1 }] },
+        },
+      ],
+      [
+        "a cancelled batch (the provenance columns), the rest empty",
+        {
+          status: "cancelled",
+          cancelled_at: "2026-06-05T00:00:00Z",
+          cancelled_by_membership_id: "member",
+          cancel_reason_code: "package_lost",
+        },
+      ],
+      [
+        "a packaged batch carrying a 3 MB package (the column the trigger must not read)",
+        {
+          status: "packaged",
+          package_filename: "big.zip",
+          acceptance_report: { packageContentBase64: "QUJD".repeat(750_000) },
+        },
+      ],
+    ];
+
+    it.each(SHAPES)(
+      "%s: INSERT, UPDATE and DELETE rows are identical to the old image, scrubbed columns included",
+      async (_label, columns) => {
+        const id = uuid(++seq);
+        const values: Record<string, unknown> = {
+          id,
+          organization_id: ORG_A,
+          provider_entity_id: provider,
+          submission_period: "2026-06",
+          item_count: 3,
+          ...Object.fromEntries(
+            Object.entries(columns).map(([key, value]) => [
+              key,
+              value === "member"
+                ? member
+                : value !== null && typeof value === "object"
+                  ? JSON.stringify(value)
+                  : value,
+            ]),
+          ),
+        };
+        const names = Object.keys(values);
+        await admin.query(
+          `INSERT INTO hope_submission (${names.join(", ")}) VALUES (${names.map((_, i) => `$${i + 1}`).join(", ")})`,
+          names.map((name) => values[name]),
+        );
+        const afterInsert = await image(id);
+        const inserted = await auditOf(id, "insert");
+        expect(inserted.before).toBeNull();
+        expect(inserted.after).toBe(afterInsert);
+
+        await admin.query(
+          "UPDATE hope_submission SET item_count = 4, updated_at = now() WHERE id=$1",
+          [id],
+        );
+        const afterUpdate = await image(id);
+        const updated = await auditOf(id, "update");
+        expect(updated.before).toBe(afterInsert);
+        expect(updated.after).toBe(afterUpdate);
+        expect(updated.before).not.toBe(updated.after);
+
+        await admin.query("DELETE FROM hope_submission WHERE id=$1", [id]);
+        const deleted = await auditOf(id, "delete");
+        expect(deleted.before).toBe(afterUpdate);
+        expect(deleted.after).toBeNull();
+        for (const event of [inserted, updated, deleted]) {
+          expect(event).toMatchObject({
+            resource_kind: "hope_submission",
+            retention_class: "compliance",
+            outcome: "success",
+            severity: "info",
+          });
+        }
+        // the scrubbed columns read "<changed>", whatever they held
+        const after = JSON.parse(inserted.after as string) as Record<string, unknown>;
+        for (const column of DENYLIST) expect(after[column]).toBe("<changed>");
+      },
+    );
+
+    it("an UPDATE of a batch holding a 1.5 MB package reads none of it out of TOAST (the trigger never converts acceptance_report)", async () => {
+      const id = uuid(++seq);
+      await admin.query(
+        `INSERT INTO hope_submission (id, organization_id, provider_entity_id, submission_period, item_count, status, acceptance_report)
+         VALUES ($1,$2,$3,'2026-06',1,'packaged',$4::jsonb)`,
+        [
+          id,
+          ORG_A,
+          provider,
+          JSON.stringify({ packageContentBase64: randomBytes(1_500_000).toString("base64") }),
+        ],
+      );
+      // pg_stat counters are flushed on demand: read them before and after each statement
+      const toastBlocks = async (): Promise<number> => {
+        await admin.query("SELECT pg_stat_force_next_flush()");
+        const { rows } = await admin.query(
+          "SELECT coalesce(toast_blks_hit,0) + coalesce(toast_blks_read,0) AS n FROM pg_statio_all_tables WHERE relid = 'hope_submission'::regclass",
+        );
+        return Number(rows[0].n);
+      };
+      // control: converting the whole row (what the old trigger did, twice) does read the package, so the counter can see it
+      const beforeControl = await toastBlocks();
+      await admin.query("SELECT to_jsonb(h) FROM hope_submission h WHERE id=$1", [id]);
+      const control = (await toastBlocks()) - beforeControl;
+      expect(control).toBeGreaterThan(100);
+
+      const before = await toastBlocks();
+      await admin.query("UPDATE hope_submission SET item_count = 2 WHERE id=$1", [id]);
+      const updateReads = (await toastBlocks()) - before;
+
+      expect(updateReads).toBeLessThan(10);
+      expect((await auditOf(id, "update")).after).toContain('"item_count": 2');
+    });
+
+    it("the image names exactly the table's columns (a column added without updating the trigger fails here)", async () => {
+      const id = await seedBatch("packaged", [await seedAssessment()]);
+      await admin.query("UPDATE hope_submission SET item_count = item_count + 1 WHERE id=$1", [id]);
+      const { after } = await auditOf(id, "update");
+      const keys = Object.keys(JSON.parse(after as string) as Record<string, unknown>).sort();
+      const columns = (
+        await admin.query(
+          "SELECT column_name FROM information_schema.columns WHERE table_name='hope_submission' AND table_schema='public' ORDER BY column_name",
+        )
+      ).rows.map((r) => r.column_name as string);
+      expect(keys).toEqual(columns);
+    });
   });
 });

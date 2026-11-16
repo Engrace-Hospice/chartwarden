@@ -179,8 +179,15 @@ describe("importSubmissionResult — a report row's assessment id matches its it
     itemStatus: "pending",
     iqiesRecordId: null,
   };
-  // lock select, "seen this report" select, item select; then the item update (the point the match is proven at)
+  // lock select, "seen this report" select, item select; then the item UPDATE (a bulk statement, which the scripted
+  // database records without consuming an outcome: the point the match is proven at), the result-event insert and the batch
+  // UPDATE, where the script ends
   const script = [[submission], [], [item], []] as const;
+  const itemUpdateOf = (statements: ReturnType<typeof scriptedDb>["statements"]) =>
+    statements.find(
+      (s) =>
+        s.kind === "execute" && (s.rendered?.sql ?? "").includes('UPDATE "hope_submission_item"'),
+    )?.rendered;
 
   it.each([
     ["upper case", SPELLED],
@@ -188,7 +195,7 @@ describe("importSubmissionResult — a report row's assessment id matches its it
     ["blanks around it (a pasted CSV cell)", `  ${CANONICAL}  `],
     ["no hyphens", CANONICAL.replace(/-/g, "")],
   ])("%s still settles the item", async (_label, assessmentId) => {
-    const { svc, written } = backend([...script]);
+    const { svc, statements } = backend([...script]);
 
     const failure = await outcome(
       svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, {
@@ -197,7 +204,9 @@ describe("importSubmissionResult — a report row's assessment id matches its it
     );
 
     expect(failure?.code).not.toBe("M10_SUBMISSION_RESULT_NO_MATCH");
-    expect(written.some((w) => w.itemStatus === "accepted")).toBe(true);
+    expect(itemUpdateOf(statements)?.params).toEqual(
+      expect.arrayContaining([item.id, "accepted", submission.id, ORG]),
+    );
     expect(failure?.message).toBe(SCRIPT_EXHAUSTED); // it went on to the writes: the script ended it there
   });
 
@@ -205,7 +214,7 @@ describe("importSubmissionResult — a report row's assessment id matches its it
     ["a word", "not-a-uuid"],
     ["a different uuid", "11111111-2222-4333-8444-555555555555"],
   ])("%s is no match (the 422), never a database cast error", async (_label, assessmentId) => {
-    const { svc, written } = backend([...script]);
+    const { svc, statements } = backend([...script]);
 
     const failure = await outcome(
       svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, {
@@ -214,7 +223,7 @@ describe("importSubmissionResult — a report row's assessment id matches its it
     );
 
     expect(failure).toMatchObject({ code: "M10_SUBMISSION_RESULT_NO_MATCH", statusCode: 422 });
-    expect(written.some((w) => w.itemStatus === "accepted")).toBe(false);
+    expect(itemUpdateOf(statements)).toBeUndefined();
   });
 });
 

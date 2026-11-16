@@ -39,25 +39,18 @@ import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { HopeRfaKind, LatestAssessment, ScaleType } from "@chartwarden/types";
 import { ConflictError, NotFoundError, ValidationError } from "@chartwarden/types";
-import {
-  type SQL,
-  and,
-  asc,
-  count,
-  desc,
-  eq,
-  inArray,
-  isNotNull,
-  isNull,
-  or,
-  sql,
-} from "drizzle-orm";
+import { type SQL, and, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "./abac-predicates";
 import { createHopeAdmissionPrefillService } from "./hope-admission-prefill-service";
 import { createHopeAssessmentAnswerService } from "./hope-answer-service";
+import {
+  lockPackageableRecords,
+  readAssembleCandidateIds,
+  validateCandidates,
+} from "./hope-assemble-candidates";
 import {
   lockAssessmentRow,
   lockRecordKey,
@@ -111,18 +104,24 @@ import {
   isResultImportable,
   isSettledItemStatus,
   manualUploadTransmittedPayload,
+  nonBlankRecordId,
   reportHashes,
   resultRefusalCode,
   settledBatchEvent,
   worstOutcome,
 } from "./hope-submission-result";
+import {
+  type ItemOutcome,
+  insertResultEvents,
+  stampAssessmentRecordIds,
+  writeItemOutcomes,
+} from "./hope-submission-result-writes";
 import { canonicalUuidOrNull, sameUuid, uuidOrNotFound } from "./hope-uuid";
 import {
   HopeValidationFindingSitingError,
   createHopeValidationService,
 } from "./hope-validation-service";
 import { buildDeterministicZip } from "./hope-zip";
-import { ASSEMBLE_BLOCKING_ITEM_STATUSES } from "./jobs/assemble-store";
 import type { HopeWriteOutboxPort } from "./outbox-port";
 import type {
   CorrectTimepointArgs,
@@ -188,17 +187,12 @@ type ScheduleRow = typeof SCHED.$inferSelect;
 type AssessmentRow = typeof ASSESS.$inferSelect;
 type SfvRow = typeof SFV.$inferSelect;
 type SubmissionRow = typeof SUB.$inferSelect;
-// Reads that only render the view skip `acceptance_report` (base64 ZIP + raw CMS results). The report
-// reference is projected out of the jsonb instead.
-const LIGHT_SUB = {
-  ...LIGHT_SUB_COLUMNS,
-  reportReference: sql<string | null>`${SUB.acceptanceReport}->>'reportReference'`.as(
-    "report_reference",
-  ),
-};
-type LightSubmissionRow = Omit<SubmissionRow, "acceptanceReport"> & {
-  reportReference?: string | null;
-};
+// Reads that only render the view skip `acceptance_report` (base64 ZIP + raw CMS results). The report reference is its own
+// column (migration 1496): projecting it out of the jsonb detoasted every batch's ZIP, so it is selected, not extracted.
+type LightSubmissionRow = Omit<SubmissionRow, "acceptanceReport">;
+
+/** The most batches the submission list answers (newest first): the worklist read has no pagination, so it is bounded. */
+const SUBMISSION_LIST_LIMIT = 500;
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
@@ -973,11 +967,11 @@ export function createDbHopeBackend(
     async listSubmissions(organizationId, providerEntityId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const scoped = (await tx
-          .select(LIGHT_SUB)
+          .select(LIGHT_SUB_COLUMNS)
           .from(SUB)
-          .where(
-            canonicalIdFilter(SUB.providerEntityId, providerEntityId),
-          )) as LightSubmissionRow[];
+          .where(canonicalIdFilter(SUB.providerEntityId, providerEntityId))
+          .orderBy(desc(SUB.createdAt), desc(SUB.id))
+          .limit(SUBMISSION_LIST_LIMIT)) as LightSubmissionRow[];
         const resolutions = await resolutionCountsByBatch(
           tx as unknown as DbClient,
           scoped.filter((r) => r.rejectedCount > 0).map((r) => r.id),
@@ -989,7 +983,7 @@ export function createDbHopeBackend(
       const submissionId = uuidOrNotFound(id, `HOPE submission ${id} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = (await tx
-          .select(LIGHT_SUB)
+          .select(LIGHT_SUB_COLUMNS)
           .from(SUB)
           .where(eq(SUB.id, submissionId))
           .limit(1)) as LightSubmissionRow[];
@@ -1063,7 +1057,9 @@ export function createDbHopeBackend(
         // it becomes live the moment force-assemble does real work, and 0% is the §1.3 APU-penalty band
         // — the worst possible reading to hand a compliance officer for "assembled, not yet sent". A
         // `queued` or `in_flight` batch has no acceptance outcome, so it belongs in neither half of the
-        // ratio. M30's `submissionBatches` rollup reads the same list (`ANSWERED_BATCH_STATUSES`).
+        // ratio. M30's `submissionBatches` rollup reads the same list (`ANSWERED_BATCH_STATUSES`), so the two agree on WHICH
+        // batches count, not on the unit: this ratio is per BATCH (a 49-of-50 `partially_accepted` batch counts as 0 of 1),
+        // the rollup sums `accepted_count / item_count` over those batches (the same batch is 49 of 50 there).
         const countOf = (statuses: readonly string[]) =>
           statuses.reduce((total, status) => total + (subs.get(status) ?? 0), 0);
         const terminalTotal = countOf(ANSWERED_BATCH_STATUSES);
@@ -2074,41 +2070,30 @@ export function createDbHopeBackend(
         // when that was all of them).
         await lockRecordKey(t, `m10:assemble:${organizationId}`, providerEntityId);
         const period = new Date().toISOString().slice(0, 7);
-        // Only the records that can be packaged are read, and every test is the database's: a signed record stays
-        // `signed` after it is accepted, so reading the entity's whole signed history and checking each row (a query per
-        // row, behind the advisory key above) grew with every month of the entity's life, and a second assemble waited that
-        // long for the key (then `M10_RECORD_BUSY`). Eligible: frozen to a spec and ISC, no iQIES record id yet (an empty
-        // one is none, as before), and no item that is pending or already answered. A rejected original is never re-sent unchanged: it is
-        // fixed by a correction (a new signed row, which carries no item yet and so is picked up here) in a NEW batch. A
-        // cancelled item does not count, so the record is packaged again.
-        const candidates = (await t
-          .select()
-          .from(ASSESS)
-          .where(
-            and(
-              eq(ASSESS.organizationId, organizationId),
-              eq(ASSESS.providerEntityId, providerEntityId),
-              eq(ASSESS.status, "signed"),
-              isNotNull(ASSESS.specVersionId),
-              isNotNull(ASSESS.isc),
-              or(isNull(ASSESS.iqiesRecordId), eq(ASSESS.iqiesRecordId, "")),
-              sql`not exists (select 1 from ${SUBITEM} where ${SUBITEM.hopeAssessmentId} = ${ASSESS.id} and ${inArray(
-                SUBITEM.itemStatus,
-                [...ASSEMBLE_BLOCKING_ITEM_STATUSES],
-              )})`,
+        // Only the records that can be packaged are read, every test is the database's, and a call looks at no more than
+        // ASSEMBLE_CANDIDATE_LIMIT of them (oldest signed first; see ./hope-assemble-candidates.ts): the loop below holds
+        // this key and a pooled connection while each validation takes another, so its length is bounded. The records
+        // that are left stay eligible and the next call packages them. The validation stays UNDER the key on purpose:
+        // it writes findings, and two concurrent validations of one record collide on `uniq_hope_finding_open_fingerprint`
+        // (a 23505, a 500), so moving it before the key needs that write serialised some other way first.
+        const candidateIds = await readAssembleCandidateIds(t, organizationId, providerEntityId);
+        const validatedIds = await validateCandidates(
+          candidateIds,
+          (assessmentId) =>
+            validationService.validateAssessment({ organizationId, assessmentId, mode: "final" }),
+          (assessmentId) =>
+            console.warn(
+              `m10: assemble skipped assessment ${idForLog(assessmentId)} (org ${idForLog(organizationId)}): it has no provider entity / location siting, so its validation findings cannot be stored.`,
             ),
-          )
-          .orderBy(asc(ASSESS.signedAt), asc(ASSESS.id))) as AssessmentRow[];
-        const eligible: AssessmentRow[] = [];
-        for (const candidate of candidates) {
-          const validation = await validationService.validateAssessment({
-            organizationId,
-            assessmentId: candidate.id,
-            mode: "final",
-          });
-          if (validation.findings.some((finding) => finding.severity === "error")) continue;
-          eligible.push(candidate);
-        }
+        );
+        // The candidates were read, and validated one by one, a while ago: judge them again just before the package is
+        // written (a correction signed meanwhile has superseded its original), and share-lock the rows.
+        const eligible = await lockPackageableRecords(
+          t,
+          organizationId,
+          providerEntityId,
+          validatedIds,
+        );
         if (eligible.length === 0) {
           throw new ConflictError(
             "No signed HOPE assessments are eligible for iQIES package generation",
@@ -2393,50 +2378,48 @@ export function createDbHopeBackend(
           )
             worst.set(item.id, { status, raw: prev?.status === status ? prev.raw : raw });
         }
+        // The verdicts and the stamps are collected first and written in bulk (see ./hope-submission-result-writes.ts): the
+        // submission row lock is held for these statements, not for one per item, per assessment and per report row.
+        const outcomes: ItemOutcome[] = [];
+        const stamps = new Map<string, string>();
         for (const item of items) {
           const w = worst.get(item.id);
           if (!w) continue;
           finalStatus.set(item.id, w.status);
-          await t
-            .update(SUBITEM)
-            .set({
-              itemStatus: w.status,
-              iqiesRecordId:
-                typeof w.raw.iqiesRecordId === "string" ? w.raw.iqiesRecordId : item.iqiesRecordId,
-              iqiesValidationResult: w.raw,
-              processedAt: now,
-              updatedAt: now,
-            })
-            .where(eq(SUBITEM.id, item.id));
-          if (w.status !== "rejected" && typeof w.raw.iqiesRecordId === "string") {
-            await t
-              .update(ASSESS)
-              .set({ iqiesRecordId: w.raw.iqiesRecordId, updatedAt: now })
-              .where(eq(ASSESS.id, item.hopeAssessmentId));
-          }
+          // A blank id is none: stamped, it would read as "already recorded" to every `iqies_record_id IS NULL` test.
+          const recordId = nonBlankRecordId(w.raw.iqiesRecordId);
+          outcomes.push({
+            itemId: item.id,
+            status: w.status,
+            iqiesRecordId: recordId ?? item.iqiesRecordId,
+            result: w.raw,
+          });
+          if (w.status !== "rejected" && recordId !== null)
+            stamps.set(item.hopeAssessmentId, recordId);
         }
-        for (const raw of args.results) {
-          const item = itemOf(raw);
-          const resultStatus = classifyCmsResult(raw);
-          await t
-            .insert(RESULT)
-            .values({
+        await writeItemOutcomes(t, organizationId, id, outcomes, now);
+        await stampAssessmentRecordIds(t, organizationId, stamps, now);
+        await insertResultEvents(
+          t,
+          args.results.map((raw) => {
+            const item = itemOf(raw);
+            return {
               organizationId,
               hopeSubmissionId: id,
               hopeSubmissionItemId: item?.id ?? null,
               reportHash,
               reportReference: args.reportReference ?? null,
               resultScope: item ? "record" : "unmatched",
-              resultStatus,
+              resultStatus: classifyCmsResult(raw),
               cmsSeverity: typeof raw.severity === "string" ? raw.severity : null,
               cmsEditCode: typeof raw.code === "string" ? raw.code : null,
               itemCode: typeof raw.itemCode === "string" ? raw.itemCode : null,
               message: typeof raw.message === "string" ? raw.message : null,
               rawResult: raw,
               processedAt: now,
-            })
-            .onConflictDoNothing();
-        }
+            };
+          }),
+        );
         // Counts and status are derived from ALL items, so a replayed or follow-up report is idempotent.
         const outcome = deriveBatchOutcome([...finalStatus.values()] as Parameters<
           typeof deriveBatchOutcome
@@ -2452,6 +2435,7 @@ export function createDbHopeBackend(
             resultImportedAt: now,
             resultImportedByMembershipId: userId,
             resultReportHash: reportHash,
+            reportReference: args.reportReference ?? null,
             acceptanceReport: {
               // keep the stored package (packageContentBase64): the ZIP must stay downloadable after a result.
               ...(r.acceptanceReport && typeof r.acceptanceReport === "object"

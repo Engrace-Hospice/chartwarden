@@ -43,7 +43,7 @@ describe("CHANGES.md: lock coverage matches the code", () => {
     const firstStatement = assemble.indexOf("lockRecordKey(t, `m10:assemble:${organizationId}`");
     expect(firstStatement).toBeGreaterThan(-1);
     // before the candidate read
-    expect(firstStatement).toBeLessThan(assemble.indexOf(".select()"));
+    expect(firstStatement).toBeLessThan(assemble.indexOf("readAssembleCandidateIds("));
     // and the document names it as a bounded route with the busy code
     expect(NEWEST).toContain("assembling a package (`POST /hope/submissions/assemble`");
     expect(NEWEST).toContain(

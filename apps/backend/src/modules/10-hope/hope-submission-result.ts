@@ -24,8 +24,9 @@ export const ACCEPTED_BATCH_STATUSES = [
 ] as const satisfies readonly HopeSubmissionStatus[];
 
 /** The batch statuses iQIES has ANSWERED on (the acceptance-rate denominator and the M30 submission-posture rows): a
- * queued or in-flight batch has no acceptance outcome yet. The dashboard and the M30 rollup read this one list so they
- * cannot disagree on which batches count. */
+ * queued or in-flight batch has no acceptance outcome yet. The dashboard and the M30 rollup read this one list, so they
+ * agree on WHICH batches count; they do not share the unit (the dashboard counts batches, the rollup sums the items of
+ * the batches). */
 export const ANSWERED_BATCH_STATUSES = [
   ...ACCEPTED_BATCH_STATUSES,
   "rejected",
@@ -79,8 +80,14 @@ export function classifyCmsResult(
 /** A CMS verdict on an item is final: once an item is accepted/accepted_with_warnings/rejected, a later
  * report must not flip it (the RESULT event rows are still recorded for audit). Correct a rejection with a
  * correction assessment in a new batch, not by re-reporting. */
+export const SETTLED_ITEM_STATUSES = ["accepted", "accepted_with_warnings", "rejected"] as const;
 export const isSettledItemStatus = (status: string): boolean =>
-  status === "accepted" || status === "accepted_with_warnings" || status === "rejected";
+  (SETTLED_ITEM_STATUSES as readonly string[]).includes(status);
+
+/** The iQIES record id a report row names, or null when it names none: a blank or whitespace-only id is none (it must not
+ * be stamped on the item or the assessment: an empty `iqies_record_id` reads as "already recorded" to every `IS NULL` test). */
+export const nonBlankRecordId = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() !== "" ? value : null;
 
 const sha256Hex = (text: string): string => createHash("sha256").update(text).digest("hex");
 

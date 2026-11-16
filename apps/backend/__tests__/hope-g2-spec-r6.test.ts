@@ -107,10 +107,14 @@ describe("spec 1.1: the double-batching guard is the one the code has; the idemp
     const assemble = slice(
       read(`${M10_SRC}/hope-route-service-db.ts`),
       "async assembleSubmission(",
-      "const validation = await validationService",
+      "const eligible = await lockPackageableRecords",
     );
-    // The manual route and the cron scan share one list (jobs/assemble-store.ts); the spec names each of its statuses.
-    expect(assemble).toContain("ASSEMBLE_BLOCKING_ITEM_STATUSES");
+    expect(assemble).toContain("readAssembleCandidateIds(");
+    // The manual route (its candidate read, hope-assemble-candidates.ts) and the cron scan share one list
+    // (jobs/assemble-store.ts); the spec names each of its statuses.
+    expect(read(`${M10_SRC}/hope-assemble-candidates.ts`)).toContain(
+      "ASSEMBLE_BLOCKING_ITEM_STATUSES",
+    );
     const sharedList = slice(
       read(`${M10_SRC}/jobs/assemble-store.ts`),
       "export const ASSEMBLE_BLOCKING_ITEM_STATUSES",
@@ -308,10 +312,14 @@ describe("spec 4.1.1 lock order: the results import is the one request UPDATE of
     const results = slice(
       read(`${M10_SRC}/hope-route-service-db.ts`),
       "async importSubmissionResult(",
-      "await t\n            .insert(RESULT)",
+      "await insertResultEvents(",
     );
-    expect(results).toContain(".update(ASSESS)");
+    // The stamp is one bulk UPDATE of `hope_assessment` (hope-submission-result-writes.ts), under the submission row lock.
+    expect(results).toContain("await stampAssessmentRecordIds(");
     expect(results).not.toMatch(/lockAssessmentRow|ANSWER/);
+    const writes = read(`${M10_SRC}/hope-submission-result-writes.ts`);
+    expect(writes).toContain("UPDATE ${ASSESS} AS a");
+    expect(writes).not.toMatch(/lockAssessmentRow|ANSWER/);
   });
 });
 
