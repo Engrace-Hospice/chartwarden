@@ -24390,7 +24390,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Record an SFV completion (RFA-04, inserted signed; RN/NP/LPN/LVN author) — the SFV must belong to the path admission (409 M10_SFV_NO_TRIGGER otherwise); `attestationConfirmed: true` required (422 M10_ATTESTATION_REQUIRED); optional `attestationVersion` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); `targetDate` must be a real calendar date-time with an explicit offset (422); J2053 symptom-follow-up content required and every value CMS-allowed (422 M10_SFV_COMPLETION_INCOMPLETE); the triggering assessment's target date has no HOPE spec to judge the values against (422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; the idempotency layer replays the 422 for 24 h on the same key, so after an operator loads the spec use a NEW Idempotency-Key)); 422 M10_ADMISSION_PROJECTION_GAP (no admission projection is available from the M6 seam; the idempotency layer replays the 422 for 24 h on the same key, so after an operator repairs the admission use a NEW Idempotency-Key); admission read failing after the caseload check passed, retry (503 DEGRADED; a failure inside the caseload check answers 404); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
+        "summary": "Record an SFV completion (RFA-04, inserted signed; RN/NP/LPN/LVN author) — the SFV must belong to the path admission (409 M10_SFV_NO_TRIGGER otherwise); `attestationConfirmed: true` required (422 M10_ATTESTATION_REQUIRED); optional `attestationVersion` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); `targetDate` must be a real calendar date-time with an explicit offset (422); J2053 symptom-follow-up content required and every value CMS-allowed (422 M10_SFV_COMPLETION_INCOMPLETE); the triggering assessment's target date has no HOPE spec to judge the values against (422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; the idempotency layer replays the 422 for 24 h on the same key, so after an operator loads the spec use a NEW Idempotency-Key)); 422 M10_ADMISSION_PROJECTION_GAP (no admission projection is available from the M6 seam; the idempotency layer replays the 422 for 24 h on the same key, so after an operator repairs the admission use a NEW Idempotency-Key); admission read failing after the caseload check passed, retry (503 DEGRADED; a failure inside the caseload check answers 404); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); at most 10 requests a minute per user and 100 per organization (429 RATE_LIMITED beyond, Retry-After 60); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
         "parameters": [
           {
             "name": "admissionId",
@@ -161921,7 +161921,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "HOPE final-review readiness model; 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; a GET is never cached by the idempotency layer, so a retry works as soon as an operator has loaded the spec) for a legacy draft whose spec cannot be frozen; 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" A GET is never claimed or cached by the idempotency layer, so it is simply sent again)",
+        "summary": "HOPE final-review readiness model; a read-only caller (no hope.timepoint.write) never freezes a legacy draft's spec or runs the SFV self-heal: it reads the stored state, and for a legacy draft with no frozen spec gets a static 409 CONFLICT with nothing written; 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; a GET is never cached by the idempotency layer, so a retry works as soon as an operator has loaded the spec) for a legacy draft whose spec cannot be frozen; 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" A GET is never claimed or cached by the idempotency layer, so it is simply sent again)",
         "parameters": [
           {
             "name": "id",
@@ -162827,7 +162827,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Canonical HOPE assessment workspace from frozen spec and current answers; a caller holding hope.timepoint.write also refreshes chart-derived answers, which bumps the draft version when one changes (an older ifVersion is then refused), while a read-only caller is shown the stored state; 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; a GET is never cached by the idempotency layer, so a retry works as soon as an operator has loaded the spec) for a legacy draft whose spec cannot be frozen; 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" A GET is never claimed or cached by the idempotency layer, so it is simply sent again)",
+        "summary": "Canonical HOPE assessment workspace from frozen spec and current answers; a caller holding hope.timepoint.write also refreshes chart-derived answers, which bumps the draft version when one changes (an older ifVersion is then refused), while a read-only caller is shown the stored state (for a legacy draft with no frozen spec, a static 409 CONFLICT, nothing written); 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; a GET is never cached by the idempotency layer, so a retry works as soon as an operator has loaded the spec) for a legacy draft whose spec cannot be frozen; 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" A GET is never claimed or cached by the idempotency layer, so it is simply sent again)",
         "parameters": [
           {
             "name": "id",
@@ -164212,7 +164212,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2); newest first, at most 500 batches (the list is bounded, not paged, and does not say when it was cut)",
+        "summary": "HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2); newest first, at most 500 batches (the list is bounded, not paged, and does not say when it was cut); the cap keeps the unfinished batches first (every status but accepted, accepted_with_warnings and cancelled), so an old exported or rejected batch is not dropped behind 500 newer finished ones",
         "parameters": [
           {
             "name": "providerEntityId",
@@ -165014,7 +165014,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Cancel a generated HOPE package that was never marked uploaded (packaged/exported), freeing its assessments to be packaged again in a NEW batch; 409 once uploaded; replaying a cancel returns the cancelled batch; AI principals refused (403); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
+        "summary": "Cancel a generated HOPE package that was never marked uploaded (packaged/exported), freeing its assessments to be packaged again in a NEW batch; 409 once uploaded; replaying a cancel returns the cancelled batch; the package ZIP and every record's XML are deleted with the cancel unless an M4 legal hold applies (org-wide, a held patient among the batch's records, or an unreadable hold scope), in which case the batch is still cancelled but keeps all its bytes; AI principals refused (403); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
         "parameters": [
           {
             "name": "id",
@@ -165312,7 +165312,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Mark a generated HOPE package as manually uploaded to iQIES; `submittedAt`, when given, must be a real calendar date-time with an explicit offset (else 422); a cancelled package cannot be marked uploaded (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
+        "summary": "Mark a generated HOPE package as manually uploaded to iQIES; `submittedAt`, when given, must be a real calendar date-time with an explicit offset (else 422); a cancelled package cannot be marked uploaded (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one); `iqiesSubmissionReference`, when given, holds only letters, digits and ` . _ : # / -` (else 422) and is refused when shaped like a Social Security or Medicare number (422 EVIDENCE_LOOKS_LIKE_PHI)",
         "parameters": [
           {
             "name": "id",
@@ -165580,7 +165580,9 @@
                   "iqiesSubmissionReference": {
                     "anyOf": [
                       {
+                        "minLength": 1,
                         "maxLength": 200,
+                        "pattern": "^[A-Za-z0-9 ._:#/-]+$",
                         "type": "string"
                       },
                       {
@@ -165601,7 +165603,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Download the generated manual iQIES ZIP package; a cancelled package cannot be downloaded (409 M10_SUBMISSION_CANCELLED); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" A GET is never claimed or cached by the idempotency layer, so it is simply sent again)",
+        "summary": "Download the generated manual iQIES ZIP package; a cancelled package cannot be downloaded (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); the first download of a packaged batch records the acting membership as the exporter; 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" A GET is never claimed or cached by the idempotency layer, so it is simply sent again)",
         "parameters": [
           {
             "name": "id",
@@ -165631,7 +165633,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent; a blank iqiesRecordId is no id and is not stored on the item or the assessment); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
+        "summary": "Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent; a blank iqiesRecordId is no id and is not stored on the item or the assessment); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one); `reportReference`, when given, holds only letters, digits and ` . _ : # / -` (else 422) and is refused when shaped like a Social Security or Medicare number (422 EVIDENCE_LOOKS_LIKE_PHI); if the bulk item update stores fewer items than the report named nothing is kept and the call answers 409",
         "parameters": [
           {
             "name": "id",
@@ -166164,7 +166166,9 @@
                   "reportReference": {
                     "anyOf": [
                       {
+                        "minLength": 1,
                         "maxLength": 500,
+                        "pattern": "^[A-Za-z0-9 ._:#/-]+$",
                         "type": "string"
                       },
                       {

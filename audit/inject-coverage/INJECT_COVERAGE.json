@@ -86,6 +86,7 @@
         "apps/backend/__tests__/audit-routes.test.ts",
         "apps/backend/__tests__/gap-003-compliance-routes-mount.test.ts",
         "apps/backend/__tests__/gap-003-compliance-routes.live.test.ts",
+        "apps/backend/__tests__/m10-hope-sfv-sign-binding.live.test.ts",
         "apps/backend/__tests__/m36-retention-governance.live.test.ts",
         "apps/backend/__tests__/m4-audit-integrity-sample.live.test.ts"
       ],
