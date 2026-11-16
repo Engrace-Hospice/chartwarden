@@ -341,14 +341,15 @@ function assertSetItemsApplicable(
 
 export interface HopeAssessmentAnswerService {
   /**
-   * `options.mayWrite` (default `true`): whether the caller holds `hope.timepoint.write`. A draft's out-of-date workflow
+   * `options.mayWrite` (REQUIRED, no default): whether the caller holds `hope.timepoint.write`. A draft's out-of-date workflow
    * control answers are rewritten on open (a write under no actor) only for a caller who may write; any other caller is shown
-   * the same controls overlaid in memory from the assessment row, and nothing is stored.
+   * the SAME workspace, the out-of-date controls derived in memory from the assessment row (item states, progress and all),
+   * and nothing is stored.
    */
   getWorkspace(
     organizationId: string,
     assessmentId: string,
-    options?: { readonly mayWrite?: boolean },
+    options: { readonly mayWrite: boolean },
   ): Promise<HopeAssessmentWorkspace>;
   patchAnswers(
     organizationId: string,
@@ -781,8 +782,8 @@ export function createHopeAssessmentAnswerService(
         const items = await activeItems(t, loaded.assessment.specVersionId!, loaded.isc);
         const itemsByCode = new Map(items.map((item) => [item.itemCode, item]));
         // The control answers are written only for a DRAFT, only when one is out of date (see the function), and only for a
-        // caller who may write: the display overlays `workflowControlAnswers` below, so a reader needs no stored copy.
-        if (options?.mayWrite !== false)
+        // caller who may write. A reader gets the same workspace from the controls derived below, in memory, with no stored copy.
+        if (options.mayWrite)
           await reconcileControlsWhenNeeded(t, organizationId, loaded.assessment, itemsByCode);
         const itemsById = new Map(items.map((item) => [item.id, item]));
         const optionsByItem = await optionsForItems(
@@ -793,6 +794,8 @@ export function createHopeAssessmentAnswerService(
 
         const canonicalAnswersByItem = new Map(answersByItem);
         const controls = workflowControlAnswers(loaded.assessment);
+        // The workflow controls this record should carry, as answer rows, by item id: what a writer's open would have stored.
+        const derivedControls = new Map<string, AnswerRow>();
 
         if (controls) {
           for (const control of controls) {
@@ -800,7 +803,7 @@ export function createHopeAssessmentAnswerService(
 
             if (!item) continue;
 
-            canonicalAnswersByItem.set(item.id, {
+            const derived = {
               ...(answersByItem.get(item.id) ?? {}),
               organizationId: loaded.assessment.organizationId,
               providerEntityId: loaded.assessment.providerEntityId,
@@ -816,9 +819,26 @@ export function createHopeAssessmentAnswerService(
               },
               answeredAt: new Date(),
               answeredByMembershipId: null,
-            } as AnswerRow);
+            } as AnswerRow;
+            derivedControls.set(item.id, derived);
+            canonicalAnswersByItem.set(item.id, derived);
           }
         }
+        // What the response shows. A writer's open has just reconciled (a draft), so its stored answers ARE the controls. A reader's
+        // open stores nothing, so a draft's out-of-date control answers (never opened by a writer) are shown as the derived ones: the
+        // item states, the progress counts and the HUV state then equal a writer's. A control already in place keeps its stored row
+        // (and its own timestamp); a signed or inactivated record is shown as stored, as a writer's open shows it.
+        const inPlace = (stored: AnswerRow | undefined, derived: AnswerRow): boolean =>
+          stored?.state === "answered" && isDeepStrictEqual(stored.value, derived.value);
+        const displayAnswersByItem =
+          options.mayWrite || loaded.assessment.status !== "draft"
+            ? answersByItem
+            : new Map([
+                ...answersByItem,
+                ...[...derivedControls].filter(
+                  ([id, derived]) => !inPlace(answersByItem.get(id), derived),
+                ),
+              ]);
 
         const applicability = createHopeApplicabilityEngine(loaded.specCode).evaluate({
           isc: loaded.isc,
@@ -841,7 +861,7 @@ export function createHopeAssessmentAnswerService(
           const base = stateOf(
             item.itemCode,
             true,
-            answersByItem.get(item.id),
+            displayAnswersByItem.get(item.id),
             applicability.items.get(item.itemCode),
           );
           if (base.applicability === "applicable") progress.applicable += 1;
@@ -886,7 +906,7 @@ export function createHopeAssessmentAnswerService(
           progress,
           huv: await huvWorkspaceState(t, loaded.assessment, {
             itemsById,
-            answersByItem,
+            answersByItem: displayAnswersByItem,
           }),
         };
       });

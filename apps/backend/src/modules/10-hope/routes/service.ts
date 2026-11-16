@@ -330,10 +330,11 @@ export interface InactivateTimepointArgs {
 }
 export interface HopeReadOptions {
   /**
-   * Whether the caller holds `hope.timepoint.write`; `false` makes the open a pure read: no spec freeze, chart refresh or SFV
-   * heal, and a legacy spec-less draft is a static 409 ("opened once by a clinician who can edit it").
+   * Whether the caller holds `hope.timepoint.write`. REQUIRED, with no default: a read that wrote because a caller forgot to say
+   * so would write on the strength of a read permission. `false` makes the open a pure read: no spec freeze, chart refresh,
+   * control-answer rewrite or SFV heal, and a legacy spec-less draft is a static 409 ("opened once by a clinician who can edit it").
    */
-  readonly mayWrite?: boolean;
+  readonly mayWrite: boolean;
 }
 
 /** The §4.1 route service contract (the routes compose over it; the in-mem slice + the prod Drizzle
@@ -374,20 +375,21 @@ export interface HopeRouteService extends HopeAbacResolver {
     data: Record<string, unknown>,
   ): Promise<HopeAssessmentView>;
   /**
-   * `options.mayWrite` (default `true`): whether the caller holds `hope.timepoint.write`. A caller that does not gets the
-   * STORED state: the open runs no spec freeze, chart refresh (prefill) or SFV self-heal, which would write on the
-   * strength of a read permission; a legacy spec-less draft, which cannot be shown without freezing its spec, is a static
-   * 409. The route resolves it; a service caller with no request (tests, jobs) leaves it on.
+   * `options.mayWrite` (REQUIRED): whether the caller holds `hope.timepoint.write`. A caller that does not gets a pure read: the
+   * open runs no spec freeze, chart refresh (prefill), control-answer rewrite or SFV self-heal, which would write on the
+   * strength of a read permission. A reader's workspace shows what a writer's would for the same draft (the workflow-control
+   * items are derived from the record in memory, not stored); a legacy spec-less draft, which cannot be shown without freezing
+   * its spec, is a static 409. The route resolves it from the caller's grants.
    */
   getAssessmentWorkspace(
     organizationId: string,
     id: string,
-    options?: HopeReadOptions,
+    options: HopeReadOptions,
   ): Promise<HopeAssessmentWorkspace>;
   getAssessmentReview(
     organizationId: string,
     id: string,
-    options?: HopeReadOptions,
+    options: HopeReadOptions,
   ): Promise<HopeReviewReadModel>;
   patchAssessmentAnswers(
     organizationId: string,
@@ -441,11 +443,11 @@ export interface HopeRouteService extends HopeAbacResolver {
   getValidation(
     organizationId: string,
     id: string,
-    options?: {
+    options: {
       readonly mode?: "draft" | "final";
       readonly submissionDate?: string;
-      /** Whether the caller holds `hope.timepoint.write` (default true); `false` returns the findings without storing them. */
-      readonly mayWrite?: boolean;
+      /** Whether the caller holds `hope.timepoint.write` (REQUIRED); `false` returns the findings without storing them. */
+      readonly mayWrite: boolean;
     },
   ): Promise<HopeValidationRunView>;
   listSubmissions(

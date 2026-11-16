@@ -539,16 +539,23 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
     expect(starting(/^insert into "hope_submission_result_event"/i)).toBe(3);
   }, 120_000);
 
-  it("a blank iQIES record id is not stamped on the item or the assessment, and a real one is", async () => {
+  it("an empty iQIES record id is not stamped on the item or the assessment, a record id of only spaces is refused (422), and a real one is stamped", async () => {
     const blank = await seedAssessment();
     const spaces = await seedAssessment();
     const real = await seedAssessment();
     const b = await seedBatch("submitted_pending_result", [blank, spaces, real]);
 
+    // The service re-applies the schema's pattern (no space-only value), before any statement.
+    await expect(
+      svc.importSubmissionResult(ORG_A, member, b, {
+        results: [{ assessmentId: spaces, status: "accepted", iqiesRecordId: "   " }],
+      }),
+    ).rejects.toMatchObject({ statusCode: 422, code: "VALIDATION_FAILED" });
+
     await svc.importSubmissionResult(ORG_A, member, b, {
       results: [
         { assessmentId: blank, status: "accepted", iqiesRecordId: "" },
-        { assessmentId: spaces, status: "accepted", iqiesRecordId: "   " },
+        { assessmentId: spaces, status: "accepted" },
         { assessmentId: real, status: "accepted", iqiesRecordId: "REC-REAL" },
       ],
     });

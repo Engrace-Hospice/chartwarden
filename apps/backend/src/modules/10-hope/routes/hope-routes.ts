@@ -35,8 +35,8 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { HOPE_SFV_STEP_UP_OPERATION, HOPE_SIGN_STEP_UP_OPERATION } from "../hope-signature-audit";
 import {
-  assertReferenceHasNoPatientIdentifier,
-  assertResultRowsHaveNoPatientIdentifier,
+  assertResultRowsAreClean,
+  assertSubmissionReferenceIsClean,
 } from "./hope-reference-screen";
 import {
   type CaseloadLookup,
@@ -693,10 +693,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);
       const body = parse(MarkSubmissionUploadedSchema, request.body);
-      assertReferenceHasNoPatientIdentifier(
-        "iqiesSubmissionReference",
-        body.iqiesSubmissionReference,
-      );
+      assertSubmissionReferenceIsClean("iqiesSubmissionReference", body.iqiesSubmissionReference);
       return service.markSubmissionUploaded(organizationId, userId, id, body);
     },
   );
@@ -726,8 +723,8 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);
       const body = parse(ImportSubmissionResultSchema, request.body);
-      assertReferenceHasNoPatientIdentifier("reportReference", body.reportReference);
-      assertResultRowsHaveNoPatientIdentifier(body.results);
+      assertSubmissionReferenceIsClean("reportReference", body.reportReference);
+      assertResultRowsAreClean(body.results);
       return service.importSubmissionResult(organizationId, userId, id, body);
     },
   );

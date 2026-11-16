@@ -310,7 +310,7 @@ describe.skipIf(!DB_URL)(
         const holder = await holdRow("hope_assessment", id);
         let signedAt: number;
         try {
-          const opening = outcome(svc.getAssessmentWorkspace(ORG_A, id));
+          const opening = outcome(svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true }));
           await awaitBlockedOn("hope_assessment");
           await holder.query(
             `UPDATE hope_assessment

@@ -184,7 +184,9 @@ describe("spec initialisation of a legacy draft (workspace open) — the UPDATE 
   it("a draft signed (spec frozen) since the unlocked read: the UPDATE matches no row, the row is re-read, and NO control answers are written onto it", async () => {
     const { svc, statements } = backend([[legacyDraft], ...initScript, [], [signedNow]]);
 
-    const failure = await outcome(svc.getAssessmentWorkspace(ORG, legacyDraft.id));
+    const failure = await outcome(
+      svc.getAssessmentWorkspace(ORG, legacyDraft.id, { mayWrite: true }),
+    );
 
     // The script ran out AFTER the ensure step handed back the signed row (nothing past it was asked for the spec).
     expect(failure?.message).toBe(SCRIPT_EXHAUSTED);
@@ -199,7 +201,9 @@ describe("spec initialisation of a legacy draft (workspace open) — the UPDATE 
   it("a missing spec is a 422 that is also LOGGED, with the ids and never the target date", async () => {
     const { svc, statements } = backend([[legacyDraft], []]); // loadA, then no spec version in force
 
-    const failure = await outcome(svc.getAssessmentWorkspace(ORG, legacyDraft.id));
+    const failure = await outcome(
+      svc.getAssessmentWorkspace(ORG, legacyDraft.id, { mayWrite: true }),
+    );
 
     expect(failure).toMatchObject({ code: "M10_SPEC_NOT_IN_FORCE", statusCode: 422 });
     expect(statements.some((s) => s.kind === "update")).toBe(false);
@@ -287,7 +291,9 @@ describe("getAssessmentReview — a completed SFV the heal cannot rebuild leaves
     };
     const { svc } = backend([[specFrozenDraft], [completedSfv], [completion]]);
 
-    const failure = await outcome(svc.getAssessmentReview(ORG, specFrozenDraft.id));
+    const failure = await outcome(
+      svc.getAssessmentReview(ORG, specFrozenDraft.id, { mayWrite: true }),
+    );
 
     expect(failure?.message).toBe(SCRIPT_EXHAUSTED); // the readiness read after the heal is past the script
     expect(warn).toHaveBeenCalledTimes(1);
@@ -298,7 +304,9 @@ describe("getAssessmentReview — a completed SFV the heal cannot rebuild leaves
   it("stays quiet for the ordinary reasons (no completed SFV)", async () => {
     const { svc } = backend([[specFrozenDraft], []]);
 
-    const failure = await outcome(svc.getAssessmentReview(ORG, specFrozenDraft.id));
+    const failure = await outcome(
+      svc.getAssessmentReview(ORG, specFrozenDraft.id, { mayWrite: true }),
+    );
 
     expect(failure?.message).toBe(SCRIPT_EXHAUSTED);
     expect(warn).not.toHaveBeenCalled();

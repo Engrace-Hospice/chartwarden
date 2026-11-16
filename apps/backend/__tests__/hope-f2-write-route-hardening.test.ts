@@ -60,28 +60,71 @@ function backend(outcomes: Parameters<typeof scriptedDb>[0]) {
 }
 
 describe("every write names the tenant beside the id, on top of RLS", () => {
-  it("cancelHopeSubmission: the lock read, the item update and the batch update", async () => {
-    const fake = scriptedDb([
-      [{ id: SUB, status: "packaged", providerEntityId: PE, packageSha256: "a".repeat(64) }],
-      [],
-      [{ id: SUB, status: "cancelled" }],
-      [],
-    ]);
+  /** A hold port that reports no hold: the purge path runs (an unbound port would keep the bytes, a path with the same shape). */
+  const NO_HOLD = {
+    activeLegalHoldScopeInTransaction: async () => ({
+      orgWide: false,
+      patientIds: new Set<string>(),
+    }),
+  };
+  const HELD_PATIENT = "99999999-9999-4999-8999-999999999999";
+  const cancelArgs = (legalHolds: Parameters<typeof cancelHopeSubmission>[1]["legalHolds"]) => ({
+    id: SUB,
+    organizationId: ORG,
+    actorMembershipId: USER,
+    reasonCode: "other" as const,
+    now: new Date("2026-06-01T00:00:00.000Z"),
+    legalHolds,
+  });
+  const packaged = {
+    id: SUB,
+    status: "packaged",
+    providerEntityId: PE,
+    packageSha256: "a".repeat(64),
+  };
 
-    await cancelHopeSubmission(fake.tx, {
-      id: SUB,
-      organizationId: ORG,
-      actorMembershipId: USER,
-      reasonCode: "other",
-      now: new Date("2026-06-01T00:00:00.000Z"),
-      legalHolds: undefined,
-    });
+  it("cancelHopeSubmission: the lock read, the item update and the batch update (the PURGE path, no hold)", async () => {
+    const fake = scriptedDb([[packaged], [], [{ id: SUB, status: "cancelled" }], []]);
+
+    await cancelHopeSubmission(fake.tx, cancelArgs(NO_HOLD));
 
     const data = dataStatements(fake);
     // The last statement is the `hope.submission_cancelled` audit event: audit_event carries no tenant predicate (its RLS
     // and the row's own organization_id do), the three statements before it do.
     expect(data.map((s) => s.kind)).toEqual(["select", "update", "update", "insert"]);
     for (const statement of data.slice(0, 3)) expect(namesTenant(statement)).toBe(true);
+  });
+
+  it("cancelHopeSubmission under a patient-scoped hold: the hold lookup names the tenant beside the batch", async () => {
+    const fake = scriptedDb([[packaged], [], [], [{ id: SUB, status: "cancelled" }], []]);
+    const patientHold = {
+      activeLegalHoldScopeInTransaction: async () => ({
+        orgWide: false,
+        patientIds: new Set([HELD_PATIENT]),
+      }),
+    };
+
+    await cancelHopeSubmission(fake.tx, cancelArgs(patientHold));
+
+    const data = dataStatements(fake);
+    expect(data.map((s) => s.kind)).toEqual(["select", "select", "update", "update", "insert"]);
+    for (const statement of data.slice(0, 4)) expect(namesTenant(statement)).toBe(true);
+  });
+
+  it("a repeat cancel that purges: the bytes-present read and both purge updates name the tenant", async () => {
+    const fake = scriptedDb([
+      [{ ...packaged, status: "cancelled", cancelReasonCode: "other" }],
+      [{ id: SUB }],
+      [],
+      [{ id: SUB, status: "cancelled" }],
+      [],
+    ]);
+
+    await cancelHopeSubmission(fake.tx, cancelArgs(NO_HOLD));
+
+    const data = dataStatements(fake);
+    expect(data.map((s) => s.kind)).toEqual(["select", "select", "update", "update", "insert"]);
+    for (const statement of data.slice(0, 4)) expect(namesTenant(statement)).toBe(true);
   });
 
   it("advancePackagedToExported: the guarded write and the status re-read", async () => {

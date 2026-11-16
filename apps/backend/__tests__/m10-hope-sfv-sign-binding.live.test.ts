@@ -276,7 +276,7 @@ describe.skipIf(!DB_URL)(
       const adm = await admitted(readmitPatient);
       grantCaseload(owner, patientOf[adm] as string);
       const draft = await recordDraft(adm, owner, TRIGGER_DATA);
-      const ws = await svc.getAssessmentWorkspace(ORG, draft.id);
+      const ws = await svc.getAssessmentWorkspace(ORG, draft.id, { mayWrite: true });
       await svc.patchAssessmentAnswers(ORG, owner, draft.id, {
         ifVersion: ws.assessment.version,
         changes: [
@@ -1615,11 +1615,11 @@ describe.skipIf(!DB_URL)(
         };
 
         await rewrite("not-a-cms-code");
-        await svc.getAssessmentReview(ORG, s.draftId);
+        await svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true });
         expect(await sfvAnswers(s.draftId)).toEqual([]);
 
         await rewrite("2");
-        await svc.getAssessmentReview(ORG, s.draftId);
+        await svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true });
         expect(await answerValues(s.draftId)).toMatchObject({ J2052A: "1", J2053A: "2" });
       });
 
@@ -1771,7 +1771,7 @@ describe.skipIf(!DB_URL)(
           `SELECT 1 FROM symptom_follow_up_visit WHERE id='${s.sfvId}' FOR UPDATE`,
         );
         try {
-          const review = svc.getAssessmentReview(ORG, s.draftId);
+          const review = svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true });
           const pid = await parkedOnSfvRowLock();
 
           // The patch path takes the SFV row before any answer, then the assessment row last; the heal must
@@ -1799,7 +1799,7 @@ describe.skipIf(!DB_URL)(
         await admin.query("COMMIT");
 
         const review = await statementsDuring((backend) =>
-          backend.getAssessmentReview(ORG, s.draftId),
+          backend.getAssessmentReview(ORG, s.draftId, { mayWrite: true }),
         );
 
         // Not vacuous: the review did read the record and its SFV.
@@ -1811,7 +1811,7 @@ describe.skipIf(!DB_URL)(
 
       it("a second review of an already-healed draft writes nothing (answers, version and audit rows unchanged)", async () => {
         const s = await completedSfvWithoutAnswers();
-        await svc.getAssessmentReview(ORG, s.draftId); // heals
+        await svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true }); // heals
         const snapshot = async () => ({
           version: (await assessmentRow(s.draftId))?.version,
           answers: await q(
@@ -1830,8 +1830,8 @@ describe.skipIf(!DB_URL)(
         const healed = await snapshot();
         expect(healed.answers.length).toBeGreaterThan(0);
 
-        await svc.getAssessmentReview(ORG, s.draftId);
-        await svc.getAssessmentReview(ORG, s.draftId);
+        await svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true });
+        await svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true });
 
         expect(await snapshot()).toEqual(healed);
       });
@@ -1844,11 +1844,11 @@ describe.skipIf(!DB_URL)(
         expect(v1).toBe(v0 + 1);
 
         await clearSfvAnswers(s.draftId);
-        await svc.getAssessmentReview(ORG, s.draftId);
+        await svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true });
         const v2 = (await assessmentRow(s.draftId))?.version as number;
         expect(v2).toBe(v1 + 1);
 
-        await svc.getAssessmentReview(ORG, s.draftId);
+        await svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true });
         expect((await assessmentRow(s.draftId))?.version).toBe(v2);
       });
 
@@ -2362,7 +2362,7 @@ describe.skipIf(!DB_URL)(
         );
         let workspace: Promise<unknown> | undefined;
         try {
-          workspace = svc.getAssessmentWorkspace(ORG, s.draftId);
+          workspace = svc.getAssessmentWorkspace(ORG, s.draftId, { mayWrite: true });
           const pid = await parkedPid();
 
           // Parked on the assessment lock with NO answer written: nothing is held that the holder is about to want.
@@ -2445,7 +2445,7 @@ describe.skipIf(!DB_URL)(
         );
         let review: Promise<unknown> | undefined;
         try {
-          review = svc.getAssessmentReview(ORG, s.draftId);
+          review = svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true });
           const pid = await parkedPid();
 
           // Spec initialisation (an assessment UPDATE plus control answers) already COMMITTED; the heal waits on the
@@ -2471,10 +2471,10 @@ describe.skipIf(!DB_URL)(
       it("a review of an already-healed draft takes no write lock and writes nothing (judged by the statements it sends)", async () => {
         const s = await openSfv();
         expect((await postSfv(s.adm, as(member.victim), s.draftId)).statusCode).toBe(201);
-        await svc.getAssessmentReview(ORG, s.draftId); // settles anything a first review would still write
+        await svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true }); // settles anything a first review would still write
 
         const review = await statementsDuring((backend) =>
-          backend.getAssessmentReview(ORG, s.draftId),
+          backend.getAssessmentReview(ORG, s.draftId, { mayWrite: true }),
         );
 
         expect(review.sql.some((query) => query.includes('"symptom_follow_up_visit"'))).toBe(true);
@@ -2561,8 +2561,8 @@ describe.skipIf(!DB_URL)(
         const version = (await assessmentRow(s.draftId))?.version;
         const audits = await answerAudits();
 
-        await svc.getAssessmentReview(ORG, s.draftId);
-        await svc.getAssessmentReview(ORG, s.draftId);
+        await svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true });
+        await svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true });
 
         expect(await j2052b(s.draftId)).toBe(written);
         expect((await assessmentRow(s.draftId))?.version).toBe(version);
@@ -2578,7 +2578,7 @@ describe.skipIf(!DB_URL)(
           [s.draftId],
         );
 
-        await svc.getAssessmentReview(ORG, s.draftId);
+        await svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true });
 
         expect(await j2052b(s.draftId)).toBe(today());
       });
@@ -2611,7 +2611,7 @@ describe.skipIf(!DB_URL)(
         const utcDay = new Date(targetDate).toISOString().slice(0, 10);
         expect(utcDay).not.toBe(written);
 
-        await svc.getAssessmentReview(ORG, s.draftId);
+        await svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true });
 
         expect(await j2052b(s.draftId)).toBe(written);
       });
@@ -2628,7 +2628,7 @@ describe.skipIf(!DB_URL)(
         ]);
         await deleteSfvAnswers(s.draftId);
 
-        await svc.getAssessmentReview(ORG, s.draftId);
+        await svc.getAssessmentReview(ORG, s.draftId, { mayWrite: true });
 
         expect(await j2052b(s.draftId)).toBe(new Date(targetDate).toISOString().slice(0, 10));
       });

@@ -273,7 +273,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
 
   /** Patch canonical answers through the production route-service path (which emits on its tx). */
   async function patch(id: string, answers: Record<string, string>): Promise<void> {
-    const ws = await svc.getAssessmentWorkspace(ORG_A, id);
+    const ws = await svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true });
     await svc.patchAssessmentAnswers(ORG_A, memberOf[ORG_A], id, {
       ifVersion: ws.assessment.version,
       changes: Object.entries(answers).map(([itemCode, value]) => ({
@@ -1069,7 +1069,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
 
     it("a patch behind a long-held assessment lock answers a retryable 409 instead of waiting for the lock", async () => {
       const id = await freshDraft();
-      const ws = await svc.getAssessmentWorkspace(ORG_A, id);
+      const ws = await svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true });
       const holder = await holdAssessment(id);
       try {
         // The holder never lets go during the call, so an unbounded wait would hang here; the 409 IS the proof that the wait ended.
@@ -1082,7 +1082,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
         await holder.end();
       }
       // The refused patch left the version as it was, and the record is usable again once the lock is free.
-      const reopened = await svc.getAssessmentWorkspace(ORG_A, id);
+      const reopened = await svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true });
       expect(reopened.assessment.version).toBe(ws.assessment.version);
       await svc.patchAssessmentAnswers(
         ORG_A,
@@ -1094,7 +1094,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
 
     it("a patch naming a protected or unknown item is refused BEFORE it queues for the assessment lock", async () => {
       const id = await freshDraft();
-      const ws = await svc.getAssessmentWorkspace(ORG_A, id);
+      const ws = await svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true });
       const holder = await holdAssessment(id);
       try {
         for (const [itemCode, status] of [
@@ -1116,11 +1116,13 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
 
     it("opening an already-reconciled draft's workspace takes no assessment lock", async () => {
       const id = await freshDraft();
-      await svc.getAssessmentWorkspace(ORG_A, id); // reconciles the workflow control answers once
+      await svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true }); // reconciles the workflow control answers once
       const holder = await holdAssessment(id);
       try {
         // A workspace read that queued for the held lock would end as the busy 409 after the lock timeout, not resolve.
-        await expect(svc.getAssessmentWorkspace(ORG_A, id)).resolves.toBeTruthy();
+        await expect(
+          svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true }),
+        ).resolves.toBeTruthy();
       } finally {
         await holder.query("ROLLBACK");
         await holder.end();
@@ -1129,7 +1131,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
 
     it("a workspace open that rewrites a chart-derived answer bumps the version (a stale signer is refused); one that changes nothing, or a read-only one, does not", async () => {
       const id = await freshDraft();
-      const first = await svc.getAssessmentWorkspace(ORG_A, id);
+      const first = await svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true });
       const patientId = (
         await admin.query("SELECT patient_id FROM hope_assessment WHERE id=$1", [id])
       ).rows[0].patient_id as string;
@@ -1146,7 +1148,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
         admin.query("UPDATE patient SET legal_last_name=$2 WHERE id=$1", [patientId, name]);
 
       // The chart did not move: a re-open writes nothing and keeps the version everyone's `ifVersion` names.
-      const unchanged = await svc.getAssessmentWorkspace(ORG_A, id);
+      const unchanged = await svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true });
       expect(unchanged.assessment.version).toBe(first.assessment.version);
 
       // A caller without hope.timepoint.write is shown the STORED state: the chart's new value is not written.
@@ -1156,7 +1158,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect(await storedLastName()).toBe("Patient");
 
       // A writer's open rewrites the chart-derived answer, in the same transaction as the version bump.
-      const reopened = await svc.getAssessmentWorkspace(ORG_A, id);
+      const reopened = await svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true });
       expect(await storedLastName()).toBe("Renamed-One");
       expect(reopened.assessment.version).toBe(first.assessment.version + 1);
 
@@ -1242,7 +1244,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
 
     it("a lock that waited out a partition move retries on the moved row instead of failing 40001", async () => {
       const id = await freshDraft();
-      const ws = await svc.getAssessmentWorkspace(ORG_A, id);
+      const ws = await svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true });
       const holder = await holdAssessment(id);
       try {
         const patched = outcome(
@@ -1271,7 +1273,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
         [id],
       );
 
-      const { sql } = await statementsDuring((b) => b.getAssessmentWorkspace(ORG_A, id));
+      const { sql } = await statementsDuring((b) =>
+        b.getAssessmentWorkspace(ORG_A, id, { mayWrite: true }),
+      );
 
       const init = sql.findIndex((text) => /^update "hope_assessment"/i.test(text.trim()));
       expect(init).toBeGreaterThanOrEqual(0);
@@ -1316,7 +1320,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect(await snapshot()).toEqual(before);
 
       // A caller who can edit opens it once: that freezes the spec, and then a read-only caller reads it as any draft.
-      await svc.getAssessmentWorkspace(ORG_A, id);
+      await svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true });
       expect((await snapshot()).row.spec_version_id).not.toBeNull();
       expect(await outcome(svc.getAssessmentWorkspace(ORG_A, id, readOnly))).toBeNull();
       expect(await outcome(svc.getAssessmentReview(ORG_A, id, readOnly))).toBeNull();
@@ -1324,7 +1328,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
 
     it("a read-only caller's workspace and validation reads store nothing: no control answer is rewritten and no validation finding is reconciled", async () => {
       const id = await freshDraft();
-      await svc.getAssessmentWorkspace(ORG_A, id); // a writer's first open writes the workflow-control answers
+      await svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true }); // a writer's first open writes the workflow-control answers
       const controlAnswers = () =>
         admin
           .query(
@@ -1358,8 +1362,8 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect(await controlAnswers()).toBe(0);
       expect(await findings()).toBe(findingsBefore);
       // Not vacuous: the same open by a writer restores the control answers and stores the findings.
-      await svc.getAssessmentWorkspace(ORG_A, id);
-      await svc.getValidation(ORG_A, id, { mode: "final" });
+      await svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true });
+      await svc.getValidation(ORG_A, id, { mayWrite: true, mode: "final" });
       expect(await controlAnswers()).toBe(2);
       expect(await findings()).toBeGreaterThan(findingsBefore);
     });
@@ -1418,7 +1422,10 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       );
       const holder = await holdAssessment(id);
 
-      const result = await busyWithin(svc.getAssessmentWorkspace(ORG_A, id), holder);
+      const result = await busyWithin(
+        svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: true }),
+        holder,
+      );
 
       expect(result).toBe("409:M10_RECORD_BUSY");
       const row = (
@@ -2362,7 +2369,11 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       const id = await seedSignedAssessment();
 
       const outcome = await errorCode(
-        svc.getValidation(ORG_A, id, { mode: "final", submissionDate: "2026-02-30T10:00:00Z" }),
+        svc.getValidation(ORG_A, id, {
+          mayWrite: true,
+          mode: "final",
+          submissionDate: "2026-02-30T10:00:00Z",
+        }),
       );
 
       expect(outcome).toBe("422:VALIDATION_FAILED");

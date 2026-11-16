@@ -117,7 +117,7 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
    * workspace, as the web client does after every save.
    */
   async function workspaceItem(assessmentId: string, itemCode: string) {
-    const ws = await svc.getAssessmentWorkspace(ORG, assessmentId);
+    const ws = await svc.getAssessmentWorkspace(ORG, assessmentId, { mayWrite: true });
     return ws.sections.flatMap((s) => s.items).find((i) => i.itemCode === itemCode);
   }
 
@@ -360,7 +360,7 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
 
   it("returns Admission HA workspace items from the imported spec", async () => {
     const a = await draft();
-    const workspace = await svc.getAssessmentWorkspace(ORG, a.id);
+    const workspace = await svc.getAssessmentWorkspace(ORG, a.id, { mayWrite: true });
     const counts = Object.fromEntries(workspace.sections.map((s) => [s.code, s.items.length]));
     expect(counts).toEqual({ A: 56, F: 8, I: 16, J: 43, M: 21, N: 6, Z: 1 });
     expect(workspace.sections.reduce((sum, section) => sum + section.items.length, 0)).toBe(151);
@@ -617,7 +617,7 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
         { itemCode: "M1195Z", action: "set", value: "1" },
       ],
     });
-    const first = await svc.getValidation(ORG, a.id, { mode: "final" });
+    const first = await svc.getValidation(ORG, a.id, { mayWrite: true, mode: "final" });
     expect(first.findings.find((finding) => finding.ruleId === "-3094")).toMatchObject({
       fingerprint: "-3094:M1195Z",
       resolved: false,
@@ -627,7 +627,7 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
       ifVersion: invalid.version,
       changes: [{ itemCode: "M1195Z", action: "clear" }],
     });
-    const second = await svc.getValidation(ORG, a.id, { mode: "final" });
+    const second = await svc.getValidation(ORG, a.id, { mayWrite: true, mode: "final" });
     expect(second.findings.some((finding) => finding.fingerprint === "-3094:M1195Z")).toBe(false);
     const { rows } = await admin.query<{ resolved: boolean }>(
       "SELECT resolved FROM hope_validation_finding WHERE hope_assessment_id=$1 AND fingerprint='-3094:M1195Z'",

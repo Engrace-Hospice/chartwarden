@@ -42,8 +42,8 @@ const writePaths = (
   id: string,
 ): readonly [string, (svc: Svc) => Promise<unknown>, ErrorClass?][] => [
   ["updateDraft", (svc) => svc.updateDraft(ORG, id, { a: 1 })],
-  ["getAssessmentWorkspace", (svc) => svc.getAssessmentWorkspace(ORG, id)],
-  ["getAssessmentReview", (svc) => svc.getAssessmentReview(ORG, id)],
+  ["getAssessmentWorkspace", (svc) => svc.getAssessmentWorkspace(ORG, id, { mayWrite: true })],
+  ["getAssessmentReview", (svc) => svc.getAssessmentReview(ORG, id, { mayWrite: true })],
   [
     "setHuvCompletionDate",
     (svc) => svc.setHuvCompletionDate(ORG, USER, id, { ifVersion: 1, z0350: "2026-06-01" }),
@@ -111,7 +111,7 @@ const writePaths = (
         changes: [{ itemCode: "A0050", action: "set", value: "1" }],
       }),
   ],
-  ["getValidation", (svc) => svc.getValidation(ORG, id)],
+  ["getValidation", (svc) => svc.getValidation(ORG, id, { mayWrite: true })],
   // An entity id that is no uuid names no entity: nothing eligible (the 409 an entity with no signed records answers).
   ["assembleSubmission", (svc) => svc.assembleSubmission(ORG, id), ConflictError],
 ];

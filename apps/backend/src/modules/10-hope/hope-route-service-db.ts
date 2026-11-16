@@ -131,8 +131,8 @@ import {
 } from "./hope-validation-service";
 import type { HopeWriteOutboxPort } from "./outbox-port";
 import {
-  assertReferenceHasNoPatientIdentifier,
-  assertResultRowsHaveNoPatientIdentifier,
+  assertResultRowsAreClean,
+  assertSubmissionReferenceIsClean,
 } from "./routes/hope-reference-screen";
 import type {
   CorrectTimepointArgs,
@@ -1011,17 +1011,17 @@ export function createDbHopeBackend(
 
     // ── Pre-submission validation findings (§3.3 hope_validation_finding) ───────────────────────────
     async getValidation(organizationId, urlId, options) {
-      if (options?.submissionDate !== undefined) {
+      if (options.submissionDate !== undefined) {
         requireCalendarDateTime(options.submissionDate, "submissionDate");
       }
       const assessmentId = uuidOrNotFound(urlId, `HOPE assessment ${urlId} not found`);
       return validationService.validateAssessment({
         organizationId,
         assessmentId,
-        mode: options?.mode ?? "final",
-        submissionDate: options?.submissionDate,
+        mode: options.mode ?? "final",
+        submissionDate: options.submissionDate,
         // A final run reconciles the stored findings (a write, under no actor): only a caller who can write persists it.
-        persist: options?.mayWrite !== false,
+        persist: options.mayWrite,
       });
     },
 
@@ -1704,7 +1704,7 @@ export function createDbHopeBackend(
       // transaction the UPDATE's row lock and connection would be held across them (a bounded self-starvation on a
       // draft's first open).
       // A read-only caller never runs it: it is shown the stored state, and a spec-less draft is a 409 for it.
-      const mayWrite = options?.mayWrite !== false;
+      const { mayWrite } = options;
       const assessment = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
         ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id, mayWrite),
       );
@@ -1724,7 +1724,7 @@ export function createDbHopeBackend(
       // `signTimepoint` does with `pre`: left in the heal's transaction it would take the assessment row before the heal
       // takes the SFV row, the reverse of M10's lock order (SFV, assessment, answers).
       // A read-only caller never runs it: it reads the stored state, and a spec-less draft is a 409 for it.
-      const mayWrite = options?.mayWrite !== false;
+      const { mayWrite } = options;
       await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
         ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id, mayWrite),
       );
@@ -2410,11 +2410,9 @@ export function createDbHopeBackend(
     async markSubmissionUploaded(organizationId, userId, urlId, args) {
       // A date that does not exist (or has no explicit offset) is refused, never stored as the next valid one.
       if (args.submittedAt !== undefined) requireCalendarDateTime(args.submittedAt, "submittedAt");
-      // The route screened the reference already; the service screens it again, so a second caller cannot store an identifier.
-      assertReferenceHasNoPatientIdentifier(
-        "iqiesSubmissionReference",
-        args.iqiesSubmissionReference,
-      );
+      // The route checked the reference already (schema, then this); the service checks it again, pattern and screen, so a
+      // second caller of the service cannot store what the route would refuse.
+      assertSubmissionReferenceIsClean("iqiesSubmissionReference", args.iqiesSubmissionReference);
       const id = uuidOrNotFound(urlId, `HOPE submission ${urlId} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
@@ -2471,9 +2469,10 @@ export function createDbHopeBackend(
     },
     async importSubmissionResult(organizationId, userId, urlId, args) {
       const id = uuidOrNotFound(urlId, `HOPE submission ${urlId} not found`);
-      // Screened by the route too; here so a second caller of the service cannot store an identifier in a reference or token.
-      assertReferenceHasNoPatientIdentifier("reportReference", args.reportReference);
-      assertResultRowsHaveNoPatientIdentifier(args.results);
+      // Checked by the route too (schema, then these); here so a second caller of the service cannot store a malformed or
+      // identifying reference, token, assessment id or message: the patterns, what the database cannot store, and the screens.
+      assertSubmissionReferenceIsClean("reportReference", args.reportReference);
+      assertResultRowsAreClean(args.results);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // Row lock: serialises concurrent recordings of one batch (waits at most `M10_LOCK_TIMEOUT_MS`, then `M10_RECORD_BUSY`).

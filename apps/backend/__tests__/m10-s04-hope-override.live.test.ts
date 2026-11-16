@@ -1015,7 +1015,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
 
   /** Patch the J2050/J2051 answers that open the SFV obligation (mirrors m10-hope-write.live). */
   async function patchTrigger(id: string): Promise<void> {
-    const ws = await svc.getAssessmentWorkspace(ORG, id);
+    const ws = await svc.getAssessmentWorkspace(ORG, id, { mayWrite: true });
     await svc.patchAssessmentAnswers(ORG, member.rn, id, {
       ifVersion: ws.assessment.version,
       changes: [

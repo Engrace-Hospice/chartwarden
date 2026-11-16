@@ -310,21 +310,35 @@ export const MarkSubmissionUploadedSchema = Type.Object({
   iqiesSubmissionReference: Type.Optional(referenceString()),
 });
 /**
- * A result-row token (`severity`, `code`, `itemCode`, `iqiesRecordId`) is the same charset, or EMPTY (a blank cell of a pasted
- * report names nothing, as an absent key does: a blank `iqiesRecordId` is never stored). A value of only spaces is refused like a
- * reference is.
+ * A CMS edit code, an item code or an iQIES record id (`code`, `itemCode`, `iqiesRecordId`) is ONE word: letters, digits and
+ * `. _ : # -` (a leading `-` is allowed, CMS edit codes look like `-3015`), NO space and NO slash, or EMPTY (a blank cell of a
+ * pasted report names nothing, as an absent key does: a blank `iqiesRecordId` is never stored). These land unscrubbed in the
+ * audit images of the result event, the item and the assessment and in the `m10.hope.submission_rejected` payload (`ruleId`), so a
+ * phrase, a name with spaces or a `MM/DD/YYYY` date cannot be written at all; a date or phone shape that still fits is refused by
+ * the screen (hope-reference-screen.ts). RESIDUAL, not closeable here: a single-word surname or a hyphenated name passes the
+ * charset, and the real iQIES edit-code and record-id formats are unverified, so this stays permissive within the rule; a human
+ * should confirm the formats against a CMS sample and tighten it. The web client's copy must use the same pattern.
  */
-export const HOPE_RESULT_TOKEN_PATTERN = "^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/-]*)?$";
+export const HOPE_RESULT_CODE_PATTERN = "^(?:[A-Za-z0-9._:#-]{1,64})?$";
 /**
  * The status text of a row (`status`, `result`, `outcome`) is a phrase CMS wrote ("received, pending review", "Accepted (2
- * warnings)"), classified by words (`classifyStatusText`): the same charset plus `, ; ( )` after the first character. It is kept
- * only in the scrubbed raw-result columns, never in a column the audit trail copies, and the identifier screen still reads it.
+ * warnings)"), classified by words (`classifyStatusText`): the reference charset plus `, ; ( )` after the first character. It is
+ * kept only in the scrubbed raw-result columns, never in a column the audit trail copies, and the identifier screen still reads it.
  */
 export const HOPE_RESULT_STATUS_PATTERN = "^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/(),;-]*)?$";
+/**
+ * The severities a report row may carry: exactly the values the import acts on (`classifyCmsResult` rejects on `fatal` and
+ * `error`, reads `warning` as accepted with warnings; `findingSeverity` maps the same), compared case-insensitively, or empty.
+ * The pattern is spelled out (a JSON-schema pattern has no case flag); a unit test pins it to the list.
+ */
+export const HOPE_RESULT_SEVERITIES = ["fatal", "error", "warning"] as const;
+export const HOPE_RESULT_SEVERITY_PATTERN =
+  "^(?:[Ff][Aa][Tt][Aa][Ll]|[Ee][Rr][Rr][Oo][Rr]|[Ww][Aa][Rr][Nn][Ii][Nn][Gg])?$";
 const resultString = (pattern: string) =>
   Type.Optional(Type.String({ maxLength: HOPE_RESULT_TOKEN_MAX_LENGTH, pattern }));
-const resultToken = () => resultString(HOPE_RESULT_TOKEN_PATTERN);
+const resultCode = () => resultString(HOPE_RESULT_CODE_PATTERN);
 const resultStatusText = () => resultString(HOPE_RESULT_STATUS_PATTERN);
+const resultSeverity = () => resultString(HOPE_RESULT_SEVERITY_PATTERN);
 export const ImportSubmissionResultSchema = Type.Object({
   reportReference: Type.Optional(referenceString()),
   // Bounded: every row is stored (report, item result, finding), so an unbounded body is a write amplifier.
@@ -335,11 +349,11 @@ export const ImportSubmissionResultSchema = Type.Object({
         status: resultStatusText(),
         result: resultStatusText(),
         outcome: resultStatusText(),
-        severity: resultToken(),
-        code: resultToken(),
-        itemCode: resultToken(),
+        severity: resultSeverity(),
+        code: resultCode(),
+        itemCode: resultCode(),
         message: Type.Optional(Type.String({ maxLength: 1000 })),
-        iqiesRecordId: resultToken(),
+        iqiesRecordId: resultCode(),
       },
       { additionalProperties: false },
     ),

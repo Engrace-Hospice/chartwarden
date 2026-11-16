@@ -2690,9 +2690,11 @@ describe("the operator-typed submission references: a charset in the schema, pat
   });
 });
 
-describe("the CMS result-row tokens: a charset in the schema, patient identifiers refused by the route", () => {
+describe("the CMS result-row tokens: a format in the schema, patient identifiers refused by the route", () => {
   const SYNTHETIC_SSN = "900-12-3456";
   const SYNTHETIC_MBI = "1EG4TE5MK73";
+  /** A uuid whose hex digits spell an MBI window: the MBI screen alone would refuse it. */
+  const MBI_SHAPED_UUID = "1ac1ac1a-a110-4000-8000-000000000000";
   const importRows = (ctx: ReturnType<typeof makeServer>, results: Record<string, unknown>[]) =>
     ctx.app.inject({
       method: "POST",
@@ -2705,12 +2707,12 @@ describe("the CMS result-row tokens: a charset in the schema, patient identifier
   it.each([
     ["status", { status: SYNTHETIC_SSN }],
     ["outcome", { outcome: `Run ${SYNTHETIC_SSN}` }],
-    ["severity", { severity: SYNTHETIC_MBI }],
     ["code", { code: SYNTHETIC_SSN }],
     ["itemCode", { itemCode: SYNTHETIC_MBI }],
     ["iqiesRecordId", { iqiesRecordId: SYNTHETIC_SSN }],
+    ["message", { message: `Edit failed for ${SYNTHETIC_SSN}` }],
   ])(
-    "an identifier-shaped %s is refused with a static 422 that names the token, never the value",
+    "an identifier-shaped %s is refused with a static 422 that names the field, never the value",
     async (key, token) => {
       const ctx = makeServer({ packagedSubmission: true });
 
@@ -2728,16 +2730,86 @@ describe("the CMS result-row tokens: a charset in the schema, patient identifier
   );
 
   it.each([
+    ["a non-uuid assessmentId", { assessmentId: SYNTHETIC_SSN }, "assessmentId"],
+    ["a calendar date in a code", { code: "1950-03-12" }, "code"],
+    ["a phone number in a record id", { iqiesRecordId: "555-867-5309" }, "iqiesRecordId"],
+  ])(
+    "%s is refused as a patient identifier (422, field named, value not echoed)",
+    async (_label, token, key) => {
+      const ctx = makeServer({ packagedSubmission: true });
+
+      const res = await importRows(ctx, [row(token)]);
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+      expect(res.json().error.details).toEqual([
+        expect.objectContaining({ field: `results.0.${key}` }),
+      ]);
+      expect(res.body).not.toContain("1950");
+      expect(res.body).not.toContain("867");
+      await ctx.app.close();
+    },
+  );
+
+  it.each([
     ["markup", "<b>x</b>"],
     ["a quote", `E"1`],
     ["a line break", "E1\nE2"],
     ["only spaces", "   "],
     ["a leading space", " E1"],
+    ["an inner space (a name or an MRN)", "Jane Q Example"],
+    ["an MRN with a space", "MRN 00123456"],
+    ["a slash date", "03/12/1950"],
+    ["a name and a slash date", "Smith John 03/12/1950"],
     ["65 characters", "E".repeat(65)],
   ])("a code that is %s is refused by the schema (422)", async (_label, code) => {
     const ctx = makeServer({ packagedSubmission: true });
 
-    expect((await importRows(ctx, [row({ code })])).statusCode).toBe(422);
+    const res = await importRows(ctx, [row({ code })]);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("VALIDATION_FAILED");
+    await ctx.app.close();
+  });
+
+  it.each([
+    ["info", "info"],
+    ["moderate", "moderate"],
+    ["an MBI", SYNTHETIC_MBI],
+    ["a padded severity", "error "],
+  ])("a severity of %s is outside the closed set (422)", async (_label, severity) => {
+    const ctx = makeServer({ packagedSubmission: true });
+
+    const res = await importRows(ctx, [row({ severity })]);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).not.toContain(SYNTHETIC_MBI);
+    await ctx.app.close();
+  });
+
+  it.each([["warning"], ["ERROR"], ["Fatal"], [""]])(
+    "the severity %j passes (the closed set, any case, or empty)",
+    async (severity) => {
+      const ctx = makeServer({ packagedSubmission: true });
+
+      // Past the schema and the screens: a packaged batch is refused for its status (409), not its fields.
+      expect((await importRows(ctx, [row({ severity })])).statusCode).toBe(409);
+      await ctx.app.close();
+    },
+  );
+
+  it.each([
+    ["a NUL in a message", { message: "edit\u0000zzmarker" }],
+    ["a lone surrogate in a message", { message: "edit \uD83D zzmarker" }],
+    ["a NUL in an assessmentId", { assessmentId: "abc\u0000zzmarker" }],
+  ])("%s is a static 422, never a database error", async (_label, fields) => {
+    const ctx = makeServer({ packagedSubmission: true });
+
+    const res = await importRows(ctx, [fields]);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.details[0].code).toBe("INVALID_CHARACTERS");
+    expect(res.body).not.toContain("zzmarker");
     await ctx.app.close();
   });
 
@@ -2754,21 +2826,25 @@ describe("the CMS result-row tokens: a charset in the schema, patient identifier
     await ctx.app.close();
   });
 
-  it("the codes, severities and ids CMS sends still pass (letters, digits, dashes, dots, underscores, colons, slashes, inner spaces)", async () => {
+  it("the codes, ids and prose CMS sends still pass, a uuid record id is not read as an MBI, and a blank cell names nothing", async () => {
     const ctx = makeServer({ packagedSubmission: true });
 
     const res = await importRows(ctx, [
       row({
         status: "Accepted with warnings",
         severity: "ERROR",
-        code: "-3010",
+        code: "-3015",
         itemCode: "J2051A",
-        iqiesRecordId: "REC-2026.06:a/b#3",
+        iqiesRecordId: "ERR-0012",
+        message:
+          "Item A0050 (Enter Type of Record) must be 1, 2 or 3.\n\tCheck the admission date.",
       }),
-      { assessmentId: SIGNED_A, iqiesRecordId: "" },
+      row({ iqiesRecordId: MBI_SHAPED_UUID }),
+      row({ code: "A0050" }),
+      { assessmentId: MBI_SHAPED_UUID, iqiesRecordId: "" },
     ]);
 
-    // Past both screens: the batch is only `packaged`, so the import is refused for its status (409), not its tokens.
+    // Past both layers: the batch is only `packaged`, so the import is refused for its status (409), not its fields.
     expect(res.statusCode).toBe(409);
     await ctx.app.close();
   });
