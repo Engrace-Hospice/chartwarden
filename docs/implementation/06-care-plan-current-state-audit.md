@@ -44,7 +44,12 @@ found defects that are independent of any redesign.
    read returning the *discharged* plan after readmission; a problem-source dropdown that sent three
    values the server rejects; a network failure that locked the whole workspace; and the M15 discipline
    plans never being discharged.
-6. **Nobody could sign in a fresh tenant.** No clinical role template granted any `care_plan.*` key. Fixed by D-2 (R-66).
+6. **Nobody could sign in a fresh tenant.** No clinical role template granted any `care_plan.*` key. Fixed by D-2 for
+   the roles a tenant already has (migration 1494, R-66) and for the Director of Nursing and Medical Director
+   templates on a new tenant (R-68). The other signer roles are not templates, so a new tenant's administrator
+   still creates them; a role created later receives nothing. Review of D-2 also found that granting
+   `care_plan.read` made the internal element-picker read reachable by default and it showed Part 2 content to a
+   nurse the release does not name: fixed (R-67).
 7. **The audit is static plus unit tests.** No authenticated browser journey ran (section 2).
 
 **Recommendation:** accept the defect track as applied. Every decision in section 9 is closed; one needs you:
@@ -130,9 +135,18 @@ provisioned tenant therefore could not author or sign a care plan.
 
 After D-2 (R-66, control `CW-AC-44`): read and read-summary for the clinical roles; author and finalize for the
 nurse case manager, the clinical supervisor and the DON; sign for exactly the six signer roles; never bootstrap or
-IDG revise. Source: `packages/auth/src/roles/care-plan-grants.ts`, backfill migration 1494, and the DON template for
-a fresh tenant. A role created after the migration does not receive them (the admitting-clinician and code-status
-grants behave the same way).
+IDG revise. Source: `packages/auth/src/roles/care-plan-grants.ts`, backfill migration 1494, and the DON and Medical
+Director templates for a fresh tenant (R-68).
+
+**Coverage is narrower than that list reads.** Migration 1494 reaches the roles a tenant already has. On a new
+tenant the template materializer creates only the Director of Nursing and the Medical Director; `rn_case_manager`,
+`hospice_physician`, `nurse_practitioner`, `msw`, `chaplain` and the read-only clinical roles are not templates, so
+an administrator creates them and grants the keys. A role created after the migration does not receive them (the
+admitting-clinician and code-status grants behave the same way). Two narrowings are by design and fail closed:
+`discipline_scope` reads discipline role keys, so a user who holds only `director_of_nursing`,
+`clinical_supervisor` or `rn_case_manager` is still refused an intervention write; and `chha`, `volunteer`,
+`pt`, `ot`, `st`, `dietitian`, `music_therapy` and `bereavement` get no read key, so their element picker answers
+403 (R-73, R-74). Widening either is a policy decision for you.
 
 ## 7. Test coverage against CP-01…CP-32 (before this change) **[A]**
 
@@ -300,7 +314,15 @@ done, reason given.
 | R-63 | LOW | A redacted plan PDF read as complete; a snapshot of unrecognised shape rendered a blank PDF | Fixed: a redacted snapshot carries a notice sentence (printed as a field by the generic renderer) when anything was dropped, and an unrecognised snapshot is not rendered at all |
 | R-64 | LOW | A goal added by an IDG decision under a Part 2 M7 problem was stored as not Part 2 in M15 | Fixed: the consumer reads the patient's Part 2 problem ids through a second org-explicit M7 port and the goal inherits the flag; the decider compares ids case-insensitively. Live test |
 | R-65 | LOW | A signature recorded `password_step_up` when the session id was missing or the seam threw, so an unverified WebAuthn or TOTP signer read as a password signer | Fixed: `step_up_unverified` (and `sms_step_up` for SMS); the column is free text |
-| R-66 | MED | D-2: no clinical role held any `care_plan.*` key by default, so a fresh tenant's nurse case manager could not author or sign | Fixed: `CARE_PLAN_DEFAULT_GRANTS` (least privilege, sign only for the six signer roles), backfill migration 1494 (insert-only, idempotent), the DON template, a pin test and a live proof that re-runs the migration over staged roles. New control `CW-AC-44` |
+| R-66 | MED | D-2: no clinical role held any `care_plan.*` key by default, so a nurse case manager could not author or sign | Fixed for the roles a tenant already has: `CARE_PLAN_DEFAULT_GRANTS` (least privilege, sign only for the six signer roles), backfill migration 1494 (insert-only, idempotent), a pin test and a live proof that re-runs the migration over staged roles. New control `CW-AC-44`. New-tenant coverage: R-68 |
+| R-67 | HIGH | Review of D-2: `GET /internal/care-plan/relevant-elements` was gated by `care_plan.read` and caseload only, and its reader asked the patient-level Part 2 question (any release with an active recipient). D-2 made the route reachable by default, so an `rn` the release does not name received the SUD problem and the interventions that serve it | Fixed: the route resolves the caller's per-ACTOR verdict through the same closure every other M7 read uses and hands it to the reader (`viewer`, an optional fifth argument on the `CarePlanReader` seam); callers that pass none (M8 reference validation, M15, the scheduling worker) keep the patient-level check. Unit tests (seam and route) and a live test with the real evaluator and reader: a nurse the release names sees it, one it does not does not, no release redacts, the RN case manager carve-out applies only where no release names others. Mutation-checked live. Naming the picker in `CW-AC-43` is its own commit, awaiting approval |
+| R-68 | MED | Review of D-2: only the DON template carried its keys; the Medical Director template did not, the constant, comments and register overstated new-tenant coverage, and the pin test checked only the DON | Fixed: the Medical Director template carries read, read-summary and sign; the pin test holds every templated grantee to the constant; the header comment, `CW-AC-44` and section 6 now state the real coverage (the other signer roles are not templates) |
+| R-69 | LOW | The pin test compared the sign grant with a hand-copied signer list | Fixed: `SIGNER_ROLE_KEYS` is exported from the predicate and `care-plan-grants-pin.test.ts` pins the sign grants to it and it to the `care_plan_signer_role` enum |
+| R-70 | LOW | The backfill's audit rows had no actor and no reference, and the live proof asserted neither them nor the organization on each row | Fixed: the migration stamps `app.correlation_id` (`migration-1494-care-plan-default-grants`, the 0340 precedent); the live test asserts every row carries its role's organization and that each insert was audited under that id |
+| R-71 | LOW | The `CW-AC-44` scope read as covering Part 2 and caseload, and no request was sent as a granted role | Fixed: the row says it is the RBAC half only, adds 164.308(a)(4)(ii)(C), and cites a route test that sends requests with exactly the default keys (an LPN reads and cannot author; the DON authors and cannot sign) |
+| R-72 | LOW | The backfill cannot tell "never granted" from "withheld on purpose", and does not filter `role.enabled` | Kept as designed, with the reason written into the migration: the grant is least-privilege, every effective-permission path joins `role.enabled` so a disabled role's keys are inert, and a role re-enabled later must not come back without them. A tenant that withheld a key on purpose removes it again; the batch is listable by its correlation id (R-70). Say so in the release notes |
+| R-73 | LOW | Author and finalize are narrower than the policy implies: `discipline_scope` builds disciplines from role keys that exclude `director_of_nursing`, `clinical_supervisor` and `rn_case_manager`, and the IDG-coordinator exception is unreachable by default (read only) | Documented, not changed (fails closed); noted in `CW-AC-44` and section 6. The DON, as an org-wide role, authors on every patient in the organization |
+| R-74 | LOW | Discipline roles (`chha`, `volunteer`, `pt`, `ot`, `st`, `dietitian`, `music_therapy`, `bereavement`) get no `care_plan.read`, so the encounter element picker answers 403 for them | Documented, not changed (fails closed, and the pin test asserts `chha` and `volunteer` are excluded). Granting read to them is your decision |
 
 ## 9. Decisions (all closed)
 
@@ -314,6 +336,8 @@ needs you**; D-2 is now implemented.
   pin test, and a control row (`CW-AC-44`, needs your approval). The grant is least-privilege: read for the clinical
   roles; author and finalize for the nurse case manager, clinical supervisor and DON; **sign for exactly the six
   roles `signer_role_match` accepts** (a grant to the DON would never pass that rule, so it is not given).
+  Review found that the read grant exposed the element-picker route to a Part 2 leak (R-67, fixed) and that
+  new-tenant coverage is only the DON and Medical Director templates (R-68, stated honestly in the row).
 - **D-3 Measurable goals.** *Closed: a blocker on initial versions* (R-48), after checking 42 CFR 418.56(c)(3) on
   eCFR. IDG review versions keep their own rule (`goal_add` already requires an outcome); an old goal with none
   never blocks a review.
@@ -360,12 +384,16 @@ Run on `develop` after merging `origin/main` (which carries the migration 1489/1
 | `bun run test` (all non-live suites) | 2954 files: 2418 passed, 536 skipped, 0 failed; 35773 tests passed. Two unrelated flakes seen in earlier runs did not fire: `10-hope/__tests__/hope-admission-workspace.dom.test.tsx` and `12-dosespot/.../secret-cipher.test.ts` |
 | Web folders touched after that run (`07-care-plan`, `14-idg`, `15-discipline-care-plans`, `shell`) | 59 files, 1014 tests (before the last two small commits), then the `14-idg` and `15-discipline-care-plans` folders again: 17 files, 180 tests, all passed |
 | `bun run harness:phi-scan` | clean on every commit (pre-commit hook) |
-| Live suites (private `chartwarden-postgres:dev`, `max_locks_per_transaction=1024`, `valkey/valkey:8-alpine`, `chartwarden_app` NOBYPASSRLS) | all pass on the final HEAD: `m7-care-plan-write` 58, `m15-idg-decision-apply` 21, `gap-013-care-plan-consent-wiring` 12, `care-plan-conformance` 8, `m7-care-plan-read-service` 4, `m14-s05-careplan-to-idg` 16, `m14-idg-write` 45, `m14-packet-build` 19, `f161-m7-m17-render-requests` 4, `outbox-dispatcher` 9 |
+| Live suites (private `chartwarden-postgres:dev`, `max_locks_per_transaction=1024`, `valkey/valkey:8-alpine`, `chartwarden_app` NOBYPASSRLS) | all pass on the final HEAD: `m7-care-plan-write` 58, `m15-idg-decision-apply` 21, `gap-013-care-plan-consent-wiring` 16 (12 plus the four per-actor element-picker tests), `care-plan-conformance` 8, `m7-care-plan-read-service` 4, `m14-s05-careplan-to-idg` 16, `m14-idg-write` 45, `m14-packet-build` 19, `f161-m7-m17-render-requests` 4, `outbox-dispatcher` 9 |
 | **M15 route to M39 chain** (was unproven) | `gap-013` mounts the real M15 routes with no injected port: a caller with no release gets the read without Part 2 goals or the interventions that serve them, and a write on a hidden goal answers 404 identical to a missing one; with an active release it gets both; with the evaluator unbound it is redacted |
 | **`bun run check:boot:platform`** (was not re-run) | passes on the merged final code: boots with `DATABASE_PLATFORM_URL`, `/health` 200, outbox relay polling (fresh migrated DB, provisioned roles) |
 | **e2e** (was not run) | `e2e/specs/care-plan.spec.ts` in Chromium against a private full stack (own Postgres, Valkey, backend and Vite, seeded demo tenant): 2 passed (authoring, send for signatures and a recorded signature, run twice to cover the return-to-draft path; and the axe WCAG 2.1 A/AA scan of the care plan view), 1 skipped (the IDG proposal test needs `E2E_CARE_PLAN_IDG_PATIENT_ID`). **The run found the spec itself was wrong**: the admin account cannot author an intervention (`discipline_scope` denies it), so the RN now authors and signs |
 | **Print CSS** (was not run in a browser) | probed in Chromium with print media emulated on both summary pages. The care plan summary was right (shell hidden, Print button hidden, content not clipped). **The discipline plans summary was not**: it printed its own Print button (66 by 40 px); it is now wrapped in `.wx-print-hide` and measures 0 by 0 in print |
 | OpenAPI, typed client, inject-coverage report | regenerated |
+| **D-2 and its review fixes** (R-66 to R-74): `bun run typecheck`, `arch:fitness`, `arch:compliance`, `arch:migration-numbering`, `arch:migration-compat` | all exit 0 |
+| D-2: `bun run test` (all non-live suites) | 2956 files: 2420 passed, 536 skipped, 0 failed; 35786 tests passed |
+| D-2: live suites on private containers (`cw-pg-wf06`, `cw-vk-wf06`) | `m3-role-catalog-floor` 15 of 15 (the migration re-run over staged roles, now also asserting each row's organization and the audit rows under the migration's correlation id); `gap-013-care-plan-consent-wiring` 16 of 16 |
+| D-2: mutation checks (break the code, see the test fail, restore) | dropping the viewer from the element-picker route fails 2 live tests (a nurse the release does not name then sees the SUD problem) and both route unit tests; dropping the correlation-id statement fails the role-floor live test; dropping the Medical Director grants or adding a role to the signer list fails the pin tests |
 
 **Not verified, by design or limit**
 
@@ -376,6 +404,10 @@ Run on `develop` after merging `origin/main` (which carries the migration 1489/1
 - `compliance/controls.yaml`: `CW-AC-43` is `implemented`, its four gaps closed (R-43 to R-52). It needs your
   approval, which you gave on condition that the gaps were fixed. `CW-AC-44` (D-2, the default clinical grants) is a
   new `implemented` row and needs your approval too.
+- **D-2 limits.** Migration 1494 inserts nothing if the runner falls back to the NOBYPASSRLS app role (no
+  `DATABASE_ADMIN_URL`); that case was not run. The element-picker fix is proven on the server (live, real
+  evaluator and reader); the web encounter screen was not re-driven in a browser. Roles created after the
+  migration, and the signer roles of a new tenant, still need an administrator (section 6).
 - **No CMS rule beyond 42 CFR 418.56(c)(3) was checked** (D-3, on eCFR). The clock constants stay CMS-VERIFY.
 - **Review before the PR.** `/ecc:security-scan` (AgentShield: D, 56/100, no finding in a file this branch
   changes), `/ecc:react-review` (one HIGH, the Part 2 box not clearing when the IDG form reopens, fixed with a
