@@ -202,6 +202,37 @@ export async function sudDisclosureAllowedForPatient(
 }
 
 /**
+ * {@link sudDisclosureAllowedForPatient} for a caller that holds only the actor's SESSION identity (roles + active
+ * membership id), not an assembled `AbacContext`: the M7 routes' `sudDisclosureAllowed` closure and the Drizzle
+ * reader store's `{ actor }` audience both resolve through here, so the synthesized context exists in ONE place.
+ * The `roles` and `membershipId` MUST come from the server-assembled session, never request input. The context
+ * carries the one attribute that names the actor (`membershipId`); a context built without it reads as
+ * `actor_unidentified` against a workforce-restricted release.
+ */
+export async function sudDisclosureAllowedForActor(
+  q: {
+    organizationId: string;
+    patientId: string;
+    roles: readonly string[];
+    membershipId: string | null;
+  },
+  checkInternalAccess: InternalSudAccessChecker = defaultInternalSudAccessChecker(),
+): Promise<boolean> {
+  return sudDisclosureAllowedForPatient(
+    {
+      organizationId: q.organizationId,
+      userId: "",
+      roles: q.roles,
+      providerEntityIds: [],
+      locationIds: [],
+      attributes: { membershipId: q.membershipId },
+    },
+    q.patientId,
+    checkInternalAccess,
+  );
+}
+
+/**
  * Assemble the actor's §7.4 discipline scope from the session ROLE KEYS (never client input).
  *
  * WHY ROLE KEYS AND NOT A WORKFORCE READ — the platform's one derivation, stated in three places and now

@@ -4,8 +4,8 @@
 // the CONSUMER's `withOrgContext` (the reader never switches tenants — RLS scopes every read by
 // `app.org_id`, §7.8). Mirrors the M6 seams/store.ts precedent.
 //
-// SUD redaction (D7): the store resolves `sudReadAllowed` SQL-side — joining the patient's
-// privacy-flag snapshot / the M39 Part-2 consent fact — and tags each problem `containsSud`. It never
+// SUD redaction (D7): the store resolves `sudReadAllowed` through the M39 evaluator at call time (only
+// `containsSud`, the problem's own flag, comes from the row) and tags each problem `containsSud`. It never
 // trusts a caller-asserted SCOPE (§7.8). A caller supplies an audience (`CarePlanElementsAudience`): either a
 // per-ACTOR verdict its ROUTE resolved from the same M39 closure every other M7 read uses (only trustworthy from
 // such a route — a module that hand-builds `{ sudDisclosureAllowed: true }` would bypass M39), or its SESSION
@@ -23,7 +23,7 @@ import type {
   RelevantProblem,
 } from "@chartwarden/types";
 
-/** A care-plan problem the store hands the reader, carrying the SQL-resolved `containsSud` flag (D7). */
+/** A care-plan problem the store hands the reader, carrying the row's own `containsSud` flag (D7). */
 export interface StoredRelevantProblem extends RelevantProblem {
   /** True when this problem is a 42 CFR Part 2 SUD problem — dropped by the reader unless entitled. */
   readonly containsSud: boolean;
@@ -31,8 +31,8 @@ export interface StoredRelevantProblem extends RelevantProblem {
 
 /**
  * The active care plan's element set for a patient, already tenant-scoped by RLS. `sudReadAllowed` is
- * the store's SQL-side D7 decision (the caller's scope is never trusted); the reader filters SUD
- * problems out and flags `redacted` when it does.
+ * the store's D7 decision, resolved through the M39 evaluator at call time (the caller's scope is never
+ * trusted); the reader filters SUD problems out and flags `redacted` when it does.
  */
 export interface CarePlanElementsRecord {
   readonly planId: CarePlanId;
@@ -40,7 +40,7 @@ export interface CarePlanElementsRecord {
   readonly problems: readonly StoredRelevantProblem[];
   readonly goals: readonly RelevantGoal[];
   readonly interventions: readonly RelevantIntervention[];
-  /** Whether the caller is entitled to read SUD-flagged content for this patient (resolved SQL-side). */
+  /** Whether the caller is entitled to read SUD-flagged content for this patient (resolved through the M39 evaluator at call time, never from the row). */
   readonly sudReadAllowed: boolean;
 }
 

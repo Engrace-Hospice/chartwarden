@@ -5,7 +5,7 @@ import type { FastifyInstance } from "fastify";
 import {
   defaultConsentActiveChecker,
   defaultInternalSudAccessChecker,
-  sudDisclosureAllowedForPatient,
+  sudDisclosureAllowedForActor,
 } from "./abac-predicates";
 import {
   type CarePlanWriteOutboxPort,
@@ -50,20 +50,12 @@ export function mountCarePlanRoutes(
     const resolvedPatientId =
       patientId || (await resolver.loadPlan(organizationId, planId))?.patientId;
     if (!resolvedPatientId) return false;
-    return sudDisclosureAllowedForPatient(
-      {
-        organizationId,
-        userId: "",
-        roles,
-        providerEntityIds: [],
-        locationIds: [],
-        // The Part 2 decision is now PER-ACTOR, so the synthesized context has to carry the one
-        // attribute that names the actor. Passing `{}` here would have made every route-level
-        // redaction read as `actor_unidentified` against a workforce-restricted release — a
-        // fail-closed answer, but one that hides the chart from the very people it names.
-        attributes: { membershipId },
-      },
-      resolvedPatientId,
+    // The Part 2 decision is PER-ACTOR, so the synthesized context carries the one attribute that names the actor
+    // (`membershipId`, inside `sudDisclosureAllowedForActor`). Passing `{}` would have made every route-level
+    // redaction read as `actor_unidentified` against a workforce-restricted release — a fail-closed answer, but
+    // one that hides the chart from the very people it names.
+    return sudDisclosureAllowedForActor(
+      { organizationId, patientId: resolvedPatientId, roles, membershipId },
       sudInternalAccess,
     );
   };

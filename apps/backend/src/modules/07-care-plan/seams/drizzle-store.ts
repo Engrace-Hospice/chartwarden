@@ -16,15 +16,16 @@
 //
 // SUD (D7, §7.8): `sudReadAllowed` is resolved through the `ConsentEvaluator` seam at call time (the M16
 // disclosure-gate precedent), NEVER from a caller-asserted scope. A caller passes one of three audiences:
-//   • `{ actor: { roles, membershipId } }` — its SESSION identity; this store resolves the per-ACTOR verdict itself
-//     (`actorSudAllowed`: M39 `evaluateForInternalAccess` + the §7.6 RN-case-manager carve-out, the same
-//     `sudDisclosureAllowedForPatient` every other M7 read uses), so the caller can never assert a verdict (M8 link
-//     validation, M15 parent check);
+//   • `{ actor: { roles, membershipId } }` — its SESSION identity (server-assembled, never request input); this store
+//     resolves the per-ACTOR verdict itself (`actorSudAllowed`: M39 `evaluateForInternalAccess` + the §7.6
+//     RN-case-manager carve-out, through the same `sudDisclosureAllowedForActor` the M7 routes' closure uses), so the
+//     caller never hands over a verdict (M8 link validation, M15 parent check);
 //   • `{ sudDisclosureAllowed }` — a verdict that replaces the lookup, so it is a TRUST BOUNDARY: only a ROUTE that
 //     resolved it from the M7 closure (the picker's `deps.sudDisclosureAllowed`) may hand-build one;
 //   • `"patient_level"` — a caller with NO human actor (the scheduling worker, M15's system actor): the patient-level
 //     release lookup (`part2ReleaseAllowed`).
-// FAIL-CLOSED on every path: while M39 is a deny-stub, throws, or denies, the record reads `sudReadAllowed=false`
+// Every store-resolved path (`actor`, `"patient_level"`) is FAIL-CLOSED — a hand-built viewer is only as safe as the
+// route that resolved it: while M39 is a deny-stub, throws, or denies, the record reads `sudReadAllowed=false`
 // and the reader drops SUD problems + flags `redacted` — a consent outage narrows what a clinician sees; it never
 // widens it. The picker route calls its closure unconditionally before the reader runs (one M39
 // `evaluateForInternalAccess` call per load); the `actor` and `"patient_level"` round-trips are skipped when the
@@ -35,10 +36,7 @@ import type { CarePlanCodeUsageRecord, CarePlanElementsActor } from "@chartwarde
 import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { getSeam } from "../../../bootstrap/index";
-import {
-  defaultInternalSudAccessChecker,
-  sudDisclosureAllowedForPatient,
-} from "../abac-predicates";
+import { sudDisclosureAllowedForActor } from "../abac-predicates";
 import { effectiveNextReviewDueAt } from "../lifecycle/overdue-gate";
 import { PATIENT_PLAN_ORDER } from "../plan-selection";
 import {
@@ -115,18 +113,12 @@ async function actorSudAllowed(
   actor: CarePlanElementsActor["actor"],
 ): Promise<boolean> {
   try {
-    return await sudDisclosureAllowedForPatient(
-      {
-        organizationId,
-        userId: "",
-        roles: actor.roles,
-        providerEntityIds: [],
-        locationIds: [],
-        attributes: { membershipId: actor.membershipId },
-      },
+    return await sudDisclosureAllowedForActor({
+      organizationId,
       patientId,
-      defaultInternalSudAccessChecker(),
-    );
+      roles: actor.roles,
+      membershipId: actor.membershipId,
+    });
   } catch {
     return false; // §8.7 — an erroring resolver REDACTS, never discloses
   }

@@ -7,8 +7,9 @@
 // the IDG signs one while the aide works the other.
 //
 // The reader is asked for the elements RELEVANT to this plan's discipline, so an MSW plan is offered the
-// MSW-tagged interventions and a chaplain plan the chaplain-tagged ones. SUD redaction is applied SQL-side
-// inside M7's reader (D7) — M15 never re-derives it, and `redacted:true` rides through so the caller can
+// MSW-tagged interventions and a chaplain plan the chaplain-tagged ones. SUD redaction is applied inside M7's
+// reader (D7; the verdict is resolved through the M39 evaluator at call time, only `containsSud` comes from the
+// row) — M15 never re-derives it, and `redacted:true` rides through so the caller can
 // render the §7.8 "some content has been redacted" envelope rather than a silently short list.
 import type {
   CarePlanElementsAudience,
@@ -42,8 +43,8 @@ const READER_LENS_BY_KIND: {
  * The audience an M15 element read is made for. A HUMAN actor is asked under the PER-ACTOR Part 2 rule (their
  * role keys and active membership id, so the store resolves the same verdict the M7 picker used: an RN case manager
  * sees a Part 2 problem where no release names others, a nurse the release does not name does not). The one
- * exception is the SYSTEM actor (`kind === "system"`, minted only by `systemM15Actor`): it serves no human and has
- * no membership, so it stays on the patient-level release rule.
+ * exception is the SYSTEM actor (`kind === "system"`, minted only by `systemM15Actor`): it has no human and no
+ * roles (its membership id is only the attribution id), so it stays on the patient-level release rule.
  */
 export function elementsAudienceFor(actor: {
   readonly kind?: "system";

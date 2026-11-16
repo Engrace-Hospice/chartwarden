@@ -79,6 +79,25 @@ describe("the care plan `patient_level` audience is pinned to its reviewed calle
     expect(audienceCalls).toHaveLength(calls.length);
   });
 
+  it("no source file hand-builds a `{ sudDisclosureAllowed }` audience from a boolean literal", () => {
+    // The picker route's viewer is `{ sudDisclosureAllowed: await sudDisclosureAllowed({...}) }` (the M7 closure, never a
+    // literal). A literal `true` would bypass M39; the one `false` allowed is the write viewer's fail-closed fallback
+    // when the consent lookup throws (it can only narrow). Comments are stripped: they may quote the shape.
+    const code = (file: string) =>
+      read(file)
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const literals = sourceFiles("apps/backend/src").flatMap((f) =>
+      [...code(f).matchAll(/sudDisclosureAllowed:\s*(true|false)\b/g)].map((m) => `${f} ${m[1]}`),
+    );
+    expect(literals).toEqual([
+      "apps/backend/src/modules/07-care-plan/routes/care-plan-routes.ts false",
+    ]);
+    expect(read("apps/backend/src/modules/07-care-plan/routes/care-plan-routes.ts")).toMatch(
+      /sudDisclosureAllowed:\s*await sudDisclosureAllowed\(/,
+    );
+  });
+
   it("M8's link check asks under the ACTOR audience and never names the literal", () => {
     const m8 = read(M8_LINK);
     expect(m8).not.toContain('"patient_level"');

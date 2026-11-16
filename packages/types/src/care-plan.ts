@@ -224,8 +224,9 @@ export type IdgDecisionChange =
 // ── §7.8 CarePlanReader seam DTOs (read-only; returned by the seam below, never Drizzle rows) ────────
 
 /** A care-plan problem projection for the encounter-relevance picker (§7.8). Free-text `description`
- * is included for clinician display but SUD-flagged problems are filtered SQL-side when the caller
- * lacks a `42_cfr_part_2_release` consent context (D7). */
+ * is included for clinician display but SUD-flagged problems are filtered out (the verdict is resolved through
+ * the M39 evaluator at call time; only the problem's own SUD flag comes from the row) when the caller lacks a
+ * `42_cfr_part_2_release` consent context (D7). */
 export interface RelevantProblem {
   readonly problemId: ProblemId;
   readonly icd10Code: string | null;
@@ -310,7 +311,8 @@ export interface CarePlanElementsViewer {
  * The SESSION identity of the human an element read is for, for a caller that holds the session but not a
  * route-resolved verdict (M8's visit-to-problem link check, M15's parent-element check). The store resolves the
  * per-actor Part 2 verdict ITSELF through the M39 evaluator (the same closure every M7 read uses: the actor's
- * role keys and active membership id), so the caller can never assert one.
+ * role keys and active membership id). The roles and membership id MUST come from the server-assembled session,
+ * never from request input: the store trusts them as the identity it asks M39 about.
  */
 export interface CarePlanElementsActor {
   readonly actor: {
@@ -326,9 +328,10 @@ export interface CarePlanElementsActor {
  * Who an element read is for. REQUIRED on the seam so that omitting the audience is a compile error rather than
  * a silent fall-back to the weaker rule. There are three honest answers:
  *   • `CarePlanElementsViewer` — a hand-built `{ sudDisclosureAllowed }` verdict, only for a ROUTE that resolved it
- *     from the M7 closure (the picker route);
+ *     from the M7 closure (the picker route); it is only as safe as the route that resolved it;
  *   • `CarePlanElementsActor` — the caller holds the SESSION identity but no route-resolved verdict; the store
- *     resolves the per-actor verdict itself, so the caller can never assert one;
+ *     resolves the per-actor verdict itself from the server-assembled session roles and membership id (never
+ *     request input);
  *   • `"patient_level"` — ONLY for a caller with no human actor (the scheduling worker and M15's system actor);
  *     the store applies the patient-level Part 2 release check (any release with an active recipient). A caller
  *     that has a human actor must never pass it.
@@ -342,9 +345,9 @@ export type CarePlanElementsAudience =
  * §7.8 — the read surface M8 (encounter authoring + sign gate), M14 (IDG packet), and M15 (discipline
  * care plans) consume. Resolved within the consumer's tenant context (the reader does not switch
  * tenants); SUD redaction (D7) never trusts a caller-asserted scope: the store resolves the patient-level
- * release through the M39 evaluator, and the one thing a caller supplies is the per-ACTOR verdict (`CarePlanElementsAudience`)
- * its route resolved from the M39 closure. The concrete implementation + its M1-registry wiring land in
- * M7-T04; read-only DTOs above.
+ * release through the M39 evaluator, and the one thing a caller supplies is an audience (`CarePlanElementsAudience`):
+ * a route-resolved verdict, or its session identity from which the store resolves the verdict. The concrete
+ * implementation + its M1-registry wiring land in M7-T04; read-only DTOs above.
  */
 export interface CarePlanReader {
   /** Populate the encounter form's element picker — active problems, the active interventions tagged
