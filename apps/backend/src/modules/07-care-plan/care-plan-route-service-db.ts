@@ -1211,16 +1211,25 @@ export function createDbCarePlanRouteService(
         const bundle = await loadIdgProposalBundle(t, versionId);
         const { applications } = bundle;
         // §7.6: a caller without Part 2 disclosure sees no change anchored to a SUD-related problem.
-        const changes =
-          (viewer?.sudDisclosureAllowed ?? false)
-            ? bundle.changes
-            : await withoutSudAnchoredChanges(t, planId, bundle.changes);
+        const allowSud = viewer?.sudDisclosureAllowed ?? false;
+        const changes = allowSud
+          ? bundle.changes
+          : await withoutSudAnchoredChanges(t, planId, bundle.changes);
+        // A proposal made ONLY of changes the caller may not see would still show its id, status and reason, which
+        // confirms a Part 2 decision exists: it goes with them. (One with no changes at all, e.g. a refusal, stays.)
+        const visibleChangeIds = new Set(changes.map((c) => c.id));
+        const visibleApplications = allowSud
+          ? applications
+          : applications.filter((a) => {
+              const own = bundle.changes.filter((c) => c.applicationId === a.id);
+              return own.length === 0 || own.some((c) => visibleChangeIds.has(c.id));
+            });
         return {
           versionId,
           kind: version.kind,
           meetingId: version.idgMeetingId ?? applications[0]?.idgMeetingId ?? null,
           status: version.status,
-          proposals: applications.map((a) => ({
+          proposals: visibleApplications.map((a) => ({
             id: a.id,
             decisionId: a.idgDecisionId,
             meetingId: a.idgMeetingId,

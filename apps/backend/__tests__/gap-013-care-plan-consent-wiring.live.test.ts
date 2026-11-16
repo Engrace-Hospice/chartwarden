@@ -303,6 +303,76 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
       await app.close();
     });
 
+    /**
+     * A plan whose initial version holds a SUD problem and a plain one, finalized and read back through the REAL
+     * routes: route → `sudDisclosureAllowed` (plan to patient through the resolver) → M39's consent evaluator.
+     * The version snapshot freezes every problem, so it is the surface the redaction has to hold on.
+     */
+    async function finalizedWorld(opts: { partTwoRelease?: boolean } = {}) {
+      await seedTenant();
+      const app = bootApp({
+        grants: {
+          author_1: [
+            "care_plan.bootstrap",
+            "care_plan.author",
+            "care_plan.read",
+            "care_plan.finalize",
+          ],
+        },
+        // Built AFTER `seedTenant()`: a consent names the org and patient that call just minted.
+        ...(opts.partTwoRelease ? { consents: [activeConsent("42_cfr_part_2_release")] } : {}),
+      });
+      const AUTH = { "x-test-user": "author_1", "x-test-org": org };
+      const planId = await seedPlanWithSudProblem(app, AUTH);
+      await app.inject({
+        method: "POST",
+        url: `/api/v1/care-plans/${planId}/problems`,
+        headers: AUTH,
+        payload: {
+          description: "Terminal cancer",
+          kind: "terminal",
+          source: "clinical",
+          sudRelated: false,
+        },
+      });
+      const versionsUrl = `/api/v1/care-plans/${planId}/versions`;
+      const draft = (await app.inject({ method: "GET", url: versionsUrl, headers: AUTH })).json()
+        .items[0] as { id: string; version: number };
+      const finalized = await app.inject({
+        method: "POST",
+        url: `${versionsUrl}/${draft.id}/finalize`,
+        headers: AUTH,
+        payload: { ifVersion: draft.version },
+      });
+      const one = await app.inject({
+        method: "GET",
+        url: `${versionsUrl}/${draft.id}`,
+        headers: AUTH,
+      });
+      const all = await app.inject({ method: "GET", url: versionsUrl, headers: AUTH });
+      await app.close();
+      return { finalized, one, all };
+    }
+
+    it("withholds the SUD problem from the finalize result and the version reads for a caller with no Part 2 release", async () => {
+      const { finalized, one, all } = await finalizedWorld();
+      for (const res of [finalized, one, all]) {
+        expect(res.statusCode).toBe(200);
+        expect(res.body).not.toContain("Opioid use disorder");
+      }
+      // The redaction is a filter, not a blanket null: what the caller may see is still there.
+      expect(one.body).toContain("Dyspnea");
+      expect(one.body).toContain("Terminal cancer");
+    });
+
+    it("shows the SUD problem on the same version reads for a caller with an active 42 CFR Part 2 release", async () => {
+      const { finalized, one, all } = await finalizedWorld({ partTwoRelease: true });
+      for (const res of [finalized, one, all]) {
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toContain("Opioid use disorder");
+      }
+    });
+
     it("does NOT redact the SUD problem for the assigned RN Case Manager (§7.6 carve-out)", async () => {
       await seedTenant();
       const app = bootApp({

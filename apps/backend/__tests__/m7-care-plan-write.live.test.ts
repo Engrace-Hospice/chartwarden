@@ -1616,6 +1616,52 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       expect(allowed).toContain("Comfort at home");
     });
 
+    it("a proposal made ONLY of Part 2 changes is not listed without disclosure (its id, status and reason would confirm it exists)", async () => {
+      const { boot, patientId, problem } = await activePlanWithTerminalProblem("Baseline terminal");
+      const sud = (await svc.addProblem(ORG_A, boot.id, {
+        description: SUD_TEXT,
+        kind: "related",
+        source: "clinical",
+        sudRelated: true,
+      })) as Element;
+      const consumer = buildM7IdgDecisionConsumer({ db: handle.db, outbox: svcOutbox() });
+      const goalOn = (problemId: string, text: string) => ({
+        op: "goal_add",
+        problemId,
+        originalText: text,
+        revisedText: null,
+        source: "clinical",
+        measurableOutcome: "weekly",
+      });
+      const sudOnly = idgEvent({ patientId, mutations: [goalOn(sud.id, SUD_GOAL_TEXT)] });
+      const meetingId = sudOnly.payload.meetingId;
+      const plain = idgEvent({
+        patientId,
+        meetingId,
+        mutations: [goalOn(problem.id, "Comfort at home")],
+      });
+      for (const event of [sudOnly, plain]) await consumer.handle(event);
+      const [review] = (
+        await admin.query(
+          "SELECT id FROM care_plan_version WHERE care_plan_id=$1 AND kind='idg_review'",
+          [boot.id],
+        )
+      ).rows;
+      const listed = async (viewer: typeof DENY_SUD | typeof ALLOW_SUD) =>
+        (
+          (await svc.getProposedChanges(ORG_A, boot.id, review.id, viewer)) as {
+            proposals: { decisionId: string }[];
+          }
+        ).proposals
+          .map((p) => p.decisionId)
+          .sort();
+
+      expect(await listed(DENY_SUD)).toEqual([plain.payload.decisionId]);
+      expect(await listed(ALLOW_SUD)).toEqual(
+        [sudOnly.payload.decisionId, plain.payload.decisionId].sort(),
+      );
+    });
+
     it("#5 a problem resolves once: a re-resolve is 409 and keeps the first note, one m7.problem.resolved event, and a resolved row is read-only", async () => {
       const boot = (await svc.bootstrapCarePlan(ORG_A, randomUUID(), randomUUID())) as Boot;
       const p = (await svc.addProblem(ORG_A, boot.id, {

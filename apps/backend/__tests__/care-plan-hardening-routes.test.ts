@@ -625,6 +625,28 @@ describe("§7.6 SUD content is redacted from every version projection (#2)", () 
     expect(redacted.goals.map((g) => g.id)).toEqual(["g1"]);
     expect(redacted.interventions).toEqual([]);
   });
+
+  it("redactStateSnapshot treats a problem whose sudRelated is not the literal false as Part 2 (fail closed per problem)", () => {
+    const redacted = redactStateSnapshot(
+      {
+        problems: [
+          { id: "p1", sudRelated: false, description: "keep" },
+          { id: "p-missing", description: "no flag at all" },
+          { id: "p-string", sudRelated: "false", description: "mangled flag" },
+          "not-an-object",
+        ],
+        goals: [
+          { id: "g1", problemId: "p1" },
+          { id: "g-missing", problemId: "p-missing" },
+        ],
+        interventions: [{ id: "i-missing", problemId: "p-missing" }],
+      },
+      false,
+    ) as { problems: { id: string }[]; goals: { id: string }[]; interventions: unknown[] };
+    expect(redacted.problems.map((p) => p.id)).toEqual(["p1"]);
+    expect(redacted.goals.map((g) => g.id)).toEqual(["g1"]);
+    expect(redacted.interventions).toEqual([]);
+  });
 });
 
 describe("a re-admitted patient reads the live plan, not discharged plan 1 (#3)", () => {

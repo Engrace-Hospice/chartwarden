@@ -18,8 +18,20 @@ export function redactStateSnapshot(snapshot: unknown, sudDisclosureAllowed: boo
   ) {
     return null;
   }
+  // Fail closed per problem, as module 15 does: one whose `sudRelated` is not the literal `false` (a missing or
+  // mangled flag) is treated as Part 2. A sealed problem always carries the flag, so this only ever withholds.
+  const problems = (s.problems as unknown[]).map((problem) => {
+    const entry = typeof problem === "object" && problem !== null ? problem : {};
+    return (entry as { sudRelated?: unknown }).sudRelated === false
+      ? entry
+      : { ...entry, sudRelated: true };
+  });
   return redactCarePlanForCaller(
-    snapshot as { problems: never[]; goals: never[]; interventions: never[] },
+    { ...(snapshot as object), problems } as {
+      problems: never[];
+      goals: never[];
+      interventions: never[];
+    },
     false,
   );
 }
