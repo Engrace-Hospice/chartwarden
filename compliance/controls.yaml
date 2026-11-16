@@ -752,7 +752,7 @@ controls:
       owner: engineering
       review_by: 2027-01-31
   - id: CW-AC-43
-    title: Care-plan content flagged 42 CFR Part 2 (SUD) or family violence is withheld from a caller without disclosure on the care-plan read and write results (M7 problems, goals, interventions, version snapshots and proposed changes; M15 goals, interventions anchored to a hidden goal, assessments, version detail, finalize, sign and edit results, and the seam read), from every rendering and event that has no viewer (the M15 version-signed event and so the plan PDF, the IDG packet cover, the IDG minutes, the ops outbox detail read), and from an IDG decision that flags its own problem; redaction fails closed when the viewer is not named, when a snapshot has an unexpected shape or a missing flag, and when the consent lookup errors
+    title: Care-plan content flagged 42 CFR Part 2 (SUD) or family violence is withheld from a caller without disclosure on the care-plan read and write results (M7 problems, goals, interventions, version snapshots, proposed changes and the internal element-picker read, decided per caller; M15 goals, interventions anchored to a hidden goal, assessments, version detail, finalize, sign and edit results, and the seam read), from every rendering and event that has no viewer (the M15 version-signed event and so the plan PDF, the IDG packet cover, the IDG minutes, the ops outbox detail read), and from an IDG decision that flags its own problem; redaction fails closed when the viewer is not named, when a snapshot has an unexpected shape or a missing flag, and when the consent lookup errors
     hipaa: ["164.312(a)(1)", "164.502(b)"]
     soc2: ["CC6.1", "C1.1"]
     status: implemented
@@ -763,7 +763,9 @@ controls:
       # Mounts the real M7 AND M15 routes with no injected disclosure port: route -> seam registry -> the real M39
       # ConsentEvaluator, with a release, without one, and with the evaluator unbound (fail closed). Covers the M15
       # plan read, the goal edit, the version detail and list routes, and the ops outbox detail read (a decision's
-      # text withheld, the read attributed to the patient, the audit event landing).
+      # text withheld, the read attributed to the patient, the audit event landing). It also drives the M7 element
+      # picker (`/internal/care-plan/relevant-elements`) per caller: a nurse the release does not name, the nurse it
+      # names, no release, and the RN case manager carve-out.
       - script: test:m7:consent-wiring:live
       # M15 write results and reads against real rows, the version-signed event payload and the Part 2 goal
       # inheritance of an IDG-applied goal.
