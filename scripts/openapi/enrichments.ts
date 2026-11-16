@@ -5869,7 +5869,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeScheduleResponseSchema,
   },
   "POST /api/v1/admissions/:admissionId/hope/timepoints": {
-    summary: `Record a new HOPE timepoint (draft; RN/NP/MD author) — \`targetDate\` must be a real calendar date-time with an explicit offset (422 otherwise; a date that does not exist is never rolled forward); \`rfaKind\` \`04_sfv\` is accepted by the schema but refused before anything is written (422 VALIDATION_FAILED, detail code M10_RFA_KIND_NOT_A_TIMEPOINT: an SFV completion is recorded with POST /admissions/{admissionId}/hope/sfv); ${M10_SPEC_NOT_IN_FORCE_NOTE}; ${M10_RECORD_BUSY_NOTE}`,
+    summary: `Record a new HOPE timepoint (draft; RN/NP/MD author) — \`targetDate\` must be a real calendar date-time with an explicit offset (422 otherwise; a date that does not exist is never rolled forward); \`rfaKind\` \`04_sfv\` is accepted by the schema but refused before anything is written (422 VALIDATION_FAILED, detail code M10_RFA_KIND_NOT_A_TIMEPOINT: an SFV completion is recorded with POST /admissions/{admissionId}/hope/sfv); an admission and RFA that already has a draft returns that draft, and when the chart changed an answer the clinician did not type, the answer is rewritten, \`version\` goes up by one and the response carries it (a first fill of a new record answers version 1); ${M10_SPEC_NOT_IN_FORCE_NOTE}; ${M10_RECORD_BUSY_NOTE}`,
     body: M10RecordTimepointSchema,
     status: 201,
     response: M10HopeAssessmentResponseSchema,
