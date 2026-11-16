@@ -38,13 +38,14 @@ export const REFERENCE_REFUSAL_WORDS: Readonly<Record<ReferenceRefusal, string>>
 };
 
 /**
- * What a refused result says about the reference, or null when the refusal is not about it (the caller keeps the server's words): the
- * patient-identifier screen (this route screens nothing else), or a validation refusal that names the reference's field (the charset
- * answers "Expected union value", which says nothing to a clinician).
+ * What a refused result says about the reference, or null when the refusal is not about it (the caller keeps the server's words). The
+ * patient-identifier screen answers one code for the reference AND for every result row's tokens (`results.<i>.<token>`), so it is the
+ * reference's only when its detail names `reportReference`; a validation refusal likewise (the charset answers "Expected union value",
+ * which says nothing to a clinician).
  */
 export function referenceRefusalOf(
   refusal: Extract<WriteResult<unknown>, { ok: false }>,
 ): ReferenceRefusal | null {
-  if (refusal.code === PHI_REFUSAL_CODE) return "looks_like_phi";
-  return refusal.invalidField?.field === REFERENCE_FIELD ? "invalid_characters" : null;
+  if (refusal.invalidField?.field !== REFERENCE_FIELD) return null;
+  return refusal.code === PHI_REFUSAL_CODE ? "looks_like_phi" : "invalid_characters";
 }

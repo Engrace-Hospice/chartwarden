@@ -34,7 +34,19 @@ const JUSTIFICATION = "The visit was completed on time; the entry was delayed by
 
 const phiRefusal = () => ({
   data: undefined,
-  error: { error: { code: "EVIDENCE_LOOKS_LIKE_PHI", message: SERVER_WORDS } },
+  error: {
+    error: {
+      code: "EVIDENCE_LOOKS_LIKE_PHI",
+      message: SERVER_WORDS,
+      details: [
+        {
+          field: "adminOverrideJustification",
+          code: "EVIDENCE_LOOKS_LIKE_PHI",
+          message: SERVER_WORDS,
+        },
+      ],
+    },
+  },
   response: new Response(null, { status: 422 }),
 });
 
@@ -118,6 +130,28 @@ describe("an override justification refused as looking like a patient identifier
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(within(dialog).getAllByRole("alert")).toHaveLength(1));
     expect(field().getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("leaves a patient-identifier refusal that names another field as the server's own words", async () => {
+    const post = vi.fn(async () => ({
+      data: undefined,
+      error: {
+        error: {
+          code: "EVIDENCE_LOOKS_LIKE_PHI",
+          message: "server words for another field",
+          details: [{ field: "somethingElse", code: "EVIDENCE_LOOKS_LIKE_PHI", message: "x" }],
+        },
+      },
+      response: new Response(null, { status: 422 }),
+    }));
+    const { dialog, field, record } = mount(post);
+
+    fireEvent.click(record());
+
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "server words for another field",
+    );
+    expect(field().getAttribute("aria-invalid")).toBeNull();
   });
 
   it("leaves another refusal as the server's own words", async () => {

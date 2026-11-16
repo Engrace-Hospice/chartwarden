@@ -147,6 +147,24 @@ describe("the field a validation refusal names", () => {
     expect(validationFieldOf(body)).toBeNull();
   });
 
+  it("is also read from a patient-identifier refusal, which names its field the same way", () => {
+    const body = {
+      error: {
+        code: "EVIDENCE_LOOKS_LIKE_PHI",
+        message: "A result row's code looks like...",
+        details: [
+          { field: "results.0.code", code: "EVIDENCE_LOOKS_LIKE_PHI", message: "x" },
+          { field: "ignored", code: "Y", message: "y" },
+        ],
+      },
+    };
+
+    expect(validationFieldOf(body)).toEqual({
+      field: "results.0.code",
+      code: "EVIDENCE_LOOKS_LIKE_PHI",
+    });
+  });
+
   it("has no code when the detail carries none", () => {
     const body = {
       error: { code: "VALIDATION_FAILED", details: [{ field: "a", message: "bad" }] },

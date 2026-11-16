@@ -3,6 +3,7 @@ import {
   OVERRIDE_JUSTIFICATION_MAX,
   OVERRIDE_JUSTIFICATION_MIN,
   justificationLengthOk,
+  justificationRefusalOf,
 } from "./hope-override-justification";
 
 // The mirror of the server's length rule: the minimum is measured after each run of Unicode White_Space collapses to one space (so
@@ -42,5 +43,52 @@ describe("justificationLengthOk", () => {
     ["a thousand and one characters", "a".repeat(1001)],
   ])("refuses %s", (_name, text) => {
     expect(justificationLengthOk(text)).toBe(false);
+  });
+});
+
+// The patient-identifier screen answers with the same code for whatever field it screened: only the justification's own field is the
+// justification's refusal.
+describe("justificationRefusalOf", () => {
+  const failed = (code: string | null, invalidField?: { field: string; code: string | null }) =>
+    ({
+      ok: false,
+      status: 422,
+      message: "m",
+      code,
+      ...(invalidField ? { invalidField } : {}),
+    }) as const;
+
+  it.each([
+    [
+      "a patient-identifier refusal naming the justification",
+      failed("EVIDENCE_LOOKS_LIKE_PHI", { field: "adminOverrideJustification", code: "X" }),
+      "looks_like_phi",
+    ],
+    [
+      "invalid characters in the justification",
+      failed("VALIDATION_FAILED", {
+        field: "adminOverrideJustification",
+        code: "INVALID_CHARACTERS",
+      }),
+      "invalid_characters",
+    ],
+    [
+      "another objection to the justification",
+      failed("VALIDATION_FAILED", { field: "adminOverrideJustification", code: "TOO_SHORT" }),
+      "not_accepted",
+    ],
+  ])("says so for %s", (_name, refusal, expected) => {
+    expect(justificationRefusalOf(refusal)).toBe(expected);
+  });
+
+  it.each([
+    [
+      "a patient-identifier refusal naming another field",
+      failed("EVIDENCE_LOOKS_LIKE_PHI", { field: "somethingElse", code: "X" }),
+    ],
+    ["a patient-identifier refusal naming no field", failed("EVIDENCE_LOOKS_LIKE_PHI")],
+    ["any other refusal", failed("CONFLICT")],
+  ])("leaves %s to the server's words", (_name, refusal) => {
+    expect(justificationRefusalOf(refusal)).toBeNull();
   });
 });

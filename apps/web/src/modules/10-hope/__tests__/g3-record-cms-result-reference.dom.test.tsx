@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RecordCmsResultModal } from "../record-cms-result-modal";
 
 // Group g3: the CMS-result dialog's "Report reference (optional)" field. The server accepts letters, digits, spaces and `. _ : # / -`
-// up to 128 characters, the first one not a space (REFERENCE_CHARSET in hope-typebox.ts) and screens the rest for patient identifiers, so the dialog says so
+// up to 128 characters, the first one not a space (HOPE_TOKEN_PATTERN in hope-typebox.ts) and screens the rest for patient identifiers, so the dialog says so
 // beside the field, refuses a character the server would refuse before anything is confirmed, and answers a server refusal on the
 // field (its words name the wire field `reportReference` and, for the charset, say only "Expected union value").
 
@@ -26,6 +26,29 @@ const phiRefusal = (): Reply => ({
       code: "EVIDENCE_LOOKS_LIKE_PHI",
       message:
         "reportReference looks like it contains a patient identifier (a Social Security or Medicare number). Enter the reference that CMS or the iQIES upload gave, never a patient's number.",
+      details: [
+        {
+          field: "reportReference",
+          code: "EVIDENCE_LOOKS_LIKE_PHI",
+          message: "reportReference ...",
+        },
+      ],
+    },
+  },
+  response: new Response(null, { status: 422 }),
+});
+/** The same code for a result ROW's token (`results.<i>.<token>`): the route screens those too, and names the token in its words. */
+const ROW_PHI_WORDS =
+  "A result row's code looks like it contains a patient identifier (a Social Security or Medicare number). Enter the code or id that CMS gave, never a patient's number.";
+const rowPhiRefusal = (): Reply => ({
+  data: undefined,
+  error: {
+    error: {
+      code: "EVIDENCE_LOOKS_LIKE_PHI",
+      message: ROW_PHI_WORDS,
+      details: [
+        { field: "results.0.code", code: "EVIDENCE_LOOKS_LIKE_PHI", message: ROW_PHI_WORDS },
+      ],
     },
   },
   response: new Response(null, { status: 422 }),
@@ -247,6 +270,40 @@ describe.each([
     await waitFor(() => expect(within(dialog).getAllByRole("alert")).toHaveLength(1));
     expect(field().getAttribute("aria-invalid")).toBe("true");
     expect(document.activeElement).toBe(field());
+  });
+});
+
+describe("a patient-identifier refusal of a result row's token", () => {
+  it("is not put on the report reference: the field stays valid and the server's words, which name the token, are shown", async () => {
+    const { dialog, field, review, onConflict } = mount(async () => rowPhiRefusal());
+    typeReference(field(), "REF 123");
+
+    await reviewAndConfirm(dialog);
+
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(ROW_PHI_WORDS);
+    expect(within(dialog).getAllByRole("alert")).toHaveLength(1);
+    expect(field().getAttribute("aria-invalid")).toBeNull();
+    expect(dialog.textContent).not.toContain("Enter the reference CMS gave");
+    // Back on the form with everything kept, and nothing moved focus to the reference.
+    expect(field().value).toBe("REF 123");
+    expect(review().disabled).toBe(false);
+    expect(document.activeElement).not.toBe(field());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onConflict).not.toHaveBeenCalled();
+  });
+
+  it("is the server's words too when the refusal names no field at all", async () => {
+    const { dialog, field } = mount(async () => ({
+      data: undefined,
+      error: { error: { code: "EVIDENCE_LOOKS_LIKE_PHI", message: ROW_PHI_WORDS } },
+      response: new Response(null, { status: 422 }),
+    }));
+    typeReference(field(), "REF 123");
+
+    await reviewAndConfirm(dialog);
+
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(ROW_PHI_WORDS);
+    expect(field().getAttribute("aria-invalid")).toBeNull();
   });
 });
 

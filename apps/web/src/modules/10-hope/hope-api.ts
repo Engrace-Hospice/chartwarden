@@ -166,23 +166,32 @@ export function validationDetailOf(body: unknown): string | null {
     : first.message;
 }
 
-/** The field a VALIDATION_FAILED refusal objected to, and the code of that objection (`INVALID_CHARACTERS`, `INVALID`...); null when it sent none. */
+/** The field a VALIDATION_FAILED or EVIDENCE_LOOKS_LIKE_PHI refusal objected to, and the code of that objection (`INVALID_CHARACTERS`, `INVALID`...). */
 export interface ValidationField {
   readonly field: string;
   readonly code: string | null;
 }
 
+/** The codes whose `details[0].field` names what was refused: the patient-identifier screen names the field it screened the same way. */
+const FIELD_NAMING_CODES: ReadonlySet<string> = new Set([
+  "VALIDATION_FAILED",
+  "EVIDENCE_LOOKS_LIKE_PHI",
+]);
+
 /**
- * For a `VALIDATION_FAILED` refusal, the first field it objected to and why, or null (another code, no details, a detail that names no
- * field). The wire name is for a screen to match on, never to show: it answers on its own control in its own static words.
+ * For a `VALIDATION_FAILED` or `EVIDENCE_LOOKS_LIKE_PHI` refusal, the first field it objected to and why, or null (another code, no
+ * details, a detail that names no field). The patient-identifier screen runs over several fields of one request (a result import
+ * screens the report reference AND every row's tokens, as `results.<i>.<token>`), so the code alone does not say which was refused: a
+ * screen decides by this field. The wire name is for a screen to match on, never to show: it answers on its own control in its own words.
  */
 export function validationFieldOf(body: unknown): ValidationField | null {
-  if (errorCodeOf(body) !== "VALIDATION_FAILED") return null;
+  const code = errorCodeOf(body);
+  if (code === null || !FIELD_NAMING_CODES.has(code)) return null;
   const first = (body as { error?: { details?: ReadonlyArray<unknown> } }).error?.details?.[0];
   if (typeof first !== "object" || first === null) return null;
-  const { field, code } = first as { field?: unknown; code?: unknown };
+  const { field, code: detailCode } = first as { field?: unknown; code?: unknown };
   if (typeof field !== "string" || field === "") return null;
-  return { field, code: typeof code === "string" ? code : null };
+  return { field, code: typeof detailCode === "string" ? detailCode : null };
 }
 
 /**

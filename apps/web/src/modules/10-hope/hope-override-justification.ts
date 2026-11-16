@@ -54,14 +54,15 @@ export const JUSTIFICATION_REFUSAL_WORDS: Readonly<Record<JustificationRefusal, 
 };
 
 /**
- * What a refused record says about the justification, or null when the refusal is not about it (the caller keeps the server's words):
- * the patient-identifier screen, or a validation refusal that names the justification's field (its character rule, a bound).
+ * What a refused record says about the justification, or null when the refusal is not about it (the caller keeps the server's words).
+ * Only a refusal whose detail names the justification's own field is: the patient-identifier screen answers one code whichever field
+ * it screened, so the code alone is not enough.
  */
 export function justificationRefusalOf(
   refusal: Extract<WriteResult<unknown>, { ok: false }>,
 ): JustificationRefusal | null {
-  if (refusal.code === PHI_REFUSAL_CODE) return "looks_like_phi";
   if (refusal.invalidField?.field !== JUSTIFICATION_FIELD) return null;
+  if (refusal.code === PHI_REFUSAL_CODE) return "looks_like_phi";
   return refusal.invalidField.code === INVALID_CHARACTERS_CODE
     ? "invalid_characters"
     : "not_accepted";
