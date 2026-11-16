@@ -1087,3 +1087,108 @@ fixed them (`git log --grep '<ID>'`), and in the tests named in the paragraph th
 | W9-3 | `corepack`, `volta run`, `mise exec`, `asdf exec`, `direnv exec`, `cross-env`, `dotenv`, `dotenvx`, `env-cmd`, `doppler`, `op run`, `lerna exec`, `nx exec` hid their command; and wave 8's runner peel dropped the runner's own file options (`bun --env-file F run echo` was allowed). |
 | W9-4 | One long-option abbreviation reader instead of three inline copies; four `isOption` definitions and three operand readers stay separate (they differ on a lone `-` and an empty argument; wave 10 corrected the count). |
 | CR5-1 to CR5-11 | The round-5 code review: brace budget and whitespace (1), nested agent variables (2), one assignment grammar (3), wildcard pathspecs (4), per-root names (5), five sweep readings (6), the live env list (7), surviving mutants (8), doc claims (9), structure (10), vitest substring filters (11). |
+
+## Wave 10 part A
+
+Round 7 (two cold reviews of waves 8 and 9) found, and the orchestrator re-ran, the shell-structure, wrapper and runner findings below; part B of the same wave
+holds the database, secret and sweep findings. Each item has a test file under `scripts/__tests__/harness-*-wave10.test.ts`. The orchestrator's spot-check
+script (`verify-r7.ts`) went from 64 of 77 rows not as expected on the wave-9 tip to 28 on this part's tip: 27 belong to part B (database targets, secrets, variables) and one is the documented residual `make -C /tmp psql`. The design rule of
+this part, from the brief: **wrapping a command must never make the answer weaker** (the wave-9 regressions were exactly that), and **unknown is not allow**.
+
+- *A nested command string is read once, by the rules of the quote it came from* (`patterns.ts` `words(seg, values)` and `Parsed.handed`,
+  `harness-nested-strings-wave10.test.ts`; R7-CR-1, pre-existing since wave 3). `bash -c "cat \".env\""` handed the inner shell `cat \".env\"`, a path with
+  quote characters that matches no secret name, so an escaped quote hid the inner command from every rule (a secret read, a protected write, a force
+  push, a database host). `words()` has a `values` mode that reads a word the way the shell hands it to the program (outside quotes `\x` is `x`; inside
+  double quotes `\"`, `\\`, `\$` and a backtick lose their backslash and a backslash-newline is gone; single quotes keep every backslash), `parseSegment`
+  keeps the program and arguments read that way (`Parsed.handed`, computed only for a segment that holds a backslash), and `nestedCommandVerdicts`
+  judges every nested string from them: `bash|sh|zsh|dash -c` (any flag cluster ending in `c`), `eval`, `find -exec|-ok`, `watch`, `entr`, `su -c`,
+  `runuser -c`, `flock -c`, `script -c`, an `ssh` remote command, `rsync -e`, `tar --to-command|-I`, a runner's `-c` (`npx`, `npm exec`), `docker exec` and `docker
+  run … sh -c`, and a wrapper in front of any of them. One test per producer (31) against the four guarded commands, and 1 to 14 levels of `bash -c "…"` and of
+  `bash -c '…'` with `'\''` quoting: every level is decoded (the wave-9 tip allowed 2 to 14 double-quote levels and 2 to 8 single-quote levels), and a
+  nesting past the cap of 8, or past the 64 KB size cap, ASKS or is refused, never allowed. Mutation: using `parsed` instead of `parsed.handed` fails 109 of
+  143 tests; keeping every backslash fails 109; dropping `\$` from the double-quote set fails 1. One mutant survives by design: the backslash-newline
+  branch (the inner `judge` reads a continuation itself, so the branch is equivalent).
+- *One option reader for every wrapper* (`option-grammar.ts`, `wrapper-specs.ts`, `wrapper-peel.ts`, `program-name.ts`, `harness-wrapper-grammar-wave10.test.ts`;
+  R7-ADV-4, R7-CR-2, R7-ADV-5, R7-ADV-6, R7-CR-12, R7-CR-15). Wave 9 read a short cluster as one word (`sudo -upostgres pg_dump -h <host>` read the `e` of the
+  value as `sudo -e`; `sudo -nu postgres CMD` ate the user's name as the command), read a long FLAG that prefixes a long VALUE option as that option (`sudo --login
+  CMD`, a prefix of `--login-class`, ate `CMD`), had `timeout` and `taskset` readers of their own that took no abbreviation (`timeout --sig KILL 5 CMD`,
+  `taskset --cpu 0 CMD`), and looked a wrapper up by its whole word (`/usr/bin/nice psql -h <host>`, `/usr/bin/env git push origin main`, `./nohup`,
+  `~/bin/nice` were never peeled: 4 real commands use this shape, 2 were allowed). Now each wrapper has the grammar of its own CLI (short flags, short value
+  options, long flags, long value options, optional values, operands before the command, the option that stands for a directory or a command string) and ONE
+  reader takes it the way GNU getopt does: a cluster is read letter by letter and ends at the first value letter; a long option is an exact flag or value
+  name FIRST, then any unambiguous prefix over flags and values together, one character down (the wave-9 doc said "two characters or more"); `--name=value`
+  is one word whatever the name; `--` ends the options. The lookup uses `programName` (backslashes removed, directory dropped), the one helper for the wrapper
+  and runner tables (shells and the rest of the classifier already took the last path component). `timeout` is a table entry like the others (and `gtimeout`,
+  `gchroot`). A word the table cannot place (an unknown letter or long option, an ambiguous prefix) is **asked about** (`Parsed.unplaced`): rule 3 of the
+  brief offered "judge every plausible start" or "ask", and ask was chosen because the corpus cost of it is 0 real commands (the corpus diff shows no unplaced-option bucket). A grammar that cannot be complete is
+  `lax` (an unknown option is a flag, the older behaviour): `strace`, `unbuffer`, `xcrun`, `lima`, `chronic`, `proxychains`, `ssh-agent`, the residual wrappers
+  below. `flock` and `runuser` stay the program only for a `-c` among their leading options or directly after the file or user operand (`flock /tmp/l psql
+  -h <host> -c 'select 1'` is now peeled); `taskset -c LIST` supplies the mask operand. The MONOTONICITY property test iterates the real tables:
+  for every wrapper it generates every declared flag, every value option with a value (joined `-xV`, `--opt=V`, separate), every unambiguous
+  abbreviation of every long option, clusters and `--`, puts each of five guarded commands behind them (a push, the hook-bypass flag, a non-local
+  database host, a write to a protected file, a live env file name) and asserts the wrapped answer is never weaker than the command alone; a second test
+  asserts that no declared flag that prefixes a value option is read as it. Mutation: resolving a prefix before the exact name fails 9; dropping the
+  value-letter rule fails 37; accepting an ambiguous prefix fails 2; matching the wrapper by its whole word fails 63; `taskset` without its
+  `cpu-list` supplier fails 3.
+- *A command run in a fresh container* (`container-run.ts`, `harness-container-run-wave10.test.ts`; R7-ADV-7, R7-CR-15). `containerRun` judged the command
+  only when a writable bind mount let it map paths back, so `docker run --rm postgres:16 psql -h <host>`, `docker compose run --rm migrate psql -h <host>`,
+  `podman|nerdctl run …`, `docker run --entrypoint psql IMG -h <host>` and `docker run -e PGHOST=<host> IMG psql` passed every rule while `docker exec db psql -h <host>`
+  was denied (the wave-9 residual said "docker exec … is not read": the code denies it, both are stated here). Now the command behind the image or the compose
+  service is judged with every rule for `docker|podman|nerdctl [container] run|create`, `docker|podman compose run` and `docker-compose|podman-compose run`: the
+  options are read from each tool's own `--help` (docker, compose and podman are installed here; exact names, nerdctl takes the union), the image is the first
+  word that is no option or value, `--entrypoint X` makes X the program, `-e NAME=VALUE` is an assignment in front of the command (so a database variable set
+  for the container is read like one set for the shell), and an unknown option asks. The mount-mapping reader stays as it was; both run. The command is judged
+  in the host's working directory. Corpus: 199 of the 518 real commands that run a client behind `docker run` or `compose run` were allowed on the wave-9 tip; on this tree none of them changes (their hosts are local). The whole corpus has 3 transitions, all of them here: 2 "Opening a raw connection to `X`" (a `docker run` whose inner command opens one: first words `docker` and `cd`) and 1 "built by command substitution … could name a live env file" (a `docker run` of an image name that holds a substitution).
+- *`parallel`, `coproc`, `ssh`* (`parallel-command.ts`, `harness-parallel-ssh-wave10.test.ts`; R7-ADV-10, R7-ADV-11, R7-CR-12, R7-ADV-12). The words after `:::`
+  are DATA: the `cp` model saw `/tmp/x` as the destination of `parallel cp {} .claude/settings.json ::: /tmp/x`. The command is cut off before the first
+  separator; the lines judged in addition are the command once per datum with the datum where `{}` (or the replacement string `-I`, `--replace`, `--rpl`
+  declares) is, or appended when nothing says where; a first word that holds whitespace is a command line (`parallel 'cp {} CLAUDE.md' ::: x`); with no command the
+  data are the commands (`parallel ::: 'rm x'`); `::::` words are files read like an input redirect (a live env file is denied); data past 64 words are judged together once.
+  The table has the 82 long value options of the manual (`--nice`, `--trim`, `--tagstring`, `--rpl`, `--id`, `--jl`, `--sshdelay`, `--memsuspend`, `--sql`, …,
+  from memory of the manual: GNU parallel is not installed) and `-j2` reads its value attached. `coproc CMD` is a wrapper. `ssh` reads options up to the first word after
+  the host, as OpenSSH does; from there on every word, dash words included, is the remote command (`ssh localhost sed -i s/a/b/ CLAUDE.md`); the quoted form keeps its answer.
+- *Each package manager reads the grammar of its own CLI* (`runners.ts`, `runner-grammars.ts`, `harness-runner-grammars-wave10.test.ts`; R7-ADV-13, R7-CR-8,
+  R7-ADV-15, R7-CR-13, R7-ADV-18). Wave 8 read every manager's options with ONE regex that listed `-r -c -w -F -C` as value options; they are flags in pnpm and yarn,
+  so `pnpm -r exec CMD`, `pnpm -w exec CMD`, `pnpm -c exec CMD`, `pnpm exec --workspace-root CMD`, `pnpm --reporter silent exec CMD` hid the command. Now: bun's grammar is
+  read from `bun --help` (1.4.4; every long option is a flag whose value rides after `=`: `bun --port 3000 run x` is a usage error, probed, so it is no run), pnpm's from `pnpm help
+  exec|dlx` (10.30), uv's from `uv run|uvx|uv tool run --help`; npm's, yarn's and the environment loaders' are `lax` and from documentation (npm's own parser reads an unknown option
+  as a boolean). `yarn workspace NAME CMD` and `yarn workspaces foreach [options] CMD` pass through to the yarn command behind them; `bun exec STR` runs STR as a shell line; `corepack
+  pnpm@9 dlx …` names pnpm. Booleans wrongly listed as valued are flags (`env-cmd --fallback`, `lerna exec --include-dependencies`, `nx exec --parallel`, `op run --cache`) and
+  `dotenvx run --ignore X` takes a value. New runners: `uv run|tool run`, `uvx`, `pipx run`, `poetry|pdm|rye|hatch|pipenv|devbox run`, `conda|micromamba run`,
+  `nix shell|develop -c|--command CMD`, `nix-shell --run STR`, `flox activate -- CMD|-c STR`, `perf stat|record|trace`. **The word a runner starts is also read as an operand**
+  (`bun <live env file>` and `bun run <live env file>` were allowed since wave 8, denied in wave 7: the runner peel made the name the program, which the secret-name rule
+  does not scan). Two of the round-7 payloads are **not bypasses on bun 1.4.4** (probed in a scratch directory, with `echo`): `bun --bun cp …` and `bun --silent echo hi` print "Script not found" (a bare
+  `bun NAME` runs no PATH program there, and an option before the name made the name no program in the wave-8 tests), and `bun --port 3000 run cp …` is a usage error; they stay unpeeled and the tests pin it.
+- *Remote sessions ask, and the wave-9 residual wrappers are peeled* (`remote-access.ts`, `wrapper-specs.ts`, `harness-remote-access-wave10.test.ts`; R7-ADV-15). `kubectl
+  exec|port-forward|cp|debug|attach`, `docker -H|--host`, `DOCKER_HOST=ssh|tcp://`, `docker context use`, `gcloud sql connect`, `gcloud compute ssh|scp`, `aws rds …`, `aws ssm
+  start-session`, `aws ecs execute-command`, `fly postgres|pg connect|proxy`, `fly ssh|proxy`, `heroku pg:psql|pull|push`, `supabase db … --db-url|--linked`, `autossh` and
+  `cloudflared access` ASK whatever runs behind them (the access a non-local ssh is; Codex denies). Corpus: 0 real commands (no bucket in the corpus diff). Peeled by the wrapper table: `torify`, `tsocks`, `toybox`, `firejail`, `valgrind`, `fakeroot`,
+  `setpriv`, `nsenter`, `sshpass` (`-f FILE` is read), `systemd-run`, `ltrace`, `dtruss`, `numactl`, `cpulimit`, `gdb --args`; `make`, `just` and `task` run recipes of the repo,
+  not an arbitrary command, and are **not** peeled (a documented residual). Still residual: `bwrap` (options with two values), `rlwrap`, `hyperfine` (every argument is a command line),
+  and the stdin filters `ts` and `pv`.
+- **Two existing tests changed their payload, and why.** `harness-hooks.test.ts` listed `kubectl exec|debug` (non-interactive) as commands the Codex guard allows outright;
+  they ask now (Codex: deny) under the remote-session rule, so the rows assert only that the INTERACTIVE-shell rule does not fire. The derived long-option rows of
+  `harness-wrapper-options-wave9.test.ts` got operand dummies for the wrappers that need one (`timeout`, `chrt`, `runuser`) and skip `env --split-string` (its words are
+  the command, as `env -S` runs them) and `gdb` (it runs a command only behind `--args`).
+- **Residuals.** A computed program name or a quoted wrapper option value is not read. A wrapper or runner option the lax tables do not list and that takes a separate value
+  hides its command (`strace --foo bar cmd`, `pnpm --some-new-option v exec cmd`): npm, pnpm, yarn and the loaders are not complete lists. GNU `parallel`, `timeout`, `flock`,
+  `taskset`, `ionice`, `chrt`, `runuser`, `unshare`, `strace`, `doas`, `nix`, `yarn`, `poetry`, `pdm`, `rye`, `hatch`, `pipenv`, `conda`, `micromamba`, `devbox`, `flox`, `perf`, `ltrace`, `numactl`,
+  `cpulimit`, `setpriv`, `nsenter`, `sshpass`, `systemd-run`, `fakeroot` and `valgrind` are not installed here: their rows are from the manuals (`unverified` in the table comments), nothing was run on Linux.
+  `docker run` is judged in the host's working directory (the container's own paths are not mapped unless a mount says so). Data of `parallel` past 64 words are judged together, once.
+  `make`, `just`, `task` recipes, `bwrap`, `rlwrap`, `hyperfine`, `ts`, `pv` (above).
+- **Corpus cost, measured on the final tree against the REAL checkout.** 140,767 distinct Bash commands recorded in this machine's Claude sessions, classified in process with the wave-9 tip (`f3a0e5f47`) and with this tree, the live listings read from the real checkout (read only; nothing executed; the differ is a scratch script, not committed). **3 transitions, 0.002%: 3 allow to ask** (the container-run bucket above), 0 allow to deny, 0 ask to deny, 0 deny to allow, 0 ask to allow; no throws; the slowest single classification 266 ms (322 ms on the wave-9 tip, same load). The budget for this part was 0.03% (about 42 commands). The wrapper-option asks (`unplaced`) and the remote-session asks cost 0 real commands; the by-path wrappers, `parallel` and the nested-string decode change no real command. The pinned hook commands, replayed on this tree (Claude and Codex; the corrupted-copy fail-closed checks), answer as on the wave-9 tip, 43 to 90 ms per call. The round-5, round-6 and everyday spot-check scripts answer identically (33, 42, 6, 35 and 228 rows: same or stronger, none weaker; `verify-r6.ts` fails only on its seven documented rows).
+
+| ID | What it was |
+|---|---|
+| R7-CR-1 | Escaped quotes inside a double-quoted nested string hid the inner command in every nested-string producer, at every nesting depth. |
+| R7-ADV-4, R7-CR-2 | Wave-9 regression: `sudo -upostgres …`, `sudo -nu x …`, `sudo --login …`, `taskset --cpu 0 …` hid the command (deny to allow). |
+| R7-ADV-5 | A wrapper called by path (`/usr/bin/nice`, `./nohup`) was not peeled. |
+| R7-ADV-6, R7-CR-12 | `timeout --sig KILL 5 …`, `nice --a 5 …`, `xargs --a FILE`: one-character and abbreviated long options; `coproc`. |
+| R7-ADV-7 | A client run in a fresh container (`docker run IMG psql -h <host>`, `compose run`, `podman`, `nerdctl`, `--entrypoint`, `-e PGHOST=`) was never read. |
+| R7-ADV-10, R7-ADV-11 | `parallel` data read as arguments, quoted commands and `::::` files unread, 11 value options missing. |
+| R7-ADV-12 | `ssh localhost sed -i … CLAUDE.md`: the remote command's dash words were read as ssh options. |
+| R7-ADV-13, R7-CR-8 | `pnpm -r|-w|-c exec`, `yarn workspace(s)`, `bun exec`: one manager regex with flags listed as values. |
+| R7-ADV-15, R7-CR-13 | `uv`, `uvx`, `pipx`, `poetry`, `nix`, `flox`, `devbox`, `kubectl exec`, `autossh`, … hid their command; booleans listed as valued (`env-cmd --fallback`). |
+| R7-CR-15 | `flock`/`runuser` stayed the program when the inner command had a `-c` of its own. |
+| R7-ADV-18 | `bun <live env file>` and `bun run <live env file>`: the runner peel made the secret name the program (wave-8 regression). |
+| R7-CR-16, R7-CR-17 | Wave-9 miscounted the duplicated `isOption` readers (four, five before this wave); dead `isEditor` removed. |
