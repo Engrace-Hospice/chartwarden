@@ -135,7 +135,7 @@ export const m23OverrideRoleRequired = pgEnum("m23_override_role_required", [
   "org_admin",
 ]);
 
-export const m23MacJurisdiction = pgEnum("m23_mac_jurisdiction", [
+export const m23MacJurisdiction = pgEnum("mac_jurisdiction", [
   "ngs_j6", // National Government Services — Jurisdiction 6 (incl. Engrace OR)
   "ngs_jk", // NGS — Jurisdiction K
   "cgs_j15", // CGS — Jurisdiction 15

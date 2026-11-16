@@ -5,7 +5,7 @@ CREATE TABLE medicare_provider_routing (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id uuid NOT NULL REFERENCES organization(id) ON DELETE RESTRICT,
   provider_entity_id uuid NOT NULL,
-  mac_jurisdiction m23_mac_jurisdiction NOT NULL,
+  mac_jurisdiction mac_jurisdiction NOT NULL,
   effective_from date NOT NULL,
   effective_to date,
   provenance text NOT NULL CHECK (provenance IN ('manual', 'legacy_mac_credential')),

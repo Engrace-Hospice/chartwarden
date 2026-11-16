@@ -270,7 +270,7 @@ export interface AssembleClaimArgs {
   readonly tob: "811" | "812" | "813" | "814";
   readonly serviceFrom: string;
   readonly serviceTo: string;
-  /** The MAC jurisdiction (the `m23_mac_jurisdiction` alphabet, e.g. `ngs_j6`). */
+  /** The MAC jurisdiction (the `mac_jurisdiction` alphabet, e.g. `ngs_j6`). */
   readonly macJurisdiction: string;
   readonly lines: readonly AssembledClaimLineInput[];
   /** Defaults to the sum of the lines' `lineChargeCents` when omitted. */
