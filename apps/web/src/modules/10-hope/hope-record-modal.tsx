@@ -66,6 +66,14 @@ import {
   recordTimepoint,
 } from "./hope-api";
 import { notifyDone } from "./hope-notify-done";
+import {
+  JUSTIFICATION_REFUSAL_WORDS,
+  type JustificationRefusal,
+  OVERRIDE_JUSTIFICATION_MAX,
+  OVERRIDE_JUSTIFICATION_MIN,
+  hasForbiddenJustificationCharacter,
+  justificationRefusalOf,
+} from "./hope-override-justification";
 import { rfaLabel } from "./hope-status";
 import { useFocusOnNewError } from "./use-focus-on-new-error";
 
@@ -117,22 +125,6 @@ const LATE_REASONS: readonly LateReasonCode[] = [
  * still tell a justified, audited override from a late capture labelled with it.
  */
 const CHOOSABLE_LATE_REASONS = LATE_REASONS.filter((r) => r !== "admin_override");
-
-/**
- * The server's own bounds on the justification that must accompany an administrative override
- * (`RecordTimepointSchema.adminOverrideJustification`, and `requireOverrideJustification` refuses an override without one).
- */
-const OVERRIDE_JUSTIFICATION_MIN = 20;
-const OVERRIDE_JUSTIFICATION_MAX = 1000;
-
-/**
- * The code the server answers (422) when the justification looks like a patient identifier. Its own words are written for an evidence
- * note ("describe what was checked", "cite documents") and name the wire field, so the clinician is told this instead, on the field.
- * Static on purpose: the field's error is an alert, announced again on every change of its text.
- */
-const PHI_REFUSAL_CODE = "EVIDENCE_LOOKS_LIKE_PHI";
-const JUSTIFICATION_LOOKS_LIKE_PHI =
-  "This looks like it contains a Social Security or Medicare number. Say why the visit is late without naming a patient or quoting an identifier. A long ID number can trip this check, so leave it out.";
 
 /**
  * The permission the server requires for `adminOverride` (hope-routes.ts `ADMIN_LATE_OVERRIDE`): a request that asks for the override
@@ -306,8 +298,10 @@ export function HopeRecordModal({
   const [lateReason, setLateReason] = useState<LateReasonCode | "">("");
   const [adminOverride, setAdminOverride] = useState(false);
   const [overrideJustification, setOverrideJustification] = useState("");
-  // The last refusal was for the justification looking like a patient identifier: said on the field until it is edited.
-  const [justificationRefused, setJustificationRefused] = useState(false);
+  // What the last refusal said about the justification (a patient identifier, an invisible character, a bound): said on the field until it is edited.
+  const [justificationRefusal, setJustificationRefusal] = useState<JustificationRefusal | null>(
+    null,
+  );
   const justificationId = useId();
   const [primaryDiagnosisIcd10, setPrimaryDiagnosisIcd10] = useState("");
   const [painScreened, setPainScreened] = useState(false);
@@ -346,7 +340,7 @@ export function HopeRecordModal({
     setLateReason("");
     setAdminOverride(false);
     setOverrideJustification("");
-    setJustificationRefused(false);
+    setJustificationRefusal(null);
     setPrimaryDiagnosisIcd10("");
     setPainScreened(false);
     setPainCharacteristics("");
@@ -380,12 +374,21 @@ export function HopeRecordModal({
   // capture takes the clinician's choice; the override IS its own reason (`admin_override`), so nothing is asked twice.
   const lateCode: LateReasonCode | "" =
     span === "late" ? lateReason : overriding ? "admin_override" : "";
+  // What the server refuses is refused here first: a pasted zero-width space passes the length minimum but never the server.
+  const justificationInvisible = overriding && hasForbiddenJustificationCharacter(justification);
+  const justificationError =
+    justificationRefusal !== null
+      ? JUSTIFICATION_REFUSAL_WORDS[justificationRefusal]
+      : justificationInvisible
+        ? JUSTIFICATION_REFUSAL_WORDS.invalid_characters
+        : undefined;
   const blocked =
     targetIso === "" ||
     authorDiscipline === "" ||
     (span === "late" && lateReason === "") ||
     (rfaKind === "05_discharge" && dischargeReason === "") ||
-    (overriding && justification.length < OVERRIDE_JUSTIFICATION_MIN);
+    (overriding && justification.length < OVERRIDE_JUSTIFICATION_MIN) ||
+    justificationInvisible;
 
   /** The §2.1 payload for the four sections this codebase defines items for. */
   function buildData(): HopeData {
@@ -439,7 +442,7 @@ export function HopeRecordModal({
     setBusy(true);
     setError(null);
     // Each attempt clears the field's refusal first, so a second refusal of the same text is announced again.
-    setJustificationRefused(false);
+    setJustificationRefusal(null);
     let data: HopeData;
     try {
       data = buildData();
@@ -480,9 +483,10 @@ export function HopeRecordModal({
         );
         return;
       }
-      // Only a sent justification can be what looked like an identifier: a refusal with none on screen keeps the server's words.
-      if (res.code === PHI_REFUSAL_CODE && overriding) {
-        setJustificationRefused(true);
+      // Only a sent justification can be what the server refused: a refusal with none on screen keeps the server's words.
+      const refusal = overriding ? justificationRefusalOf(res) : null;
+      if (refusal !== null) {
+        setJustificationRefusal(refusal);
         // The pressed button was disabled while the request was out, which can drop focus to the page: the field to edit takes it.
         document.getElementById(justificationId)?.focus();
         return;
@@ -650,11 +654,11 @@ export function HopeRecordModal({
                 id={justificationId}
                 label="Justification for the override"
                 hint={`Between ${OVERRIDE_JUSTIFICATION_MIN} and ${OVERRIDE_JUSTIFICATION_MAX} characters. It is recorded in the audit trail when the override is used and cannot be changed later, so do not enter a patient's name or a Social Security or Medicare number.`}
-                error={justificationRefused ? JUSTIFICATION_LOOKS_LIKE_PHI : undefined}
+                error={justificationError}
                 value={overrideJustification}
                 onChange={(e) => {
                   setOverrideJustification(e.target.value);
-                  setJustificationRefused(false);
+                  setJustificationRefusal(null);
                 }}
                 maxLength={OVERRIDE_JUSTIFICATION_MAX}
                 rows={3}

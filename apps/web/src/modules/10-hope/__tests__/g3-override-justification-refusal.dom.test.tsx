@@ -25,7 +25,11 @@ const EXPIRED_WINDOW = {
 const SERVER_WORDS =
   "adminOverrideJustification looks like it contains a patient identifier (a Social Security or Medicare number). Describe what was checked without naming a patient, and cite documents by their title or a ticket number.";
 const FIELD_WORDS =
-  "This looks like it contains a Social Security or Medicare number. Say why the visit is late without naming a patient or quoting an identifier. A long ID number can trip this check, so leave it out.";
+  "This looks like it contains a Social Security or Medicare number. Say why this record is being entered after the late deadline, without naming a patient or quoting an identifier. A long ID number can trip this check, so leave it out.";
+const INVISIBLE_WORDS =
+  "Contains invisible or formatting characters, often from pasted text. Retype the text instead of pasting it.";
+const NOT_ACCEPTED_WORDS =
+  "The justification was not accepted. Check that it is between 20 and 1000 characters of plain text, then record again.";
 const JUSTIFICATION = "The visit was completed on time; the entry was delayed by an outage.";
 
 const phiRefusal = () => ({
@@ -127,6 +131,129 @@ describe("an override justification refused as looking like a patient identifier
     fireEvent.click(record());
 
     expect((await within(dialog).findByRole("alert")).textContent).toBe("server words for that");
+    expect(field().getAttribute("aria-invalid")).toBeNull();
+  });
+});
+
+/** The envelope the server answers a failed validation with (`ValidationError`: code VALIDATION_FAILED, the detail names the field). */
+const validationRefusal = (field: string, code: string, message: string) => ({
+  data: undefined,
+  error: {
+    error: {
+      code: "VALIDATION_FAILED",
+      message: "an admin deadline override needs a plain-text justification",
+      details: [{ field, code, message }],
+    },
+  },
+  response: new Response(null, { status: 422 }),
+});
+const SERVER_INVISIBLE =
+  "adminOverrideJustification must not contain control, zero-width or other formatting characters";
+
+// What the server refuses as control, zero-width or other formatting characters (`FORBIDDEN_JUSTIFICATION_CHARACTER`) the dialog refuses
+// first: a pasted zero-width space passes the length minimum, and the 422 would name the wire field in the bottom alert.
+describe("an override justification with invisible or formatting characters", () => {
+  it.each([
+    ["a zero-width space", "\u200b"],
+    ["a left-to-right mark", "\u200e"],
+    ["a soft hyphen", "\u00ad"],
+    ["a byte-order mark inside the text", "\ufeff"],
+    ["a NUL", "\u0000"],
+    ["a lone surrogate", "\ud800"],
+  ])("is refused on the field, with a static sentence, before anything is sent (%s)", (_n, bad) => {
+    const post = vi.fn(async () => ok({ id: "created" }));
+    const { dialog, field, record } = mount(post);
+
+    fireEvent.change(field(), {
+      target: { value: `The visit was done${bad} on time; an outage.` },
+    });
+
+    expect(field().getAttribute("aria-invalid")).toBe("true");
+    expect(
+      within(dialog)
+        .getAllByRole("alert")
+        .map((a) => a.textContent),
+    ).toEqual([INVISIBLE_WORDS]);
+    expect(record().disabled).toBe(true);
+    fireEvent.click(record());
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("is sent again once the character is gone, and still allows a line break and a tab", async () => {
+    const post = vi.fn(async () => ok({ id: "created" }));
+    const { field, record } = mount(post);
+    fireEvent.change(field(), {
+      target: { value: `The visit was done\u200b on time; an outage.` },
+    });
+    expect(record().disabled).toBe(true);
+
+    fireEvent.change(field(), { target: { value: "The visit was done on time;\n\tan outage." } });
+
+    expect(field().getAttribute("aria-invalid")).toBeNull();
+    expect(record().disabled).toBe(false);
+    fireEvent.click(record());
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+  });
+
+  it("is answered on the field, in the same words and with focus, when the server still refuses it (INVALID_CHARACTERS)", async () => {
+    const post = vi.fn(async () =>
+      validationRefusal("adminOverrideJustification", "INVALID_CHARACTERS", SERVER_INVISIBLE),
+    );
+    const { dialog, field, record, onClose, onOutcomeUnknown } = mount(post);
+
+    fireEvent.click(record());
+
+    await waitFor(() => expect(field().getAttribute("aria-invalid")).toBe("true"));
+    expect(
+      within(dialog)
+        .getAllByRole("alert")
+        .map((a) => a.textContent),
+    ).toEqual([INVISIBLE_WORDS]);
+    expect(field().getAttribute("aria-describedby")).toContain(
+      within(dialog).getByRole("alert").id,
+    );
+    expect(document.activeElement).toBe(field());
+    expect(dialog.textContent).not.toContain("adminOverrideJustification");
+    expect(dialog.textContent).not.toContain("zero-width");
+    expect(field().value).toBe(JUSTIFICATION);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onOutcomeUnknown).not.toHaveBeenCalled();
+
+    fireEvent.change(field(), { target: { value: `${JUSTIFICATION} Again.` } });
+    expect(field().getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("is answered on the field in its own words when the server objects to the justification for another reason", async () => {
+    const post = vi.fn(async () =>
+      validationRefusal(
+        "adminOverrideJustification",
+        "INVALID",
+        "Expected string length greater or equal to 20",
+      ),
+    );
+    const { dialog, field, record } = mount(post);
+
+    fireEvent.click(record());
+
+    await waitFor(() => expect(field().getAttribute("aria-invalid")).toBe("true"));
+    expect(
+      within(dialog)
+        .getAllByRole("alert")
+        .map((a) => a.textContent),
+    ).toEqual([NOT_ACCEPTED_WORDS]);
+    expect(dialog.textContent).not.toContain("Expected string length");
+    expect(document.activeElement).toBe(field());
+  });
+
+  it("leaves a validation refusal about another field as the server's words in the alert", async () => {
+    const post = vi.fn(async () =>
+      validationRefusal("targetDate", "INVALID", "Expected string to match 'date-time' format"),
+    );
+    const { dialog, field, record } = mount(post);
+
+    fireEvent.click(record());
+
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("targetDate");
     expect(field().getAttribute("aria-invalid")).toBeNull();
   });
 });
