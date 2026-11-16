@@ -71,7 +71,7 @@ import type {
   VolunteerAssignmentView,
   VolunteerComplianceGateView,
 } from "./read-service";
-import { isSudAnchored } from "./snapshot-redaction";
+import { isSudAnchored, redactDisciplineSnapshot } from "./snapshot-redaction";
 import type {
   AmendAssessmentInput,
   CreateAssessmentInput,
@@ -587,7 +587,12 @@ export function buildDrizzleM15WriteService(
               patientId: plan.patientId,
               kind: plan.kind,
               versionKind: updated.kind,
-              snapshot: updated.stateSnapshot,
+              // 42 CFR Part 2: the event is persisted (and readable through the ops outbox detail) and M22
+              // renders the plan PDF from it, with no viewer to decide who may see SUD goals. So the payload
+              // carries the snapshot WITHOUT Part 2 goals and the interventions that serve them (null if the
+              // shape is not recognised); the sealed snapshot itself stays whole on the version row, behind
+              // the disclosure-gated reads. Audit D-13.
+              snapshot: redactDisciplineSnapshot(updated.stateSnapshot, false),
               signers: signatures.map((s) => ({
                 membershipId: s.signerMembershipId,
                 role: s.signerRole,

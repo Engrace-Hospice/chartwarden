@@ -47,6 +47,7 @@ import {
   transitionDisciplinePlan,
 } from "../lifecycle/plan";
 import { resolveRequiredSignerSet } from "../lifecycle/required-signer-set";
+import { redactDisciplineSnapshot } from "../routes/snapshot-redaction";
 import type { WriteOutboxPort } from "../routes/write-service";
 
 const PLAN = schema.disciplineCarePlan;
@@ -246,6 +247,15 @@ export function buildM15AdmissionDischargedConsumer(deps: DisciplinePlanDischarg
                 .from(VERSION)
                 .where(eq(VERSION.planId, plan.id)),
             ]);
+            const dischargeSnapshot = {
+              sealedAt: sealedAt.toISOString(),
+              planKind: step.kind,
+              versionKind: "discharge",
+              systemSigned: true,
+              dischargeReason: facts.reason,
+              goals: goals.map(snapshotGoal),
+              interventions: interventions.map(snapshotIntervention),
+            };
             const [created] = await tx
               .insert(VERSION)
               .values({
@@ -257,15 +267,7 @@ export function buildM15AdmissionDischargedConsumer(deps: DisciplinePlanDischarg
                 kind: "discharge",
                 status: "signed",
                 requiredSignerSet: resolveRequiredSignerSet(step.kind, "discharge"),
-                stateSnapshot: {
-                  sealedAt: sealedAt.toISOString(),
-                  planKind: step.kind,
-                  versionKind: "discharge",
-                  systemSigned: true,
-                  dischargeReason: facts.reason,
-                  goals: goals.map(snapshotGoal),
-                  interventions: interventions.map(snapshotIntervention),
-                },
+                stateSnapshot: dischargeSnapshot,
                 finalizedAt: sealedAt,
                 signedAt: sealedAt,
               })
@@ -288,7 +290,24 @@ export function buildM15AdmissionDischargedConsumer(deps: DisciplinePlanDischarg
               throw new Error(`plan ${plan.id} changed concurrently during discharge`);
             }
 
-            // 4. announce + audit, same transaction.
+            // 4. announce + audit, same transaction. First the discharge version itself: it is signed (by the
+            // system) like any other, so M22 renders the plan's FINAL PDF from this event (audit D-6). Its
+            // snapshot is the Part 2-redacted one (audit D-13): no viewer decides who reads a rendered PDF.
+            await deps.outbox.publish(tx, {
+              organizationId,
+              eventName: "m15.plan.version_signed",
+              aggregateKind: "discipline_care_plan_version",
+              aggregateId: created.id,
+              payload: {
+                planId: plan.id,
+                versionId: created.id,
+                patientId: plan.patientId,
+                kind: step.kind,
+                versionKind: "discharge",
+                snapshot: redactDisciplineSnapshot(dischargeSnapshot, false),
+                signers: [],
+              },
+            });
             await deps.outbox.publish(tx, {
               organizationId,
               eventName: "m15.plan.discharged",

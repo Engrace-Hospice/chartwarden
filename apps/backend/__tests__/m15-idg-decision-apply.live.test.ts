@@ -62,6 +62,8 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
   let dispatcher: ReturnType<typeof createOutboxDispatcher>;
   let svc: ReturnType<typeof createDbIdgBackend>;
   let publishDecision: (org: string, e: SeededDecision, patientOrg?: string) => Promise<void>;
+  /** M15's write-service outbox: the REAL catalog-validating publisher, so a payload the catalog rejects fails. */
+  let m15Outbox: unknown;
   const peOf: Record<string, string> = {};
   const locationOf: Record<string, string> = {};
 
@@ -243,6 +245,7 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
         publisher.publish(tx as never, { ...e, callerModule: module } as never),
     });
     svc = createDbIdgBackend(handle.db, bind("m14") as unknown as IdgWriteOutboxPort);
+    m15Outbox = bind("m15");
 
     // The exact envelope M14's adjournment emit publishes (`idg-route-service-db.ts`), through the real
     // catalog-validating publisher — a payload the catalog rejects (e.g. an unknown arm) fails HERE.
@@ -966,7 +969,11 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
     const SUD_IV_TEXT = "SYNTHETIC-SUD-INTERVENTION-TEXT";
     const SUD_ASSESSMENT_TEXT = "SYNTHETIC-SUD-ASSESSMENT-TEXT";
     const writeActor = () => systemM15Actor(ORG_A, { userId: USER, membershipId: COORDINATOR });
-    const write = () => buildDrizzleM15WriteService(handle.db, { isInCaseload: async () => true });
+    const write = () =>
+      buildDrizzleM15WriteService(handle.db, {
+        isInCaseload: async () => true,
+        outbox: m15Outbox as never,
+      });
     const denied: DisclosurePort = {
       part2ReleaseActive: async () => ({ allowed: false, restrictedToNamedWorkforce: true }),
       familyViolenceRedacted: async () => true,
@@ -1037,6 +1044,60 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
         )
       ).rows[0].id as string;
     }
+
+    it("m15.plan.version_signed carries the snapshot WITHOUT Part 2 goals or the interventions that serve them; the sealed row stays whole (audit D-13)", async () => {
+      const plan = await seedPlan(ORG_A);
+      await linkedIntervention(plan, [plan.sudGoalId], SUD_IV_TEXT);
+      const versionId = (
+        await admin.query(
+          `INSERT INTO discipline_care_plan_version (organization_id, provider_entity_id, location_id, plan_id,
+             sequence, status, kind, state_snapshot) VALUES ($1,$2,$3,$4,1,'draft','initial','{}'::jsonb)
+           RETURNING id`,
+          [ORG_A, peOf[ORG_A], locationOf[ORG_A], plan.planId],
+        )
+      ).rows[0].id as string;
+      const finalized = await write().finalizeVersion(writeActor(), plan.planId, versionId, {
+        expectedVersion: 0,
+      });
+      // One membership fills at most one slot, so every slot of the sealed quorum signs as its own member.
+      for (const slot of finalized.requiredSignerSet as { role: string; count: number }[]) {
+        for (let i = 0; i < slot.count; i++) {
+          await write().signVersion(
+            systemM15Actor(ORG_A, { userId: USER, membershipId: randomUUID() }),
+            plan.planId,
+            versionId,
+            {
+              expectedVersion: null,
+              signerRole: slot.role,
+              attestationText: "Synthetic attestation",
+            },
+          );
+        }
+      }
+
+      const events = await admin.query(
+        `SELECT payload FROM outbox_event WHERE event_type='m15.plan.version_signed' AND aggregate_id=$1`,
+        [versionId],
+      );
+      expect(events.rows).toHaveLength(1);
+      const emitted = JSON.stringify(events.rows[0].payload);
+      // The persisted event (what the ops outbox detail returns and M22 renders the PDF from): no Part 2.
+      expect(emitted).not.toContain("SUD treatment planning");
+      expect(emitted).not.toContain(SUD_IV_TEXT);
+      expect(emitted.toLowerCase()).not.toContain(plan.sudGoalId.toLowerCase());
+      expect(emitted).toContain("Family will report reduced distress");
+      expect(emitted).toContain("Grief counseling");
+      // The sealed snapshot on the version row is untouched: authorized reads still get the whole of it.
+      const sealed = JSON.stringify(
+        (
+          await admin.query(`SELECT state_snapshot FROM discipline_care_plan_version WHERE id=$1`, [
+            versionId,
+          ])
+        ).rows[0].state_snapshot,
+      );
+      expect(sealed).toContain("SUD treatment planning");
+      expect(sealed).toContain(SUD_IV_TEXT);
+    });
 
     it("a Part 2 goal edit is NOT FOUND for a caller without disclosure: before the version check, and identical to a missing goal", async () => {
       const plan = await seedPlan(ORG_A);
