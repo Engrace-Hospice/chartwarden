@@ -18,11 +18,13 @@
 // through the `ConsentEvaluator` seam at call time (the M16 disclosure-gate precedent), NEVER a
 // caller-asserted scope. The one exception is the per-ACTOR verdict a caller passes as `viewer`: it replaces
 // the patient-level lookup, so it is a TRUST BOUNDARY — only a route that resolved it from the M39 closure
-// (`sudDisclosureAllowedForPatient`, the closure every other M7 read uses) may pass one. A caller that serves no
-// human passes `"patient_level"` and gets the lookup below. FAIL-CLOSED: while M39 is a deny-stub, throws, or denies, the record reads
+// (the route's `deps.sudDisclosureAllowed` closure, which wraps `sudDisclosureAllowedForPatient`, the one every
+// other M7 read uses) may pass one. A caller that serves no human passes `"patient_level"` and gets the lookup
+// below. FAIL-CLOSED: while M39 is a deny-stub, throws, or denies, the record reads
 // `sudReadAllowed=false` and the reader drops SUD problems + flags `redacted` — a consent outage
-// narrows what a clinician sees; it never widens it. The consent round-trip is skipped entirely when
-// the plan carries no SUD-flagged problem (the verdict would be unobservable).
+// narrows what a clinician sees; it never widens it. The picker route calls the closure unconditionally before the
+// reader runs, so every picker load makes one M39 `evaluateForInternalAccess` call; only the `"patient_level"`
+// path's `part2ReleaseAllowed` round-trip is skipped when the plan carries no SUD-flagged problem.
 import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 import { getRequestContext, withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type { CarePlanCodeUsageRecord } from "@chartwarden/types";

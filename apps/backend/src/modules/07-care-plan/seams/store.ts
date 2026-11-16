@@ -122,7 +122,8 @@ export function createInMemoryCarePlanReaderStore(seed: CarePlanReaderSeed = {})
     store: {
       async activeCarePlanElements(patientId, _admissionId, viewer) {
         const record = elements.find((e) => e.patientId === patientId) ?? null;
-        // Same rule as the Drizzle store: a per-actor verdict, when given, decides SUD visibility.
+        // A verdict is always given now: a per-actor viewer decides SUD visibility; `"patient_level"` means
+        // "use the seeded `sudReadAllowed`" (this slice has no consent round-trip to run).
         return record && viewer !== "patient_level"
           ? { ...record, sudReadAllowed: viewer.sudDisclosureAllowed }
           : record;

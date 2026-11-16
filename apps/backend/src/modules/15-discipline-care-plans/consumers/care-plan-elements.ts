@@ -44,6 +44,10 @@ export async function relevantIpocElements(
 ): Promise<RelevantCarePlanElements | null> {
   const lens = READER_LENS_BY_KIND[kind];
   // "patient_level": the elements only prove a parent exists (`assertParentElements`); none is returned to a caller.
+  // That check is NOT the picker's per-actor rule: stricter for an RN case manager (no release on file: the picker
+  // shows a Part 2 problem under the §7.6 carve-out but this drops it, so the id is rejected 422), looser for a nurse
+  // the release does not name (it has an active recipient so it passes; only ids are compared, never element text).
+  // The open decision lives at R-80 in docs/implementation/06-care-plan-current-state-audit.md.
   return getCarePlanReader().relevantElementsForEncounter(
     patientId,
     lens.encounterType,

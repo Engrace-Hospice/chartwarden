@@ -1868,7 +1868,9 @@ export function createDbSchedulingBackend(
         const reader = getSeam("CarePlanReader");
         for (const discipline of proposalDisciplines) {
           // "patient_level": `frequencyText` lands in `visit_proposal.source_payload`, a denylisted column the
-          // proposal list read never projects, so no element text reaches a human from this path.
+          // proposal list read never projects, so no element text reaches a human from this path. System actor, no
+          // human; the patient-level rule is not the picker's per-actor rule (open decision: R-80 in
+          // docs/implementation/06-care-plan-current-state-audit.md).
           const elements = await reader.relevantElementsForEncounter(
             input.patientId,
             "routine_visit",

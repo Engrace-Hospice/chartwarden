@@ -1688,6 +1688,10 @@ export function createDbEncounterRouteService(
         // otherwise a link could claim a visit addressed a problem on some other patient's plan.
         // "patient_level": this path returns ids only (`toCarePlanLinkView`) and uses the elements to validate
         // the refs, never to show element text, so it takes the patient-level Part 2 check (R-75 in the audit).
+        // That check is NOT the picker's per-actor rule: stricter for an RN case manager (no release on file: the
+        // picker shows a Part 2 problem under the §7.6 carve-out but this drops it, so the id is rejected 422), looser
+        // for a nurse the release does not name (it has an active recipient so it passes; only ids are compared, never
+        // element text). The open decision lives at R-80 in docs/implementation/06-care-plan-current-state-audit.md.
         const elements = await getCarePlanReader().relevantElementsForEncounter(
           r.patientId as PatientId,
           r.encounterType,

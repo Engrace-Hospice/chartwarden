@@ -318,8 +318,10 @@ export type CarePlanElementsAudience = CarePlanElementsViewer | "patient_level";
 /**
  * §7.8 — the read surface M8 (encounter authoring + sign gate), M14 (IDG packet), and M15 (discipline
  * care plans) consume. Resolved within the consumer's tenant context (the reader does not switch
- * tenants); SUD redaction is applied SQL-side, not trusting the caller's scope assertion (D7). The
- * concrete implementation + its M1-registry wiring land in M7-T04; read-only DTOs above.
+ * tenants); SUD redaction (D7) never trusts a caller-asserted scope: the store resolves the patient-level
+ * release through the M39 evaluator, and the one thing a caller supplies is the per-ACTOR verdict (`CarePlanElementsAudience`)
+ * its route resolved from the M39 closure. The concrete implementation + its M1-registry wiring land in
+ * M7-T04; read-only DTOs above.
  */
 export interface CarePlanReader {
   /** Populate the encounter form's element picker — active problems, the active interventions tagged
