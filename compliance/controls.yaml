@@ -752,7 +752,7 @@ controls:
       owner: engineering
       review_by: 2027-01-31
   - id: CW-AC-43
-    title: Care-plan content flagged 42 CFR Part 2 (SUD) or family violence is withheld from a caller without disclosure on the care-plan read and write results (M7 problems, goals, interventions, version snapshots, proposed changes and the internal element-picker read, decided per caller; M15 goals, interventions anchored to a hidden goal, assessments, version detail, finalize, sign and edit results, and the seam read), from every rendering and event that has no viewer (the M15 version-signed event and so the plan PDF, the IDG packet cover, the IDG minutes, the ops outbox detail read), and from an IDG decision that flags its own problem; redaction fails closed when the viewer is not named, when a snapshot has an unexpected shape or a missing flag, and when the consent lookup errors
+    title: Care-plan content flagged 42 CFR Part 2 (SUD) or family violence is withheld from a caller without disclosure on the care-plan read and write results (M7 problems, goals, interventions, version snapshots, proposed changes and the internal element-picker read, decided per caller; M15 goals, interventions anchored to a hidden goal, assessments, version detail, finalize, sign and edit results, and the seam read), from a link or a parent reference to a Part 2 element the caller is not cleared to see (the M8 visit-to-problem link and the M15 goal and intervention parent checks refuse it for a human caller, decided per caller), from every rendering and event that has no viewer (the M15 version-signed event and so the plan PDF, the IDG packet cover, the IDG minutes, the ops outbox detail read), and from an IDG decision that flags its own problem; a goal authored through the M15 route under a Part 2 problem, or refining a Part 2 goal, is stored flagged from then on, whatever the author sent; redaction fails closed when the viewer is not named, when a snapshot has an unexpected shape or a missing flag, and when the consent lookup errors
     hipaa: ["164.312(a)(1)", "164.502(b)"]
     soc2: ["CC6.1", "C1.1"]
     status: implemented
@@ -767,13 +767,24 @@ controls:
       # picker (`/internal/care-plan/relevant-elements`) per caller: a nurse the release does not name (problem, goal
       # and intervention text withheld, and the read's audit event landing with the reader and the patient), the nurse
       # it names, no release, the RN case manager carve-out, a caller with no membership id and one with the evaluator
-      # unbound (the RN case manager is withheld in both).
+      # unbound (the RN case manager is withheld in both). The same real reader and evaluator drive the rule behind the
+      # M8 and M15 id checks: the reader's actor audience refuses a nurse the release does not name (the old patient-
+      # level rule admitted her), admits the member it names and the RN case manager with no release, and refuses a
+      # caller with no membership id, an identified case manager against a release that names others, and an unbound
+      # evaluator, each beside a patient-level control; the real M15 goal and intervention routes answer 422
+      # PARENT_ELEMENT_NOT_FOUND or 201 by caller; and a goal authored under a Part 2 problem, or refining a Part 2
+      # goal, is stored flagged whatever the author sent and withheld from a plain read.
       - script: test:m7:consent-wiring:live
       # M15 write results and reads against real rows, the version-signed event payload and the Part 2 goal
       # inheritance of an IDG-applied goal.
       - script: test:m15:idg-decision:live
       # The minutes release-needed set, which a decision that flags its own problem joins.
       - script: test:m14:write:live
+      # The M8 care-plan link check through the real reader and the real evaluator: a nurse the release does not name
+      # is refused with no link row written, the RN case manager with no release and the member the release names link.
+      # The link service is driven directly; the route handing it the session's roles and membership is
+      # encounter-routes.test.ts below.
+      - script: test:m8:write:live
       - file: apps/backend/src/bootstrap/routes/__tests__/ops-outbox.test.ts
       - file: apps/backend/src/modules/07-care-plan/routes/snapshot-redaction.ts
       - file: apps/backend/src/modules/15-discipline-care-plans/routes/snapshot-redaction.ts
@@ -782,9 +793,15 @@ controls:
       # The element picker route hands the reader the closure's per-actor verdict, and with no closure bound the
       # verdict it hands over denies.
       - file: apps/backend/__tests__/care-plan-hardening-routes.test.ts
+      - file: apps/backend/__tests__/encounter-routes.test.ts
       # The `"patient_level"` audience (the patient-level rule, which skips the per-actor verdict) is named only by the
-      # three reviewed callers that return ids or serve no human; a new one fails until it is added with a reason.
+      # callers that serve no human (the scheduling worker, M15's system actor) and the files that implement it; M8's
+      # link check and both M15 write paths must pass the actor audience. A new caller fails until it is added with a
+      # reason. A hand-built `{ sudDisclosureAllowed }` viewer is guarded by a tripwire only; review is the control.
       - file: apps/backend/__tests__/care-plan-patient-level-pin.test.ts
+      # Not covered, stated rather than implied: a discipline intervention has no Part 2 flag of its own and is hidden
+      # only through the goal it is anchored to, so one that refines a Part 2 intervention without a Part 2 goal
+      # anchor is not withheld; goals stored before the inheritance change are not backfilled (reseed).
 
   - id: CW-AC-44
     title: The care-plan permissions a tenant's clinical roles hold by default are least privilege (the RBAC half only; which patient is caseload_or_scope and Part 2 content is CW-AC-43) - read for the roles that work from the plan, author and finalize for the nurse case manager, clinical supervisor and director of nursing, sign for exactly the six roles the signer-role-match rule accepts - and never the system keys (bootstrap, IDG revise), an external, portal or collaborator role. Coverage is the roles a tenant already has when migration 1494 runs plus the director of nursing and medical director templates on a new tenant; a role created later receives nothing, and a tenant may still remove a key from a role it owns
