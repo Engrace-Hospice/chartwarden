@@ -41,7 +41,7 @@ export const hopeSubmissions = pgTable(
     resultReportHash: text("result_report_hash"),
     // The report reference the operator typed on the LATEST result import (migration 1496). It lives in its own column so the
     // worklist reads it without detoasting `acceptance_report` (the multi-MB base64 ZIP); the same value is still kept in
-    // `acceptance_report->>'reportReference'`. Operator-typed, up to 500 chars from `[A-Za-z0-9 ._:#/-]` (the route screens it for
+    // `acceptance_report->>'reportReference'`. Operator-typed, up to 128 chars (`HOPE_REFERENCE_MAX_LENGTH`) from `[A-Za-z0-9 ._:#/-]` (the route screens it for
     // patient identifiers), as `hope_submission_result_event.report_reference`; scrubbed from the audit images (1497, 1499). NULL
     // for a batch whose result a release without this column recorded (migration 1496): the list and detail show no reference then.
     reportReference: text("report_reference"),

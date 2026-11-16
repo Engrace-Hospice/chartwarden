@@ -344,7 +344,7 @@ export interface HopeAssessmentAnswerService {
    * `options.mayWrite` (REQUIRED, no default): whether the caller holds `hope.timepoint.write`. A draft's out-of-date workflow
    * control answers are rewritten on open (a write under no actor) only for a caller who may write; any other caller is shown
    * those controls derived in memory from the assessment row (their item states and the progress counts that follow), and
-   * nothing is stored. A reader's view equals a writer's only for the workflow-control items (A0050, A0250) and the progress counts derived from them; what only a writer's open does (the chart refresh, the SFV self-heal of J2052/J2053, the validation-finding reconcile) is shown as stored, so a draft that needs one of those reads differently for a reader until a writer opens it.
+   * nothing is stored. A reader's view equals a writer's only for the workflow-control items (A0050, A0250) and the progress counts derived from them; the chart refresh and the workflow-control reconcile are done for a writer only, so a reader sees chart-derived answers as stored and the workflow controls derived on the fly, and a draft that needs a chart refresh reads differently for a reader until a writer opens it.
    */
   getWorkspace(
     organizationId: string,
@@ -782,7 +782,7 @@ export function createHopeAssessmentAnswerService(
         const items = await activeItems(t, loaded.assessment.specVersionId!, loaded.isc);
         const itemsByCode = new Map(items.map((item) => [item.itemCode, item]));
         // The control answers are written only for a DRAFT, only when one is out of date (see the function), and only for a
-        // caller who may write. A reader gets those controls derived below, in memory, with no stored copy. A reader's view equals a writer's only for the workflow-control items (A0050, A0250) and the progress counts derived from them; what only a writer's open does (the chart refresh, the SFV self-heal of J2052/J2053, the validation-finding reconcile) is shown as stored, so a draft that needs one of those reads differently for a reader until a writer opens it.
+        // caller who may write. A reader gets those controls derived below, in memory, with no stored copy. A reader's view equals a writer's only for the workflow-control items (A0050, A0250) and the progress counts derived from them; the chart refresh and the workflow-control reconcile are done for a writer only, so a reader sees chart-derived answers as stored and the workflow controls derived on the fly, and a draft that needs a chart refresh reads differently for a reader until a writer opens it.
         if (options.mayWrite)
           await reconcileControlsWhenNeeded(t, organizationId, loaded.assessment, itemsByCode);
         const itemsById = new Map(items.map((item) => [item.id, item]));
