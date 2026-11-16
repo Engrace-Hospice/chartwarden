@@ -528,7 +528,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect(ok.wasLate).toBe(false);
     });
 
-    it("an admin override past the deadline writes a CRITICAL hope.late_deadline_override audit with the request facts and no free text", async () => {
+    it("an admin override past the deadline writes a CRITICAL hope.late_deadline_override audit with the request facts and the justification", async () => {
       const adm = await admitted();
       await seedSchedule(ORG_A, adm, "01_admission", WINDOW);
       liveNow = new Date("2026-06-30T12:00:00.000Z");
@@ -561,13 +561,12 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
         source_ip: "203.0.113.9",
         user_agent: "agent/2.0",
       });
-      // The client's trace hint rides in the context; the typed justification never does (only that one was supplied).
+      // The client's trace hint rides in the context beside the typed justification, the only record of why the cutoff was lifted.
       expect(audits[0].context).toMatchObject({
         clientCorrelationId: "client-trace-1",
-        justificationSupplied: true,
+        justification,
       });
-      expect(audits[0].context).not.toHaveProperty("justification");
-      expect(JSON.stringify(audits[0].context)).not.toContain(justification);
+      expect(audits[0].context).not.toHaveProperty("justificationSupplied");
     });
   });
 

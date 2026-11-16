@@ -933,6 +933,11 @@ describe.skipIf(!DB_URL)(
           completed: before.completed + 1,
           override: before.override + 1,
         });
+        // The override event keeps the typed reason: the only record, in an immutable trail, of why the due date was lifted.
+        const completingId = (await sfvRow(s.sfvId))?.completing_assessment_id as string;
+        const overrideAudits = await auditsFor(LATE_OVERRIDE_AUDIT, completingId);
+        expect(overrideAudits).toHaveLength(1);
+        expect(overrideAudits[0]?.context).toMatchObject({ justification: OVERRIDE_REASON });
         // A repeat of the same valid override is the ALREADY_COMPLETED refusal: still exactly once.
         const repeat = await postSfv(s.adm, as(member.orgwide), s.draftId, override);
         expect(codeOf(repeat)).toBe("M10_SFV_ALREADY_COMPLETED");

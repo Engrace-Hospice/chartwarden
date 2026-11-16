@@ -213,8 +213,9 @@ async function auditOverrideIfLifted(
       sfvId: facts.sfvId,
       triggeringAssessmentId: args.triggeringAssessmentId,
       targetDate: args.targetDate,
-      // Free text a person typed never enters the audit context; it records that one was supplied.
-      justificationSupplied: args.adminOverrideJustification !== undefined,
+      // The typed reason is kept in the immutable event (screened for patient identifiers by the route guard and again by
+      // `auditDeadlineOverride`): it is the only record of why the due date was lifted.
+      justification: args.adminOverrideJustification ?? null,
     },
     args.request,
   );

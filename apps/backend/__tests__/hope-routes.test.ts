@@ -1601,6 +1601,45 @@ describe("M10 — #48 the §4.4 capture-window gate", () => {
     await app.close();
   });
 
+  it("an override whose justification names a patient is a 422 that does not echo it, and writes nothing", async () => {
+    const { app } = makeServer();
+    // Synthetic: an SSN with area 900 is never issued.
+    const text = "Outage; patient 900-12-3456 could not be keyed in time, approved by the lead";
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: ADMIN_OVERRIDER,
+      payload: huv1Body({
+        targetDate: "2026-07-01T12:00:00.000Z",
+        adminOverride: true,
+        adminOverrideJustification: text,
+        lateCompletionReasonCode: "admin_override",
+      }),
+    });
+    expect(res.statusCode).toBe(422);
+    expect(codeOf(res)).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+    expect(res.body).not.toContain("900-12-3456");
+    expect(res.body).not.toContain(text);
+    await app.close();
+  });
+
+  it("an override whose justification is only padding is a 422 (the length is measured after trimming)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: ADMIN_OVERRIDER,
+      payload: huv1Body({
+        targetDate: "2026-07-01T12:00:00.000Z",
+        adminOverride: true,
+        adminOverrideJustification: " ".repeat(40),
+        lateCompletionReasonCode: "admin_override",
+      }),
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
   it("an admin override extends the hard cutoff but still demands the late reason", async () => {
     const { app } = makeServer();
     const post = (over: Record<string, unknown>) =>
@@ -2120,6 +2159,21 @@ describe("R-05 — HOPE record signature needs an attestation, a fresh step-up a
       expect(outOfScope.statusCode).toBe(404);
       expect(codeOf(outOfScope)).not.toBe("STEP_UP_REQUIRED");
       await outside.app.close();
+    });
+
+    it("an SFV override whose justification names a patient is a 422 and the SFV stays open", async () => {
+      const ctx = sfvServer();
+      const text = "Visit was late; patient 900-12-3456 was in hospital, approved by the lead";
+      const res = await postSfv(
+        ctx,
+        ADMIN_OVERRIDER,
+        sfvBody({ adminOverride: true, adminOverrideJustification: text }),
+      );
+      expect(res.statusCode).toBe(422);
+      expect(codeOf(res)).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+      expect(res.body).not.toContain("900-12-3456");
+      expect((await ctx.backend.getSfv(ORG, SFV_OPEN_P1)).status).toBe("open");
+      await ctx.app.close();
     });
 
     it("an AI principal cannot complete an SFV (403) and the SFV stays open", async () => {

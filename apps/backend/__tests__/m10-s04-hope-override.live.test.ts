@@ -87,6 +87,9 @@ const CLOCK_GRACE = new Date("2026-06-17T12:00:00.000Z");
 const CLOCK_EXPIRED = new Date("2026-06-30T12:00:00.000Z");
 const JUSTIFICATION = "EHR outage during the window; approved by the compliance lead";
 const OVERRIDE_AUDIT = "hope.late_deadline_override";
+// Synthetic: an SSN with area 900 is never issued. A justification naming one must never reach the immutable audit trail.
+const PHI_JUSTIFICATION =
+  "Outage; patient 900-12-3456 could not be keyed in time, approved by the lead";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -250,18 +253,17 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       )
     ).rows;
   /**
-   * What a deadline-override audit row must and must not carry: the request facts the signature audit carries, the
-   * server's own correlation id, and NO free text (the justification a person typed stays out of the audit context).
+   * What a deadline-override audit row must carry: the request facts the signature audit carries, the server's own
+   * correlation id, and the justification the admin typed (the only record, in an immutable trail, of why the cutoff was lifted).
    */
-  const expectRequestFactsWithoutFreeText = (
+  const expectRequestFactsAndJustification = (
     audit: Awaited<ReturnType<typeof overrideAudits>>[number],
   ): void => {
     expect(audit.actor_user_id).toBe(userOf[member.admin]);
     expect(audit.request_id).toBeTruthy();
     expect(audit.correlation_id).toBe(`hope-late-deadline-override:${audit.resource_id}`);
-    expect(audit.context).toMatchObject({ justificationSupplied: true });
-    expect(audit.context).not.toHaveProperty("justification");
-    expect(JSON.stringify(audit.context)).not.toContain(JUSTIFICATION);
+    expect(audit.context).toMatchObject({ justification: JUSTIFICATION });
+    expect(audit.context).not.toHaveProperty("justificationSupplied");
   };
   const overrideAuditsFor = async (id: string) =>
     (await overrideAudits()).filter((a) => a.resource_id === id);
@@ -618,6 +620,55 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       expect(await countRows("hope_assessment", adm)).toBe(0);
     });
 
+    it("a justification that names a patient is a 422 that does not echo it: no row, no audit event", async () => {
+      const adm = await admissionWithWindow();
+      liveNow = CLOCK_EXPIRED;
+      const before = (await overrideAudits()).length;
+      const res = await postTimepoint(adm, as(member.admin), {
+        adminOverride: true,
+        adminOverrideJustification: PHI_JUSTIFICATION,
+        lateCompletionReasonCode: "admin_override",
+      });
+      expect(res.statusCode).toBe(422);
+      expect(codeOf(res)).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+      expect(res.body).not.toContain("900-12-3456");
+      expect(await countRows("hope_assessment", adm)).toBe(0);
+      expect((await overrideAudits()).length).toBe(before);
+    });
+
+    it("the service refuses it too (a second caller cannot put an identifier in the immutable trail): the write rolls back", async () => {
+      const adm = await admissionWithWindow();
+      liveNow = CLOCK_EXPIRED;
+      const before = (await overrideAudits()).length;
+      await expect(
+        svc.recordTimepoint(ORG, member.admin, adm, {
+          rfaKind: "01_admission",
+          targetDate: IN_WINDOW_DATE,
+          authorDiscipline: "RN",
+          data: QUIET_DATA,
+          lateCompletionReasonCode: "admin_override",
+          adminOverride: true,
+          adminOverrideJustification: PHI_JUSTIFICATION,
+        }),
+      ).rejects.toMatchObject({ code: "EVIDENCE_LOOKS_LIKE_PHI", statusCode: 422 });
+      expect(await countRows("hope_assessment", adm)).toBe(0);
+      expect((await overrideAudits()).length).toBe(before);
+    });
+
+    it("the stored justification is the trimmed text", async () => {
+      const adm = await admissionWithWindow();
+      liveNow = CLOCK_EXPIRED;
+      const res = await postTimepoint(adm, as(member.admin), {
+        adminOverride: true,
+        adminOverrideJustification: `   ${JUSTIFICATION}  \n`,
+        lateCompletionReasonCode: "admin_override",
+      });
+      expect(res.statusCode).toBe(201);
+      const audits = await overrideAuditsFor(res.json<{ id: string }>().id);
+      expect(audits).toHaveLength(1);
+      expect(audits[0]?.context).toMatchObject({ justification: JUSTIFICATION });
+    });
+
     it("an override still demands the typed late reason (400)", async () => {
       const adm = await admissionWithWindow();
       liveNow = CLOCK_EXPIRED;
@@ -647,7 +698,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
         byMembershipId: member.admin,
         rfaKind: "01_admission",
       });
-      expectRequestFactsWithoutFreeText(audits[0] as (typeof audits)[number]);
+      expectRequestFactsAndJustification(audits[0] as (typeof audits)[number]);
       // The app role can only append: it can neither rewrite the reason nor delete the event.
       await expect(
         appClient.query("UPDATE audit_event SET context='{}'::jsonb WHERE event_type=$1", [
@@ -706,6 +757,14 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       const noReason = await post(as(member.admin), { adminOverride: true });
       expect(noReason.statusCode).toBe(422);
       expect(await sfvStatus(draft.id)).toBe("open");
+      const namesPatient = await post(as(member.admin), {
+        adminOverride: true,
+        adminOverrideJustification: PHI_JUSTIFICATION,
+      });
+      expect(namesPatient.statusCode).toBe(422);
+      expect(codeOf(namesPatient)).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+      expect(namesPatient.body).not.toContain("900-12-3456");
+      expect(await sfvStatus(draft.id)).toBe("open");
       const ok = await post(as(member.admin), {
         adminOverride: true,
         adminOverrideJustification: JUSTIFICATION,
@@ -716,7 +775,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       expect(audits).toHaveLength(1);
       expect(audits[0]?.severity).toBe("critical");
       expect(audits[0]?.context).toMatchObject({ byMembershipId: member.admin });
-      expectRequestFactsWithoutFreeText(audits[0] as (typeof audits)[number]);
+      expectRequestFactsAndJustification(audits[0] as (typeof audits)[number]);
     });
   });
 

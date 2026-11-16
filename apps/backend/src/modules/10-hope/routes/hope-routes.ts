@@ -278,7 +278,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { organizationId, userId } = membershipActorOf(request);
       const { admissionId } = parse(AdmissionParamsSchema, request.params);
       const body = parse(RecordTimepointSchema, request.body);
-      requireOverrideJustification(body);
+      const overrideJustification = requireOverrideJustification(body);
       assertAuthorBoundToActor(body.rfaKind, body.authorDiscipline, request.context?.roles ?? []);
       const res = await service.recordTimepoint(organizationId, userId, admissionId, {
         rfaKind: body.rfaKind,
@@ -289,7 +289,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
         dischargeReason: body.dischargeReason,
         lateCompletionReasonCode: body.lateCompletionReasonCode,
         adminOverride: body.adminOverride,
-        adminOverrideJustification: body.adminOverrideJustification,
+        adminOverrideJustification: overrideJustification,
         scheduleId: body.scheduleId,
         request: signatureRequestFacts(request),
       });
@@ -317,7 +317,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { admissionId } = parse(AdmissionParamsSchema, request.params);
       requireStrictAttestation(request.body);
       const body = parse(RecordSfvSchema, request.body);
-      requireOverrideJustification(body);
+      const overrideJustification = requireOverrideJustification(body);
       // #850: the body's CMS attribution must be the actor's own discipline (an LPN cannot sign as RN).
       assertAuthorBoundToActor("04_sfv", body.authorDiscipline, request.context?.roles ?? []);
       const res = await service.recordSfv(organizationId, userId, admissionId, {
@@ -326,7 +326,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
         authorDiscipline: body.authorDiscipline,
         data: body.data,
         adminOverride: body.adminOverride,
-        adminOverrideJustification: body.adminOverrideJustification,
+        adminOverrideJustification: overrideJustification,
         attestationConfirmed: body.attestationConfirmed,
         attestationVersion: body.attestationVersion,
         request: signatureRequestFacts(request),

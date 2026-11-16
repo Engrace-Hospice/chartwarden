@@ -35,6 +35,7 @@ import {
   requireAttestation,
   require_,
 } from "@chartwarden/hope";
+import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { HopeRfaKind, LatestAssessment, ScaleType } from "@chartwarden/types";
 import { ConflictError, NotFoundError, ValidationError } from "@chartwarden/types";
@@ -364,8 +365,10 @@ export function createDbHopeBackend(
    * GAP-015 — record a CRITICAL audit event when a platform admin's deadline override actually lifted the
    * hard cutoff, on the same transaction as the row it let through. The route has already required the
    * `hope.admin.late_deadline_override` permission and a justification. The row carries the same request facts as the
-   * signature audit (session user, request id, address, sanitised user agent); the justification is free text a person
-   * typed, so it never enters the audit context, which records only that one was supplied.
+   * signature audit (session user, request id, address, sanitised user agent). The context also carries the justification
+   * text (`justification`): it is the only record of why the HQRP cutoff was lifted, and the trail is immutable. It is free
+   * text a person typed, so the route guard has already screened it for patient identifiers; the screen runs again here,
+   * at the one place the text is written, so a second caller of the service cannot put an identifier in the trail.
    */
   async function auditDeadlineOverride(
     t: DbClient,
@@ -375,6 +378,9 @@ export function createDbHopeBackend(
     context: Record<string, unknown>,
     request?: HopeAuditRequestFacts,
   ): Promise<void> {
+    if (typeof context.justification === "string") {
+      assertNoPatientIdentifier("adminOverrideJustification", context.justification);
+    }
     // M10's acting id is the MEMBERSHIP id (not a user id), so it rides in the context, not `actor_user_id`.
     await audit(
       t as never,
@@ -1443,7 +1449,7 @@ export function createDbHopeBackend(
               rfaKind: args.rfaKind,
               scheduleId: sched?.id ?? null,
               targetDate: args.targetDate,
-              justificationSupplied: args.adminOverrideJustification !== undefined,
+              justification: args.adminOverrideJustification ?? null,
             },
             args.request,
           );

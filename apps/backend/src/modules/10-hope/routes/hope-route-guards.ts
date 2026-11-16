@@ -5,6 +5,7 @@
 // the request facts come off `request.context`, which the platform fills at the edge.
 import { hasOrgWideScope } from "@chartwarden/auth";
 import { assertAuthorBoundToActor, requireAttestation } from "@chartwarden/hope";
+import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { ROUTE_FORMATS } from "@chartwarden/shared/route-kit";
 import { type HopeRfaKind, ValidationError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
@@ -71,11 +72,23 @@ export const adminOverrideRequested = (body: unknown): boolean => {
   const raw = (body as { adminOverride?: unknown } | null | undefined)?.adminOverride;
   return raw !== undefined && raw !== null && raw !== false;
 };
+/** The justification's minimum length; `RecordTimepointSchema` / `RecordSfvSchema` declare the same number (a unit test pins it). */
+export const OVERRIDE_JUSTIFICATION_MIN_LENGTH = 20;
+
+/**
+ * The late-deadline override's justification, judged and cleaned. It is stored verbatim in the IMMUTABLE critical
+ * `hope.late_deadline_override` audit event (the only record of why the HQRP cutoff was lifted), so it must be a real
+ * reason and must not name a patient: the surrounding whitespace is trimmed BEFORE the length is measured (twenty spaces
+ * are not a reason), and an SSN- or MBI-shaped value is refused with a 422 that names the field and never echoes the text.
+ * Returns the text to hand the service, `undefined` when no override was asked for (a text sent without the flag is not kept).
+ */
 export function requireOverrideJustification(body: {
   readonly adminOverride?: boolean;
   readonly adminOverrideJustification?: string;
-}): void {
-  if (body.adminOverride === true && !body.adminOverrideJustification) {
+}): string | undefined {
+  if (body.adminOverride !== true) return undefined;
+  const text = body.adminOverrideJustification?.trim() ?? "";
+  if (text.length === 0) {
     throw new ValidationError("an admin deadline override needs a justification", [
       {
         field: "adminOverrideJustification",
@@ -84,6 +97,17 @@ export function requireOverrideJustification(body: {
       },
     ]);
   }
+  if (text.length < OVERRIDE_JUSTIFICATION_MIN_LENGTH) {
+    throw new ValidationError("an admin deadline override needs a fuller justification", [
+      {
+        field: "adminOverrideJustification",
+        code: "TOO_SHORT",
+        message: `adminOverrideJustification must be at least ${OVERRIDE_JUSTIFICATION_MIN_LENGTH} characters once surrounding whitespace is removed`,
+      },
+    ]);
+  }
+  assertNoPatientIdentifier("adminOverrideJustification", text);
+  return text;
 }
 
 /**

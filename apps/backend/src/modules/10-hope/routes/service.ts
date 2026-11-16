@@ -230,7 +230,10 @@ export interface RecordTimepointArgs {
   readonly dischargeReason?: string;
   readonly lateCompletionReasonCode?: string | null;
   readonly adminOverride?: boolean;
-  /** GAP-015: the platform-admin justification the route requires with an override (never written to the audit context). */
+  /**
+   * GAP-015: the platform-admin justification the route requires with an override (trimmed, 20 to 1000 characters,
+   * screened for patient identifiers). The DB backend stores it in the critical `hope.late_deadline_override` audit context.
+   */
   readonly adminOverrideJustification?: string;
   /** The request's id / address / user agent, carried into the critical deadline-override audit row. */
   readonly request?: HopeSignatureRequestFacts;
@@ -260,6 +263,7 @@ export interface RecordSfvArgs {
   readonly authorDiscipline: string;
   readonly data: Record<string, unknown>;
   readonly adminOverride?: boolean;
+  /** As for `RecordTimepointArgs.adminOverrideJustification`; stored in the audit context when the override lifts the due date. */
   readonly adminOverrideJustification?: string;
   /** R-05: the signer's attestation. The service refuses (422 M10_ATTESTATION_REQUIRED) unless it is `true`. */
   readonly attestationConfirmed?: boolean;
