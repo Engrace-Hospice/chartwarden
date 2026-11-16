@@ -1,7 +1,6 @@
 import {
   EmptyState,
   LoadingSpinner,
-  PageHeader,
   PatientWorkspaceLayout,
   StatusPill,
   t,
@@ -20,6 +19,11 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
+import {
+  ChartPatientBanner,
+  PatientSummaryPanel,
+  useChartIdentity,
+} from "../../shell/patient-context";
 import { type PlanListItem, errorMessage, listPlans } from "./discipline-api";
 import {
   CADENCE_STATUS_TONE,
@@ -37,7 +41,6 @@ import {
   Notice,
   SummaryGrid,
   columnStyle,
-  ghostButtonStyle,
   linkStyle,
   mutedStyle,
   pageTitleStyle,
@@ -82,16 +85,21 @@ export function DisciplinePlansIndex(): JSX.Element {
     void load();
   }, [load]);
 
+  // The shared chart banner and Patient Summary rail, so this tab shows the same identity header as
+  // every other chart tab (Plan of care, Assessments, ...).
+  const identity = useChartIdentity(patientId);
   const banner = (
-    <PageHeader
-      title={<span style={pageTitleStyle}>Discipline plans</span>}
+    <ChartPatientBanner
+      patientId={patientId}
+      identity={identity}
       actions={
-        <Link to={`/patients/${patientId}/discipline-plans/summary`} style={ghostButtonStyle}>
+        <Link to={`/patients/${patientId}/discipline-plans/summary`} className="wx-btn-secondary">
           Printable summary
         </Link>
       }
     />
   );
+  const rail = <PatientSummaryPanel identity={identity} />;
 
   if (loading) {
     return (
@@ -115,7 +123,7 @@ export function DisciplinePlansIndex(): JSX.Element {
   );
 
   return (
-    <PatientWorkspaceLayout banner={banner}>
+    <PatientWorkspaceLayout banner={banner} rail={rail}>
       <div
         style={{
           display: "flex",
@@ -134,6 +142,13 @@ export function DisciplinePlansIndex(): JSX.Element {
             padding: t.space6,
           }}
         >
+          <div>
+            <h1 style={pageTitleStyle}>Discipline plans</h1>
+            <span style={mutedStyle}>
+              The Aide, MSW, Spiritual and Volunteer plans of care for this patient.
+            </span>
+          </div>
+
           {overdue.length > 0 ? (
             <Notice tone="error">
               {overdue.length === 1 ? "One plan is" : `${overdue.length} plans are`} past the 42 CFR

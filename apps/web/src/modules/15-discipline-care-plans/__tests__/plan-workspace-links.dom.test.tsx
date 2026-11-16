@@ -158,13 +158,13 @@ describe("plan workspace — links to the Aide POC editor and the IDG revision r
     expect(hrefOf(/^Review v3$/)).toBe(
       `/patients/${PATIENT}/discipline-plans/msw_plan/idg-revisions/v-idg-draft`,
     );
-    expect(screen.queryByRole("link", { name: /^Edit/ })).toBeNull(); // not an aide plan
+    expect(screen.queryByRole("link", { name: /^Edit v\d/ })).toBeNull(); // not an aide plan
   });
 
   it("shows neither link without the permission the screen declares", async () => {
     renderWorkspace("aide_poc", [signed, aideDraft, idgDraft], baseSession);
     await waitFor(() => expect(screen.getByText("v3")).toBeTruthy());
-    expect(screen.queryByRole("link", { name: /^Edit/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Edit v\d/ })).toBeNull();
     expect(screen.queryByRole("link", { name: /^Review/ })).toBeNull();
   });
 
@@ -176,7 +176,7 @@ describe("plan workspace — links to the Aide POC editor and the IDG revision r
       sessionWith(AIDE_POC_EDIT_PERMISSION, IDG_REVISION_REVIEW_PERMISSION),
     );
     await waitFor(() => expect(screen.getByText("v3")).toBeTruthy());
-    expect(screen.queryByRole("link", { name: /^(Edit|Review)/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^(Edit|Review) v\d/ })).toBeNull();
   });
 });
 
