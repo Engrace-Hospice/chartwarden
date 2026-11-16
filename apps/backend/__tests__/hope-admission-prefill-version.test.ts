@@ -63,9 +63,9 @@ const storedAnswer = (value: string): Outcome => [
 async function prefill(outcomes: readonly Outcome[], refreshOnly: boolean) {
   const fake = scriptedDb(outcomes);
   const sets: Record<string, unknown>[] = [];
-  const update = fake.tx.update.bind(fake.tx);
+  const update = fake.tx.update.bind(fake.tx) as unknown as () => unknown;
   (fake.tx as unknown as { update: unknown }).update = () => {
-    const link = update() as unknown as { set: (values: Record<string, unknown>) => unknown };
+    const link = update() as { set: (values: Record<string, unknown>) => unknown };
     const set = link.set;
     link.set = (values) => {
       sets.push(values);
