@@ -48,7 +48,9 @@ module.
 - **Idempotency**: `Idempotency-Key` header + org scope hashed with the request body; identical
   replay returns the cached response, a differing body is `409 IDEMPOTENCY_CONFLICT`, and a key whose record was written before the
   server's idempotency key changed (a rotated secret) is `409 IDEMPOTENCY_KEY_STALE` (check whether the first request took effect, then
-  retry with a new key).
+  retry with a new key). It guards mutating methods only: a GET or HEAD carries no key and is never claimed or cached. A retryable
+  failure (a 5xx, `409 CONCURRENT_UPDATE`, or M10's `409 M10_RECORD_BUSY`) is released instead of cached when nothing of the request had
+  committed, so the same key may be reused; once something had committed it is replayed and the retry needs a NEW key.
 - **Transactional outbox**: the pattern backing every `mN.*` cross-module event referenced
   throughout this document.
 
@@ -171,11 +173,31 @@ module.
 
 - **Timepoint scheduling**: CMS HOPE admission-anchored windows computed as org-local calendar
   days from SOC — Admission RFA days 1–5, HUV1 6–15, HUV2 16–30; Discharge RFA is a separate
-  7-day window anchored to discharge. A configurable grace period (default 7 days) marks the
-  "late" band requiring a typed reason; capture past the grace deadline needs an admin override.
-- **Symptom Follow-Up Visit (SFV) engine**: a J2051-triggered SFV is due within 2 calendar days of
-  the triggering assessment's signed timestamp (org-TZ). Completion is blocked past due date
+  7-day window anchored to discharge. A fixed 7-day grace (the planner takes a parameter, but no
+  tenant setting feeds it) marks the "late" band requiring a typed reason; capture past the grace
+  deadline needs an admin override.
+- **Symptom Follow-Up Visit (SFV) engine**: a J2051-triggered SFV is due at the end of the 2nd
+  calendar day after the assessment's recorded J2050B answer (the clinician-entered "date of
+  symptom impact screening"), computed in UTC (23:59:59.999 UTC) today. It is never anchored to the
+  signature time, so signing late cannot extend it. Completion is blocked past due date
   without an admin override; a watchdog decays `open → overdue → missed` (7 days past due).
+  **Open compliance question (CMS-VERIFY, undecided):** ADR-0018 D1 anchors to the visit/assessment
+  date (and names no timezone); the in-memory planner (`planSfvCreation`) takes the end of that date in
+  the zone it is handed (no per-org timezone seam exists: HOPE scheduling falls back to
+  America/Los_Angeles, the in-memory backend to UTC), while the live DB path anchors to J2050B at the UTC
+  end of day (earlier than a Pacific end of day for a clinic west of UTC). Whether J2050B or the visit date is authoritative, and UTC or org-local, must be settled
+  against CMS primary materials; until then the live behaviour above is deliberately unchanged
+  (pinned in `apps/backend/__tests__/hope-sfv-service.test.ts`).
+- **Record writes and schedule upkeep**: a HOPE write that has to take one of the bounded record locks waits at most 5 seconds
+  and then answers the retryable `409 M10_RECORD_BUSY` (the routes that take no such lock keep
+  PostgreSQL's default of no timeout; `docs/api/CHANGES.md` lists them). A spec that is not in force for the record's
+  target date is `422 M10_SPEC_NOT_IN_FORCE`; an admission the M6 seam cannot project or site is
+  `422 M10_ADMISSION_PROJECTION_GAP`. On POST, PUT and PATCH the idempotency layer replays such a 422 for 24 h on the same
+  key, so use a NEW `Idempotency-Key` after an operator fixes the cause; a GET carries no key. Only an `open` schedule can
+  be skipped (any other status is `409 CONFLICT`). `POST /hope/admin/regenerate-schedules` only creates the windows an
+  admission is missing: existing windows, in any status, are left untouched, so a window computed from a wrong date is not
+  recomputed or reopened. Signed assessments are packaged for iQIES only by the operator-run
+  `POST /hope/submissions/assemble` (the operator then uploads the ZIP in the iQIES portal by hand); no cron runs it.
 
 ### M11 — Orders
 

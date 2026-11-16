@@ -55,3 +55,23 @@ physician participant.
   Timely-Follow-Up measure to the same anchor.
 - M14/M07 enforce the per-patient 15-day clock with escalation and the MD/DO-only IDG physician seat.
 - M37 removes the invented LOC bounds and makes the RN-coverage gate fail-open.
+
+## Implementation note (as built, 2026-11-15) — D1
+
+Additive; the Decision and Status above are unchanged. The SFV clock the system runs today does not yet
+match D1's wording, and which of the two is right is **not decided**:
+
+- **Live DB path** (`hopeSfvDueAtFromJ2050B`, `apps/backend/src/modules/10-hope/hope-sfv-service.ts`):
+  `due_at` is the end of the 2nd calendar day after the assessment's recorded **J2050B** answer (the
+  clinician-entered "date of symptom impact screening"), computed at 23:59:59.999 **UTC**, not the
+  organisation-local end of day. The signature timestamp is never an input, so D1's invariant (a late
+  signature cannot extend the federal deadline) holds; a regression test pins it.
+- **In-memory planner** (`planSfvCreation`, `packages/hope/src/sfv/sfv.ts`, used only by the in-memory
+  backend) follows D1's anchor, the assessment date, and takes the end of that day in the timezone it is
+  handed. D1 itself names no timezone, and no per-organisation timezone seam exists: HOPE scheduling falls
+  back to `DEFAULT_ORG_TIME_ZONE` (America/Los_Angeles, `scheduling/schedule-writer.ts`) and the in-memory
+  backend to UTC unless seeded, so "organisation-local" is a planner choice, not something D1 decided.
+- **Open compliance question (CMS-VERIFY):** whether J2050B or the visit/assessment date is the
+  authoritative anchor, and whether the end of day is UTC or organisation-local, is to be settled
+  against CMS primary materials by the compliance owner. Until then the live behaviour is deliberately
+  unchanged; if the decision changes either path, that change is recorded by a superseding ADR.
