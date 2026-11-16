@@ -23,6 +23,9 @@ export const hasForbiddenReferenceCharacter = (trimmedText: string): boolean =>
   trimmedText !== "" &&
   (trimmedText.length > MAX_REFERENCE || !REFERENCE_PATTERN.test(trimmedText));
 
+/** The server's limit on a result row's message in UTF-16 units (`HOPE_RESULT_MESSAGE_MAX_LENGTH`): the input and the pasted-report cut share it. */
+export const MAX_RESULT_MESSAGE = 1000;
+
 /** The server's limit on one result-row code (`HOPE_RESULT_TOKEN_MAX_LENGTH`): the CMS code and the item code. */
 export const MAX_RESULT_TOKEN = 64;
 

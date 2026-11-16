@@ -4,6 +4,8 @@
 // size- and row-limited, never evaluated; rows it cannot understand are reported, not guessed at. The server
 // remains the authority on matching and validation.
 
+import { MAX_RESULT_MESSAGE } from "./hope-report-reference";
+
 export type CmsItemOutcome = "accepted" | "accepted_with_warnings" | "rejected";
 
 export interface ParsedCmsRow {
@@ -20,8 +22,8 @@ export interface ParsedCmsReport {
 }
 
 export const MAX_REPORT_CHARS = 200_000;
+/** The server's limit on the rows of one result (`HOPE_RESULT_MAX_ROWS`): a longer paste is refused whole. */
 export const MAX_REPORT_ROWS = 2_000;
-const MAX_MESSAGE = 1_000;
 
 /** Polarity-safe: a negated acceptance ("not accepted") is a rejection, and "0 errors" is not an error.
  * Anything unrecognised is null (the row is reported, never guessed). Mirrors the server's classifyStatusText. */
@@ -73,7 +75,7 @@ function fromRecord(raw: Record<string, unknown>, label: string): ParsedCmsRow |
     status,
     code: text(pick("code", "errorcode")),
     itemCode: text(pick("itemcode", "item")),
-    message: text(pick("message", "description", "text"), MAX_MESSAGE),
+    message: text(pick("message", "description", "text"), MAX_RESULT_MESSAGE),
   };
 }
 

@@ -18,6 +18,7 @@ import { errorText, meta } from "./hope-dialog-styles";
 import { notifyDone } from "./hope-notify-done";
 import {
   MAX_REFERENCE,
+  MAX_RESULT_MESSAGE,
   MAX_RESULT_TOKEN,
   MESSAGE_WORDS,
   REFERENCE_HINT,
@@ -475,7 +476,7 @@ export function RecordCmsResultModal({
                           "Message",
                           messageInvalid(r.message),
                           messageErrorId,
-                          1000,
+                          MAX_RESULT_MESSAGE,
                         )}
                       </tr>
                     );

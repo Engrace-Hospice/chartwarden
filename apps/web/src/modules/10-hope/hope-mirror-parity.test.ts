@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { MAX_REPORT_ROWS } from "./cms-result-parser";
 import { PHI_REFUSAL_CODE } from "./hope-api";
 import {
   FORBIDDEN_JUSTIFICATION_CHARACTER,
@@ -13,6 +14,7 @@ import {
 import { OVERRIDE_PERMISSION } from "./hope-record-window";
 import {
   MAX_REFERENCE,
+  MAX_RESULT_MESSAGE,
   MAX_RESULT_TOKEN,
   REFERENCE_FIELD,
   REFERENCE_PATTERN,
@@ -172,6 +174,13 @@ describe("the CMS result dialog's mirrors of hope-typebox.ts", () => {
     expect(MAX_RESULT_TOKEN).toBe(
       numberConst(TYPEBOX, "hope-typebox.ts", "HOPE_RESULT_TOKEN_MAX_LENGTH"),
     );
+  });
+
+  it("limits a row's message, and the rows of one result, to the server's counts", () => {
+    expect(MAX_RESULT_MESSAGE).toBe(
+      numberConst(TYPEBOX, "hope-typebox.ts", "HOPE_RESULT_MESSAGE_MAX_LENGTH"),
+    );
+    expect(MAX_REPORT_ROWS).toBe(numberConst(TYPEBOX, "hope-typebox.ts", "HOPE_RESULT_MAX_ROWS"));
   });
 
   it("names the reference's wire field as the route and the service do, and a row's cell as `results.<row>.<token>`", () => {
