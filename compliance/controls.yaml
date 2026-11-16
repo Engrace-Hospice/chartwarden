@@ -54,6 +54,11 @@ controls:
       # that stored discipline. The live suite proves the resolver query as chartwarden_app/NOBYPASSRLS.
       - script: test:m10:write:live
       - file: apps/backend/src/modules/10-hope/abac-predicates.ts
+      # R-01 — completing a symptom follow-up visit is bound to the admission in the URL and to the caller's caseload
+      # (the hope.scope predicate answers 404 before the service runs). The live suite proves another admission's SFV
+      # cannot be completed by naming its triggering-assessment id.
+      - script: test:m10:sfv-sign-binding:live
+      - file: apps/backend/__tests__/hope-routes.test.ts
       - script: test:s11:adversarial-stages:live
 
   - id: CW-AC-02A
@@ -766,6 +771,10 @@ controls:
       # #909 - a returned lab's clinician review is an append-only, audited, DB-stamped record (reviewer + discipline),
       # an amended result re-opens it, and results unreviewed for 24 h alert (clinical-safety control).
       - script: test:m11:lab-result-review:live
+      # R-05 — a HOPE signature leaves an explicit audit row beside the row-diff trigger: that the signer attested, the
+      # server's attestation version and a SHA-256 of the exact wording, which step-up operation the route required, and
+      # who signed (ids and enums only).
+      - file: apps/backend/src/modules/10-hope/hope-signature-audit.ts
       - script: test:audit:nested-redaction:live
       - script: arch:audit-denylist-sync
       # GAP-141 download confirmation: the store's audit log reaches the api only over the internal `audit` network
@@ -785,13 +794,16 @@ controls:
       - script: test:m3:auditor-engagement:live
 
   - id: CW-IA-01
-    title: Person/entity authentication — MFA, step-up for sensitive actions, credential throttling
+    title: Person/entity authentication — MFA, step-up for sensitive actions (signing a HOPE assessment included), credential throttling
     hipaa: ["164.312(d)", "164.308(a)(5)(ii)(D)"]
     soc2: ["CC6.1", "CC6.2"]
     status: implemented
     evidence:
       - script: test:m2:auth-hardening:live
       - script: test:m2:step-up-override:live
+      # R-05 — both HOPE signing routes (hope.timepoint.sign, hope.sfv.record) require a fresh step-up that an active
+      # break-glass grant does not satisfy; a stale step-up answers 403 STEP_UP_REQUIRED.
+      - script: test:m10:sfv-sign-binding:live
       - script: test:rate-limit-store:live
       - file: packages/auth/src/identity/credential-throttle.ts
 
@@ -853,6 +865,20 @@ controls:
       - file: apps/backend/src/modules/35-subscription/pseudonym-key-provider.ts
       - file: packages/audit/src/actions/m35.ts
       - file: packages/audit/__tests__/action-catalog-m35.test.ts
+
+  - id: CW-AC-43
+    title: Signing a HOPE assessment is an attested, step-up-gated act by the signed-in clinician, and the ceremony is audited
+    hipaa: ["164.312(c)(1)", "164.312(d)"]
+    soc2: ["CC6.1", "PI1.3"]
+    status: partial
+    evidence:
+      - script: test:m10:sfv-sign-binding:live
+      - file: apps/backend/src/modules/10-hope/hope-signature-audit.ts
+      - file: apps/backend/__tests__/hope-routes.test.ts
+    gap:
+      reason: The sign routes require the caller's attestation and a fresh step-up (not satisfiable by break-glass), and the ceremony is audited, but the signer is not required to be the record's author and the signer's licence is not checked at signing. An attestation flag and a named version prove the string was sent, not that a human read the wording.
+      owner: clinical-platform
+      review_by: 2027-04-30
 
   - id: CW-AC-42
     title: >-
@@ -1218,7 +1244,7 @@ controls:
       - script: test:m36:retention-governance:live
       - file: docs/runbooks/m36-retention-destruction.md
     gap:
-      reason: The object-store second copy (compose.object-copy.yml, a RustFS replica; NOT enabled in production) would receive a D12 shred only on its next hourly run, a large erasure is held by its mass-delete guard until an operator names the bucket, a bucket dropped on the primary is never removed there, and a --restore after a shred brings destroyed objects back (objects are plaintext, so crypto-erasure does not cover them). Before enabling it, propagate D12 shreds to the copy target and add a replica step to the destruction runbook. The legacy MinIO volume kept after the SeaweedFS cutover is also a full copy until an operator removes it (README, cutover). A closed tenant's sealed clearinghouse credential (tenant_clearinghouse_config) and its held credential fingerprints (tenant_clearinghouse_credential_reservation) have no purge path (neither table grants DELETE to the application or the destruction role, both reference the organization row with ON DELETE RESTRICT, the M23 billing eraser run by the M34 tenant shred has no step for them, and the credential is sealed under the platform KEK rather than the tenant's DEK, so destroying that DEK does not make it unreadable), so they stay, and the fingerprints keep reserving the credentials, until a database-level procedure removes them. Tenant-pricing financial records are retained records that an eraser must not delete. Published plan versions and final statements cannot be deleted through the application or platform credential (guard triggers, CW-PI-01). The signed contract, the statement and the statement review tables reference `subscription` with ON DELETE RESTRICT, and the billing-mode history references the contract, which itself restricts onto `subscription`, so deleting a subscription that has them fails. patient_census_daily has no foreign key to protect it (it is keyed by organization), and it is the input a final statement's census figure was computed from. Any future M35 offboarding eraser must therefore treat all of these as retained financial records, and decide on the census rows deliberately, not as tenant data to shred.
+      reason: The object-store second copy (compose.object-copy.yml, a RustFS replica; NOT enabled in production) would receive a D12 shred only on its next hourly run, a large erasure is held by its mass-delete guard until an operator names the bucket, a bucket dropped on the primary is never removed there, and a --restore after a shred brings destroyed objects back (objects are plaintext, so crypto-erasure does not cover them). Before enabling it, propagate D12 shreds to the copy target and add a replica step to the destruction runbook. The legacy MinIO volume kept after the SeaweedFS cutover is also a full copy until an operator removes it (README, cutover). A closed tenant's sealed clearinghouse credential (tenant_clearinghouse_config) and its held credential fingerprints (tenant_clearinghouse_credential_reservation) have no purge path (neither table grants DELETE to the application or the destruction role, both reference the organization row with ON DELETE RESTRICT, the M23 billing eraser run by the M34 tenant shred has no step for them, and the credential is sealed under the platform KEK rather than the tenant's DEK, so destroying that DEK does not make it unreadable), so they stay, and the fingerprints keep reserving the credentials, until a database-level procedure removes them. Tenant-pricing financial records are retained records that an eraser must not delete. Published plan versions and final statements cannot be deleted through the application or platform credential (guard triggers, CW-PI-01). The signed contract, the statement and the statement review tables reference `subscription` with ON DELETE RESTRICT, and the billing-mode history references the contract, which itself restricts onto `subscription`, so deleting a subscription that has them fails. patient_census_daily has no foreign key to protect it (it is keyed by organization), and it is the input a final statement's census figure was computed from. Any future M35 offboarding eraser must therefore treat all of these as retained financial records, and decide on the census rows deliberately, not as tenant data to shred. A cancelled iQIES submission package (the M10 ZIP and its per-item XML) stays as PHI at rest with no purge job; it needs a retention rule and a decision on which eraser owns it.
       owner: platform
       review_by: 2027-01-31
 
