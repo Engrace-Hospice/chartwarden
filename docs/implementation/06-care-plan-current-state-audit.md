@@ -56,7 +56,9 @@ found defects that are independent of any redesign.
 `care_plan.*` grants) is implemented as the approved control `CW-AC-44`. D-8 is decided as a full rebuild (WP1 to
 WP6) and not started: the breakdown comes first and WP1 needs your approval. Two policy questions stay yours
 (R-73, R-74) and one thing only you can confirm (R-81). The M8 and M15 residual risk (R-80) was closed at your
-direction in the picker review (R-82). Because `care-plan-view.tsx` grew from about 3.2k to 3.8k lines
+direction in the picker review (R-82). Two things the later reviews found stay open for you: a discipline
+intervention that refines a Part 2 intervention is still created visible, because interventions have no Part 2
+flag of their own (R-97), and an M39 outage is logged nowhere (R-103). Because `care-plan-view.tsx` grew from about 3.2k to 3.8k lines
 during the fixes, the rebuild should replace it rather than extend it.
 
 ## 2. Method, limits and evidence status
@@ -356,6 +358,22 @@ done, reason given.
 | R-93 | LOW | A test comment cited `CW-AU-01`, whose evidence does not list this suite | Citation dropped (`387fbc648`); the repo habit it rests on is named instead. The `CW-AU-01` row was not edited |
 | R-94 | LOW | This document was stale: R-67 said the callers "serve no human", R-71 and R-78 said "all 13", R-80 named one direction and section 10 quoted 16 live tests | Fixed here |
 
+### Found by the review of the per-actor change (round 5: `ecc:code-reviewer`, `compliance-reviewer`, `ecc:react-reviewer`, two rounds each on the new commits; no CRITICAL or HIGH)
+
+| # | Sev | Finding | Resolution |
+|---|---|---|---|
+| R-95 | MED | A goal authored through the M15 route did not inherit Part 2 from its parent problem (`sudRelated` was whatever the author sent), and since R-82 an RN case manager with no release can parent onto one, so her unflagged goal was visible to M15 readers who cannot see the problem. The IDG-apply path already inherited | Fixed (`a1f33fe89`): `RelevantProblem` carries an in-process `sudRelated` (set by the reader from `containsSud`; the picker handler strips it, so the HTTP contract and OpenAPI are unchanged), `assertParentElements` returns `parentSudRelated`, and `createGoal` stores `(input.sudRelated ?? false) \|\| parentSudRelated`. Live: stored flagged and withheld from a plain read, a plain problem is not flagged (control). Mutation-checked. **Forward only:** goals stored before this are not backfilled; reseed (prod is demo data) |
+| R-96 | MED | The inheritance looked only at `parentProblemId`, so a goal naming a plain problem and a `parentGoalId` under a Part 2 problem was stored unflagged (M15 never checks that the parent goal belongs to the named problem; M8 does) | Fixed (`c51e19ef1`): flagged when either the named problem or the parent goal's problem is Part 2. No new rejection. Unit and live test, mutation-checked |
+| R-97 | MED | **Open, your decision.** A discipline intervention has no Part 2 flag column and is hidden only through the goal it is anchored to, so an intervention that refines a Part 2 IPOC intervention (`parentInterventionId`) without a Part 2 goal anchor is created visible. It predates this work (the old patient-level rule admitted it whenever a release existed); R-82 makes it newly reachable for an RN case manager with no release | Not changed. The limit is stated in `CW-AC-43`'s evidence (`2e28e99a4`). Options: (a) refuse with 422 when the parent intervention serves a Part 2 problem and `goalRefs` names no Part 2 goal of the plan (no schema change, but it blocks that authoring path); (b) add `sud_related` to `discipline_intervention` with a migration, the code and manifest mirrors and inheritance (the full fix, its own change); (c) leave it as stated |
+| R-98 | LOW | One resolver built the synthesized access context twice (the M7 routes' closure and the reader store), and the shared code warns against a second copy | Fixed (`e4bd50a66`): `sudDisclosureAllowedForActor`, used by both; behaviour identical |
+| R-99 | LOW | More false comments after the round-4 rewrite: the `CarePlanReader` header ("the one thing a caller supplies is the verdict"), "SQL-side" in five places, the system actor "has no membership", the `RelevantProblem` filter rule stated as the old patient-level one, the Drizzle header joining two claims with a colon, a stale `sudReadAllowed` doc | Fixed (`e4bd50a66`, `76a38e7f0`), comments only |
+| R-100 | LOW | The `"patient_level"` and hand-built-viewer pins are tripwires, not guarantees: the viewer type is a plain boolean, so a computed value, a quoted key or a variable passes them | Tightened (`76a38e7f0`): the picker's and `viewerOf`'s viewers must both take the closure's verdict, the scan covers `packages/*/src` too, its own `describe`, and an honest comment. Branding the verdict type so only the closure can produce one was not done: a design change, and review stays the control |
+| R-101 | LOW | M8 was proven only with a stub reader | Fixed (`a1f33fe89`): live tests drive the M8 link service through the real reader and the real in-memory evaluator (a nurse the release does not name is refused and no link row is written; the RN case manager with no release and the named member link); a route test proves the session's roles and membership reach the service. **Limit:** the service is driven directly, not over HTTP, and the consent store is the in-memory one |
+| R-102 | LOW | The M8 live test restored the stub reader but left the real evaluator bound, and its stub problem hid the new required field | Fixed (`76a38e7f0`): the evaluator is restored (to the boot deny-stub, which fails closed; the registry has no unregister), the stub carries `sudRelated: false` |
+| R-103 | LOW | **Open, your call.** An M39 outage is swallowed with no log or metric in the reader store and in `defaultInternalSudAccessChecker`, so M8 and M15 answer 422 as if the id did not exist (the picker at least answers `redacted: true`). Fail-closed, no PHI risk; `part2ReleaseAllowed` already behaved this way | Not changed: no logger is reachable from those catch blocks (only `request.log` exists), so logging means a logger parameter on the store factory and the checker, a bigger signature change than an operability fix |
+| R-104 | HIGH | Found while testing M15: the goal route schema accepted `clinician_authored` and `idg_directed` but not `clinical`, while the DB enum, the shared type and the module spec all say `clinical \| patient_stated \| family_stated \| agent_stated`. The aide plan-of-care editor defaulted to `clinician_authored`, so saving a goal with the default source failed with a 500 at the insert (the in-memory twin used by the inject test hid it). Pre-existing | Fixed (`b614ee538`, `1e5c78dc1`): the route union equals the enum (pinned by `m15-goal-source-parity.test.ts`), the editor offers the three real sources and defaults to `clinical`, "IDG directed" is gone (no such source exists; IDG-applied goals come from a consumer), the OpenAPI file and typed client are regenerated (only the enum changed), the goal tables label `clinical` as "Clinician authored" like the select, and a DOM test pins the default and the option list. Mutation-checked |
+| R-105 | LOW | The M7 goal form offers `agent_stated` with no consent field (raised by the React review) | Checked, not a defect: the M7 route resolves the DPOA consent itself from M39 and needs no id from the client; `gap-013` proves 422 `DPOA_CONSENT_REQUIRED` without a consent on file and 201 with one |
+
 ## 9. Decisions (all closed)
 
 Each decision below is closed: it says what was decided and what changed. D-2 is implemented. **D-8 is
@@ -430,8 +448,13 @@ Run on `develop` after merging `origin/main` (which carries the migration 1489/1
 | **Picker review fixes** (R-82 to R-94): `bun run typecheck`, `arch:fitness` (50 of 50), `arch:compliance`, `harness:phi-scan` on the 12 changed paths | all exit 0, on the tree that became the six commits `4d0925732` to `2a213a6a5` |
 | Picker review: changed non-live tests (`care-plan-hardening-routes`, `care-plan-seam`, `care-plan-patient-level-pin`, `care-plan-grants-pin`, `care-plan-grants`) | 5 files, 54 of 54 |
 | Picker review: `bun run test` (all non-live suites) and `arch:fitness` with this document in the tree | 2957 files: 2421 passed, 536 skipped, 0 failed; 35791 tests passed. `arch:fitness`: 50 of 50 gates |
-| **Picker review: live suites on the final commits** (private `cw-pg-wf06`, `cw-vk-wf06`) | `gap-013-care-plan-consent-wiring` 18 of 18 (12 plus six per-actor picker tests), `m7-care-plan-write` 58, `m3-role-catalog-floor` 15, `m3-role-templates` 7, `m8-encounters-write` 60, `m15-idg-decision-apply` 21, `m15-plan-bootstrap` 7, `m17-scheduling-write` 23, `m7-link-summary` 6 |
+| Picker review: live suites at the first six picker commits (superseded by the final-tree rows below) (private `cw-pg-wf06`, `cw-vk-wf06`) | `gap-013-care-plan-consent-wiring` 18 of 18 (12 plus six per-actor picker tests), `m7-care-plan-write` 58, `m3-role-catalog-floor` 15, `m3-role-templates` 7, `m8-encounters-write` 60, `m15-idg-decision-apply` 21, `m15-plan-bootstrap` 7, `m17-scheduling-write` 23, `m7-link-summary` 6 |
 | **Picker review: mutation checks** (break the code, see the test fail, restore byte for byte) | a consent outage that stops marking the verdict restricted fails the unbound-evaluator live test (R-88; it passed before the test was changed); a reader that stops filtering goals fails the redacted-nurse live test (R-90); an audit row that loses its actor fails the same test (R-87); a caller that stops naming `"patient_level"` fails 2 pin tests and an unreviewed file that starts naming it fails 1 (R-85); giving the LPN `care_plan.author` fails the derived route test on the proposal accept route (R-86) |
+| **Final tree** (HEAD `2e28e99a4` plus this document): `bun run typecheck`, `arch:compliance`, `client:check`, `arch:fitness` | all exit 0; `arch:fitness`: 50 of 50 gates |
+| **Final tree: `bun run test`** (all non-live suites) | 2963 files: 2427 passed, 536 skipped, 0 failed; 35843 tests passed |
+| **Final tree: live suites** (private `cw-pg-wf06`, `cw-vk-wf06`) | `gap-013-care-plan-consent-wiring` 31, `m8-encounters-write` 63, `m15-idg-decision-apply` 21, `m15-plan-bootstrap` 7, `m7-care-plan-write` 58, `m17-scheduling-write` 23, `m7-link-summary` 6, `m14-s05-careplan-to-idg` 16, `m3-role-catalog-floor` 15, `m3-role-templates` 7: all pass |
+| **Final tree: mutation checks** (break the code, see the guarding test fail, restore byte for byte; those marked * I reproduced myself) | the reader store ignoring the actor's roles* fails the case-manager tests; M15 or M8 passing `"patient_level"` again* fails the route and live tests and the pin test; M15 ignoring the parent problem's flag* and the parent goal's problem* fails the inheritance tests; the carve-out ignoring "restricted to named staff" for an identified case manager fails its test; the picker's viewer becoming a variable fails the pin test; `clinician_authored` back in the route union fails the parity test; the aide editor's default changed fails the DOM test |
+| Tree state during these runs | another session's uncommitted platform-role and superadmin edits (`packages/auth`, `packages/db/src/schema/roles.ts`, `scripts/`, a `CW-AC-45` row, migration 1495) were present in the working tree; every result above is green with them present, and none of those files is in these commits |
 
 **Not verified, by design or limit**
 
@@ -441,14 +464,21 @@ Run on `develop` after merging `origin/main` (which carries the migration 1489/1
   and D-3 rules; production uses the database service, which does.
 - `compliance/controls.yaml`: `CW-AC-43` is `implemented`, its four gaps closed (R-43 to R-52). It needs your
   approval, which you gave on condition that the gaps were fixed. `CW-AC-44` (D-2, the default clinical grants) is a
-  new `implemented` row that you approved. The two extra edits to `CW-AC-43` since then are their own commits and
-  **not approved**: `1cdd3ef05` names the internal element-picker read in its title and evidence comment, and
-  `2a213a6a5` widens that evidence to the cases and files that prove it (R-92). Neither changes what the control
-  claims beyond the picker; the second only lists more evidence.
+  new `implemented` row that you approved. The three extra edits to `CW-AC-43` since then are their own commits and
+  **not approved**: `1cdd3ef05` names the internal element-picker read in its title and evidence comment;
+  `2a213a6a5` widens that evidence to the cases and files that prove it (R-92); and `2e28e99a4` **extends the claim
+  itself**: the M8 visit-to-problem link and the M15 goal and intervention parent checks refuse a Part 2 element the
+  caller is not cleared to see, and a goal authored under a Part 2 problem or refining a Part 2 goal is stored
+  flagged from then on. It adds `test:m8:write:live` and `encounter-routes.test.ts` as evidence and states what is
+  not covered (R-97: interventions; no backfill of earlier goals).
 - **D-2 limits.** Migration 1494 inserts nothing if the runner falls back to the NOBYPASSRLS app role (no
   `DATABASE_ADMIN_URL`); that case was not run. The element-picker fix is proven on the server (live, real
   evaluator and reader); the web encounter screen was not re-driven in a browser. Roles created after the
   migration, and the signer roles of a new tenant, still need an administrator (section 6).
+- **Not re-run after the per-actor commits (R-82 to R-105):** the e2e Chromium spec, the print probe and
+  `check:boot:platform`; nor was any web screen driven in a browser. The aide editor change (a select, a label, a
+  default) is proven by a DOM test only, the M8 link flow by service-level and route-unit tests, and the M8 proof
+  drives the link service directly with the in-memory consent store, not over HTTP against the Drizzle one.
 - **No CMS rule beyond 42 CFR 418.56(c)(3) was checked** (D-3, on eCFR). The clock constants stay CMS-VERIFY.
 - **Review before the PR.** `/ecc:security-scan` (AgentShield: D, 56/100, no finding in a file this branch
   changes), `/ecc:react-review` (one HIGH, the Part 2 box not clearing when the IDG form reopens, fixed with a
