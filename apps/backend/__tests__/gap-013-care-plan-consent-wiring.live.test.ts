@@ -36,6 +36,13 @@ import {
   createDbCarePlanAbacResolver,
   mountCarePlanRoutes,
 } from "../src/modules/07-care-plan/index";
+import {
+  buildDisciplinePlanAbacPredicates,
+  buildDrizzleDisciplinePlanAbacResolver,
+  buildDrizzleM15ReadService,
+  buildDrizzleM15WriteService,
+  mountM15Routes,
+} from "../src/modules/15-discipline-care-plans/index";
 import { registerConsentSeams } from "../src/modules/39-consent/index";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
@@ -51,6 +58,16 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  // M15 stamps the acting membership off the context attributes; the M7 routes under test here do not, and
+  // behave differently with one, so it is opt-in.
+  const membership = request.headers["x-test-membership"];
+  if (typeof membership === "string" && membership.length > 0) {
+    request.context.attributes = {
+      ...request.context.attributes,
+      membershipId: membership,
+      sessionClass: "staff",
+    };
+  }
 }
 
 describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postgres", () => {
@@ -417,6 +434,222 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
         "Dyspnea",
         "Opioid use disorder",
       ]);
+      await app.close();
+    });
+  });
+
+  // The audit's CW-AC-43 gap 4: M15's own live tests drive the services with an INJECTED disclosure port, so
+  // nothing proved that the real M15 routes resolve a caller's Part 2 verdict through the seam registry's M39
+  // ConsentEvaluator (`seamDisclosurePort`) and carry it into the read filter and the write gate. This does:
+  // real Fastify routes, real services over Postgres, the real evaluator over an in-memory consent store, and
+  // NO port handed to `mountM15Routes`.
+  describe("M15 discipline plans — route to M39 ConsentEvaluator chain", () => {
+    const SUD_GOAL_TEXT = "SYNTHETIC-SUD-GOAL-TEXT";
+    const SUD_IV_TEXT = "SYNTHETIC-SUD-INTERVENTION-TEXT";
+
+    function bootM15(opts: { grants: Record<string, string[]>; consents?: StoredConsent[] }) {
+      resetAuthorizationContract();
+      resetRbacEngine();
+      const grantStore = createInMemoryEffectivePermissionStore(
+        Object.entries(opts.grants).map(([userId, permissionKeys]) => ({
+          orgId: org,
+          userId,
+          grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys }],
+        })),
+      );
+      registerEffectivePermissionResolver(grantStore.store);
+      const registry = createPredicateRegistry();
+      const predicates = {
+        // `caseload_or_scope` lives in the care-plan set; no caseload rows are seeded, so it is permissive.
+        ...buildCarePlanAbacPredicates({
+          resolver: createDbCarePlanAbacResolver(handle.db),
+          isInCaseload: async () => true,
+        }),
+        ...buildDisciplinePlanAbacPredicates({
+          resolver: buildDrizzleDisciplinePlanAbacResolver(handle.db),
+        }),
+      };
+      for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+      registerAbacRegistry(registry);
+      const { store } = createInMemoryConsentStore({
+        consents: opts.consents ?? [],
+        deceasedPatientIds: new Set(),
+      });
+      registerConsentSeams({ store });
+      registerSeam("CaseloadProvider", { isInCaseload: async () => true } as never);
+      const app = buildServer({
+        db: handle.db as never,
+        authenticate: headerAuth,
+        security: { rateLimitEnabled: false },
+      });
+      app.addHook("onRequest", async (request) => {
+        if (request.method !== "GET" && !request.headers["idempotency-key"]) {
+          request.headers["idempotency-key"] = randomUUID();
+        }
+      });
+      // No `disclosure` dependency: the routes must reach M39 through the seam registry, as in production.
+      mountM15Routes(app, {
+        readService: buildDrizzleM15ReadService(handle.db),
+        writeService: buildDrizzleM15WriteService(handle.db),
+      });
+      return app;
+    }
+
+    async function seedDisciplinePlan() {
+      // The audit rows (read audit, write-audit trigger) reference the acting user.
+      await admin.query(
+        `INSERT INTO "user" (id,email) VALUES ($1,'m15-chain@x.test') ON CONFLICT DO NOTHING`,
+        [MSW_USER],
+      );
+      const pe = (
+        await admin.query(
+          `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+             VALUES ($1,$2,'PE',$3,'enc','12-31') RETURNING id`,
+          [org, `CCN-${randomUUID().slice(0, 8)}`, `NPI-${randomUUID().slice(0, 8)}`],
+        )
+      ).rows[0].id as string;
+      const loc = (
+        await admin.query(
+          `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+             VALUES ($1,'Loc','1 St','Town','OR','97000','America/Los_Angeles') RETURNING id`,
+          [pe],
+        )
+      ).rows[0].id as string;
+      const planId = (
+        await admin.query(
+          `INSERT INTO discipline_care_plan (organization_id, patient_id, admission_id, provider_entity_id,
+             location_id, kind, status) VALUES ($1,$2,$3,$4,$5,'msw_plan','active') RETURNING id`,
+          [org, patientId, randomUUID(), pe, loc],
+        )
+      ).rows[0].id as string;
+      const carePlanId = (
+        await admin.query(
+          `INSERT INTO care_plan (organization_id, provider_entity_id, location_id, patient_id, admission_id,
+             status, initial_due_at) VALUES ($1,$2,$3,$4,$5,'active', now() + interval '5 days') RETURNING id`,
+          [org, pe, loc, patientId, randomUUID()],
+        )
+      ).rows[0].id as string;
+      const problemId = (
+        await admin.query(
+          `INSERT INTO problem (organization_id, provider_entity_id, location_id, care_plan_id, description, kind)
+             VALUES ($1,$2,$3,$4,'Anticipatory grief','related') RETURNING id`,
+          [org, pe, loc, carePlanId],
+        )
+      ).rows[0].id as string;
+      const goal = async (text: string, sud: boolean) =>
+        (
+          await admin.query(
+            `INSERT INTO discipline_goal (organization_id, provider_entity_id, location_id, plan_id,
+               parent_problem_id, source, status, original_text, sud_related, added_by_membership_id,
+               added_by_discipline) VALUES ($1,$2,$3,$4,$5,'clinical','in_progress',$6,$7,$8,'msw') RETURNING id`,
+            [org, pe, loc, planId, problemId, text, sud, randomUUID()],
+          )
+        ).rows[0].id as string;
+      const plainGoalId = await goal("Family will report reduced distress", false);
+      const sudGoalId = await goal(SUD_GOAL_TEXT, true);
+      await admin.query(
+        `INSERT INTO discipline_intervention (organization_id, provider_entity_id, location_id, plan_id,
+           goal_refs, scope_text, frequency_text, frequency_value, discipline, added_by_membership_id,
+           added_by_discipline) VALUES ($1,$2,$3,$4,$5::jsonb,$6,'Weekly','1:visit:week','msw',$7,'msw')`,
+        [org, pe, loc, planId, JSON.stringify([sudGoalId]), SUD_IV_TEXT, randomUUID()],
+      );
+      return { planId, plainGoalId, sudGoalId };
+    }
+
+    const AUTHOR = ["discipline_plan.read", "discipline_plan.author"];
+    // A real uuid: the M4 write-audit trigger and the read-audit row cast the acting user to uuid.
+    const MSW_USER = "44444444-4444-4444-8444-444444444444";
+    const MSW_AUTH = () => ({
+      "x-test-user": MSW_USER,
+      "x-test-org": org,
+      "x-test-membership": "33333333-3333-4333-8333-333333333333",
+    });
+
+    it("withholds Part 2 goals and the interventions that serve them from the read, and answers a write NOT FOUND, for a caller with no release", async () => {
+      await seedTenant();
+      const { planId, plainGoalId, sudGoalId } = await seedDisciplinePlan();
+      const app = bootM15({ grants: { [MSW_USER]: AUTHOR } });
+      const AUTH = { ...MSW_AUTH(), "x-test-roles": "msw" };
+
+      const read = await app.inject({
+        method: "GET",
+        url: `/api/v1/discipline-plans/${planId}`,
+        headers: AUTH,
+      });
+      expect(read.statusCode).toBe(200);
+      expect(read.body).toContain("Family will report reduced distress");
+      expect(read.body).not.toContain(SUD_GOAL_TEXT);
+      expect(read.body).not.toContain(SUD_IV_TEXT);
+      expect(read.body.toLowerCase()).not.toContain(sudGoalId.toLowerCase());
+      expect(read.json().redacted_categories).toContain("sud");
+
+      // A write is NOT FOUND whatever the If-Match says (a wrong one must not confirm the row exists).
+      const patch = (goalId: string, version: number) =>
+        app.inject({
+          method: "PATCH",
+          url: `/api/v1/discipline-plans/${planId}/goals/${goalId}`,
+          headers: { ...AUTH, "if-match": `"${version}"` },
+          payload: { measurableOutcome: "Engages in two sessions" },
+        });
+      const hidden = await patch(sudGoalId, 99);
+      const missing = await patch(randomUUID(), 99);
+      expect(hidden.statusCode).toBe(404);
+      expect(missing.statusCode).toBe(404);
+      expect(hidden.json().error?.message ?? hidden.json().message).toBe(
+        missing.json().error?.message ?? missing.json().message,
+      );
+      // A plain goal is unaffected.
+      expect((await patch(plainGoalId, 0)).statusCode).toBe(200);
+      await app.close();
+    });
+
+    it("shows them, and lets the write through, for a caller M39 clears with an active 42 CFR Part 2 release", async () => {
+      await seedTenant();
+      const { planId, sudGoalId } = await seedDisciplinePlan();
+      const app = bootM15({
+        grants: { [MSW_USER]: AUTHOR },
+        consents: [activeConsent("42_cfr_part_2_release")],
+      });
+      const AUTH = { ...MSW_AUTH(), "x-test-roles": "msw" };
+
+      const read = await app.inject({
+        method: "GET",
+        url: `/api/v1/discipline-plans/${planId}`,
+        headers: AUTH,
+      });
+      expect(read.statusCode).toBe(200);
+      expect(read.body).toContain(SUD_GOAL_TEXT);
+      expect(read.body).toContain(SUD_IV_TEXT);
+      expect(read.json().redacted_categories).not.toContain("sud");
+
+      const patched = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/discipline-plans/${planId}/goals/${sudGoalId}`,
+        headers: { ...AUTH, "if-match": '"0"' },
+        payload: { measurableOutcome: "Engages in two sessions" },
+      });
+      expect(patched.statusCode).toBe(200);
+      expect(patched.body).toContain(SUD_GOAL_TEXT);
+      await app.close();
+    });
+
+    it("an unbound M39 evaluator REDACTS (fail closed): the seam outage never widens a read", async () => {
+      await seedTenant();
+      const { planId } = await seedDisciplinePlan();
+      const app = bootM15({
+        grants: { [MSW_USER]: AUTHOR },
+        consents: [activeConsent("42_cfr_part_2_release")],
+      });
+      __resetSeamsForTest(); // the evaluator the routes resolve at call time is gone
+      registerSeam("CaseloadProvider", { isInCaseload: async () => true } as never);
+      const AUTH = { ...MSW_AUTH(), "x-test-roles": "msw" };
+      const read = await app.inject({
+        method: "GET",
+        url: `/api/v1/discipline-plans/${planId}`,
+        headers: AUTH,
+      });
+      expect(read.statusCode).toBe(200);
+      expect(read.body).not.toContain(SUD_GOAL_TEXT);
       await app.close();
     });
   });
