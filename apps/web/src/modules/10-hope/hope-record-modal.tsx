@@ -70,6 +70,13 @@ import { notifyDone } from "./hope-notify-done";
 import { type JustificationRefusal, justificationRefusalOf } from "./hope-override-justification";
 import { HopeOverrideSection, judgeOverride } from "./hope-override-section";
 import {
+  EMPTY_SECTIONS,
+  HopeRecordSections,
+  type SectionValues,
+  buildHopeData,
+  humanize,
+} from "./hope-record-sections";
+import {
   ASKED_MESSAGES,
   OVERRIDE_NOT_PERMITTED_ASKED,
   OVERRIDE_PERMISSION,
@@ -80,25 +87,6 @@ import {
 } from "./hope-record-window";
 import { rfaLabel } from "./hope-status";
 import { useFocusOnNewError } from "./use-focus-on-new-error";
-
-/** The §2.1 CMS J2051 symptom roster + severities, both derived from the wire contract. */
-type J2051Entry = NonNullable<NonNullable<HopeData["J"]>["J2051"]>["entries"][number];
-type SymptomCode = J2051Entry["symptomCode"];
-type Severity = J2051Entry["severity"];
-
-const SYMPTOMS: readonly SymptomCode[] = [
-  "pain",
-  "shortness_of_breath",
-  "anxiety",
-  "agitation",
-  "nausea_vomiting",
-  "constipation",
-  "restlessness",
-  "other",
-];
-const SEVERITIES: readonly Severity[] = ["none", "mild", "moderate", "severe"];
-/** D4 — moderate or severe on ANY symptom creates the 2-calendar-day SFV obligation. */
-const TRIGGER_SEVERITIES: ReadonlySet<string> = new Set(["moderate", "severe"]);
 
 // The §4.7 author vocabulary lives in `hope-api.ts` (`authorDisciplinesForRoles`) — it is the WIRE
 // vocabulary (RN/NP/MD), not the M3 role keys, and this modal used to conflate the two. See F-074 there.
@@ -137,13 +125,6 @@ export const DEFAULT_DATE_HINT =
 /** The entries could not be assembled into a request, so nothing was sent (unlike RECORD_UNCONFIRMED). */
 const RECORD_NOT_PREPARED =
   "The timepoint could not be prepared, so nothing was sent. Check the entries and try again.";
-
-const humanize = (k: string): string =>
-  k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-
-/** The server's own bounds on the free-text fields that are not otherwise limited (`J2051Entry`, `HopeData.N`). */
-const OTHER_SYMPTOM_LABEL_MAX = 100;
-const BOWEL_CONTRAINDICATION_MAX = 500;
 
 /**
  * A record for an admission and RFA that already has a draft is answered with THAT draft (201), and everything sent is
@@ -214,16 +195,7 @@ export function HopeRecordModal({
     null,
   );
   const justificationId = useId();
-  const [primaryDiagnosisIcd10, setPrimaryDiagnosisIcd10] = useState("");
-  const [painScreened, setPainScreened] = useState(false);
-  const [painCharacteristics, setPainCharacteristics] = useState("");
-  const [dyspneaScreened, setDyspneaScreened] = useState(false);
-  const [dyspneaCharacteristics, setDyspneaCharacteristics] = useState("");
-  const [severities, setSeverities] = useState<Record<string, Severity>>({});
-  const [otherSymptomLabel, setOtherSymptomLabel] = useState("");
-  const [opioidPrescribed, setOpioidPrescribed] = useState(false);
-  const [scheduledBowelRegimen, setScheduledBowelRegimen] = useState(false);
-  const [bowelRegimenContraindication, setBowelRegimenContraindication] = useState("");
+  const [sections, setSections] = useState<SectionValues>(EMPTY_SECTIONS);
   // A failure takes focus: the pressed button is disabled while the request is out, which drops focus to the page.
   const alertRef = useFocusOnNewError<HTMLParagraphElement>(error);
   const existingRef = useFocusOnNewError<HTMLOutputElement>(
@@ -252,16 +224,7 @@ export function HopeRecordModal({
     setAdminOverride(false);
     setOverrideJustification("");
     setJustificationRefusal(null);
-    setPrimaryDiagnosisIcd10("");
-    setPainScreened(false);
-    setPainCharacteristics("");
-    setDyspneaScreened(false);
-    setDyspneaCharacteristics("");
-    setSeverities({});
-    setOtherSymptomLabel("");
-    setOpioidPrescribed(false);
-    setScheduledBowelRegimen(false);
-    setBowelRegimenContraindication("");
+    setSections(EMPTY_SECTIONS);
   }, [open, pinnedRfa, defaultRfaKind, authorRoles]);
 
   // After a refusal of the justification, the field to edit takes focus: the pressed button was disabled while the request was out,
@@ -278,7 +241,6 @@ export function HopeRecordModal({
   const windowSpan = spanOf(targetIso, scheduleWindow);
   // The server asked for a control this window could not (no schedule, or one that looked in time): offer it, for this date only.
   const span = askedSpan !== null && asksForMore(askedSpan, windowSpan) ? askedSpan : windowSpan;
-  const triggering = SYMPTOMS.filter((s) => TRIGGER_SEVERITIES.has(severities[s] ?? "none"));
   const needsQ =
     rfaKind === "05_discharge" && dischargeReason !== "" && dischargeReason !== "death";
   const forbidsQ = rfaKind === "05_discharge" && dischargeReason === "death";
@@ -304,50 +266,6 @@ export function HopeRecordModal({
     (rfaKind === "05_discharge" && dischargeReason === "") ||
     overrideBlocked;
 
-  /** The §2.1 payload for the four sections this codebase defines items for. */
-  function buildData(): HopeData {
-    const entries = SYMPTOMS.filter((s) => severities[s] !== undefined).map((symptomCode) => ({
-      symptomCode,
-      severity: severities[symptomCode] as Severity,
-      ...(symptomCode === "other" && otherSymptomLabel.trim() !== ""
-        ? { otherSymptomLabel: otherSymptomLabel.trim() }
-        : {}),
-    }));
-    const data: Record<string, unknown> = {
-      J: {
-        J2030: {
-          screened: painScreened ? ("yes" as const) : ("no" as const),
-          ...(painScreened && painCharacteristics.trim() !== ""
-            ? { characteristics: painCharacteristics.trim() }
-            : {}),
-        },
-        J2050: {
-          screened: dyspneaScreened ? ("yes" as const) : ("no" as const),
-          ...(dyspneaScreened && dyspneaCharacteristics.trim() !== ""
-            ? { characteristics: dyspneaCharacteristics.trim() }
-            : {}),
-        },
-        ...(entries.length > 0 ? { J2051: { entries } } : {}),
-      },
-      N: {
-        opioidPrescribed,
-        // The regimen and its contraindication are asked only for an opioid, and the contraindication only without a regimen.
-        scheduledBowelRegimen: opioidPrescribed && scheduledBowelRegimen,
-        ...(opioidPrescribed && !scheduledBowelRegimen && bowelRegimenContraindication.trim() !== ""
-          ? { bowelRegimenContraindication: bowelRegimenContraindication.trim() }
-          : {}),
-      },
-    };
-    if (primaryDiagnosisIcd10.trim() !== "") {
-      data.I = { primaryDiagnosisIcd10: primaryDiagnosisIcd10.trim().toUpperCase() };
-    }
-    // D9 — the record-time gate refuses a live discharge with NO Section Q key at all. The section has
-    // no item definitions here, so the only truthful thing to write is the discharge participation
-    // fact itself; the CMS rule then reports it as documented, which it is.
-    if (needsQ) data.Q = { participation: "documented_at_discharge" };
-    return data as HopeData;
-  }
-
   async function submit(): Promise<void> {
     // Narrowing, not a re-check: `blocked` already disables the control. Returning here rather than
     // casting is what lets the call below pass a real `AuthorDiscipline` — the `as` that used to
@@ -359,7 +277,7 @@ export function HopeRecordModal({
     setJustificationRefusal(null);
     let data: HopeData;
     try {
-      data = buildData();
+      data = buildHopeData(sections, needsQ);
     } catch {
       // Nothing was sent, and `busy` must not stay set: it would hold Cancel, Escape and the scrim shut for good.
       setBusy(false);
@@ -564,121 +482,10 @@ export function HopeRecordModal({
             </p>
           ) : null}
 
-          <h3 style={sectionTitle}>Section I — Active diagnoses</h3>
-          <CodeSearchInput
-            label="Primary terminal diagnosis (ICD-10-CM)"
-            system="icd10cm"
-            value={primaryDiagnosisIcd10}
-            onChange={(code) => setPrimaryDiagnosisIcd10(code)}
-            placeholder="Search ICD-10-CM, e.g. C34.90"
+          <HopeRecordSections
+            values={sections}
+            onChange={(patch) => setSections((prev) => ({ ...prev, ...patch }))}
           />
-
-          <h3 style={sectionTitle}>Section J — Health conditions</h3>
-          <label style={checkRow}>
-            <input
-              type="checkbox"
-              checked={painScreened}
-              onChange={(e) => setPainScreened(e.target.checked)}
-            />
-            <span>J2030 — screened for pain</span>
-          </label>
-          {painScreened ? (
-            <TextAreaField
-              label="Pain characteristics"
-              value={painCharacteristics}
-              onChange={(e) => setPainCharacteristics(e.target.value)}
-              rows={2}
-            />
-          ) : null}
-          <label style={checkRow}>
-            <input
-              type="checkbox"
-              checked={dyspneaScreened}
-              onChange={(e) => setDyspneaScreened(e.target.checked)}
-            />
-            <span>J2050 — screened for shortness of breath</span>
-          </label>
-          {dyspneaScreened ? (
-            <TextAreaField
-              label="Dyspnea characteristics"
-              value={dyspneaCharacteristics}
-              onChange={(e) => setDyspneaCharacteristics(e.target.value)}
-              rows={2}
-            />
-          ) : null}
-
-          <p style={meta}>J2051 — symptom impact at this visit</p>
-          <div style={symptomGrid}>
-            {SYMPTOMS.map((symptom) => (
-              <SelectField
-                key={symptom}
-                label={humanize(symptom)}
-                value={severities[symptom] ?? ""}
-                onChange={(e) =>
-                  setSeverities((prev) => {
-                    const next = { ...prev };
-                    if (e.target.value === "") delete next[symptom];
-                    else next[symptom] = e.target.value as Severity;
-                    return next;
-                  })
-                }
-                options={[
-                  { value: "", label: "Not screened" },
-                  ...SEVERITIES.map((s) => ({ value: s, label: humanize(s) })),
-                ]}
-              />
-            ))}
-          </div>
-          {severities.other !== undefined ? (
-            <TextField
-              label="Other symptom — label"
-              maxLength={OTHER_SYMPTOM_LABEL_MAX}
-              value={otherSymptomLabel}
-              onChange={(e) => setOtherSymptomLabel(e.target.value)}
-            />
-          ) : null}
-          {triggering.length > 0 ? (
-            // Informational, never blocking — the clinician records what is clinically true and the SFV
-            // is the consequence. The SERVER evaluates the trigger from the stored payload at sign (D4);
-            // this is a preview of a decision it makes, not the decision.
-            <output style={triggerBox}>
-              <StatusPill label="Follow-up will be required" tone="warning" />
-              <p style={meta}>
-                {triggering.map(humanize).join(", ")} at moderate or severe will create a Symptom
-                Follow-Up Visit obligation due within 2 calendar days once this timepoint is signed.
-              </p>
-            </output>
-          ) : null}
-
-          <h3 style={sectionTitle}>Section N — Medications</h3>
-          <label style={checkRow}>
-            <input
-              type="checkbox"
-              checked={opioidPrescribed}
-              onChange={(e) => setOpioidPrescribed(e.target.checked)}
-            />
-            <span>Opioid prescribed for pain</span>
-          </label>
-          {opioidPrescribed ? (
-            <>
-              <label style={checkRow}>
-                <input
-                  type="checkbox"
-                  checked={scheduledBowelRegimen}
-                  onChange={(e) => setScheduledBowelRegimen(e.target.checked)}
-                />
-                <span>Scheduled bowel regimen in place</span>
-              </label>
-              {!scheduledBowelRegimen ? (
-                <TextField
-                  label="Bowel regimen contraindication"
-                  maxLength={BOWEL_CONTRAINDICATION_MAX}
-                  value={bowelRegimenContraindication}
-                  onChange={(e) => setBowelRegimenContraindication(e.target.value)}
-                />
-              ) : null}
-            </>
-          ) : null}
 
           {error ? (
             <p ref={alertRef} tabIndex={-1} role="alert" style={errorText}>
@@ -733,21 +540,9 @@ const body: CSSProperties = {
   overflowY: "auto",
 };
 const title: CSSProperties = { margin: 0, fontSize: "1.05rem", fontWeight: 600 };
-const sectionTitle: CSSProperties = {
-  margin: "0.5rem 0 0",
-  fontSize: "0.85rem",
-  fontWeight: 600,
-  color: "var(--color-on-surface-variant)",
-};
 const banner: CSSProperties = {
   ...meta,
   padding: "0.5rem 0.625rem",
   borderRadius: "0.375rem",
   background: "var(--color-surface-variant)",
-};
-const triggerBox: CSSProperties = { ...lateBox };
-const symptomGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))",
-  gap: "0.5rem",
 };
