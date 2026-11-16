@@ -21,6 +21,7 @@
 // TENANCY. Every query carries an explicit `organization_id` predicate on top of the caller's
 // `withOrgContext` RLS envelope — the org-rollup store's HARD RULE 1, reused here.
 import { type DbClient, schema } from "@chartwarden/db";
+import type { HopeSubmissionItemStatus } from "@chartwarden/types";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { correctsIqiesRecordIdSql, outerColumn } from "./correlated-sql";
 import { type AssemblableAssessment, submissionPeriodFor } from "./submission";
@@ -28,6 +29,21 @@ import { type AssemblableAssessment, submissionPeriodFor } from "./submission";
 const ASSESS = schema.hopeAssessments;
 const SUB = schema.hopeSubmissions;
 const ITEM = schema.hopeSubmissionItems;
+
+/**
+ * The `hope_submission_item.item_status` values that keep a signed record out of a new batch: it is waiting for CMS
+ * (`pending`) or CMS has answered (`accepted`, `accepted_with_warnings`, `rejected`). A rejected original is never re-sent
+ * unchanged: it is fixed by a correction (a new signed row with no item yet) in a NEW batch. An item in any other status
+ * (`cancelled`, `blocked`, `unmatched`) does not count, so its record is batched again. This is the list the manual package
+ * route (`assembleSubmission`) reads; keep the two the same, or a record the manual route refuses is re-batched on the next
+ * cron tick (an accepted record whose report row carried no iQIES record id has `iqies_record_id` null as well).
+ */
+export const ASSEMBLE_BLOCKING_ITEM_STATUSES = [
+  "pending",
+  "accepted",
+  "accepted_with_warnings",
+  "rejected",
+] as const satisfies readonly HopeSubmissionItemStatus[];
 
 /** What one eligibility read found — the plannable rows PLUS what it could not plan, and why. */
 export interface AssemblableScan {
@@ -49,7 +65,9 @@ export interface AssemblableScan {
  * Eligibility (§4.10): `status = 'signed'` AND not superseded AND `iqies_record_id IS NULL`. The
  * "already on an active item" half is NOT a filter — it is projected onto each row as
  * `hasActiveSubmissionItem` so `planAssembleSubmissions` reports it as a skip, which is what makes a
- * re-run's idempotency observable instead of merely true.
+ * re-run's idempotency observable instead of merely true. An item is active in any of the
+ * {@link ASSEMBLE_BLOCKING_ITEM_STATUSES} (pending or answered by CMS, rejected included), the same test as the manual package
+ * route, not `pending` alone.
  *
  * That projection answered `false` for every row the platform ever read (F-086), so the idempotency it
  * exists to express did not hold: a SECOND assemble pass re-selected everything the first had batched
@@ -87,7 +105,10 @@ export async function assemblableAssessmentsForOrg(
       hasActiveItem: sql<boolean>`exists (select 1 from hope_submission_item i where i.hope_assessment_id = ${outerColumn(
         ASSESS,
         ASSESS.id,
-      )} and i.item_status = 'pending')`,
+      )} and i.item_status in (${sql.join(
+        ASSEMBLE_BLOCKING_ITEM_STATUSES.map((status) => sql`${status}`),
+        sql`, `,
+      )}))`,
     })
     .from(ASSESS)
     .where(

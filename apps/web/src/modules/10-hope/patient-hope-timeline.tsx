@@ -18,7 +18,8 @@ import {
 //
 // #91 — the chart's HOPE tab now offers the two writes that belong to a PATIENT rather than to a window:
 // Record timepoint (an unscheduled capture — a Discharge RFA in particular has no pre-computed window)
-// and Recompute schedules (§4.1 route 20, after a post-hoc admission-date correction). Both need the
+// and Create missing timepoint windows (§4.1 route 20, after a post-hoc admission-date correction; it only
+// creates windows that do not exist yet, it recomputes nothing). Both need the
 // admission id.
 //
 // IT USED TO COME OFF `items[0]`, WHICH MEANT NO PATIENT COULD HAVE THEIR FIRST ONE RECORDED (F-085).
@@ -46,6 +47,7 @@ import {
   PatientSummaryPanel,
   useChartIdentity,
 } from "../../shell/patient-context";
+import { useSession } from "../../shell/session";
 import { type HopeAction, HopeActionModal } from "./hope-action-modal";
 import { readSucceeded, withRequestTimeout } from "./hope-api";
 import { formatTargetDate } from "./hope-format";
@@ -53,6 +55,12 @@ import { HopeRecordModal } from "./hope-record-modal";
 import { LoadingRegion, useRetryFocus } from "./hope-retry-focus";
 import { ASSESSMENT_TONE, J2051_TONE, rfaLabel, stateLabel } from "./hope-status";
 
+/**
+ * The permission POST /hope/admin/regenerate_schedules requires. It is a platform-category permission no tenant role template
+ * grants, so a clinician who is offered the control gets a 403 after confirming: a session KNOWN to lack it is not offered it. One whose
+ * permissions are unknown is (the server decides), as with the late-deadline override in the record dialog.
+ */
+const REGENERATE_PERMISSION = "hope.admin.regenerate_schedules";
 const TIMELINE_UNAVAILABLE = "Could not load HOPE timeline.";
 /** hope.scope answers a patient outside the caller's caseload with 404 (deny-as-not-found), a plain refusal with 403: Try again changes neither. */
 const TIMELINE_NOT_AVAILABLE =
@@ -81,6 +89,9 @@ export function PatientHopeTimeline(): JSX.Element {
 function PatientHopeTimelineView({ patientId }: { patientId: string | undefined }): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  const session = useSession();
+  const canRegenerate =
+    session?.permissions === undefined || session.permissions.includes(REGENERATE_PERMISSION);
   const [items, setItems] = useState<AssessmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -215,9 +226,11 @@ function PatientHopeTimelineView({ patientId }: { patientId: string | undefined 
                 <Button size="sm" onClick={() => setRecording(true)}>
                   Record timepoint
                 </Button>
-                <Button size="sm" tone="tertiary" onClick={() => setActing("regenerate")}>
-                  Recompute schedules
-                </Button>
+                {canRegenerate ? (
+                  <Button size="sm" tone="tertiary" onClick={() => setActing("regenerate")}>
+                    Create missing timepoint windows
+                  </Button>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -340,6 +353,8 @@ function PatientHopeTimelineView({ patientId }: { patientId: string | undefined 
           onClose={() => setRecording(false)}
           onDone={() => setReloadKey((k) => k + 1)}
           onOpenExisting={(draft) => navigate(`/hope/assessments/${draft.id}`)}
+          // A capture nobody confirmed may have created the draft its words tell the clinician to look for here.
+          onOutcomeUnknown={() => setReloadKey((k) => k + 1)}
         />
       ) : null}
       {acting !== null && admissionId !== null ? (
@@ -349,7 +364,8 @@ function PatientHopeTimelineView({ patientId }: { patientId: string | undefined 
           targetId={admissionId}
           onClose={() => setActing(null)}
           onDone={() => setReloadKey((k) => k + 1)}
-          // A 409 says the record changed under the clinician: re-read so the page stops offering what the server refused.
+          // The page may be out of date: the server said 409 (the record changed under the clinician), or the outcome could not be
+          // confirmed (no answer, a timeout, a faulting 5xx) so the action may have been applied. Re-read so the page shows what is true.
           onConflict={() => setReloadKey((k) => k + 1)}
         />
       ) : null}

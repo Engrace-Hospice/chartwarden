@@ -162,8 +162,10 @@ describe("PatientHopeTimeline", () => {
         .mockResolvedValueOnce({ data: { assessments: [row("a-1", "adm-p1")] } })
         .mockResolvedValueOnce(emptyReply(502));
       renderTimeline(clientWith({ timeline }));
-      fireEvent.click(await screen.findByRole("button", { name: "Recompute schedules" }));
-      fireEvent.click(await screen.findByRole("button", { name: "Recompute" }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Create missing timepoint windows" }),
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "Create missing windows" }));
 
       const alert = await screen.findByRole("alert");
       expect(alert.textContent).toContain("Could not load HOPE timeline.");
@@ -197,14 +199,16 @@ describe("PatientHopeTimeline", () => {
         },
       });
       renderTimeline(client);
-      fireEvent.click(await screen.findByRole("button", { name: "Recompute schedules" }));
-      fireEvent.click(await screen.findByRole("button", { name: "Recompute" }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Create missing timepoint windows" }),
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "Create missing windows" }));
 
       await waitFor(() =>
         expect(screen.getByRole("status", { name: "Loading HOPE timeline…" })).toBeTruthy(),
       );
       expect(screen.getByRole("button", { name: "Record timepoint" })).toBeTruthy();
-      expect(screen.getByRole("button", { name: "Recompute schedules" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Create missing timepoint windows" })).toBeTruthy();
       await act(async () => finish({ data: { assessments: [row("a-1", "adm-p1")] } }));
     });
 
@@ -345,7 +349,7 @@ describe("PatientHopeTimeline", () => {
         "Could not load HOPE timeline.",
       );
       expect(screen.queryByRole("button", { name: "Record timepoint" })).toBeNull();
-      expect(screen.queryByRole("button", { name: "Recompute schedules" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Create missing timepoint windows" })).toBeNull();
       expect(screen.queryByText("1st admission")).toBeNull();
       expect(count()).toBeNull();
     });

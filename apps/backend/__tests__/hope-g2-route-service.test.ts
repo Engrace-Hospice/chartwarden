@@ -68,19 +68,26 @@ describe("assembleSubmission — parallel assembles of one provider entity seria
     expect(lock).toBeGreaterThan(-1);
     expect(lock).toBeLessThan(indexOf("select"));
     const rendered = statements[lock]?.rendered;
-    expect(rendered?.sql).toContain("::uuid)::text"); // the id as Postgres writes it, not as the body spelled it
-    expect(rendered?.params).toEqual([`m10:assemble:${ORG}`, SPELLED, ""]);
+    expect(rendered?.sql).toContain("::uuid)::text");
+    // The id as Postgres writes it, not as the body spelled it: `assembleSubmission` canonicalises it before the lock (a
+    // non-uuid is the 409 "nothing eligible" without a statement), and the key's own `::uuid` cast keeps it canonical.
+    expect(rendered?.params).toEqual([`m10:assemble:${ORG}`, CANONICAL, ""]);
   });
 
-  it("the loser of two parallel assembles re-reads after the winner committed and gets the 409 'nothing eligible', not a 500", async () => {
-    // after the lock the candidate SELECT itself leaves out the record the winner committed a pending item for
-    // (its `not exists` test), so it returns no row
-    const { svc } = backend([[]]);
+  it("the candidate read behind the lock leaves out a record that already has a live item (the winner's), and an empty read is the 409 'nothing eligible', not a 500", async () => {
+    // This pins the predicate a loser relies on, not a winner's commit (that needs a real Postgres: the live suite):
+    // the SELECT after the lock carries the `not exists` live-item test, so what the winner packaged is not read again.
+    const { svc, statements, indexOf } = backend([[]]);
 
     const failure = await outcome(svc.assembleSubmission(ORG, SPELLED));
 
     expect(failure).toMatchObject({ statusCode: 409 });
     expect(String(failure?.message)).toContain("No signed HOPE assessments are eligible");
+    const select = indexOf("select");
+    expect(select).toBeGreaterThan(indexOf("execute", "pg_advisory_xact_lock"));
+    const where = statements[select]?.rendered?.sql;
+    expect(where).toContain("not exists (select 1 from");
+    expect(where).toContain('"hope_submission_item"."hope_assessment_id" = ');
   });
 
   it("a lock wait that times out answers the typed busy 409 and reads no candidate", async () => {

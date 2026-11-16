@@ -139,8 +139,7 @@ export function HopeDashboard(): JSX.Element {
           patientNames[t.row.patientId]?.mrn,
           t.row.rfaKind,
           t.row.status,
-          t.row.windowOpensAt,
-          t.row.windowClosesAt,
+          // Not windowOpensAt / windowClosesAt: the table shows only a countdown, so a raw UTC instant is text nobody sees.
         ],
         q,
       );
@@ -474,6 +473,8 @@ export function HopeDashboard(): JSX.Element {
             void load();
           }}
           onOpenExisting={(draft) => navigate(`/hope/assessments/${draft.id}`)}
+          // A capture nobody confirmed may have recorded the window the row still offers to record.
+          onOutcomeUnknown={() => void load()}
         />
       ) : null}
       {acting !== null ? (
@@ -485,8 +486,9 @@ export function HopeDashboard(): JSX.Element {
           onDone={() => {
             void load();
           }}
-          // The server says the schedule is no longer open (completed or skipped since this page loaded): re-read so the row stops
-          // offering Record and Skip.
+          // The page may be out of date: the server says the schedule is no longer open (409: completed or skipped since this page
+          // loaded), or the outcome could not be confirmed (no answer, a timeout, a faulting 5xx) so the action may have been applied.
+          // Re-read so the row shows what is true instead of offering Record and Skip.
           onConflict={() => void load()}
         />
       ) : null}

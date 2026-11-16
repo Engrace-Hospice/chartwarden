@@ -62,6 +62,7 @@ import {
   type RfaKind,
   authorDisciplineLabel,
   authorDisciplinesForRoles,
+  failedResultOutcomeUnknown,
   recordTimepoint,
 } from "./hope-api";
 import { notifyDone } from "./hope-notify-done";
@@ -129,11 +130,16 @@ const OVERRIDE_JUSTIFICATION_MAX = 1000;
  * without it is refused 403, after the clinician has typed a justification. A session known to lack it is not offered the control.
  */
 const OVERRIDE_PERMISSION = "hope.admin.late_deadline_override";
+/**
+ * What a clinician who cannot tick the override is told: only what is certain. Who else could record the visit is not (recording
+ * needs the author discipline of the recorder's OWN roles, and files the visit under the recorder), so nobody is named to do it: the
+ * administrator decides how it is to be recorded.
+ */
 const OVERRIDE_NOT_PERMITTED =
-  "Only an administrator with override permission can record it. Ask one to record this visit.";
+  "Only an administrator with override permission can override the late deadline. Ask your administrator how this visit should be recorded.";
 /** What the refusal M10_TIMEPOINT_EXPIRED says to a clinician who cannot tick the override (instead of telling them to). */
 const OVERRIDE_NOT_PERMITTED_ASKED =
-  "This visit is past the late deadline, so recording it needs an administrative override. Only an administrator with override permission can give one: ask one to record this visit.";
+  "This visit is past the late deadline, so recording it needs an administrative override. Only an administrator with override permission can give one: ask your administrator how this visit should be recorded.";
 
 /** The visit date opens at the current time, so the clinician who records an earlier visit changes it instead of filing it as now. The capture form says the same. */
 export const DEFAULT_DATE_HINT =
@@ -252,6 +258,12 @@ export interface HopeRecordModalProps {
   readonly onDone: (assessment: AssessmentView) => void;
   /** Opens a draft that already existed (the server answers a record with it, discarding the entry). Without it, the dialog just closes. */
   readonly onOpenExisting?: (assessment: AssessmentView) => void;
+  /**
+   * The capture got no usable answer (no answer, a timeout, an empty 5xx, a fault of the server's own), so it may have been applied
+   * and the dialog's words tell the clinician to check the timeline: the page behind should read what it shows again. Never called
+   * for a refusal, a busy record (the step was not applied) or a success (`onDone`).
+   */
+  readonly onOutcomeUnknown?: () => void;
 }
 
 export function HopeRecordModal({
@@ -262,6 +274,7 @@ export function HopeRecordModal({
   onClose,
   onDone,
   onOpenExisting,
+  onOutcomeUnknown,
 }: HopeRecordModalProps): JSX.Element | null {
   const client = useApiClient();
   const session = useSession();
@@ -438,6 +451,8 @@ export function HopeRecordModal({
       // A rejected request must free the dialog: `busy` would otherwise hold Cancel, Escape and the scrim shut for good.
       setBusy(false);
       setError(RECORD_UNCONFIRMED);
+      // The words say to check the timeline, so the page behind is read again (its callback is the caller's code: see `notifyDone`).
+      notifyDone(() => onOutcomeUnknown?.());
       return;
     }
     setBusy(false);
@@ -451,6 +466,7 @@ export function HopeRecordModal({
         return;
       }
       setError(res.message);
+      if (failedResultOutcomeUnknown(res)) notifyDone(() => onOutcomeUnknown?.());
       return;
     }
     if (isExistingDraft(res.value, targetIso)) {

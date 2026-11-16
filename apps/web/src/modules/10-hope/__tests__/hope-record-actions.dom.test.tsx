@@ -729,14 +729,24 @@ describe("Confirm the HUV completion date", () => {
       init?: unknown,
     ) => Promise<unknown>;
     let conflicted = false;
+    // The three reads of the re-read that follows the refusal, by path, once each has been answered (the page's own late reads
+    // of the patient run after the refusal too, and are not part of it).
+    const REREAD_PATHS = [
+      "/api/v1/hope/assessments/{id}/workspace",
+      "/api/v1/hope/assessments/{id}/review",
+      "/api/v1/hope/assessments/{id}",
+    ];
+    const rereadAnswered = new Set<string>();
     get.mockImplementation(async (path: string, init?: unknown) => {
       if (!conflicted) return initial(path, init);
       // Another session saved first: the record is now at version 9.
+      let answer: unknown;
       if (path.includes("/workspace")) {
         const base = huvWorkspace();
-        return ok({ ...base, assessment: { ...base.assessment, version: 9 } });
-      }
-      return initial(path, init);
+        answer = ok({ ...base, assessment: { ...base.assessment, version: 9 } });
+      } else answer = await initial(path, init);
+      if (REREAD_PATHS.includes(path)) rereadAnswered.add(path);
+      return answer;
     });
     asMock(client.PATCH)
       .mockImplementationOnce(async () => {
@@ -757,6 +767,9 @@ describe("Confirm the HUV completion date", () => {
       name: "Confirm date",
     })) as HTMLButtonElement;
     await waitFor(() => expect(confirm.disabled).toBe(false));
+    // The control is free once the save is answered, before the re-read lands: a retry pressed in between carries the old version.
+    await waitFor(() => expect(rereadAnswered.size).toBe(3));
+    await act(async () => undefined);
     fireEvent.click(confirm);
     await waitFor(() => expect(client.PATCH).toHaveBeenCalledTimes(2));
     expect(ifVersionOf(1)).toBe(9);

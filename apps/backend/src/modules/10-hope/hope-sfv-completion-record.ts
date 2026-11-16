@@ -36,6 +36,7 @@ import {
   type HopeAuditRequestFacts,
   auditHopeSignature,
 } from "./hope-signature-audit";
+import { uuidOrNotFound } from "./hope-uuid";
 import type { HopeAssessmentView, RecordSfvArgs } from "./routes/service";
 
 const ASSESS = schema.hopeAssessments;
@@ -334,7 +335,7 @@ export function createSfvCompletionRecorder(deps: SfvCompletionDeps) {
   return async function recordSfv(
     organizationId: string,
     userId: string,
-    admissionId: string,
+    urlAdmissionId: string,
     args: RecordSfvArgs,
   ): Promise<HopeAssessmentView> {
     // The service itself refuses an unattested signature (not only the route's schema).
@@ -342,6 +343,9 @@ export function createSfvCompletionRecorder(deps: SfvCompletionDeps) {
     requireAttestation(attestationConfirmed, args.attestationVersion);
     // A date that exists: J2052B is the date as the clinician wrote it, and a Feb 30 is refused, not rolled to Mar 2.
     const completedDate = requireCalendarTargetDate(args.targetDate);
+    // The admission as Postgres writes it, and a 404 for an id that is no uuid (the `hope.scope` gate answers the same
+    // today): before the M6 seam read and the locked SFV lookup, which compare it with uuid columns.
+    const admissionId = uuidOrNotFound(urlAdmissionId, `Admission ${urlAdmissionId} not found`);
     const admissionPatientId = await resolveSfvAdmissionPatient(organizationId, admissionId);
     return withOrgContext(deps.db, { organizationId, userId: "" }, async (tx) =>
       completeSfvInTx(deps, tx as unknown as DbClient, {

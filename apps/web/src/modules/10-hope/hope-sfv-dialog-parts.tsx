@@ -3,7 +3,8 @@
 // control. Presentational: the dialog owns the state and passes it in.
 import { t } from "@chartwarden/ui";
 import type { JSX, RefObject } from "react";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { localToday } from "./hope-api";
 import { AuthorDisciplineField } from "./hope-author-discipline-field";
 import {
   primaryButton,
@@ -36,6 +37,9 @@ import {
 } from "./hope-dialog-styles";
 import type { SfvError } from "./hope-sfv-errors";
 import type { SfvForm } from "./hope-sfv-form";
+
+/** The SFV date opens at today in the clinician's own zone: said so, beside the field, until they have entered a date. */
+const DEFAULT_SFV_DATE_HINT = "Set to today. Change it if the visit took place on another day.";
 
 export function SfvDialogHeader(): JSX.Element {
   return (
@@ -71,6 +75,10 @@ export function SfvCloseControl(props: {
 
 export function SfvVisitDetails(props: { form: SfvForm; saving: boolean }): JSX.Element {
   const { form, saving } = props;
+  const [dateEdited, setDateEdited] = useState(false);
+  const hintId = useId();
+  // Only the value the form opened with is a default: a date restored after the step-up round trip was entered by the clinician.
+  const dateIsDefault = !dateEdited && form.date === localToday();
   return (
     <section style={sfvSection}>
       <div style={sfvSectionHeader}>
@@ -83,16 +91,28 @@ export function SfvVisitDetails(props: { form: SfvForm; saving: boolean }): JSX.
       </div>
 
       <div style={sfvDetailsGrid}>
-        <label style={sfvField}>
-          <span style={sfvFieldLabel}>SFV date</span>
-          <input
-            type="date"
-            value={form.date}
-            style={sfvInput}
-            disabled={saving}
-            onChange={(event) => form.setDate(event.target.value)}
-          />
-        </label>
+        {/* The hint sits beside the label, not in it: the field's name stays "SFV date". */}
+        <div style={sfvField}>
+          <label style={sfvField}>
+            <span style={sfvFieldLabel}>SFV date</span>
+            <input
+              type="date"
+              value={form.date}
+              style={sfvInput}
+              disabled={saving}
+              aria-describedby={dateIsDefault ? hintId : undefined}
+              onChange={(event) => {
+                setDateEdited(true);
+                form.setDate(event.target.value);
+              }}
+            />
+          </label>
+          {dateIsDefault ? (
+            <p id={hintId} style={sfvSectionDescription}>
+              {DEFAULT_SFV_DATE_HINT}
+            </p>
+          ) : null}
+        </div>
         <DisciplineField form={form} saving={saving} />
       </div>
     </section>

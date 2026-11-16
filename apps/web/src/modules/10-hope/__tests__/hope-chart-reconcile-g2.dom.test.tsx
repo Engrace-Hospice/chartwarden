@@ -252,7 +252,9 @@ describe("ChartReconcileDialog member-card number", () => {
     fireEvent.click(saveCorrect());
     const alert = await screen.findByRole("alert");
     expect(onUseChart).toHaveBeenCalledWith("1AA1AA1AA11");
-    expect(alert.textContent).toContain("Saved in HOPE, but not on the chart");
+    // A rejected request may have landed, so the words do not say the chart was left alone.
+    expect(alert.textContent).toContain("Saved in HOPE.");
+    expect(alert.textContent).not.toContain("not on the chart");
     expect(alert.textContent).toContain("Could not confirm");
     expect((saveCorrect() as HTMLButtonElement).disabled).toBe(false);
   });

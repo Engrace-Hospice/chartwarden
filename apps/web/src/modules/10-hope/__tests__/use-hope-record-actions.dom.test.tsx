@@ -230,23 +230,28 @@ describe("confirming a HUV completion date", () => {
     expect(result.current.completionDateSaving).toBe(false);
   });
 
+  // A 4xx applied nothing, so nothing is re-read; an outcome nobody confirmed may have been applied, so the screen is re-read.
   it.each([
     [
       "a refusal that is not a conflict",
       async () => reply(422, { error: { code: "VALIDATION_FAILED" } }),
       "failed",
+      false,
     ],
-    ["a non-OK reply with no body", async () => reply(502), "unconfirmed"],
-    ["a rejected request", async () => Promise.reject(new TypeError("offline")), "unconfirmed"],
-  ])(
-    "reports the save for %s with the right status, and does not re-read",
-    async (_name, answer, expected) => {
-      const { result, setSaving, refresh } = setup(patchAnswering(answer), DRAFT);
+    ["a non-OK reply with no body", async () => reply(502), "unconfirmed", true],
+    [
+      "a rejected request",
+      async () => Promise.reject(new TypeError("offline")),
+      "unconfirmed",
+      true,
+    ],
+  ])("reports the save for %s with the right status", async (_name, answer, expected, rereads) => {
+    const { result, setSaving, refresh } = setup(patchAnswering(answer), DRAFT);
 
-      await act(() => result.current.setHuvCompletionDate("2026-09-10"));
+    await act(() => result.current.setHuvCompletionDate("2026-09-10"));
 
-      expect(setSaving).toHaveBeenCalledWith(expected);
-      expect(refresh).not.toHaveBeenCalled();
-    },
-  );
+    expect(setSaving).toHaveBeenCalledWith(expected);
+    if (rereads) await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    else expect(refresh).not.toHaveBeenCalled();
+  });
 });

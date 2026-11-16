@@ -15,7 +15,7 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 // pinned to that window's schedule id and RFA; Patient HOPE Timeline, unscheduled); the SFV completion
 // through its own `POST …/hope/sfv` endpoint (SFV Worklist, per open obligation); sign, correct
 // (append-only, D7) and request-summary (Assessment Detail, each offered only in the status the server
-// accepts); schedule skip (Timepoint Dashboard); and the route-20 schedule recompute (Patient Timeline).
+// accepts); schedule skip (Timepoint Dashboard); and the route-20 create-missing-windows write (Patient Timeline).
 //
 // WHAT IS DELIBERATELY NOT BUILT, AND WHY — one is an absence of a PRODUCER, the other a deliberate omission:
 //

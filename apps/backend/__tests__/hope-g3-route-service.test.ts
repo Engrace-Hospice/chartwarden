@@ -78,8 +78,9 @@ describe("correct / inactivate — the lineage lock comes BEFORE the source reco
       expect(lock).toBeGreaterThan(-1);
       expect(lock).toBeLessThan(firstSelect); // before ANY read of the source (and before the pending check)
       const rendered = statements[lock]?.rendered;
-      expect(rendered?.sql).toContain("::uuid)::text"); // the id as Postgres writes it, not as the URL spelled it
-      expect(rendered?.params).toEqual([`m10:lineage:${ORG}`, SOURCE, ""]);
+      expect(rendered?.sql).toContain("::uuid)::text"); // the key is still parsed as a uuid by Postgres
+      // the id is already the canonical text (lower case), whatever spelling the URL used
+      expect(rendered?.params).toEqual([`m10:lineage:${ORG}`, SOURCE.toLowerCase(), ""]);
       // exactly two reads followed: the pending check, then the source
       expect(statements.filter((s) => s.kind === "select")).toHaveLength(2);
     });
@@ -235,11 +236,11 @@ describe("recordTimepoint", () => {
 
     expect(failure).toMatchObject({ code: "M10_SPEC_NOT_IN_FORCE", statusCode: 422 });
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warned()).toContain(`admission ${ADMISSION} (org ${ORG})`);
+    expect(warned()).toContain(`admission ${ADMISSION.toLowerCase()} (org ${ORG})`);
     expect(warned()).not.toContain("2026");
   });
 
-  it("takes the one-draft advisory lock on the admission id as Postgres reads it, however the URL spelled it", async () => {
+  it("takes the one-draft advisory lock on the canonical admission id, however the URL spelled it", async () => {
     const { svc, statements, indexOf } = backend([
       [{ id: "spec-1", code: "v1" }],
       [{ id: "item-a0050" }],
@@ -254,7 +255,11 @@ describe("recordTimepoint", () => {
     expect(failure?.message).toBe(SCRIPT_EXHAUSTED);
     const rendered = statements[indexOf("execute", "pg_advisory_xact_lock")]?.rendered;
     expect(rendered?.sql).toContain("::uuid)::text");
-    expect(rendered?.params).toEqual([`m10:record:${ORG}`, ADMISSION, ":01_admission"]);
+    expect(rendered?.params).toEqual([
+      `m10:record:${ORG}`,
+      ADMISSION.toLowerCase(),
+      ":01_admission",
+    ]);
   });
 });
 

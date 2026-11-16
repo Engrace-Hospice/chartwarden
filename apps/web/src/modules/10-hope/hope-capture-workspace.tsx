@@ -22,6 +22,7 @@ import {
   type AuthorDiscipline,
   RECORD_UNCONFIRMED,
   authorDisciplinesForRoles,
+  failedResultOutcomeUnknown,
   recordTimepoint,
   withRequestTimeout,
 } from "./hope-api";
@@ -130,8 +131,9 @@ function HopeCaptureWorkspace({
   const [lateReason, setLateReason] = useState("");
   // Not pre-selected: the discharge reason decides which sections the record needs, so the clinician chooses it.
   const [dischargeReason, setDischargeReason] = useState<DischargeReason | "">("");
-  // A reply that arrives after the clinician has left must not pull them to the draft it created. (Only that needs a guard: React 18
-  // treats a state update on an unmounted component as a no-op.)
+  // A reply that arrives after the clinician has left must not pull them to the draft it created, and a rejected request must not
+  // start a re-read for a screen nobody is on. (Those two guards in submitTimepoint are the only ones needed: React 18 treats a state
+  // update on an unmounted component as a no-op.)
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -227,11 +229,16 @@ function HopeCaptureWorkspace({
           return;
         }
         setActionError(messageForBackendCode(res.code) ?? res.message);
+        // An empty 5xx or a fault of the server's own may have created the draft after all: its words say to check the record, and
+        // this page offers Create until it knows one exists, so it reads the workflow again (quietly, and not awaited: busy is freed).
+        if (failedResultOutcomeUnknown(res)) void rereadWorkflow();
         return;
       }
       navigate(`/hope/assessments/${res.value.id}`);
     } catch {
       setActionError(RECORD_UNCONFIRMED);
+      // No answer at all (offline, a reset, a timeout): the same, unless the clinician has already left.
+      if (mounted.current) void rereadWorkflow();
     } finally {
       setBusy(false);
     }

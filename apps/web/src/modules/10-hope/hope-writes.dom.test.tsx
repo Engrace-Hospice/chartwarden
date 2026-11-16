@@ -267,7 +267,12 @@ const STEP_UP_REFUSAL = {
   },
 };
 
-function mount(path: string, pattern: string, element: JSX.Element, session = SESSION) {
+function mount(
+  path: string,
+  pattern: string,
+  element: JSX.Element,
+  session: Omit<typeof SESSION, "permissions"> & { permissions: string[] } = SESSION,
+) {
   return render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <SessionProvider session={session}>
@@ -658,14 +663,23 @@ describe("#91 — the patient timeline can record and recompute", () => {
     expect(screen.getByText(/^1 timepoint$/)).toBeTruthy();
   });
 
-  it("Recompute schedules POSTs the §4.1 route-20 admin write", async () => {
-    mount(`/patients/${PATIENT}/hope`, "/patients/:patientId/hope", <PatientHopeTimeline />);
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Recompute schedules" })).toBeTruthy(),
+  it("Create missing timepoint windows POSTs the §4.1 route-20 admin write", async () => {
+    // The button is offered to a session known to hold the platform-category permission (or one whose permissions are unknown).
+    const withPermission = { ...SESSION, permissions: ["hope.admin.regenerate_schedules"] };
+    mount(
+      `/patients/${PATIENT}/hope`,
+      "/patients/:patientId/hope",
+      <PatientHopeTimeline />,
+      withPermission,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Recompute schedules" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Recompute" })).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Recompute" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Create missing timepoint windows" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Create missing timepoint windows" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Create missing windows" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Create missing windows" }));
     await waitFor(() => expect(writes()).toContain("POST /api/v1/hope/admin/regenerate-schedules"));
     expect(sentBody().admissionId).toBe(ADMISSION);
   });

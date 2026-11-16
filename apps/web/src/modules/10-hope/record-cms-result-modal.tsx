@@ -8,7 +8,12 @@ import { Button, Modal, TextAreaField, TextField, t, useApiClient } from "@chart
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { type CmsItemOutcome, normalizeOutcome, parseCmsReport } from "./cms-result-parser";
-import { RECORD_BUSY_CODE, type SubmissionResultBody, recordSubmissionResult } from "./hope-api";
+import {
+  RECORD_BUSY_CODE,
+  type SubmissionResultBody,
+  failedResultOutcomeUnknown,
+  recordSubmissionResult,
+} from "./hope-api";
 import { notifyDone } from "./hope-notify-done";
 
 export interface ResultItem {
@@ -67,7 +72,10 @@ export interface RecordCmsResultModalProps {
   readonly items: readonly ResultItem[];
   readonly onClose: () => void;
   readonly onDone: () => void;
-  /** The server said 409 (already recorded / status changed): refresh the page so it stops offering Record. */
+  /**
+   * The page behind the dialog may be out of date: the server said 409 (already recorded / status changed), or the outcome could not be
+   * confirmed (no answer, a timeout, an empty or faulting 5xx), so the result may have landed. Refresh so the page shows what is true.
+   */
   readonly onConflict?: () => void;
 }
 
@@ -197,8 +205,10 @@ export function RecordCmsResultModal({
     if (!res.ok) {
       setError(res.message);
       setConfirming(false);
-      // A 409 means the page is out of date, unless the record was only busy (a lock wait timed out: nothing was applied).
-      if (res.status === 409 && res.code !== RECORD_BUSY_CODE) notifyDone(() => onConflict?.());
+      // A 409 means the page is out of date, unless the record was only busy (a lock wait timed out: nothing was applied). An empty
+      // 5xx or a fault of the server's own may have recorded the result after all, as a rejected request may: re-read like that path.
+      const changed = res.status === 409 && res.code !== RECORD_BUSY_CODE;
+      if (changed || failedResultOutcomeUnknown(res)) notifyDone(() => onConflict?.());
       return;
     }
     // Outside the try: a throwing callback must not read as "nothing was recorded".

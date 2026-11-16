@@ -27,6 +27,7 @@ import {
   readSucceeded,
   refusalWordsOf,
   withRequestTimeout,
+  writeOutcomeUnknown,
   writeSucceeded,
 } from "./hope-api";
 import { formatInstantDateTime } from "./hope-format";
@@ -36,9 +37,12 @@ import { RecordCmsResultModal } from "./record-cms-result-modal";
 import { useFocusOnNewError } from "./use-focus-on-new-error";
 
 const MANAGE_PERMISSION = "hope.submission.manage";
-/** The request to mark a package uploaded got no usable answer: the server may or may not have applied it. */
+/**
+ * The request to mark a package uploaded got no usable answer: the server may or may not have applied it. The page is read again
+ * (see `markUploaded`), so its status is the answer; reloading is what is left when that read fails too.
+ */
 const MARK_UPLOADED_UNCONFIRMED =
-  "Could not confirm that the package was marked uploaded. Reload this page to check its status before trying again.";
+  "Could not confirm that the package was marked uploaded. Check its status on this page before trying again; reload the page if it looks out of date.";
 /** The package WAS marked uploaded (the write was answered), but the page's re-read after it was not: say so, it cannot be undone. */
 const MARK_UPLOADED_REFRESH_FAILED =
   "Could not refresh the HOPE submission. The package was marked uploaded: reload this page to see its status.";
@@ -159,6 +163,14 @@ export function SubmissionDetail(): JSX.Element {
     else if (hadUploadConfirm.current) markUploadedRef.current?.focus();
     hadUploadConfirm.current = confirmingUpload;
   }, [confirmingUpload]);
+  // A re-read that follows a write must not run for a page the clinician has left (it is a request, not a state update).
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const downloadRef = useRef<HTMLButtonElement>(null);
   // After a download or mark-uploaded write ends without an error (so the alert has no focus to take), the button that was used is
   // where the clinician was: it is disabled while the write is out, and Firefox and Safari drop focus from a disabled control.
@@ -299,6 +311,8 @@ export function SubmissionDetail(): JSX.Element {
     setBusy(true);
     setActionError(null);
     setNotice(null);
+    // No usable answer: the package may have been marked (and that cannot be undone), so the page is read again once the actions are free.
+    let unconfirmed = false;
     try {
       const api = client as unknown as {
         POST: (
@@ -326,6 +340,7 @@ export function SubmissionDetail(): JSX.Element {
         // Marked, which cannot be undone: a re-read that fails after it says that, not just "could not refresh".
         if (await reload(MARK_UPLOADED_REFRESH_FAILED)) setNotice(MARK_UPLOADED_DONE);
       } else {
+        unconfirmed = writeOutcomeUnknown(reply);
         setActionError(
           failedWriteMessage(
             reply,
@@ -340,8 +355,11 @@ export function SubmissionDetail(): JSX.Element {
     } catch {
       // No answer at all (offline, a reset, a timeout): the package may well have been marked, and that cannot be undone.
       setActionError(MARK_UPLOADED_UNCONFIRMED);
+      unconfirmed = true;
     } finally {
       setBusy(false);
+      // Silent (its failure must not put words on the page) and not awaited (a read nobody answers must not hold the actions shut).
+      if (unconfirmed && mounted.current) void reload(null);
     }
   };
 
@@ -707,7 +725,10 @@ export function SubmissionDetail(): JSX.Element {
           action="cancel-package"
           targetId={row.id}
           onClose={() => setCancelling(false)}
-          onConflict={() => void reload()}
+          // The page may be out of date (a 409), or the outcome was not confirmed and the action may have been applied: read it again, but
+          // silently. The dialog is still open, and its own words say what happened; a page-level alert would take focus out of it (so
+          // Escape and Tab stop working) whenever this read fails too, as it usually does for a request that got no answer.
+          onConflict={() => void reload(null)}
           onDone={() => {
             setNotice(CANCELLED_DONE);
             void reload();
@@ -722,7 +743,7 @@ export function SubmissionDetail(): JSX.Element {
             .filter((i) => !SETTLED_ITEM_STATUS.has(i.status))
             .map((i) => ({ assessmentId: i.assessmentId, label: itemLabel(i) }))}
           onClose={() => setRecording(false)}
-          onConflict={() => void reload()}
+          onConflict={() => void reload(null)} // silent, as for the dialog above
           onDone={() => {
             setNotice(RESULT_RECORDED_DONE);
             void reload();

@@ -18,7 +18,13 @@ import type { CSSProperties, JSX } from "react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { MdmEntityLookupField } from "../../shell/entity-lookups";
-import { failedWriteMessage, localToday, withRequestTimeout, writeSucceeded } from "./hope-api";
+import {
+  failedWriteMessage,
+  localToday,
+  withRequestTimeout,
+  writeOutcomeUnknown,
+  writeSucceeded,
+} from "./hope-api";
 import { useFocusOnNewError } from "./use-focus-on-new-error";
 
 export interface ChartPayer {
@@ -88,6 +94,12 @@ const hopeFailureWords = (error: unknown): string =>
 const CHART_REFRESH_FAILED =
   " The chart summary behind this dialog could not be refreshed; reload the page to see it.";
 
+/** Why a coverage write did not land, and whether it may still have (no usable answer, or a fault of the server's own). */
+interface CoverageFailure {
+  readonly message: string;
+  readonly outcomeUnknown: boolean;
+}
+
 /** What the typed client answers, as far as a write's outcome goes (the client is cast: see `post` below). */
 interface PostReply {
   data?: unknown;
@@ -152,7 +164,7 @@ export function ChartReconcileDialog(props: {
    * Files a coverage row: null when it was written, else why it was not (or could not be confirmed). Never rejects, so the
    * callers' `busy` always clears; the request is bounded, so a stalled connection ends as "could not confirm".
    */
-  async function postCoverage(body: Record<string, unknown>): Promise<string | null> {
+  async function postCoverage(body: Record<string, unknown>): Promise<CoverageFailure | null> {
     let reply: PostReply;
     try {
       reply = await withRequestTimeout((signal) =>
@@ -163,10 +175,15 @@ export function ChartReconcileDialog(props: {
         }),
       );
     } catch {
-      return CHART_UNCONFIRMED;
+      return { message: CHART_UNCONFIRMED, outcomeUnknown: true };
     }
     // Not `error` alone: openapi-fetch leaves it undefined (or "") for a non-OK reply with no body.
-    if (!writeSucceeded(reply)) return failedWriteMessage(reply, CHART_UNCONFIRMED, CHART_REFUSED);
+    if (!writeSucceeded(reply)) {
+      return {
+        message: failedWriteMessage(reply, CHART_UNCONFIRMED, CHART_REFUSED),
+        outcomeUnknown: writeOutcomeUnknown(reply),
+      };
+    }
     try {
       await props.onChartUpdated();
     } catch {
@@ -187,7 +204,7 @@ export function ChartReconcileDialog(props: {
     const failure = await postCoverage(body);
     setBusy(null);
     if (failure === null) setDone(success);
-    else setError(failure);
+    else setError(failure.message);
   }
 
   async function useChart(): Promise<void> {
@@ -247,7 +264,11 @@ export function ChartReconcileDialog(props: {
         setBusy(null);
         // HOPE already holds the number: keep what the dialog shows in step, so a retry sends only the chart write.
         if (wrote.length > 0) setHopeValue(enteredNumber);
-        setError(wrote.length > 0 ? `Saved in HOPE, but not on the chart. ${failure}` : failure);
+        // "Not on the chart" is only said of a refusal; a write that got no usable answer may have landed, which the words say.
+        const saved = failure.outcomeUnknown
+          ? "Saved in HOPE."
+          : "Saved in HOPE, but not on the chart.";
+        setError(wrote.length > 0 ? `${saved} ${failure.message}` : failure.message);
         return;
       }
       wrote.push("on the chart");

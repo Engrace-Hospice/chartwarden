@@ -197,7 +197,7 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
     ]);
   });
 
-  it("a lock timeout raised by a LATER statement of the recording (the record-id UPDATE of an assessment another request holds) is the typed retryable 409, and nothing is recorded", async () => {
+  it("a lock timeout raised by a LATER statement of the recording (the record-id UPDATE of an assessment another request holds) is the typed retryable 409, and the batch stays submitted_pending_result with no result event row", async () => {
     const a = await seedAssessment();
     const b = await seedBatch("submitted_pending_result", [a]);
     const holder = new Client({ connectionString: DB_URL });
@@ -379,7 +379,7 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
     expect(rows[0].n).toBe(2);
   });
 
-  it("replaying a report with its keys in another order, or one stored under the legacy digest, adds nothing", async () => {
+  it("replaying a report with its keys in another order, or one stored under the legacy digest, keeps the first stored report (reference ra, one result) and adds no result event row", async () => {
     const a1 = await seedAssessment();
     const b = await seedBatch("submitted_pending_result", [a1, await seedAssessment()]);
     const results = [{ assessmentId: a1, status: "accepted", message: "m" }];

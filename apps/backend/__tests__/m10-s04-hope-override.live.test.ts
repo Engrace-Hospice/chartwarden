@@ -395,7 +395,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
   });
 
   describe("unauthorized override", () => {
-    it("a hope.timepoint.write holder cannot self-declare adminOverride past the deadline (403, nothing written)", async () => {
+    it("a hope.timepoint.write holder cannot self-declare adminOverride past the deadline (403, no hope_assessment row and no override audit row)", async () => {
       const adm = await admissionWithWindow();
       liveNow = CLOCK_EXPIRED;
       const before = (await overrideAudits()).length;
@@ -464,7 +464,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       expect(await countRows("hope_assessment", adm)).toBe(0);
     });
 
-    it("the flag rides no other write route: an edit carrying adminOverride changes nothing and audits nothing", async () => {
+    it("the flag does not ride the draft edit route: a PUT carrying adminOverride adds no override audit row", async () => {
       const adm = await admissionWithWindow();
       const draft = await svc.recordTimepoint(ORG, member.rn, adm, {
         rfaKind: "01_admission",
@@ -486,7 +486,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       expect((await overrideAudits()).length).toBe(before);
     });
 
-    it("every timepoint write route refuses a read-only caller (403) and writes nothing", async () => {
+    it("each listed timepoint write route refuses a read-only caller (403): the draft stays a draft, the schedule stays open and the admission still has one assessment row", async () => {
       const adm = await admissionWithWindow();
       const draft = await svc.recordTimepoint(ORG, member.rn, adm, {
         rfaKind: "01_admission",
@@ -594,7 +594,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
   });
 
   describe("justified override", () => {
-    it("the permitted admin without a justification is a 422, and nothing is written", async () => {
+    it("the permitted admin without a justification is a 422, and the admission has no hope_assessment row", async () => {
       const adm = await admissionWithWindow();
       liveNow = CLOCK_EXPIRED;
       const res = await postTimepoint(adm, as(member.admin), {
@@ -785,6 +785,9 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
     });
 
     it("a rejection is surfaced on the batch, the findings and the outbox, and is never labeled accepted", async () => {
+      // Deltas, not absolutes: the provider entity is shared with the accepted_with_warnings test below,
+      // which settles an accepted batch, so an absolute `accepted === 0` depends on test order.
+      const before = await svc.complianceDashboard(ORG, provider);
       const a = await signedAssessment();
       const b = await batch("submitted_pending_result", [a]);
       const res = await postResults(b, as(member.compliance, "compliance_officer"), [
@@ -805,8 +808,10 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       expect(rows.map((r) => r.event_type)).toContain("m10.hope.submission_rejected");
       // The failed batch is counted as a non-acceptance on the compliance posture.
       const dash = await svc.complianceDashboard(ORG, provider);
-      expect(dash.submissionAcceptanceCounts.accepted).toBe(0);
-      expect(dash.submissionAcceptanceCounts.total).toBeGreaterThan(0);
+      expect(dash.submissionAcceptanceCounts).toEqual({
+        accepted: before.submissionAcceptanceCounts.accepted,
+        total: before.submissionAcceptanceCounts.total + 1,
+      });
     });
 
     it("a batch iQIES accepted with warnings is accepted on the compliance rate (in both halves of the ratio)", async () => {

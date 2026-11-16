@@ -8,8 +8,8 @@
 //     labelled as the twin-only guard it is;
 //   - importSubmissionResult takes the iQIES record id from the WINNING row of an assessment (the worst outcome, the first row
 //     that reached it), never from every row that names it;
-//   - the dashboard's `providerEntityId` is echoed as the canonical id on both backends (pinned here against the database
-//     backend); the workflow state's and regenerate's `admissionId` are the canonical id on the twin.
+//   - the dashboard's `providerEntityId` and the workflow state's `admissionId` are echoed as the canonical id on both
+//     backends (pinned here against the database backend); regenerate's `admissionId` is the canonical id on the twin.
 import type { DbClient } from "@chartwarden/db";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
@@ -247,14 +247,16 @@ describe("the echoed id is the canonical id the database stores, not the caller'
   });
 
   it("getWorkflowState and regenerateSchedules echo the canonical admission id, and still find the stored admission", async () => {
-    // The database backend's getWorkflowState still echoes the spelling that was sent (hope-route-service-db.ts, the
-    // `buildWorkflowState({ admissionId })` call): a parity comparison with it belongs here once it canonicalises too.
     const inMemory = twin();
+    // Three empty selects (schedules, assessments, SFVs); the M6 seam is unregistered, so the admission is answered as absent.
+    const database = dbBackend([[], [], []]);
 
     const workflow = await inMemory.getWorkflowState(ORG, upper(ADMISSION));
+    const databaseWorkflow = await database.getWorkflowState(ORG, upper(ADMISSION));
     const regenerated = await inMemory.regenerateSchedules(ORG, upper(ADMISSION));
 
     expect(workflow.admissionId).toBe(ADMISSION);
+    expect(databaseWorkflow.admissionId).toBe(workflow.admissionId); // parity: the database canonicalises it too
     expect(workflow.patientId).toBe(PATIENT); // not an empty read: the lookup ran on the canonical id
     expect(regenerated).toEqual({ admissionId: ADMISSION, scheduleCount: 1 });
   });

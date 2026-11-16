@@ -67,6 +67,7 @@ import { ReviewSfvDialog } from "./hope-sfv-review-dialog";
 import { SfvWorkflowSection } from "./hope-sfv-section";
 import { SignDialog } from "./hope-sign-dialog";
 import { ASSESSMENT_TONE, rfaLabel, stateLabel } from "./hope-status";
+import { SummaryRequestNotice } from "./hope-summary-notice";
 import {
   CheckboxTiles,
   ClinicalSection,
@@ -1040,6 +1041,8 @@ function HopeAssessmentWorkspace(): JSX.Element {
 
   const {
     summaryState,
+    summaryNotice,
+    summaryNoticeRef,
     requestSummary,
     amendmentDisciplines,
     correctionOpen,
@@ -1565,6 +1568,7 @@ function HopeAssessmentWorkspace(): JSX.Element {
               {sfv.notice ?? signRefreshNotice}
             </p>
           ) : null}
+          <SummaryRequestNotice notice={summaryNotice} noticeRef={summaryNoticeRef} />
 
           {activeSection === "Review" ? (
             <ReviewPanel

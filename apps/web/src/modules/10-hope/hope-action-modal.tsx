@@ -49,14 +49,14 @@ const SKIP_REASONS = [
 const LABEL: Record<HopeAction, string> = {
   skip: "Skip timepoint window",
   "summary-pdf": "Request HOPE summary",
-  regenerate: "Recompute timepoint schedules",
+  regenerate: "Create missing timepoint windows",
   "cancel-package": "Cancel HOPE package",
 };
 
 const SUBMIT: Record<HopeAction, string> = {
   skip: "Skip window",
   "summary-pdf": "Request summary",
-  regenerate: "Recompute",
+  regenerate: "Create missing windows",
   "cancel-package": "Cancel package",
 };
 
@@ -196,8 +196,9 @@ export function HopeActionModal({
 
         {action === "regenerate" ? (
           <p style={meta}>
-            Recomputes this admission's timepoint windows from its current dates. Completed and
-            skipped windows are not reopened.
+            Creates any HOPE timepoint windows this admission is entitled to and does not have yet.
+            Existing windows (open, completed or skipped) are left exactly as they are, so a window
+            computed from a wrong date is not moved.
           </p>
         ) : null}
 

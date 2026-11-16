@@ -109,8 +109,15 @@ describe("spec 1.1: the double-batching guard is the one the code has; the idemp
       "async assembleSubmission(",
       "const validation = await validationService",
     );
+    // The manual route and the cron scan share one list (jobs/assemble-store.ts); the spec names each of its statuses.
+    expect(assemble).toContain("ASSEMBLE_BLOCKING_ITEM_STATUSES");
+    const sharedList = slice(
+      read(`${M10_SRC}/jobs/assemble-store.ts`),
+      "export const ASSEMBLE_BLOCKING_ITEM_STATUSES",
+      "] as const",
+    );
     for (const status of ["pending", "accepted", "accepted_with_warnings", "rejected"]) {
-      expect(assemble, status).toContain(`"${status}"`);
+      expect(sharedList, status).toContain(`"${status}"`);
       expect(submission, status).toContain(`\`${status}\``);
     }
     expect(read("packages/db/migrations/0034_hope_m10_tables.sql")).not.toMatch(

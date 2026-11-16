@@ -53,6 +53,8 @@ import {
   requireNotCancelled,
 } from "../hope-submission-cancel";
 import {
+  ACCEPTED_BATCH_STATUSES,
+  ANSWERED_BATCH_STATUSES,
   type RejectedItemResolution,
   classifyCmsResult,
   deriveBatchOutcome,
@@ -685,8 +687,9 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
   /**
    * #45 — the subject of a HOPE record, never guessed. `recordSfv` passes the DB backend's own message
    * (`resolveSfvAdmissionPatient`, via `sfvProjectionGapMessage`), so that refusal reads the same on both. The DB backend's
-   * `recordTimepoint` has NO such refusal (it reads the seam only for the admission / discharge dates and takes the patient
-   * from that summary or the schedule row), so on that route this is a twin-only guard: the twin has no seam to ask.
+   * `recordTimepoint` refuses the same way (`timepointProjectionGapMessage`): it takes the patient from the M6 summary,
+   * else the schedule row, else answers M10_ADMISSION_PROJECTION_GAP; it no longer falls back to the admission id. The twin
+   * has no seam to ask, so `seed.admissionPatients` stands in for the summary here.
    */
   const patientOfAdmission = (
     admissionId: string,
@@ -2021,13 +2024,16 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       const subs = [...submissions.values()].filter(
         (s) => s.organizationId === organizationId && onProviderEntity(s, providerEntityId),
       );
-      // F-058 (#150) — terminal batches only; a `queued` batch has no acceptance outcome and counting
+      // F-058 (#150) — batches iQIES has ANSWERED on only; a `queued` batch has no acceptance outcome and counting
       // it as a failed one reads as 0% acceptance (the §1.3 APU-penalty band) for work merely awaiting
-      // transmit. Mirrors the DB backend.
+      // transmit. The same two lists as the DB backend and the M30 rollup (`hope-submission-result.ts`), so a batch
+      // accepted with warnings is accepted and answered here too.
       const terminal = subs.filter((s) =>
-        ["accepted", "rejected", "partially_accepted"].includes(s.status),
+        ANSWERED_BATCH_STATUSES.some((status) => status === s.status),
       );
-      const accepted = terminal.filter((s) => s.status === "accepted").length;
+      const accepted = terminal.filter((s) =>
+        ACCEPTED_BATCH_STATUSES.some((status) => status === s.status),
+      ).length;
       const sfvAll = [...sfvs.values()].filter(
         (s) => s.organizationId === organizationId && onProviderEntity(s, providerEntityId),
       );

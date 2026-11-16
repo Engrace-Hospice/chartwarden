@@ -172,11 +172,14 @@ describe("a window that moved on since the page loaded", () => {
     },
   );
 
-  // There is deliberately no "clinician left before the re-read answers" test: React 18 emits no warning for a state update on an
-  // unmounted component and the update is a no-op, so such a test passes with or without the `mounted` guards in rereadWorkflow
-  // and submitTimepoint (checked: with every guard removed from a copy of the component, all of this file still passed). The one
-  // guard with an observable effect, no navigation to the draft the write created once the clinician has left, is covered in
-  // hope-capture-workspace.dom.test.tsx ("does not pull the clinician to the draft it created ...").
+  // There is deliberately no "clinician left before the re-read answers" test: rereadWorkflow and submitTimepoint only set state
+  // after their await, React 18 emits no warning for a state update on an unmounted component and the update is a no-op, so such
+  // a test would pass with or without a guard around those updates. The component's `mounted` guards (in submitTimepoint: after the
+  // write, and before the re-read that follows a rejected request) have an observable effect instead: no navigation to the draft the
+  // write created once the clinician has left, and no second read for a screen nobody is on. The navigation one is
+  // covered in g2-capture-leave-before-reply.dom.test.tsx and hope-capture-workspace.dom.test.tsx ("does not pull the clinician to
+  // the draft it created ..."); with that guard deleted from a copy of the component, those two fail and every test in this file
+  // still passes.
 });
 
 describe("the capture workspace read", () => {

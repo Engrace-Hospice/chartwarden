@@ -13,6 +13,7 @@ import {
   requireNotCancelled,
 } from "./hope-submission-cancel";
 import { LIGHT_SUB_COLUMNS, type LightSubmissionColumns } from "./hope-submission-reads-db";
+import { uuidOrNotFound } from "./hope-uuid";
 
 const SUB = schema.hopeSubmissions;
 const SUBITEM = schema.hopeSubmissionItems;
@@ -32,39 +33,36 @@ export interface CancelHopeSubmissionArgs {
  * double click, a retry after a lost reply, or a cancel racing Mark uploaded sees one consistent status.
  *
  * Replaying a cancel on an already-cancelled batch is safe and returns it unchanged (the original reason, time
- * and actor stand; nothing is written). RLS hides another tenant's batch, so it reads as absent (404). The lock waits
+ * and actor stand; nothing is written). RLS hides another tenant's batch, so it reads as absent (404), and so does an
+ * id that is no uuid (answered before any statement, never sent to a `::uuid` comparison). The lock waits
  * at most `M10_LOCK_TIMEOUT_MS` (then `M10_RECORD_BUSY`: this step was not applied).
  */
 export async function cancelHopeSubmission(
   t: DbClient,
   args: CancelHopeSubmissionArgs,
 ): Promise<LightSubmissionColumns> {
+  const id = uuidOrNotFound(args.id, `HOPE submission ${args.id} not found`);
   // Only the light columns: the package ZIP (`acceptance_report`) stays untouched, neither read under the lock nor
   // echoed back by the UPDATE.
   const [row] = (await takeBoundedLock(
     t,
     (statement) =>
-      statement
-        .select(LIGHT_SUB_COLUMNS)
-        .from(SUB)
-        .where(eq(SUB.id, args.id))
-        .limit(1)
-        .for("update"),
+      statement.select(LIGHT_SUB_COLUMNS).from(SUB).where(eq(SUB.id, id)).limit(1).for("update"),
     {
-      lock: `submission row ${idForLog(args.id)} (org ${idForLog(args.organizationId)}) for a cancel`,
+      lock: `submission row ${idForLog(id)} (org ${idForLog(args.organizationId)}) for a cancel`,
     },
   )) as LightSubmissionColumns[];
-  if (!row) throw new NotFoundError(`HOPE submission ${args.id} not found`);
+  if (!row) throw new NotFoundError(`HOPE submission ${id} not found`);
   if (row.status === "cancelled") return row;
   require_(
     isCancellableSubmissionStatus(row.status),
     "M10_SUBMISSION_CANCEL_NOT_ALLOWED",
-    cancelNotAllowedMessage(args.id, row.status),
+    cancelNotAllowedMessage(id, row.status),
   );
   await t
     .update(SUBITEM)
     .set({ itemStatus: "cancelled", updatedAt: args.now })
-    .where(and(eq(SUBITEM.hopeSubmissionId, args.id), eq(SUBITEM.itemStatus, "pending")));
+    .where(and(eq(SUBITEM.hopeSubmissionId, id), eq(SUBITEM.itemStatus, "pending")));
   const [cancelled] = (await t
     .update(SUB)
     .set({
@@ -74,12 +72,12 @@ export async function cancelHopeSubmission(
       cancelReasonCode: args.reasonCode,
       updatedAt: args.now,
     })
-    .where(eq(SUB.id, args.id))
+    .where(eq(SUB.id, id))
     .returning(LIGHT_SUB_COLUMNS)) as LightSubmissionColumns[];
   // Unreachable in practice: the row lock above holds this row until the transaction ends and the UPDATE adds no
   // predicate of its own, so it always returns the locked row. Kept as defence in depth (a zero-row result fails
   // loudly as a 404 instead of returning `undefined`); it becomes reachable if a predicate is ever added to the UPDATE.
-  if (!cancelled) throw new NotFoundError(`HOPE submission ${args.id} not found`);
+  if (!cancelled) throw new NotFoundError(`HOPE submission ${id} not found`);
   return cancelled;
 }
 
@@ -94,8 +92,9 @@ export async function cancelHopeSubmission(
 export async function advancePackagedToExported(
   t: DbClient,
   organizationId: string,
-  id: string,
+  urlId: string,
 ): Promise<void> {
+  const id = uuidOrNotFound(urlId, `HOPE submission ${urlId} not found`);
   const at = new Date();
   const advanced = await takeBoundedLock(
     t,

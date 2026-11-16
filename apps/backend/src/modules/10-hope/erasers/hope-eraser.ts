@@ -7,12 +7,13 @@
 // does NOT keep a concurrent write out of the destruction), (2)
 // validates the CMS 10-year EXTENDED RETENTION on submitted assessments — if any `hope_assessment` was
 // transmitted to iQIES and `beforeDate` falls before `youngest.transmittedAt + 10y`, the erase is REFUSED
-// with {@link HopeRetentionBlockedError} unless a legal-hold override is supplied (§8.4 step 1), (3) erases
-// the partitioned `hope_assessment` rows — at PARTITION granularity (DETACH + DROP) when a partition is
-// wholly erasable, by row-level delete for a mixed partition (§8.4 step 2) — together with the child
-// `hope_timepoint_schedule` / `symptom_follow_up_visit` / `hope_validation_finding` rows (§8.4 step 3).
+// with {@link HopeRetentionBlockedError} unless a legal-hold override is supplied (§8.4 #2), (3) erases
+// the partitioned `hope_assessment` rows by row-level delete through the partitioned parent (the partition
+// DETACH + DROP path is not built; §8.4 #3) — together with the child
+// `hope_timepoint_schedule` / `symptom_follow_up_visit` / `hope_validation_finding` rows (§8.4 #3).
 // `hope_submission` / `hope_submission_item` rows SURVIVE: the envelope SHA-256 is operational/compliance
-// evidence; the per-patient envelope CONTENT in MinIO is purged by M4's envelope-purge worker, not here.
+// evidence. M10 purges no envelope content and the spec records that no purge job exists (§8.4 #3), so the
+// package bytes in `hope_submission.acceptance_report` outlive the destruction certificate.
 // Both `signed` AND `superseded` assessments are erased so a correction-supersede chain is removed at both
 // ends and no orphaned half survives. The sibling clinical erasers are disjoint by table ownership: M5
 // destroys the patient demographics subtree, M6 the admission subtree, M7 the care-plan subtree, M8 the
@@ -35,9 +36,9 @@ export interface HopeEraseCounts {
   readonly sfvs: number;
   /** `hope_validation_finding` rows deleted. */
   readonly validationFindings: number;
-  /** `hope_assessment` rows removed (whether by partition drop or row delete). */
+  /** `hope_assessment` rows removed (always by row delete; see {@link HopeEraseCounts.partitionsDropped}). */
   readonly assessments: number;
-  /** Whole `hope_assessment` partitions DETACHed + DROPped (the partition-drop path, §8.4 step 2). */
+  /** Whole `hope_assessment` partitions DETACHed + DROPped: always 0, the partition-drop path is not built (§8.4 #3). */
   readonly partitionsDropped: number;
 }
 
@@ -97,7 +98,7 @@ export function earliestErasableInstant(
 }
 
 /**
- * Decide whether a HOPE erase is blocked by the CMS 10-year extended retention (§8.4 step 1). Blocked iff
+ * Decide whether a HOPE erase is blocked by the CMS 10-year extended retention (§8.4 #2). Blocked iff
  * there is at least one submitted assessment, no legal-hold override, AND `beforeDate` precedes the
  * earliest-erasable instant. Pure.
  */
@@ -123,16 +124,16 @@ export interface HopeEraseStore {
    * making the writers take it, is an open design decision (not made here). A no-op in the slice.
    */
   lockPatient(organizationId: string, patientId: string): Promise<void>;
-  /** The patient's submitted (iQIES-transmitted) assessments — the CMS-retention anchors (§8.4 step 1). */
+  /** The patient's submitted (iQIES-transmitted) assessments — the CMS-retention anchors (§8.4 #2). */
   getSubmittedAssessments(
     organizationId: string,
     patientId: string,
   ): Promise<readonly SubmittedAssessmentRef[]>;
   /**
-   * Erase the patient's `hope_assessment` rows (`target_date < beforeDate`; partition DETACH+DROP where a
-   * partition is wholly erasable, row-level delete otherwise) plus the child `hope_timepoint_schedule` /
+   * Erase the patient's `hope_assessment` rows (`target_date < beforeDate`; the Drizzle store always row-deletes, a
+   * partition DETACH+DROP is not built) plus the child `hope_timepoint_schedule` /
    * `symptom_follow_up_visit` / `hope_validation_finding` rows. `hope_submission` rows are left intact
-   * (§8.4 steps 2–3). Returns per-table counts.
+   * (§8.4 #3). Returns per-table counts.
    */
   eraseHopeSubtree(
     organizationId: string,
@@ -146,7 +147,7 @@ export interface HopeEraseStore {
  * {@link HopeEraseStore.lockPatient} for what it does not cover), enforce
  * the CMS 10-year extended retention, then delete the assessment rows and child rows and report the total
  * removed. Pure orchestration over the store — no I/O of its own. Throws {@link HopeRetentionBlockedError}
- * when retention blocks the erase (§8.4 step 1).
+ * when retention blocks the erase (§8.4 #2).
  */
 export async function eraseHopeRecord(
   organizationId: string,
@@ -175,7 +176,7 @@ export async function eraseHopeRecord(
 
 /** Seed shape for the in-memory {@link HopeEraseStore} (slice/tests). */
 export interface InMemoryHopeEraseSeed {
-  /** Per-table counts a first erase removes; `partitionsDropped` selects the partition-drop vs row-delete path. */
+  /** Per-table counts a first erase removes (returned as seeded, `partitionsDropped` included). */
   readonly counts?: Partial<HopeEraseCounts>;
   /** Submitted assessments under CMS retention (drives the extended-retention block / override paths). */
   readonly submitted?: readonly SubmittedAssessmentRef[];
@@ -226,12 +227,12 @@ export function createInMemoryHopeEraseStore(seed: InMemoryHopeEraseSeed = {}): 
  *
  * `hope_assessment` is RANGE-partitioned by `target_date`: every statement targets the PARTITIONED
  * PARENT (exactly how the M10 route services access it), so Postgres routes across all monthly
- * partitions. This store always takes the §8.4-step-2 ROW-DELETE path (`target_date < beforeDate` via
+ * partitions. This store always takes the §8.4 #3 ROW-DELETE path (`target_date < beforeDate` via
  * the parent) and reports `partitionsDropped: 0` — DETACH+DROP is a DDL fast-path over the same
  * semantics that requires table ownership and partition-boundary bookkeeping a tenant-scoped
  * transaction cannot do; the row path is correct at every granularity. `hope_submission` /
- * `hope_submission_item` rows SURVIVE untouched (compliance evidence; the envelope CONTENT is purged
- * by M4's envelope-purge worker). Counts come from `returning` lengths (rows ACTUALLY removed). The
+ * `hope_submission_item` rows SURVIVE untouched (compliance evidence; M10 purges no envelope content and no purge job
+ * exists, spec §8.4 #3). Counts come from `returning` lengths (rows ACTUALLY removed). The
  * M10 grants give `chartwarden_app` no DELETE (append-only), so under an app-role connection Postgres
  * REFUSES the delete and this store THROWS — the destruction path must be handed a privileged
  * (chartwarden_admin) `DbClient` at the composition root.
@@ -294,7 +295,7 @@ export function createDrizzleHopeEraseStore(db: DbClient): HopeEraseStore {
             .where(and(eq(A.patientId, patientId), lt(A.targetDate, boundary)))
         ).map((r) => r.id);
 
-        // §8.4 step 3 children first. Findings are scoped to the ERASED assessments; SFVs and
+        // §8.4 #3 children first. Findings are scoped to the ERASED assessments; SFVs and
         // schedules are patient-level children (plain-uuid links, no FK from them to the parent).
         const validationFindings =
           erasableIds.length === 0
@@ -308,7 +309,7 @@ export function createDrizzleHopeEraseStore(db: DbClient): HopeEraseStore {
         const sfvs = (
           await tx.delete(SFV).where(eq(SFV.patientId, patientId)).returning({ id: SFV.id })
         ).length;
-        // §8.4 step 2: the assessment rows themselves — signed AND superseded — via the parent.
+        // §8.4 #3: the assessment rows themselves — signed AND superseded — via the parent.
         // Deleted BEFORE the schedules: `hope_assessment.schedule_id` is a real intra-module FK, so a
         // schedule delete with a surviving referencing assessment would (correctly) fail closed.
         const assessments =

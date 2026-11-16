@@ -53,12 +53,12 @@ describe("searching the SFV queue by the Triggered time", () => {
     expect(screen.queryByText("No SFVs")).toBeNull();
   });
 
-  it("still finds the row by its raw instant", async () => {
+  it("no longer finds the row by its raw UTC instant, which the table never shows", async () => {
     const search = await mount();
 
     fireEvent.change(search, { target: { value: "2026-09-12t04:59" } });
 
-    expect(screen.getByText("2026-09-11 23:59")).toBeTruthy();
+    expect(screen.getByText("No SFVs")).toBeTruthy();
   });
 
   it("finds nothing for a time that is neither shown nor stored", async () => {

@@ -15,14 +15,15 @@ PATCH, a retry under the SAME `Idempotency-Key` is released only when nothing of
 longer open now answers `409` (below). `POST /hope/submissions/assemble` can now answer `409 M10_RECORD_BUSY` (below).
 
 - **New retryable `409 M10_RECORD_BUSY`.** A HOPE write that has to take a record's row lock (patching answers, opening a draft's
-  workspace when its control answers are out of date, the HUV completion date, the review repair, the SFV completion, ...) now waits at
-  most **5 seconds** for another request that holds it, then answers this code instead of queueing until the other request finishes.
+  workspace when its chart prefill or control answers are out of date, the HUV completion date, the review repair, the SFV
+  completion, ...) waits at most **5 seconds** for another request that holds it, then answers this code. Most of these locks are new in
+  this release: until now only `mark-uploaded` and recording a CMS result locked a submission batch row (with no bound), and the writes
+  on assessment and SFV records took no explicit lock and could race (the lost-update fixes below).
   The message reads:
   "The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again."
   An earlier step may have been applied because some requests run more than one
   transaction (opening a legacy draft's workspace, signing it, or reading its review first freezes the draft's spec in a transaction of
-  its own, which stays committed if a later lock times out). Before, a stuck request made the other requests that needed the same lock wait
-  without limit. The routes covered take their locks through the HOPE record-lock helpers, and each wait is bounded: the assessment, SFV and
+  its own, which stays committed if a later lock times out). The routes covered take their locks through the HOPE record-lock helpers, and each wait is bounded: the assessment, SFV and
   submission-batch rows (patching answers, updating a draft, the HUV completion date, signing with its own sign lock, the SFV completion's
   SFV and draft locks, cancelling a package, marking it uploaded, recording its CMS result), the advisory keys that serialise recording
   a timepoint, a correction or an inactivation and assembling a package (`POST /hope/submissions/assemble`, one key per provider
@@ -64,7 +65,8 @@ longer open now answers `409` (below). `POST /hope/submissions/assemble` can now
   most 5 seconds and then answers the retryable `409 M10_RECORD_BUSY`, or, once the winner has committed, finds the winner's records
   already packaged (the ordinary `409 CONFLICT`, "No signed HOPE assessments are eligible for iQIES package generation", when that was
   all of them). The lock is taken before anything of the request has committed, so a timeout on it releases the Idempotency-Key and the
-  same key may be reused (POST). No assemble cron is scheduled in this build (the runner exists but has no schedule or Worker), so this
+  same key may be reused (POST). The other refusals are unchanged: `422` when the submission header or an assessment's payload cannot be
+  built (the message names what to set). No assemble cron is scheduled in this build (the runner exists but has no schedule or Worker), so this
   route is the only way a package is assembled.
 - **`POST /api/v1/hope/admin/regenerate-schedules` creates only the schedule windows an admission is missing** (stated here because
   its OpenAPI summary used to say "recompute"). An RFA that already has a schedule row in any status (`open`, `completed`, `expired`
@@ -77,11 +79,11 @@ longer open now answers `409` (below). `POST /hope/submissions/assemble` can now
   answers `404` from the scope guard first). A data fault an operator repairs; a plain retry does
   not help. On POST, PUT and PATCH the idempotency layer replays the 422 for 24 h on the same key, so use a NEW Idempotency-Key after an
   operator repairs the admission projection; a GET carries no key (neither route is a GET).
-- `GET .../workspace` no longer takes the record's lock when nothing needs writing (it used to lock on every open), so reading a draft
-  no longer queues behind, or blocks, the author's autosave or the sign call.
+- `GET .../workspace` takes the record's lock only when something has to be written (the chart prefill or the control answers are out
+  of date), so a plain open of a draft does not queue behind, or block, the author's autosave or the sign call.
 - `PATCH .../answers` now refuses a protected item (`403`), an unknown item (`404`) and an invalid value or an item that is inactive for
-  the record's ISC (`422 VALIDATION_FAILED`) **before** it takes any lock (the same codes as before, only
-  sooner). An item that is not applicable under the proposed answers is refused **after** the locks, on the locked row (`422
+  the record's ISC (`422 VALIDATION_FAILED`) **before** it takes any lock (the codes are the ones this route
+  already answered; no lock wait comes first). An item that is not applicable under the proposed answers is refused **after** the locks, on the locked row (`422
   VALIDATION_FAILED`, details code `HOPE_ITEM_NOT_APPLICABLE` or `HOPE_ITEM_APPLICABILITY_PENDING`): that check needs the locked row's
   answers, so the request can wait for a lock (and answer `M10_RECORD_BUSY`) before it is refused.
 - `PUT /api/v1/hope/assessments/{id}` (update a draft) now judges "is it still a draft" on the locked row and writes only a draft:
@@ -136,8 +138,7 @@ longer open now answers `409` (below). `POST /hope/submissions/assemble` can now
 - The submission view carries two new fields, `cancelledAt` (date-time or `null`) and `cancelReasonCode` (one of the four codes or `null`);
   the reading of `submittedAt` and the counts is unchanged.
 - A cancelled batch cannot be handed onward: downloading its package (`GET /hope/submissions/{id}/package`), marking it uploaded and
-  recording a CMS result against it are all `409 M10_SUBMISSION_CANCELLED` (mark-uploaded and results used to answer a generic `409
-  CONFLICT` / `M10_SUBMISSION_RESULT_ALREADY_RECORDED`); retry stays `409 M10_SUBMISSION_RETRY_NOT_REJECTED`.
+  recording a CMS result against it are all `409 M10_SUBMISSION_CANCELLED`; retry stays `409 M10_SUBMISSION_RETRY_NOT_REJECTED`.
 - **Deploy order.** Run migration `1495_m10_hope_submission_cancel` before the new image takes traffic (two enum values, three nullable
   columns and two CHECK constraints on `hope_submission`: `cancel_reason_code` must be one of the four reason codes, and
   `cancelled_at` / `cancelled_by_membership_id` / `cancel_reason_code` are all set on a `cancelled` batch and all null on every other one;

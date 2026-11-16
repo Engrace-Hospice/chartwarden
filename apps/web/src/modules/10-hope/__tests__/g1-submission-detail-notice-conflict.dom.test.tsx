@@ -127,7 +127,10 @@ describe("submission detail: a success that removes the button that was used", (
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel package" }));
     const note = await screen.findByRole("status");
     expect(note.textContent).toContain("Package cancelled");
-    expect(screen.queryByRole("button", { name: "Cancel package" })).toBeNull();
+    // The note is set when the cancel is answered; the button goes with the re-read that follows, a second read.
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Cancel package" })).toBeNull(),
+    );
     await waitFor(() => expect(document.activeElement).toBe(note));
   });
 });

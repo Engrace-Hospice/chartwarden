@@ -1,9 +1,9 @@
 // apps/backend/src/modules/10-hope/hope-sfv-completion-guards.ts — the lookup and refusal guards a
 // `recordSfv` completion runs BEFORE it inserts the signed RFA-04, split out of `hope-route-service-db.ts`.
 // The ORDER the caller runs them in is security-relevant and is the caller's contract:
-//   attestation -> `requireCalendarTargetDate` (pure, body only) -> `resolveSfvAdmissionPatient` (seam read, outside
-//   the tx) -> `lockSfvForCompletion` -> `requireSfvBoundToAdmission` -> `requireValidSfvCompletionContent`
-//   (hope-sfv-completion-content.ts) -> insert.
+//   attestation -> `requireCalendarTargetDate` (pure, body only) -> the URL admission as a canonical uuid (404 when it
+//   is none; `recordSfv`) -> `resolveSfvAdmissionPatient` (seam read, outside the tx) -> `lockSfvForCompletion` ->
+//   `requireSfvBoundToAdmission` -> `requireValidSfvCompletionContent` (hope-sfv-completion-content.ts) -> insert.
 // A foreign / unknown / mispaired SFV is refused by `requireSfvBoundToAdmission`, before any status or content guard,
 // so the later guards (ALREADY_COMPLETED, INCOMPLETE, PAST_DUE) can never be used to probe another admission.
 import { type DbClient, schema } from "@chartwarden/db";
@@ -13,6 +13,7 @@ import { and, eq } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { takeBoundedLock } from "./hope-assessment-lock";
 import { errorClassForLog, idForLog } from "./hope-log-id";
+import { canonicalUuidOrNull } from "./hope-uuid";
 
 const SFV = schema.symptomFollowUpVisits;
 
@@ -24,6 +25,13 @@ type SfvRow = typeof SFV.$inferSelect;
  */
 export const sfvProjectionGapMessage = (admissionId: string): string =>
   `Admission ${admissionId} could not be projected by the M6 status seam, so the SFV completion cannot be bound to it. Once the admission is repaired, send the request again with a NEW Idempotency-Key (the idempotency layer replays this 422 for 24 h on the same key).`;
+
+/**
+ * The same refusal for `recordTimepoint`: the new record's subject (its patient) is unknown because neither the M6 seam's
+ * summary nor a schedule row names one, and it is never guessed. One definition, for the DB backend and the twin to share.
+ */
+export const timepointProjectionGapMessage = (admissionId: string): string =>
+  `Admission ${admissionId} could not be projected by the M6 status seam, so the subject of this HOPE record is unknown. Once the admission is repaired, send the request again with a NEW Idempotency-Key (the idempotency layer replays this 422 for 24 h on the same key).`;
 
 /**
  * The URL admission's patient through M6's `AdmissionStatusReader`. The read is keyed on the URL admission only (never
@@ -80,6 +88,11 @@ export async function lockSfvForCompletion(
   admissionId: string,
   triggeringAssessmentId: string,
 ): Promise<SfvRow | undefined> {
+  // A body id that is no uuid names no SFV: "absent" (the same NO_TRIGGER refusal as any unbound SFV), never a `::uuid`
+  // comparison that answers a 22P02. The query runs on the canonical text, not the caller's spelling.
+  const admission = canonicalUuidOrNull(admissionId);
+  const trigger = canonicalUuidOrNull(triggeringAssessmentId);
+  if (admission === null || trigger === null) return undefined;
   const [sfv] = (await takeBoundedLock(
     tx,
     (statement) =>
@@ -89,8 +102,8 @@ export async function lockSfvForCompletion(
         .where(
           and(
             eq(SFV.organizationId, organizationId),
-            eq(SFV.admissionId, admissionId),
-            eq(SFV.triggeringAssessmentId, triggeringAssessmentId),
+            eq(SFV.admissionId, admission),
+            eq(SFV.triggeringAssessmentId, trigger),
           ),
         )
         .limit(1)

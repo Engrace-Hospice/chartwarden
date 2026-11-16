@@ -28,6 +28,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 // target_date)` demands it); the DB supersede trigger flips the original only when the correction signs.
 import {
   type CaptureDecision,
+  HopeStateError,
   assertCaptureAllowed,
   assertRfaMatchesSchedule,
   captureInstantOf,
@@ -77,6 +78,7 @@ import {
   initializeNewHopeRecord,
 } from "./hope-record-initializer";
 import { reconcileCompletedSfvRegulatoryAnswers } from "./hope-sfv-completion-answers";
+import { timepointProjectionGapMessage } from "./hope-sfv-completion-guards";
 import { createSfvCompletionRecorder } from "./hope-sfv-completion-record";
 import { recordSignedTail } from "./hope-sign-tail";
 import {
@@ -112,12 +114,13 @@ import {
   settledBatchEvent,
   worstOutcome,
 } from "./hope-submission-result";
-import { canonicalUuidOrNull } from "./hope-uuid";
+import { canonicalUuidOrNull, uuidOrNotFound } from "./hope-uuid";
 import {
   HopeValidationFindingSitingError,
   createHopeValidationService,
 } from "./hope-validation-service";
 import { buildDeterministicZip } from "./hope-zip";
+import { ASSEMBLE_BLOCKING_ITEM_STATUSES } from "./jobs/assemble-store";
 import type { HopeWriteOutboxPort } from "./outbox-port";
 import type {
   CorrectTimepointArgs,
@@ -220,18 +223,6 @@ function canonicalIdFilter(column: AnyPgColumn, id: string | undefined): SQL | u
   if (!id) return undefined;
   const canonical = canonicalUuidOrNull(id);
   return canonical === null ? sql`false` : eq(column, canonical);
-}
-
-/**
- * A record id from a URL, as Postgres writes it, or a 404 when it is no uuid. A route id is only length-checked, and
- * sent to a uuid column as `= 'not-a-uuid'` it raises 22P02: a 500 the in-memory twin never answers (it answers 404). An
- * id that is no uuid names no record, so it is the same 404 as an absent one. The canonical text is what the query
- * gets, never the caller's spelling (the helper is a little more lenient than Postgres about hyphens).
- */
-function uuidOrNotFound(id: string, notFoundMessage: string): string {
-  const canonical = canonicalUuidOrNull(id);
-  if (canonical === null) throw new NotFoundError(notFoundMessage);
-  return canonical;
 }
 
 /**
@@ -716,8 +707,9 @@ export function createDbHopeBackend(
    * follows it are serialised per source record by an advisory lock (taken here, before any row lock of the caller's
    * transaction), so two concurrent requests cannot both see "nothing pending" and both insert a draft. The caller takes
    * this BEFORE it reads the source record: the record is then judged (signed, not superseded) after the lock, on a read
-   * that sees everything a request that held the lock before it committed. `sourceId` may be spelled any way Postgres
-   * reads as a uuid; the lock keys on the id as Postgres writes it (`lockRecordKey`).
+   * that sees everything a request that held the lock before it committed. `sourceId` is the CANONICAL uuid text (the
+   * callers answer 404 for an id that is none BEFORE this lock, whose key parses it as a uuid), and the lock keys on the
+   * id as Postgres writes it (`lockRecordKey`).
    */
   async function assertNoPendingLineageOperation(
     t: DbClient,
@@ -953,13 +945,14 @@ export function createDbHopeBackend(
     },
 
     // ── Pre-submission validation findings (§3.3 hope_validation_finding) ───────────────────────────
-    async getValidation(organizationId, id, options) {
+    async getValidation(organizationId, urlId, options) {
       if (options?.submissionDate !== undefined) {
         requireCalendarDateTime(options.submissionDate, "submissionDate");
       }
+      const assessmentId = uuidOrNotFound(urlId, `HOPE assessment ${urlId} not found`);
       return validationService.validateAssessment({
         organizationId,
-        assessmentId: id,
+        assessmentId,
         mode: options?.mode ?? "final",
         submissionDate: options?.submissionDate,
       });
@@ -993,7 +986,11 @@ export function createDbHopeBackend(
         return loadSubmissionDetail(tx as unknown as DbClient, r);
       });
     },
-    async listAssessmentSubmissions(organizationId, assessmentId) {
+    async listAssessmentSubmissions(organizationId, urlAssessmentId) {
+      const assessmentId = uuidOrNotFound(
+        urlAssessmentId,
+        `HOPE assessment ${urlAssessmentId} not found`,
+      );
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         await loadA(t, assessmentId);
@@ -1076,7 +1073,10 @@ export function createDbHopeBackend(
         };
       });
     },
-    async getWorkflowState(organizationId, admissionId): Promise<HopeWorkflowStateView> {
+    async getWorkflowState(organizationId, urlAdmissionId): Promise<HopeWorkflowStateView> {
+      // The id as Postgres writes it (as `regenerateSchedules` and the dashboard answer), never the caller's spelling; an id
+      // that is no uuid names no admission (404, before the M6 seam or any statement).
+      const admissionId = uuidOrNotFound(urlAdmissionId, `Admission ${urlAdmissionId} not found`);
       let admission: {
         patientId?: string | null;
         status?: string | null;
@@ -1122,8 +1122,7 @@ export function createDbHopeBackend(
           .from(SFV)
           .where(eq(SFV.admissionId, admissionId))) as SfvRow[];
         return buildWorkflowState({
-          // The id as Postgres writes it (as `regenerateSchedules` and the dashboard answer), not the caller's spelling.
-          admissionId: canonicalUuidOrNull(admissionId) ?? admissionId,
+          admissionId,
           nowIso: new Date().toISOString(),
           schedules: schedRows.map(toScheduleView),
           assessments: assessmentRows.map(toAssessmentView),
@@ -1140,18 +1139,17 @@ export function createDbHopeBackend(
     // operator looking at an empty timepoint worklist had a button that reported the emptiness back to
     // them. It now regenerates, idempotently, which is also the supported way to backfill an admission
     // activated before the scheduling consumer shipped. The returned count is the total AFTER the write.
-    async regenerateSchedules(organizationId, admissionId) {
+    async regenerateSchedules(organizationId, urlAdmissionId) {
+      // The id as Postgres writes it (never the body's spelling); an id that is no uuid names no admission (404, before the
+      // M6 seam or any statement).
+      const admissionId = uuidOrNotFound(urlAdmissionId, `Admission ${urlAdmissionId} not found`);
       await regenerateSchedulesForAdmission(db, outbox, { organizationId, admissionId });
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const rows = await tx
           .select({ id: SCHED.id })
           .from(SCHED)
           .where(eq(SCHED.admissionId, admissionId));
-        // The id as Postgres writes it, not as the request body spelled it.
-        return {
-          admissionId: canonicalUuidOrNull(admissionId) ?? admissionId,
-          scheduleCount: rows.length,
-        };
+        return { admissionId, scheduleCount: rows.length };
       });
     },
 
@@ -1255,7 +1253,7 @@ export function createDbHopeBackend(
     },
 
     // ── Record a draft timepoint (§2.2.1 — linked to its open schedule if one exists) ───────────────
-    async recordTimepoint(organizationId, userId, admissionId, args: RecordTimepointArgs) {
+    async recordTimepoint(organizationId, userId, urlAdmissionId, args: RecordTimepointArgs) {
       // A date that does not exist is refused, never rolled forward (Apr 31 would otherwise be stored, and gated, as May 1).
       requireCalendarTargetDate(args.targetDate);
       // An RFA-04 SFV is completed through `recordSfv` (it is inserted signed, against an open SFV obligation), not
@@ -1272,6 +1270,9 @@ export function createDbHopeBackend(
           ],
         );
       }
+      // The admission as Postgres writes it (the M6 seam read, the schedule and draft lookups and the advisory key all take
+      // that text), and a 404 for an id that is no uuid, before the seam or any statement.
+      const admissionId = uuidOrNotFound(urlAdmissionId, `Admission ${urlAdmissionId} not found`);
       const view = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const admissionSummary =
@@ -1331,8 +1332,8 @@ export function createDbHopeBackend(
           // One draft per admission and RFA: the existing-draft read and the insert below are serialised per
           // (admission, RFA) by an advisory lock, so two concurrent records converge on one draft instead of each
           // inserting its own (no row exists yet for a row lock to hold).
-          // The admission id goes through the lock as Postgres reads it (`lockRecordKey`), not as the URL spelled it: a
-          // differently cased or braced id is the same admission and must take the same lock.
+          // The admission id is the canonical text, and `lockRecordKey` parses it as a uuid again: a differently cased or
+          // braced spelling is the same admission and must take the same lock.
           await lockRecordKey(t, `m10:record:${organizationId}`, admissionId, `:${args.rfaKind}`);
           const [existingDraft] = (await t
             .select()
@@ -1389,12 +1390,24 @@ export function createDbHopeBackend(
             args.adminOverride === true &&
             Date.parse(captureInstantOf(args.targetDate, nowIso)) > sched.lateDeadlineAt.getTime();
         }
+        // The record's subject is never guessed: the M6 summary's patient, else the schedule row's, else a refusal. The
+        // admission id used to stand in for a patient here, which wrote a chart that belonged to nobody.
+        const patientId = admissionSummary?.patientId ?? sched?.patientId;
+        if (!patientId) {
+          console.warn(
+            `m10: a new ${args.rfaKind} record was refused: the M6 admission seam returned no patient for admission ${idForLog(admissionId)} (org ${idForLog(organizationId)}) and no schedule row names one.`,
+          );
+          throw new HopeStateError(
+            "M10_ADMISSION_PROJECTION_GAP",
+            timepointProjectionGapMessage(admissionId),
+          );
+        }
         const row = firstOrThrow(
           await t
             .insert(ASSESS)
             .values({
               organizationId,
-              patientId: admissionSummary?.patientId ?? sched?.patientId ?? admissionId,
+              patientId,
               admissionId,
               // Only an OPEN window is linked: `trg_hope_schedule_mark_completed` closes the linked
               // schedule on sign and its own WHERE is `status = 'open'`.
@@ -1497,12 +1510,13 @@ export function createDbHopeBackend(
         // unlocked read would otherwise leave this write rewriting a SIGNED record (an UPDATE without a status or version
         // predicate re-evaluates its WHERE on the new row version and still matches). The merge happens in the UPDATE, on
         // the locked row's own `data`, so no stale copy of the payload is merged back.
+        // (`lockAssessmentRow` answers "absent", with no statement, for an id that is no uuid.)
         const locked = await lockAssessmentRow(t, organizationId, id);
         if (!locked) throw new NotFoundError(`HOPE assessment ${id} not found`);
         require_(
           locked.status === "draft",
           "M10_CORRECTION_TARGET_NOT_SIGNED",
-          `Assessment ${id} is not a draft.`,
+          `Assessment ${locked.id} is not a draft.`,
         );
         const rows = (await t
           .update(ASSESS)
@@ -1513,7 +1527,7 @@ export function createDbHopeBackend(
           })
           .where(
             and(
-              eq(ASSESS.id, id),
+              eq(ASSESS.id, locked.id),
               eq(ASSESS.organizationId, organizationId),
               eq(ASSESS.status, "draft"),
               eq(ASSESS.version, locked.version),
@@ -1524,7 +1538,8 @@ export function createDbHopeBackend(
       });
     },
 
-    async getAssessmentWorkspace(organizationId, id) {
+    async getAssessmentWorkspace(organizationId, urlId) {
+      const id = uuidOrNotFound(urlId, `HOPE assessment ${urlId} not found`);
       // Spec initialisation (an assessment UPDATE for a legacy spec-less draft) commits in its OWN transaction first, as
       // review and sign do: the prefill below makes seam calls on their own pooled connections, and left in the same
       // transaction the UPDATE's row lock and connection would be held across them (a bounded self-starvation on a
@@ -1538,7 +1553,8 @@ export function createDbHopeBackend(
       return answerService.getWorkspace(organizationId, id);
     },
 
-    async getAssessmentReview(organizationId, id) {
+    async getAssessmentReview(organizationId, urlId) {
+      const id = uuidOrNotFound(urlId, `HOPE assessment ${urlId} not found`);
       // Spec initialisation (an assessment UPDATE, then control answers) commits in its OWN transaction first, as
       // `signTimepoint` does with `pre`: left in the heal's transaction it would take the assessment row before the heal
       // takes the SFV row, the reverse of M10's lock order (SFV, assessment, answers).
@@ -1558,7 +1574,8 @@ export function createDbHopeBackend(
       return readinessService.getReview({ organizationId, assessmentId: id });
     },
 
-    async patchAssessmentAnswers(organizationId, userId, id, input) {
+    async patchAssessmentAnswers(organizationId, userId, urlId, input) {
+      const id = uuidOrNotFound(urlId, `HOPE assessment ${urlId} not found`);
       const result = await answerService.patchAnswers(organizationId, userId, id, input);
       await validateDraftAfterWrite(
         () =>
@@ -1569,7 +1586,8 @@ export function createDbHopeBackend(
       return result;
     },
 
-    async setHuvCompletionDate(organizationId, userId, id, input) {
+    async setHuvCompletionDate(organizationId, userId, urlId, input) {
+      const id = uuidOrNotFound(urlId, `HOPE assessment ${urlId} not found`);
       const result = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadA(t, id);
@@ -1635,10 +1653,11 @@ export function createDbHopeBackend(
     },
 
     // ── Sign a draft (§2.2.2 / Phase 3C — final validation + Z0500B candidate, then immutable) ─
-    async signTimepoint(organizationId, userId, id, args): Promise<HopeSignResult> {
+    async signTimepoint(organizationId, userId, urlId, args): Promise<HopeSignResult> {
       // R-05: the service itself refuses an unattested signature (not only the route's schema).
       const attestationConfirmed = args?.attestationConfirmed;
       requireAttestation(attestationConfirmed, args?.attestationVersion);
+      const id = uuidOrNotFound(urlId, `HOPE assessment ${urlId} not found`);
       // GAP-019 — the D8 clinical-context snapshot and the siting the compensating finding needs both
       // come from OTHER modules' seams, each of which opens its own tenant context. They are resolved
       // here, before the write transaction, and the assessment is re-read inside it so the draft guard
@@ -1749,7 +1768,9 @@ export function createDbHopeBackend(
     },
 
     // ── Correct a signed timepoint (§2.4 / D7 — append-only; signing supersedes the original) ─
-    async correctTimepoint(organizationId, userId, id, args: CorrectTimepointArgs) {
+    async correctTimepoint(organizationId, userId, urlId, args: CorrectTimepointArgs) {
+      // Before the advisory key below, which parses the id as a uuid (22P02 for one that is none).
+      const id = uuidOrNotFound(urlId, `HOPE assessment ${urlId} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // The advisory lock and the pending check FIRST, then the source is read and judged: a correction that signed
@@ -1838,7 +1859,9 @@ export function createDbHopeBackend(
       });
     },
 
-    async inactivateTimepoint(organizationId, userId, id, args) {
+    async inactivateTimepoint(organizationId, userId, urlId, args) {
+      // Before the advisory key `assertNoPendingLineageOperation` takes, which parses the id as a uuid (22P02 for one that is none).
+      const id = uuidOrNotFound(urlId, `HOPE assessment ${urlId} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // Lock and pending check first, then judge the source (see `correctTimepoint`).
@@ -1919,7 +1942,8 @@ export function createDbHopeBackend(
     },
 
     // ── Request the printable HOPE summary (§4.5 — emits summary_requested; M22 renders) ─────────────
-    async requestSummaryPdf(organizationId, userId, id) {
+    async requestSummaryPdf(organizationId, userId, urlId) {
+      const id = uuidOrNotFound(urlId, `HOPE assessment ${urlId} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const a = await loadA(t, id); // 404 before emit if absent/cross-tenant
@@ -1936,7 +1960,8 @@ export function createDbHopeBackend(
     },
 
     // ── iQIES submission retry / assemble (§2.2.4) ───────────────────────────────────────────────────
-    async retrySubmission(organizationId, id) {
+    async retrySubmission(organizationId, urlId) {
+      const id = uuidOrNotFound(urlId, `HOPE submission ${urlId} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // Light columns: the package ZIP in `acceptance_report` is neither judged nor returned by a status flip.
@@ -1981,7 +2006,16 @@ export function createDbHopeBackend(
      * `jobs/assemble-store.ts`, `queued` status, no XML) is NOT restored — this path already writes the
      * items and runs the validator, and the manual upload flow is the transport.
      */
-    async assembleSubmission(organizationId, providerEntityId) {
+    async assembleSubmission(organizationId, urlProviderEntityId) {
+      // An entity id that is no uuid names no entity, so it has nothing eligible: the same answer as an entity with no
+      // signed records, never a `::uuid` cast (22P02) out of the advisory key or the candidate read. The route's body schema
+      // already refuses it with a 422; this is for a direct caller.
+      const providerEntityId = canonicalUuidOrNull(urlProviderEntityId);
+      if (providerEntityId === null) {
+        throw new ConflictError(
+          "No signed HOPE assessments are eligible for iQIES package generation",
+        );
+      }
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // Serialise assembles of one provider entity BEFORE the candidates are read. Two parallel assembles both read the
@@ -2012,7 +2046,7 @@ export function createDbHopeBackend(
               or(isNull(ASSESS.iqiesRecordId), eq(ASSESS.iqiesRecordId, "")),
               sql`not exists (select 1 from ${SUBITEM} where ${SUBITEM.hopeAssessmentId} = ${ASSESS.id} and ${inArray(
                 SUBITEM.itemStatus,
-                ["pending", "accepted", "accepted_with_warnings", "rejected"],
+                [...ASSEMBLE_BLOCKING_ITEM_STATUSES],
               )})`,
             ),
           )
@@ -2133,7 +2167,8 @@ export function createDbHopeBackend(
         return toSubmissionView(packaged ?? row);
       });
     },
-    async downloadSubmissionPackage(organizationId, id) {
+    async downloadSubmissionPackage(organizationId, urlId) {
+      const id = uuidOrNotFound(urlId, `HOPE submission ${urlId} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // No row lock on the read: re-downloading an exported or settled batch must not queue behind a result
@@ -2185,9 +2220,10 @@ export function createDbHopeBackend(
         return toSubmissionView(row);
       });
     },
-    async markSubmissionUploaded(organizationId, userId, id, args) {
+    async markSubmissionUploaded(organizationId, userId, urlId, args) {
       // A date that does not exist (or has no explicit offset) is refused, never stored as the next valid one.
       if (args.submittedAt !== undefined) requireCalendarDateTime(args.submittedAt, "submittedAt");
+      const id = uuidOrNotFound(urlId, `HOPE submission ${urlId} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // Row lock: a double submit must not emit twice, and a cancel racing this sees one status. Light columns
@@ -2241,7 +2277,8 @@ export function createDbHopeBackend(
         );
       });
     },
-    async importSubmissionResult(organizationId, userId, id, args) {
+    async importSubmissionResult(organizationId, userId, urlId, args) {
+      const id = uuidOrNotFound(urlId, `HOPE submission ${urlId} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // Row lock: serialises concurrent recordings of one batch (waits at most `M10_LOCK_TIMEOUT_MS`, then `M10_RECORD_BUSY`).

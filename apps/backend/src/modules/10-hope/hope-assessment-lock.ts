@@ -1,10 +1,14 @@
-// apps/backend/src/modules/10-hope/hope-assessment-lock.ts — the ONE way an answers-writing path takes the
-// assessment row lock. M10's total lock order is
+// apps/backend/src/modules/10-hope/hope-assessment-lock.ts — the ONE way an answers-writing request path takes the
+// assessment row lock (`lockAssessmentRow`; the sign lock and the spec-freezing UPDATE take the same row through
+// `takeBoundedLock` directly). M10's total lock order is
 //   SFV row  ->  hope_assessment row  ->  hope_assessment_answer rows
-// (a path that takes no SFV lock starts at the assessment row). Every path that writes answers or UPDATEs the
+// (a path that takes no SFV lock starts at the assessment row). Every REQUEST path that writes answers or UPDATEs a DRAFT
 // assessment row takes the assessment lock BEFORE its first answer write, so no two such paths can hold one answer row
 // each and wait on the other's assessment lock (the 40P01 the review self-heal and the workspace-open prefill produced
-// when one wrote answers first and updated the assessment last).
+// when one wrote answers first and updated the assessment last). The named exception UPDATEs an assessment row under
+// another lock and writes no answers: `importSubmissionResult` stamps `iqies_record_id` on the batch's assessments under
+// the SUBMISSION row's lock, and the reconcile runner (`jobs/submission-store.ts`, a cron tick) stamps it too; neither
+// calls `lockAssessmentRow`.
 //
 // WRITERS (each takes its locks in that order; the spec's §4.1.1 carries the same table):
 //   patchAnswers                      SFV (HA admission only) -> assessment        validates items BEFORE the first lock
@@ -14,8 +18,12 @@
 //   signTimepoint                     assessment (+ its own Z0500B answer)         never an SFV lock
 //   updateDraft, setHuvCompletionDate assessment                                  status and version judged on the locked row
 //   recordTimepoint, correct, inactivate   an advisory key (`lockRecordKey`) FIRST, before any row lock
-//   assembleSubmission                an advisory key per provider entity (`lockRecordKey`), the first statement, before
-//                                     the candidate read
+//   assembleSubmission (the route)    an advisory key per provider entity (`lockRecordKey`, `m10:assemble:<org>`), the
+//                                     first statement, before the candidate read
+//   runAssembleSubmissionCron         the SAME `m10:assemble:<org>` key per provider entity, in a stable order, and only for
+//                                     entities whose unlocked scan found batchable work; candidates are read again behind
+//                                     the key (`jobs/cron-workers.ts`; a timeout fails that organization's tick, logged)
+//   cancel, mark-uploaded, results    the submission row (`takeBoundedLock`); `results` then UPDATEs the batch's assessments
 //
 // BOUNDED WAITS. A request that cannot get a row lock within `M10_LOCK_TIMEOUT_MS` answers a retryable 409
 // `M10_RECORD_BUSY` (that step was not applied; an earlier step of the same request, committed in its own transaction,
@@ -48,6 +56,7 @@ import { HopeStateError } from "@chartwarden/hope";
 import { and, eq, sql } from "drizzle-orm";
 import { idForLog } from "./hope-log-id";
 import type { HopeIsc } from "./hope-spec-registry";
+import { canonicalUuidOrNull } from "./hope-uuid";
 import { sqlStateOf } from "./sql-state";
 
 const ASSESS = schema.hopeAssessments;
@@ -164,7 +173,7 @@ export function mapLockTimeoutToBusy<D extends DbClient>(db: D): D {
 }
 
 /**
- * The assessment row, read `FOR UPDATE` (undefined when it does not exist). The row is returned AS LOCKED: a caller that
+ * The assessment row, read `FOR UPDATE` (undefined when it does not exist, or when `assessmentId` is no uuid). The row is returned AS LOCKED: a caller that
  * judged status or version on an earlier unlocked read judges them again on this one, because a writer that committed
  * in between is only visible here. Waits at most `M10_LOCK_TIMEOUT_MS` (then `M10_RECORD_BUSY`); see the header for the
  * one retry after a partition move.
@@ -174,13 +183,17 @@ export async function lockAssessmentRow(
   organizationId: string,
   assessmentId: string,
 ): Promise<LockedAssessment | undefined> {
+  // An id that is no uuid names no row: "absent" with no statement (a `= 'not-a-uuid'` comparison would be a 22P02, a 500),
+  // and the lookup runs on the canonical text, never the caller's spelling.
+  const id = canonicalUuidOrNull(assessmentId);
+  if (id === null) return undefined;
   const [row] = await takeBoundedLock(
     tx,
     (statement) =>
       statement
         .select(LOCKED_COLUMNS)
         .from(ASSESS)
-        .where(and(eq(ASSESS.id, assessmentId), eq(ASSESS.organizationId, organizationId)))
+        .where(and(eq(ASSESS.id, id), eq(ASSESS.organizationId, organizationId)))
         .limit(1)
         .for("update"),
     {

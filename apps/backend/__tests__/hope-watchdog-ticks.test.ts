@@ -14,12 +14,36 @@ const store = vi.hoisted(() => ({
 vi.mock("../src/modules/10-hope/jobs/cron-store", () => store);
 
 import { M10_JOB_PARAMS } from "../src/modules/10-hope/jobs/index";
-import { deliverAlerts, describeError } from "../src/modules/10-hope/jobs/watchdog-alerts";
 import {
-  type WatchdogTickDeps,
-  runSfvWatchdogTick,
-  runWindowWatchdogTick,
+  type deliverAlerts as DeliverAlerts,
+  type describeError as DescribeError,
+  M10_ALERT_EMIT_TIMEOUT_MS,
+  M10_ALERT_MAX_ABANDONED_EMITS,
+} from "../src/modules/10-hope/jobs/watchdog-alerts";
+import type {
+  runSfvWatchdogTick as RunSfvWatchdogTick,
+  runWindowWatchdogTick as RunWindowWatchdogTick,
+  WatchdogTickDeps,
 } from "../src/modules/10-hope/jobs/watchdog-ticks";
+
+// `watchdog-alerts` counts timed-out emits that are still running in module-level state with no reset. Each test loads a
+// FRESH copy of the module (vi.resetModules in beforeEach), so a test that leaves emits hanging, or fails before it frees
+// them, cannot starve the next test. The constants above are plain values and identical in every copy.
+let deliverAlerts: typeof DeliverAlerts;
+let describeError: typeof DescribeError;
+let runSfvWatchdogTick: typeof RunSfvWatchdogTick;
+let runWindowWatchdogTick: typeof RunWindowWatchdogTick;
+beforeEach(async () => {
+  vi.resetModules();
+  ({ deliverAlerts, describeError } = await import("../src/modules/10-hope/jobs/watchdog-alerts"));
+  ({ runSfvWatchdogTick, runWindowWatchdogTick } = await import(
+    "../src/modules/10-hope/jobs/watchdog-ticks"
+  ));
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
@@ -248,6 +272,41 @@ describe("deliverAlerts", () => {
 
     expect(result).toEqual({ failed: 3, skipped: 0, firstError: failure });
     expect(emit).toHaveBeenCalledTimes(3);
+  });
+
+  // The next two tests are an ordered pair: the first leaves ORG_A's abandoned-emit slots taken (its hung emits never
+  // settle), the second must not inherit that. Without the fresh module copy per test the second one is blocked as backpressure.
+  const oneAlert = [
+    {
+      eventType: "m10.hope.sfv_overdue" as const,
+      severity: "critical" as const,
+      correlationId: "c1",
+      payload: {},
+    },
+  ];
+
+  it("(isolation, part 1) leaves every abandoned-emit slot of the org taken on purpose", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const hanging = { emit: vi.fn(() => new Promise<never>(() => {})) };
+    for (let i = 0; i < M10_ALERT_MAX_ABANDONED_EMITS; i += 1) {
+      const run = deliverAlerts(hanging, ORG_A, "sfv-watchdog", oneAlert);
+      await vi.advanceTimersByTimeAsync(M10_ALERT_EMIT_TIMEOUT_MS);
+      await run;
+    }
+
+    const blocked = await deliverAlerts(hanging, ORG_A, "sfv-watchdog", oneAlert);
+
+    expect(blocked).toMatchObject({ failed: 0, skipped: 1 });
+  });
+
+  it("(isolation, part 2) the previous test's abandoned emits do not count here", async () => {
+    const emit = vi.fn(async () => ({ alertId: "a", resolvedRecipientCount: 1 }));
+
+    const result = await deliverAlerts({ emit }, ORG_A, "sfv-watchdog", oneAlert);
+
+    expect(result).toEqual({ failed: 0, skipped: 0 });
+    expect(emit).toHaveBeenCalledTimes(1);
   });
 });
 

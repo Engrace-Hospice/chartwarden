@@ -116,11 +116,9 @@ export function SfvWorklist(): JSX.Element {
           row.triggeringAssessmentId,
           row.status,
           effectiveStatus,
-          // What the column shows (the viewer's zone), so the date the clinician sees is a date they can search; the raw
-          // instant still matches, for anyone who pastes one.
+          // Only text the table shows: the Triggered column in the viewer's zone. The raw UTC instants (triggeredAt, dueAt) are
+          // never on screen (Due is a countdown chip), and in a US evening their UTC day is not the day the clinician sees.
           formatInstantDateTime(row.triggeredAt),
-          row.triggeredAt,
-          row.dueAt,
         ].some((value) => value.toLowerCase().includes(q));
       return matchesSearch;
     });

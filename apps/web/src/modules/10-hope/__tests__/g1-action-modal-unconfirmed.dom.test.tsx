@@ -16,7 +16,11 @@ afterEach(cleanup);
 const SETUP: Record<HopeAction, { name: string; submit: string; needsReason: boolean }> = {
   skip: { name: "Skip timepoint window", submit: "Skip window", needsReason: true },
   "summary-pdf": { name: "Request HOPE summary", submit: "Request summary", needsReason: false },
-  regenerate: { name: "Recompute timepoint schedules", submit: "Recompute", needsReason: false },
+  regenerate: {
+    name: "Create missing timepoint windows",
+    submit: "Create missing windows",
+    needsReason: false,
+  },
   "cancel-package": { name: "Cancel HOPE package", submit: "Cancel package", needsReason: true },
 };
 

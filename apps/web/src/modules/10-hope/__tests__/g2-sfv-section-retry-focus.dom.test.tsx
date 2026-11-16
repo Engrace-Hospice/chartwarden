@@ -66,6 +66,10 @@ describe("the follow-up card's Retry", () => {
       expect(document.activeElement).toBe(outside);
       unmount();
 
+      // Nothing has focus now (the control above held it, which alone would keep the card from taking it): only "it never failed"
+      // can stop a card that merely mounts from taking focus.
+      outside.blur();
+      expect(document.activeElement).toBe(document.body);
       renderCard(LOADING);
       expect(document.activeElement).not.toBe(card());
     } finally {

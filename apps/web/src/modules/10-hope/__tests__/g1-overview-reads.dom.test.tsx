@@ -163,6 +163,10 @@ describe("Admission HOPE overview: the workflow read", () => {
     fireEvent.click(screen.getByRole("button", { name: "Go to the other admission" }));
     await waitFor(() => expect(workflowReads(get)).toBe(2));
     await screen.findByText("Discharge Assessment");
+    // The patient's name is a second read, after the workflow: wait for it, or the late reply is released before the link exists.
+    expect((await screen.findByRole("link", { name: /A B/ })).getAttribute("href")).toBe(
+      "/patients/patient-2",
+    );
     await act(async () => {
       releaseFirst(ok(workflow(admissionId, "patient-1")));
     });

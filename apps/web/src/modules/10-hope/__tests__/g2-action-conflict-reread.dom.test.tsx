@@ -159,9 +159,11 @@ describe("the patient timeline's Recompute dialog", () => {
   });
 
   async function recompute(): Promise<HTMLElement> {
-    fireEvent.click(await screen.findByRole("button", { name: "Recompute schedules" }));
-    const dialog = await screen.findByRole("dialog", { name: "Recompute timepoint schedules" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Recompute" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Create missing timepoint windows" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Create missing timepoint windows" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create missing windows" }));
     return dialog;
   }
 

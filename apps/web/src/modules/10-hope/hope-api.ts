@@ -473,7 +473,10 @@ export async function cancelSubmission(
   return { ok: true, value: data };
 }
 
-/** §4.1 route 20 — recompute an admission's timepoint schedules after a post-hoc date correction. */
+/**
+ * §4.1 route 20 — create the timepoint windows an admission is entitled to and does not have yet (a backfill). A window that already
+ * exists, in any status, is left exactly as it is: this does NOT recompute or move one after a date correction.
+ */
 export async function regenerateSchedules(
   client: ApiClient,
   admissionId: string,
@@ -481,7 +484,7 @@ export async function regenerateSchedules(
   const { data, error, response } = await withRequestTimeout((signal) =>
     client.POST("/api/v1/hope/admin/regenerate-schedules", {
       body: { admissionId },
-      headers: freshIdempotencyKeyHeaders(), // regenerated from the admission as it is now: never replay an earlier answer
+      headers: freshIdempotencyKeyHeaders(), // creates what is missing from the admission as it is now: never replay an earlier answer
       signal,
     }),
   );

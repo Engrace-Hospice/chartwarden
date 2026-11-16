@@ -3,7 +3,9 @@
 // unchanged except that each one now ENDS in something visible: none can reject unhandled, a dialog that is busy is
 // freed when its request settles (or, if the request is never answered, after `REQUEST_TIMEOUT_MS`), and a failure is
 // shown, never left as a screen that looks as if nothing happened. A failure is worded by what is known: a refusal is
-// "failed" with the server's reason, while a request with no usable answer is "not confirmed" (it may have been applied).
+// "failed" with the server's reason, while a request with no usable answer is "not confirmed" (it may have been applied), and then the
+// screen is re-read (silently: a failed re-read must not put words on the page behind an open dialog), because the words tell the
+// clinician to check the record and the page must already show what is true when they do.
 //
 // Every body is typed against the generated contract (`CorrectAssessmentBody` and the others), and the author
 // discipline in a correction or an inactivation is the ACTING user's own: the server refuses an attribution that is not one
@@ -19,6 +21,7 @@ import {
   type InactivateAssessmentBody,
   type SfvAuthorDiscipline,
   authorDisciplinesForRoles,
+  failedResultOutcomeUnknown,
   failedWriteMessage,
   isStaleVersionRefusal,
   readSucceeded,
@@ -27,6 +30,8 @@ import {
   writeOutcomeUnknown,
   writeSucceeded,
 } from "./hope-api";
+import type { SummaryNotice } from "./hope-summary-notice";
+import { useFocusOnNewError } from "./use-focus-on-new-error";
 
 /** What a write answers with: an openapi-fetch result (or a double of one). */
 interface Reply {
@@ -77,6 +82,11 @@ const INACTIVATION_UNCONFIRMED =
   "Could not confirm that the inactivation was created. Check the record's timeline before trying again.";
 const COMPLETION_DATE_UNCONFIRMED =
   "Could not confirm that the completion date was saved. Check the assessment before trying again.";
+/** The summary request sends a fresh key every time, so a repeat after this is a NEW request: the words say to look first. */
+const SUMMARY_UNCONFIRMED =
+  "Could not confirm that the summary was requested. Check the patient's documents before trying again.";
+const SUMMARY_REQUESTED =
+  "Summary requested. It appears in the patient's documents when it is ready.";
 
 export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActionsInputs<Row>) {
   const { api, client, id, assessment, workspaceVersion, timeline, setTimeline, refresh } = inputs;
@@ -85,6 +95,9 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
   const [summaryState, setSummaryState] = useState<"idle" | "requesting" | "requested" | "failed">(
     "idle",
   );
+  // What the press said (see `SummaryRequestNotice`): it takes focus, because the pressed button is disabled while the request is out.
+  const [summaryNotice, setSummaryNotice] = useState<SummaryNotice | null>(null);
+  const summaryNoticeRef = useFocusOnNewError<HTMLParagraphElement>(summaryNotice?.text ?? null);
   const [correctionOpen, setCorrectionOpen] = useState(false);
   const [correcting, setCorrecting] = useState(false);
   const [correctionError, setCorrectionError] = useState<string | null>(null);
@@ -124,12 +137,25 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
   const requestSummary = useCallback(async () => {
     if (!id) return;
     setSummaryState("requesting");
+    setSummaryNotice(null); // each attempt starts clear, so a second failure with the same words is announced and focused again
     try {
-      // Emits `m10.hope.summary_requested`; M22 renders it out of band.
+      // Emits `m10.hope.summary_requested`; M22 renders it out of band. It changes nothing this screen shows (the document appears
+      // in the patient's documents, elsewhere), so an unconfirmed outcome is worded to check there rather than re-read here.
       const result = await requestSummaryPdf(client, id);
-      setSummaryState(result.ok ? "requested" : "failed");
+      if (result.ok) {
+        setSummaryState("requested");
+        setSummaryNotice({ text: SUMMARY_REQUESTED, failed: false });
+        return;
+      }
+      setSummaryState("failed");
+      // A refusal is the server's own reason; anything that may still have been applied (an empty 5xx, a server fault) says to check first.
+      setSummaryNotice({
+        text: failedResultOutcomeUnknown(result) ? SUMMARY_UNCONFIRMED : result.message,
+        failed: true,
+      });
     } catch {
       setSummaryState("failed");
+      setSummaryNotice({ text: SUMMARY_UNCONFIRMED, failed: true });
     }
   }, [client, id]);
 
@@ -169,12 +195,29 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
     [api],
   );
 
+  /**
+   * After a write with no usable answer (it may have been applied): the timeline is read again, so the screen offers the draft it may
+   * have created (open it, not create another). Silent when it cannot be read, and not when the clinician has left; the lookup that a
+   * refusal's own path already does is not repeated by the callers.
+   */
+  const rereadTimeline = useCallback(
+    async (patientId: string) => {
+      const rows = await lookUpTimeline(patientId);
+      if (rows && mounted.current) setTimeline(rows);
+    },
+    [lookUpTimeline, setTimeline],
+  );
+
   const createCorrection = useCallback(
     async (reason: string, authorDiscipline: SfvAuthorDiscipline) => {
       if (!id || !assessment) return;
       setCorrecting(true);
       setCorrectionError(null);
       let conflict = false;
+      // No usable answer: the correction may have been created, so the screen is re-read too (and, when the request itself was
+      // rejected, the timeline, which only the refusal path below looks up).
+      let unconfirmed = false;
+      let timelineUnread = false;
       try {
         const body: CorrectAssessmentBody = {
           correctionReason: reason.trim(),
@@ -198,6 +241,7 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
           return;
         }
         conflict = isStaleVersionRefusal(res);
+        unconfirmed = writeOutcomeUnknown(res);
         // Another session may have started one: look it up before reporting the failure. An unreadable answer (a bad
         // reply, a rejection, a timeout) is not an empty timeline, so it never replaces the rows already on screen, and it
         // never replaces the create's own refusal with a "could not confirm" about a correction that was never created.
@@ -215,15 +259,18 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
         );
       } catch {
         setCorrectionError(CORRECTION_UNCONFIRMED);
+        unconfirmed = true;
+        timelineUnread = true;
       } finally {
         // Freed whatever happened: a request nobody answers ends in the catch above once REQUEST_TIMEOUT_MS has passed.
         setCorrecting(false);
         // After the dialog is free, so a read that never answers cannot hold it: the next attempt must carry the version
         // the record has now, not the stale one that was just refused.
-        if (conflict && mounted.current) void refresh();
+        if ((conflict || unconfirmed) && mounted.current) void refresh();
+        if (timelineUnread && mounted.current) void rereadTimeline(assessment.patientId);
       }
     },
-    [api, assessment, id, lookUpTimeline, navigate, refresh, setTimeline],
+    [api, assessment, id, lookUpTimeline, navigate, refresh, rereadTimeline, setTimeline],
   );
 
   const createInactivation = useCallback(
@@ -232,6 +279,7 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
       setInactivating(true);
       setInactivationError(null);
       let conflict = false;
+      let unconfirmed = false; // no usable answer: it may have been created, so the screen and the timeline are read again
       try {
         const body: InactivateAssessmentBody = {
           reason: reason.trim(),
@@ -248,6 +296,7 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
         if (!mounted.current) return; // before `closeInactivation` and the navigation to the new inactivation
         if (!writeSucceeded(res)) {
           conflict = isStaleVersionRefusal(res);
+          unconfirmed = writeOutcomeUnknown(res);
           setInactivationError(
             failedWriteMessage(
               res,
@@ -262,14 +311,16 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
         if (inactivationId) navigate(`/hope/assessments/${inactivationId}`);
       } catch {
         setInactivationError(INACTIVATION_UNCONFIRMED);
+        unconfirmed = true;
       } finally {
         // Freed whatever happened: a request nobody answers ends in the catch above once REQUEST_TIMEOUT_MS has passed.
         setInactivating(false);
         // As in createCorrection: after the dialog is free, and so the retry does not resend the version just refused.
-        if (conflict && mounted.current) void refresh();
+        if ((conflict || unconfirmed) && mounted.current) void refresh();
+        if (unconfirmed && mounted.current) void rereadTimeline(assessment.patientId);
       }
     },
-    [api, assessment, closeInactivation, id, navigate, refresh],
+    [api, assessment, closeInactivation, id, navigate, refresh, rereadTimeline],
   );
 
   const setHuvCompletionDate = useCallback(
@@ -291,7 +342,8 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
           // Another session saved first: say so (the page's conflict banner), and re-read so the retry carries the version
           // the record has now instead of the one just refused.
           const conflict = isStaleVersionRefusal(res);
-          setSaving(conflict ? "conflict" : writeOutcomeUnknown(res) ? "unconfirmed" : "failed");
+          const unknown = writeOutcomeUnknown(res);
+          setSaving(conflict ? "conflict" : unknown ? "unconfirmed" : "failed");
           // The conflict banner already says the page is stale; any other failure is worded next to the control.
           if (!conflict) {
             setCompletionDateError(
@@ -302,7 +354,8 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
               ),
             );
           }
-          reread = conflict;
+          // An outcome nobody confirmed may have been applied: the words say to check the assessment, so it is read again too.
+          reread = conflict || unknown;
           return;
         }
         setSaving("saved");
@@ -310,6 +363,7 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
       } catch {
         setSaving("unconfirmed");
         setCompletionDateError(COMPLETION_DATE_UNCONFIRMED);
+        reread = true;
       } finally {
         setCompletionDateSaving(false);
         // After the control is free, so a read that never answers cannot hold it shut (as in createCorrection).
@@ -321,6 +375,8 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
 
   return {
     summaryState,
+    summaryNotice,
+    summaryNoticeRef,
     requestSummary,
     amendmentDisciplines,
     correctionOpen,
