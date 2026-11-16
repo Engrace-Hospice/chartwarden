@@ -236,4 +236,35 @@ describe("assembleSubmission — the validated records are read again, unlocked,
     expect(statements[1]?.rendered?.sql).toBe(statements[0]?.rendered?.sql);
     expect(statements[1]?.rendered?.params).toEqual(statements[0]?.rendered?.params);
   });
+
+  it("re-judges findings under the lock: a record with an unresolved ERROR finding is not locked or read (it may have been written after the validation)", async () => {
+    const { tx, statements } = backend([[], []]);
+
+    await readPackageableRecords(tx, ORG, PE, [A]);
+    await lockPackageableRecords(tx, ORG, PE, [A]);
+
+    for (const statement of statements) {
+      const where = statement.rendered?.sql ?? "";
+      expect(where).toContain('not exists (select 1 from "hope_validation_finding"');
+      expect(where).toContain(
+        '"hope_validation_finding"."organization_id" = "hope_assessment"."organization_id"',
+      );
+      expect(where).toContain('"hope_validation_finding"."resolved" = false');
+      expect(where).toContain("\"severity\" = 'error'");
+    }
+  });
+
+  it("the live-item subquery of every read names the tenant beside the assessment id", async () => {
+    const { tx, statements } = backend([[], [], []]);
+
+    await readAssembleCandidateIds(tx, ORG, PE);
+    await readPackageableRecords(tx, ORG, PE, [A]);
+    await lockPackageableRecords(tx, ORG, PE, [A]);
+
+    for (const statement of statements) {
+      expect(statement.rendered?.sql).toContain(
+        '"hope_submission_item"."organization_id" = "hope_assessment"."organization_id"',
+      );
+    }
+  });
 });

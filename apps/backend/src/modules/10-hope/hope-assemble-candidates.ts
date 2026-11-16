@@ -41,15 +41,18 @@ function packageableRecords(organizationId: string, providerEntityId: string): S
     isNotNull(ASSESS.specVersionId),
     isNotNull(ASSESS.isc),
     isNull(ASSESS.iqiesRecordId),
-    sql`not exists (select 1 from ${SUBITEM} where ${SUBITEM.hopeAssessmentId} = ${ASSESS.id} and ${inArray(
+    sql`not exists (select 1 from ${SUBITEM} where ${SUBITEM.hopeAssessmentId} = ${ASSESS.id} and ${SUBITEM.organizationId} = ${ASSESS.organizationId} and ${inArray(
       SUBITEM.itemStatus,
       [...ASSEMBLE_BLOCKING_ITEM_STATUSES],
     )})`,
   ) as SQL;
 }
 
+/** The record has an unresolved ERROR finding: its last final validation refused it (the validator's own test of "blocks packaging"). */
+const hasUnresolvedErrorFinding = sql`exists (select 1 from ${FINDING} where ${FINDING.hopeAssessmentId} = ${ASSESS.id} and ${FINDING.organizationId} = ${ASSESS.organizationId} and ${FINDING.resolved} = false and ${FINDING.severity} = 'error')`;
+
 /** True for a record the validator has refused before or cannot validate (see the file header). */
-const knownRefused = sql`(${ASSESS.locationId} is null or exists (select 1 from ${FINDING} where ${FINDING.hopeAssessmentId} = ${ASSESS.id} and ${FINDING.organizationId} = ${ASSESS.organizationId} and ${FINDING.resolved} = false and ${FINDING.severity} = 'error'))`;
+const knownRefused = sql`(${ASSESS.locationId} is null or ${hasUnresolvedErrorFinding})`;
 
 /**
  * The ids of the records to validate, in the order to try them: not known-refused first, then oldest signed first. Ids only:
@@ -95,7 +98,12 @@ export async function validateCandidates(
   return passed;
 }
 
-/** The WHERE and ORDER BY both reads of the validated records share: still packageable, among `validatedIds`, oldest signed first. */
+/**
+ * The WHERE both reads of the validated records share: still packageable, among `validatedIds`, and with NO unresolved ERROR
+ * finding. The last test is what the validation just judged, but a finding can be written after it (a validation of the same
+ * record on another request, a late rule result), and the candidate test deliberately lets known-refused records through; so
+ * the records are judged on it again here, under the lock, like on status and items.
+ */
 const validatedPackageable = (
   organizationId: string,
   providerEntityId: string,
@@ -103,6 +111,7 @@ const validatedPackageable = (
 ): SQL =>
   and(
     packageableRecords(organizationId, providerEntityId),
+    sql`not ${hasUnresolvedErrorFinding}`,
     inArray(ASSESS.id, [...validatedIds]),
   ) as SQL;
 

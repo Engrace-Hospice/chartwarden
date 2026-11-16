@@ -848,6 +848,37 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
       expect(kept).toEqual([stable]);
     });
 
+    it("the re-assertion drops a record that gained an unresolved ERROR finding after it was validated, and keeps one with only a resolved or warning finding", async () => {
+      const refusedLater = await seedPackageable(13);
+      const resolvedOnly = await seedPackageable(14);
+      const warningOnly = await seedPackageable(15);
+      const clean = await seedPackageable(16);
+      const finding = (
+        assessment: string,
+        severity: string,
+        resolved: boolean,
+        fingerprint: string,
+      ) =>
+        admin.query(
+          `INSERT INTO hope_validation_finding (organization_id, provider_entity_id, location_id, hope_assessment_id,
+             rule_id, severity, section, message, fingerprint, resolved)
+           VALUES ($1,$2,$3,$4,'r-late',$5,'A','late',$6,$7)`,
+          [ORG_A, provider, location, assessment, severity, fingerprint, resolved],
+        );
+      // all four were validated clean; a finding is written for three of them afterwards (another request's validation)
+      await finding(refusedLater, "error", false, "fp-late-1");
+      await finding(resolvedOnly, "error", true, "fp-late-2");
+      await finding(warningOnly, "warning", false, "fp-late-3");
+
+      const ids = [refusedLater, resolvedOnly, warningOnly, clean];
+      const kept = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        lockPackageableRecords(tx as unknown as DbClient, ORG_A, provider, ids),
+      );
+
+      expect(kept).toEqual(expect.arrayContaining([resolvedOnly, warningOnly, clean]));
+      expect(kept).not.toContain(refusedLater);
+    });
+
     it("share-locks the rows it returns: another connection's UPDATE of one waits for this transaction (the lock timeout answers 55P03)", async () => {
       const id = await seedPackageable(12);
       await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, async (tx) => {

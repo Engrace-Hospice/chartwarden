@@ -52,6 +52,7 @@ import {
   readPackageableRecords,
   validateCandidates,
 } from "./hope-assemble-candidates";
+import { buildAssemblePackage } from "./hope-assemble-package";
 import {
   lockAssessmentRow,
   lockRecordKey,
@@ -129,7 +130,6 @@ import {
   HopeValidationFindingSitingError,
   createHopeValidationService,
 } from "./hope-validation-service";
-import { buildDeterministicZip } from "./hope-zip";
 import type { HopeRetentionHoldPort } from "./jobs/cron-workers";
 import type { HopeWriteOutboxPort } from "./outbox-port";
 import type {
@@ -2247,6 +2247,9 @@ export function createDbHopeBackend(
           }
           throw error;
         }
+        // The ZIP and the stored report are built BEFORE the share locks (CRC and base64 over multi-MB buffers would hold a
+        // correction's signature back while they run), and built again only if the re-judgement below drops a record.
+        const fullPackage = buildAssemblePackage(serialized.map(({ payload }) => payload));
         // Judged again and share-locked now, just before the batch and its items are written: only the records that are still
         // packageable go in (the lock keeps a correction's supersede UPDATE behind this transaction until it ends).
         const stillPackageable = new Set(
@@ -2265,6 +2268,10 @@ export function createDbHopeBackend(
             "No signed HOPE assessments are eligible for iQIES package generation",
           );
         }
+        const { zip, acceptanceReport } =
+          toPackage.length === serialized.length
+            ? fullPackage
+            : buildAssemblePackage(toPackage.map(({ payload }) => payload));
         const row = firstOrThrow(
           await t
             .insert(SUB)
@@ -2279,12 +2286,6 @@ export function createDbHopeBackend(
             })
             .returning(),
           "hope_submission insert returned no row",
-        );
-        const zip = buildDeterministicZip(
-          toPackage.map(({ payload }) => ({
-            filename: payload.filename,
-            content: payload.bytes,
-          })),
         );
         // The id the database stored, not the spelling of the request body, for the package name and the event.
         const filename = submissionPackageName(row.providerEntityId, period, row.id);
@@ -2318,15 +2319,7 @@ export function createDbHopeBackend(
             packageSizeBytes: zip.bytes.length,
             envelopeStorageUri: `db://hope_submission/${row.id}/package`,
             envelopeSha256: zip.sha256,
-            acceptanceReport: {
-              transportMode: "manual_iqies_upload",
-              packageContentBase64: zip.bytes.toString("base64"),
-              files: toPackage.map(({ payload }) => ({
-                filename: payload.filename,
-                sha256: payload.sha256,
-                operation: payload.operation,
-              })),
-            },
+            acceptanceReport,
             updatedAt: new Date(),
           })
           .where(and(eq(SUB.id, row.id), eq(SUB.organizationId, organizationId)))

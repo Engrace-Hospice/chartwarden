@@ -10,6 +10,22 @@ import { scriptedDb } from "./_hope-g3-fake-db";
 // is scripted, so the statements and their order are asserted here. Against a real Postgres: m10-hope-write.live.test.ts.
 const validate = vi.hoisted(() => vi.fn(async () => ({ findings: [] })));
 const serialize = vi.hoisted(() => vi.fn());
+/** Every ZIP built, with the statements the database had been given by then (the share lock is a statement). */
+const zips = vi.hoisted(() => ({
+  calls: [] as { entries: string[]; selectsSoFar: () => number }[],
+}));
+const selectCount = vi.hoisted(() => ({ n: 0 }));
+vi.mock("../src/modules/10-hope/hope-zip", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/modules/10-hope/hope-zip")>();
+  return {
+    ...actual,
+    buildDeterministicZip: (entries: readonly { filename: string }[]) => {
+      const at = selectCount.n;
+      zips.calls.push({ entries: entries.map((e) => e.filename), selectsSoFar: () => at });
+      return actual.buildDeterministicZip(entries as never);
+    },
+  };
+});
 vi.mock("../src/modules/10-hope/hope-validation-service", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../src/modules/10-hope/hope-validation-service")>();
@@ -47,6 +63,8 @@ const row = (id: string) => ({
 
 let warn: MockInstance;
 beforeEach(() => {
+  zips.calls.length = 0;
+  selectCount.n = 0;
   validate.mockClear();
   serialize.mockReset();
   serialize.mockImplementation(async (_tx: unknown, assessment: { id: string }) => ({
@@ -68,6 +86,12 @@ function backend(outcomes: Parameters<typeof scriptedDb>[0]) {
   const fake = scriptedDb(outcomes);
   const calls: { kind: "insert" | "update"; value: unknown }[] = [];
   const tx = fake.tx as unknown as Record<string, (...a: unknown[]) => Record<string, unknown>>;
+  const realSelect = tx.select?.bind(tx);
+  if (!realSelect) throw new Error("the scripted transaction has no select");
+  tx.select = (...args: unknown[]) => {
+    selectCount.n += 1;
+    return realSelect(...args);
+  };
   for (const [kind, method] of [
     ["insert", "values"],
     ["update", "set"],
@@ -191,5 +215,51 @@ describe("assembleSubmission — the items are ONE multi-row insert, the share l
 
     expect(calls).toEqual([]);
     expect(statements.some((s) => s.kind === "insert" || s.kind === "update")).toBe(false);
+  });
+
+  it("builds the ZIP once, BEFORE the share-lock read, and reuses it when every record is still packageable", async () => {
+    const { svc, calls } = backend(script(IDS));
+
+    await svc.assembleSubmission(ORG, PE);
+
+    expect(zips.calls).toHaveLength(1);
+    // selects so far: candidate ids, validated rows, then the lock read is the third: the ZIP was built before it
+    expect(zips.calls[0]?.selectsSoFar()).toBe(2);
+    expect(zips.calls[0]?.entries).toEqual(IDS.map((id) => `${id}.xml`));
+    // and it is the stored package
+    const update = calls.find((c) => c.kind === "update")?.value as {
+      acceptanceReport: { files: { filename: string }[]; packageContentBase64: string };
+    };
+    expect(update.acceptanceReport.files.map((f) => f.filename)).toEqual(
+      IDS.map((id) => `${id}.xml`),
+    );
+    expect(update.acceptanceReport.packageContentBase64.length).toBeGreaterThan(0);
+  });
+
+  it("rebuilds it only when the re-judgement dropped a record, and then stores the package of the records that were packaged", async () => {
+    const { svc, calls } = backend(script([IDS[0] as string, IDS[2] as string]));
+
+    await svc.assembleSubmission(ORG, PE);
+
+    expect(zips.calls).toHaveLength(2);
+    expect(zips.calls[0]?.selectsSoFar()).toBe(2); // before the lock read
+    expect(zips.calls[1]?.selectsSoFar()).toBe(3); // after it: only for the survivors
+    expect(zips.calls[1]?.entries).toEqual([`${IDS[0]}.xml`, `${IDS[2]}.xml`]);
+    const update = calls.find((c) => c.kind === "update")?.value as {
+      acceptanceReport: { files: { filename: string }[] };
+    };
+    expect(update.acceptanceReport.files.map((f) => f.filename)).toEqual([
+      `${IDS[0]}.xml`,
+      `${IDS[2]}.xml`,
+    ]);
+  });
+
+  it("builds no second ZIP, and writes nothing, when nothing is packageable at the lock", async () => {
+    const { svc, calls } = backend(script([]));
+
+    await expect(svc.assembleSubmission(ORG, PE)).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(zips.calls).toHaveLength(1);
+    expect(calls).toEqual([]);
   });
 });

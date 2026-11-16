@@ -45,6 +45,9 @@ describe("assemble: the documents quote the code's cap", () => {
     expect(serialised).toBeGreaterThan(rows);
     // the share lock is NOT held through the serialising: it is taken after it and before the first write
     expect(relock).toBeGreaterThan(serialised);
+    // the ZIP is built before the lock too (CRC and base64 over multi-MB buffers must not run under the share locks)
+    expect(at("buildAssemblePackage(")).toBeGreaterThan(serialised);
+    expect(at("buildAssemblePackage(")).toBeLessThan(relock);
     expect(insertBatch).toBeGreaterThan(relock);
     expect(insertItems).toBeGreaterThan(insertBatch);
     // one multi-row insert of the items, not a statement per item
