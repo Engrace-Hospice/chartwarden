@@ -248,3 +248,93 @@ describe("the validation findings are read and written by id AND tenant", () => 
     }
   });
 });
+
+describe("the result import and the batch reads name the tenant beside every id (the fixer G1 round)", () => {
+  const ITEM = "88888888-8888-4888-8888-888888888888";
+  const submission = {
+    id: SUBMISSION,
+    organizationId: ORG,
+    providerEntityId: "44444444-4444-4444-8444-444444444444",
+    submissionPeriod: "2026-06",
+    status: "submitted_pending_result",
+    itemCount: 1,
+    acceptedCount: 0,
+    rejectedCount: 0,
+    resultReportHash: null,
+    acceptanceReport: { packageContentBase64: "UEs=" },
+  };
+  const pending = {
+    id: ITEM,
+    organizationId: ORG,
+    hopeSubmissionId: SUBMISSION,
+    hopeAssessmentId: ASSESSMENT,
+    itemStatus: "pending",
+    iqiesRecordId: null,
+    createdAt: new Date("2026-06-01T00:00:00.000Z"),
+  };
+  const settledItem = { ...pending, itemStatus: "accepted" };
+  /** Every statement that has a WHERE names the tenant; the inserts name it in their values (the row's own column). */
+  const expectEveryWhereNamesTenant = (fake: Fake): void => {
+    const filtered = dataStatements(fake).filter((s) => s.kind !== "insert");
+    expect(filtered.length).toBeGreaterThan(0);
+    filtered.forEach((statement, index) => {
+      expect(namesTenant(statement), `statement ${index} (${statement.kind})`).toBe(true);
+    });
+  };
+
+  it("importSubmissionResult: the row lock, the replay read, the items, the final UPDATE and the detail it returns", async () => {
+    // lock, replay read, items, (the bulk item write is an `execute`), the event insert, the UPDATE, then the detail: items,
+    // assessments, events, items.
+    const { fake, svc } = backend([
+      [submission],
+      [],
+      [pending],
+      [],
+      [{ ...submission, status: "accepted", acceptedCount: 1 }],
+      [settledItem],
+      [],
+      [],
+      [],
+    ]);
+
+    await svc.importSubmissionResult(ORG, USER, SUBMISSION, {
+      results: [{ assessmentId: ASSESSMENT, status: "accepted" }],
+    } as never);
+
+    expect(dataStatements(fake).map((s) => s.kind)).toEqual([
+      "select", // the row lock
+      "select", // the replay read of the stored report rows
+      "select", // the batch's items
+      "insert", // the report rows
+      "update", // the batch row
+      "select", // detail: items
+      "select", // detail: assessments
+      "select", // detail: report rows
+      "select", // detail: items (the findings' item ids)
+    ]);
+    expectEveryWhereNamesTenant(fake);
+  });
+
+  it("listSubmissions: the worklist read, and the rejected-item resolution reads that follow it", async () => {
+    const rejected = { ...pending, itemStatus: "rejected" };
+    const { fake, svc } = backend([
+      [{ ...submission, status: "rejected", rejectedCount: 1 }],
+      [rejected],
+      [],
+    ]);
+
+    await svc.listSubmissions(ORG);
+
+    expect(dataStatements(fake).map((s) => s.kind)).toEqual(["select", "select", "select"]);
+    expectEveryWhereNamesTenant(fake);
+  });
+
+  it("getSubmission's detail: items, assessments, report rows and their items", async () => {
+    const { fake, svc } = backend([[submission], [settledItem], [], [], []]);
+
+    await svc.getSubmission(ORG, SUBMISSION);
+
+    expect(dataStatements(fake)).toHaveLength(5);
+    expectEveryWhereNamesTenant(fake);
+  });
+});

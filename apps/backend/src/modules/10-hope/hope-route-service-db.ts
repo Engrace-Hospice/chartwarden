@@ -877,7 +877,7 @@ export function createDbHopeBackend(
     t: DbClient,
     r: LightSubmissionRow,
   ): Promise<HopeSubmissionDetailView> {
-    const items = await loadSubmissionItems(t, r.id);
+    const items = await loadSubmissionItems(t, r.organizationId, r.id);
     const count = (x: string) => items.filter((i) => i.resolution === x).length;
     return {
       ...toSubmissionView(r, {
@@ -888,7 +888,7 @@ export function createDbHopeBackend(
       resultImportedAt: iso(r.resultImportedAt ?? null),
       resultReportReference: reportReferenceOf(r),
       items,
-      findings: await loadSubmissionFindings(t, r.id),
+      findings: await loadSubmissionFindings(t, r.organizationId, r.id),
     };
   }
 
@@ -1011,11 +1011,17 @@ export function createDbHopeBackend(
         const scoped = (await tx
           .select(LIGHT_SUB_COLUMNS)
           .from(SUB)
-          .where(canonicalIdFilter(SUB.providerEntityId, providerEntityId))
+          .where(
+            and(
+              eq(SUB.organizationId, organizationId),
+              canonicalIdFilter(SUB.providerEntityId, providerEntityId),
+            ),
+          )
           .orderBy(desc(SUB.createdAt), desc(SUB.id))
           .limit(SUBMISSION_LIST_LIMIT)) as LightSubmissionRow[];
         const resolutions = await resolutionCountsByBatch(
           tx as unknown as DbClient,
+          organizationId,
           scoped.filter((r) => r.rejectedCount > 0).map((r) => r.id),
         );
         return { submissions: scoped.map((r) => toSubmissionView(r, resolutions.get(r.id))) };
@@ -1044,8 +1050,16 @@ export function createDbHopeBackend(
         const rows = await t
           .select({ item: { itemStatus: SUBITEM.itemStatus }, sub: LIGHT_SUB_COLUMNS })
           .from(SUBITEM)
-          .innerJoin(SUB, eq(SUB.id, SUBITEM.hopeSubmissionId))
-          .where(eq(SUBITEM.hopeAssessmentId, assessmentId))
+          .innerJoin(
+            SUB,
+            and(eq(SUB.id, SUBITEM.hopeSubmissionId), eq(SUB.organizationId, organizationId)),
+          )
+          .where(
+            and(
+              eq(SUBITEM.organizationId, organizationId),
+              eq(SUBITEM.hopeAssessmentId, assessmentId),
+            ),
+          )
           .orderBy(desc(SUBITEM.createdAt));
         return {
           submissions: rows.map(({ item, sub }) => ({
@@ -2280,7 +2294,7 @@ export function createDbHopeBackend(
             },
             updatedAt: new Date(),
           })
-          .where(eq(SUB.id, row.id))
+          .where(and(eq(SUB.id, row.id), eq(SUB.organizationId, organizationId)))
           .returning(LIGHT_SUB_COLUMNS)) as LightSubmissionColumns[];
         await emit(t, organizationId, "m10.hope.submission_queued", "hope_submission", row.id, {
           submissionId: row.id,
@@ -2414,7 +2428,13 @@ export function createDbHopeBackend(
         // Row lock: serialises concurrent recordings of one batch (waits at most `M10_LOCK_TIMEOUT_MS`, then `M10_RECORD_BUSY`).
         const [r] = (await takeBoundedLock(
           t,
-          (statement) => statement.select().from(SUB).where(eq(SUB.id, id)).limit(1).for("update"),
+          (statement) =>
+            statement
+              .select()
+              .from(SUB)
+              .where(and(eq(SUB.id, id), eq(SUB.organizationId, organizationId)))
+              .limit(1)
+              .for("update"),
           { lock: `submission row ${idForLog(id)} (org ${idForLog(organizationId)})` },
         )) as SubmissionRow[];
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
@@ -2428,6 +2448,7 @@ export function createDbHopeBackend(
           .from(RESULT)
           .where(
             and(
+              eq(RESULT.organizationId, organizationId),
               eq(RESULT.hopeSubmissionId, id),
               inArray(RESULT.reportHash, [reportHash, legacyReportHash]),
             ),
@@ -2442,7 +2463,7 @@ export function createDbHopeBackend(
         const items = await t
           .select(LIGHT_ITEM)
           .from(SUBITEM)
-          .where(eq(SUBITEM.hopeSubmissionId, id));
+          .where(and(eq(SUBITEM.organizationId, organizationId), eq(SUBITEM.hopeSubmissionId, id)));
         const byAssessmentId = new Map(items.map((item) => [item.hopeAssessmentId, item]));
         // A report row names its assessment in free text (a pasted report, a CSV cell): any spelling Postgres reads as
         // that uuid finds the item, and a value that is no uuid names none (the row is stored as unmatched).
@@ -2547,7 +2568,7 @@ export function createDbHopeBackend(
             },
             updatedAt: now,
           })
-          .where(eq(SUB.id, id))
+          .where(and(eq(SUB.id, id), eq(SUB.organizationId, organizationId)))
           .returning()) as SubmissionRow[];
         if (settled && updated) {
           const event = settledBatchEvent(

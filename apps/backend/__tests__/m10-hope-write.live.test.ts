@@ -1485,7 +1485,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
 
   // The tenant predicate is explicit on every write, on top of RLS. RLS cannot show that: the owner connection below
   // bypasses it, so only the statements' own `organization_id` predicate stands between ORG_B and ORG_A's rows.
-  it("another tenant's id finds nothing on a connection that bypasses RLS: skip, retry, mark-uploaded, cancel and download", async () => {
+  it("another tenant's id finds nothing on a connection that bypasses RLS: skip, retry, mark-uploaded, cancel, download, the result import and the batch list", async () => {
     const adm = await admitted();
     const sched = await seedSchedule(ORG_A, adm);
     const insertSubmission = async (status: string): Promise<string> =>
@@ -1498,7 +1498,8 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       ).rows[0].id as string;
     const rejected = await insertSubmission("rejected");
     const packaged = await insertSubmission("packaged");
-    // The later assemble test starts from "no package exists": these two rows are removed again, pass or fail.
+    const exported = await insertSubmission("exported");
+    // The later assemble test starts from "no package exists": these rows are removed again, pass or fail.
     try {
       const owner = createDbClient({ connectionString: DB_URL as string });
       try {
@@ -1524,6 +1525,23 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
           ),
         ).toBe(404);
         expect(await statusCode(backend.downloadSubmissionPackage(ORG_B, packaged))).toBe(404);
+        // The result import locks, reads and writes the batch by id: each statement names the tenant, so ORG_B finds no batch
+        // (without the predicate the lock finds ORG_A's `exported` row and the call answers 422 M10_SUBMISSION_RESULT_NO_MATCH instead).
+        expect(
+          await statusCode(
+            backend.importSubmissionResult(ORG_B, asOrgB, exported, {
+              results: [
+                { assessmentId: "90000000-0000-4000-8000-0000000000aa", status: "accepted" },
+              ],
+            }),
+          ),
+        ).toBe(404);
+        // The worklist read: the control (ORG_A sees its batches on this same connection) shows the predicate is what hides them.
+        const listed = async (org: string): Promise<string[]> =>
+          (await backend.listSubmissions(org)).submissions.map((submission) => submission.id);
+        expect(await listed(ORG_A)).toEqual(expect.arrayContaining([rejected, packaged, exported]));
+        for (const id of [rejected, packaged, exported])
+          expect(await listed(ORG_B)).not.toContain(id);
       } finally {
         await owner.close();
       }
@@ -1533,9 +1551,10 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect(await status("hope_timepoint_schedule", sched)).toBe("open");
       expect(await status("hope_submission", rejected)).toBe("rejected");
       expect(await status("hope_submission", packaged)).toBe("packaged");
+      expect(await status("hope_submission", exported)).toBe("exported");
     } finally {
       await admin.query("DELETE FROM hope_submission WHERE id = ANY($1::uuid[])", [
-        [rejected, packaged],
+        [rejected, packaged, exported],
       ]);
     }
   });
