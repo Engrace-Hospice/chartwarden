@@ -565,6 +565,27 @@ still denied (`harness-hidden-path-budget.test.ts`).
 - *The pinned Codex command ignores perl's own variables* (`PERL5OPT`, `PERL5LIB`, `PERLLIB`, `PERL5DB`): see "The hook command is
   pinned byte for byte" above and `harness-codex-perl-env.test.ts`.
 
+**Wave 7.** Each item has a test file under `scripts/__tests__/harness-*.test.ts`. The finding IDs are mapped in "Finding IDs cited in this
+document" at the end.
+- *Claude's guard command fails closed* (T0): see "Claude's guard command fails closed" above and `harness-claude-fail-closed.test.ts`.
+- *A SQL client's own command language* (`db-client-escapes.ts`, `harness-db-client-escapes.test.ts`, ADV5-1). `sqlite3 :memory: '.shell
+  echo x > <guard file>'`, `psql -c '\! …'`, `mysql -e 'system …'` and `pgcli -c '\! …'` run an operating-system command from inside an
+  ordinary database client; Claude's classifier allowed all of them, because the escape was recognised only by Codex's interactive-shell
+  check. The text a client is handed (an argument and the value attached to it, a here-string, a heredoc body, what an `echo`/`printf`
+  earlier in the pipeline prints) is now read: a shell escape **asks** whatever it names (sqlite3 `.shell`, `.system`, `.load`, `.excel`,
+  `.www`, `.once -e`, a `|cmd` target of `.output`/`.once`/`.import`/`.read`, with the prefix abbreviations the shell accepts; psql and
+  pgcli `\!`, `\setenv`, `\pager`, a `|cmd` target of `\o`/`\g`/`\gx`/`\w`, `\copy … program`; mysql, mariadb and mycli `system`, `\!`,
+  `pager`, `\P`, `--pager=`), also in a container (`docker compose exec db psql …`). A file the client writes (`.output`, `.once`,
+  `.backup`, `.save`, `.clone`, `.log`, `.trace`, `.open`, `writefile()`, `VACUUM INTO`, `ATTACH`; `\o`, `\g`, `\gx`, `\w`, `\copy … to`,
+  `\lo_export`; `tee`, `--tee=`) is judged like a redirect target, so a protected path asks and `/tmp/out.csv` does not; a file it reads
+  and runs or prints (`.read`, `.import`, `\i`, `\ir`, `\copy … from`, `source`) is judged like a read, so a secret file is **denied**.
+  Everyday use stays allowed: `sqlite3 db 'select 1'`, `.tables`, `psql -c 'select 1'`, `\dt`, `mysql -e 'select 1'`, a regular expression
+  `'\w+'` inside SQL. The shared reader is a superset of what Codex's `isInteractiveShell` caught, and Codex turns every ask into a deny, so
+  its answers for these stay deny. **Not decided by text:** a script file (`psql -f F`, `sqlite3 db < F`, `mysql < F`: the file is not read),
+  a command built at run time (`psql -c "$CMD"`), SQL that makes the SERVER write or run something (`COPY … TO PROGRAM`, `INTO OUTFILE`),
+  and a client the table does not name (`litecli`, `usql`, `pgcli` through an alias). Corpus cost: 1 allow to ask in 124,400 real
+  commands, the round-5 reviewer's own `.shell` demonstration.
+
 **Shell lexing.** `scripts/harness/shell-lex.ts` reads a command once, in one linear pass, before any rule
 runs; the line splitter, the redirection reader and the substitution scan all use its result, so a quote, an
 escape, a comment or a heredoc body cannot hide a later command. It models single quotes (no escapes); double

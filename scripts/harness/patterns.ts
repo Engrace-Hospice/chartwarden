@@ -21,6 +21,7 @@
 import { userInfo } from "node:os";
 
 import { backupName } from "./backup-names";
+import { clientFindings, clientTexts, isDbClient } from "./db-client-escapes";
 import { isAgentSpawn, loaderEnvReason } from "./env-hazards";
 import { execCommandWrites, findActions } from "./find-expr";
 import { GIT_EXEC_CONFIG, configKey, gitConfigDenial, gitFileWrites } from "./git-config-rules";
@@ -1087,6 +1088,47 @@ function envWriteVerdicts(
   return out;
 }
 
+const DB_SHELL_REASON =
+  "A database client's own command (`.shell`, `.system`, `\\!`, `system`, a pipe target) runs an operating-system command from inside the client, and the guard cannot see what it runs: it can overwrite the guard or any file the guard protects. A human decides.";
+const DB_WRITE_REASON =
+  "A database client command (`.output`, `\\o`, `\\copy … to`, `tee`, `writefile()`) writes a file the guard protects.";
+
+/**
+ * What a SQL client's own command language does with the text it is handed (`db-client-escapes.ts`): a shell escape
+ * asks, a file it writes is judged like a redirect target, and a secret file it reads is refused.
+ */
+function dbClientVerdicts(
+  parts: readonly Segment[],
+  parsed: readonly Parsed[],
+  index: number,
+  bodies: readonly string[],
+  here: readonly Cwd[],
+  ctx: BashContext,
+): BashVerdict[] {
+  const client = parsed[index] as Parsed;
+  if (!isDbClient(client.prog)) return [];
+  const stages = parsed.map((q, i) => ({ ...q, joiner: parts[i]?.joiner ?? "" }));
+  const found = clientFindings(client.prog, clientTexts(stages, index, bodies));
+  if (found === null) return [];
+  const out: BashVerdict[] = found.shell
+    .slice(0, 1)
+    .map((what) => ask(`${DB_SHELL_REASON} (${what})`));
+  for (const target of found.writes) {
+    const hit = writesProtectedPath({ ...NO_COMMAND, outs: [target] }, here, ctx);
+    if (hit) out.push(ask(`${DB_WRITE_REASON} ${writeHitReason(hit)}`));
+  }
+  for (const target of found.reads) {
+    const why = secretPathReason(target);
+    if (why)
+      out.push(
+        deny(
+          `\`${echo(target)}\` is ${why}. A database client that reads it prints it. Agents do not read secrets or dumps.`,
+        ),
+      );
+  }
+  return out;
+}
+
 /**
  * Command lines git and the variables it honours hand to a shell (`git rebase -x '…'`, `git bisect run …`,
  * `EDITOR='…' git commit`), each judged as a command line; and what the git-related variables set, or a global
@@ -1249,6 +1291,10 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     const here = parsed.chdir === undefined ? shellIn : runIn(shellIn, parsed.chdir, ctx);
     const v = classifySegment(part.text, parsed, ctx, here);
     if (v) verdicts.push(v);
+    // A SQL client's own shell escapes and file commands (`sqlite3 .shell`, `psql \\!`, `mysql system`).
+    verdicts.push(
+      ...dbClientVerdicts(parts, parsedParts, index, bodiesByPart[index] ?? [], here, ctx),
+    );
     // `$(true)git push --no-verify`: the program's name is built at run time, so it is a command the guard cannot
     // name. The literal rest of the word is judged as the program it would be (a deny stands), and a human decides.
     // A word that is one substitution and nothing else is the `eval "$(ssh-agent -s)"` idiom (no arguments) or an
