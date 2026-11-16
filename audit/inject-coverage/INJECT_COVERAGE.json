@@ -220,6 +220,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/hope-routes.test.ts",
+        "apps/backend/__tests__/hope-workspace-read-only.test.ts",
         "apps/backend/__tests__/m10-hope-sfv-sign-binding.live.test.ts",
         "apps/backend/__tests__/m10-s04-hope-override.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",

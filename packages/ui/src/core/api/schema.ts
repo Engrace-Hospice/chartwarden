@@ -13128,7 +13128,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Canonical HOPE assessment workspace from frozen spec and current answers; 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; a GET is never cached by the idempotency layer, so a retry works as soon as an operator has loaded the spec) for a legacy draft whose spec cannot be frozen; 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." A GET is never claimed or cached by the idempotency layer, so it is simply sent again) */
+        /** Canonical HOPE assessment workspace from frozen spec and current answers; a caller holding hope.timepoint.write also refreshes chart-derived answers, which bumps the draft version when one changes (an older ifVersion is then refused), while a read-only caller is shown the stored state; 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; a GET is never cached by the idempotency layer, so a retry works as soon as an operator has loaded the spec) for a legacy draft whose spec cannot be frozen; 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." A GET is never claimed or cached by the idempotency layer, so it is simply sent again) */
         get: operations["getApiV1HopeAssessmentsByIdWorkspace"];
         put?: never;
         post?: never;

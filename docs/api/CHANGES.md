@@ -6,6 +6,16 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-15 — HOPE: a workspace open that refreshes chart answers bumps the draft `version`; a refused coded answer no longer echoes its value; a `401` or `403` is no longer replayed on an `Idempotency-Key`
+
+**Behaviour changes; no new fields.** The version bump and the `401`/`403` rule can make a call that used to succeed answer `409` or run again, so integrators who cache a draft's version or retry a refused call should read them.
+
+- **`GET /hope/assessments/{id}/workspace` bumps `assessment.version` when it changes an answer.** Opening a draft Admission, HUV or Discharge workspace re-reads the chart and rewrites the answers the clinician did not type (the prefill and payer numbers). When that rewrite changes an answer, the draft's `version` goes up by one in the same transaction and the response carries the new version, so an `ifVersion` read before the open is refused with `409` (`PATCH .../answers`, `PATCH .../huv/completion-date`, `POST .../sign`): reload, review the changed answer and act on the new version. An open that changes nothing bumps nothing. Only a caller holding `hope.timepoint.write` refreshes: a caller with `hope.timepoint.read` alone (an auditor, for one) is shown the stored state, and the same applies to the SFV self-heal that `GET .../review` runs.
+- **A refused coded answer names the item, not the value.** `PATCH .../answers` with a value outside the item's CMS list answers `422` with the same code (`HOPE_INVALID_ANSWER_VALUE`) and the message "the value is not an allowed CMS value for <item code>" (it used to repeat the value, and the idempotency layer replays a `422` for 24 hours). A string `value` longer than 64 characters is now `422 VALIDATION_FAILED` (the longest HOPE assessment text item, A0500C, is 18).
+- **A `401` or `403` is no longer cached under an `Idempotency-Key` (every module; POST, PUT and PATCH).** The claim is taken before a route's own permission, scope and step-up guards run, so a `403 STEP_UP_REQUIRED` used to be replayed to a retry on the same key after the user completed the step-up. A refusal now frees the key, exactly as a `5xx` does: the same-key retry runs again. As for a `5xx`, the key is freed only when nothing of the request had committed (a refusal after a committed write is still replayed, so the write is never run twice). A `2xx` and every other `4xx` replay as before, and a replay is still answered before the guards run (the fingerprint binds organization, user and actor kind).
+
+---
+
 ## 2026-11-15 — HOPE: record writes wait at most 5 seconds for a lock (`409 M10_RECORD_BUSY`); drafts can no longer be rewritten after signing
 
 **Additive; no request or response shape changes.** A client that already retries a `409` needs nothing, except that, on a POST, PUT or

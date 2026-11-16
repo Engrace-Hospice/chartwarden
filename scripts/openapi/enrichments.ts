@@ -5907,7 +5907,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeAssessmentResponseSchema,
   },
   "GET /api/v1/hope/assessments/:id/workspace": {
-    summary: `Canonical HOPE assessment workspace from frozen spec and current answers; ${M10_SPEC_NOT_IN_FORCE_READ_NOTE} for a legacy draft whose spec cannot be frozen; ${M10_RECORD_BUSY_READ_NOTE}`,
+    summary: `Canonical HOPE assessment workspace from frozen spec and current answers; a caller holding hope.timepoint.write also refreshes chart-derived answers, which bumps the draft version when one changes (an older ifVersion is then refused), while a read-only caller is shown the stored state; ${M10_SPEC_NOT_IN_FORCE_READ_NOTE} for a legacy draft whose spec cannot be frozen; ${M10_RECORD_BUSY_READ_NOTE}`,
     response: M10HopeAssessmentWorkspaceResponseSchema,
   },
   "GET /api/v1/hope/assessments/:id/review": {
