@@ -1080,7 +1080,7 @@ controls:
       - file: packages/audit/src/actions/m35.ts
       - file: packages/audit/__tests__/action-catalog-m35.test.ts
 
-  - id: CW-AC-43
+  - id: CW-AC-46
     title: Signing a HOPE assessment is an attested, step-up-gated act by the signed-in clinician, and the ceremony is audited
     hipaa: ["164.312(c)(1)", "164.312(d)"]
     soc2: ["CC6.1", "PI1.3"]
