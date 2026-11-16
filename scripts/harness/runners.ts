@@ -20,6 +20,8 @@
  * runner. A text heuristic: an option with a value this table does not know is read as a flag. Pure.
  */
 
+import { programName } from "./program-name";
+
 /** Does this name a package script of the package the command runs in? The caller knows; a colon always says yes. */
 export type ScriptLookup = (name: string) => boolean;
 
@@ -27,8 +29,6 @@ const SPEC_VERSION = /(?<=.)@[^@/]*$/;
 const SCOPE = /^@[^/]+\//;
 /** `@biomejs/biome@1.9.0` and `shellcheck@latest` name the binary `biome` and `shellcheck`. */
 const binaryOf = (spec: string): string => spec.replace(SCOPE, "").replace(SPEC_VERSION, "");
-
-const baseName = (w: string): string => w.replace(/\\(.)/g, "$1").replace(/^.*\//, "");
 
 /** How a runner reads the words after its subcommand. */
 interface Grammar {
@@ -259,7 +259,7 @@ function scriptOrProgram(
   return script ||
     !PROGRAM_NAME.test(target.replace(/^.*\//, "")) ||
     LOOKS_LIKE_FILE.test(target) ||
-    builtins.has(baseName(target))
+    builtins.has(programName(target))
     ? null
     : words.slice(at);
 }
@@ -281,13 +281,13 @@ function peel(
 ): readonly string[] | null {
   const first = words[0];
   if (first === undefined) return null;
-  const name = baseName(first);
+  const name = programName(first);
   const bare = BARE_RUNNERS.get(name);
   if (bare) return innerOf(words.slice(1), bare, files);
   if (name === "cross-env" || name === "cross-env-shell")
     return crossEnv(words, name.endsWith("shell"));
   if (name === "corepack") {
-    return COREPACK_MANAGERS.has(baseName(words[1] ?? "")) ? words.slice(1) : null;
+    return COREPACK_MANAGERS.has(programName(words[1] ?? "")) ? words.slice(1) : null;
   }
   const subcommands = SUBCOMMAND_RUNNERS.get(name);
   if (subcommands === undefined) return null;

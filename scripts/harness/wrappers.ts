@@ -11,59 +11,9 @@
 
 import { localCommandOfOption, optionCommandStrings, sshLikeCommands } from "./option-commands";
 
-/** Options that take the next word as their value, per wrapper (a word that is none of these is a flag alone). */
-export const WRAPPER_VALUE_FLAG: ReadonlyMap<string, RegExp> = new Map([
-  [
-    "sudo",
-    /^-[ughpCDRTUrt]$|^--(?:user|group|host|prompt|chdir|role|type|other-user|login-class|close-from|command-timeout)$/,
-  ],
-  ["env", /^-[uCSPa]$|^--(?:unset|chdir|split-string|argv0)$/],
-  // GNU time: `-o FILE` and `-f FORMAT`; a word that is none of these is the command.
-  ["time", /^-[of]$|^--(?:output|format)$/],
-  ["nice", /^-n$/],
-  ["ionice", /^-[cnpPu]$/],
-  // GNU `-a FILE`, `-I R`, `-E EOF`, `-d D`; BSD `-J R`, `-R N`, `-S N`. `-i`, `-e` and `-l` carry their value attached.
-  ["xargs", /^-[InPLsdEaJRS]$/],
-  ["exec", /^-a$/],
-  ["stdbuf", /^-[ioe]$/],
-  ["caffeinate", /^-[tw]$/],
-  ["arch", /^-(?:arch|e|d)$/],
-  ["unbuffer", /^$/],
-  // strace: `-T`, `-D`, `-k`, `-f`, `-c`, `-v`, `-x` are flags; these take a value.
-  ["strace", /^-[oepsuaPEbIOSUX]$/],
-  ["doas", /^-[uC]$/],
-  ["pkexec", /^--user$/],
-  ["taskset", /^-c$|^--cpu-list$/],
-  ["chrt", /^-[TPD]$/],
-  ["busybox", /^$/],
-  ["runuser", /^-[ulgGsc]$|^--(?:user|login|group|supp-group|shell|command)$/],
-  ["xcrun", /^-(?:-?sdk|-?toolchain)$/],
-  ["lima", /^--workdir$/],
-  ["flock", /^-[cEw]$|^--(?:command|conflict-exit-code|timeout|wait)$/],
-  // GNU parallel: `-X`, `-m`, `-q`, `-k`, `-u`, `-t`, `-v`, `-0` are flags; these take a value.
-  ["parallel", /^-[jnNSaILECdPJs]$|^--(?:jobs|max-args|sshlogin|arg-file)$/],
-  ["chroot", /^-[ug]$/],
-  ["unshare", /^-[SGwR]$/],
-  // moreutils `chronic`, proxychains-ng (`-f CONFIG`) and `ssh-agent CMD` each run the command that follows.
-  ["chronic", /^$/],
-  ["proxychains", /^-f$/],
-  ["proxychains4", /^-f$/],
-  ["ssh-agent", /^-[aEPtO]$/],
-]);
-
 /** Homebrew's GNU tools carry a `g` prefix on macOS (`gxargs -a FILE`, `gnice`): each is the wrapper it prefixes. */
-const GNU_PREFIXED = /^g(xargs|nice|stdbuf|env|nohup|time)$/;
+const GNU_PREFIXED = /^g(xargs|nice|stdbuf|env|nohup|time|timeout|chroot)$/;
 export const gnuName = (program: string): string => GNU_PREFIXED.exec(program)?.[1] ?? program;
-
-/** Operands a wrapper takes before the command (a lock file, a CPU mask, a priority), unless a flag supplies them. */
-export const WRAPPER_OPERANDS: ReadonlyMap<string, { count: number; suppliedBy?: RegExp }> =
-  new Map([
-    ["flock", { count: 1, suppliedBy: /^-c$|^--command(?:=.*)?$/ }],
-    ["taskset", { count: 1, suppliedBy: /^-c|^--cpu-list(?:=.*)?$/ }],
-    ["chrt", { count: 1 }],
-    // `chroot NEWROOT cmd`
-    ["chroot", { count: 1 }],
-  ]);
 
 /** A word as the shell must read it back as one word. */
 export const shellQuote = (w: string): string =>
@@ -77,30 +27,6 @@ function afterOptions(args: readonly string[], valueFlag: RegExp): string[] {
   }
   if (args[k] === "--") k++;
   return args.slice(k);
-}
-
-/** Wrappers that, given `-c STR`, run the string and not a command word: they stay the program, so the string is read. */
-const RUNS_COMMAND_STRING: ReadonlySet<string> = new Set(["flock", "runuser"]);
-
-/**
- * Does this wrapper, given these words, run no command word? `flock -c STR` runs the string, and `sudo -e FILE` (`--edit`,
- * `sudoedit`) edits the files that follow: it stays the program, so the string is judged as a command line and the files
- * are judged as the operands they are.
- */
-export const staysProgram = (wrapper: string, words: readonly string[]): boolean =>
-  (RUNS_COMMAND_STRING.has(wrapper) && words.some((x) => /^-c$|^--command(?:=|$)/.test(x))) ||
-  (wrapper === "sudo" &&
-    leadingFlags("sudo", words).some((x) => /^-[A-Za-z]*e[A-Za-z]*$|^--edit$/.test(x)));
-
-/** The wrapper's own option words: those before the first word that is neither an option nor an option's value. */
-function leadingFlags(wrapper: string, words: readonly string[]): string[] {
-  const valued = WRAPPER_VALUE_FLAG.get(wrapper);
-  const flags: string[] = [];
-  for (let k = 0; k < words.length && (words[k] ?? "").startsWith("-") && words[k] !== "--"; k++) {
-    flags.push(words[k] as string);
-    if (valued?.test(words[k] as string)) k++;
-  }
-  return flags;
 }
 
 /** The value of `-c STR`, `-cSTR`, `--command STR` and `--command=STR`. */

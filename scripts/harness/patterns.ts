@@ -71,6 +71,7 @@ import { programOptionReason } from "./option-commands";
 import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
 import { isPackageScript, setPackageScriptsReader } from "./package-scripts";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
+import { programName } from "./program-name";
 import {
   protectedDirectories,
   protectedNameSamples,
@@ -120,17 +121,14 @@ import {
   trimSlashes,
   work,
 } from "./work-budget";
-import { wrapperFiles, wrapperTakesValue } from "./wrapper-options";
+import { peelWrapper } from "./wrapper-peel";
 import {
-  WRAPPER_OPERANDS,
-  WRAPPER_VALUE_FLAG,
   containerExec,
   containerRun,
   gnuName,
   shellQuote,
   shellStrings,
   sshHost,
-  staysProgram,
 } from "./wrappers";
 import { extraOutputFiles, localPath } from "./writers";
 import { moreGitWrites, moreWriterTargets } from "./writers-more";
@@ -321,45 +319,10 @@ function words(seg: string, values = false): string[] {
 
 // `NAME=v` and `NAME+=v` both assign for the one command that follows.
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
-// Words that run the NEXT word as the command. Each takes its own value-carrying flags (`sudo -u root`,
-// `nice -n 5`, `xargs -I{}`), which must not be read as the program. Shell keywords (`then`, `do`) are in
-// the list because `if x; then rm …; fi` splits into a `then rm …` segment.
-const NO_FLAG_VALUE = /^$/;
-const WRAPPER_FLAG_VALUE: ReadonlyMap<string, RegExp> = new Map([
-  ...WRAPPER_VALUE_FLAG,
-  ...[
-    "command",
-    "builtin",
-    "nohup",
-    "setsid",
-    "then",
-    "do",
-    "else",
-    "elif",
-    "if",
-    "while",
-    "until",
-    "!",
-  ].map((w): [string, RegExp] => [w, NO_FLAG_VALUE]),
-]);
-
 /**
- * `env -C DIR cmd`, `env --chdir=DIR cmd`, `sudo -D DIR cmd`: the wrapper runs the command in DIR, so a relative
- * target of that command is relative to DIR. Matches the flag and, when it carries its own value, captures it.
- */
-const CHDIR_FLAG: ReadonlyMap<string, RegExp> = new Map([
-  ["env", /^(?:-C|--chdir)$/],
-  ["sudo", /^(?:-D|--chdir)$/],
-]);
-const CHDIR_ATTACHED: ReadonlyMap<string, RegExp> = new Map([
-  ["env", /^(?:-C(.+)|--chdir=(.*))$/s],
-  ["sudo", /^(?:-D(.+)|--chdir=(.*))$/s],
-]);
-
-/**
- * The program a simple command runs, skipping `VAR=value` prefixes and wrapper commands (`sudo`, `env`, `then`).
- * A name the shell would unquote (`\cd`, `c\d`) is the program it names. `chdir` is the directory a wrapper moves
- * the command into, when it names one.
+ * The program a simple command runs, skipping `VAR=value` prefixes and wrapper commands (`sudo`, `env`, `then`: the
+ * table of `wrapper-specs.ts`, read by `wrapper-peel.ts`). A name the shell would unquote (`\cd`, `c\d`) is the program
+ * it names. `chdir` is the directory a wrapper moves the command into, when it names one.
  */
 function program(
   seg: string,
@@ -371,6 +334,8 @@ function program(
   args: string[];
   assigns: string[];
   chdir?: string;
+  /** Wrapper words the option tables could not place: the guard cannot tell where the command starts. */
+  unplaced?: string;
   /** Files a wrapper's own option writes (`time -o F`): judged like redirect targets. */
   writes: string[];
   /** Secret-named files a wrapper's own option reads (`xargs -a F`): judged like input redirects. */
@@ -379,71 +344,37 @@ function program(
   let w = words(seg, values);
   const writes: string[] = [];
   const reads: string[] = [];
+  const unplaced: string[] = [];
   let k = 0;
   let lastWrapper = "";
   let chdir: string | undefined;
   while (k < w.length) {
     const word = w[k] ?? "";
-    const bare = gnuName(unescapeWord(word));
-    if (/^g?timeout$/.test(bare.replace(/^.*\//, ""))) {
-      lastWrapper = "timeout";
+    if (ASSIGNMENT.test(word)) {
       k++;
-      while (k < w.length) {
-        const option = w[k] ?? "";
-        if (option === "--") {
-          k++;
-          break;
-        }
-        if (/^(?:-s|-k|--signal|--kill-after)$/.test(option)) {
-          k += 2;
-          continue;
-        }
-        if (/^--(?:signal|kill-after)=/.test(option) || /^-/.test(option)) {
-          k++;
-          continue;
-        }
-        break;
-      }
-      // GNU and BSD timeout both place one duration operand before the child command.
-      if (k < w.length) k++;
       continue;
     }
-    const takesValue = WRAPPER_FLAG_VALUE.get(bare);
-    if (ASSIGNMENT.test(word)) k++;
-    else if (takesValue && k + 1 < w.length) {
+    const wrapper = peelWrapper(gnuName(programName(word)), w, k, (text) => words(text, values));
+    if (wrapper !== null) {
       // `flock -c 'cmd' file`, `sudo -e FILE`: the words are a string or files, not a command: the wrapper stays the program.
-      if (staysProgram(bare, w.slice(k + 1))) break;
-      lastWrapper = bare;
-      k++;
-      const operands = WRAPPER_OPERANDS.get(bare);
-      let supplied = false;
-      const flagStart = k;
-      while (k < w.length && /^-/.test(w[k] ?? "") && (w[k] ?? "") !== "--") {
-        const flag = w[k] ?? "";
-        supplied ||= operands?.suppliedBy?.test(flag) ?? false;
-        const attached = CHDIR_ATTACHED.get(bare)?.exec(flag);
-        if (attached) chdir = attached[1] ?? attached[2] ?? "";
-        else if (CHDIR_FLAG.get(bare)?.test(flag)) chdir = w[k + 1] ?? "";
-        k += wrapperTakesValue(bare, takesValue, flag) ? 2 : 1;
-      }
-      const flagEnd = k;
-      // `sudo -- rm x`: `--` ends the wrapper's options, and the command follows it.
-      if (w[k] === "--") k++;
-      // `flock lockfile cmd`, `chrt -f 1 cmd`, `taskset 0x1 cmd`: operands before the command.
-      const operandWords = operands && !supplied ? w.slice(k, k + operands.count) : [];
-      k += operandWords.length;
+      if (wrapper.stays) break;
+      lastWrapper = wrapper.wrapper;
+      chdir = wrapper.chdir ?? chdir;
       // The files a wrapper's own options and operands name (`xargs -a F`, `parallel --joblog F`, `flock F`).
-      const files = wrapperFiles(bare, w.slice(flagStart, flagEnd), operandWords);
-      writes.push(...files.writes);
-      reads.push(...files.reads);
-    } else {
-      // `bunx git push`, `npx -c '…'`, `bun run cp …`: the program the runner starts is the command (`runners.ts`).
-      const peeled = peelRunnerWithFiles(w.slice(k), isPackageScript);
-      if (peeled === null) break;
-      // `dotenv -e FILE -- cmd`: the runner's file options are read like `< FILE`, whatever the command is.
-      reads.push(...peeled.files);
-      w = [...w.slice(0, k), ...peeled.inner];
+      writes.push(...wrapper.files.writes);
+      reads.push(...wrapper.files.reads);
+      if (wrapper.unplaced !== undefined) unplaced.push(`${wrapper.wrapper} ${wrapper.unplaced}`);
+      // `env -S 'cmd arg'` runs the words of its string as the command.
+      w = [...w.slice(0, wrapper.next), ...wrapper.insert, ...w.slice(wrapper.next)];
+      k = wrapper.next;
+      continue;
     }
+    // `bunx git push`, `npx -c '…'`, `bun run cp …`: the program the runner starts is the command (`runners.ts`).
+    const peeled = peelRunnerWithFiles(w.slice(k), isPackageScript);
+    if (peeled === null) break;
+    // `dotenv -e FILE -- cmd`: the runner's file options are read like `< FILE`, whatever the command is.
+    reads.push(...peeled.files);
+    w = [...w.slice(0, k), ...peeled.inner];
   }
   // `env -u X` with no command prints the environment: it is still `env`.
   const prog =
@@ -455,6 +386,7 @@ function program(
     assigns: w.slice(0, k).filter((x) => ASSIGNMENT.test(x)),
     writes,
     reads,
+    ...(unplaced.length === 0 ? {} : { unplaced: unplaced.join("; ") }),
     ...(chdir === undefined ? {} : { chdir }),
   };
 }
@@ -544,6 +476,8 @@ interface Parsed {
   readonly word: string;
   /** The directory a wrapper (`env -C`, `sudo -D`) runs the command in, as written. */
   readonly chdir?: string;
+  /** Wrapper words the option tables could not place (an unknown option): where the command starts is a guess. */
+  readonly unplaced?: string;
   readonly args: string[];
   /**
    * The program and arguments as the program is HANDED them (a backslash is read once: an escaped quote inside double quotes is
@@ -590,6 +524,9 @@ function readsShellScript(segment: string): boolean {
     return NESTED_SHELL.test(name) || SCRIPT_READER.test(name);
   });
 }
+
+const UNPLACED_WRAPPER_REASON = (words: string): string =>
+  `The guard cannot tell where the command starts after \`${words}\`: that option is not one it knows, so a word it takes for the command may be the option's value. Write the option in a form the guard reads, or let a human decide.`;
 
 const WORK_BUDGET_REASON =
   "This command has too many brace alternatives, path targets or nested commands, or is too big, for the guard to check in time (the work grows with each word times each directory a `cd` may have left it in, and with every command nested in another). Split it into smaller commands, or let a human run it.";
@@ -1182,6 +1119,8 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
   const here = parsed.chdir === undefined ? shellIn : runIn(shellIn, parsed.chdir, ctx);
   const v = classifySegment(part.text, parsed, ctx, here);
   if (v) walk.verdicts.push(v);
+  if (parsed.unplaced !== undefined)
+    walk.verdicts.push(ask(UNPLACED_WRAPPER_REASON(parsed.unplaced)));
   // A SQL client's own shell escapes and file commands (`sqlite3 .shell`, `psql \\!`, `mysql system`).
   walk.verdicts.push(
     ...dbClientVerdicts(parts, parsedParts, index, bodiesByPart[index] ?? [], here, ctx),

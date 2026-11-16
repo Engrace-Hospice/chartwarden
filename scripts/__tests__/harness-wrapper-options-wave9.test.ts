@@ -301,15 +301,24 @@ describe("watch and entr hand a command line to a shell: it is judged", () => {
 const DUMMY_OPERANDS: ReadonlyMap<string, string> = new Map([
   ["flock", "/tmp/l"],
   ["chroot", "/tmp/jail"],
+  // wave 10: the table now holds every wrapper's long options, and these take an operand before the command
+  ["timeout", "5"],
+  ["chrt", "1"],
+  ["runuser", "someuser"],
 ]);
 
 describe("every long option that takes a value, in both spellings, leaves the command visible", () => {
-  // `flock --command STR` is a command line of its own, judged as one (`wrappers.ts`: RUNS_COMMAND_STRING).
+  // `flock --command STR` and `runuser --command STR` are command lines of their own, judged as one (`wrapper-specs.ts`:
+  // `stays`); `env --split-string STR` is the command itself (wave 10: its words are run, so the words after it are its arguments).
   const rows = [...WRAPPER_LONG_VALUE]
     .flatMap(([wrapper, names]) => names.map((name) => [wrapper, name] as const))
-    .filter(([wrapper, name]) => !(wrapper === "flock" && name === "command"));
+    .filter(
+      ([wrapper, name]) => name !== "command" && !(wrapper === "env" && name === "split-string"),
+    );
   it.each(rows)("%s --%s", (wrapper, name) => {
-    const operand = DUMMY_OPERANDS.get(wrapper) ?? "";
+    // `runuser --user NAME` names the user itself: no operand stands before the command
+    const operand =
+      wrapper === "runuser" && name === "user" ? "" : (DUMMY_OPERANDS.get(wrapper) ?? "");
     for (const options of [`--${name} 1`, `--${name}=1`]) {
       const cmd = `${wrapper} ${options} ${operand} git commit --no-verify -m x`;
       expect(decide(cmd), cmd).toBe("deny");

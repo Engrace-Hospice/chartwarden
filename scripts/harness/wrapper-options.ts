@@ -4,119 +4,22 @@
  * (`xargs -a FILE` and `parallel --arg-file FILE` read it, `parallel --joblog FILE`, `strace --output FILE`, `flock FILE`
  * write or create it) and the VALUE of a long option spelled with a space (`nice --adjustment 5 cmd`: without it `5` read
  * as the program and hid `cmd`). One table per kind, audited against each tool's option list:
- * - `WRAPPER_LONG_VALUE`: long options that take a required value (GNU getopt accepts an unambiguous prefix, so a prefix
- *   of two characters or more counts); the short ones stay in the regexes of `wrappers.ts`.
+ * - `WRAPPER_LONG_VALUE`: long options that take a required value, derived from the option grammars of `wrapper-specs.ts`
+ *   (read by `option-grammar.ts`: exact name first, then any unambiguous prefix of one character or more, as GNU getopt does).
  * - `READ_OPTIONS` / `WRITE_OPTIONS`: the options whose value is a file the wrapper reads or writes; a read is judged like
  *   an input redirect (the secret-read rules refuse a secret name like `cat`), a write like an output redirect.
  * - `WRAPPER_OPERAND_WRITES`: an operand the wrapper opens for writing (`flock LOCKFILE`).
  * Values that are command lines (`env -S`, `flock -c`, `watch`) are judged elsewhere. Pure.
  */
 import { type LongOption, optionValues } from "./option-values";
+import { WRAPPER_SPECS } from "./wrapper-specs";
 
-/** Long options (without `--`) that take a required value as the next word, per wrapper. */
-export const WRAPPER_LONG_VALUE: ReadonlyMap<string, readonly string[]> = new Map([
-  [
-    "sudo",
-    [
-      "user",
-      "group",
-      "host",
-      "prompt",
-      "chdir",
-      "chroot",
-      "role",
-      "type",
-      "other-user",
-      "login-class",
-      "close-from",
-      "command-timeout",
-    ],
-  ],
-  ["env", ["unset", "chdir", "split-string", "argv0"]],
-  ["time", ["output", "format"]],
-  ["nice", ["adjustment"]],
-  ["ionice", ["class", "classdata", "pid", "pgid", "uid"]],
-  ["xargs", ["arg-file", "delimiter", "max-args", "max-chars", "max-procs", "process-slot-var"]],
-  ["stdbuf", ["input", "output", "error"]],
-  [
-    "strace",
-    ["output", "trace", "env", "user", "attach", "string-limit", "abbrev", "read", "write"],
-  ],
-  ["taskset", ["cpu-list"]],
-  ["flock", ["command", "conflict-exit-code", "timeout", "wait"]],
-  [
-    "parallel",
-    [
-      "jobs",
-      "max-args",
-      "max-replace-args",
-      "max-lines",
-      "max-chars",
-      "arg-file",
-      "argfile",
-      "arg-file-sep",
-      "arg-sep",
-      "colsep",
-      "delimiter",
-      "eof",
-      "replace",
-      "results",
-      "joblog",
-      "tmpdir",
-      "workdir",
-      "wd",
-      "timeout",
-      "retries",
-      "delay",
-      "sshlogin",
-      "sshloginfile",
-      "slf",
-      "block",
-      "block-size",
-      "recstart",
-      "recend",
-      "header",
-      "transferfile",
-      "trc",
-      "return",
-      "basefile",
-      "env",
-      "load",
-      "memfree",
-      "halt",
-    ],
-  ],
-  ["chroot", ["userspec", "groups"]],
-  [
-    "unshare",
-    [
-      "propagation",
-      "setgroups",
-      "setuid",
-      "setgid",
-      "wd",
-      "root",
-      "map-user",
-      "map-group",
-      "map-users",
-      "map-groups",
-      "monotonic",
-      "boottime",
-    ],
-  ],
-  ["doas", []],
-]);
-
-/** Prefix of two characters or more of one of `names`, as GNU getopt accepts it. */
-const isLongValueOption = (names: readonly string[], flag: string): boolean =>
-  flag.startsWith("--") &&
-  !flag.includes("=") &&
-  flag.length >= 4 &&
-  names.some((name) => name.startsWith(flag.slice(2)));
-
-/** Does this wrapper flag take the next word as its value? `shortValue` is the wrapper's regex of short and exact options. */
-export const wrapperTakesValue = (wrapper: string, shortValue: RegExp, flag: string): boolean =>
-  shortValue.test(flag) || isLongValueOption(WRAPPER_LONG_VALUE.get(wrapper) ?? [], flag);
+/** Long options (without `--`) that take a required value as the next word, per wrapper: derived from `WRAPPER_SPECS`. */
+export const WRAPPER_LONG_VALUE: ReadonlyMap<string, readonly string[]> = new Map(
+  [...WRAPPER_SPECS]
+    .filter(([, spec]) => spec.grammar.longValues.length > 0)
+    .map(([wrapper, spec]) => [wrapper, spec.grammar.longValues] as const),
+);
 
 export interface FileOptions {
   readonly short: string;
