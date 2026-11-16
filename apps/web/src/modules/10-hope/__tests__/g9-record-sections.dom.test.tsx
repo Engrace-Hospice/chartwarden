@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import { HopeRecordModal } from "../hope-record-modal";
