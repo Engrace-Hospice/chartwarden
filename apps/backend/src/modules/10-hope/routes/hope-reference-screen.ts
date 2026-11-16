@@ -97,6 +97,9 @@ const DATE_YEAR_LAST = new RegExp(`(?<!\\d)\\d{1,2}${SEP}\\d{1,2}${SEP}(?:18|19|
 // A US phone number: 3-3-4 digits set apart by the same separators, with an optional leading 1. RESIDUAL: `5558675309`.
 const US_PHONE = new RegExp(`(?<!\\d)(?:1${SEP})?\\d{3}${SEP}\\d{3}${SEP}\\d{4}(?!\\d)`);
 
+/** What an assessment id's charset allows between digit groups: blanks (`\s`), braces and hyphens, in any run. */
+const ID_FILLER = /[\s{}-]+/g;
+
 const looksLikeDateOrPhone = (value: string): boolean =>
   DATE_YEAR_FIRST.test(value) || DATE_YEAR_LAST.test(value) || US_PHONE.test(value);
 
@@ -237,8 +240,11 @@ function assertRowsHaveNoPatientIdentifier(rows: readonly CleanResultRow[]): voi
     if (assessmentId !== undefined && canonicalUuidOrNull(assessmentId) === null) {
       const field = `results.${index}.assessmentId`;
       assertNoPatientIdentifier(field, assessmentId, assessmentIdRefusal);
-      // The id's charset (hex digits, hyphens) still holds a date or a phone number set apart by hyphens.
-      if (looksLikeDateOrPhone(assessmentId)) refuseAsPatientIdentifier(field, assessmentIdRefusal);
+      // The id's charset (hex digits, hyphens, braces, inner blanks) still holds a date or a phone number set apart by hyphens, by
+      // blanks (a space, a no-break space) or by braces (`{555}{867}{5309}`): a run of blanks, braces and hyphens is read as one
+      // hyphen, so each spelling meets the shapes the plainly hyphenated one does (`555 - 867 - 5309` included). Only the shape test sees it; the stored value is unchanged.
+      if (looksLikeDateOrPhone(assessmentId.replace(ID_FILLER, "-")))
+        refuseAsPatientIdentifier(field, assessmentIdRefusal);
     }
     const message = row.message;
     if (message !== undefined && message !== "")
