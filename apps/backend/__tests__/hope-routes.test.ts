@@ -2591,6 +2591,78 @@ describe("the other date-time inputs M10 stores or announces need a real calenda
   });
 });
 
+describe("the operator-typed submission references: a charset in the schema, patient identifiers refused by the route", () => {
+  // An SSN with area 9xx is never issued (the synthetic-identifier rule); the charset admits it, so the route's screen must refuse it.
+  const SYNTHETIC_SSN = "900-12-3456";
+  const REFUSED = [
+    ["an SSN-shaped value", SYNTHETIC_SSN],
+    ["markup", "<b>ref</b>"],
+    ["a line break", "ref\nline"],
+    ["an empty string", ""],
+  ] as const;
+  const markUploaded = (ctx: ReturnType<typeof makeServer>, payload: Record<string, unknown>) =>
+    ctx.app.inject({
+      method: "POST",
+      url: `/api/v1/hope/submissions/${SUB_PACKAGED}/mark-uploaded`,
+      headers: RN,
+      payload,
+    });
+  const importResult = (ctx: ReturnType<typeof makeServer>, reportReference: string) =>
+    ctx.app.inject({
+      method: "POST",
+      url: `/api/v1/hope/submissions/${SUB_PACKAGED}/results`,
+      headers: RN,
+      payload: { reportReference, results: [{ assessmentId: SIGNED_A, status: "accepted" }] },
+    });
+
+  it.each(REFUSED)(
+    "mark-uploaded refuses an iqiesSubmissionReference that is %s with 422, echoes none of it, and leaves the batch packaged",
+    async (_label, iqiesSubmissionReference) => {
+      const ctx = makeServer({ packagedSubmission: true });
+
+      const res = await markUploaded(ctx, { iqiesSubmissionReference });
+
+      expect(res.statusCode).toBe(422);
+      expect(res.body).not.toContain(SYNTHETIC_SSN);
+      expect((await ctx.backend.getSubmission(ORG, SUB_PACKAGED)).status).toBe("packaged");
+      await ctx.app.close();
+    },
+  );
+
+  it.each(REFUSED)(
+    "the results import refuses a reportReference that is %s with 422 and echoes none of it (before the batch is even looked at)",
+    async (_label, reportReference) => {
+      const ctx = makeServer({ packagedSubmission: true });
+
+      const res = await importResult(ctx, reportReference);
+
+      expect(res.statusCode).toBe(422);
+      expect(res.body).not.toContain(SYNTHETIC_SSN);
+      await ctx.app.close();
+    },
+  );
+
+  it("an ordinary reference passes both screens: mark-uploaded stores it, the import reaches the batch (409: a packaged batch has no result to record)", async () => {
+    const ctx = makeServer({ packagedSubmission: true });
+
+    const reached = await importResult(ctx, "FVR-2026_06: run #1/a.b");
+    const marked = await markUploaded(ctx, { iqiesSubmissionReference: "UP-2026/06 #12" });
+
+    expect(reached.statusCode).toBe(409);
+    expect(marked.statusCode).toBe(200);
+    await ctx.app.close();
+  });
+
+  it("a null or absent reference is nothing to screen", async () => {
+    const ctx = makeServer({ packagedSubmission: true });
+
+    const res = await markUploaded(ctx, { iqiesSubmissionReference: null });
+
+    expect(res.statusCode).toBe(200);
+    await ctx.app.close();
+  });
+});
+
 describe("an SFV completion needs a real calendar date", () => {
   it.each([
     ["Feb 30 (a JS Date would roll it to Mar 2)", "2026-02-30T00:00:00.000Z"],

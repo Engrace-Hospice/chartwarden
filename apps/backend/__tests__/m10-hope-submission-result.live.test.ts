@@ -607,9 +607,12 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
     expect(listRead).toMatch(/limit \$\d+/i);
   });
 
-  it("migration 1496 backfills the reference of a recorded batch from the jsonb, once, without overwriting or touching updated_at", async () => {
+  it("migration 1498 backfills the reference of a recorded batch from the jsonb, once, without overwriting or touching updated_at", async () => {
     const backfill = /\nUPDATE "hope_submission"[\s\S]*?;\n/.exec(
-      readFileSync(join(MIGRATIONS_DIR, "1496_m10_hope_submission_report_reference.sql"), "utf8"),
+      readFileSync(
+        join(MIGRATIONS_DIR, "1498_m10_hope_submission_report_reference_backfill.sql"),
+        "utf8",
+      ),
     )?.[0];
     expect(backfill).toBeDefined();
     const make = async (
@@ -1014,48 +1017,6 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
       });
       for (const typed of ["FVR-AUDIT-9", "free text from CMS", "raw CMS row"])
         expect(image).not.toContain(typed);
-    });
-  });
-
-  describe("migration 1498: the report-reference backfill", () => {
-    const BACKFILL = readFileSync(
-      join(MIGRATIONS_DIR, "1498_m10_hope_submission_report_reference_backfill.sql"),
-      "utf8",
-    );
-    const batchWithReport = async (
-      report: Record<string, unknown>,
-      columns: { imported: boolean; reference?: string },
-    ): Promise<string> => {
-      const id = await seedBatch("submitted_pending_result", [await seedAssessment()]);
-      await admin.query(
-        `UPDATE hope_submission
-            SET acceptance_report = $2::jsonb,
-                result_imported_at = CASE WHEN $3::boolean THEN now() ELSE NULL END,
-                report_reference = $4::text,
-                updated_at = '2026-01-01T00:00:00Z'
-          WHERE id=$1`,
-        [id, JSON.stringify(report), columns.imported, columns.reference ?? null],
-      );
-      return id;
-    };
-
-    it("fills a recorded batch from the jsonb copy, never overwrites, skips batches with no result, and leaves updated_at alone", async () => {
-      const recorded = await batchWithReport({ reportReference: "FVR-A" }, { imported: true });
-      const noResult = await batchWithReport({ reportReference: "FVR-B" }, { imported: false });
-      const kept = await batchWithReport(
-        { reportReference: "FVR-OTHER" },
-        { imported: true, reference: "KEEP" },
-      );
-      const noReference = await batchWithReport({ files: [] }, { imported: true });
-
-      await admin.query(BACKFILL);
-      await admin.query(BACKFILL); // replay-safe: the second run changes nothing
-
-      expect((await row(recorded)).report_reference).toBe("FVR-A");
-      expect((await row(noResult)).report_reference).toBeNull();
-      expect((await row(kept)).report_reference).toBe("KEEP");
-      expect((await row(noReference)).report_reference).toBeNull();
-      expect((await row(recorded)).updated_at.toISOString()).toBe("2026-01-01T00:00:00.000Z");
     });
   });
 });

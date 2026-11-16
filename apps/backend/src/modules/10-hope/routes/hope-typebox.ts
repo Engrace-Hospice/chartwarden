@@ -284,15 +284,24 @@ export const CancelSubmissionSchema = Type.Object(
   },
   { additionalProperties: false },
 );
+/**
+ * The characters an operator-typed submission reference may hold (an iQIES upload id, a CMS report reference): letters, digits and
+ * ` . _ : # / -`, so markup, control characters and quotes never reach a stored row or an audit image. The schema does not echo the
+ * value in its 422. A patient identifier shaped from these characters is refused by the route (hope-reference-screen.ts).
+ */
+const REFERENCE_CHARSET = "[A-Za-z0-9 ._:#/-]";
+const referenceString = (maxLength: number) =>
+  Type.Union([
+    Type.String({ minLength: 1, maxLength, pattern: `^${REFERENCE_CHARSET}+$` }),
+    Type.Null(),
+  ]);
 export const MarkSubmissionUploadedSchema = Type.Object({
   submittedAt: Type.Optional(Type.String({ format: "date-time" })),
-  iqiesSubmissionReference: Type.Optional(
-    Type.Union([Type.String({ maxLength: 200 }), Type.Null()]),
-  ),
+  iqiesSubmissionReference: Type.Optional(referenceString(200)),
 });
 const CMS_TOKEN = { maxLength: 64 };
 export const ImportSubmissionResultSchema = Type.Object({
-  reportReference: Type.Optional(Type.Union([Type.String({ maxLength: 500 }), Type.Null()])),
+  reportReference: Type.Optional(referenceString(500)),
   // Bounded: every row is stored (report, item result, finding), so an unbounded body is a write amplifier.
   results: Type.Array(
     Type.Object(
