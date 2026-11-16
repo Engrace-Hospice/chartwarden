@@ -37,7 +37,19 @@ import {
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { HopeRfaKind, LatestAssessment, ScaleType } from "@chartwarden/types";
 import { ConflictError, NotFoundError, ValidationError } from "@chartwarden/types";
-import { type SQL, and, asc, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import {
+  type SQL,
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";
@@ -87,6 +99,8 @@ import {
   resolutionCountsByBatch,
 } from "./hope-submission-reads-db";
 import {
+  ACCEPTED_BATCH_STATUSES,
+  ANSWERED_BATCH_STATUSES,
   appendReportResults,
   classifyCmsResult,
   deriveBatchOutcome,
@@ -183,9 +197,6 @@ type LightSubmissionRow = Omit<SubmissionRow, "acceptanceReport"> & {
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
-/** F-058 — a batch iQIES has answered on. See `complianceDashboard`. */
-const SUBMISSION_TERMINAL_STATUSES = ["accepted", "rejected", "partially_accepted"];
-
 /** D9 — is Section Q (Participation) present on the payload? A death discharge must NOT carry it; every
  * other discharge reason must. Presence is the key existing with any value, mirroring how the §J reader
  * below treats its own section: the CMS item-level rules are the validation engine's job, not this gate's. */
@@ -209,6 +220,18 @@ function canonicalIdFilter(column: AnyPgColumn, id: string | undefined): SQL | u
   if (!id) return undefined;
   const canonical = canonicalUuidOrNull(id);
   return canonical === null ? sql`false` : eq(column, canonical);
+}
+
+/**
+ * A record id from a URL, as Postgres writes it, or a 404 when it is no uuid. A route id is only length-checked, and
+ * sent to a uuid column as `= 'not-a-uuid'` it raises 22P02: a 500 the in-memory twin never answers (it answers 404). An
+ * id that is no uuid names no record, so it is the same 404 as an absent one. The canonical text is what the query
+ * gets, never the caller's spelling (the helper is a little more lenient than Postgres about hyphens).
+ */
+function uuidOrNotFound(id: string, notFoundMessage: string): string {
+  const canonical = canonicalUuidOrNull(id);
+  if (canonical === null) throw new NotFoundError(notFoundMessage);
+  return canonical;
 }
 
 /**
@@ -666,10 +689,11 @@ export function createDbHopeBackend(
   }
 
   async function loadA(t: DbClient, id: string): Promise<AssessmentRow> {
+    const assessmentId = uuidOrNotFound(id, `HOPE assessment ${id} not found`);
     const [r] = (await t
       .select()
       .from(ASSESS)
-      .where(eq(ASSESS.id, id))
+      .where(eq(ASSESS.id, assessmentId))
       .limit(1)) as AssessmentRow[];
     if (!r) throw new NotFoundError(`HOPE assessment ${id} not found`);
     return r;
@@ -862,11 +886,12 @@ export function createDbHopeBackend(
       });
     },
     async getSchedule(organizationId, id) {
+      const scheduleId = uuidOrNotFound(id, `HOPE schedule ${id} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = (await tx
           .select()
           .from(SCHED)
-          .where(eq(SCHED.id, id))
+          .where(eq(SCHED.id, scheduleId))
           .limit(1)) as ScheduleRow[];
         if (!r) throw new NotFoundError(`HOPE schedule ${id} not found`);
         return toScheduleView(r);
@@ -875,22 +900,27 @@ export function createDbHopeBackend(
 
     // ── HOPE assessment reads (parent of the partitioned hope_assessment) ──────────────────────────
     async getAssessment(organizationId, id) {
+      const assessmentId = uuidOrNotFound(id, `HOPE assessment ${id} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = (await tx
           .select()
           .from(ASSESS)
-          .where(eq(ASSESS.id, id))
+          .where(eq(ASSESS.id, assessmentId))
           .limit(1)) as AssessmentRow[];
         if (!r) throw new NotFoundError(`HOPE assessment ${id} not found`);
         return toAssessmentView(r);
       });
     },
     async listPatientAssessments(organizationId, patientId) {
+      // A patient id that is no uuid has no assessments (an org-wide role is not checked against a caseload, so nothing
+      // upstream has looked at it): an empty list, not a `::uuid` cast.
+      const patient = canonicalUuidOrNull(patientId);
+      if (patient === null) return { assessments: [] };
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const rows = (await tx
           .select()
           .from(ASSESS)
-          .where(eq(ASSESS.patientId, patientId))) as AssessmentRow[];
+          .where(eq(ASSESS.patientId, patient))) as AssessmentRow[];
         return { assessments: rows.map(toAssessmentView) };
       });
     },
@@ -905,9 +935,7 @@ export function createDbHopeBackend(
           .from(SFV)
           .where(
             and(
-              triggeringAssessmentId
-                ? eq(SFV.triggeringAssessmentId, triggeringAssessmentId)
-                : undefined,
+              canonicalIdFilter(SFV.triggeringAssessmentId, triggeringAssessmentId),
               state ? eq(SFV.status, state as SfvRow["status"]) : undefined,
               patientIds ? inArray(SFV.patientId, [...patientIds]) : undefined,
             ),
@@ -916,8 +944,9 @@ export function createDbHopeBackend(
       });
     },
     async getSfv(organizationId, id) {
+      const sfvId = uuidOrNotFound(id, `SFV ${id} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [r] = (await tx.select().from(SFV).where(eq(SFV.id, id)).limit(1)) as SfvRow[];
+        const [r] = (await tx.select().from(SFV).where(eq(SFV.id, sfvId)).limit(1)) as SfvRow[];
         if (!r) throw new NotFoundError(`SFV ${id} not found`);
         return toSfvView(r);
       });
@@ -953,11 +982,12 @@ export function createDbHopeBackend(
       });
     },
     async getSubmission(organizationId, id) {
+      const submissionId = uuidOrNotFound(id, `HOPE submission ${id} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = (await tx
           .select(LIGHT_SUB)
           .from(SUB)
-          .where(eq(SUB.id, id))
+          .where(eq(SUB.id, submissionId))
           .limit(1)) as LightSubmissionRow[];
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
         return loadSubmissionDetail(tx as unknown as DbClient, r);
@@ -1025,14 +1055,18 @@ export function createDbHopeBackend(
         // it becomes live the moment force-assemble does real work, and 0% is the §1.3 APU-penalty band
         // — the worst possible reading to hand a compliance officer for "assembled, not yet sent". A
         // `queued` or `in_flight` batch has no acceptance outcome, so it belongs in neither half of the
-        // ratio. Same definition M30's `submissionBatches` rollup already uses.
-        const terminalTotal = SUBMISSION_TERMINAL_STATUSES.reduce(
-          (total, status) => total + (subs.get(status) ?? 0),
-          0,
-        );
-        const accepted = subs.get("accepted") ?? 0;
+        // ratio. M30's `submissionBatches` rollup reads the same list (`ANSWERED_BATCH_STATUSES`).
+        const countOf = (statuses: readonly string[]) =>
+          statuses.reduce((total, status) => total + (subs.get(status) ?? 0), 0);
+        const terminalTotal = countOf(ANSWERED_BATCH_STATUSES);
+        // A batch iQIES accepted with CMS warnings is accepted (the batch's `accepted_count` counts its warning items).
+        const accepted = countOf(ACCEPTED_BATCH_STATUSES);
         return {
-          providerEntityId: providerEntityId ?? null,
+          // The id as Postgres writes it (as `regenerateSchedules` answers), not the caller's spelling.
+          providerEntityId:
+            providerEntityId === undefined
+              ? null
+              : (canonicalUuidOrNull(providerEntityId) ?? providerEntityId),
           hopeOnTimeRate: rateOf(completed, denom),
           hopeOnTimeCounts: { onTime: completed, total: denom },
           sfvOnTimeRate: rateOf(sfvOnTime, sfvDenom),
@@ -1088,7 +1122,8 @@ export function createDbHopeBackend(
           .from(SFV)
           .where(eq(SFV.admissionId, admissionId))) as SfvRow[];
         return buildWorkflowState({
-          admissionId,
+          // The id as Postgres writes it (as `regenerateSchedules` and the dashboard answer), not the caller's spelling.
+          admissionId: canonicalUuidOrNull(admissionId) ?? admissionId,
           nowIso: new Date().toISOString(),
           schedules: schedRows.map(toScheduleView),
           assessments: assessmentRows.map(toAssessmentView),
@@ -1121,7 +1156,11 @@ export function createDbHopeBackend(
     },
 
     // ── §4.7 / GAP-018 ABAC resolver — correction + scope predicate facts (fail-closed on absent) ─────
+    // The four loaders answer "absent" (null: `hope.scope` and the correction predicate fail closed) for an id that is no
+    // uuid, without sending it to a `::uuid` comparison: a 22P02 here would be a 500 out of the authorization step.
     async loadAssessment(organizationId, assessmentId): Promise<HopeAssessmentAbacFacts | null> {
+      const id = canonicalUuidOrNull(assessmentId);
+      if (id === null) return null;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = (await tx
           .select({
@@ -1131,7 +1170,7 @@ export function createDbHopeBackend(
             authorDiscipline: ASSESS.authorDiscipline,
           })
           .from(ASSESS)
-          .where(and(eq(ASSESS.id, assessmentId), eq(ASSESS.organizationId, organizationId)))
+          .where(and(eq(ASSESS.id, id), eq(ASSESS.organizationId, organizationId)))
           .limit(1)) as {
           patientId: string;
           signedByMembershipId: string | null;
@@ -1148,31 +1187,37 @@ export function createDbHopeBackend(
       });
     },
     async loadSchedule(organizationId, scheduleId) {
+      const id = canonicalUuidOrNull(scheduleId);
+      if (id === null) return null;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = (await tx
           .select({ patientId: SCHED.patientId })
           .from(SCHED)
-          .where(and(eq(SCHED.id, scheduleId), eq(SCHED.organizationId, organizationId)))
+          .where(and(eq(SCHED.id, id), eq(SCHED.organizationId, organizationId)))
           .limit(1)) as { patientId: string }[];
         return r ? { patientId: r.patientId } : null;
       });
     },
     async loadSfv(organizationId, sfvId) {
+      const id = canonicalUuidOrNull(sfvId);
+      if (id === null) return null;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = (await tx
           .select({ patientId: SFV.patientId })
           .from(SFV)
-          .where(and(eq(SFV.id, sfvId), eq(SFV.organizationId, organizationId)))
+          .where(and(eq(SFV.id, id), eq(SFV.organizationId, organizationId)))
           .limit(1)) as { patientId: string }[];
         return r ? { patientId: r.patientId } : null;
       });
     },
     async loadSubmission(organizationId, submissionId) {
+      const id = canonicalUuidOrNull(submissionId);
+      if (id === null) return null;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = (await tx
           .select({ providerEntityId: SUB.providerEntityId })
           .from(SUB)
-          .where(and(eq(SUB.id, submissionId), eq(SUB.organizationId, organizationId)))
+          .where(and(eq(SUB.id, id), eq(SUB.organizationId, organizationId)))
           .limit(1)) as { providerEntityId: string }[];
         return r ? { providerEntityId: r.providerEntityId } : null;
       });
@@ -1180,6 +1225,7 @@ export function createDbHopeBackend(
 
     // ── Schedule skip (§2.2.1) ────────────────────────────────────────────────────────────────────
     async skipSchedule(organizationId, id, reasonCode) {
+      const scheduleId = uuidOrNotFound(id, `HOPE schedule ${id} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // Only an OPEN schedule can be skipped (spec §2.2.1). The UPDATE judges the row it waits for: a sign that closes the
@@ -1192,14 +1238,14 @@ export function createDbHopeBackend(
             skipReasonCode: reasonCode,
             updatedAt: new Date(),
           })
-          .where(and(eq(SCHED.id, id), eq(SCHED.status, "open")))
+          .where(and(eq(SCHED.id, scheduleId), eq(SCHED.status, "open")))
           .returning()) as ScheduleRow[];
         if (rows.length > 0)
           return toScheduleView(firstOrThrow(rows, "schedule skip matched no row"));
         const [current] = await t
           .select({ status: SCHED.status })
           .from(SCHED)
-          .where(eq(SCHED.id, id))
+          .where(eq(SCHED.id, scheduleId))
           .limit(1);
         if (!current) throw new NotFoundError(`HOPE schedule ${id} not found`);
         throw new ConflictError(
@@ -1946,6 +1992,13 @@ export function createDbHopeBackend(
         // when that was all of them).
         await lockRecordKey(t, `m10:assemble:${organizationId}`, providerEntityId);
         const period = new Date().toISOString().slice(0, 7);
+        // Only the records that can be packaged are read, and every test is the database's: a signed record stays
+        // `signed` after it is accepted, so reading the entity's whole signed history and checking each row (a query per
+        // row, behind the advisory key above) grew with every month of the entity's life, and a second assemble waited that
+        // long for the key (then `M10_RECORD_BUSY`). Eligible: frozen to a spec and ISC, no iQIES record id yet (an empty
+        // one is none, as before), and no item that is pending or already answered. A rejected original is never re-sent unchanged: it is
+        // fixed by a correction (a new signed row, which carries no item yet and so is picked up here) in a NEW batch. A
+        // cancelled item does not count, so the record is packaged again.
         const candidates = (await t
           .select()
           .from(ASSESS)
@@ -1954,31 +2007,18 @@ export function createDbHopeBackend(
               eq(ASSESS.organizationId, organizationId),
               eq(ASSESS.providerEntityId, providerEntityId),
               eq(ASSESS.status, "signed"),
+              isNotNull(ASSESS.specVersionId),
+              isNotNull(ASSESS.isc),
+              or(isNull(ASSESS.iqiesRecordId), eq(ASSESS.iqiesRecordId, "")),
+              sql`not exists (select 1 from ${SUBITEM} where ${SUBITEM.hopeAssessmentId} = ${ASSESS.id} and ${inArray(
+                SUBITEM.itemStatus,
+                ["pending", "accepted", "accepted_with_warnings", "rejected"],
+              )})`,
             ),
           )
           .orderBy(asc(ASSESS.signedAt), asc(ASSESS.id))) as AssessmentRow[];
         const eligible: AssessmentRow[] = [];
         for (const candidate of candidates) {
-          if (!candidate.specVersionId || !candidate.isc) continue;
-          const existing = await t
-            .select({ id: SUBITEM.id })
-            .from(SUBITEM)
-            .innerJoin(SUB, eq(SUB.id, SUBITEM.hopeSubmissionId))
-            .where(
-              and(
-                eq(SUBITEM.hopeAssessmentId, candidate.id),
-                // A rejected original is never re-sent unchanged: it is fixed by a correction (a new
-                // signed row, which carries no item yet and so is picked up here) in a NEW batch.
-                inArray(SUBITEM.itemStatus, [
-                  "pending",
-                  "accepted",
-                  "accepted_with_warnings",
-                  "rejected",
-                ]),
-              ),
-            )
-            .limit(1);
-          if (candidate.iqiesRecordId || existing[0]) continue;
           const validation = await validationService.validateAssessment({
             organizationId,
             assessmentId: candidate.id,

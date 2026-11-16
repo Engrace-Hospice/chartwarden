@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { CONFLICT_FIELD_ERROR } from "../hope-save-status";
 import {
   clientFor,
   item,
@@ -105,23 +106,26 @@ describe("Reconcile dialog on the real assessment screen: the HOPE answer save",
     );
   });
 
+  // A refusal or a stale page applied nothing, so the dialog shows the reason (g1-reconcile-definite-refusal.dom.test.tsx); only a save with
+  // no usable answer may have landed and is "could not confirm".
   it.each([
-    ["a refusal the server explained (422)", () => refusedByServer],
-    ["a stale version (409)", () => staleVersion],
-    ["an empty 503 with no body", () => emptyGatewayReply],
+    ["a refusal the server explained (422)", () => refusedByServer, "That value is not allowed."],
+    ["a stale version (409)", () => staleVersion, CONFLICT_FIELD_ERROR],
+    ["an empty 503 with no body", () => emptyGatewayReply, UNCONFIRMED],
     [
       "a request that is rejected",
       () => {
         throw new TypeError("Failed to fetch");
       },
+      UNCONFIRMED,
     ],
   ])(
     "does not say HOPE uses the chart's number when the save came back as %s",
-    async (_name, patch) => {
+    async (_name, patch, words) => {
       const { dialog } = await openReconcile(patch);
       fireEvent.click(useChartButton(dialog));
       const alert = await within(dialog).findByRole("alert");
-      expect(alert.textContent).toContain(UNCONFIRMED);
+      expect(alert.textContent).toContain(words);
       expect(within(dialog).queryByText(/HOPE now uses/)).toBeNull();
       // The failure took focus, and the button is the retry.
       expect(document.activeElement).toBe(alert);

@@ -2,6 +2,7 @@
 import type { ApiClient } from "@chartwarden/ui";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, type vi } from "vitest";
+import { CONFLICT_FIELD_ERROR } from "../hope-save-status";
 import {
   SESSION,
   assessment,
@@ -127,18 +128,23 @@ describe("Reconcile: use the chart's number in HOPE, when the save does not land
   }
   const patchOf = (client: ApiClient) => client.PATCH as unknown as ReturnType<typeof vi.fn>;
 
+  const UNCONFIRMED = /Could not confirm that the HOPE answer was saved/;
+  // A refusal or a stale page applied nothing, so the dialog shows its reason (g1-reconcile-definite-refusal.dom.test.tsx); only a save with
+  // no usable answer may have landed and is "could not confirm".
   it.each([
-    ["a stale version (409)", async () => refusal(409, "M10_VERSION_CONFLICT", "Changed.")],
-    ["a refusal (422)", async () => refusal(422, "VALIDATION_FAILED", "No.")],
-    ["a non-OK reply with no body", async () => emptyReply(502)],
-    ["a rejected request", () => Promise.reject(new TypeError("offline"))],
-  ])("does not say HOPE now uses the chart's number after %s", async (_name, answer) => {
+    [
+      "a stale version (409)",
+      async () => refusal(409, "M10_VERSION_CONFLICT", "Changed."),
+      CONFLICT_FIELD_ERROR,
+    ],
+    ["a refusal (422)", async () => refusal(422, "VALIDATION_FAILED", "No."), "No."],
+    ["a non-OK reply with no body", async () => emptyReply(502), UNCONFIRMED],
+    ["a rejected request", () => Promise.reject(new TypeError("offline")), UNCONFIRMED],
+  ])("does not say HOPE now uses the chart's number after %s", async (_name, answer, words) => {
     const client = clientFor({ workspace: workspaceWith("1EG4TE5MK73"), payers: [coverage] });
     patchOf(client).mockImplementationOnce(answer);
     const dialog = await useChartsNumber(client);
-    expect(
-      await within(dialog).findByText(/Could not confirm that the HOPE answer was saved/),
-    ).toBeTruthy();
+    expect(await within(dialog).findByText(words)).toBeTruthy();
     expect(within(dialog).queryByText(/HOPE now uses/)).toBeNull();
     // Not stuck busy: the clinician can press it again.
     await waitFor(() =>

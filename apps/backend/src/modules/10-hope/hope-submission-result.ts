@@ -16,6 +16,22 @@ export const RESULT_IMPORTABLE_STATUSES: readonly HopeSubmissionStatus[] = [
 export const isResultImportable = (status: string): boolean =>
   (RESULT_IMPORTABLE_STATUSES as readonly string[]).includes(status);
 
+/** The batch statuses that count as ACCEPTED by iQIES: every item accepted, with or without CMS warnings (the batch's
+ * `accepted_count` already counts a warning item as accepted: `deriveBatchOutcome`). */
+export const ACCEPTED_BATCH_STATUSES = [
+  "accepted",
+  "accepted_with_warnings",
+] as const satisfies readonly HopeSubmissionStatus[];
+
+/** The batch statuses iQIES has ANSWERED on (the acceptance-rate denominator and the M30 submission-posture rows): a
+ * queued or in-flight batch has no acceptance outcome yet. The dashboard and the M30 rollup read this one list so they
+ * cannot disagree on which batches count. */
+export const ANSWERED_BATCH_STATUSES = [
+  ...ACCEPTED_BATCH_STATUSES,
+  "rejected",
+  "partially_accepted",
+] as const satisfies readonly HopeSubmissionStatus[];
+
 /** Why a result cannot be recorded against a batch in `status` (the 409 code): never handed to CMS, cancelled
  * (R-08: it must never be uploaded or settled), or already settled. */
 export const resultRefusalCode = (status: string): M10ErrorCode =>

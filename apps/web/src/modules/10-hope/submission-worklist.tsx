@@ -40,6 +40,7 @@ import {
   submissionKpis,
   submissionLogCsv,
 } from "./submission-log";
+import { useFocusOnNewError } from "./use-focus-on-new-error";
 
 const MANAGE_PERMISSION = "hope.submission.manage";
 const PROVIDER_ENTITY_PAGE_SIZE = 100;
@@ -94,6 +95,9 @@ export function SubmissionWorklist(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const focusRef = useReloadFocus<HTMLDivElement>(loading);
   const [error, setError] = useState<string | null>(null);
+  // A refused (or unconfirmed) Generate takes focus: the button is disabled while the request is out, and Firefox and Safari drop
+  // focus from a disabled control to the document, leaving the keyboard user nowhere near the alert that was just announced.
+  const errorRef = useFocusOnNewError<HTMLDivElement>(error);
   const [readStatus, setReadStatus] = useState<ReadStatus>("ok");
   const canGenerate = useSession()?.permissions?.includes(MANAGE_PERMISSION) ?? false;
   const [providerEntities, setProviderEntities] = useState<ProviderEntityOption[]>([]);
@@ -363,10 +367,19 @@ export function SubmissionWorklist(): JSX.Element {
             </div>
           ) : null}
           {error ? (
-            <div role="alert" style={errorBannerStyle}>
+            <div ref={errorRef} tabIndex={-1} role="alert" style={errorBannerStyle}>
               <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
-                x
+              <button
+                type="button"
+                aria-label="Dismiss error"
+                onClick={() => {
+                  setError(null);
+                  // The banner (and this button) leave with the error: Generate is where the clinician was.
+                  generateGroupRef.current?.querySelector("button")?.focus();
+                }}
+                style={dismissButtonStyle}
+              >
+                <span aria-hidden="true">×</span>
               </button>
             </div>
           ) : null}

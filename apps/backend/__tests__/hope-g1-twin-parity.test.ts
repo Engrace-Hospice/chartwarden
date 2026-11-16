@@ -5,6 +5,9 @@
 //   - recordTimepoint: rfaKind 04_sfv is refused with the typed 422 before anything is recorded;
 //   - an id in another spelling of the same uuid names the same record (a uuid column compares case-insensitively), while an id
 //     that names nothing is still refused (hope-g3-twin-canonical-ids.test.ts covers the spellings more widely).
+// One case below is NOT parity: the twin refuses a timepoint on an admission it was not seeded with (it has no M6 seam to ask), a
+// guard the database backend's recordTimepoint does not have. The SFV completion's refusal IS the database's
+// (hope-g1-r6-twin-parity.test.ts compares the two messages).
 import { describe, expect, it } from "vitest";
 import { createInMemoryHopeBackend } from "../src/modules/10-hope/index";
 
@@ -140,7 +143,7 @@ describe("in-memory recordTimepoint — an RFA-04 SFV is not a timepoint", () =>
     expect((await svc.listPatientAssessments(ORG, PATIENT)).assessments).toHaveLength(1);
   });
 
-  it("an admission the M6 seam could not project is refused (M10_ADMISSION_PROJECTION_GAP), never recorded as an unscheduled timepoint", async () => {
+  it("(twin-only guard) a timepoint on an admission the twin was never seeded with is refused (M10_ADMISSION_PROJECTION_GAP), never recorded as an unscheduled timepoint", async () => {
     const svc = backend();
 
     const failure = await outcome(

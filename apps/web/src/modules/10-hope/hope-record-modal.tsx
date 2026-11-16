@@ -124,8 +124,19 @@ const CHOOSABLE_LATE_REASONS = LATE_REASONS.filter((r) => r !== "admin_override"
 const OVERRIDE_JUSTIFICATION_MIN = 20;
 const OVERRIDE_JUSTIFICATION_MAX = 1000;
 
-/** The visit date opens at the current time, so the clinician who records an earlier visit changes it instead of filing it as now. */
-const DEFAULT_DATE_HINT =
+/**
+ * The permission the server requires for `adminOverride` (hope-routes.ts `ADMIN_LATE_OVERRIDE`): a request that asks for the override
+ * without it is refused 403, after the clinician has typed a justification. A session known to lack it is not offered the control.
+ */
+const OVERRIDE_PERMISSION = "hope.admin.late_deadline_override";
+const OVERRIDE_NOT_PERMITTED =
+  "Only an administrator with override permission can record it. Ask one to record this visit.";
+/** What the refusal M10_TIMEPOINT_EXPIRED says to a clinician who cannot tick the override (instead of telling them to). */
+const OVERRIDE_NOT_PERMITTED_ASKED =
+  "This visit is past the late deadline, so recording it needs an administrative override. Only an administrator with override permission can give one: ask one to record this visit.";
+
+/** The visit date opens at the current time, so the clinician who records an earlier visit changes it instead of filing it as now. The capture form says the same. */
+export const DEFAULT_DATE_HINT =
   "Set to the current time. Change it if the visit took place at another time.";
 
 /** The entries could not be assembled into a request, so nothing was sent (unlike RECORD_UNCONFIRMED). */
@@ -190,9 +201,10 @@ const SPAN_ASKED_BY_CODE: Readonly<
 };
 
 /** The explanations above, so one that describes a control that has since gone can be told from any other error. */
-const ASKED_MESSAGES: ReadonlySet<string> = new Set(
-  Object.values(SPAN_ASKED_BY_CODE).map((asked) => asked.message),
-);
+const ASKED_MESSAGES: ReadonlySet<string> = new Set([
+  ...Object.values(SPAN_ASKED_BY_CODE).map((asked) => asked.message),
+  OVERRIDE_NOT_PERMITTED_ASKED,
+]);
 
 /** How strict a verdict is, to tell whether a refusal asks for more than the modal's own window did. */
 const STRICTNESS: Readonly<Record<CaptureSpan, number>> = {
@@ -291,6 +303,9 @@ export function HopeRecordModal({
   // The caller's OWN roles, resolved to the CMS discipline codes they may be attributed as. NOT a check
   // that they may record — §4.7 is the server's, and this is which discipline the capture is filed under.
   const authorRoles = useMemo(() => authorDisciplinesForRoles(session?.roles ?? []), [session]);
+  // Only a session KNOWN to lack the permission is refused the control: a session whose permissions are unknown leaves it to the server.
+  const canOverride =
+    session?.permissions === undefined || session.permissions.includes(OVERRIDE_PERMISSION);
 
   useEffect(() => {
     if (!open) return;
@@ -333,7 +348,7 @@ export function HopeRecordModal({
 
   // The override only exists past the late deadline: the checkbox is only offered there, so a tick left over from another
   // date is not sent, and cannot block a capture whose justification box is not on screen.
-  const overriding = span === "expired" && adminOverride;
+  const overriding = span === "expired" && adminOverride && canOverride;
   const justification = overrideJustification.trim();
   // The server wants a typed late reason on a late capture AND on an overridden expired one (M10_LATE_REASON_REQUIRED). A late
   // capture takes the clinician's choice; the override IS its own reason (`admin_override`), so nothing is asked twice.
@@ -430,7 +445,9 @@ export function HopeRecordModal({
       const asked = res.code === null ? undefined : SPAN_ASKED_BY_CODE[res.code];
       if (asked !== undefined && asksForMore(asked.span, windowSpan)) {
         setAskedSpan(asked.span);
-        setError(asked.message);
+        setError(
+          asked.span === "expired" && !canOverride ? OVERRIDE_NOT_PERMITTED_ASKED : asked.message,
+        );
         return;
       }
       setError(res.message);
@@ -578,15 +595,19 @@ export function HopeRecordModal({
               override, which the server records on the row; the late-completion reason is filed as
               "Admin Override".
             </p>
-            <label style={checkRow}>
-              <input
-                type="checkbox"
-                checked={adminOverride}
-                onChange={(e) => setAdminOverride(e.target.checked)}
-              />
-              <span>Record with administrative override</span>
-            </label>
-            {adminOverride ? (
+            {canOverride ? (
+              <label style={checkRow}>
+                <input
+                  type="checkbox"
+                  checked={adminOverride}
+                  onChange={(e) => setAdminOverride(e.target.checked)}
+                />
+                <span>Record with administrative override</span>
+              </label>
+            ) : (
+              <p style={meta}>{OVERRIDE_NOT_PERMITTED}</p>
+            )}
+            {canOverride && adminOverride ? (
               <TextAreaField
                 label="Justification for the override"
                 hint={`At least ${OVERRIDE_JUSTIFICATION_MIN} characters. It is recorded in the audit trail when the override is used.`}

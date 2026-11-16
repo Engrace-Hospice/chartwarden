@@ -70,6 +70,7 @@ import {
   runHopeWindowWatchdogCron,
   runSfvWatchdogCron,
 } from "../src/modules/10-hope/jobs/cron-workers";
+import { awaitParked } from "./_hope-busy-within";
 import { answerHopeForSign } from "./_hope-sign-ready";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
@@ -531,7 +532,7 @@ describe.skipIf(!DB_URL)(
     });
 
     describe("R-01 — SFV completion is bound to the URL admission", () => {
-      it("a caseload clinician cannot complete another admission's SFV: 409 NO_TRIGGER and nothing is written", async () => {
+      it("a caseload clinician cannot complete another admission's SFV: 409 NO_TRIGGER, no RFA-04, SFV change, answer or completed event", async () => {
         const victim = await openSfv();
         const own = await admitted(); // the attacker's own admission (P2/A2)
         grantCaseload(member.attacker, patientOf[own] as string);
@@ -884,7 +885,7 @@ describe.skipIf(!DB_URL)(
         });
       }
 
-      it("past due WITHOUT an override is a 409 M10_SFV_PAST_DUE and writes nothing", async () => {
+      it("past due WITHOUT an override is a 409 M10_SFV_PAST_DUE: no RFA-04, no audit row, and the SFV stays open", async () => {
         const s = await openSfv();
         const before = await snapshot();
         const res = await postSfv(s.adm, as(member.victim), s.draftId, {
@@ -1319,7 +1320,7 @@ describe.skipIf(!DB_URL)(
     });
 
     describe("service-level attestation, strict body, patient binding, parallel signs", () => {
-      it("signTimepoint and recordSfv refuse an unattested direct call (422) and write nothing", async () => {
+      it("signTimepoint and recordSfv refuse an unattested direct call (422): the draft stays a draft with no sign audit row, and the SFV stays open", async () => {
         const d = await signReadyDraft();
         await expect(svc.signTimepoint(ORG, member.victim, d.id)).rejects.toMatchObject({
           code: "M10_ATTESTATION_REQUIRED",
@@ -1342,7 +1343,7 @@ describe.skipIf(!DB_URL)(
         expect(await sfvRow(s.sfvId)).toEqual({ status: "open", completing_assessment_id: null });
       });
 
-      it('a coerced attestation ("true", 1) is a 422 on both signing routes and nothing is written', async () => {
+      it('a coerced attestation ("true", 1) is a 422 on both signing routes: the draft stays a draft and the SFV stays open', async () => {
         const d = await signReadyDraft();
         const s = await openSfv();
         for (const coerced of ["true", 1]) {
@@ -1927,7 +1928,7 @@ describe.skipIf(!DB_URL)(
         J: { J2053: { ...SFV_DATA.J.J2053, ...over } },
       });
 
-      it("still judges J2053 values against the newest HA spec's options (an invalid one is a 422 and nothing is written)", async () => {
+      it("still judges J2053 values against the newest HA spec's options (an invalid one is a 422: no RFA-04 is inserted and the SFV stays open)", async () => {
         const s = await unfrozenSfv();
         const rfa04Before = await rfa04Count();
 
@@ -1954,7 +1955,7 @@ describe.skipIf(!DB_URL)(
           (targetDay: string) => `effective_from = DATE '${targetDay}' + 1`,
         ],
       ])(
-        "a spec version that is %s is never the one that judges the values: with none in force the completion is refused and nothing is written",
+        "a spec version that is %s is never the one that judges the values: with none in force the completion is refused, no RFA-04 is inserted and the SFV stays open",
         async (_label, change) => {
           const s = await unfrozenSfv();
           const targetDay = (
@@ -2024,16 +2025,23 @@ describe.skipIf(!DB_URL)(
             data: SFV_DATA,
             attestationConfirmed: true,
           });
-          // Wait until the completion is parked on the SFV row lock the holder keeps.
-          for (let i = 0; i < 100; i += 1) {
-            const { rows } = await admin.query(
-              `SELECT 1 FROM pg_stat_activity
-                WHERE datname = current_database() AND pid <> pg_backend_pid()
-                  AND wait_event_type = 'Lock' AND query ILIKE '%"symptom_follow_up_visit"%'`,
-            );
-            if (rows.length > 0) break;
-            await new Promise((resolve) => setTimeout(resolve, 50));
-          }
+          // Wait until the completion is parked on the SFV row lock the holder keeps; never release it before then (a call that
+          // never parked would fail the clock-order assertion below with a message about the clock).
+          await awaitParked(
+            async () =>
+              (
+                await admin.query(
+                  `SELECT 1 FROM pg_stat_activity
+                    WHERE datname = current_database() AND pid <> pg_backend_pid()
+                      AND wait_event_type = 'Lock' AND query ILIKE '%"symptom_follow_up_visit"%'`,
+                )
+              ).rows.length > 0,
+            "recordSfv on the symptom_follow_up_visit row",
+          ).catch(async (error: unknown) => {
+            await holder.query("ROLLBACK");
+            await completing.catch(() => undefined); // let the call finish before the probe pool closes
+            throw error;
+          });
           const releasedAt = Date.now();
           await holder.query("ROLLBACK");
           await completing;
@@ -2062,7 +2070,7 @@ describe.skipIf(!DB_URL)(
     describe("the attestation wording version", () => {
       const WORDING_OLD = "1999-01-01.0";
 
-      it("a sign that names an older wording version is a 409 M10_ATTESTATION_STALE and writes nothing", async () => {
+      it("a sign that names an older wording version is a 409 M10_ATTESTATION_STALE: the draft stays a draft with no sign audit row", async () => {
         const d = await signReadyDraft();
         const audits = await auditCount(SIGN_AUDIT);
 
@@ -2152,7 +2160,7 @@ describe.skipIf(!DB_URL)(
     });
 
     describe("a real calendar date for the SFV completion", () => {
-      it("a Feb 30 target date is a 422, never rolled over to Mar 2, and writes nothing", async () => {
+      it("a Feb 30 target date is a 422, never rolled over to Mar 2: no RFA-04 is inserted and the SFV stays open", async () => {
         const s = await openSfv();
         const rfa04Before = await rfa04Count();
 

@@ -60,11 +60,12 @@ export function heldPatientSql(heldPatientIds: ReadonlySet<string>): {
 
 /** Fold every HOPE assessment + submission outcome for the org into one {@link HopePatientRetentionFacts} per
  * patient. `legalHold` is true for a patient named in `heldPatientIds` (the M4 hold's patients, in any spelling of the
- * uuid); the caller layers the org-wide hold on top. */
+ * uuid); the caller layers the org-wide hold on top. `heldPatientIds` has NO default on purpose: it is a safety input, and
+ * a default of "nobody is held" would flag held patients as eligible for destruction when a caller forgot it. */
 export async function hopeRetentionFactsForOrg(
   tx: DbClient,
   organizationId: string,
-  heldPatientIds: ReadonlySet<string> = new Set(),
+  heldPatientIds: ReadonlySet<string>,
 ): Promise<HopePatientRetentionFacts[]> {
   const held = heldPatientSql(heldPatientIds);
   if (held.ignored > 0) {

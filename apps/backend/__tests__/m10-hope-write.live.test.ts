@@ -1075,7 +1075,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
         await holder.query("ROLLBACK");
         await holder.end();
       }
-      // The refusal left nothing behind and the record is usable again once the lock is free.
+      // The refused patch left the version as it was, and the record is usable again once the lock is free.
       const reopened = await svc.getAssessmentWorkspace(ORG_A, id);
       expect(reopened.assessment.version).toBe(ws.assessment.version);
       await svc.patchAssessmentAnswers(
@@ -1086,7 +1086,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       );
     }, 30_000);
 
-    it("a patch naming a protected or unknown item is refused BEFORE it queues for any lock", async () => {
+    it("a patch naming a protected or unknown item is refused BEFORE it queues for the assessment lock", async () => {
       const id = await freshDraft();
       const ws = await svc.getAssessmentWorkspace(ORG_A, id);
       const holder = await holdAssessment(id);
@@ -1227,7 +1227,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       const row = (
         await admin.query("SELECT spec_version_id FROM hope_assessment WHERE id=$1", [id])
       ).rows[0];
-      expect(row.spec_version_id).toBeNull(); // nothing was frozen: the refusal left the draft as it was
+      expect(row.spec_version_id).toBeNull(); // the spec was not frozen: the refused read left that column as it was
     }, 30_000);
 
     it("two concurrent records of the same admission RFA converge on ONE draft", async () => {
@@ -1477,7 +1477,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect(itemsAfter.map((i) => i.iqies_validation_result)).toEqual(
         itemsBefore.map((i) => i.iqies_validation_result),
       );
-      // A cancel before upload is not an outbox event: nothing downstream (M30/M33) saw it go out.
+      // A cancel before upload is not an outbox event: the batch's own events are still only the queued one.
       expect(await eventsFor(first)).toEqual(["m10.hope.submission_queued"]);
 
       // The cancelled items no longer hold the unique pending slot: a new batch takes the same assessments.
@@ -1518,7 +1518,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect(row.acceptance_report.packageContentBase64).toEqual(expect.any(String));
     });
 
-    it("refuses after mark-uploaded (409) and for any non-packaged status; replay and a concurrent double cancel are safe", async () => {
+    it("refuses after mark-uploaded and for a rejected, queued, accepted or file_error batch (409 each); a replay and a concurrent double cancel both answer cancelled", async () => {
       const uploaded = await freshPackage();
       await svc.markSubmissionUploaded(ORG_A, memberOf[ORG_A]!, uploaded, {});
       expect(
@@ -1689,7 +1689,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       30_000,
     );
 
-    it("re-downloading an exported batch does not queue behind a lock on its row (only packaged->exported serialises)", async () => {
+    it("re-downloading an exported batch does not queue behind a lock on its row (only a download that advances packaged->exported takes the lock)", async () => {
       const id = await freshPackage();
       await svc.downloadSubmissionPackage(ORG_A, id); // packaged -> exported
       expect((await subRow(id)).status).toBe("exported");
@@ -1771,7 +1771,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       },
     );
 
-    it("the validation read refuses a submissionDate that does not exist before it reads anything", async () => {
+    it("the validation read refuses a submissionDate that does not exist (422)", async () => {
       const id = await seedSignedAssessment();
 
       const outcome = await errorCode(

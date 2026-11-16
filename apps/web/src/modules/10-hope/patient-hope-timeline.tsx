@@ -349,6 +349,8 @@ function PatientHopeTimelineView({ patientId }: { patientId: string | undefined 
           targetId={admissionId}
           onClose={() => setActing(null)}
           onDone={() => setReloadKey((k) => k + 1)}
+          // A 409 says the record changed under the clinician: re-read so the page stops offering what the server refused.
+          onConflict={() => setReloadKey((k) => k + 1)}
         />
       ) : null}
     </PatientWorkspaceLayout>

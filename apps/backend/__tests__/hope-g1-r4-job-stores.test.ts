@@ -102,10 +102,10 @@ describe("hopeRetentionFactsForOrg — legalHold is what the database answered",
     expect(facts.find((f) => f.patientId === OTHER_PATIENT)?.legalHold).toBe(false);
   });
 
-  it("with no hold given nobody is held", async () => {
+  it("with an empty hold set nobody is held", async () => {
     const { tx } = scriptedDb([[row(PATIENT, false)], []]);
 
-    const facts = await hopeRetentionFactsForOrg(tx, ORG);
+    const facts = await hopeRetentionFactsForOrg(tx, ORG, new Set());
 
     expect(facts.map((f) => f.legalHold)).toEqual([false]);
   });

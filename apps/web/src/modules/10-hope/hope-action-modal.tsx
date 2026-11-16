@@ -18,6 +18,7 @@ import {
   RECORD_BUSY_CODE,
   type WriteResult,
   cancelSubmission,
+  failedResultOutcomeUnknown,
   regenerateSchedules,
   requestSummaryPdf,
   skipSchedule,
@@ -74,7 +75,10 @@ export interface HopeActionModalProps {
   readonly onClose: () => void;
   /** Called after a successful commit so the caller can refresh without guessing at the new state. */
   readonly onDone: () => void;
-  /** The server said 409 (the record's state changed under the user): refresh so the page stops offering this action. */
+  /**
+   * The page behind the dialog may be out of date: the server said 409 (the record's state changed under the user), or the outcome could
+   * not be confirmed (no answer, a timeout, a faulting 5xx), so the action may have been applied. Refresh so the page shows what is true.
+   */
   readonly onConflict?: () => void;
 }
 
@@ -137,14 +141,18 @@ export function HopeActionModal({
       // A rejected request must free the dialog: `busy` would otherwise hold Cancel, Escape and the scrim shut for good.
       setBusy(false);
       setError(ACTION_UNCONFIRMED);
+      // No answer: the action may have been applied, and the words say to check the record, so the page is re-read.
+      notifyDone(() => onConflict?.());
       return;
     }
     setBusy(false);
     if (!res.ok) {
       setError(res.message); // the server's own reason (e.g. "already marked uploaded"), except where `refusalWordsOf` words it for a clinician
       // A 409 M10_RECORD_BUSY is a lock wait that timed out and the step was NOT applied: the page is not stale, so it is
-      // not re-read (the server's words say to send the request again). Any other 409 is the record having changed.
-      if (res.status === 409 && res.code !== RECORD_BUSY_CODE) notifyDone(() => onConflict?.());
+      // not re-read (the server's words say to send the request again). Any other 409 is the record having changed. An
+      // empty 5xx or a fault of the server's own may have been applied after all: re-read what the words say to check.
+      const changed = res.status === 409 && res.code !== RECORD_BUSY_CODE;
+      if (changed || failedResultOutcomeUnknown(res)) notifyDone(() => onConflict?.());
       return;
     }
     notifyDone(onDone, onClose);

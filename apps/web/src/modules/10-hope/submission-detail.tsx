@@ -14,7 +14,7 @@ import {
 // surfaces harden. Reads GET /api/v1/hope/submissions/:id via the typed client; the server enforces every
 // scope incl. PE scope (ADR-0030 — no authz on the frontend). Leaves only (@chartwarden/ui).
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { JSX } from "react";
+import type { JSX, RefObject } from "react";
 import { Link, useParams } from "react-router-dom";
 import { NameLabel, patientNameOf } from "../../shell/name-display";
 import { usePatientNames } from "../../shell/patient-names";
@@ -29,6 +29,7 @@ import {
   withRequestTimeout,
   writeSucceeded,
 } from "./hope-api";
+import { formatInstantDateTime } from "./hope-format";
 import { LoadingRegion, useRetryFocus } from "./hope-retry-focus";
 import { CANCEL_REASON_LABEL, SUBMISSION_TONE, rfaLabel, stateLabel } from "./hope-status";
 import { RecordCmsResultModal } from "./record-cms-result-modal";
@@ -158,12 +159,15 @@ export function SubmissionDetail(): JSX.Element {
     else if (hadUploadConfirm.current) markUploadedRef.current?.focus();
     hadUploadConfirm.current = confirmingUpload;
   }, [confirmingUpload]);
-  // After a mark-uploaded write ends without an error (so the alert has no focus to take), the button is where the clinician was.
-  const refocusAfterWrite = useRef(false);
+  const downloadRef = useRef<HTMLButtonElement>(null);
+  // After a download or mark-uploaded write ends without an error (so the alert has no focus to take), the button that was used is
+  // where the clinician was: it is disabled while the write is out, and Firefox and Safari drop focus from a disabled control.
+  const refocusAfterWrite = useRef<RefObject<HTMLButtonElement> | null>(null);
   useEffect(() => {
     if (busy || !refocusAfterWrite.current) return;
-    refocusAfterWrite.current = false;
-    if (!actionError) markUploadedRef.current?.focus();
+    const target = refocusAfterWrite.current;
+    refocusAfterWrite.current = null;
+    if (!actionError) target.current?.focus();
   }, [busy, actionError]);
   const canManage = useSession()?.permissions?.includes(MANAGE_PERMISSION) ?? false;
   // The control that was used can leave with the status it changed: when that leaves focus on the document, the note takes it.
@@ -246,6 +250,7 @@ export function SubmissionDetail(): JSX.Element {
 
   const downloadPackage = async (): Promise<void> => {
     if (!id || busy) return;
+    refocusAfterWrite.current = downloadRef;
     setBusy(true);
     setActionError(null);
     setNotice(null);
@@ -290,7 +295,7 @@ export function SubmissionDetail(): JSX.Element {
   const markUploaded = async (): Promise<void> => {
     if (!id || busy) return;
     setConfirmingUpload(false);
-    refocusAfterWrite.current = true;
+    refocusAfterWrite.current = markUploadedRef;
     setBusy(true);
     setActionError(null);
     setNotice(null);
@@ -354,6 +359,7 @@ export function SubmissionDetail(): JSX.Element {
                 />
                 {canManage && row.packageFilename && row.status !== "cancelled" ? (
                   <button
+                    ref={downloadRef}
                     type="button"
                     style={button}
                     onClick={() => void downloadPackage()}
@@ -506,7 +512,7 @@ export function SubmissionDetail(): JSX.Element {
             </dd>
             <dt style={dt}>Transmitted</dt>
             <dd style={dd} className="tabular-nums">
-              {row.transmittedAt ? row.transmittedAt.slice(0, 16).replace("T", " ") : "—"}
+              {row.transmittedAt ? formatInstantDateTime(row.transmittedAt) : "—"}
             </dd>
             <dt style={dt}>Transport</dt>
             <dd style={dd}>{row.transportMode ?? "manual_iqies_upload"}</dd>
@@ -521,19 +527,19 @@ export function SubmissionDetail(): JSX.Element {
             <dt style={dt}>Manual upload</dt>
             <dd style={dd}>
               {row.submittedAt
-                ? row.submittedAt.slice(0, 16).replace("T", " ")
+                ? formatInstantDateTime(row.submittedAt)
                 : isCancelled
                   ? "Never uploaded"
                   : "Awaiting iQIES upload"}
             </dd>
             <dt style={dt}>Accepted at</dt>
             <dd style={dd} className="tabular-nums">
-              {row.acceptedAt ? row.acceptedAt.slice(0, 16).replace("T", " ") : "—"}
+              {row.acceptedAt ? formatInstantDateTime(row.acceptedAt) : "—"}
             </dd>
             <dt style={dt}>CMS result recorded</dt>
             <dd style={dd} className="tabular-nums">
               {row.resultImportedAt
-                ? row.resultImportedAt.slice(0, 16).replace("T", " ")
+                ? formatInstantDateTime(row.resultImportedAt)
                 : isCancelled
                   ? "Not applicable"
                   : "Awaiting CMS result"}
@@ -544,7 +550,7 @@ export function SubmissionDetail(): JSX.Element {
               <>
                 <dt style={dt}>Cancelled</dt>
                 <dd style={dd}>
-                  {row.cancelledAt ? `${row.cancelledAt.slice(0, 16).replace("T", " ")} — ` : ""}
+                  {row.cancelledAt ? `${formatInstantDateTime(row.cancelledAt)} — ` : ""}
                   {CANCEL_REASON_LABEL[row.cancelReasonCode as keyof typeof CANCEL_REASON_LABEL] ??
                     "Reason not recorded"}
                 </dd>

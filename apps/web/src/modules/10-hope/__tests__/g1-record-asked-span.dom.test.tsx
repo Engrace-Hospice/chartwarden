@@ -7,6 +7,10 @@ import { SessionProvider } from "../../../shell/session";
 import { HopeRecordModal } from "../hope-record-modal";
 import { SESSION, ok } from "./workspace-test-kit";
 
+// A holder of the override permission: the server refuses `adminOverride` (403) from anyone else, so the modal offers the control only to
+// a session that is not known to lack it (g1-record-override-permission.dom.test.tsx).
+const OVERRIDE_SESSION = { ...SESSION, permissions: ["hope.admin.late_deadline_override"] };
+
 // Group g1: what the server's window refusal asks for is offered whenever it is STRICTER than the modal's own verdict (a client clock
 // behind the server, or a stored window that has since moved); the explanation of an added control goes when the control does; and the
 // visit date the modal opens with is said to be a default until the clinician edits it.
@@ -44,7 +48,7 @@ const FUTURE_WINDOW = () => windowAt(10, 20, 30);
 function mount(post: Mocked, window: ReturnType<typeof windowAt> | null = null) {
   const client = { GET: vi.fn(async () => ok({})), POST: post } as unknown as ApiClient;
   render(
-    <SessionProvider session={SESSION}>
+    <SessionProvider session={OVERRIDE_SESSION}>
       <ApiClientProvider client={client}>
         <HopeRecordModal
           open

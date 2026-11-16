@@ -899,7 +899,7 @@ export const HopeValidationResponseSchema = Type.Object({
     }),
   ),
 });
-/** Route 20 — the admin schedule-recompute result (rows touched). */
+/** Route 20 — the admin regenerate result: the admission's schedule count AFTER the missing windows were created. */
 export const HopeRegenerateResponseSchema = Type.Object({
   admissionId: Type.String(),
   scheduleCount: Type.Integer(),

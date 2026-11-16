@@ -93,7 +93,10 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
   const [completionDateSaving, setCompletionDateSaving] = useState(false);
   const [completionDateError, setCompletionDateError] = useState<string | null>(null);
   // A reply that arrives after the clinician has left the record must not act on it: the 30 s bound lets them leave while a
-  // create is out, and a late `navigate` would pull them away from wherever they went (as `useSfvSubmit` guards).
+  // create is out, and a late `navigate` would pull them away from wherever they went (as `useSfvSubmit` guards). Every check of
+  // it below stands before something observable beyond this screen (a navigation, a timeline lookup, a re-read); none guards a
+  // state update alone, which is a no-op after unmount on React 18. Each is covered by an unmount test in
+  // `use-hope-record-actions.dom.test.tsx` / `-g3` that fails without it.
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -187,7 +190,7 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
             signal,
           }),
         );
-        if (!mounted.current) return;
+        if (!mounted.current) return; // before the navigation to the new correction, and the lookup request
         const correctionId = (res.data as { id?: string } | undefined)?.id;
         if (correctionId) {
           setCorrectionOpen(false);
@@ -199,7 +202,7 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
         // reply, a rejection, a timeout) is not an empty timeline, so it never replaces the rows already on screen, and it
         // never replaces the create's own refusal with a "could not confirm" about a correction that was never created.
         const rows = await lookUpTimeline(assessment.patientId);
-        if (!mounted.current) return;
+        if (!mounted.current) return; // before the navigation to the draft another session started
         if (rows) setTimeline(rows);
         const existing = rows?.find((t) => t.correctsAssessmentId === id && t.status === "draft");
         if (existing) {
@@ -242,7 +245,7 @@ export function useHopeRecordActions<Row extends TimelineRow>(inputs: RecordActi
             signal,
           }),
         );
-        if (!mounted.current) return;
+        if (!mounted.current) return; // before `closeInactivation` and the navigation to the new inactivation
         if (!writeSucceeded(res)) {
           conflict = isStaleVersionRefusal(res);
           setInactivationError(

@@ -10,6 +10,10 @@ import { HopeRecordModal } from "../hope-record-modal";
 import { RecordCmsResultModal } from "../record-cms-result-modal";
 import { SESSION, ok, stubProperty } from "./workspace-test-kit";
 
+// A holder of the override permission: the server refuses `adminOverride` (403) from anyone else, so the modal offers the control only to
+// a session that is not known to lack it (g1-record-override-permission.dom.test.tsx).
+const OVERRIDE_SESSION = { ...SESSION, permissions: ["hope.admin.late_deadline_override"] };
+
 // The two write dialogs the worklists and the patient timeline share (skip / recompute / summary / cancel package, and
 // the recording modal). Each must free itself however its request ends, keep keyboard focus inside after a failure, and
 // survive a caller whose completion callback throws.
@@ -70,7 +74,7 @@ function renderRecord(
 ) {
   const onClose = handlers.onClose ?? vi.fn();
   render(
-    <SessionProvider session={SESSION}>
+    <SessionProvider session={OVERRIDE_SESSION}>
       <ApiClientProvider client={clientWith(post)}>
         <HopeRecordModal
           open

@@ -34,8 +34,7 @@ longer open now answers `409` (below). `POST /hope/submissions/assemble` can now
   `POST /hope/admin/regenerate-schedules` and the validation-finding writes. The destruction eraser takes its own per-patient
   advisory lock with no timeout. The background jobs have their own bound (below).
 - **Retrying a `409 M10_RECORD_BUSY` with an `Idempotency-Key` (POST, PUT and PATCH only).** On those routes the same Idempotency-Key
-  may be reused because the key is released (before this change the 409 was cached for 24 hours and a same-key retry replayed it
-  without running the write). The key is released only when nothing of the request had committed; if an earlier step of the request had
+  may be reused because the key is released. The key is released only when nothing of the request had committed; if an earlier step of the request had
   already committed (the spec freeze above), the 409 is kept and replayed on the same key, so check the current state and send the
   request again with a NEW Idempotency-Key. A GET (`.../workspace`, `.../review`, the package download) carries no Idempotency-Key and is
   never claimed or cached, so it is simply sent again.

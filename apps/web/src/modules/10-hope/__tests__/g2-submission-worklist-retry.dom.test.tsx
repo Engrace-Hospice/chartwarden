@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
@@ -38,8 +38,9 @@ beforeEach(() => {
   answerEntities = () => json(200, ENTITIES);
 });
 
-function mountWorklist() {
-  return render(
+/** A fresh tree each call: the API client is built anew, so rendering it again over a mounted one swaps the client. */
+function worklistTree() {
+  return (
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <SessionProvider
         session={{
@@ -59,9 +60,10 @@ function mountWorklist() {
           </MemoryRouter>
         </ToastProvider>
       </SessionProvider>
-    </ApiClientProvider>,
+    </ApiClientProvider>
   );
 }
+const mountWorklist = () => render(worklistTree());
 const generate = () =>
   screen.getByRole("button", { name: "Generate iQIES package" }) as HTMLButtonElement;
 const retryButton = () => screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
@@ -134,29 +136,35 @@ describe("the provider-entities Retry", () => {
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(generate()));
   });
+});
 
-  it("does not act on a reply that arrives after the screen is gone", async () => {
-    const unhandled = vi.fn();
-    process.on("unhandledRejection", unhandled);
-    try {
-      answerEntities = () => Promise.reject(new TypeError("offline"));
-      const view = mountWorklist();
-      await screen.findByText(new RegExp(FAILED_TEXT));
+// There is deliberately no "reply after the whole screen unmounted" test: React 18 emits no warning for a state update on an
+// unmounted component and the update is a no-op, so such a test passes with the `cancelled` check deleted (it did: checked).
+// A reply the screen has replaced while it stays mounted is the observable case: a new client restarts the read, and the first
+// read's late answer must not overwrite what the newer one found.
+describe("a provider-entities reply for a read the screen has since replaced", () => {
+  it.each([
+    ["empty list", () => json(200, { items: [] }), /No provider entity is available/],
+    ["failure", () => json(502, {}), new RegExp(FAILED_TEXT)],
+  ])("does not let a late %s replace what the newer read found", async (_name, late, said) => {
+    let settleFirst: (r: Response) => void = () => undefined;
+    answerEntities = () =>
+      new Promise<Response>((resolve) => {
+        settleFirst = resolve;
+      });
+    const view = mountWorklist();
+    await waitFor(() => expect(entityReads).toBe(1));
 
-      let release: (r: Response) => void = () => undefined;
-      answerEntities = () =>
-        new Promise<Response>((resolve) => {
-          release = resolve;
-        });
-      fireEvent.click(retryButton());
-      await waitFor(() => expect(entityReads).toBe(2));
-      view.unmount();
-      release(json(200, ENTITIES));
+    answerEntities = () => json(200, ENTITIES);
+    view.rerender(worklistTree());
+    await waitFor(() => expect(generate().disabled).toBe(false));
+    expect(entityReads).toBe(2);
+
+    await act(async () => {
+      settleFirst(late());
       await new Promise((resolve) => setTimeout(resolve, 20));
-
-      expect(unhandled).not.toHaveBeenCalled();
-    } finally {
-      process.off("unhandledRejection", unhandled);
-    }
+    });
+    expect(screen.queryByText(said)).toBeNull();
+    expect(generate().disabled).toBe(false);
   });
 });

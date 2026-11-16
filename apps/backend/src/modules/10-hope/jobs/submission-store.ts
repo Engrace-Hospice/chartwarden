@@ -234,7 +234,13 @@ export async function releaseSubmission(
     );
 }
 
-/** Record a successful transmit — the `planTransmitResult` projection, applied. */
+/**
+ * Record a successful transmit — the `planTransmitResult` projection, applied.
+ *
+ * The UPDATE names the status the caller claimed (`in_flight`, set by `claimSubmissionForTransmit` earlier in the SAME
+ * transaction, which holds the row lock), so it is re-judged against the row it writes instead of trusting the caller's
+ * protocol. Returns whether a row was written; `false` means nothing was recorded and the caller must not announce the transmit.
+ */
 export async function recordTransmit(
   tx: DbClient,
   organizationId: string,
@@ -245,8 +251,8 @@ export async function recordTransmit(
     readonly envelopeSha256: string;
     readonly transmittedAt: string;
   },
-): Promise<void> {
-  await tx
+): Promise<boolean> {
+  const rows = await tx
     .update(SUB)
     .set({
       iqiesBatchId: input.iqiesBatchId,
@@ -255,7 +261,15 @@ export async function recordTransmit(
       transmittedAt: new Date(input.transmittedAt),
       updatedAt: new Date(),
     })
-    .where(and(eq(SUB.id, input.submissionId), eq(SUB.organizationId, organizationId)));
+    .where(
+      and(
+        eq(SUB.id, input.submissionId),
+        eq(SUB.organizationId, organizationId),
+        eq(SUB.status, "in_flight"),
+      ),
+    )
+    .returning({ id: SUB.id });
+  return rows.length === 1;
 }
 
 /**
@@ -265,7 +279,8 @@ export async function recordTransmit(
  * is re-judged against the row it waited for: an item another writer already settled is not rewritten, and its assessment is
  * not stamped with a record id from a verdict that no longer stands. Returns whether the item was still pending; `false` means
  * nothing was written and the caller must not fold the batch as if this item had been answered. (The reconcile worker reads
- * the items behind `lockInFlightSubmission`, so every other writer of the batch is already serialised with it today.)
+ * the items behind `lockInFlightSubmission`, so a writer that takes the batch row lock is serialised with it; this predicate is
+ * what catches one that does not.)
  */
 export async function applyItemTransition(
   tx: DbClient,
@@ -311,7 +326,13 @@ export async function applyItemTransition(
   return true;
 }
 
-/** Fold the reconcile plan's batch-level outcome onto the `hope_submission` row. */
+/**
+ * Fold the reconcile plan's batch-level outcome onto the `hope_submission` row.
+ *
+ * The UPDATE names the status the caller judged (`in_flight`, behind `lockInFlightSubmission` in the same transaction), so it
+ * is re-judged against the row it writes. Returns whether a row was written; `false` means nothing was recorded and the
+ * caller must not announce the outcome.
+ */
 export async function recordReconcileOutcome(
   tx: DbClient,
   organizationId: string,
@@ -323,8 +344,8 @@ export async function recordReconcileOutcome(
     readonly acceptanceReport: unknown;
     readonly at: Date;
   },
-): Promise<void> {
-  await tx
+): Promise<boolean> {
+  const rows = await tx
     .update(SUB)
     .set({
       status: input.nextStatus,
@@ -337,7 +358,15 @@ export async function recordReconcileOutcome(
       acceptanceReport: input.acceptanceReport as never,
       updatedAt: input.at,
     })
-    .where(and(eq(SUB.id, input.submissionId), eq(SUB.organizationId, organizationId)));
+    .where(
+      and(
+        eq(SUB.id, input.submissionId),
+        eq(SUB.organizationId, organizationId),
+        eq(SUB.status, "in_flight"),
+      ),
+    )
+    .returning({ id: SUB.id });
+  return rows.length === 1;
 }
 
 /**

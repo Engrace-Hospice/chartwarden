@@ -11,7 +11,6 @@ import {
   type ReadStatus,
   StatusPill,
   WorkQueueLayout,
-  isoToLocalInput,
   settleRead,
   useApiClient,
   useReloadFocus,
@@ -33,6 +32,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link } from "react-router-dom";
 import { withRequestTimeout } from "./hope-api";
+import { formatInstantDateTime } from "./hope-format";
 import { completeSfvPath } from "./hope-paths";
 import { HopeListReadState } from "./hope-read-state";
 import { SFV_TONE, stateLabel } from "./hope-status";
@@ -48,9 +48,6 @@ interface SfvRow {
 }
 
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
-
-/** The instant the visit was triggered, as the viewer's own `YYYY-MM-DD HH:mm` (never the UTC wall time with no zone on it); the raw value when it cannot be read. */
-const triggeredAtLocal = (iso: string): string => isoToLocalInput(iso).replace("T", " ") || iso;
 
 export function SfvWorklist(): JSX.Element {
   const client = useApiClient();
@@ -119,6 +116,9 @@ export function SfvWorklist(): JSX.Element {
           row.triggeringAssessmentId,
           row.status,
           effectiveStatus,
+          // What the column shows (the viewer's zone), so the date the clinician sees is a date they can search; the raw
+          // instant still matches, for anyone who pastes one.
+          formatInstantDateTime(row.triggeredAt),
           row.triggeredAt,
           row.dueAt,
         ].some((value) => value.toLowerCase().includes(q));
@@ -326,7 +326,7 @@ export function SfvWorklist(): JSX.Element {
                             <span style={monoMutedStyle}>{s.id.slice(0, 8)}</span>
                           </div>
                         </td>
-                        <td className="tabular-nums">{triggeredAtLocal(s.triggeredAt)}</td>
+                        <td className="tabular-nums">{formatInstantDateTime(s.triggeredAt)}</td>
                         <td>
                           <CountdownChip
                             dueAt={s.dueAt}

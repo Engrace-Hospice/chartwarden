@@ -53,7 +53,8 @@ export function useSfvSubmit(inputs: SubmitInputs): {
   const [error, setError] = useState<SfvError | null>(null);
   const redirectToStepUp = useStepUpRedirect();
   // A reply that arrives after the dialog is gone must not act: a stale step-up answer would otherwise navigate the
-  // user away from wherever they went.
+  // user away from wherever they went. This guards only what is observable beyond the dialog (that navigation, and the
+  // parent's `onWordingChanged`); a state update after unmount is a no-op on React 18, so none is guarded.
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -91,19 +92,17 @@ export function useSfvSubmit(inputs: SubmitInputs): {
     } catch {
       // No answer at all (offline, timeout): the write may have committed. The client keeps its idempotency key,
       // so a retry is safe, but the clinician is told to check before trying again.
-      if (mounted.current) {
-        setSaving(false);
-        setError(SFV_UNCONFIRMED);
-      }
+      setSaving(false);
+      setError(SFV_UNCONFIRMED);
       return;
     }
     if (writeSucceeded(res)) {
       clearStepUpDraft(form.draftKey);
-      if (mounted.current) setSaving(false);
+      setSaving(false);
       await onCompleted();
       return;
     }
-    if (!mounted.current) return;
+    if (!mounted.current) return; // before the step-up navigation and `onWordingChanged` below
     setSaving(false);
     if (!isRefusalBody(res.error)) {
       // No refusal body to read. A 4xx was still an answer (refused, reason not given); anything else (an empty or

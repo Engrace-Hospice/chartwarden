@@ -11,6 +11,10 @@ import { HopeTimepointCapture } from "../hope-capture-workspace";
 import { HopeRecordModal } from "../hope-record-modal";
 import { SESSION, ok } from "./workspace-test-kit";
 
+// A holder of the override permission: the server refuses `adminOverride` (403) from anyone else, so the modal offers the control only to
+// a session that is not known to lack it (g1-record-override-permission.dom.test.tsx).
+const OVERRIDE_SESSION = { ...SESSION, permissions: ["hope.admin.late_deadline_override"] };
+
 // Group g1: the recording modal and the capture workspace. Each case pins a body the server would refuse or mis-file, or a
 // read that never ends, so it fails without the matching fix.
 
@@ -42,7 +46,7 @@ const EXPIRED_WINDOW = () => windowAt(-30, -20, -10);
 function renderRecord(post: Mocked, window: ReturnType<typeof windowAt> | null = null) {
   const client = { GET: vi.fn(async () => ok({})), POST: post } as unknown as ApiClient;
   render(
-    <SessionProvider session={SESSION}>
+    <SessionProvider session={OVERRIDE_SESSION}>
       <ApiClientProvider client={client}>
         <HopeRecordModal
           open

@@ -22,9 +22,13 @@ import {
 // real M10_SPEC_NOT_IN_FORCE text is replaced by words a clinician can act on; and the save header says "not confirmed" exactly
 // when the field and the alert say it could not be confirmed.
 
-/** The real 422 text of M10_SPEC_NOT_IN_FORCE (hope-spec-registry.ts): it contains "version" and an Idempotency-Key instruction. */
+/**
+ * A literal copy of the M10_SPEC_NOT_IN_FORCE 422 text in the backend's hope-spec-registry.ts when this was written. It is a fixture, not a
+ * contract: nothing here reads the message to decide anything (status and code do), so the tests hold for any wording that contains
+ * "version" and an Idempotency-Key instruction, which is what they need.
+ */
 const REAL_SPEC_NOT_IN_FORCE_TEXT =
-  "No HOPE spec version is in force for this record's target date. An administrator needs to load the spec version that covers it. The idempotency layer replays this 422 for 24 h on the same Idempotency-Key, so after the spec is loaded use a NEW Idempotency-Key.";
+  "No HOPE spec version is in force for this record's target date. An administrator needs to load the spec version that covers it. On POST, PUT and PATCH the idempotency layer replays this 422 for 24 h on the same Idempotency-Key, so after the spec is loaded use a NEW Idempotency-Key; a GET has no key.";
 
 type Mock = ReturnType<typeof vi.fn>;
 const refusal = (status: number, code: string, message: string) => ({

@@ -7,6 +7,10 @@ import { SessionProvider } from "../../../shell/session";
 import { HopeRecordModal } from "../hope-record-modal";
 import { SESSION, ok } from "./workspace-test-kit";
 
+// A holder of the override permission: the server refuses `adminOverride` (403) from anyone else, so the modal offers the control only to
+// a session that is not known to lack it (g1-record-override-permission.dom.test.tsx).
+const OVERRIDE_SESSION = { ...SESSION, permissions: ["hope.admin.late_deadline_override"] };
+
 // Group g1: a capture opened with no schedule window (the patient timeline's "Record timepoint") cannot judge the window itself,
 // so a refusal that asks for a late reason (M10_LATE_REASON_REQUIRED) or an override (M10_TIMEPOINT_EXPIRED) must give the
 // clinician the control that answers it, instead of repeating the server's sentence over a form that cannot.
@@ -25,7 +29,7 @@ const DAY = 24 * 60 * 60 * 1000;
 function render_(post: Mocked, window: Parameters<typeof HopeRecordModal>[0]["window"] = null) {
   const client = { GET: vi.fn(async () => ok({})), POST: post } as unknown as ApiClient;
   render(
-    <SessionProvider session={SESSION}>
+    <SessionProvider session={OVERRIDE_SESSION}>
       <ApiClientProvider client={client}>
         <HopeRecordModal
           open

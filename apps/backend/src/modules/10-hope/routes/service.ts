@@ -42,6 +42,7 @@ import type {
 import { normalizeDateText } from "../hope-answer-value";
 import { requireCalendarDateTime, requireCalendarTargetDate } from "../hope-calendar-date";
 import type { HopeReviewReadModel } from "../hope-readiness-service";
+import { sfvProjectionGapMessage } from "../hope-sfv-completion-guards";
 import {
   SFV_COMPLETION_INCOMPLETE_MESSAGE,
   buildCompletedSfvRegulatoryAnswerPlan,
@@ -681,14 +682,18 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
   const admissionStatuses = seed.admissionStatuses ?? {};
   const statusOfAdmission = (admissionId: string): string =>
     admissionStatuses[admissionId] ?? "active";
-  /** #45 — the subject of a HOPE record, never guessed. Mirrors the DB backend's `admissionPatient`. */
-  const patientOfAdmission = (admissionId: string): string => {
+  /**
+   * #45 — the subject of a HOPE record, never guessed. `recordSfv` passes the DB backend's own message
+   * (`resolveSfvAdmissionPatient`, via `sfvProjectionGapMessage`), so that refusal reads the same on both. The DB backend's
+   * `recordTimepoint` has NO such refusal (it reads the seam only for the admission / discharge dates and takes the patient
+   * from that summary or the schedule row), so on that route this is a twin-only guard: the twin has no seam to ask.
+   */
+  const patientOfAdmission = (
+    admissionId: string,
+    message = `Admission ${admissionId} could not be projected by the M6 status seam, so the subject of this HOPE record is unknown`,
+  ): string => {
     const patientId = admissionPatients[admissionId];
-    if (!patientId)
-      throw new HopeStateError(
-        "M10_ADMISSION_PROJECTION_GAP",
-        `Admission ${admissionId} could not be projected by the M6 status seam, so the subject of this HOPE record is unknown`,
-      );
+    if (!patientId) throw new HopeStateError("M10_ADMISSION_PROJECTION_GAP", message);
     return patientId;
   };
 
@@ -1035,7 +1040,10 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
           "a dependency this request needs is temporarily unavailable; retry the request",
         );
       }
-      const admissionPatient = patientOfAdmission(admissionId);
+      const admissionPatient = patientOfAdmission(
+        admissionId,
+        sfvProjectionGapMessage(admissionId),
+      );
       // The SFV must belong to the URL admission (the one `hope.scope` verified). A foreign SFV is
       // indistinguishable from a nonexistent one, and this lookup precedes every status guard below.
       const sfv = [...sfvs.values()].find(
@@ -1933,26 +1941,39 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       );
       const at = now();
       const findings: HopeSubmissionFindingView[] = [];
-      // One report row per finding: the worst outcome per assessment wins, independent of row order.
-      const worst = new Map<string, ReturnType<typeof classifyCmsResult>>();
+      // One report row per finding: the worst outcome per assessment wins, independent of row order, and the WINNING row
+      // (the first one that reached that outcome) alone supplies the record id, as in the DB backend: a rejected item never
+      // takes the iQIES record id of an accepted row of the same assessment.
+      const worst = new Map<
+        string,
+        { status: ReturnType<typeof classifyCmsResult>; raw: Record<string, unknown> }
+      >();
       for (const raw of args.results) {
         const status = classifyCmsResult(raw);
         const current = itemOf(raw);
-        if (current && !isSettledItemStatus(current.status) && status !== "pending")
-          worst.set(
-            current.assessmentId,
-            worstOutcome(worst.get(current.assessmentId) ?? status, status),
-          );
+        const prev = current ? worst.get(current.assessmentId) : undefined;
+        if (
+          current &&
+          !isSettledItemStatus(current.status) &&
+          status !== "pending" &&
+          (!prev || worstOutcome(prev.status, status) === status)
+        )
+          worst.set(current.assessmentId, {
+            status,
+            raw: prev?.status === status ? prev.raw : raw,
+          });
+      }
+      for (const item of r.items) {
+        const winner = worst.get(item.assessmentId);
+        if (!winner) continue;
+        item.status = winner.status;
+        item.processedAt = at;
+        if (typeof winner.raw.iqiesRecordId === "string")
+          item.iqiesRecordId = winner.raw.iqiesRecordId;
       }
       for (const raw of args.results) {
         const item = itemOf(raw);
         const resultStatus = classifyCmsResult(raw);
-        const merged = item ? worst.get(item.assessmentId) : undefined;
-        if (item && merged && merged !== "pending") {
-          item.status = merged;
-          item.processedAt = at;
-          if (typeof raw.iqiesRecordId === "string") item.iqiesRecordId = raw.iqiesRecordId;
-        }
         const code = typeof raw.code === "string" ? raw.code : null;
         const itemCode = typeof raw.itemCode === "string" ? raw.itemCode : null;
         const message = typeof raw.message === "string" ? raw.message : null;

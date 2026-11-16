@@ -41,7 +41,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { HopeDischargeReason, HopeRfaKind } from "@chartwarden/types";
 import { type ConnectionOptions, Worker } from "bullmq";
 import { lockRecordKey } from "../hope-assessment-lock";
-import { canonicalUuidOrNull, sameUuid } from "../hope-uuid";
+import { canonicalUuidOrNull } from "../hope-uuid";
 import { runHopeAssessmentValidation } from "../validation/run-validation";
 import { assemblableAssessmentsForOrg, persistAssembledSubmission } from "./assemble-store";
 import { DeadlineError, M10_SEAM_READ_TIMEOUT_MS, withinDeadline } from "./deadline";
@@ -55,6 +55,7 @@ import {
   updateRetentionReview,
 } from "./retention-store";
 import {
+  type ReconcileItemOutcome,
   type SubmissionItemValidation,
   buildSubmissionEnvelope,
   decideSubmitReadiness,
@@ -185,6 +186,62 @@ class ReconcileItemNotPendingError extends Error {
     super("a reconcile transition met an item that was no longer pending");
     this.name = "ReconcileItemNotPendingError";
   }
+}
+
+/** A recorder's UPDATE matched no `in_flight` batch (it changed status under the lock this transaction held). Logged by class (see `describeError`); the warning before it names the ids. */
+class SubmissionNotInFlightError extends Error {
+  constructor() {
+    super("a submission recorder met a batch that was no longer in flight");
+    this.name = "SubmissionNotInFlightError";
+  }
+}
+
+/**
+ * The acceptance report's rows for ONE batch, folded to one outcome per assessment, keyed on the DATABASE's assessment id.
+ * A report is an external payload: the adapter spells an id its own way, and a report may name one assessment more than once
+ * (the same id twice, or in two spellings). Each assessment gets ONE outcome, so the plan holds one transition per item and
+ * a batch is judged answered by distinct assessments. The worst outcome wins whatever the row order, as in the manual import
+ * (a rejection beats an acceptance, and the findings of every rejecting row are kept, a finding repeated verbatim once); of two
+ * acceptances the first stands.
+ * A row that names none of the batch's pending items (`dbIdByCanonical` has no entry for it) is left out.
+ */
+function foldReportOutcomes(
+  reportItems: readonly ReconcileItemOutcome[],
+  dbIdByCanonical: ReadonlyMap<string, string>,
+): {
+  readonly byAssessment: ReadonlyMap<string, ReconcileItemOutcome>;
+  readonly repeatedRows: number;
+} {
+  const byAssessment = new Map<string, ReconcileItemOutcome>();
+  let matchedRows = 0;
+  for (const row of reportItems) {
+    const hopeAssessmentId = dbIdByCanonical.get(
+      canonicalUuidOrNull(row.hopeAssessmentId) ?? row.hopeAssessmentId,
+    );
+    if (hopeAssessmentId === undefined) continue;
+    matchedRows += 1;
+    const prior = byAssessment.get(hopeAssessmentId);
+    if (prior === undefined) {
+      byAssessment.set(hopeAssessmentId, { ...row, hopeAssessmentId });
+    } else if (row.outcome === "rejected") {
+      byAssessment.set(
+        hopeAssessmentId,
+        prior.outcome === "rejected"
+          ? {
+              ...prior,
+              findings: [
+                ...prior.findings,
+                ...row.findings.filter(
+                  (f) =>
+                    !prior.findings.some((p) => p.ruleId === f.ruleId && p.message === f.message),
+                ),
+              ],
+            }
+          : { ...row, hopeAssessmentId },
+      );
+    }
+  }
+  return { byAssessment, repeatedRows: matchedRows - byAssessment.size };
 }
 
 /**
@@ -385,14 +442,21 @@ export async function runAssembleSubmissionCron(deps: M10WorkerDeps): Promise<As
               `m10: ${scan.unsitedAssessmentIds.length} signed assessment(s) in organization ${organizationId} have no provider entity and cannot be batched for iQIES.`,
             );
           }
-          // The read above is unlocked: it only says WHICH provider entities have work. Each is then assembled behind the
+          // The read above is unlocked: it only says WHICH provider entities have work, by the rule `planAssembleSubmissions`
+          // applies (a candidate already on an active item, or already carrying an iQIES record, is a skip and batches nothing),
+          // so an entity whose signed records all sit on a batch takes no key: the key is held to the end of this org's
+          // transaction and would make the manual route wait for no work. Each is then assembled behind the
           // advisory key the manual route takes for the same entity (`m10:assemble:<org>`), and its candidates are read
           // AGAIN behind that key, so a tick that overlaps another tick or `POST /hope/submissions/assemble` waits (at most
           // `M10_LOCK_TIMEOUT_MS`, then fails this org, logged) and then sees the winner's pending items as skips, instead of
           // inserting a second item for the same assessment (23505 on `uniq_hope_sub_item_assessment_active`, which would
           // roll back every batch of this org). Entities in a stable order, so two ticks cannot lock them crosswise.
           const providerEntityIds = [
-            ...new Set(scan.eligible.map((e) => e.providerEntityId)),
+            ...new Set(
+              scan.eligible
+                .filter((e) => !e.hasActiveSubmissionItem && e.iqiesRecordId == null)
+                .map((e) => e.providerEntityId),
+            ),
           ].sort();
           for (const providerEntityId of providerEntityIds) {
             await lockRecordKey(t, `m10:assemble:${organizationId}`, providerEntityId);
@@ -715,13 +779,22 @@ export async function runIqiesSubmitCron(deps: M10WorkerDeps): Promise<SubmitTic
                 envelopeSha256: sha,
                 transmittedAt: result.transmittedAt,
               });
-              await recordTransmit(t, organizationId, {
+              const recorded = await recordTransmit(t, organizationId, {
                 submissionId: plan.submissionId,
                 iqiesBatchId: plan.iqiesBatchId,
                 envelopeStorageUri: plan.envelopeStorageUri,
                 envelopeSha256: plan.envelopeSha256,
                 transmittedAt: plan.transmittedAt,
               });
+              if (recorded === false) {
+                // The claim's row lock is held to the end of this transaction, so the batch should still be `in_flight`; a
+                // miss means something else wrote it. Not announced as transmitted. The rethrow rolls this transaction back
+                // (the batch may already have reached iQIES; a retry carries the SAME correlation id).
+                console.warn(
+                  `m10: iqies-submit-worker found submission ${batch.submissionId} (org ${organizationId}) no longer in flight when its transmit was recorded; the batch was rolled back and nothing was announced.`,
+                );
+                throw new SubmissionNotInFlightError();
+              }
               await deps.outbox.publish(t, {
                 eventName: plan.event.eventName,
                 payload: plan.event.payload,
@@ -839,21 +912,11 @@ export async function runIqiesReconcileCron(deps: M10WorkerDeps): Promise<Reconc
                 i.hopeAssessmentId,
               ]),
             );
-            const outcomes = report.items.flatMap((i) => {
-              const hopeAssessmentId = dbIdByCanonical.get(
-                canonicalUuidOrNull(i.hopeAssessmentId) ?? i.hopeAssessmentId,
-              );
-              return hopeAssessmentId === undefined
-                ? []
-                : [
-                    {
-                      hopeAssessmentId,
-                      outcome: i.outcome,
-                      iqiesRecordId: i.iqiesRecordId,
-                      findings: i.findings,
-                    },
-                  ];
-            });
+            const { byAssessment: reportedBy, repeatedRows } = foldReportOutcomes(
+              report.items,
+              dbIdByCanonical,
+            );
+            const outcomes = [...reportedBy.values()];
             if (outcomes.length === 0) {
               // The report named none of this batch's pending items. Leave everything alone rather than
               // folding an empty plan, which `planReconcile` would score as a wholly accepted batch. Said in the log: a
@@ -863,14 +926,16 @@ export async function runIqiesReconcileCron(deps: M10WorkerDeps): Promise<Reconc
               );
               return;
             }
+            if (repeatedRows > 0) {
+              // Ids only: the rows' content is the external payload. One outcome per assessment was applied (see `foldReportOutcomes`).
+              console.warn(
+                `m10: iqies-reconcile-worker: the acceptance report for submission ${batch.submissionId} (org ${organizationId}) repeated ${repeatedRows} row(s): an assessment of its pending items was named more than once; one outcome per assessment was applied, a rejection winning over an acceptance.`,
+              );
+            }
             const plan = planReconcile({ submissionId: batch.submissionId, outcomes });
 
             for (const transition of plan.itemTransitions) {
-              const reported = report.items.find(
-                (i) =>
-                  i.hopeAssessmentId === transition.hopeAssessmentId ||
-                  sameUuid(i.hopeAssessmentId, transition.hopeAssessmentId),
-              );
+              const reported = reportedBy.get(transition.hopeAssessmentId);
               // `planReconcile` only emits accepted / rejected / pending; the item-status union was widened
               // by the manual-iQIES phase (accepted_with_warnings, blocked, unmatched) after this was written.
               const itemTransition = transition as Parameters<typeof applyItemTransition>[3];
@@ -882,8 +947,9 @@ export async function runIqiesReconcileCron(deps: M10WorkerDeps): Promise<Reconc
                 { outcome: reported?.outcome ?? null, findings: reported?.findings ?? [] },
               );
               if (applied === false) {
-                // Unreachable behind the batch lock, so a settled item here means something wrote it without the lock. Folding
-                // the batch over it would score an answer nobody recorded: fail this batch (rolled back, logged with ids).
+                // The outcomes are one per assessment and the pending items were read behind the batch lock, so a settled item here
+                // can only mean a writer that took no lock wrote it meanwhile. Folding the batch over it would score an answer
+                // nobody recorded: fail this batch (rolled back, logged with ids).
                 console.warn(
                   `m10: iqies-reconcile-worker found the item of assessment ${transition.hopeAssessmentId} in submission ${batch.submissionId} (org ${organizationId}) no longer pending; the batch was rolled back and left in flight.`,
                 );
@@ -917,11 +983,11 @@ export async function runIqiesReconcileCron(deps: M10WorkerDeps): Promise<Reconc
               }
             }
 
-            // Only a batch whose every pending item was answered reaches a terminal status; a partial
-            // report leaves it `in_flight` for the next tick.
-            const answeredAll = outcomes.length === items.length;
+            // Only a batch whose every pending item was answered reaches a terminal status; a partial report leaves it
+            // `in_flight` for the next tick. Counted on distinct assessments: `outcomes` has one per assessment.
+            const answeredAll = outcomes.length === dbIdByCanonical.size;
             if (answeredAll) {
-              await recordReconcileOutcome(t, organizationId, {
+              const recorded = await recordReconcileOutcome(t, organizationId, {
                 submissionId: batch.submissionId,
                 nextStatus: plan.nextStatus,
                 acceptedCount: plan.acceptedCount,
@@ -929,6 +995,14 @@ export async function runIqiesReconcileCron(deps: M10WorkerDeps): Promise<Reconc
                 acceptanceReport: { iqiesBatchId: report.iqiesBatchId, items: report.items },
                 at: now,
               });
+              if (recorded === false) {
+                // The batch row has been locked since the status check above, so it should still be `in_flight`; a miss means
+                // something else wrote it. Nothing is announced and this batch's writes roll back with the rethrow.
+                console.warn(
+                  `m10: iqies-reconcile-worker found submission ${batch.submissionId} (org ${organizationId}) no longer in flight when its outcome was recorded; the batch was rolled back and nothing was announced.`,
+                );
+                throw new SubmissionNotInFlightError();
+              }
               for (const event of plan.events) {
                 await deps.outbox.publish(t, {
                   eventName: event.eventName,

@@ -23,6 +23,7 @@ import {
   J2051_SEVERITY_ORDER,
 } from "@chartwarden/types";
 import { and, count, eq, gte, inArray, isNull, lt } from "drizzle-orm";
+import { ANSWERED_BATCH_STATUSES } from "../hope-submission-result";
 
 // ── intermediate row projections (the provider reduces these to counts; never crosses the seam) ──────────
 
@@ -195,7 +196,7 @@ export function createDrizzleHopeOrgRollupStore(db: DbClient): HopeOrgRollupStor
           .where(
             and(
               eq(SUB.organizationId, organizationId),
-              inArray(SUB.status, ["accepted", "rejected", "partially_accepted"]),
+              inArray(SUB.status, [...ANSWERED_BATCH_STATUSES]),
               gte(SUB.transmittedAt, new Date(period.from)),
               lt(SUB.transmittedAt, new Date(period.to)),
             ),

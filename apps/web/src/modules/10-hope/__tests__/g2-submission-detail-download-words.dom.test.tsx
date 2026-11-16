@@ -33,8 +33,10 @@ const DETAIL = {
 };
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+// An integrator-facing refusal text of the same shape as the backend's (an Idempotency-Key instruction). A fixture, not the exact words:
+// the screen words these codes itself and never reads the message.
 const INTEGRATOR_TEXT =
-  "No HOPE spec version is in force. The idempotency layer replays this 422 for 24 h on the same Idempotency-Key, so use a NEW Idempotency-Key.";
+  "No HOPE spec version is in force. On POST, PUT and PATCH the idempotency layer replays this 422 for 24 h on the same Idempotency-Key, so use a NEW Idempotency-Key; a GET has no key.";
 
 async function pageFetch(input: RequestInfo | URL): Promise<Response> {
   const request = input instanceof Request ? input : null;

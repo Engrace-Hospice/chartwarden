@@ -36,3 +36,26 @@ export async function busyWithin(
     await holder.end();
   }
 }
+
+/** 100 polls 50 ms apart: the budget the live suites' inline "is it parked yet" loops each carried. */
+export const PARKED_POLL_ATTEMPTS = 100;
+export const PARKED_POLL_INTERVAL_MS = 50;
+
+/**
+ * Wait until `isParked` reports that the statement under test is waiting on a lock. THROWS when it never does, naming `what`:
+ * a poll that falls through would release the holder before the call queued, so the ordering the test exists to prove would be
+ * silently dropped (or the assertion after it would fail with a message about something else). `sleep` is injectable so the
+ * failure path is unit-testable without waiting 5 s (hope-g1-r6-await-parked.test.ts).
+ */
+export async function awaitParked(
+  isParked: () => Promise<boolean>,
+  what: string,
+  sleep: (ms: number) => Promise<unknown> = (ms) =>
+    new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<void> {
+  for (let attempt = 1; ; attempt += 1) {
+    if (await isParked()) return;
+    if (attempt >= PARKED_POLL_ATTEMPTS) throw new Error(`${what} never became blocked on a lock`);
+    await sleep(PARKED_POLL_INTERVAL_MS);
+  }
+}

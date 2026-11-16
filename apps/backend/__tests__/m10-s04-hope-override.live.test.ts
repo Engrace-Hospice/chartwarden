@@ -21,6 +21,8 @@
  *   - a failed / unacknowledged iQIES submission is never `accepted`: packaging, upload, a silent or
  *     unrecognised report and a mixed report all stay short of accepted, a rejection surfaces on the batch,
  *     the outbox and the compliance rate, and the results route needs `hope.submission.manage`.
+ *   - a batch accepted WITH warnings counts as accepted on the compliance rate; a URL id that is no uuid is a 404 (an empty
+ *     list for a patient), never a 22P02 out of the ABAC loaders or the by-id reads.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m10:s04-override:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -807,6 +809,26 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       expect(dash.submissionAcceptanceCounts.total).toBeGreaterThan(0);
     });
 
+    it("a batch iQIES accepted with warnings is accepted on the compliance rate (in both halves of the ratio)", async () => {
+      const before = await svc.complianceDashboard(ORG, provider);
+      const a = await signedAssessment();
+      const b = await batch("submitted_pending_result", [a]);
+      const res = await postResults(b, as(member.compliance, "compliance_officer"), [
+        { assessmentId: a, status: "accepted_with_warnings", code: "W-100", message: "advisory" },
+      ]);
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        status: "accepted_with_warnings",
+        acceptedCount: 1,
+        rejectedCount: 0,
+      });
+      const after = await svc.complianceDashboard(ORG, provider);
+      expect(after.submissionAcceptanceCounts).toEqual({
+        accepted: before.submissionAcceptanceCounts.accepted + 1,
+        total: before.submissionAcceptanceCounts.total + 1,
+      });
+    });
+
     it("an unrecognised or empty report row leaves the batch pending: never guessed accepted", async () => {
       const a = await signedAssessment();
       const b = await batch("submitted_pending_result", [a]);
@@ -875,6 +897,50 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
         { assessmentId: settled, status: "accepted" },
       ]);
       expect(await status(sb)).toBe("rejected");
+    });
+  });
+
+  describe("an id in the URL that is no uuid is a 404 (or an empty list), never a 22P02 / 500", () => {
+    const NOT_A_UUID = "not-a-uuid";
+
+    it.each([
+      ["an assessment", `/api/v1/hope/assessments/${NOT_A_UUID}`, () => as(member.viewer)],
+      ["a schedule", `/api/v1/hope/schedules/${NOT_A_UUID}`, () => as(member.viewer)],
+      ["an SFV", `/api/v1/hope/sfv/${NOT_A_UUID}`, () => as(member.viewer)],
+      [
+        "a submission",
+        `/api/v1/hope/submissions/${NOT_A_UUID}`,
+        () => as(member.compliance, "compliance_officer"),
+      ],
+    ])(
+      "GET %s by a non-uuid id answers 404 (the ABAC loader answers absent)",
+      async (_name, url, headers) => {
+        const res = await app.inject({ method: "GET", url, headers: headers() });
+
+        expect(res.statusCode).toBe(404);
+      },
+    );
+
+    it("a patient id that is no uuid has no assessments (200, empty), not a cast", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/patients/${NOT_A_UUID}/hope/assessments`,
+        headers: as(member.viewer),
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ assessments: [] });
+    });
+
+    it("the service answers the same without the route: reads are a NotFoundError, the loaders null", async () => {
+      await expect(svc.getAssessment(ORG, NOT_A_UUID)).rejects.toMatchObject({ statusCode: 404 });
+      await expect(svc.getSchedule(ORG, NOT_A_UUID)).rejects.toMatchObject({ statusCode: 404 });
+      await expect(svc.getSfv(ORG, NOT_A_UUID)).rejects.toMatchObject({ statusCode: 404 });
+      await expect(svc.getSubmission(ORG, NOT_A_UUID)).rejects.toMatchObject({ statusCode: 404 });
+      expect(await svc.loadAssessment(ORG, NOT_A_UUID)).toBeNull();
+      expect(await svc.loadSchedule(ORG, NOT_A_UUID)).toBeNull();
+      expect(await svc.loadSfv(ORG, NOT_A_UUID)).toBeNull();
+      expect(await svc.loadSubmission(ORG, NOT_A_UUID)).toBeNull();
     });
   });
 

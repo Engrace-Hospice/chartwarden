@@ -57,8 +57,6 @@ function backend(outcomes: Parameters<typeof scriptedDb>[0]) {
 }
 
 describe("assembleSubmission — parallel assembles of one provider entity serialise before any candidate is read", () => {
-  const candidate = { id: CANONICAL, specVersionId: "spec-1", isc: "HA", iqiesRecordId: null };
-
   it("takes the advisory key on the canonical provider entity id as its FIRST statement, before the candidate read", async () => {
     // candidate read -> none, so the call ends at its 409 right after the first read
     const { svc, statements, indexOf } = backend([[]]);
@@ -75,8 +73,9 @@ describe("assembleSubmission — parallel assembles of one provider entity seria
   });
 
   it("the loser of two parallel assembles re-reads after the winner committed and gets the 409 'nothing eligible', not a 500", async () => {
-    // after the lock: the signed candidate, and the winner's committed pending item for it
-    const { svc } = backend([[candidate], [{ id: "winners-item" }]]);
+    // after the lock the candidate SELECT itself leaves out the record the winner committed a pending item for
+    // (its `not exists` test), so it returns no row
+    const { svc } = backend([[]]);
 
     const failure = await outcome(svc.assembleSubmission(ORG, SPELLED));
 
@@ -221,7 +220,7 @@ describe("the provider-entity filter is the database's, on the canonical id", ()
 
     const view = await svc.complianceDashboard(ORG, SPELLED);
 
-    expect(view.providerEntityId).toBe(SPELLED);
+    expect(view.providerEntityId).toBe(CANONICAL); // echoed as Postgres writes it, like regenerateSchedules
     const wheres = filterOf(statements);
     expect(wheres).toHaveLength(3);
     for (const where of wheres) {

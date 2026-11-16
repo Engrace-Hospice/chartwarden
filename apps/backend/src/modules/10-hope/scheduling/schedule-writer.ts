@@ -11,8 +11,8 @@
 //
 // Two callers share it: the `m6.admission.activated` / `m6.admission.discharged` outbox consumer
 // (../outbox-consumers/m6-admission-scheduling.ts — the normal path), and the §4.1 route 20 admin
-// regenerate, which is how an operator materializes windows for an admission that was activated before
-// this shipped or whose dates were corrected after the fact.
+// regenerate, which is how an operator materializes the windows an admission still lacks (one activated before
+// this shipped, or one that never got them). It creates what is missing and never moves an existing window.
 //
 // FAILS CLOSED — an admission the M6 seam cannot project, or one still missing its provider entity /
 // location, throws. `hope_timepoint_schedule.provider_entity_id` / `.location_id` are NOT NULL precisely
@@ -59,8 +59,8 @@ function gap(message: string): never {
 /**
  * What the regenerate route's client is told after an admission that cannot be projected: the idempotency layer replays
  * a 422 for 24 h on the same key, so the retry needs a new one. The SFV completion route's gap message ends the same way
- * (hope-sfv-completion-guards.ts); keep the two sentences identical. A consumer delivery has no key and dead-letters the
- * message as it stands.
+ * (hope-sfv-completion-guards.ts); keep the two sentences identical. Only a REQUEST has a key to renew: the outbox consumer
+ * calls {@link schedulingSitingFor} without `requestRetryNote`, so the message it dead-letters carries no such advice.
  */
 const ADMISSION_REPAIRED_RETRY_NOTE =
   "Once the admission is repaired, send the request again with a NEW Idempotency-Key (the idempotency layer replays this 422 for 24 h on the same key).";
@@ -128,17 +128,20 @@ export async function schedulingSitingFor(
   organizationId: string,
   admissionId: string,
   resolve: AdmissionSitingResolver = seamAdmissionSitingResolver,
+  options: {
+    /** Append {@link ADMISSION_REPAIRED_RETRY_NOTE}: set by the request path (route 20), never by a consumer delivery. */
+    readonly requestRetryNote?: boolean;
+  } = {},
 ): Promise<SchedulingSiting> {
+  const retryNote = options.requestRetryNote ? ` ${ADMISSION_REPAIRED_RETRY_NOTE}` : "";
   const facts = await resolve(organizationId, admissionId);
   if (!facts) {
-    gap(
-      `Admission ${admissionId} is not visible in this organization. ${ADMISSION_REPAIRED_RETRY_NOTE}`,
-    );
+    gap(`Admission ${admissionId} is not visible in this organization.${retryNote}`);
   }
   const { patientId, providerEntityId, locationId } = facts;
   if (!providerEntityId || !locationId) {
     gap(
-      `Admission ${admissionId} is not sited (provider_entity_id=${providerEntityId ?? "null"}, location_id=${locationId ?? "null"}) — refusing to create a HOPE timepoint schedule with a guessed provider entity or location. ${ADMISSION_REPAIRED_RETRY_NOTE}`,
+      `Admission ${admissionId} is not sited (provider_entity_id=${providerEntityId ?? "null"}, location_id=${locationId ?? "null"}) — refusing to create a HOPE timepoint schedule with a guessed provider entity or location.${retryNote}`,
     );
   }
   return {
@@ -258,8 +261,8 @@ export async function writeSchedules(
 /**
  * Materialize every window an admission is currently entitled to, from its own state — the §4.1 route 20
  * admin regenerate. Idempotent, so an operator can run it on an admission that already has some windows
- * (a post-hoc date correction, or a backfill for an admission activated before #48 shipped) and only the
- * missing ones are created.
+ * (a backfill for an admission activated before #48 shipped) and only the missing ones are created: a row
+ * in any status is left exactly as it is, so a window computed from a wrong date stays as it was.
  *
  * An admission with no activation date yet has no anchor and gets nothing: the CMS windows count from
  * SOC, and there is no honest window before there is a start of care.
@@ -279,6 +282,7 @@ export async function regenerateSchedulesForAdmission(
     input.organizationId,
     input.admissionId,
     input.resolveSiting,
+    { requestRetryNote: true },
   );
   const descriptors: TimepointScheduleDescriptor[] = [];
   if (siting.anchorDate !== null) {

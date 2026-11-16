@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   SPEC_NOT_IN_FORCE_MESSAGE,
   failedWriteMessage,
   isStaleVersionRefusal,
+  localToday,
   refusalWordsOf,
   writeOutcomeUnknown,
 } from "./hope-api";
@@ -12,9 +13,13 @@ import {
 
 const UNCONFIRMED = "Not confirmed (the caller's words).";
 const FALLBACK = "The caller's fallback.";
-/** The real 422 text of M10_SPEC_NOT_IN_FORCE (hope-spec-registry.ts): it contains "version" and an Idempotency-Key instruction. */
+/**
+ * A literal copy of the M10_SPEC_NOT_IN_FORCE 422 text in the backend's hope-spec-registry.ts when this was written. It is a fixture, not a
+ * contract: nothing here reads the message to decide anything (status and code do), so the tests hold for any wording that contains
+ * "version" and an Idempotency-Key instruction, which is what they need.
+ */
 const REAL_SPEC_NOT_IN_FORCE_TEXT =
-  "No HOPE spec version is in force for this record's target date. An administrator needs to load the spec version that covers it. The idempotency layer replays this 422 for 24 h on the same Idempotency-Key, so after the spec is loaded use a NEW Idempotency-Key.";
+  "No HOPE spec version is in force for this record's target date. An administrator needs to load the spec version that covers it. On POST, PUT and PATCH the idempotency layer replays this 422 for 24 h on the same Idempotency-Key, so after the spec is loaded use a NEW Idempotency-Key; a GET has no key.";
 
 const refusal = (status: number, code: string, message: string) => ({
   data: undefined,
@@ -110,5 +115,25 @@ describe("writeOutcomeUnknown", () => {
       // An unconfirmed write is worded by the caller's own sentence or by the server-fault one, never as a plain refusal.
       if (saysUnconfirmed) expect(writeOutcomeUnknown(reply)).toBe(true);
     }
+  });
+});
+
+describe("localToday", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("is the clinician's own calendar day, however late in the evening it is (never the UTC day)", () => {
+    // Built from local components, so the instant is 23:30 on the 5th wherever the tests run: in a zone behind UTC that is
+    // already the 6th in UTC, which is what `toISOString().slice(0, 10)` would have answered.
+    vi.useFakeTimers({ now: new Date(2026, 2, 5, 23, 30) });
+
+    expect(localToday()).toBe("2026-03-05");
+  });
+
+  it("is the local day just after midnight too", () => {
+    vi.useFakeTimers({ now: new Date(2026, 2, 6, 0, 10) });
+
+    expect(localToday()).toBe("2026-03-06");
   });
 });

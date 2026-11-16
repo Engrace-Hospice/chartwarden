@@ -46,6 +46,7 @@ import {
   type ChartNumber,
   type ChartPayer,
   ChartReconcileDialog,
+  HopeAnswerNotSavedError,
   type ReconcileItem,
 } from "./hope-chart-reconcile";
 import { actionRow, inputStyle, muted, primaryButton, secondaryButton } from "./hope-dialog-styles";
@@ -517,8 +518,20 @@ const WORKSPACE_UNAVAILABLE = "The CMS item workspace could not be loaded for th
 /** The answer save got no usable reply (offline, a reset, a timeout, an empty 5xx): it may or may not have been applied. */
 const ANSWER_UNCONFIRMED =
   "Could not confirm that this answer was saved. Reload to check it before entering it again.";
-/** Thrown to the reconcile dialog when its HOPE answer save did not land (the dialog words it). */
-const HOPE_ANSWER_NOT_SAVED = "The HOPE answer was not saved.";
+/** Thrown to the reconcile dialog when its HOPE answer save got no usable answer (it may or may not have landed): the dialog words it. */
+const HOPE_ANSWER_UNCONFIRMED = "The HOPE answer save could not be confirmed.";
+/** An answer save that was never sent: the record is not an editable draft, the item is controlled by the workflow, or there is no such item. */
+const ANSWER_NOT_SENT = "This answer cannot be changed here, so nothing was sent.";
+
+/** What one answer save came to: saved, or why not and whether it may still have been applied (no usable answer). */
+type AnswerSaveOutcome =
+  | { readonly saved: true }
+  | { readonly saved: false; readonly outcomeUnknown: boolean; readonly message: string };
+const NOT_SENT: AnswerSaveOutcome = {
+  saved: false,
+  outcomeUnknown: false,
+  message: ANSWER_NOT_SENT,
+};
 
 /** The screen is rebuilt for each record, so nothing one record left behind (a notice, a focus request) reaches the next. */
 export function HopeAssessmentDetail(): JSX.Element {
@@ -856,11 +869,11 @@ function HopeAssessmentWorkspace(): JSX.Element {
     return map;
   }, [review]);
 
-  const saveAnswer = useCallback(
+  const saveAnswerOutcome = useCallback(
     async (
       item: WorkspaceItem | readonly WorkspaceItem[],
       value: AnswerValue | null | ReadonlyMap<string, AnswerValue>,
-    ): Promise<boolean> => {
+    ): Promise<AnswerSaveOutcome> => {
       const items = Array.isArray(item) ? item : [item];
       const primary = items[0];
       if (
@@ -870,7 +883,7 @@ function HopeAssessmentWorkspace(): JSX.Element {
         !primary ||
         items.some((candidate) => PROTECTED_ITEMS.has(candidate.itemCode))
       )
-        return false;
+        return NOT_SENT;
       // Show A1400 conflicts at selection time; the server remains authoritative.
       if (items.some((candidate) => candidate.itemCode.startsWith("A1400"))) {
         setWorkspace((previous) =>
@@ -895,7 +908,7 @@ function HopeAssessmentWorkspace(): JSX.Element {
             : previous,
         );
       }
-      const run = async (): Promise<boolean> => {
+      const run = async (): Promise<AnswerSaveOutcome> => {
         setSaving("saving");
         setFieldErrors((prev) => {
           return Object.fromEntries(
@@ -932,29 +945,28 @@ function HopeAssessmentWorkspace(): JSX.Element {
           // is a 409 too, but the step was NOT applied and the page is not stale: sending the request again is right, a
           // reload is not.
           const conflict = isStaleVersionRefusal(res);
-          setSaving(conflict ? "conflict" : writeOutcomeUnknown(res) ? "unconfirmed" : "failed");
+          const outcomeUnknown = writeOutcomeUnknown(res);
+          setSaving(conflict ? "conflict" : outcomeUnknown ? "unconfirmed" : "failed");
           // No usable answer (a rejection, a timeout, an empty 5xx) is "could not confirm", never "not saved": the
           // write may have committed. A refusal is worded by the server's own message.
-          setFieldErrors((prev) => ({
-            ...prev,
-            [primary.itemCode]: conflict
-              ? CONFLICT_FIELD_ERROR
-              : failedWriteMessage(
-                  res,
-                  ANSWER_UNCONFIRMED,
-                  "This answer was not saved. Check the value and try again.",
-                ),
-          }));
+          const message = conflict
+            ? CONFLICT_FIELD_ERROR
+            : failedWriteMessage(
+                res,
+                ANSWER_UNCONFIRMED,
+                "This answer was not saved. Check the value and try again.",
+              );
+          setFieldErrors((prev) => ({ ...prev, [primary.itemCode]: message }));
           if (items.some((candidate) => candidate.itemCode.startsWith("A1400")))
             await refreshWorkspaceOnly();
-          return false;
+          return { saved: false, outcomeUnknown, message };
         }
         latestVersionRef.current =
           (res.data as { version?: number }).version ?? latestVersionRef.current;
         setSaving("saved");
         setLastSavedAt(Date.now());
         await refreshWorkspaceOnly();
-        return true;
+        return { saved: true };
       };
       const next = saveQueueRef.current.then(run, run);
       saveQueueRef.current = next.then(
@@ -964,6 +976,11 @@ function HopeAssessmentWorkspace(): JSX.Element {
       return await next;
     },
     [api, assessment?.status, id, refreshWorkspaceOnly, workspace],
+  );
+  const saveAnswer = useCallback(
+    async (...args: Parameters<typeof saveAnswerOutcome>): Promise<boolean> =>
+      (await saveAnswerOutcome(...args)).saved,
+    [saveAnswerOutcome],
   );
 
   const sign = useCallback(async () => {
@@ -1647,8 +1664,14 @@ function HopeAssessmentWorkspace(): JSX.Element {
           onUseChart={async (value) => {
             const item = sections.get("A")?.items.find((i) => i.itemCode === reconcile.itemCode);
             // The dialog reads a resolved call as "HOPE now has it": a save that was refused, skipped (not a draft, no such
-            // item) or never answered must reject, so the dialog says it could not confirm instead.
-            if (!item || !(await saveAnswer(item, value))) throw new Error(HOPE_ANSWER_NOT_SAVED);
+            // item) or never answered must reject. A refusal (nothing was applied) rejects with its own words, which the dialog
+            // shows; only a save with no usable answer is left for the dialog to word as "could not confirm".
+            if (!item) throw new HopeAnswerNotSavedError(ANSWER_NOT_SENT);
+            const outcome = await saveAnswerOutcome(item, value);
+            if (outcome.saved) return;
+            throw outcome.outcomeUnknown
+              ? new Error(HOPE_ANSWER_UNCONFIRMED)
+              : new HopeAnswerNotSavedError(outcome.message);
           }}
           onChartUpdated={refreshChartNumbers}
           onClose={() => setReconcile(null)}

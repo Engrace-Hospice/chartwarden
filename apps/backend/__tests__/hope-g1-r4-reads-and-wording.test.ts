@@ -1,3 +1,4 @@
+import type { DbClient } from "@chartwarden/db";
 import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import { buildHopeAbacPredicates } from "../src/modules/10-hope/abac-predicates";
@@ -5,7 +6,7 @@ import { createDbHopeBackend } from "../src/modules/10-hope/hope-route-service-d
 import { resolveSfvAdmissionPatient } from "../src/modules/10-hope/hope-sfv-completion-guards";
 import { HopeSpecNotFoundForTargetDateError } from "../src/modules/10-hope/hope-spec-registry";
 import type { HopeWriteOutboxPort } from "../src/modules/10-hope/outbox-port";
-import { schedulingSitingFor } from "../src/modules/10-hope/scheduling/schedule-writer";
+import { regenerateSchedulesForAdmission } from "../src/modules/10-hope/scheduling/schedule-writer";
 import { scriptedDb } from "./_hope-g3-fake-db";
 
 // Group g1, round 4. Three things, none needing Postgres:
@@ -20,6 +21,10 @@ const PATIENT = "44444444-4444-4444-8444-444444444444";
 const CANONICAL = "abcdef01-2345-4678-89ab-cdef01234567";
 const SPELLED = CANONICAL.toUpperCase();
 const SUBMISSION = "55555555-5555-4555-8555-555555555555";
+
+// The regenerate path refuses on the admission projection BEFORE it touches either: neither is ever called.
+const NO_DB = {} as DbClient;
+const NO_OUTBOX: HopeWriteOutboxPort = { publish: async () => undefined };
 
 const outcome = (p: Promise<unknown>) =>
   p.then(
@@ -54,7 +59,13 @@ describe("the replayed 422 messages", () => {
     } as never);
     const sfv = (await outcome(resolveSfvAdmissionPatient(ORG, ADMISSION))) as { message: string };
 
-    const regenerate = await outcome(schedulingSitingFor(ORG, ADMISSION, async () => null));
+    const regenerate = await outcome(
+      regenerateSchedulesForAdmission(NO_DB, NO_OUTBOX, {
+        organizationId: ORG,
+        admissionId: ADMISSION,
+        resolveSiting: async () => null,
+      }),
+    );
 
     expect(regenerate).toMatchObject({ code: "M10_ADMISSION_PROJECTION_GAP", statusCode: 422 });
     const tail = sfv.message.slice(sfv.message.indexOf("Once the admission is repaired"));
@@ -64,14 +75,18 @@ describe("the replayed 422 messages", () => {
 
   it("an admission that is not sited (the second gap message) carries it too", async () => {
     const unsited = await outcome(
-      schedulingSitingFor(ORG, ADMISSION, async () => ({
-        patientId: PATIENT,
-        providerEntityId: null,
-        locationId: null,
-        admissionAt: null,
-        activatedAt: null,
-        dischargedAt: null,
-      })),
+      regenerateSchedulesForAdmission(NO_DB, NO_OUTBOX, {
+        organizationId: ORG,
+        admissionId: ADMISSION,
+        resolveSiting: async () => ({
+          patientId: PATIENT,
+          providerEntityId: null,
+          locationId: null,
+          admissionAt: null,
+          activatedAt: null,
+          dischargedAt: null,
+        }),
+      }),
     );
 
     expect(unsited).toMatchObject({ code: "M10_ADMISSION_PROJECTION_GAP", statusCode: 422 });

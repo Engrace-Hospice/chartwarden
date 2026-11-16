@@ -485,6 +485,9 @@ export function HopeDashboard(): JSX.Element {
           onDone={() => {
             void load();
           }}
+          // The server says the schedule is no longer open (completed or skipped since this page loaded): re-read so the row stops
+          // offering Record and Skip.
+          onConflict={() => void load()}
         />
       ) : null}
     </>

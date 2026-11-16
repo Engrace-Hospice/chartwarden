@@ -28,6 +28,7 @@ import {
 import { AuthorDisciplineField } from "./hope-author-discipline-field";
 import { completeSfvPath } from "./hope-paths";
 import { HopeListReadState } from "./hope-read-state";
+import { DEFAULT_DATE_HINT } from "./hope-record-modal";
 import { LoadingRegion, useRetryFocus } from "./hope-retry-focus";
 import { WORKFLOW_TONE, rfaLabel, stateLabel } from "./hope-status";
 import { useFocusOnNewError } from "./use-focus-on-new-error";
@@ -111,6 +112,8 @@ function HopeCaptureWorkspace({
   // disabled control (Firefox, Safari) would leave the keyboard user at the top of the page.
   const actionErrorRef = useFocusOnNewError<HTMLParagraphElement>(actionError);
   const [targetDate, setTargetDate] = useState(isoToLocalInput(new Date().toISOString()));
+  // The date opens at the current time: said so, beside the field, until the clinician has entered one (as the record dialog does).
+  const [dateEdited, setDateEdited] = useState(false);
   // The disciplines the ACTING user may be attributed as (their own role keys, as the server checks them): one is preselected,
   // several make the clinician choose, none blocks the capture with a message. A fixed list sent a discipline the server then
   // refused (403) to anyone who did not hold that exact role.
@@ -389,12 +392,26 @@ function HopeCaptureWorkspace({
               id="hope-target-date"
               type="datetime-local"
               value={targetDate}
-              onChange={(ev) => setTargetDate(ev.target.value)}
+              onChange={(ev) => {
+                setTargetDate(ev.target.value);
+                setDateEdited(true);
+              }}
               required
               aria-invalid={targetIso === null}
-              aria-describedby={targetIso === null ? "hope-target-date-error" : undefined}
+              aria-describedby={
+                targetIso === null
+                  ? "hope-target-date-error"
+                  : dateEdited
+                    ? undefined
+                    : "hope-target-date-hint"
+              }
               style={inputStyle}
             />
+            {dateEdited ? null : (
+              <p id="hope-target-date-hint" style={bodyText}>
+                {DEFAULT_DATE_HINT}
+              </p>
+            )}
             {targetIso === null ? (
               <p id="hope-target-date-error" role="alert" style={errorText}>
                 Enter a valid target date and time.

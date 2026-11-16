@@ -19,6 +19,13 @@ const SFV = schema.symptomFollowUpVisits;
 type SfvRow = typeof SFV.$inferSelect;
 
 /**
+ * The 422 text for an admission the M6 seam cannot project to a patient. One definition: the in-memory twin
+ * (routes/service.ts) raises the same refusal for an admission it was not seeded with, so a route test sees what production sends.
+ */
+export const sfvProjectionGapMessage = (admissionId: string): string =>
+  `Admission ${admissionId} could not be projected by the M6 status seam, so the SFV completion cannot be bound to it. Once the admission is repaired, send the request again with a NEW Idempotency-Key (the idempotency layer replays this 422 for 24 h on the same key).`;
+
+/**
  * The URL admission's patient through M6's `AdmissionStatusReader`. The read is keyed on the URL admission only (never
  * on the body's triggering assessment), so which of these answers a caller gets reveals nothing about any SFV.
  * - A seam that THROWS is an outage, not an answer about the admission: a retryable 503 (`DegradedError`). The
@@ -57,10 +64,7 @@ export async function resolveSfvAdmissionPatient(
   console.warn(
     `m10: SFV completion refused: the M6 admission seam returned no patient for admission ${idForLog(admissionId)} (org ${idForLog(organizationId)}).`,
   );
-  throw new HopeStateError(
-    "M10_ADMISSION_PROJECTION_GAP",
-    `Admission ${admissionId} could not be projected by the M6 status seam, so the SFV completion cannot be bound to it. Once the admission is repaired, send the request again with a NEW Idempotency-Key (the idempotency layer replays this 422 for 24 h on the same key).`,
-  );
+  throw new HopeStateError("M10_ADMISSION_PROJECTION_GAP", sfvProjectionGapMessage(admissionId));
 }
 
 /**

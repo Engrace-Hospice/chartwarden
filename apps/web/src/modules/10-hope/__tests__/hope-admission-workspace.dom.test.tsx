@@ -693,13 +693,19 @@ describe("Admission HOPE workspace", () => {
     });
 
     it("adds no note when the value came from the chart itself", async () => {
+      // The heading shows before the chart numbers are read, and a note can only show after them, so an absence checked at the
+      // heading proves nothing. The chart holds a DIFFERENT number (a typed value would be flagged), and the Patient Summary's
+      // last four is what says the read has landed.
       renderWorkspace(
-        clientFor({ workspace: medicareWorkspace("1EG4TE5MK73", "patient_prefill") }),
+        clientFor({
+          workspace: medicareWorkspace("1EG4TE5MK73", "patient_prefill"),
+          payers: [medicarePayer("9AA9AA9AA99")],
+        }),
       );
-      await waitFor(() =>
-        expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
-      );
+      await waitFor(() => expect(screen.getByText("...AA99")).toBeTruthy());
       expect(screen.queryByText(/Not on the patient's chart/)).toBeNull();
+      expect(screen.queryByText(/Differs from the chart/)).toBeNull();
+      expect(screen.queryByRole("button", { name: "Reconcile…" })).toBeNull();
     });
   });
   describe("A0600A SSN (CMS format edits)", () => {

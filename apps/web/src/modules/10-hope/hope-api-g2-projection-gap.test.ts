@@ -6,7 +6,10 @@ import { sfvErrorFrom } from "./hope-sfv-errors";
 // caller to send the request again with a NEW Idempotency-Key. That is an integrator's instruction (the web client renews
 // the key on its own), so a clinician is shown this module's own sentence, with the code kept for whoever they report it to.
 
-/** The real 422 text of the code (hope-sfv-completion-guards.ts). */
+/**
+ * A literal copy of the 422 text of the code in the backend's hope-sfv-completion-guards.ts when this was written. A fixture, not a
+ * contract: the words are chosen by code, and the message is never read to decide anything.
+ */
 const REAL_PROJECTION_GAP_TEXT =
   "Admission 00000000-0000-4000-8000-000000000001 could not be projected by the M6 status seam, so the SFV completion cannot be bound to it. Once the admission is repaired, send the request again with a NEW Idempotency-Key (the idempotency layer replays this 422 for 24 h on the same key).";
 

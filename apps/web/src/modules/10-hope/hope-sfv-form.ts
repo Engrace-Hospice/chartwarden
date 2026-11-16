@@ -1,11 +1,10 @@
 // apps/web/src/modules/10-hope — the state of the SFV completion form: what the clinician has entered and whether
 // the form may be submitted. A hook rather than component state so the dialog's parts stay small.
-import { nowLocalInput } from "@chartwarden/ui";
 import { useMemo, useState } from "react";
 import { useSession } from "../../shell/session";
 import { peekStepUpDraft } from "../../shell/step-up-redirect";
 import { useStepUpOwner } from "../../shell/use-step-up-return";
-import { type SfvAuthorDiscipline, authorDisciplinesForRoles } from "./hope-api";
+import { type SfvAuthorDiscipline, authorDisciplinesForRoles, localToday } from "./hope-api";
 import { type SfvDraft, sfvDraftKey } from "./hope-sfv-draft";
 
 /** The triggering assessment the SFV is completed against. */
@@ -24,11 +23,6 @@ export interface SfvDialogItem {
     readonly label: string;
     readonly sortOrder?: number;
   }[];
-}
-
-/** The clinician's own calendar day (yyyy-mm-dd), not the UTC day a US evening would already have rolled into. */
-function localToday(): string {
-  return nowLocalInput().slice(0, 10);
 }
 
 /** What is still missing from the form, each as a short phrase that completes "To complete: …". */

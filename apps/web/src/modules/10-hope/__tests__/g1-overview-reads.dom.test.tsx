@@ -172,9 +172,10 @@ describe("Admission HOPE overview: the workflow read", () => {
     );
   });
 
-  // There is deliberately no "reply after the whole screen unmounted" test: React 18 emits no warning for a state update on an
-  // unmounted component and the update is a no-op, so such a test passes with or without the `mounted` guard (checked by
-  // deleting it). A reply that is stale while the screen stays mounted is the observable case, and is covered above.
+  // There is deliberately no "reply after the whole screen unmounted" test, and the component has no unmount guard to test:
+  // React 18 emits no warning for a state update on an unmounted component and the update is a no-op, so nothing is observable.
+  // A reply that is stale while the screen stays mounted is the observable case, covered above (it fails with the `latestLoad`
+  // check in `load` deleted).
 });
 
 describe("Admission HOPE overview: the patient lookup", () => {

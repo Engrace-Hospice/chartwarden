@@ -71,6 +71,19 @@ const CHART_REFUSED = "The chart could not be updated. Check your permission to 
 /** The HOPE answer save (the parent's) was rejected or never answered: it may or may not have been applied. */
 const HOPE_UNCONFIRMED =
   "Could not confirm that the HOPE answer was saved. Check the answer before trying again.";
+/**
+ * What `onUseChart` rejects with when the HOPE answer save was DEFINITELY not applied (a refusal the server explained, a stale page, a save
+ * that was never sent): its message is the words to show. Any other rejection (offline, a timeout, an empty or faulting 5xx) is an unknown
+ * outcome and is worded as HOPE_UNCONFIRMED.
+ */
+export class HopeAnswerNotSavedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HopeAnswerNotSavedError";
+  }
+}
+const hopeFailureWords = (error: unknown): string =>
+  error instanceof HopeAnswerNotSavedError ? error.message : HOPE_UNCONFIRMED;
 /** The coverage was written; only the re-read of the chart numbers behind this dialog failed. */
 const CHART_REFRESH_FAILED =
   " The chart summary behind this dialog could not be refreshed; reload the page to see it.";
@@ -184,8 +197,8 @@ export function ChartReconcileDialog(props: {
     try {
       await saveInHope(props.chart.value);
       setDone(`HOPE now uses the chart's ${meta.noun}.`);
-    } catch {
-      setError(HOPE_UNCONFIRMED);
+    } catch (error) {
+      setError(hopeFailureWords(error));
     } finally {
       setBusy(null);
     }
@@ -221,8 +234,8 @@ export function ChartReconcileDialog(props: {
       try {
         await saveInHope(enteredNumber);
         wrote.push("in HOPE");
-      } catch {
-        setError(HOPE_UNCONFIRMED);
+      } catch (error) {
+        setError(hopeFailureWords(error));
         setBusy(null);
         return;
       }

@@ -716,7 +716,8 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     },
   );
 
-  // 20 — admin: recompute schedules for an admission (post-hoc date correction).
+  // 20 — admin: create the HOPE schedule windows an admission is entitled to and still lacks (a backfill). Idempotent: a row
+  // in any status is left as it is, so nothing is recomputed, reopened or moved to a corrected date.
   app.post(
     "/api/v1/hope/admin/regenerate-schedules",
     { preHandler: [ADMIN_REGEN, SCOPE_BODY_ADMISSION("hope.admin.regenerate_schedules")] },

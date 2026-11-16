@@ -29,8 +29,10 @@
 // schedule `skip`, the submission `retry`, `regenerate-schedules` and the validation-finding writes
 // (docs/api/CHANGES.md lists them); the destruction eraser takes its own advisory lock directly, with no bound. The bound
 // is `SET LOCAL` (it ends with the transaction) and stays in force for the rest of the transaction, so a later wait in the
-// same request is bounded too, and `mapLockTimeoutToBusy` (installed on the database `createDbHopeBackend` hands every
-// HOPE service) maps a `55P03` raised by ANY later statement of such a transaction to the same typed error. Each timeout
+// same request is bounded too, and `mapLockTimeoutToBusy` (installed on the database `createDbHopeBackend` hands the
+// services it builds: its own route transactions and the answer, validation and readiness services; NOT on the database
+// the m6 scheduling consumer, the cron ticks and the erasers receive, which take no `mapLockTimeoutToBusy` of their own)
+// maps a `55P03` raised by ANY later statement of such a transaction to the same typed error. Each timeout
 // is logged once (`console.warn`): the lock kind and the ids it was taken on; a timeout mapped by `mapLockTimeoutToBusy`
 // names only "a statement of the transaction", because the statement that waited is not known there. The 409 itself names
 // nothing an operator could use to find the transaction that holds the lock.

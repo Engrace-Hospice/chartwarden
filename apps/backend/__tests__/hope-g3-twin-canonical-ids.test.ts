@@ -96,6 +96,7 @@ describe("twin: an id in any spelling names the same record", () => {
     expect(timeline.assessments.map((a) => a.id)).toContain(draft.id);
     const workflow = await svc.getWorkflowState(ORG, upper(ADMISSION));
     expect(workflow.admissionId).toBe(ADMISSION);
+    expect(workflow.patientId).toBe(PATIENT); // not an empty read: the lookup ran on the canonical id
   });
 
   it("reads an assessment by an upper-case id and records events on the stored one", async () => {
