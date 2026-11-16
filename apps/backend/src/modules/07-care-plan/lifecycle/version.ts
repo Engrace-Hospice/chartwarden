@@ -116,7 +116,9 @@ export function transitionCarePlanVersion(
       ]);
     }
     case "returnForEdits": {
-      // Any required signer may bounce the version back to draft; prior signatures are cleared.
+      // A care-plan author (`care_plan.author`, the permission the route requires) bounces the version back to
+      // draft and prior signatures are cleared. A signer who cannot author may not: that would let one signer
+      // invalidate everyone else's signature (audit D-10).
       return result(from, event.type, "draft", [
         ...(event.hasSignatures
           ? ([{ kind: "clear_signatures" }] as CarePlanVersionTransition["effects"])

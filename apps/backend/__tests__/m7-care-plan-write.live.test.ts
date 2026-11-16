@@ -320,6 +320,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       {
         problemId: prob.id,
         originalText: "I want to stay comfortable at home",
+        measurableOutcome: "Reports comfort on each visit",
         source: "patient_stated",
       },
       false,
@@ -432,15 +433,19 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
         boot.initialVersionId,
       ])
     ).rows;
-    await svc.patchProblem(ORG_A, boot.id, prob.id, prob.version, {
-      description: "Mutated working problem",
-    });
-    const [afterMutation] = (
+    // Audit D-1: while the version is in review the plan may not be edited at all (the signers are signing
+    // this snapshot), so the snapshot cannot drift from the live rows.
+    await expect(
+      svc.patchProblem(ORG_A, boot.id, prob.id, prob.version, {
+        description: "Mutated working problem",
+      }),
+    ).rejects.toMatchObject({ code: "VERSION_IN_REVIEW", statusCode: 409 });
+    const [afterRefused] = (
       await admin.query("SELECT state_snapshot FROM care_plan_version WHERE id=$1", [
         boot.initialVersionId,
       ])
     ).rows;
-    expect(afterMutation.state_snapshot).toEqual(before.state_snapshot);
+    expect(afterRefused.state_snapshot).toEqual(before.state_snapshot);
 
     await svc.signVersion(
       ORG_A,
@@ -464,6 +469,10 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
     );
     expect(Number(invalidated.rows[0].n)).toBe(1);
 
+    // Back in draft the plan is editable again, and the next finalize seals what it now says.
+    await svc.patchProblem(ORG_A, boot.id, prob.id, prob.version, {
+      description: "Mutated working problem",
+    });
     const next = (await svc.finalizeVersion(ORG_A, boot.id, boot.initialVersionId, 4, null, {
       sudDisclosureAllowed: true,
     })) as Version;
@@ -1565,13 +1574,23 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       await svc.addGoal(
         ORG_A,
         boot.id,
-        { problemId: sud.id, originalText: SUD_GOAL_TEXT, source: "clinical" },
+        {
+          problemId: sud.id,
+          originalText: SUD_GOAL_TEXT,
+          source: "clinical",
+          measurableOutcome: "Measured at the weekly review",
+        },
         false,
       );
       await svc.addGoal(
         ORG_A,
         boot.id,
-        { problemId: terminal.id, originalText: "Comfort at home", source: "clinical" },
+        {
+          problemId: terminal.id,
+          originalText: "Comfort at home",
+          source: "clinical",
+          measurableOutcome: "Measured at the weekly review",
+        },
         false,
       );
       const finalized = await svc.finalizeVersion(ORG_A, boot.id, boot.initialVersionId, 1, null);
@@ -1743,7 +1762,12 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       const g = (await svc.addGoal(
         ORG_A,
         boot.id,
-        { problemId: p.id, originalText: "Pain under 3/10", source: "clinical" },
+        {
+          problemId: p.id,
+          originalText: "Pain under 3/10",
+          source: "clinical",
+          measurableOutcome: "Pain score recorded each visit",
+        },
         false,
       )) as Element;
       await expect(
@@ -1783,6 +1807,129 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       ).rejects.toMatchObject({ statusCode: 409, code: "ILLEGAL_TRANSITION" });
     });
 
+    it("audit D-1: every element write is refused with VERSION_IN_REVIEW while a version is in review, and none is once it is back in draft", async () => {
+      const boot = (await svc.bootstrapCarePlan(ORG_A, randomUUID(), randomUUID())) as Boot;
+      const terminal = (await svc.addProblem(ORG_A, boot.id, {
+        description: "Terminal illness",
+        kind: "terminal",
+        source: "clinical",
+      })) as Element;
+      const goal = (await svc.addGoal(
+        ORG_A,
+        boot.id,
+        {
+          problemId: terminal.id,
+          originalText: "Comfort",
+          source: "clinical",
+          measurableOutcome: "Reports comfort on each visit",
+        },
+        false,
+      )) as Element;
+      const intervention = (await svc.addIntervention(ORG_A, boot.id, {
+        problemId: terminal.id,
+        goalRefs: [],
+        discipline: "rn",
+        scopeText: "Symptom visits",
+        frequencyText: "Weekly",
+        frequencyValue: "1:visit:week",
+      })) as Element;
+      await svc.finalizeVersion(ORG_A, boot.id, boot.initialVersionId, 1, null);
+
+      const refused = (run: () => Promise<unknown>) =>
+        expect(run()).rejects.toMatchObject({ code: "VERSION_IN_REVIEW", statusCode: 409 });
+      await refused(() =>
+        svc.addProblem(ORG_A, boot.id, { description: "x", kind: "related", source: "clinical" }),
+      );
+      await refused(() =>
+        svc.patchProblem(ORG_A, boot.id, terminal.id, terminal.version, { description: "y" }),
+      );
+      await refused(() =>
+        svc.resolveProblem(ORG_A, boot.id, terminal.id, terminal.version, "done"),
+      );
+      await refused(() =>
+        svc.addGoal(
+          ORG_A,
+          boot.id,
+          { problemId: terminal.id, originalText: "z", source: "clinical" },
+          false,
+        ),
+      );
+      await refused(() =>
+        svc.patchGoal(ORG_A, boot.id, goal.id, goal.version, { measurableOutcome: "w" }),
+      );
+      await refused(() =>
+        svc.addIntervention(ORG_A, boot.id, {
+          problemId: terminal.id,
+          goalRefs: [],
+          discipline: "rn",
+          scopeText: "v",
+          frequencyText: "Weekly",
+          frequencyValue: "1:visit:week",
+        }),
+      );
+      await refused(() =>
+        svc.patchIntervention(ORG_A, boot.id, intervention.id, intervention.version, {
+          scopeText: "u",
+        }),
+      );
+      await refused(() =>
+        svc.discontinueIntervention(
+          ORG_A,
+          boot.id,
+          intervention.id,
+          intervention.version,
+          "no longer needed",
+        ),
+      );
+
+      // Returned to draft, the same write goes through.
+      await svc.returnVersionToDraft(ORG_A, boot.id, boot.initialVersionId, 2);
+      await svc.patchProblem(ORG_A, boot.id, terminal.id, terminal.version, {
+        description: "Terminal illness (revised)",
+      });
+    });
+
+    it("audit D-3: an initial plan cannot be finalized, and reports a blocker, while a live goal states no measurable outcome (42 CFR 418.56(c)(3))", async () => {
+      const boot = (await svc.bootstrapCarePlan(ORG_A, randomUUID(), randomUUID())) as Boot;
+      const terminal = (await svc.addProblem(ORG_A, boot.id, {
+        description: "Terminal illness",
+        kind: "terminal",
+        source: "clinical",
+      })) as Element;
+      const goal = (await svc.addGoal(
+        ORG_A,
+        boot.id,
+        { problemId: terminal.id, originalText: "Comfort", source: "clinical" },
+        false,
+      )) as Element;
+
+      const readiness = await svc.getReadiness(ORG_A, boot.id);
+      expect(readiness.canFinalize).toBe(false);
+      expect(readiness.blockers).toEqual([
+        expect.objectContaining({ code: "GOAL_OUTCOME_REQUIRED" }),
+      ]);
+      await expect(
+        svc.finalizeVersion(ORG_A, boot.id, boot.initialVersionId, 1, null),
+      ).rejects.toMatchObject({
+        code: "CARE_PLAN_NOT_READY",
+        details: expect.arrayContaining([
+          expect.objectContaining({ code: "GOAL_OUTCOME_REQUIRED" }),
+        ]),
+      });
+
+      // A whitespace-only outcome is no outcome.
+      const blank = (await svc.patchGoal(ORG_A, boot.id, goal.id, goal.version, {
+        measurableOutcome: "   ",
+      })) as Element;
+      expect((await svc.getReadiness(ORG_A, boot.id)).canFinalize).toBe(false);
+
+      await svc.patchGoal(ORG_A, boot.id, goal.id, blank.version, {
+        measurableOutcome: "Reports comfort on each visit",
+      });
+      expect((await svc.getReadiness(ORG_A, boot.id)).canFinalize).toBe(true);
+      await svc.finalizeVersion(ORG_A, boot.id, boot.initialVersionId, 1, null);
+    });
+
     it("#18 a stale IDG proposal's conflict is DURABLE: finalize is 409 AND the application row says conflict/baseline_changed", async () => {
       const { boot, patientId, problem } = await activePlanWithTerminalProblem("Baseline terminal");
       const consumer = buildM7IdgDecisionConsumer({ db: handle.db, outbox: svcOutbox() });
@@ -1816,8 +1963,18 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
         )
       ).rows[0];
       expect(app).toMatchObject({ status: "conflict", conflict_reason: "baseline_changed" });
-      // The version is untouched (still a draft): only the conflict marker committed.
-      expect(((await svc.getVersion(ORG_A, boot.id, review.id)) as Version).status).toBe("draft");
+      // Audit D-12: the conflict discards the version, so it no longer holds the plan's only open slot
+      // (it used to sit as a draft that could never finalize, blocking every new revision and IDG decision).
+      expect(((await svc.getVersion(ORG_A, boot.id, review.id)) as Version).status).toBe(
+        "superseded",
+      );
+      const revision = (await svc.createVersion(
+        ORG_A,
+        boot.id,
+        "interim_revision",
+        null,
+      )) as Version;
+      expect(revision.status).toBe("draft");
     });
 
     it("#7 bootstrap seeds initial_due_at at the END of the org-local day, activation day + 5 calendar days (org tz, not +120h)", async () => {
@@ -2095,6 +2252,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
           problemId: p.id,
           originalText: "Pain under 3/10",
           source: "clinical",
+          measurableOutcome: "Pain score recorded each visit",
           targetAt: "2026-09-01T00:00:00.000Z",
         },
         false,

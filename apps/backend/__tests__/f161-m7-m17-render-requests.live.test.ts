@@ -260,6 +260,7 @@ describe.skipIf(!DB_URL)("F-161 — M7/M17 render-request producers, LIVE Postgr
         problemId: prob.id,
         originalText: "I want to stay comfortable at home",
         source: "patient_stated",
+        measurableOutcome: "Reports comfort on each visit",
       },
       false,
     );
@@ -328,7 +329,12 @@ describe.skipIf(!DB_URL)("F-161 — M7/M17 render-request producers, LIVE Postgr
     await carePlan.addGoal(
       ORG_A,
       boot.id,
-      { problemId: prob.id, originalText: "Comfort", source: "patient_stated" },
+      {
+        problemId: prob.id,
+        originalText: "Comfort",
+        source: "patient_stated",
+        measurableOutcome: "Reports comfort on each visit",
+      },
       false,
     );
     await carePlan.addIntervention(ORG_A, boot.id, {

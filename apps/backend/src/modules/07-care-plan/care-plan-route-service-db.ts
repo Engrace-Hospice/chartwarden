@@ -246,6 +246,13 @@ export function createDbCarePlanRouteService(
     message: "at least one active terminal problem is required",
   } as const;
 
+  /** 42 CFR 418.56(c)(3): the plan carries measurable outcomes. `count` is how many live goals have none. */
+  const goalOutcomeBlocker = (count: number) =>
+    ({
+      code: "GOAL_OUTCOME_REQUIRED",
+      message: `${count} goal${count === 1 ? " needs" : "s need"} a measurable outcome (42 CFR 418.56(c)(3))`,
+    }) as const;
+
   const openVersionBlocker = {
     code: "OPEN_VERSION_REQUIRED",
     message: "no draft or in-review version is open",
@@ -303,19 +310,74 @@ export function createDbCarePlanRouteService(
     return Number(row?.count ?? 0);
   }
 
+  /** Live goals (not discontinued) with no measurable outcome: what an initial plan may not be signed with. */
+  async function goalsMissingOutcomeCount(tx: DbClient, planId: string): Promise<number> {
+    const [row] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(GOAL)
+      .where(
+        and(
+          eq(GOAL.carePlanId, planId),
+          ne(GOAL.status, "discontinued"),
+          sql`coalesce(btrim(${GOAL.measurableOutcome}), '') = ''`,
+        ),
+      );
+    return Number(row?.count ?? 0);
+  }
+
+  /** The blockers an INITIAL version has right now (empty for any other kind, which keeps its own rules). */
+  async function initialBlockers(
+    tx: DbClient,
+    v: Pick<typeof CPV.$inferSelect, "kind" | "carePlanId">,
+  ): Promise<Array<ReturnType<typeof goalOutcomeBlocker> | typeof terminalProblemBlocker>> {
+    if (v.kind !== "initial") return [];
+    const blockers: Array<ReturnType<typeof goalOutcomeBlocker> | typeof terminalProblemBlocker> =
+      [];
+    if ((await activeTerminalProblemCount(tx, v.carePlanId)) < 1)
+      blockers.push(terminalProblemBlocker);
+    const missing = await goalsMissingOutcomeCount(tx, v.carePlanId);
+    if (missing > 0) blockers.push(goalOutcomeBlocker(missing));
+    return blockers;
+  }
+
   async function requireReadyToFinalize(tx: DbClient, v: typeof CPV.$inferSelect): Promise<void> {
-    if (v.kind === "initial" && (await activeTerminalProblemCount(tx, v.carePlanId)) < 1) {
-      throw new CarePlanStateError("CARE_PLAN_NOT_READY", "care plan is not ready to finalize", [
-        terminalProblemBlocker,
-      ]);
+    const blockers = await initialBlockers(tx, v);
+    if (blockers.length > 0) {
+      throw new CarePlanStateError(
+        "CARE_PLAN_NOT_READY",
+        "care plan is not ready to finalize",
+        blockers,
+      );
     }
   }
 
   async function requireReadyToSign(tx: DbClient, v: typeof CPV.$inferSelect): Promise<void> {
-    if (v.kind === "initial" && (await activeTerminalProblemCount(tx, v.carePlanId)) < 1) {
-      throw new CarePlanStateError("CARE_PLAN_NOT_READY", "care plan is not ready to sign", [
-        terminalProblemBlocker,
-      ]);
+    const blockers = await initialBlockers(tx, v);
+    if (blockers.length > 0) {
+      throw new CarePlanStateError(
+        "CARE_PLAN_NOT_READY",
+        "care plan is not ready to sign",
+        blockers,
+      );
+    }
+  }
+
+  /**
+   * Audit D-1. While a version is `in_review` its signers are signing the sealed snapshot, so a live edit would
+   * leave the plan saying something nobody signed (and, for an IDG review, would strand its proposal as a
+   * conflict). Return the version to draft first; the signatures are invalidated and the signers sign again.
+   */
+  async function ensureNoVersionInReview(tx: DbClient, planId: string): Promise<void> {
+    const [row] = await tx
+      .select({ id: CPV.id })
+      .from(CPV)
+      .where(and(eq(CPV.carePlanId, planId), eq(CPV.status, "in_review")))
+      .limit(1);
+    if (row) {
+      throw new CarePlanStateError(
+        "VERSION_IN_REVIEW",
+        "a version is in review: return it to draft before editing the plan",
+      );
     }
   }
 
@@ -583,6 +645,24 @@ export function createDbCarePlanRouteService(
    * persisted on the application (`status=conflict`) and RETURNED rather than thrown: a throw rolls the
    * whole tx back, so the "baseline_changed" state would never be durable. The caller commits, then throws.
    */
+  /**
+   * Audit D-12. A version whose IDG proposal went `conflict` can never be finalized or signed (capture refuses any
+   * application that is not `proposed`), yet it held the plan's single open-version slot for good: new revisions
+   * answered OPEN_VERSION_EXISTS and later IDG decisions waited 14 days and were refused. So the conflict
+   * discards it: any collected signature is invalidated and the version is superseded (history keeps it, with
+   * the application's `conflict` row as the record of why). The coordinator re-records the IDG decision.
+   */
+  async function discardConflictedIdgVersion(tx: DbClient, versionId: string): Promise<void> {
+    await tx
+      .update(SIG)
+      .set({ invalidatedAt: new Date() })
+      .where(and(eq(SIG.carePlanVersionId, versionId), sql`${SIG.invalidatedAt} is null`));
+    await tx
+      .update(CPV)
+      .set({ status: "superseded", supersededAt: new Date(), version: sql`${CPV.version} + 1` })
+      .where(and(eq(CPV.id, versionId), inArray(CPV.status, ["draft", "in_review"])));
+  }
+
   async function captureIdgCandidateSnapshot(
     tx: DbClient,
     planId: string,
@@ -608,6 +688,7 @@ export function createDbCarePlanRouteService(
           .update(IDG_APP)
           .set({ status: "conflict", conflictReason: "baseline_changed" })
           .where(eq(IDG_APP.id, app.id));
+        await discardConflictedIdgVersion(tx, versionId);
         return { conflict: "care plan changed after the IDG proposal was created" };
       }
     }
@@ -633,6 +714,7 @@ export function createDbCarePlanRouteService(
         .update(IDG_APP)
         .set({ status: "conflict", conflictReason: "baseline_changed" })
         .where(eq(IDG_APP.id, app.id));
+      await discardConflictedIdgVersion(tx, versionId);
       return "care plan changed after the IDG proposal entered review";
     }
     return null;
@@ -1180,10 +1262,11 @@ export function createDbCarePlanRouteService(
             signatures: { required: [], collected: [], missing: [] },
           };
         }
-        const blockers = [] as Array<typeof terminalProblemBlocker | typeof idgProposalBlocker>;
-        if (open.kind === "initial" && (await activeTerminalProblemCount(t, planId)) < 1) {
-          blockers.push(terminalProblemBlocker);
-        }
+        const blockers = [...(await initialBlockers(t, open))] as Array<
+          | typeof terminalProblemBlocker
+          | ReturnType<typeof goalOutcomeBlocker>
+          | typeof idgProposalBlocker
+        >;
         if (open.kind === "idg_review") {
           const { applications, changes } = await loadIdgProposalBundle(t, open.id);
           if (applications.length === 0 || changes.length === 0) blockers.push(idgProposalBlocker);
@@ -1663,6 +1746,7 @@ export function createDbCarePlanRouteService(
         const t = tx as unknown as DbClient;
         const plan = await loadPlan(t, planId);
         ensurePlanWritable(plan);
+        await ensureNoVersionInReview(t, planId);
         const p = firstOrThrow(
           await t
             .insert(PROB)
@@ -1701,6 +1785,7 @@ export function createDbCarePlanRouteService(
         const t = tx as unknown as DbClient;
         const plan = await loadPlan(t, planId);
         ensurePlanWritable(plan);
+        await ensureNoVersionInReview(t, planId);
         const row = await loadProblem(t, planId, problemId);
         checkOptimisticConcurrency(ifVersion, Number(row.version));
         assertProblemEditable(row.status); // resolved/inactive are terminal history (§2.2.3)
@@ -1736,6 +1821,7 @@ export function createDbCarePlanRouteService(
         const t = tx as unknown as DbClient;
         const plan = await loadPlan(t, planId);
         ensurePlanWritable(plan);
+        await ensureNoVersionInReview(t, planId);
         const row = await loadProblem(t, planId, problemId);
         checkOptimisticConcurrency(ifVersion, Number(row.version));
         // active → resolved only: a re-POST must not overwrite resolutionNote/resolvedAt or re-emit the event.
@@ -1777,6 +1863,7 @@ export function createDbCarePlanRouteService(
         const t = tx as unknown as DbClient;
         const plan = await loadPlan(t, planId);
         ensurePlanWritable(plan);
+        await ensureNoVersionInReview(t, planId);
         checkGoalReferencesProblem(body.problemId);
         checkPatientStatedGoalVerbatim({
           source: body.source,
@@ -1827,6 +1914,7 @@ export function createDbCarePlanRouteService(
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         ensurePlanWritable(await loadPlan(t, planId));
+        await ensureNoVersionInReview(t, planId);
         const row = await loadGoal(t, planId, goalId);
         checkOptimisticConcurrency(ifVersion, Number(row.version));
         // A verbatim-source goal's original_text is immutable; PATCH never carries it (schema omits it),
@@ -1882,6 +1970,7 @@ export function createDbCarePlanRouteService(
         const t = tx as unknown as DbClient;
         const plan = await loadPlan(t, planId);
         ensurePlanWritable(plan);
+        await ensureNoVersionInReview(t, planId);
         // §7.4 discipline_scope: an actor may author only their own discipline (IDG Coordinator excepted).
         if (authoring) assertDisciplineScope(authoring, body.discipline);
         checkInterventionReferencesProblem(body.problemId);
@@ -1940,6 +2029,7 @@ export function createDbCarePlanRouteService(
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         ensurePlanWritable(await loadPlan(t, planId));
+        await ensureNoVersionInReview(t, planId);
         const row = await loadIntervention(t, planId, interventionId);
         checkOptimisticConcurrency(ifVersion, Number(row.version));
         // §7.4: the actor's discipline must cover the intervention's OWN discipline (create checks the body's).
@@ -1982,6 +2072,7 @@ export function createDbCarePlanRouteService(
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         ensurePlanWritable(await loadPlan(t, planId));
+        await ensureNoVersionInReview(t, planId);
         const row = await loadIntervention(t, planId, interventionId);
         checkOptimisticConcurrency(ifVersion, Number(row.version));
         if (authoring) assertDisciplineScope(authoring, row.discipline);
