@@ -30,6 +30,7 @@ import {
   createInMemoryCarePlanBackend,
   registerCarePlanRoutes,
 } from "../src/modules/07-care-plan/index";
+import { signatureMethodForFactor } from "../src/modules/07-care-plan/routes/care-plan-routes";
 import {
   guardGoalStatusChange,
   guardProblemStatusChange,
@@ -646,6 +647,16 @@ describe("§7.6 SUD content is redacted from every version projection (#2)", () 
     expect(redacted.problems.map((p) => p.id)).toEqual(["p1"]);
     expect(redacted.goals.map((g) => g.id)).toEqual(["g1"]);
     expect(redacted.interventions).toEqual([]);
+  });
+});
+
+describe("the method recorded on a care-plan signature names the factor that proved it", () => {
+  it("maps WebAuthn to passkey, TOTP to totp_step_up, and anything else to password_step_up", () => {
+    expect(signatureMethodForFactor("webauthn")).toBe("passkey");
+    expect(signatureMethodForFactor("totp")).toBe("totp_step_up");
+    for (const other of ["sms", "password", "", null, undefined, 7]) {
+      expect(signatureMethodForFactor(other)).toBe("password_step_up");
+    }
   });
 });
 

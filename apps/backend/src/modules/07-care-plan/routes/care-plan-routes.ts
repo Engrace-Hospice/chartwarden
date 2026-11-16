@@ -147,13 +147,25 @@ const planIdOf = (request: FastifyRequest): string =>
   parse(PlanParamsSchema, request.params).planId;
 
 /**
- * How the caller's fresh step-up was proven, from the same M2 session seam `requireStepUp` reads: a
- * WebAuthn ceremony is a `passkey`, anything else `password_step_up` (the column's historic value, also the
- * fallback when the session carries no id / the seam is unbound, as in the in-memory slice).
+ * The method recorded on a care-plan signature for the step-up factor that proved it: a WebAuthn ceremony is a
+ * `passkey`, a TOTP code `totp_step_up`, anything else `password_step_up` (the column's historic value, also the
+ * fallback when the session carries no id / the seam is unbound, as in the in-memory slice). The signed record
+ * says how the signer was authenticated, so a TOTP signer must not read as a password one.
  */
+export function signatureMethodForFactor(
+  factor: unknown,
+): "passkey" | "totp_step_up" | "password_step_up" {
+  return factor === "webauthn"
+    ? "passkey"
+    : factor === "totp"
+      ? "totp_step_up"
+      : "password_step_up";
+}
+
+/** How the caller's fresh step-up was proven, from the same M2 session seam `requireStepUp` reads. */
 async function stepUpSignatureMethod(
   request: FastifyRequest,
-): Promise<"passkey" | "password_step_up"> {
+): Promise<"passkey" | "totp_step_up" | "password_step_up"> {
   const sessionId = request.context?.attributes?.sessionId;
   if (typeof sessionId !== "string" || !request.context.organizationId) return "password_step_up";
   try {
@@ -161,7 +173,7 @@ async function stepUpSignatureMethod(
       { orgId: request.context.organizationId },
       sessionId,
     );
-    return state?.lastStepUpFactor === "webauthn" ? "passkey" : "password_step_up";
+    return signatureMethodForFactor(state?.lastStepUpFactor);
   } catch {
     return "password_step_up";
   }

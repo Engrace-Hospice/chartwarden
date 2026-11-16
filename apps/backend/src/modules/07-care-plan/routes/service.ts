@@ -314,7 +314,7 @@ export interface CarePlanSignActor {
   readonly userId: string;
   readonly membershipId: string;
   /** How the actor's fresh step-up was proven (server-resolved from the session; default password_step_up). */
-  readonly signatureMethod?: "passkey" | "password_step_up";
+  readonly signatureMethod?: "passkey" | "totp_step_up" | "password_step_up";
   /** The authenticated actor's role keys (server-side; never a body field) — GAP-011. */
   readonly roles: readonly string[];
 }
