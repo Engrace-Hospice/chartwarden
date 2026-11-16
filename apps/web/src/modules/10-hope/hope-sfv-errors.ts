@@ -29,6 +29,21 @@ export const SFV_REFUSED_WITHOUT_REASON: SfvError = {
 };
 
 /**
+ * Refused for too many requests (429). A definite refusal that changed nothing, and the dialog keeps what was typed: said by status,
+ * since the limiter's body and code are not the clinician's to read (and a proxy's 429 has none).
+ */
+export const SFV_RATE_LIMITED: SfvError = {
+  title: "Too many attempts",
+  message: "Nothing was recorded. Wait a minute, then try again. Your answers are kept.",
+};
+
+const TOO_MANY_REQUESTS = 429;
+
+/** Whether the reply was the rate limit's (a 429, or the platform's `RATE_LIMITED` code on any status). */
+export const isRateLimited = (code: string | null, status: number | undefined): boolean =>
+  status === TOO_MANY_REQUESTS || code === "RATE_LIMITED";
+
+/**
  * The attestation wording this page shows is out of date. A definite refusal: nothing was written, and the page
  * cannot send the new version, so it must be reloaded.
  */
@@ -54,6 +69,7 @@ interface ValidationEnvelope {
 export function sfvErrorFrom(error: unknown, status?: number): SfvError {
   const code = errorCodeOf(error);
   if (code === ATTESTATION_STALE_CODE) return SFV_WORDING_CHANGED;
+  if (isRateLimited(code, status)) return SFV_RATE_LIMITED;
   // A fault on the server's side (a dependency down, a 5xx): its raw text can carry internals, so the dialog speaks.
   const fault = serverFaultMessage(error, status, ADMISSION_UNAVAILABLE);
   if (fault !== null) {

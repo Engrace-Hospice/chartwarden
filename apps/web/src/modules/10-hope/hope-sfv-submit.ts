@@ -15,10 +15,12 @@ import {
 import { useStepUpRedirect } from "./hope-attestation";
 import type { SfvDraft } from "./hope-sfv-draft";
 import {
+  SFV_RATE_LIMITED,
   SFV_REFUSED_WITHOUT_REASON,
   SFV_UNCONFIRMED,
   SFV_WORDING_CHANGED,
   type SfvError,
+  isRateLimited,
   sfvErrorFrom,
 } from "./hope-sfv-errors";
 import type { SfvDialogAssessment, SfvForm } from "./hope-sfv-form";
@@ -119,9 +121,9 @@ export function useSfvSubmit(inputs: SubmitInputs): {
     if (!isRefusalBody(res.error)) {
       // No refusal body to read. A 4xx was still an answer (refused, reason not given); anything else (an empty or
       // gateway reply) leaves it unknown whether the write landed.
-      setError(
-        isClientRefusal(res.response?.status) ? SFV_REFUSED_WITHOUT_REASON : SFV_UNCONFIRMED,
-      );
+      const status = res.response?.status;
+      if (isRateLimited(null, status)) setError(SFV_RATE_LIMITED);
+      else setError(isClientRefusal(status) ? SFV_REFUSED_WITHOUT_REASON : SFV_UNCONFIRMED);
       return;
     }
     // A stale session is recoverable: keep what was typed, re-verify, then come back and complete the SFV.

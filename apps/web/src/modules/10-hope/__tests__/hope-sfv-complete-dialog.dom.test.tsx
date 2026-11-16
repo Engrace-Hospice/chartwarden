@@ -457,6 +457,45 @@ describe("CompleteSfvDialog", () => {
     });
   });
 
+  describe("a rate-limited request (429)", () => {
+    it.each([
+      [
+        "with the platform's RATE_LIMITED body",
+        { error: { error: { code: "RATE_LIMITED", message: "Too many requests" } } },
+      ],
+      [
+        "with a body of another shape",
+        { error: { error: { code: "FST_ERR_X", message: "slow" } } },
+      ],
+      ["with no body at all", {}],
+    ])(
+      "says nothing was recorded, to wait, and that the answers are kept, %s",
+      async (_n, body) => {
+        const post = vi.fn<SfvDialogApi["POST"]>(
+          async () => ({ ...body, response: { ok: false, status: 429 } }) as Reply,
+        );
+        const { dialog, onCompleted } = renderDialog(["rn"], post);
+        answerAndAttest(dialog);
+
+        fireEvent.click(submitButton(dialog));
+
+        const alert = await within(dialog).findByRole("alert");
+        expect(alert.textContent).toContain("Too many attempts");
+        expect(alert.textContent).toContain(
+          "Nothing was recorded. Wait a minute, then try again. Your answers are kept.",
+        );
+        expect(alert.textContent).not.toMatch(
+          /could not confirm|without saying why|Too many requests/i,
+        );
+        expect(onCompleted).not.toHaveBeenCalled();
+        // Kept: the dialog is free to send the same answers again.
+        expect(submitButton(dialog).disabled).toBe(false);
+        fireEvent.click(submitButton(dialog));
+        await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+      },
+    );
+  });
+
   describe("a refusal with no reason given", () => {
     it.each([
       ["no error at all", { response: { ok: false, status: 400 } }],
