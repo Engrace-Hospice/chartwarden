@@ -1,9 +1,9 @@
 import { t } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — inline styles shared by the HOPE assessment workspace and the dialogs it opens
-// (`hope-sign-dialog.tsx`, `hope-sfv-complete-dialog.tsx`, and the small write dialogs: `hope-record-modal.tsx`,
-// `hope-override-section.tsx`, `hope-action-modal.tsx`, `record-cms-result-modal.tsx`, which share `meta`, `lateBox`, `checkRow` and
-// `errorText` at the end). They live apart from the screen so a dialog can be its own file without importing the 5,000-line screen
-// back (an import cycle).
+// (`hope-sign-dialog.tsx`, `hope-sfv-complete-dialog.tsx`), and by the small write dialogs, which share `meta`, `lateBox`, `checkRow` and
+// `errorText` at the end of this file: `hope-record-modal.tsx`, `hope-record-sections.tsx`, `hope-override-section.tsx`,
+// `hope-action-modal.tsx` and `record-cms-result-modal.tsx`. They live apart from the screen so a dialog can be its own
+// file without importing the 5,000-line screen back (an import cycle).
 import type { CSSProperties } from "react";
 
 export const muted: CSSProperties = {
@@ -432,7 +432,8 @@ export const textareaField: CSSProperties = {
   resize: "vertical",
 };
 
-// The recording dialog (`hope-record-modal.tsx`) and its override section (`hope-override-section.tsx`).
+// The write dialogs' own notes, boxes and alerts: `meta` (small helper text) is used by all five files named at the top, `lateBox` and
+// `checkRow` by the recording dialog and its parts (`hope-record-modal.tsx`, `hope-record-sections.tsx`, `hope-override-section.tsx`).
 export const meta: CSSProperties = {
   margin: 0,
   fontSize: "0.75rem",
