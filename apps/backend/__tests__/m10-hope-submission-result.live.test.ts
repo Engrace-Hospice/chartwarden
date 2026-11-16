@@ -624,9 +624,19 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
         [ORG_A, provider, PERIOD],
       );
 
+      // two batches whose created_at differ by 100 microseconds inside ONE millisecond: a JavaScript Date cannot tell them apart,
+      // so the order between them can only be the database's
+      const sameMs = [uuid(++seq), uuid(++seq)];
+      await admin.query(
+        `INSERT INTO hope_submission (id, organization_id, provider_entity_id, submission_period, status, item_count, created_at)
+         VALUES ($1,$3,$4,$5,'accepted',1,'2099-01-01T00:00:00.000200Z'), ($2,$3,$4,$5,'accepted',1,'2099-01-01T00:00:00.000100Z')`,
+        [sameMs[0], sameMs[1], ORG_A, provider, PERIOD],
+      );
+
       const { submissions } = await svc.listSubmissions(ORG_A, provider);
 
       expect(submissions).toHaveLength(500);
+      expect(submissions.slice(0, 2).map((s) => s.id)).toEqual(sameMs); // the later microsecond first
       expect(submissions.map((s) => s.id)).toContain(oldExported); // by created_at alone it was the 502nd newest
       const ids = submissions.map((s) => s.id);
       expect(ids.at(-1)).toBe(oldExported); // and, being the oldest, it is listed last

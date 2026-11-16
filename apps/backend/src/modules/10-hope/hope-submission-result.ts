@@ -40,21 +40,14 @@ export const ANSWERED_BATCH_STATUSES = [
  * `submitted_pending_result`), or rejected items to correct (`rejected`, `partially_accepted`); `ready`, `queued` and
  * `file_error` are in no manual lifecycle but are not closed either. The submission list is capped, and the cap keeps these
  * batches first (see `GET /hope/submissions`), so a status added later is kept by default rather than hidden.
+ * `rejected` and `partially_accepted` are deliberately never closed: a correction goes in a NEW batch and the old one stays
+ * `rejected` (see SUBMISSION_LIST_LIMIT in hope-route-service-db.ts for what that costs and why it is left).
  */
 export const CLOSED_BATCH_STATUSES = [
   "accepted",
   "accepted_with_warnings",
   "cancelled",
 ] as const satisfies readonly HopeSubmissionStatus[];
-
-/** Newest first (`created_at`, then `id`, both descending): the order the submission list answers in. */
-export const newestFirst = <T extends { readonly createdAt: Date; readonly id: string }>(
-  rows: readonly T[],
-): T[] =>
-  [...rows].sort(
-    (a, b) =>
-      b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
-  );
 
 /** Why a result cannot be recorded against a batch in `status` (the 409 code): never handed to CMS, cancelled
  * (R-08: it must never be uploaded or settled), or already settled. */

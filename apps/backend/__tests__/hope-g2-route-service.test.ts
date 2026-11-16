@@ -272,6 +272,15 @@ describe("the provider-entity filter is the database's, on the canonical id", ()
 
     const [where] = filterOf(statements);
     expect(where?.sql).toContain('"provider_entity_id"');
-    expect(where?.params).toEqual([ORG, CANONICAL]); // the tenant first, then the canonical entity id
+    // the tenant, then (inside the cap's subquery) the tenant again, the canonical entity id, the closed statuses and the cap
+    expect(where?.params).toEqual([
+      ORG,
+      ORG,
+      CANONICAL,
+      "accepted",
+      "accepted_with_warnings",
+      "cancelled",
+      500,
+    ]);
   });
 });

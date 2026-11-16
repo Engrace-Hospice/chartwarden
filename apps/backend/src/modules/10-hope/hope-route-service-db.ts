@@ -40,7 +40,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { HopeRfaKind, LatestAssessment, ScaleType } from "@chartwarden/types";
 import { ConflictError, NotFoundError, ValidationError } from "@chartwarden/types";
 import { type SQL, and, count, desc, eq, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
-import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { type AnyPgColumn, QueryBuilder } from "drizzle-orm/pg-core";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "./abac-predicates";
@@ -112,7 +112,6 @@ import {
   isResultImportable,
   isSettledItemStatus,
   manualUploadTransmittedPayload,
-  newestFirst,
   nonBlankRecordId,
   reportHashes,
   resultRefusalCode,
@@ -205,7 +204,15 @@ type LightSubmissionRow = Omit<SubmissionRow, "acceptanceReport">;
  * The most batches the submission list answers: the worklist read has no pagination, so it is bounded. The cap is applied
  * AFTER the batches that can still need an operator (every status but CLOSED_BATCH_STATUSES) are put first, newest first within
  * each group, so an old `exported` or `rejected` batch cannot fall off the worklist behind 500 newer accepted ones. The answer
- * itself is newest first. Only when more than this many batches are unfinished at once does the cap cut one of them.
+ * itself is newest first, ordered by the database (`created_at` has microseconds; a JavaScript Date has milliseconds).
+ *
+ * KNOWN LIMIT, by design: `rejected` and `partially_accepted` batches are never "closed". A rejected item is corrected by a NEW
+ * assessment in a NEW batch, and the old batch stays `rejected` for good (its status is CMS's verdict, not the correction's
+ * standing), so a batch whose corrections were all accepted is still sorted as unfinished. Only when MORE than this many batches
+ * are unfinished at once do the newer accepted ones fall out of the cap (and past that, the oldest unfinished ones). Telling a
+ * resolved rejection from an open one is the correction-chain walk of `rejectedStandings`, which an ORDER BY cannot do, and a cap
+ * per bucket only moves the loss to the other bucket: the fix for an organization that reaches 500 is a filter or pagination on
+ * the route (a new query parameter and response field), not a smarter cap.
  */
 const SUBMISSION_LIST_LIMIT = 500;
 
@@ -1016,8 +1023,10 @@ export function createDbHopeBackend(
     // ── iQIES submission reads (§2.2.4) ────────────────────────────────────────────────────────────
     async listSubmissions(organizationId, providerEntityId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const scoped = (await tx
-          .select(LIGHT_SUB_COLUMNS)
+        // The cap picks WHICH batches survive (unfinished first, then newest) in a subquery; the statement around it orders what
+        // survived newest first. One statement, one order: no second sort in JavaScript to disagree with the database's.
+        const survivors = new QueryBuilder()
+          .select({ id: SUB.id })
           .from(SUB)
           .where(
             and(
@@ -1030,15 +1039,18 @@ export function createDbHopeBackend(
             desc(SUB.createdAt),
             desc(SUB.id),
           )
-          .limit(SUBMISSION_LIST_LIMIT)) as LightSubmissionRow[];
+          .limit(SUBMISSION_LIST_LIMIT);
+        const scoped = (await tx
+          .select(LIGHT_SUB_COLUMNS)
+          .from(SUB)
+          .where(and(eq(SUB.organizationId, organizationId), inArray(SUB.id, survivors)))
+          .orderBy(desc(SUB.createdAt), desc(SUB.id))) as LightSubmissionRow[];
         const resolutions = await resolutionCountsByBatch(
           tx as unknown as DbClient,
           organizationId,
           scoped.filter((r) => r.rejectedCount > 0).map((r) => r.id),
         );
-        return {
-          submissions: newestFirst(scoped).map((r) => toSubmissionView(r, resolutions.get(r.id))),
-        };
+        return { submissions: scoped.map((r) => toSubmissionView(r, resolutions.get(r.id))) };
       });
     },
     async getSubmission(organizationId, id) {
