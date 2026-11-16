@@ -100,10 +100,12 @@ export function DisciplinePlansIndex(): JSX.Element {
     />
   );
   const rail = <PatientSummaryPanel identity={identity} />;
+  // While loading or on an error the page has no title of its own yet, so the patient's name is its heading.
+  const bailBanner = <ChartPatientBanner patientId={patientId} identity={identity} nameAsHeading />;
 
   if (loading) {
     return (
-      <PatientChartBail banner={banner} patientId={patientId} current="discipline-plans">
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
         <LoadingSpinner />
       </PatientChartBail>
     );
@@ -111,7 +113,7 @@ export function DisciplinePlansIndex(): JSX.Element {
 
   if (error) {
     return (
-      <PatientChartBail banner={banner} patientId={patientId} current="discipline-plans">
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
         <EmptyState title="Unavailable" description={error} />
       </PatientChartBail>
     );

@@ -153,7 +153,7 @@ export function DisciplinePlanWorkspace({
 
   // The shared chart banner and Patient Summary rail, so this tab shows the same identity header as
   // every other chart tab.
-  const bailBanner = <ChartPatientBanner patientId={patientId} identity={identity} />;
+  const bailBanner = <ChartPatientBanner patientId={patientId} identity={identity} nameAsHeading />;
   if (loading) {
     return (
       <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">

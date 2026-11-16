@@ -12,6 +12,7 @@ import type { Session } from "../../../shell/session";
 import { DisciplinePlansIndex } from "../plans-index";
 
 const PATIENT = "patient-1";
+let clientUnderTest: ApiClient;
 
 const session: Session = {
   userId: "11111111-1111-4111-8111-111111111111",
@@ -27,7 +28,7 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function renderIndex(): void {
+function renderIndex(): ApiClient {
   const client = {
     GET: vi.fn(async (path: string) => {
       if (path === "/api/v1/discipline-plans") return ok({ data: [], nextCursor: null });
@@ -45,6 +46,7 @@ function renderIndex(): void {
     }),
     POST: vi.fn(async () => ok({})),
   } as unknown as ApiClient;
+  clientUnderTest = client;
   render(
     <MemoryRouter initialEntries={[`/patients/${PATIENT}/discipline-plans`]}>
       <ApiClientProvider client={client}>
@@ -69,6 +71,11 @@ describe("discipline plans index — shared patient header", () => {
     // The banner names the patient (it is the shared ChartBanner, which links the name to the chart).
     await waitFor(() => expect(screen.getByRole("link", { name: "June Rivera" })).toBeTruthy());
     expect(screen.getByText("Patient Summary")).toBeTruthy();
+    // The banner and the rail share ONE patient read (the identity is loaded once and handed to the banner).
+    const patientReads = (
+      clientUnderTest.GET as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls.filter((c) => c[0] === "/api/v1/patients/{id}");
+    expect(patientReads).toHaveLength(1);
     // The page's own title moved into the content, and the printable summary stays one click away.
     expect(screen.getByRole("heading", { name: "Discipline plans" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Printable summary" }).getAttribute("href")).toBe(

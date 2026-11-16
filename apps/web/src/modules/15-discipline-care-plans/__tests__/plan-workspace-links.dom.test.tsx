@@ -91,6 +91,8 @@ function renderWorkspace(kind: string, versions: unknown[], session: Session): v
       if (path === "/api/v1/discipline-plans/{planId}") return ok(detail);
       if (path === "/api/v1/patients/{id}")
         return ok({
+          id: PATIENT,
+          organizationId: "org-1",
           mrn: "MRN-7",
           firstName: "June",
           lastName: "Rivera",
