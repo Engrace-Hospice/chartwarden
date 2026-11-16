@@ -630,7 +630,7 @@ export function createDbHopeBackend(
     organizationId: string,
     id: string,
   ): Promise<AssessmentRow> {
-    const assessment = await loadA(tx, id);
+    const assessment = await loadA(tx, organizationId, id);
     if (assessment.specVersionId && assessment.isc) return assessment;
     if (assessment.status !== "draft" || !isOfficialRfaKind(assessment.rfaKind)) {
       return assessment;
@@ -674,7 +674,7 @@ export function createDbHopeBackend(
         lock: `spec initialisation of assessment ${idForLog(id)} (org ${idForLog(organizationId)})`,
       },
     )) as AssessmentRow[];
-    if (!updated) return loadA(tx, id);
+    if (!updated) return loadA(tx, organizationId, id);
     await answerWriter.writeDerivedControlAnswers(tx, {
       organizationId,
       providerEntityId: updated.providerEntityId,
@@ -686,12 +686,13 @@ export function createDbHopeBackend(
     return updated;
   }
 
-  async function loadA(t: DbClient, id: string): Promise<AssessmentRow> {
+  async function loadA(t: DbClient, organizationId: string, id: string): Promise<AssessmentRow> {
     const assessmentId = uuidOrNotFound(id, `HOPE assessment ${id} not found`);
+    // The tenant is named beside the id, on top of RLS: a connection that bypasses RLS still finds nothing of another tenant's.
     const [r] = (await t
       .select()
       .from(ASSESS)
-      .where(eq(ASSESS.id, assessmentId))
+      .where(and(eq(ASSESS.id, assessmentId), eq(ASSESS.organizationId, organizationId)))
       .limit(1)) as AssessmentRow[];
     if (!r) throw new NotFoundError(`HOPE assessment ${id} not found`);
     return r;
@@ -699,12 +700,19 @@ export function createDbHopeBackend(
 
   async function pendingLineageOperation(
     t: DbClient,
+    organizationId: string,
     sourceId: string,
   ): Promise<AssessmentRow | null> {
     const [row] = (await t
       .select()
       .from(ASSESS)
-      .where(and(eq(ASSESS.correctsAssessmentId, sourceId), eq(ASSESS.status, "draft")))
+      .where(
+        and(
+          eq(ASSESS.correctsAssessmentId, sourceId),
+          eq(ASSESS.organizationId, organizationId),
+          eq(ASSESS.status, "draft"),
+        ),
+      )
       .limit(1)) as AssessmentRow[];
     return row ?? null;
   }
@@ -724,7 +732,7 @@ export function createDbHopeBackend(
     sourceId: string,
   ): Promise<void> {
     await lockRecordKey(t, `m10:lineage:${organizationId}`, sourceId);
-    const pending = await pendingLineageOperation(t, sourceId);
+    const pending = await pendingLineageOperation(t, organizationId, sourceId);
     if (pending) {
       throw new ConflictError(
         `HOPE assessment ${sourceId} already has a pending regulatory operation (${pending.id})`,
@@ -746,7 +754,12 @@ export function createDbHopeBackend(
     const [original] = (await t
       .select()
       .from(ASSESS)
-      .where(eq(ASSESS.id, correction.correctsAssessmentId))
+      .where(
+        and(
+          eq(ASSESS.id, correction.correctsAssessmentId),
+          eq(ASSESS.organizationId, correction.organizationId),
+        ),
+      )
       .limit(1)) as AssessmentRow[];
     if (!original) throw new ConflictError("Correction source assessment is missing");
     if (original.status !== "signed") {
@@ -890,7 +903,7 @@ export function createDbHopeBackend(
         const [r] = (await tx
           .select()
           .from(SCHED)
-          .where(eq(SCHED.id, scheduleId))
+          .where(and(eq(SCHED.id, scheduleId), eq(SCHED.organizationId, organizationId)))
           .limit(1)) as ScheduleRow[];
         if (!r) throw new NotFoundError(`HOPE schedule ${id} not found`);
         return toScheduleView(r);
@@ -904,7 +917,7 @@ export function createDbHopeBackend(
         const [r] = (await tx
           .select()
           .from(ASSESS)
-          .where(eq(ASSESS.id, assessmentId))
+          .where(and(eq(ASSESS.id, assessmentId), eq(ASSESS.organizationId, organizationId)))
           .limit(1)) as AssessmentRow[];
         if (!r) throw new NotFoundError(`HOPE assessment ${id} not found`);
         return toAssessmentView(r);
@@ -919,7 +932,9 @@ export function createDbHopeBackend(
         const rows = (await tx
           .select()
           .from(ASSESS)
-          .where(eq(ASSESS.patientId, patient))) as AssessmentRow[];
+          .where(
+            and(eq(ASSESS.patientId, patient), eq(ASSESS.organizationId, organizationId)),
+          )) as AssessmentRow[];
         return { assessments: rows.map(toAssessmentView) };
       });
     },
@@ -945,7 +960,11 @@ export function createDbHopeBackend(
     async getSfv(organizationId, id) {
       const sfvId = uuidOrNotFound(id, `SFV ${id} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [r] = (await tx.select().from(SFV).where(eq(SFV.id, sfvId)).limit(1)) as SfvRow[];
+        const [r] = (await tx
+          .select()
+          .from(SFV)
+          .where(and(eq(SFV.id, sfvId), eq(SFV.organizationId, organizationId)))
+          .limit(1)) as SfvRow[];
         if (!r) throw new NotFoundError(`SFV ${id} not found`);
         return toSfvView(r);
       });
@@ -987,7 +1006,7 @@ export function createDbHopeBackend(
         const [r] = (await tx
           .select(LIGHT_SUB_COLUMNS)
           .from(SUB)
-          .where(eq(SUB.id, submissionId))
+          .where(and(eq(SUB.id, submissionId), eq(SUB.organizationId, organizationId)))
           .limit(1)) as LightSubmissionRow[];
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
         return loadSubmissionDetail(tx as unknown as DbClient, r);
@@ -1000,7 +1019,7 @@ export function createDbHopeBackend(
       );
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        await loadA(t, assessmentId);
+        await loadA(t, organizationId, assessmentId);
         const rows = await t
           .select({ item: { itemStatus: SUBITEM.itemStatus }, sub: LIGHT_SUB_COLUMNS })
           .from(SUBITEM)
@@ -1118,18 +1137,24 @@ export function createDbHopeBackend(
         const schedRows = (await tx
           .select()
           .from(SCHED)
-          .where(eq(SCHED.admissionId, admissionId))) as ScheduleRow[];
+          .where(
+            and(eq(SCHED.admissionId, admissionId), eq(SCHED.organizationId, organizationId)),
+          )) as ScheduleRow[];
         const assessmentRows = (await tx
           .select()
           .from(ASSESS)
-          .where(eq(ASSESS.admissionId, admissionId))) as AssessmentRow[];
+          .where(
+            and(eq(ASSESS.admissionId, admissionId), eq(ASSESS.organizationId, organizationId)),
+          )) as AssessmentRow[];
         // The URL admission's own SFVs, not the patient's across every admission. A re-admitted
         // patient has one admission per episode, and an SFV of another one is not completable through this
         // one (the R-01 binding refuses it), so listing it here would hand the capture workspace a dead end.
         const sfvRows = (await tx
           .select()
           .from(SFV)
-          .where(eq(SFV.admissionId, admissionId))) as SfvRow[];
+          .where(
+            and(eq(SFV.admissionId, admissionId), eq(SFV.organizationId, organizationId)),
+          )) as SfvRow[];
         return buildWorkflowState({
           admissionId,
           nowIso: new Date().toISOString(),
@@ -1363,8 +1388,16 @@ export function createDbHopeBackend(
           .from(SCHED)
           .where(
             args.scheduleId
-              ? and(eq(SCHED.id, args.scheduleId), eq(SCHED.admissionId, admissionId))
-              : and(eq(SCHED.admissionId, admissionId), eq(SCHED.rfaKind, args.rfaKind)),
+              ? and(
+                  eq(SCHED.id, args.scheduleId),
+                  eq(SCHED.admissionId, admissionId),
+                  eq(SCHED.organizationId, organizationId),
+                )
+              : and(
+                  eq(SCHED.admissionId, admissionId),
+                  eq(SCHED.rfaKind, args.rfaKind),
+                  eq(SCHED.organizationId, organizationId),
+                ),
           )
           .orderBy(sql`CASE WHEN ${SCHED.status} = 'open' THEN 0 ELSE 1 END`, desc(SCHED.createdAt))
           .limit(1)) as ScheduleRow[];
@@ -1392,6 +1425,7 @@ export function createDbHopeBackend(
             .where(
               and(
                 eq(ASSESS.admissionId, admissionId),
+                eq(ASSESS.organizationId, organizationId),
                 eq(ASSESS.rfaKind, args.rfaKind),
                 eq(ASSESS.status, "draft"),
               ),
@@ -1405,15 +1439,23 @@ export function createDbHopeBackend(
               existingDraft.id,
             );
 
-            await admissionPrefillService.prefillAdmission({
+            // A re-record of an existing draft is a re-open: the chart's answers are re-synced in `refreshOnly` mode, so a
+            // change bumps `version` (whoever reviewed the older one is refused at patch and sign) and an unchanged chart
+            // writes nothing. Only the FIRST fill of the row inserted below keeps `version` (nobody has seen it yet).
+            const prefilled = await admissionPrefillService.prefillAdmission({
               tx: t,
               organizationId,
               assessment: normalized,
               specVersionCode: init.specVersionCode,
               admissionDate: (admissionSummary?.admissionAt ?? regulatoryTargetDate).slice(0, 10),
+              refreshOnly: true,
             });
-
-            return toAssessmentView(normalized);
+            // The view carries the row as the prefill left it (its bumped `version`), not the row read before it.
+            return toAssessmentView(
+              prefilled.prefilledItemCodes.length > 0
+                ? await loadA(t, organizationId, normalized.id)
+                : normalized,
+            );
           }
         }
         let capture: CaptureDecision = { wasLate: false, lateReasonCode: null };
@@ -1650,7 +1692,7 @@ export function createDbHopeBackend(
       const id = uuidOrNotFound(urlId, `HOPE assessment ${urlId} not found`);
       const result = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const r = await loadA(t, id);
+        const r = await loadA(t, organizationId, id);
         if ((r.rfaKind !== "02_huv1" && r.rfaKind !== "03_huv2") || r.isc !== "HUV") {
           throw new ConflictError(`HOPE assessment ${id} is not a HUV record`);
         }
@@ -1837,7 +1879,7 @@ export function createDbHopeBackend(
         // (and superseded the source) before this request got the lock is seen by that read, so a second correction can
         // never be inserted against a record that is no longer current.
         await assertNoPendingLineageOperation(t, organizationId, id);
-        const original = await loadA(t, id);
+        const original = await loadA(t, organizationId, id);
         require_(
           original.status === "signed",
           "M10_CORRECTION_TARGET_NOT_SIGNED",
@@ -1926,7 +1968,7 @@ export function createDbHopeBackend(
         const t = tx as unknown as DbClient;
         // Lock and pending check first, then judge the source (see `correctTimepoint`).
         await assertNoPendingLineageOperation(t, organizationId, id);
-        const original = await loadA(t, id);
+        const original = await loadA(t, organizationId, id);
         require_(
           original.status === "signed",
           "M10_CORRECTION_TARGET_NOT_SIGNED",
@@ -2006,7 +2048,7 @@ export function createDbHopeBackend(
       const id = uuidOrNotFound(urlId, `HOPE assessment ${urlId} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const a = await loadA(t, id); // 404 before emit if absent/cross-tenant
+        const a = await loadA(t, organizationId, id); // 404 before emit if absent/cross-tenant
         await emit(t, organizationId, "m10.hope.summary_requested", "hope_assessment", a.id, {
           assessmentId: a.id,
           requestedBy: userId,

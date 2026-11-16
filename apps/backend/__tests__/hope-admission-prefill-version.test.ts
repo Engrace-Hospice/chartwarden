@@ -88,7 +88,7 @@ describe("prefill refresh of a re-opened draft — `version`", () => {
   it("bumps the version, in the same UPDATE as updated_at, when the chart changed an answer", async () => {
     // peek -> the chart value differs from the stored one; lock; re-read under the lock; the write; reconcile (items,
     // answers); the assessment UPDATE.
-    const { result, sets } = await prefill(
+    const { result, sets, statements } = await prefill(
       [
         specItemsSelect,
         noOptions,
@@ -107,6 +107,10 @@ describe("prefill refresh of a re-opened draft — `version`", () => {
     expect(sets).toHaveLength(1);
     expect(Object.keys(sets[0] ?? {}).sort()).toEqual(["updatedAt", "version"]);
     expect(renderSql(sets[0]?.version).sql).toContain('"version" + 1');
+    // The UPDATE names the tenant beside the id (on top of RLS: an owner connection bypasses it).
+    const update = statements.find((s) => s.kind === "update");
+    expect(update?.rendered?.sql).toMatch(/"organization_id" = \$\d+/);
+    expect(update?.rendered?.params).toEqual(expect.arrayContaining([ASSESSMENT_ID, ORG]));
   });
 
   it("writes nothing and bumps nothing when the chart still holds what the draft already has", async () => {

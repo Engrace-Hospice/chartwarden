@@ -555,7 +555,7 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
       await tx
         .update(A)
         .set(refreshOnly ? { updatedAt: at, version: sql`${A.version} + 1` } : { updatedAt: at })
-        .where(eq(A.id, assessment.id));
+        .where(and(eq(A.id, assessment.id), eq(A.organizationId, organizationId)));
       return { assessmentId: assessment.id, prefilledItemCodes: written };
     },
   };

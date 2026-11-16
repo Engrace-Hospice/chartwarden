@@ -353,7 +353,13 @@ export async function reconcileCompletedSfvRegulatoryAnswers(
 
   const [sfv] = (await takeBoundedLock(
     tx,
-    (statement) => statement.select().from(SFV).where(eq(SFV.id, peeked.id)).limit(1).for("update"),
+    (statement) =>
+      statement
+        .select()
+        .from(SFV)
+        .where(and(eq(SFV.id, peeked.id), eq(SFV.organizationId, organizationId)))
+        .limit(1)
+        .for("update"),
     {
       lock: `SFV row of triggering assessment ${idForLog(triggeringAssessmentId)} (org ${idForLog(organizationId)}) for the review self-heal`,
     },
