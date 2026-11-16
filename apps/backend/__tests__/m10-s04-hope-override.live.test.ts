@@ -364,7 +364,12 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
     registerAbacRegistry(registry);
     await app?.close();
     app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-    registerHopeRoutes(app, { service: svc, caseloadPatientIds: async () => [] });
+    registerHopeRoutes(app, {
+      service: svc,
+      caseloadPatientIds: async () => [],
+      // The SFV route's per-actor limiter is a composition-root concern (unit-tested in hope-routes.test.ts): no-op here.
+      sfvCompletionRateLimit: async () => undefined,
+    });
     await app.ready();
   });
 

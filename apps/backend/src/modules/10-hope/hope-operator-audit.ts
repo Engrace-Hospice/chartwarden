@@ -70,8 +70,11 @@ async function writeOperatorEvent(
 }
 
 /**
- * A package cancelled before upload: the batch, why, and the hash of the package whose bytes were purged with it, or
- * `bytesKeptForLegalHold: true` when an M4 legal hold (or an unreadable hold scope) kept them.
+ * A package cancelled before upload: the batch, why, and the hash of the package whose bytes were purged with it. When the bytes
+ * were KEPT, `bytesKeptReason` says why: `legal_hold` (an M4 hold applies) or `hold_scope_unreadable` (the hold scope could not
+ * be read, so nothing could be shown not to be held); `bytesKeptForLegalHold` is true only for the first. A REPEAT cancel that
+ * purged bytes kept earlier writes this event too (`repeatCancel: true`, `packageBytesPurged: true`, `itemsCancelled: 0`).
+ * Ids, enums and booleans only.
  */
 export const auditHopeSubmissionCancelled = (
   t: DbClient,
@@ -82,7 +85,8 @@ export const auditHopeSubmissionCancelled = (
     readonly priorStatus: string;
     readonly packageSha256: string | null;
     readonly itemsCancelled: number;
-    readonly bytesKeptForLegalHold: boolean;
+    readonly bytesKeptReason: "legal_hold" | "hold_scope_unreadable" | "none";
+    readonly repeatCancel: boolean;
   },
 ): Promise<void> =>
   writeOperatorEvent(t, input, {
@@ -96,8 +100,11 @@ export const auditHopeSubmissionCancelled = (
       priorStatus: input.priorStatus,
       // The hash survives as the evidence that this exact package existed; the bytes it hashes do not (CW-DS-01).
       packageSha256: input.packageSha256,
-      packageBytesPurged: !input.bytesKeptForLegalHold,
-      bytesKeptForLegalHold: input.bytesKeptForLegalHold,
+      packageBytesPurged: input.bytesKeptReason === "none",
+      // Kept for the registers and callers that read the first spelling: true only for a real hold, never for an unreadable scope.
+      bytesKeptForLegalHold: input.bytesKeptReason === "legal_hold",
+      bytesKeptReason: input.bytesKeptReason,
+      repeatCancel: input.repeatCancel,
       itemsCancelled: input.itemsCancelled,
     },
   });

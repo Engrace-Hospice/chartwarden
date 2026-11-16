@@ -14,7 +14,8 @@
 // `hope_submission` / `hope_submission_item` rows SURVIVE: the envelope SHA-256 is operational/compliance
 // evidence. M10 purges no envelope content and the spec records that no purge job exists (§8.4 #3), so the
 // package bytes in `hope_submission.acceptance_report` of a batch that was NOT cancelled outlive the destruction
-// certificate (a cancel deletes its own batch's bytes at cancel time, §4.8).
+// certificate (a cancel deletes its own batch's bytes at cancel time, §4.8, unless an M4 legal hold applies; a repeat cancel
+// purges them once the hold is released).
 // Both `signed` AND `superseded` assessments are erased so a correction-supersede chain is removed at both
 // ends and no orphaned half survives. The sibling clinical erasers are disjoint by table ownership: M5
 // destroys the patient demographics subtree, M6 the admission subtree, M7 the care-plan subtree, M8 the

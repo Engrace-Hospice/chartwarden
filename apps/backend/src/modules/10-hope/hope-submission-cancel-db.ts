@@ -4,7 +4,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { require_ } from "@chartwarden/hope";
 import { NotFoundError } from "@chartwarden/types";
 import type { HopeSubmissionCancelReasonCode } from "@chartwarden/types";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, or, sql } from "drizzle-orm";
 import { takeBoundedLock } from "./hope-assessment-lock";
 import { errorClassForLog, idForLog } from "./hope-log-id";
 import { auditHopeSubmissionCancelled } from "./hope-operator-audit";
@@ -16,8 +16,6 @@ import {
 } from "./hope-submission-cancel";
 import { LIGHT_SUB_COLUMNS, type LightSubmissionColumns } from "./hope-submission-reads-db";
 import { uuidOrNotFound } from "./hope-uuid";
-import type { HopeRetentionHoldPort } from "./jobs/cron-workers";
-import { DeadlineError, M10_SEAM_READ_TIMEOUT_MS, withinDeadline } from "./jobs/deadline";
 import { heldPatientSql } from "./jobs/retention-store";
 
 const SUB = schema.hopeSubmissions;
@@ -25,61 +23,67 @@ const SUBITEM = schema.hopeSubmissionItems;
 const ASSESSMENT = schema.hopeAssessments;
 
 /**
- * What the cancel knows about the organisation's ACTIVE M4 legal holds. `unreadable` is "the read failed, timed out or
- * no reader is bound": the cancel then FAILS CLOSED and keeps the bytes, exactly as the retention cron refuses to judge an
- * organisation whose hold it cannot read (jobs/cron-workers.ts, jobs/retention-store.ts).
+ * The M4 legal-hold read a package cancel's byte purge is gated on, run ON THE CANCEL'S OWN TRANSACTION (bound at the composition
+ * root to M4's `activeLegalHoldScopeInTransaction`; M10 never reads M4's `legal_hold` table itself). One statement on the open
+ * transaction, so the cancel holds one connection, not two. Unbound, or a failing read, FAILS CLOSED: the bytes are kept.
  */
-export type HopeCancelHoldScope =
-  | { readonly kind: "unreadable" }
-  | {
-      readonly kind: "read";
-      readonly orgWide: boolean;
-      readonly patientIds: ReadonlySet<string>;
-    };
-
-const UNREADABLE_HOLD_SCOPE: HopeCancelHoldScope = { kind: "unreadable" };
+export interface HopeCancelHoldPort {
+  activeLegalHoldScopeInTransaction(
+    tx: DbClient,
+    organizationId: string,
+  ): Promise<{ readonly orgWide: boolean; readonly patientIds: ReadonlySet<string> }>;
+}
 
 /**
- * Read the org's active legal-hold scope through the M4 port the retention cron uses, BEFORE the cancel's transaction opens
- * (the port runs its own transaction: reading it inside would hold two pool connections per cancel). A hold placed between
- * this read and the commit is not seen; the cancel then purges bytes a hold placed milliseconds earlier would have kept.
- * Never throws: a missing port, a failure or a slow answer is `unreadable`, logged by organisation id and error class only.
+ * Why a cancel kept the bytes, as the audit event records it: `legal_hold` (an org-wide hold, or a held patient among the batch's
+ * records), `hold_scope_unreadable` (no reader bound, the read failed, or a held patient id is no uuid so WHO is held cannot be
+ * decided: nothing is known to be held, but nothing can be shown not to be), or `none` (the bytes were purged).
  */
-export async function readCancelHoldScope(
-  holds: HopeRetentionHoldPort | undefined,
+export type HopeBytesKeptReason = "legal_hold" | "hold_scope_unreadable" | "none";
+
+/**
+ * Read the org's active legal-hold scope as a statement of the cancel's transaction, AFTER its batch row lock. It runs in a
+ * SAVEPOINT, so a failed statement (a permission, a missing relation) aborts only the read and not the cancel: the cancel still
+ * happens and keeps the bytes. Never throws; the log line carries the organisation id and the error class only. There is no
+ * deadline of its own: the statement is bounded as every other statement of this transaction is. Nothing locks `legal_hold`,
+ * so a hold committed after this statement and before the commit (the cancel's remaining statements) is not seen: that window is
+ * statement-sized, not the checkout-and-lock-wait window of a read made before the transaction.
+ */
+async function readHoldScope(
+  t: DbClient,
+  holds: HopeCancelHoldPort | undefined,
   organizationId: string,
-): Promise<HopeCancelHoldScope> {
-  if (!holds) return UNREADABLE_HOLD_SCOPE;
+) {
+  if (!holds) return null;
   try {
-    const scope = await withinDeadline(
-      () => holds.activeLegalHoldScopeForOrg(organizationId),
-      M10_SEAM_READ_TIMEOUT_MS,
-      () => new DeadlineError("the M4 legal-hold read", M10_SEAM_READ_TIMEOUT_MS),
+    return await t.transaction((savepoint) =>
+      holds.activeLegalHoldScopeInTransaction(savepoint as unknown as DbClient, organizationId),
     );
-    return { kind: "read", orgWide: scope.orgWide, patientIds: scope.patientIds };
   } catch (error) {
     console.warn(
       `m10: cancel: the M4 legal-hold read failed for organization ${idForLog(organizationId)} (${errorClassForLog(error)}); the package bytes are kept.`,
     );
-    return UNREADABLE_HOLD_SCOPE;
+    return null;
   }
 }
 
 /**
- * Whether a legal hold forbids purging this batch's bytes: an org-wide hold, an unreadable scope, a held patient id that is
- * no uuid (who is held cannot be decided), or ANY item whose assessment belongs to a held patient. The ZIP is one blob, so
- * one held record keeps the whole batch's bytes.
+ * Whether a legal hold forbids purging this batch's bytes, judged on the scope read NOW (see {@link readHoldScope}): an org-wide
+ * hold, or ANY item whose assessment belongs to a held patient (the ZIP is one blob, so one held record keeps the whole batch's
+ * bytes). An unreadable scope, or a held patient id that is no uuid, is `hold_scope_unreadable`.
  */
-async function legalHoldKeepsBytes(
+async function bytesKeptReasonOf(
   t: DbClient,
   batchId: string,
   organizationId: string,
-  scope: HopeCancelHoldScope,
-): Promise<boolean> {
-  if (scope.kind === "unreadable" || scope.orgWide) return true;
-  if (scope.patientIds.size === 0) return false;
+  holds: HopeCancelHoldPort | undefined,
+): Promise<HopeBytesKeptReason> {
+  const scope = await readHoldScope(t, holds, organizationId);
+  if (scope === null) return "hold_scope_unreadable";
+  if (scope.orgWide) return "legal_hold";
+  if (scope.patientIds.size === 0) return "none";
   const held = heldPatientSql(scope.patientIds);
-  if (held.ignored > 0) return true;
+  if (held.ignored > 0) return "hold_scope_unreadable";
   const [hit] = await t
     .select({ id: SUBITEM.id })
     .from(SUBITEM)
@@ -98,7 +102,7 @@ async function legalHoldKeepsBytes(
       ),
     )
     .limit(1);
-  return hit !== undefined;
+  return hit === undefined ? "none" : "legal_hold";
 }
 
 export interface CancelHopeSubmissionArgs {
@@ -118,13 +122,16 @@ export interface CancelHopeSubmissionArgs {
   readonly reasonCode: HopeSubmissionCancelReasonCode;
   readonly now: Date;
   /**
-   * The org's active legal-hold scope, read by the caller (see {@link readCancelHoldScope}). REQUIRED, with no default: it
-   * is a safety input, and a default of "nothing is held" would purge held bytes when a caller forgot it.
+   * The M4 legal-hold read the purge is gated on. REQUIRED, with no default (`undefined` is spelt out by a caller that has none,
+   * and keeps the bytes): it is a safety input, and a default of "nothing is held" would purge held bytes when a caller forgot it.
    */
-  readonly legalHoldScope: HopeCancelHoldScope;
+  readonly legalHolds: HopeCancelHoldPort | undefined;
   /** The request's id / address / user agent / session user, carried into the audit event (none for a direct call). */
   readonly request?: HopeAuditRequestFacts;
 }
+
+const CANCEL_LOCK_LABEL = (id: string, organizationId: string): string =>
+  `submission row ${idForLog(id)} (org ${idForLog(organizationId)}) for a cancel`;
 
 /**
  * Cancel one batch inside the caller's `withOrgContext` transaction. The batch row is locked first, so a
@@ -139,13 +146,16 @@ export interface CancelHopeSubmissionArgs {
  *
  * A legal hold wins over the purge (HIPAA hold semantics: the retention cron honours the same M4 holds): when an org-wide
  * hold is active, when ANY item of the batch belongs to a held patient, or when the hold scope cannot be read (fail
- * CLOSED), the cancel still happens but the batch keeps ALL its bytes, and the audit event records
- * `bytesKeptForLegalHold: true`. Nothing erases them later: a held cancelled batch stays until a human purges it.
+ * CLOSED), the cancel still happens but the batch keeps ALL its bytes, and the audit event records WHY
+ * (`bytesKeptReason`: `legal_hold` or `hold_scope_unreadable`). The scope is read after the row lock, on this transaction.
  *
- * Replaying a cancel on an already-cancelled batch is safe and returns it unchanged (the original reason, time
- * and actor stand; nothing is written, so no second audit event). RLS hides another tenant's batch, so it reads as absent (404), and so does an
- * id that is no uuid (answered before any statement, never sent to a `::uuid` comparison). The lock waits
- * at most `M10_LOCK_TIMEOUT_MS` (then `M10_RECORD_BUSY`: this step was not applied).
+ * REPEATING a cancel is the purge path for bytes that were kept: on an already-cancelled batch that still holds bytes, the
+ * scope is read again; when nothing holds them now (the hold was released, or the M4 read works again) the same purge runs and
+ * a `hope.submission_cancelled` event with `packageBytesPurged: true` and `repeatCancel: true` is written, WITHOUT changing the
+ * status or the provenance (the original reason, time and actor stand). When a hold still applies, or the batch holds no bytes
+ * (the common replay: one cheap read), it returns the batch unchanged and writes nothing. RLS hides another tenant's batch,
+ * so it reads as absent (404), and so does an id that is no uuid (answered before any statement, never sent to a `::uuid`
+ * comparison). The lock waits at most `M10_LOCK_TIMEOUT_MS` (then `M10_RECORD_BUSY`: this step was not applied).
  */
 export async function cancelHopeSubmission(
   t: DbClient,
@@ -163,20 +173,19 @@ export async function cancelHopeSubmission(
         .where(and(eq(SUB.id, id), eq(SUB.organizationId, args.organizationId)))
         .limit(1)
         .for("update"),
-    {
-      lock: `submission row ${idForLog(id)} (org ${idForLog(args.organizationId)}) for a cancel`,
-    },
+    { lock: CANCEL_LOCK_LABEL(id, args.organizationId) },
   )) as LightSubmissionColumns[];
   if (!row) throw new NotFoundError(`HOPE submission ${id} not found`);
-  if (row.status === "cancelled") return row;
+  if (row.status === "cancelled") return repeatCancel(t, args, id, row);
   require_(
     isCancellableSubmissionStatus(row.status),
     "M10_SUBMISSION_CANCEL_NOT_ALLOWED",
     cancelNotAllowedMessage(id, row.status),
   );
   // The cancel always happens; ONLY the byte purge is conditional on the org's legal holds (M4). A held record's bytes are
-  // kept whole (the ZIP cannot be partially cleared), and the audit event says so.
-  const keepBytes = await legalHoldKeepsBytes(t, id, args.organizationId, args.legalHoldScope);
+  // kept whole (the ZIP cannot be partially cleared), and the audit event says why.
+  const bytesKeptReason = await bytesKeptReasonOf(t, id, args.organizationId, args.legalHolds);
+  const keepBytes = bytesKeptReason !== "none";
   // Every item of the batch, whatever its status (the purge must not depend on the state machine): its XML (PHI: name, DOB,
   // MBI/SSN) is dropped with the package. Only a `pending` item flips to `cancelled`; any other status stays as it is. One
   // statement, so each item is rewritten (and audited by the row-diff trigger) once.
@@ -216,9 +225,72 @@ export async function cancelHopeSubmission(
     priorStatus: row.status,
     packageSha256: row.packageSha256 ?? null,
     itemsCancelled,
-    bytesKeptForLegalHold: keepBytes,
+    bytesKeptReason,
+    repeatCancel: false,
   });
   return cancelled;
+}
+
+/**
+ * A cancel of a batch that is already cancelled (see {@link cancelHopeSubmission}): unchanged unless it still holds bytes AND no
+ * hold applies now, in which case the bytes are purged (status, reason, time and actor untouched) and the event is written.
+ * The row is locked by the caller.
+ */
+async function repeatCancel(
+  t: DbClient,
+  args: CancelHopeSubmissionArgs,
+  id: string,
+  row: LightSubmissionColumns,
+): Promise<LightSubmissionColumns> {
+  // Only the ids: the ZIP is neither read nor returned. The first branch is the batch's own bytes, the second any item's XML.
+  const [stillHoldsBytes] = await t
+    .select({ id: SUB.id })
+    .from(SUB)
+    .where(
+      and(
+        eq(SUB.id, id),
+        eq(SUB.organizationId, args.organizationId),
+        or(
+          isNotNull(SUB.acceptanceReport),
+          sql`exists (select 1 from ${SUBITEM} where ${SUBITEM.hopeSubmissionId} = ${SUB.id} and ${SUBITEM.organizationId} = ${SUB.organizationId} and ${SUBITEM.iqiesValidationResult} is not null)`,
+        ),
+      ),
+    )
+    .limit(1);
+  if (!stillHoldsBytes) return row;
+  const bytesKeptReason = await bytesKeptReasonOf(t, id, args.organizationId, args.legalHolds);
+  if (bytesKeptReason !== "none") return row;
+  await t
+    .update(SUBITEM)
+    .set({ iqiesValidationResult: null, updatedAt: args.now })
+    .where(
+      and(
+        eq(SUBITEM.hopeSubmissionId, id),
+        eq(SUBITEM.organizationId, args.organizationId),
+        isNotNull(SUBITEM.iqiesValidationResult),
+      ),
+    );
+  const [purged] = (await t
+    .update(SUB)
+    .set({ acceptanceReport: null, updatedAt: args.now })
+    .where(and(eq(SUB.id, id), eq(SUB.organizationId, args.organizationId)))
+    .returning(LIGHT_SUB_COLUMNS)) as LightSubmissionColumns[];
+  if (!purged) throw new NotFoundError(`HOPE submission ${id} not found`);
+  await auditHopeSubmissionCancelled(t, {
+    organizationId: args.organizationId,
+    membershipId: args.actorMembershipId,
+    request: args.request,
+    submissionId: id,
+    providerEntityId: row.providerEntityId,
+    // The reason the batch was cancelled for stands; a repeat's own body is not stored anywhere.
+    reasonCode: row.cancelReasonCode ?? args.reasonCode,
+    priorStatus: row.status,
+    packageSha256: row.packageSha256 ?? null,
+    itemsCancelled: 0,
+    bytesKeptReason: "none",
+    repeatCancel: true,
+  });
+  return purged;
 }
 
 /**

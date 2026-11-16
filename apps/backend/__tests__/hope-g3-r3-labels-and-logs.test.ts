@@ -230,7 +230,7 @@ describe("a lock timeout of the SFV completion and the submission locks leaves a
       actorMembershipId: MEMBERSHIP,
       reasonCode: "other" as never,
       now: new Date("2026-06-01T00:00:00.000Z"),
-      legalHoldScope: { kind: "read", orgWide: false, patientIds: new Set() },
+      legalHolds: undefined,
     }).catch((e: unknown) => e);
 
     expect(failure).toMatchObject({ code: "M10_RECORD_BUSY", statusCode: 409 });

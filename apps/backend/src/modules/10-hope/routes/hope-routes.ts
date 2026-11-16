@@ -100,8 +100,9 @@ export interface HopeRouteDeps {
    * A per-actor limiter for the SFV completion route (`createRouteRateLimit`, bound at the composition root). It bounds how
    * many `hope.sfv_completion_denied` audit rows one caller can add by probing other admissions' SFVs; it runs after the
    * permission, scope and discipline guards and before the step-up, so a caller those refuse never spends the budget.
+   * REQUIRED, so a future mount cannot leave the route unlimited by omission (a test that wants none passes a no-op).
    */
-  sfvCompletionRateLimit?: PreHandler;
+  sfvCompletionRateLimit: PreHandler;
 }
 
 // Static permission guards (§4.6).
@@ -320,7 +321,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
         LATE_OVERRIDE_GATE,
         SCOPE("hope.timepoint.write"),
         ABAC_SFV,
-        ...(deps.sfvCompletionRateLimit ? [deps.sfvCompletionRateLimit] : []),
+        deps.sfvCompletionRateLimit,
         STEP_UP_SFV,
       ],
     },
@@ -702,7 +703,8 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
 
   // R-08 — cancel a package that was generated but never marked uploaded, so its signed assessments can be
   // packaged again in a NEW batch (a lost/never-uploaded package used to lock them forever). 409 once the batch was
-  // marked uploaded; the reason is a fixed code list (no free text, so no PHI). Replaying a cancel returns 200.
+  // marked uploaded; the reason is a fixed code list (no free text, so no PHI). Replaying a cancel returns 200
+  // (and purges the bytes a legal hold kept, once it is released).
   app.post(
     "/api/v1/hope/submissions/:id/cancel",
     { preHandler: [...SUBMISSION_OPERATION_GUARDS] },

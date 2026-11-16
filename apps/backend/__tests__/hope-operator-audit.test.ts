@@ -88,7 +88,8 @@ describe("the operator audit writers", () => {
         priorStatus: "exported",
         packageSha256: SHA,
         itemsCancelled: 3,
-        bytesKeptForLegalHold: false,
+        bytesKeptReason: "none",
+        repeatCancel: false,
       }),
     );
 
@@ -113,6 +114,8 @@ describe("the operator audit writers", () => {
       packageSha256: SHA,
       packageBytesPurged: true,
       bytesKeptForLegalHold: false,
+      bytesKeptReason: "none",
+      repeatCancel: false,
       itemsCancelled: 3,
       byMembershipId: MEMBERSHIP,
       clientCorrelationId: "client-corr",
@@ -228,7 +231,8 @@ describe("the operator audit writers", () => {
           priorStatus: "packaged",
           packageSha256: SHA,
           itemsCancelled: 0,
-          bytesKeptForLegalHold: false,
+          bytesKeptReason: "none",
+          repeatCancel: false,
         }),
       ),
       written((t) =>
@@ -269,7 +273,13 @@ describe("cancelHopeSubmission", () => {
     actorMembershipId: MEMBERSHIP,
     reasonCode: "package_lost" as const,
     now: new Date("2026-06-01T00:00:00.000Z"),
-    legalHoldScope: { kind: "read" as const, orgWide: false, patientIds: new Set<string>() },
+    // No hold applies: the M4 read, run on the cancel's transaction, answers an empty scope.
+    legalHolds: {
+      activeLegalHoldScopeInTransaction: async () => ({
+        orgWide: false,
+        patientIds: new Set<string>(),
+      }),
+    },
     request: REQUEST,
   };
 
@@ -323,12 +333,16 @@ describe("cancelHopeSubmission", () => {
     ]);
   });
 
-  it("replaying a cancel writes nothing (no second event, no second purge)", async () => {
-    const fake = capturing([[locked("cancelled")]]);
+  it("replaying a cancel of a batch that holds no bytes writes nothing (no second event, no second purge): one cheap read", async () => {
+    const fake = capturing([[locked("cancelled")], []]);
 
     await cancelHopeSubmission(fake.tx, args);
 
     expect(fake.writes).toEqual([]);
+    expect(fake.statements.filter((s) => s.kind !== "execute").map((s) => s.kind)).toEqual([
+      "select",
+      "select",
+    ]);
   });
 
   it("writes no event when the cancel is refused", async () => {

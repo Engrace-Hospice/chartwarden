@@ -357,7 +357,8 @@ function makeServer(
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerHopeRoutes(app, {
     service: backend,
-    sfvCompletionRateLimit: options.sfvCompletionRateLimit,
+    // Required by the route options: a no-op unless a case brings a limiter.
+    sfvCompletionRateLimit: options.sfvCompletionRateLimit ?? (async () => undefined),
     caseloadPatientIds: async () => {
       if (options.caseloadFails) throw new Error("caseload seam unavailable");
       return options.caseload ?? [PATIENT];

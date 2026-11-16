@@ -56,6 +56,7 @@ function server() {
       getAssessmentReview,
       getValidation,
     } as unknown as HopeRouteService,
+    sfvCompletionRateLimit: async () => undefined,
   });
   return { app, getAssessmentWorkspace, getAssessmentReview, getValidation };
 }

@@ -486,7 +486,10 @@ import {
   registerAuditOpsWorkers,
   scheduleAuditOpsJobs,
 } from "./modules/04-audit/jobs/audit-ops-workers";
-import { activeLegalHoldScopeForOrg } from "./modules/04-audit/legal-hold-scope";
+import {
+  activeLegalHoldScopeForOrg,
+  activeLegalHoldScopeInTransaction,
+} from "./modules/04-audit/legal-hold-scope";
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
   activeLegalHolds,
@@ -6597,8 +6600,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             dbHandle.db,
             m10OutboxPublisher,
             {
-              activeLegalHoldScopeForOrg: (organizationId) =>
-                activeLegalHoldScopeForOrg(dbHandle.db, organizationId),
+              // M4's own reader, run on the cancel's transaction after its row lock (no second connection).
+              activeLegalHoldScopeInTransaction: (tx, organizationId) =>
+                activeLegalHoldScopeInTransaction(tx, organizationId),
             },
             // Fail-open (an availability control): 10/min/user, 100/min/org on the SFV completion route, which bounds the
             // immutable denied-probe audit rows one caller can add.

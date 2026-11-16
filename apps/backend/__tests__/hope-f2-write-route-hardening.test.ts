@@ -74,7 +74,7 @@ describe("every write names the tenant beside the id, on top of RLS", () => {
       actorMembershipId: USER,
       reasonCode: "other",
       now: new Date("2026-06-01T00:00:00.000Z"),
-      legalHoldScope: { kind: "read", orgWide: false, patientIds: new Set() },
+      legalHolds: undefined,
     });
 
     const data = dataStatements(fake);
