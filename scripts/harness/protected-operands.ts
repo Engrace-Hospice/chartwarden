@@ -82,6 +82,17 @@ function sedSections(script: string, from: number): number {
   }
   return -1;
 }
+/** The index of the end of the line at `from` (the script's end when there is none). */
+function endOfLine(script: string, from: number): number {
+  const end = script.indexOf("\n", from);
+  return end < 0 ? script.length : end;
+}
+/** `a`, `i` and `c` take text that runs on while a line ends with a backslash: none of it is a command. */
+function endOfSedText(script: string, from: number): number {
+  let end = endOfLine(script, from);
+  while (end < script.length && script[end - 1] === "\\") end = endOfLine(script, end + 1);
+  return end;
+}
 function sedScriptExecutes(script: string): boolean {
   let k = 0;
   while (k < script.length) {
@@ -98,8 +109,8 @@ function sedScriptExecutes(script: string): boolean {
       const flags = /^[A-Za-z0-9]*/.exec(script.slice(flagsAt))?.[0] ?? "";
       if (command === "s" && flags.includes("e") && !flags.includes("w")) return true;
       k = flagsAt + flags.length;
-    } else if (/[aicrRwW:]/.test(command))
-      k = script.indexOf("\n", k) < 0 ? script.length : script.indexOf("\n", k);
+    } else if (/[aic]/.test(command)) k = endOfSedText(script, k);
+    else if (/[rRwW:]/.test(command)) k = endOfLine(script, k);
     else k++;
   }
   return false;

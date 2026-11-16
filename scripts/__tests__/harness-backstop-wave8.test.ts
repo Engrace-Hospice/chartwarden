@@ -345,6 +345,14 @@ describe("sed: only a command that executes makes it a writer (GNU `e`, `s///e`)
     expect(d(`${cmd} ${S}`), cmd).toBe("allow");
   });
 
+  it("the text of an a, i or c command runs on while a line ends with a backslash, and is no command", () => {
+    const text = ["sed '60,61c\\", "export function f() {}\\", "  exec y'"].join("\n");
+    expect(d(`${text} ${S}`)).toBe("allow");
+    expect(d(["sed 1a\\", "exec x", S].join(" "))).toBe("allow");
+    // the line after the text IS a command again
+    expect(d(["sed '1c\\", "text\\", "more", `e id' ${S}`].join("\n"))).toBe("ask");
+  });
+
   it("a file name with an e in it is not a script", () => {
     expect(d("sed -n p scripts/harness/engine.ts")).toBe("allow");
     expect(d("sed -n 1,5p scripts/harness/engine.ts")).toBe("allow");
