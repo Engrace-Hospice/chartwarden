@@ -5875,7 +5875,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeAssessmentResponseSchema,
   },
   "POST /api/v1/admissions/:admissionId/hope/sfv": {
-    summary: `Record an SFV completion (RFA-04, inserted signed; RN/NP/LPN/LVN author) — the SFV must belong to the path admission (409 M10_SFV_NO_TRIGGER otherwise); \`attestationConfirmed: true\` required (422 M10_ATTESTATION_REQUIRED); optional \`attestationVersion\` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); \`targetDate\` must be a real calendar date-time with an explicit offset (422); J2053 symptom-follow-up content required and every value CMS-allowed (422 M10_SFV_COMPLETION_INCOMPLETE); the triggering assessment's target date has no HOPE spec to judge the values against (${M10_SPEC_NOT_IN_FORCE_NOTE}); ${M10_ADMISSION_PROJECTION_GAP_NOTE}; admission read failing after the caseload check passed, retry (503 DEGRADED; a failure inside the caseload check answers 404); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
+    summary: `Record an SFV completion (RFA-04, inserted signed; RN/NP/LPN/LVN author) — the SFV must belong to the path admission (409 M10_SFV_NO_TRIGGER otherwise); \`attestationConfirmed: true\` required (422 M10_ATTESTATION_REQUIRED); optional \`attestationVersion\` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); \`targetDate\` must be a real calendar date-time with an explicit offset (422); J2053 symptom-follow-up content required and every value CMS-allowed (422 M10_SFV_COMPLETION_INCOMPLETE); the triggering assessment's target date has no HOPE spec to judge the values against (${M10_SPEC_NOT_IN_FORCE_NOTE}); ${M10_ADMISSION_PROJECTION_GAP_NOTE}; admission read failing after the caseload check passed, retry (503 DEGRADED; a failure inside the caseload check answers 404); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); at most 10 requests a minute per user and 100 per organization (429 RATE_LIMITED beyond, Retry-After 60); ${M10_RECORD_BUSY_NOTE}`,
     body: M10RecordSfvSchema,
     status: 201,
     response: M10HopeAssessmentResponseSchema,
@@ -5906,11 +5906,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeAssessmentResponseSchema,
   },
   "GET /api/v1/hope/assessments/:id/workspace": {
-    summary: `Canonical HOPE assessment workspace from frozen spec and current answers; a caller holding hope.timepoint.write also refreshes chart-derived answers, which bumps the draft version when one changes (an older ifVersion is then refused), while a read-only caller is shown the stored state; ${M10_SPEC_NOT_IN_FORCE_READ_NOTE} for a legacy draft whose spec cannot be frozen; ${M10_RECORD_BUSY_READ_NOTE}`,
+    summary: `Canonical HOPE assessment workspace from frozen spec and current answers; a caller holding hope.timepoint.write also refreshes chart-derived answers, which bumps the draft version when one changes (an older ifVersion is then refused), while a read-only caller is shown the stored state (for a legacy draft with no frozen spec, a static 409 CONFLICT, nothing written); ${M10_SPEC_NOT_IN_FORCE_READ_NOTE} for a legacy draft whose spec cannot be frozen; ${M10_RECORD_BUSY_READ_NOTE}`,
     response: M10HopeAssessmentWorkspaceResponseSchema,
   },
   "GET /api/v1/hope/assessments/:id/review": {
-    summary: `HOPE final-review readiness model; ${M10_SPEC_NOT_IN_FORCE_READ_NOTE} for a legacy draft whose spec cannot be frozen; ${M10_RECORD_BUSY_READ_NOTE}`,
+    summary: `HOPE final-review readiness model; a read-only caller (no hope.timepoint.write) never freezes a legacy draft's spec or runs the SFV self-heal: it reads the stored state, and for a legacy draft with no frozen spec gets a static 409 CONFLICT with nothing written; ${M10_SPEC_NOT_IN_FORCE_READ_NOTE} for a legacy draft whose spec cannot be frozen; ${M10_RECORD_BUSY_READ_NOTE}`,
     response: M10HopeAssessmentReviewResponseSchema,
   },
   "PATCH /api/v1/hope/assessments/:id/answers": {
@@ -5970,7 +5970,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeSubmissionResponseSchema,
   },
   "GET /api/v1/hope/submissions/:id/package": {
-    summary: `Download the generated manual iQIES ZIP package; a cancelled package cannot be downloaded (409 M10_SUBMISSION_CANCELLED); ${M10_RECORD_BUSY_READ_NOTE}`,
+    summary: `Download the generated manual iQIES ZIP package; a cancelled package cannot be downloaded (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); the first download of a packaged batch records the acting membership as the exporter; ${M10_RECORD_BUSY_READ_NOTE}`,
   },
   "POST /api/v1/hope/submissions/:id/mark-uploaded": {
     summary: `Mark a generated HOPE package as manually uploaded to iQIES; \`submittedAt\`, when given, must be a real calendar date-time with an explicit offset (else 422); a cancelled package cannot be marked uploaded (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
@@ -5978,7 +5978,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeSubmissionResponseSchema,
   },
   "POST /api/v1/hope/submissions/:id/cancel": {
-    summary: `Cancel a generated HOPE package that was never marked uploaded (packaged/exported), freeing its assessments to be packaged again in a NEW batch; 409 once uploaded; replaying a cancel returns the cancelled batch; AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
+    summary: `Cancel a generated HOPE package that was never marked uploaded (packaged/exported), freeing its assessments to be packaged again in a NEW batch; 409 once uploaded; replaying a cancel returns the cancelled batch; the package ZIP and every record's XML are deleted with the cancel unless an M4 legal hold applies (org-wide, a held patient among the batch's records, or an unreadable hold scope), in which case the batch is still cancelled but keeps all its bytes; AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
     body: M10CancelSubmissionSchema,
     response: M10HopeSubmissionResponseSchema,
   },
