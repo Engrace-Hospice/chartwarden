@@ -19,7 +19,8 @@
 //   updateDraft, setHuvCompletionDate assessment                                  status and version judged on the locked row
 //   recordTimepoint, correct, inactivate   an advisory key (`lockRecordKey`) FIRST, before any row lock
 //   assembleSubmission (the route)    an advisory key per provider entity (`lockRecordKey`, `m10:assemble:<org>`), the
-//                                     first statement, before the candidate read
+//                                     first statement, before the candidate read; then, just before the items are
+//                                     written, the validated assessment rows `FOR SHARE` (hope-assemble-candidates.ts)
 //   runAssembleSubmissionCron         the SAME `m10:assemble:<org>` key per provider entity, in a stable order, and only for
 //                                     entities whose unlocked scan found batchable work; candidates are read again behind
 //                                     the key (`jobs/cron-workers.ts`; a timeout fails that organization's tick, logged)
