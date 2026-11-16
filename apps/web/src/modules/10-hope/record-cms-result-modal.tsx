@@ -6,7 +6,7 @@ import { Button, Modal, TextAreaField, TextField, t, useApiClient } from "@chart
 // so a confirmation step sits between the form and the POST. Matching/validation stay the server's (ADR-0030):
 // its 409/422 reasons are shown inline verbatim, except a refusal of the report reference, which is said on that field.
 import { useEffect, useId, useRef, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { type CmsItemOutcome, parseCmsReport } from "./cms-result-parser";
 import {
   RECORD_BUSY_CODE,
