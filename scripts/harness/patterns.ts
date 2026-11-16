@@ -64,6 +64,7 @@ import {
   runsInlineCode,
   scriptsHandedToShell,
 } from "./inline-code";
+import { launchctlReason } from "./launchctl-rules";
 import { type Listed, asListing } from "./listing";
 import { runsLiveSuite } from "./live-suite";
 import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
@@ -82,6 +83,7 @@ import {
   protectedPathPattern,
 } from "./protected-paths";
 import { peelRunner } from "./runners";
+import { EXTRA_SECRET_RULES } from "./secret-names";
 import {
   environmentLeak,
   globReachesLiveEnv,
@@ -188,6 +190,7 @@ const SECRET_PATH_RULES: ReadonlyArray<readonly [RegExp, string]> = [
     "a backup archive (may hold PHI)",
   ],
   [/\.env\.bak(\.|$)/i, "a backup of a live environment file"],
+  ...EXTRA_SECRET_RULES,
 ];
 
 /** Returns why `path` is off-limits to an agent, or null when it is fine. */
@@ -2185,7 +2188,7 @@ const UNKNOWN_DIR_REASON =
   "A `cd` the guard cannot resolve comes before this write, so it could land in the agent harness or the compliance record. A human approves it here.";
 const protectedReason = (path: string): string =>
   isToolchainPath(path)
-    ? `\`${echo(path)}\` is the bun the agent hooks run on, or a shell startup file: a write there switches the guard off for every later command. A human approves it here.`
+    ? `\`${echo(path)}\` is the bun the agent hooks run on, a program the hooks call by name (bun, perl, env, sh, node, git, python3), a shell startup file, or a user-level git, launchd or agent file: a write there switches the guard off or makes it run something else for every later command. A human approves it here.`
     : `\`${echo(path)}\` is part of the agent harness or the compliance record. Changing it through the shell skips the edit prompt, so a human approves it here.`;
 const WHOLE_TREE: WriteTarget = { raw: "", anc: true, merge: true };
 const ROOT_WIDE_REASON =
@@ -2945,6 +2948,9 @@ function classifySegment(
   // --- Nested agents started with the guard off.
   const nested = nestedAgentVerdict(prog, args, assigns, here);
   if (nested) return nested;
+
+  const launchd = launchctlReason(prog, args);
+  if (launchd !== null) return ask(launchd);
 
   // --- The keychain, a CLI's stored token, `printenv SECRET`, `docker inspect`.
   const stored = storedSecretVerdict(prog, args);
