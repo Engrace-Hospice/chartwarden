@@ -336,6 +336,32 @@ describe("claudeMcpFinding (pure)", () => {
     expect(f?.category).toBe("harness path");
     expect(f?.reason).not.toContain("scripts/harness/x");
   });
+  // Wave 7, CR5-8: each of these delimiters ends a word in code, so a path joined to the text before it by one is still a word
+  // of its own. Mutation M3 of the round-5 review removed all five and no test noticed.
+  it.each(["=", "+", "!", "&", "?"])(
+    "a protected path after `%s` in code is its own word",
+    (delimiter) => {
+      const text = `x${delimiter}scripts/harness/pre-tool-guard.ts`;
+      expect(claudeMcpFinding(`${CHROME}javascript_tool`, { text }, rel)?.category).toBe(
+        "harness path",
+      );
+    },
+  );
+  it.each(["=", "+", "!", "&", "?"])(
+    "a protected path before `%s` in code is its own word",
+    (delimiter) => {
+      const text = `scripts/harness/pre-tool-guard.ts${delimiter}x`;
+      expect(claudeMcpFinding(`${CHROME}javascript_tool`, { text }, rel)?.category).toBe(
+        "harness path",
+      );
+    },
+  );
+  it("a path inside a URL query is a word of its own (`?`, `=` and `&`)", () => {
+    const text = `fetch("http://localhost:3000/p?a=1&file=scripts/harness/pre-tool-guard.ts")`;
+    expect(claudeMcpFinding(`${CHROME}javascript_tool`, { text }, rel)?.category).toBe(
+      "harness path",
+    );
+  });
   it("caps the paths it resolves and asks instead of resolving without end", () => {
     const text = Array.from({ length: 30_000 }, (_, i) => `a${i}/b`).join("\n");
     const f = claudeMcpFinding(`${CHROME}javascript_tool`, { text }, rel);

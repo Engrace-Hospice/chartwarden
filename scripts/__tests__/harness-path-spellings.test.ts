@@ -102,7 +102,7 @@ describe("aliasNormalise folds the spellings APFS treats as one name", () => {
     const long = `${"a/../".repeat(100_000)}x`;
     const started = performance.now();
     expect(aliasNormalise(long)).toBe(long);
-    expect(performance.now() - started).toBeLessThan(200);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });
 

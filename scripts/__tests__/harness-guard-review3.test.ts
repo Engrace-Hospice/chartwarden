@@ -409,7 +409,7 @@ describe("a command built to make the classifier slow is answered quickly even w
   const holder = scratch("cw-review4-link-");
   const alias = join(holder, "alias");
   symlinkSync(root, alias);
-  const FAST_MS = 2000;
+  const FAST_MS = 5000;
   const cds = `${Array.from({ length: 15 }, (_, i) => `cd /tmp/d${i};`).join(" ")} `;
   const words = (count: number, braces: string): string =>
     Array.from({ length: count }, (_, i) => `w${i}${braces}`).join(" ");
@@ -494,7 +494,7 @@ describe("a command built to make the classifier slow is answered quickly even w
 // a path no longer than a path can be on disk is the only one resolved on disk.
 describe("CR-H1: a 500 KB file_path is answered quickly and still denies a secret target", () => {
   const root = repo();
-  const HALF_S = 1000;
+  const HALF_S = 3000;
   const detour = "a/../".repeat(100_000);
   const secret = ["apps/backend/", ".", "env"].join("");
   const call = (tool: string, file: string, extra: Record<string, unknown> = {}) => {

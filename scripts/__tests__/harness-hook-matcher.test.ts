@@ -112,3 +112,19 @@ describe("claudeGuardMatcherViolations", () => {
     expect(claudeGuardMatcherViolations([CORE, broken]).join("\n")).toMatch(/pinned MCP matcher/);
   });
 });
+
+describe("every tool on the not-guarded list is pinned (CR5-8: the Gmail send entry was not)", () => {
+  it("names the free-text connectors the doc lists, besides the browser tools", () => {
+    expect(CLAUDE_MCP_TOOLS_NOT_GUARDED).toContain("mcp__claude_ai_Gmail__send_message");
+    expect(CLAUDE_MCP_TOOLS_NOT_GUARDED).toContain("mcp__claude_ai_Google_Drive__create_file");
+    expect(CLAUDE_MCP_TOOLS_NOT_GUARDED).toContain("mcp__claude-in-chrome__computer");
+    expect(CLAUDE_MCP_TOOLS_NOT_GUARDED).toContain("mcp__plugin_ecc_chrome-devtools__click");
+  });
+  it.each(CLAUDE_MCP_TOOLS_NOT_GUARDED)(
+    "a guard matcher that would also match %s is a violation naming it",
+    (tool) => {
+      const v = claudeGuardMatcherViolations([CORE, `^${tool}$`]).join("\n");
+      expect(v).toContain(tool);
+    },
+  );
+});

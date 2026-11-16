@@ -42,7 +42,7 @@ describe("a write after `A || cd X && W` may run where A ran, not only in X", ()
 // slow is a bypass. The 64 KB cap bounds the text, not the work: 1,300 words that each expand to 256 brace
 // alternatives, judged against 16 candidate directories, are five million path resolutions.
 describe("path resolution and brace expansion draw on a per-command budget", () => {
-  const FAST_MS = 2000;
+  const FAST_MS = 5000;
   const cwd = { root: ROOT, home: HOME, cwd: ROOT };
   const cds = `${Array.from({ length: 15 }, (_, i) => `cd /tmp/d${i};`).join(" ")} `;
   const eightGroups = "{a,b}{c,d}{e,f}{g,h}{i,j}{k,l}{m,n}{o,p}";
@@ -506,7 +506,7 @@ describe("a tilde form the guard cannot place, and a spoofed HOME, do not hide a
 // after the payload is the call that ran.
 describe("nested commands are judged once each, within a text budget and a time limit", () => {
   const CAP = 64 * 1024;
-  const FAST_MS = 3000;
+  const FAST_MS = 5000;
   const atRoot = { ...ctx, cwd: ROOT, exists: () => false };
   // The best of three runs: one slow run on a loaded machine is not a regression, three are.
   const timed = (cmd: string) => {

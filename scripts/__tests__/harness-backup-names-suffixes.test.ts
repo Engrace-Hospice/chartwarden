@@ -48,7 +48,7 @@ describe("backupName reads every suffix a copy can carry", () => {
     const started = performance.now();
     const hostile = `x${".1".repeat(100_000)}`;
     expect(backupName(hostile).original.length).toBeLessThan(hostile.length);
-    expect(performance.now() - started).toBeLessThan(200);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });
 

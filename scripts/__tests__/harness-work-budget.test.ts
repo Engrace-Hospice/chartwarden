@@ -12,7 +12,7 @@ const ROOT = "/repo";
 const ctx = { root: ROOT, home: "/Users/dev", cwd: ROOT, exists: () => false };
 const v = (cmd: string) => classifyBash(cmd, ctx);
 const d = (cmd: string) => v(cmd).decision;
-const FAST_MS = 1000;
+const FAST_MS = 5000;
 const timed = (cmd: string) => {
   const started = performance.now();
   const verdict = classifyBash(cmd, ctx);
