@@ -123,6 +123,15 @@ describe("requireSfvBoundToAdmission", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["in upper case", PATIENT.toUpperCase()],
+    ["in braces", `{${PATIENT}}`],
+    ["hyphenated after every group of four", "4444-4444-4444-4444-8444-4444-4444-4444"],
+  ])("accepts the admission's patient spelled %s: one uuid, two spellings", (_label, spelled) => {
+    expect(() => requireSfvBoundToAdmission(sfv, spelled, caller)).not.toThrow();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it("refuses a missing SFV and a mispaired one with the identical 409 NO_TRIGGER (message included)", () => {
     const refusalOf = (row: typeof sfv, patient: string): unknown => {
       try {

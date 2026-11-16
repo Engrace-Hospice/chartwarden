@@ -1,7 +1,9 @@
 // apps/backend/src/modules/10-hope/sql-state.ts — the SQLSTATE of a database error, read off its `cause` chain.
 // A leaf (imports nothing): the lock helpers map 55P03/40001 with it and the watchdog logs it, and neither may import
 // the other. node-postgres errors are all named "error" and Drizzle wraps them, so the code sits one or two causes down.
-const SQLSTATE = /^[0-9A-Z]{5}$/;
+// Five characters, and never an `E…` code: no PostgreSQL error class starts with E, while Node's errno codes (EPIPE, EPERM,
+// EBUSY, EACCES) are five characters that do, and a socket error must not be logged as "SQLSTATE EPIPE".
+const SQLSTATE = /^[0-9A-DF-Z][0-9A-Z]{4}$/;
 const MAX_CAUSE_DEPTH = 5;
 
 /** The SQLSTATE of a database error anywhere on its `cause` chain, when there is one (`code` is a 5-character string). */

@@ -131,10 +131,12 @@ describe("an id that is no uuid, on every id-taking route-service method", () =>
   );
 });
 
-// Postgres reads a hyphen only after a group of four hex digits, while `canonicalUuidOrNull` (which the scope loaders use) is a
-// little more lenient. An id the loaders accepted must therefore reach every statement as the CANONICAL text, never as the
-// caller's spelling, or a stray hyphen passes the gate and answers a 22P02 from the write.
-const STRAY_HYPHEN = "abcdef0123-454678-89abcdef01234567";
+// Postgres reads a hyphen after ANY group of four hex digits, not only at the canonical 8-4-4-4-12 places. An id the loaders accept in
+// such a spelling must reach every statement as the CANONICAL text, never as the caller's spelling (the same record, one key).
+const STRAY_HYPHEN = "abcd-ef01-2345-4678-89ab-cdef-0123-4567";
+// A hyphen Postgres refuses (inside a group of four) is not a uuid: the loaders no longer accept it, so it names no record, and the
+// read-audit hook cannot be handed an id its uuid column rejects.
+const REFUSED_HYPHEN = "abcdef0123-454678-89abcdef01234567";
 const SENDS_A_STATEMENT = new Set([
   "updateDraft",
   "getAssessmentWorkspace",
@@ -155,7 +157,24 @@ const SENDS_A_STATEMENT = new Set([
   "getValidation",
 ]);
 
-describe("an id the loaders accept in a spelling Postgres would refuse", () => {
+describe("an id with a hyphen Postgres refuses", () => {
+  it.each(writePaths(REFUSED_HYPHEN).filter(([name]) => SENDS_A_STATEMENT.has(name)))(
+    "%s answers 'not found' and sends no statement that carries it",
+    async (_name, call) => {
+      const { svc, statements } = backend();
+
+      const failure = await call(svc).then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+      expect(failure).toBeInstanceOf(NotFoundError);
+      expect(carrying(statements, REFUSED_HYPHEN)).toEqual([]);
+    },
+  );
+});
+
+describe("an id the loaders accept in a spelling that is not the canonical one", () => {
   it.each(writePaths(STRAY_HYPHEN).filter(([name]) => SENDS_A_STATEMENT.has(name)))(
     "%s queries the canonical id, never the caller's spelling",
     async (_name, call) => {

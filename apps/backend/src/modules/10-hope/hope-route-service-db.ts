@@ -114,7 +114,7 @@ import {
   settledBatchEvent,
   worstOutcome,
 } from "./hope-submission-result";
-import { canonicalUuidOrNull, uuidOrNotFound } from "./hope-uuid";
+import { canonicalUuidOrNull, sameUuid, uuidOrNotFound } from "./hope-uuid";
 import {
   HopeValidationFindingSitingError,
   createHopeValidationService,
@@ -469,7 +469,10 @@ export function createDbHopeBackend(
         organizationId,
         admissionId,
       );
-      if (summary.organizationId !== organizationId || summary.patientId !== patientId) return null;
+      // Two spellings of one uuid (case, hyphenation) are the same id; ids that are not uuids match only when identical.
+      const same = (a: string, b: string): boolean => a === b || sameUuid(a, b);
+      if (!same(summary.organizationId, organizationId) || !same(summary.patientId, patientId))
+        return null;
       const providerEntityId = summary.providerEntityId;
       const locationId = summary.locationId ?? null;
       if (!providerEntityId || !locationId) return null;

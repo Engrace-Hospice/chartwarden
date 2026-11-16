@@ -13,7 +13,7 @@ import { and, eq } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { takeBoundedLock } from "./hope-assessment-lock";
 import { errorClassForLog, idForLog } from "./hope-log-id";
-import { canonicalUuidOrNull } from "./hope-uuid";
+import { canonicalUuidOrNull, sameUuid } from "./hope-uuid";
 
 const SFV = schema.symptomFollowUpVisits;
 
@@ -136,7 +136,13 @@ export function requireSfvBoundToAdmission(
   admissionPatientId: string,
   caller: SfvCompletionCaller,
 ): asserts sfv is SfvRow {
-  if (sfv != null && admissionPatientId === sfv.patientId) return;
+  // The M6 seam's patient id and the database's are two spellings of one uuid when they differ only in case or hyphenation: a valid
+  // completion must not be refused as "no SFV obligation" for that. Two ids that are not uuids match only when they are identical.
+  if (
+    sfv != null &&
+    (admissionPatientId === sfv.patientId || sameUuid(admissionPatientId, sfv.patientId))
+  )
+    return;
   console.warn(
     `m10: SFV completion refused: no SFV obligation bound to this admission (org ${idForLog(caller.organizationId)}, membership ${idForLog(caller.membershipId)}, admission ${idForLog(caller.admissionId)}, triggering assessment ${idForLog(caller.triggeringAssessmentId)}).`,
   );
