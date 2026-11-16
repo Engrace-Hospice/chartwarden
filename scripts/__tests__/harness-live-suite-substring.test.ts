@@ -110,6 +110,8 @@ describe("listLiveSuiteFiles reads the tree", () => {
         "apps/backend/src/x/__tests__/c.live.test.ts",
         "packages/db/migrations/__tests__/d.live.test.ts",
         "scripts/__tests__/e.live.test.ts",
+        // round-6 CR6-7, mutant M40: a .tsx live suite is listed too
+        "apps/web/src/y/__tests__/h.live.test.tsx",
         "apps/backend/node_modules/pkg/f.live.test.ts",
         "apps/web/dist/g.live.test.ts",
       ]) {
@@ -122,6 +124,7 @@ describe("listLiveSuiteFiles reads the tree", () => {
           "apps/backend/src/x/__tests__/c.live.test.ts",
           "packages/db/migrations/__tests__/d.live.test.ts",
           "scripts/__tests__/e.live.test.ts",
+          "apps/web/src/y/__tests__/h.live.test.tsx",
         ].sort(),
       );
       expect(listLiveSuiteFiles(join(root, "missing"))).toEqual({ files: [], complete: true });

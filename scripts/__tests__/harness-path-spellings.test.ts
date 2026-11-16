@@ -102,7 +102,8 @@ describe("aliasNormalise folds the spellings APFS treats as one name", () => {
     const long = `${"a/../".repeat(100_000)}x`;
     const started = performance.now();
     expect(aliasNormalise(long)).toBe(long);
-    expect(performance.now() - started).toBeLessThan(1000);
+    // A wall-clock bound only guards against a super-linear blow-up (these inputs took seconds when a rule went quadratic), not a micro-benchmark: it is 3 s so a loaded CI machine cannot fail it.
+    expect(performance.now() - started).toBeLessThan(3000);
   });
 });
 

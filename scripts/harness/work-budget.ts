@@ -217,16 +217,6 @@ const cheapAlternatives = (word: string): string[] => [
   ...edgeAlternatives(word),
 ];
 
-/**
- * A word the budget could not expand fully spends it (the command asks) when the shell would really have expanded a brace
- * group of the command: a word cut while the command holds no UNQUOTED group (`python3 -c '… {"a":1,"b":2} …'`, a long
- * JSON body) is quoted text, and an inline script that holds a few object literals is not a finding. The cheap reading
- * (each group alone, all-first, all-last) still runs for it, and a protected name it finds is still a deny or an ask.
- */
-function spendIfShellWouldExpand(_word: string): void {
-  if (work.bareBraces) work.spent = true;
-}
-
 /** Say whether the command line about to be judged holds a brace group the shell would expand (`bare-braces.ts`). */
 export const setBareBraces = (value: boolean): void => {
   work.bareBraces = value;
@@ -234,13 +224,16 @@ export const setBareBraces = (value: boolean): void => {
 
 /** Bash brace expansion of one word: `.en{v,}` is `.env` and `.en`. Bounded, so it cannot be made to blow up. */
 export function expandBraces(word: string): string[] {
-  // The command holds no group the shell would expand (every brace is quoted or escaped): the word stays as written.
+  // The command holds no group the shell would expand (every brace is quoted or escaped): the word stays as written, spends
+  // nothing and is not read one group at a time (a long JSON body with object literals is quoted text, not a finding). Past
+  // this line the shell WOULD expand a group, so a word the budget cannot expand fully spends it (the command asks) and is
+  // still read by the cheap alternatives below, where a protected name it finds is a deny or an ask.
   if (!work.bareBraces) return [word];
   if (word.length > MAX_BRACE_WORD_CHARS) {
     // Not a file name, so not expanded; but a group in it may still read as a protected name through one alternative
     // (`cat {<secret>,<4,100 characters>}`), so the command asks and the cheap reading below can still deny.
     if (firstBraceGroup(word) === null) return [word];
-    spendIfShellWouldExpand(word);
+    work.spent = true;
     return [word, ...cheapAlternatives(word)];
   }
   let out = [word];
@@ -263,7 +256,7 @@ export function expandBraces(word: string): string[] {
         continue;
       }
       if (work.braces <= 0 || work.braceChars <= 0) {
-        spendIfShellWouldExpand(w); // a group is left unexpanded: the command asks, and the cheap reading below still denies
+        work.spent = true; // a group is left unexpanded: the command asks, and the cheap reading below still denies
         next.push(w, ...singleGroupAlternatives(w));
         continue;
       }
@@ -277,7 +270,7 @@ export function expandBraces(word: string): string[] {
     if (!changed) break;
   }
   if (!cut) return out;
-  spendIfShellWouldExpand(word);
+  work.spent = true;
   return [...out, ...cheapAlternatives(word)];
 }
 

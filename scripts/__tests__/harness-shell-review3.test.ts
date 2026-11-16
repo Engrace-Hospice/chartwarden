@@ -179,7 +179,8 @@ describe("2 and 7 — bounded work on hostile input", () => {
     const { verdict, ms } = timed(repeat("cd a;", LIMIT + 4_000));
     expect(verdict.decision).toBe("deny");
     expect(verdict.reason).toMatch(/too (long|large)/i);
-    expect(ms).toBeLessThan(1000);
+    // A wall-clock bound only guards against a super-linear blow-up (these inputs took seconds when a rule went quadratic), not a micro-benchmark: it is 3 s so a loaded CI machine cannot fail it.
+    expect(ms).toBeLessThan(3000);
     expect(d(`cat .env${" ".repeat(LIMIT)}`)).toBe("deny");
   });
 

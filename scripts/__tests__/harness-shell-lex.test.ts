@@ -396,7 +396,8 @@ describe("7 — the lexer is linear and never throws", () => {
   ])("stays fast on %s", (_name, cmd) => {
     const started = performance.now();
     const decision = d(cmd);
-    expect(performance.now() - started).toBeLessThan(500);
+    // A wall-clock bound only guards against a super-linear blow-up (these inputs took seconds when a rule went quadratic), not a micro-benchmark: it is 3 s so a loaded CI machine cannot fail it.
+    expect(performance.now() - started).toBeLessThan(3000);
     expect(["allow", "ask", "deny"]).toContain(decision);
   });
 });

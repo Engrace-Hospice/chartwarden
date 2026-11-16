@@ -110,6 +110,43 @@ describe("(b) the NEW command refuses on the same corruption", () => {
   );
 });
 
+/**
+ * The modules the entry thread does NOT import itself (round-6 CR6-7): the worker, the judgement and the classifier. A corrupted
+ * one cannot be parsed in the worker, so the guard answers with its OWN emergency deny (JSON, exit 2) before the tail has a say.
+ */
+const WORKER_FILES = ["guard-worker.ts", "guard-judge.ts", "patterns.ts"];
+
+describe("(b2) a corrupted worker-side module is the guard's own deny, exit 2", () => {
+  it.each(WORKER_FILES)("%s corrupted: exit 2, a JSON deny, nothing allowed", (file) => {
+    const r = runClaude(corruptedCopy(file), READS_SECRET, {
+      CW_HARNESS_DEADLINE_MS_FOR_TESTS: "3000",
+    });
+    expect(r.status).toBe(2);
+    expect(r.decision).toBe("deny");
+  });
+
+  it.each(WORKER_FILES)("%s corrupted: an everyday call is refused too", (file) => {
+    const r = runClaude(corruptedCopy(file), EVERYDAY, {
+      CW_HARNESS_DEADLINE_MS_FOR_TESTS: "3000",
+    });
+    expect(r.status).toBe(2);
+    expect(r.decision).toBe("deny");
+  });
+
+  it.each(WORKER_FILES)(
+    "%s corrupted: the OLD command refuses it as well (exit 2 is the guard's)",
+    (file) => {
+      const r = runClaude(
+        corruptedCopy(file),
+        EVERYDAY,
+        { CW_HARNESS_DEADLINE_MS_FOR_TESTS: "3000" },
+        OLD_HOOK,
+      );
+      expect(r.status).toBe(2);
+    },
+  );
+});
+
 describe("(c) a PATH without bun", () => {
   it("the new command exits 2 with the message (command not found is 127, then the tail)", () => {
     const r = runClaude(guardCopy(), EVERYDAY, { PATH: scratchDir("cw-empty-path-") });

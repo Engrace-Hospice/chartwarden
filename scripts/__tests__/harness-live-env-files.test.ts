@@ -37,7 +37,7 @@ describe("listLiveEnvFiles: the env files the tree holds, templates excluded", (
     apps: ["portal/", "web/", "backend/"],
     "apps/portal": [ENV(), ENV(".sample"), "src/"],
     "apps/web": [ENV(".local"), ENV(".production"), "src/"],
-    "apps/backend": [ENV(".example"), "src/"],
+    "apps/backend": [ENV(".example"), ENV(".dist"), "src/"],
     "apps/web/src": [ENV()],
     services: ["billing/"],
     "services/billing": [ENV(), ENV(".template"), `x${ENV()}`],
@@ -72,6 +72,8 @@ describe("listLiveEnvFiles: the env files the tree holds, templates excluded", (
       ENV(".example"),
       `apps/portal/${ENV(".sample")}`,
       `apps/backend/${ENV(".example")}`,
+      // round-6 CR6-7, mutant M20: the `.dist` template of a tracked env file is not a live one
+      `apps/backend/${ENV(".dist")}`,
       `services/billing/${ENV(".template")}`,
       `deploy/production/${ENV(".production.example")}`,
       `apps/web/src/${ENV()}`,

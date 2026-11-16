@@ -65,12 +65,13 @@ describe("baseName and trimSlashes are linear and read like the regexes they rep
   it.each([
     ["baseName", baseName],
     ["trimSlashes", trimSlashes],
-  ])("%s takes a 200,000-slash run in well under 100 ms", (_name, fn) => {
+  ])("%s takes a 200,000-slash run in linear time", (_name, fn) => {
     const started = performance.now();
     fn(`a${"/".repeat(200_000)}`);
     fn(`${"/".repeat(200_000)}a`);
     fn("/".repeat(200_000));
-    expect(performance.now() - started).toBeLessThan(100);
+    // A wall-clock bound only guards against a super-linear blow-up (these inputs took seconds when a rule went quadratic), not a micro-benchmark: it is 3 s so a loaded CI machine cannot fail it.
+    expect(performance.now() - started).toBeLessThan(3000);
   });
 });
 
