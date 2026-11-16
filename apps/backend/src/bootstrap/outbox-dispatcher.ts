@@ -153,6 +153,12 @@ export interface OutboxDispatcher {
   tick(): Promise<OutboxTickSummary>;
   /** TASK-040B — total `pending`-row backlog across every active org (readiness-probe depth check). */
   pendingDepth(): Promise<number>;
+  /**
+   * Audit D-14 — the age, in seconds, of the oldest org-scoped `pending` row (0 when there is none). A consumer
+   * that DEFERS an event (an IDG decision waiting on a draft plan) keeps it pending for up to 14 days with no
+   * dead-letter and no depth growth worth alerting on; this is the number that makes that wait visible.
+   */
+  oldestPendingAgeSeconds(): Promise<number>;
   start(): void;
   stop(): Promise<void>;
 }
@@ -831,6 +837,26 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
     return total;
   }
 
+  async function oldestPendingAgeSeconds(): Promise<number> {
+    const orgs = await activeOrgs();
+    let oldest = 0;
+    for (const org of orgs) {
+      const result = await withOrgContext(
+        deps.db,
+        { organizationId: org.organizationId, userId: DISPATCHER_USER_ID },
+        (tx) =>
+          tx.execute(sql`
+            SELECT coalesce(extract(epoch FROM now() - min(created_at)), 0)::float8 AS age
+            FROM outbox_event
+            WHERE organization_id = ${org.organizationId} AND status = 'pending'
+          `),
+      );
+      const row = (result as unknown as { rows?: Array<{ age?: number | string }> }).rows?.[0];
+      oldest = Math.max(oldest, Number(row?.age ?? 0));
+    }
+    return oldest;
+  }
+
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running = false;
   let inFlight: Promise<unknown> = Promise.resolve();
@@ -873,6 +899,7 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
   return {
     tick,
     pendingDepth,
+    oldestPendingAgeSeconds,
     start() {
       if (running) return;
       running = true;

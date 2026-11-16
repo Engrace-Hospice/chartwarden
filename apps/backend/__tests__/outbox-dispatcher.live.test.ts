@@ -550,5 +550,12 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
 
     // TASK-040B — the readiness probe's outbox-depth source reads the SAME count under RLS.
     expect(await dispatcher.pendingDepth()).toBe(1);
+
+    // Audit D-14 — the same pending row is the oldest one, and its age is what an alert on a DEFERRED event
+    // reads: a 3-day-old pending row reads as at least 3 days.
+    await admin.query(
+      "UPDATE outbox_event SET created_at = now() - interval '3 days' WHERE status='pending'",
+    );
+    expect(await dispatcher.oldestPendingAgeSeconds()).toBeGreaterThanOrEqual(3 * 86_400 - 60);
   });
 });
