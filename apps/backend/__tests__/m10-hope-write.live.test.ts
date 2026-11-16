@@ -1179,6 +1179,62 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       );
     });
 
+    it("re-recording a timepoint whose draft exists bumps the version when the chart rewrote an answer and answers that version; an unchanged chart, and the first fill, keep it", async () => {
+      const adm = await admitted();
+      await seedSchedule(ORG_A, adm);
+      const record = () => svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+      const storedVersion = async (id: string) =>
+        (await admin.query("SELECT version FROM hope_assessment WHERE id=$1", [id])).rows[0]
+          .version as number;
+      const storedLastName = async (id: string) =>
+        (
+          await admin.query(
+            `SELECT a.value #>> '{}' AS value FROM hope_assessment_answer a
+             JOIN hope_spec_item i ON i.id = a.spec_item_id
+             WHERE a.hope_assessment_id=$1 AND i.item_code='A0500C'`,
+            [id],
+          )
+        ).rows[0]?.value as string | undefined;
+
+      // The first fill of a brand-new record: version 1 (a bump would 409 the first patch of whoever opens it).
+      const first = await record();
+      expect(first.version).toBe(1);
+      expect(await storedVersion(first.id)).toBe(1);
+
+      // The chart did not move: the same draft, the same version, nothing written.
+      const unchanged = await record();
+      expect(unchanged.id).toBe(first.id);
+      expect(unchanged.version).toBe(1);
+      expect(await storedVersion(first.id)).toBe(1);
+
+      // The chart moved: the re-record rewrites the chart-derived answer, bumps the version in that transaction, and its
+      // answer carries the bumped version (not the row it read before the prefill).
+      await admin.query("UPDATE patient SET legal_last_name=$2 WHERE id=$1", [
+        patientOf[adm],
+        "Renamed-Rerecord",
+      ]);
+      const reRecorded = await record();
+      expect(reRecorded.id).toBe(first.id);
+      expect(await storedLastName(first.id)).toBe("Renamed-Rerecord");
+      expect(await storedVersion(first.id)).toBe(2);
+      expect(reRecorded.version).toBe(2);
+
+      // The reviewer who loaded version 1 can no longer sign what the chart rewrote under them...
+      await expect(
+        svc.signTimepoint(ORG_A, memberOf[ORG_A], first.id, {
+          ifVersion: first.version,
+          attestationConfirmed: true,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      // ...and the version the re-record answered is the one to act on.
+      await svc.patchAssessmentAnswers(
+        ORG_A,
+        memberOf[ORG_A],
+        first.id,
+        patchInput(reRecorded.version),
+      );
+    });
+
     it("a lock that waited out a partition move retries on the moved row instead of failing 40001", async () => {
       const id = await freshDraft();
       const ws = await svc.getAssessmentWorkspace(ORG_A, id);
@@ -1440,6 +1496,89 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       await admin.query("DELETE FROM hope_submission WHERE id = ANY($1::uuid[])", [
         [rejected, packaged],
       ]);
+    }
+  });
+
+  // The id-keyed reads and the draft writes name the tenant too (see the test above for why only a connection that
+  // bypasses RLS shows it). Each ORG_B call would find ORG_A's row, and answer something other than a 404, if its
+  // statement kept the id alone: the draft is not a HUV, not signed, and is readable.
+  it("another tenant's id finds nothing on a connection that bypasses RLS: the id-keyed reads and the draft writes", async () => {
+    const adm = await admitted();
+    const sched = await seedSchedule(ORG_A, adm);
+    const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+    const sfv = (
+      await admin.query(
+        `INSERT INTO symptom_follow_up_visit (organization_id, patient_id, admission_id,
+           triggering_assessment_id, triggered_at, due_at, status, alert_cadence)
+         VALUES ($1,$2,$3,$4,now(),now() + interval '2 days','open','{}'::jsonb) RETURNING id`,
+        [ORG_A, patientOf[adm], adm, draft.id],
+      )
+    ).rows[0].id as string;
+    const submission = (
+      await admin.query(
+        `INSERT INTO hope_submission (organization_id, provider_entity_id, submission_period, status, item_count)
+         VALUES ($1,$2,'2026-07','packaged',1) RETURNING id`,
+        [ORG_A, providerOf[ORG_A]],
+      )
+    ).rows[0].id as string;
+    const owner = createDbClient({ connectionString: DB_URL as string });
+    try {
+      const backend = createDbHopeBackend(
+        owner.db,
+        { publish: async () => undefined },
+        () => liveNow,
+      );
+      const asOrgB = memberOf[ORG_B] as string;
+      const statusCode = (p: Promise<unknown>) =>
+        p.then(
+          () => null,
+          (e: { statusCode?: number }) => e.statusCode,
+        );
+
+      // The control: the owner connection does read ORG_A's draft as ORG_A, so a 404 below is the predicate's doing.
+      expect((await backend.getAssessment(ORG_A, draft.id)).id).toBe(draft.id);
+      expect(await statusCode(backend.getAssessment(ORG_B, draft.id))).toBe(404);
+      expect(await statusCode(backend.getSchedule(ORG_B, sched))).toBe(404);
+      expect(await statusCode(backend.getSfv(ORG_B, sfv))).toBe(404);
+      expect(await statusCode(backend.getSubmission(ORG_B, submission))).toBe(404);
+      expect(await statusCode(backend.requestSummaryPdf(ORG_B, asOrgB, draft.id))).toBe(404);
+      expect(
+        await statusCode(
+          backend.setHuvCompletionDate(ORG_B, asOrgB, draft.id, {
+            ifVersion: draft.version,
+            z0350: today(),
+          }),
+        ),
+      ).toBe(404);
+      expect(
+        await statusCode(
+          backend.correctTimepoint(ORG_B, asOrgB, draft.id, {
+            correctionReason: "cross-tenant attempt",
+            targetDate: new Date().toISOString(),
+            authorDiscipline: "RN",
+            data: QUIET_DATA,
+          }),
+        ),
+      ).toBe(404);
+      expect(await backend.listPatientAssessments(ORG_B, patientOf[adm] as string)).toEqual({
+        assessments: [],
+      });
+      const state = JSON.stringify(await backend.getWorkflowState(ORG_B, adm));
+      expect(state).not.toContain(draft.id);
+      expect(state).not.toContain(sched);
+      expect(state).not.toContain(sfv);
+      // ...and the same call as ORG_A does see the draft (the check above is not vacuous).
+      expect(JSON.stringify(await backend.getWorkflowState(ORG_A, adm))).toContain(draft.id);
+      const { rows } = await admin.query(
+        "SELECT version, status FROM hope_assessment WHERE id=$1",
+        [draft.id],
+      );
+      expect(rows[0]).toMatchObject({ version: draft.version, status: "draft" });
+    } finally {
+      await owner.close();
+      // The later assemble test starts from "no package exists": the rows seeded here are removed again, pass or fail.
+      await admin.query("DELETE FROM hope_submission WHERE id=$1", [submission]);
+      await admin.query("DELETE FROM symptom_follow_up_visit WHERE id=$1", [sfv]);
     }
   });
 
