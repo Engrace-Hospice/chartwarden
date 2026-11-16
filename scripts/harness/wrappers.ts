@@ -55,18 +55,31 @@ function rshOption(args: readonly string[]): string[] {
 
 const SSH_VALUE_FLAG = /^-[BbcDEeFIiJLlmOopQRSWw]$/;
 
-/** The operands of an `ssh` command line (host, then the remote command), and the programs its options run here. */
+/**
+ * The operands of an `ssh` command line (host, then the remote command), and the programs its options run here. OpenSSH reads
+ * options up to the first word after the host; from there on every word belongs to the remote command, dash words included
+ * (`ssh localhost sed -i x FILE`: `-i` is sed's, not ssh's identity file).
+ */
 function sshWords(args: readonly string[]): { operands: string[]; local: string[] } {
   const local: string[] = [];
   const operands: string[] = [];
+  let optionsEnded = false;
   for (let k = 0; k < args.length; k++) {
     const a = args[k] ?? "";
+    if (operands.length >= 2 || (optionsEnded && operands.length >= 1)) {
+      operands.push(a);
+      continue;
+    }
+    if (a === "--") {
+      optionsEnded = true;
+      continue;
+    }
     const given = a === "-o" ? (args[++k] ?? "") : a.startsWith("-o") ? a.slice(2) : "";
     const command = localCommandOfOption(given);
     if (command !== undefined) local.push(command);
     else if (given !== "") continue;
     else if (SSH_VALUE_FLAG.test(a)) k++;
-    else if (!a.startsWith("-")) operands.push(a);
+    else if (!a.startsWith("-") || optionsEnded) operands.push(a);
   }
   return { operands, local };
 }

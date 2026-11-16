@@ -17,6 +17,8 @@ export interface WrapperPeel {
   readonly stays: boolean;
   /** The directory it runs the command in, when an option names one. */
   readonly chdir?: string;
+  /** Every option it read, with its value. */
+  readonly options: readonly ReadOption[];
   /** The files its options and operands read and write. */
   readonly files: WrapperFiles;
   /** Words that run before `next` and stand for the command (`env -S 'cmd arg'`): spliced in at `next`. */
@@ -75,6 +77,7 @@ export function peelWrapper(
     next: stays ? at : next,
     stays,
     ...(dir === undefined ? {} : { chdir: dir.value ?? "" }),
+    options,
     files: wrapperFiles(wrapper, words.slice(at + 1, read.optionsEnd), operands),
     insert,
     ...(unplaced === undefined ? {} : { unplaced }),

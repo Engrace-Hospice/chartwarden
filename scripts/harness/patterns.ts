@@ -71,6 +71,7 @@ import { runsLiveSuite } from "./live-suite";
 import { programOptionReason } from "./option-commands";
 import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
 import { isPackageScript, setPackageScriptsReader } from "./package-scripts";
+import { parallelExtras, replacementTags } from "./parallel-command";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
 import { programName } from "./program-name";
 import {
@@ -337,6 +338,8 @@ function program(
   chdir?: string;
   /** Wrapper words the option tables could not place: the guard cannot tell where the command starts. */
   unplaced?: string;
+  /** Command lines a wrapper runs in addition to the command (`parallel cmd ::: data`): judged as command lines. */
+  lines?: string[];
   /** Files a wrapper's own option writes (`time -o F`): judged like redirect targets. */
   writes: string[];
   /** Secret-named files a wrapper's own option reads (`xargs -a F`): judged like input redirects. */
@@ -346,6 +349,7 @@ function program(
   const writes: string[] = [];
   const reads: string[] = [];
   const unplaced: string[] = [];
+  const lines: string[] = [];
   let k = 0;
   let lastWrapper = "";
   let chdir: string | undefined;
@@ -368,6 +372,13 @@ function program(
       // `env -S 'cmd arg'` runs the words of its string as the command.
       w = [...w.slice(0, wrapper.next), ...wrapper.insert, ...w.slice(wrapper.next)];
       k = wrapper.next;
+      if (wrapper.wrapper === "parallel") {
+        // The data after `:::` are not arguments of the command: the command is judged with each datum where parallel puts it.
+        const split = parallelExtras(w, k, replacementTags(wrapper.options));
+        w = split.words;
+        lines.push(...split.lines);
+        reads.push(...split.reads);
+      }
       continue;
     }
     // `bunx git push`, `npx -c '…'`, `bun run cp …`: the program the runner starts is the command (`runners.ts`).
@@ -388,6 +399,7 @@ function program(
     writes,
     reads,
     ...(unplaced.length === 0 ? {} : { unplaced: unplaced.join("; ") }),
+    ...(lines.length === 0 ? {} : { lines }),
     ...(chdir === undefined ? {} : { chdir }),
   };
 }
@@ -479,12 +491,19 @@ interface Parsed {
   readonly chdir?: string;
   /** Wrapper words the option tables could not place (an unknown option): where the command starts is a guess. */
   readonly unplaced?: string;
+  /** Command lines a wrapper runs in addition to the command (`parallel cmd ::: data`). */
+  readonly lines?: string[];
   readonly args: string[];
   /**
    * The program and arguments as the program is HANDED them (a backslash is read once: an escaped quote inside double quotes is
    * the quote), where that differs from `word` and `args`: a string it runs as a command line is judged from these (R7-CR-1).
    */
-  readonly handed?: { readonly prog: string; readonly word: string; readonly args: string[] };
+  readonly handed?: {
+    readonly prog: string;
+    readonly word: string;
+    readonly args: string[];
+    readonly lines?: string[];
+  };
   readonly assigns: string[];
   readonly outs: string[];
   readonly ins: string[];
@@ -501,7 +520,14 @@ function parseSegment(seg: string): Parsed {
     ...command,
     ...(handed === undefined
       ? {}
-      : { handed: { prog: handed.prog, word: handed.word, args: handed.args } }),
+      : {
+          handed: {
+            prog: handed.prog,
+            word: handed.word,
+            args: handed.args,
+            ...(handed.lines === undefined ? {} : { lines: handed.lines }),
+          },
+        }),
     outs: [...outs, ...writes],
     ins: [...ins, ...reads],
     docs,
@@ -1034,6 +1060,8 @@ function nestedCommandVerdicts(
   const verdicts: BashVerdict[] = [];
   // A string the command runs as a command line is read from the words it is HANDED (an escaped quote is the quote).
   const { prog, args } = parsed.handed ?? parsed;
+  for (const line of (parsed.handed ?? parsed).lines ?? [])
+    if (line.trim() !== "") verdicts.push(judge(line, ctx, depth + 1, here));
   if (prog === "eval") {
     verdicts.push(judge(args.join(" "), ctx, depth + 1, here));
   } else if (NESTED_SHELL.test(prog)) {
