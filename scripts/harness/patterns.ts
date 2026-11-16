@@ -386,6 +386,9 @@ function program(
     if (peeled === null) break;
     // `dotenv -e FILE -- cmd`: the runner's file options are read like `< FILE`, whatever the command is.
     reads.push(...peeled.files);
+    // The word the runner starts is a name the shell is asked to open too: a runner handed a live env file's name reads it.
+    reads.push(peeled.inner[0] ?? "");
+    unplaced.push(...(peeled.unplaced ?? []).map((option) => `${programName(word)} ${option}`));
     w = [...w.slice(0, k), ...peeled.inner];
   }
   // `env -u X` with no command prints the environment: it is still `env`.
