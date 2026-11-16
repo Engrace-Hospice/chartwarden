@@ -13,10 +13,17 @@
 // NOT granted: `care_plan.bootstrap` (system/admin, on admission activation) and `care_plan.idg_revise` (the outbox
 // consumer). External, portal and collaborator roles are deliberately absent.
 //
-// NOT a `system_locked` floor: a tenant may remove a key from a role it owns. Granted "wherever a tenant has created
-// those roles" — a role created after migration 1494 does not receive them, as with the admitting-clinician and
-// code-status grants. This is the single source migration `1494` and the DON template are pinned to
-// (`care-plan-grants.test.ts`).
+// NOT a `system_locked` floor: a tenant may remove a key from a role it owns.
+//
+// COVERAGE, which is narrower than the table above reads:
+//   • Existing tenants — migration `1494` grants the keys to whichever of these roles each tenant already has.
+//   • New tenants — the GAP-006 materializer creates only the ROLE_TEMPLATES, and only `director_of_nursing` and
+//     `medical_director` are templates (templates.ts carries their keys). `rn_case_manager`, `hospice_physician`,
+//     `nurse_practitioner`, `msw`, `chaplain` and the read-only clinical roles are NOT templates, so a new tenant has
+//     no signer role that can sign until an administrator creates those roles and grants the keys.
+//   • A role created after migration 1494 receives nothing, as with the admitting-clinician and code-status grants.
+// This is the single source migration `1494` and the DON / Medical Director templates are pinned to
+// (`care-plan-grants.test.ts`); the sign list is pinned to the predicate's own (`care-plan-grants-pin.test.ts`).
 
 const READ_KEYS = ["care_plan.read", "care_plan.read_summary"] as const;
 const AUTHOR_KEYS = [...READ_KEYS, "care_plan.author", "care_plan.finalize"] as const;

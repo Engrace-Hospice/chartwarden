@@ -405,5 +405,23 @@ describe.skipIf(!DB_URL)("F-093 M3 role catalog floor — LIVE Postgres", () => 
     expect(await grantsOf(portal)).toEqual([]);
     expect(await grantsOf(template)).toEqual([]);
     expect(await grantsOf(keeps)).toEqual(["patient.read"]);
+
+    // Tenant-true and attributable: every row carries its role's organization, and the audit trigger recorded each
+    // insert under this migration's correlation id (a migration has no actor, so the id is the provenance).
+    const inserted = Object.values(CARE_PLAN_DEFAULT_GRANTS).reduce(
+      (n, keys) => n + keys.length,
+      0,
+    );
+    const { rows: stray } = await admin.query(
+      `SELECT count(*)::int AS n FROM role_permission rp JOIN role r ON r.id = rp.role_id
+        WHERE rp.organization_id IS DISTINCT FROM r.organization_id`,
+    );
+    expect(stray[0].n).toBe(0);
+    const { rows: audited } = await admin.query(
+      `SELECT count(*)::int AS n, count(DISTINCT resource_id)::int AS distinct_rows FROM audit_event
+        WHERE event_type = 'role_permission.insert'
+          AND correlation_id = 'migration-1494-care-plan-default-grants'`,
+    );
+    expect(audited[0]).toEqual({ n: inserted, distinct_rows: inserted });
   });
 });

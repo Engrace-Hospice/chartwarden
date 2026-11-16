@@ -358,7 +358,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     floor: SYSTEM_LOCKED_FLOORS.medical_director,
     // WP 4.1 (ADR-0068): a physician may raise and receive an urgent clinical message, as migration 1105 grants.
     // WP 5.8 (ADR-0087): a physician may open a break-glass read grant, as migration 1140 grants.
-    grants: ["messaging.urgent.send", "messaging.urgent.receive", "messaging.break_glass.invoke"],
+    // D-2 (CW-AC-44): the Medical Director can read and sign a care plan on a fresh tenant, as migration 1494 grants.
+    grants: [
+      "messaging.urgent.send",
+      "messaging.urgent.receive",
+      "messaging.break_glass.invoke",
+      ...(CARE_PLAN_DEFAULT_GRANTS.medical_director ?? []),
+    ],
   },
   {
     key: "director_of_nursing",

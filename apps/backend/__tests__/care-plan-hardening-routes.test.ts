@@ -13,6 +13,7 @@
 // Synthetic data only: the SUD problem text below is an invented string, not a patient value.
 import { randomUUID } from "node:crypto";
 import {
+  CARE_PLAN_DEFAULT_GRANTS,
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
   registerAbacRegistry,
@@ -72,6 +73,9 @@ const PERMISSIONS = [
   },
   { userId: "md_1", permissions: ["care_plan.read", "care_plan.sign"] },
   { userId: "msw_1", permissions: ["care_plan.read", "care_plan.author"] },
+  // CW-AC-44: users holding exactly the DEFAULT grants of their role (the constant migration 1494 pins).
+  { userId: "lpn_1", permissions: [...(CARE_PLAN_DEFAULT_GRANTS.lpn ?? [])] },
+  { userId: "don_1", permissions: [...(CARE_PLAN_DEFAULT_GRANTS.director_of_nursing ?? [])] },
 ];
 
 const RN = {
@@ -810,5 +814,58 @@ describe("the internal relevant-elements read redacts per ACTOR (compliance revi
   it("passes an allowing verdict through, so only the cleared caller sees Part 2 content", async () => {
     const { viewers } = await readAs(RN_SUD_CLEARED);
     expect(viewers).toEqual([{ sudDisclosureAllowed: true }]);
+  });
+});
+
+describe("the default care_plan grants at the route edge (CW-AC-44)", () => {
+  const LPN = {
+    "x-test-user": "lpn_1",
+    "x-test-org": ORG,
+    "x-test-roles": "lpn",
+    "x-test-step-up": "true",
+  };
+  const DON = {
+    "x-test-user": "don_1",
+    "x-test-org": ORG,
+    "x-test-roles": "director_of_nursing",
+    "x-test-step-up": "true",
+  };
+  const problem = { description: "Dyspnea (synthetic)", kind: "related", source: "clinical" };
+
+  it("an LPN holding only the default read keys reads the plan and is refused every authoring write", async () => {
+    const { app, svc } = makeServer();
+    const { planId } = await seedPlan(svc);
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT}/care-plan`,
+      headers: LPN,
+    });
+    const write = await app.inject({
+      method: "POST",
+      url: `/api/v1/care-plans/${planId}/problems`,
+      headers: { ...LPN, ...key() },
+      payload: problem,
+    });
+    expect(read.statusCode).toBe(200);
+    expect(write.statusCode).toBe(403);
+  });
+
+  it("the DON may author but never sign: the key is not granted, and the signer predicate would refuse the role", async () => {
+    const { app, svc } = makeServer();
+    const { planId, versionId } = await seedPlan(svc);
+    const write = await app.inject({
+      method: "POST",
+      url: `/api/v1/care-plans/${planId}/problems`,
+      headers: { ...DON, ...key() },
+      payload: problem,
+    });
+    const sign = await app.inject({
+      method: "POST",
+      url: `/api/v1/care-plans/${planId}/versions/${versionId}/signatures`,
+      headers: { ...DON, ...key() },
+      payload: { ifVersion: 1, signerRole: "rn_case_manager" },
+    });
+    expect(write.statusCode).toBe(201);
+    expect(sign.statusCode).toBe(403);
   });
 });

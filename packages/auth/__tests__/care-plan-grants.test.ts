@@ -4,7 +4,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { allPermissionMirrorRows } from "../src/permissions/contributed";
-import { CARE_PLAN_DEFAULT_GRANTS, CARE_PLAN_GRANTEE_ROLE_KEYS, ROLE_TEMPLATES } from "../src/roles";
+import {
+  CARE_PLAN_DEFAULT_GRANTS,
+  CARE_PLAN_GRANTEE_ROLE_KEYS,
+  ROLE_TEMPLATES,
+} from "../src/roles";
 
 const SIGNER_ROLE_KEYS = [
   "rn_case_manager",
@@ -13,7 +17,7 @@ const SIGNER_ROLE_KEYS = [
   "msw",
   "chaplain",
   "medical_director",
-]; // apps/backend/src/modules/07-care-plan/abac-predicates.ts SIGNER_ROLE_KEYS
+]; // a COPY of abac-predicates.ts SIGNER_ROLE_KEYS: apps/backend/__tests__/care-plan-grants-pin.test.ts pins the real one
 
 const pairs = (): string[] =>
   Object.entries(CARE_PLAN_DEFAULT_GRANTS)
@@ -65,9 +69,14 @@ describe("CARE_PLAN_DEFAULT_GRANTS", () => {
       for (const key of keys) expect(registered.has(key), key).toBe(true);
   });
 
-  it("the DON template carries its care plan grants for a fresh tenant", () => {
-    const don = ROLE_TEMPLATES.find((t) => t.key === "director_of_nursing");
-    for (const key of CARE_PLAN_DEFAULT_GRANTS.director_of_nursing ?? [])
-      expect([...(don?.grants ?? []), ...(don?.floor ?? [])], key).toContain(key);
+  it("every template that is also a grantee carries its care plan grants for a fresh tenant", () => {
+    // Only the DON and the Medical Director are templates today; any role promoted to a template later is held to it.
+    const templated = ROLE_TEMPLATES.filter((t) => t.key in CARE_PLAN_DEFAULT_GRANTS);
+    expect(templated.map((t) => t.key).sort()).toEqual(["director_of_nursing", "medical_director"]);
+    for (const template of templated)
+      for (const key of CARE_PLAN_DEFAULT_GRANTS[template.key] ?? [])
+        expect([...(template.grants ?? []), ...template.floor], `${template.key} ${key}`).toContain(
+          key,
+        );
   });
 });

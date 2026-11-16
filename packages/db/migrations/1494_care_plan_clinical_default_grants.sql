@@ -3,6 +3,10 @@
 -- created them. Pinned to CARE_PLAN_DEFAULT_GRANTS (packages/auth/src/roles/care-plan-grants.ts) by
 -- packages/auth/__tests__/care-plan-grants.test.ts. Insert-only and idempotent; a role created later is not touched.
 -- Not granted: care_plan.bootstrap and care_plan.idg_revise (system paths).
+-- A disabled role is included on purpose: every effective-permission path joins `role.enabled`, so its keys are inert
+-- until a tenant re-enables it, and it must not come back without them. The rows carry no actor (a migration has no
+-- user), so the audit trigger's correlation id names this file: filter `audit_event` on it to list or reverse the batch.
+SELECT set_config('app.correlation_id', 'migration-1494-care-plan-default-grants', true);--> statement-breakpoint
 INSERT INTO "role_permission" ("organization_id", "role_id", "permission_key")
 SELECT r."organization_id", r."id", g.permission_key
   FROM "role" r

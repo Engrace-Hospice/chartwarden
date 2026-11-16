@@ -232,8 +232,9 @@ export function disciplineScopeOf(context: AbacContext): AuthoringDisciplineScop
   };
 }
 
-/** The signer roles a `care_plan_signature` may be captured under (mirrors `CarePlanSignerRole`). */
-const SIGNER_ROLE_KEYS: readonly CarePlanSignerRole[] = [
+/** The signer roles a `care_plan_signature` may be captured under (mirrors `CarePlanSignerRole`). Exported so the
+ *  default `care_plan.sign` grants (CW-AC-44) can be pinned to THIS list, not to a copy of it. */
+export const SIGNER_ROLE_KEYS: readonly CarePlanSignerRole[] = [
   "rn_case_manager",
   "hospice_physician",
   "nurse_practitioner",
