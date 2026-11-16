@@ -448,6 +448,8 @@ export interface BashContext {
    * recursive read needs them. Without it the usual ones in `secret-reads.ts` are the whole list.
    */
   readonly liveEnvFiles?: () => readonly string[];
+  /** The live suite files that exist (`live-suite-files.ts`), asked for only when a vitest runner has a filter. */
+  readonly liveSuiteFiles?: () => readonly string[];
 }
 
 /**
@@ -1016,6 +1018,12 @@ let hookVariableInCommand = false;
 let knownVariables: ReadonlyMap<string, string> = new Map();
 /** Has this command's view of the live env files been asked of the caller yet? (one-shot state, as above) */
 let liveEnvListed = false;
+/** The live suite files this command's runners were asked about, listed at most once (one-shot state, as above). */
+let liveSuiteCache: readonly string[] | null = null;
+const liveSuiteFilesOnce = (ctx: BashContext): readonly string[] => {
+  liveSuiteCache ??= ctx.liveSuiteFiles?.() ?? [];
+  return liveSuiteCache;
+};
 const MAX_SUBSTITUTIONS = 32;
 
 /**
@@ -1040,6 +1048,7 @@ export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): Bas
     knownVariables = literalAssignmentsOf(cmd);
     liveEnvListed = false;
     setListedLiveEnvFiles([]);
+    liveSuiteCache = null;
   }
   const start = startingDir(ctx);
   const verdict = judge(cmd, ctx, depth, [start]);
@@ -3025,7 +3034,7 @@ function classifySegment(
   }
 
   // --- Live suites drop cluster roles: they must run against a private container (CLAUDE.md).
-  if (runsLiveSuite(prog, args)) {
+  if (runsLiveSuite(prog, args, ctx.liveSuiteFiles && (() => liveSuiteFilesOnce(ctx)))) {
     return ask(
       "Live suites DROP ROLE chartwarden_app. Confirm DATABASE_URL points at a private chartwarden-postgres:dev container (own port, fresh database), never the shared Docker cluster.",
     );
