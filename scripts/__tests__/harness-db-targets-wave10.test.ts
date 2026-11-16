@@ -450,3 +450,38 @@ describe("B6: a variable the command line sets is read, wherever and however oft
     expect(decide(fill("bash -c 'export PGHOST={H}'; psql -c 'select 1'"))).toBe("allow");
   });
 });
+
+/** What the corpus measure of wave 10 showed: real commands the first version of the reader refused or mis-read. */
+describe("B6 corpus regressions: a variable the guard cannot place is asked about, never bent into the target", () => {
+  it.each([
+    'w=$(cat /tmp/pw) && psql "{PG}postgres:${w}@127.0.0.1:5433/postgres" -c "select 1"',
+    'psql "{PG}postgres:$(cat /tmp/pw)@127.0.0.1:5433/postgres" -c "select 1"',
+    "psql '{PG}u@localhost:$(cat /tmp/port)/db' -c 'select 1'",
+    "psql \"host=localhost port=$PORT dbname=x\" -c 'select 1'",
+    'psql() { docker exec c psql -U postgres -c "$1"; }; psql "select * from t where a=\'b\'"',
+    "psql 'select a = b'",
+  ])("%s keeps allowing", (template) => {
+    const cmd = fill(template);
+    expect(decide(cmd), cmd).toBe("allow");
+  });
+
+  it.each([
+    "w=/tmp/sock; w=$(cat /tmp/host); export PGHOST=$w; psql -c 'select 1'",
+    "export PGHOST=$(cat /tmp/host); psql -c 'select 1'",
+    "export PGHOST=$HOST; psql -c 'select 1'",
+    "export MYSQL_HOST=${H2:-localhost}; mysql -e 'select 1'",
+  ])("%s asks (a statement sets the host from something the guard cannot place)", (template) => {
+    expect(decide(fill(template)), template).toBe("ask");
+  });
+
+  it.each([
+    "export w=/tmp/a:$w; w=/tmp/b; psql -h $w db",
+    "PGHOST=$(cat /tmp/host) psql -c 'select 1'",
+    "psql 'host=localhost stray'",
+    "psql 'host=localhost dbname=x stray'",
+    'psql "{PG}$(cat /tmp/host)/db" -c "select 1"',
+    "psql '{PG}u@`cat /tmp/host`:5432/db'",
+  ])("%s is refused", (template) => {
+    expect(decide(fill(template)), template).toBe("deny");
+  });
+});

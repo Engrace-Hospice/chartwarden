@@ -9,7 +9,7 @@
 import { LOCAL_HOST } from "./content-scan";
 import { TARGET_CLIENTS, type TargetClient } from "./db-target-clients";
 import { parseConninfo, uriReadings } from "./db-uri";
-import { HAS_EXPANSION, expandVariables, valuesByName } from "./db-variables";
+import { HAS_EXPANSION, expandVariables, opaqueSubstitutions, valuesByName } from "./db-variables";
 
 /**
  * - `remote`: a host that is not local; the command is refused.
@@ -92,7 +92,7 @@ const addHosts = (r: Reader, value: string): void => {
 
 /** `postgres://[userinfo@]host[:port][,host2]/db?host=...&service=...`, read as libpq reads it and as other URL parsers do. */
 function readUri(text: string, r: Reader): void {
-  const rest = URI.exec(text)?.[2] ?? "";
+  const rest = URI.exec(opaqueSubstitutions(text))?.[2] ?? "";
   for (const { hostSection, query } of uriReadings(rest)) {
     if ((hostSection.match(/\[/g) ?? []).length !== (hostSection.match(/\]/g) ?? []).length) {
       r.found.unparsed.push(text);
@@ -120,7 +120,9 @@ function readKeyword(key: string, value: string, r: Reader, depth: number): void
 function readConninfo(text: string, r: Reader, depth: number): boolean {
   const { pairs, error } = parseConninfo(text);
   for (const [key, value] of pairs) readKeyword(key, value, r, depth);
-  return error === undefined;
+  // A string whose FIRST word has no `=` (`select 1 where a = 'b'`, handed to a shell function that is called `psql`) is
+  // no attempt at a connection string: libpq refuses it and nothing connects. One that starts as one and goes wrong is refused.
+  return error === undefined || (error === "missing-equals" && pairs.length === 0);
 }
 
 /** A text that is a connection string: a URI, a libpq string (a libpq client's text with `=`), or a bare address. */
@@ -332,16 +334,21 @@ function scanAnywhere(r: Reader, words: readonly Word[]): void {
 }
 
 /** The inline and exported environment: the host, a connection string, a service or a password file. */
-function readEnvironment(r: Reader, assigns: readonly string[]): void {
+function readEnvironment(r: Reader, assigns: readonly string[], inline: boolean): void {
   const { spec } = r;
   for (const assignment of assigns) {
     const eq = assignment.indexOf("=");
     const name = assignment.slice(0, eq);
     const value = shellUnescape(assignment.slice(eq + 1));
+    const expanded = expandVariables(value, r.vars);
     if (spec.hostEnv.includes(name)) {
-      for (const text of expandVariables(value, r.vars).texts) addHosts(r, text);
+      for (const text of expanded.texts) {
+        // An inline `PGHOST=$(…) psql` names a host the guard refuses; a variable some statement sets from a substitution is unplaced.
+        if (!inline && HAS_EXPANSION.test(text)) r.found.variables.push(`${name}=${text}`);
+        else addHosts(r, text);
+      }
     } else if (spec.urlEnv?.includes(name)) {
-      for (const text of expandVariables(value, r.vars).texts) readTargetString(text, r);
+      for (const text of expanded.texts) readTargetString(text, r);
     } else if (spec.indirectEnv.includes(name) && value !== "") r.found.indirect.push(assignment);
   }
 }
@@ -363,18 +370,19 @@ function findingOf(found: Found, variable: string | undefined): DatabaseTarget |
 /**
  * The finding for a database client command, or null when it names nothing the guard must act on (a local target, no
  * target, or a program that is not a database client). `args` are the lexer's words (backslashes still in them); `assigns`
- * are the inline `NAME=value` words and the `NAME=value` words the command line's variable statements set (every one of
- * them, a rebound name too: `export PGHOST=localhost; export PGHOST=H; psql` reads both).
+ * are the inline `NAME=value` words, `statements` the `NAME=value` words the command line's variable statements set (every
+ * one of them, a rebound name too: `export PGHOST=localhost; export PGHOST=H; psql` reads both).
  */
 export function databaseTarget(
   prog: string,
   args: readonly string[],
   assigns: readonly string[],
+  statements: readonly string[] = [],
 ): DatabaseTarget | null {
   const spec = TARGET_CLIENTS.get(prog);
   if (spec === undefined) return null;
   const found: Found = { hosts: [], unparsed: [], indirect: [], variables: [] };
-  const r: Reader = { spec, found, vars: valuesByName(assigns) };
+  const r: Reader = { spec, found, vars: valuesByName([...assigns, ...statements]) };
   const words = args.map(wordOf);
   const positionals = scan(r, words);
   positionals.forEach((word, index) => readPositional(word, index, r));
@@ -382,7 +390,8 @@ export function databaseTarget(
   if (spec.clusterWords && words.some((w) => w.shell === "--cluster")) {
     for (const word of positionals) if (ADDRESS_PORT_WORD.test(word.shell)) addHosts(r, word.shell);
   }
-  readEnvironment(r, assigns);
+  readEnvironment(r, assigns, true);
+  readEnvironment(r, statements, false);
   const database = args.find((word) => DATABASE_URL_VARIABLE.test(word));
   return findingOf(found, database);
 }

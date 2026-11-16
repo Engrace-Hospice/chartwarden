@@ -2917,7 +2917,7 @@ function classifySegment(
   }
 
   // --- Production data access. An agent session connecting to a non-local database is PHI access (`db-target.ts`).
-  const dbTarget = databaseTarget(prog, args, [...assigns, ...variableStatements]);
+  const dbTarget = databaseTarget(prog, args, assigns, variableStatements);
   if (dbTarget) return databaseTargetVerdict(dbTarget);
 
   // --- Remote shells: production access must be a human decision every time.

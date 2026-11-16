@@ -62,7 +62,11 @@ export interface Expanded {
   readonly unplaceable: boolean;
 }
 
-/** `word` with each `$NAME` / `${NAME}` replaced by every value a statement assigns it; the rest stays as written. */
+/**
+ * `word` with each `$NAME` / `${NAME}` replaced by every value a statement assigns it. A name no statement assigns, and a
+ * name one of whose values is not a plain literal (`$(cat f)`, `${X:-y}`), keeps its reference as one of the readings: it
+ * cannot be placed, and replacing it by the text of a substitution would only bend the shape of the word around it.
+ */
 export function expandVariables(
   word: string,
   values: ReadonlyMap<string, readonly string[]>,
@@ -72,15 +76,30 @@ export function expandVariables(
   for (const name of new Set([...word.matchAll(VARIABLE_REFERENCE)].map((m) => m[1] ?? m[2]))) {
     const known = values.get(name ?? "");
     if (known === undefined) continue;
-    texts = texts.flatMap((text) =>
-      [...new Set(known)].map((value) =>
+    const literals = [...new Set(known)].filter((value) => !HAS_EXPANSION.test(value));
+    const placeable = literals.length === new Set(known).size;
+    texts = texts.flatMap((text) => {
+      const replaced = literals.map((value) =>
         text.replace(VARIABLE_REFERENCE, (match, braced?: string, bare?: string) =>
           (braced ?? bare) === name ? value : match,
         ),
-      ),
-    );
+      );
+      return placeable ? replaced : [...replaced, text];
+    });
     if (texts.length > MAX_READINGS)
       return { texts: texts.slice(0, MAX_READINGS), unplaceable: true };
   }
   return { texts, unplaceable: texts.some((text) => HAS_EXPANSION.test(text)) };
 }
+
+/** A `$( … )` or backtick substitution without a nested one. */
+const SUBSTITUTION = /\$\([^()]*\)|`[^`]*`/g;
+
+/**
+ * The text with each command substitution replaced by `$SUBSTITUTION`: what a substitution prints is unknown, but the text
+ * inside it (`cat /tmp/pw`) is not part of the word, and its slashes and spaces must not bend the shape of the URI around it
+ * (`postgres://u:$(cat /tmp/pw)@localhost/db` has the host `localhost`). The name stays a `$` word, so a host made of one is
+ * still a host the guard refuses.
+ */
+export const opaqueSubstitutions = (text: string): string =>
+  HAS_EXPANSION.test(text) ? text.replace(SUBSTITUTION, "$SUBSTITUTION") : text;
