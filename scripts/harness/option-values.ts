@@ -41,7 +41,8 @@ export function optionValues(
     } else if (a.startsWith("-")) {
       for (let p = 1; p < a.length && /[A-Za-z]/.test(a[p] as string); p++) {
         if (a[p] !== short) continue;
-        value = p + 1 < a.length ? a.slice(p + 1) : args[++k];
+        // `-o=FILE` (Go, clap) is `-o FILE`; `-oFILE` carries the file name itself.
+        value = p + 1 < a.length ? a.slice(p + 1).replace(/^=/, "") : args[++k];
         break;
       }
     }

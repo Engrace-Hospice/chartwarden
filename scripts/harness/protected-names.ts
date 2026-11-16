@@ -102,3 +102,14 @@ export function protectedNameSamples(): readonly string[] {
   const named = PROTECTED_SAMPLES.filter((s) => !s.startsWith("~/"));
   return [...new Set([...named, ...protectedTreeFiles()])];
 }
+
+/**
+ * The directories in which EVERY file is protected (`scripts/harness`, `compliance`, `.githooks`, …), lower case: the
+ * parents of the `…/x` placeholder samples. A wildcard whose directory part can match one of them can match a file that
+ * does not exist yet (a new `scripts/harness/new.ts` named as `scripts/h?rness/new.ts`).
+ */
+export function protectedDirectories(): readonly string[] {
+  return PROTECTED_SAMPLES.filter((s) => s.endsWith("/x") && !s.startsWith("~/")).map((s) =>
+    s.slice(0, -2),
+  );
+}

@@ -9,6 +9,7 @@
  * run time (`psql -c "$CMD"`), and SQL that makes the SERVER write a file (`COPY … TO PROGRAM`, `INTO OUTFILE`). Pure.
  */
 import { printedText } from "./inline-code";
+import { embeddedNames } from "./protected-operands";
 
 /** What one client was handed to run, by what the guard should do about it. */
 export interface ClientFindings {
@@ -20,7 +21,7 @@ export interface ClientFindings {
   readonly reads: readonly string[];
 }
 
-type Kind = "sqlite" | "postgres" | "mysql";
+type Kind = "sqlite" | "postgres" | "mysql" | "editor";
 
 const CLIENTS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
   ["sqlite3", "sqlite"],
@@ -29,6 +30,13 @@ const CLIENTS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
   ["mysql", "mysql"],
   ["mariadb", "mysql"],
   ["mycli", "mysql"],
+  // An editor takes its commands as an argument, on standard input or in a here-document (`ed f <<< 'w F'`, `vim -c 'w! F'`):
+  // every name in that text is a file it may write (wave 8, ADV6-2).
+  ["ed", "editor"],
+  ["ex", "editor"],
+  ["vi", "editor"],
+  ["vim", "editor"],
+  ["nvim", "editor"],
 ]);
 
 /** Is this program a SQL client with a command language of its own? */
@@ -240,6 +248,7 @@ export function clientFindings(prog: string, texts: readonly string[]): ClientFi
   const readings = texts.flatMap((text): Reading[] => {
     if (kind === "sqlite") return sqliteReading(text);
     if (kind === "postgres") return postgresReading(text);
+    if (kind === "editor") return embeddedNames([text], true).map((name) => writeOf(name));
     return [...mysqlReading(text), mysqlOption(text)];
   });
   const collect = (pick: (r: Reading) => readonly string[] | undefined): string[] => [

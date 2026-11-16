@@ -68,8 +68,12 @@ import { runsLiveSuite } from "./live-suite";
 import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
 import { isPackageScript, setPackageScriptsReader } from "./package-scripts";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
-import { protectedNameSamples, protectedNamesComplete } from "./protected-names";
-import { pathCandidates, writeCapable } from "./protected-operands";
+import {
+  protectedDirectories,
+  protectedNameSamples,
+  protectedNamesComplete,
+} from "./protected-names";
+import { backstopPlan, localFunctionNames } from "./protected-operands";
 import {
   PROTECTED_FRAGMENT,
   PROTECTED_SAMPLES,
@@ -120,6 +124,7 @@ import {
   shellQuote,
   shellStrings,
   sshHost,
+  wrapperOutput,
 } from "./wrappers";
 import { extraOutputFiles, localPath } from "./writers";
 import { moreGitWrites, moreWriterTargets } from "./writers-more";
@@ -581,7 +586,6 @@ const NO_FLAG_VALUE = /^$/;
 const WRAPPER_FLAG_VALUE: ReadonlyMap<string, RegExp> = new Map([
   ...WRAPPER_VALUE_FLAG,
   ...[
-    "time",
     "command",
     "builtin",
     "nohup",
@@ -622,8 +626,11 @@ function program(seg: string): {
   args: string[];
   assigns: string[];
   chdir?: string;
+  /** Files a wrapper's own option writes (`time -o F`): judged like redirect targets. */
+  writes: string[];
 } {
   let w = words(seg);
+  const writes: string[] = [];
   let k = 0;
   let lastWrapper = "";
   let chdir: string | undefined;
@@ -669,6 +676,8 @@ function program(seg: string): {
       let supplied = false;
       while (k < w.length && /^-/.test(w[k] ?? "") && (w[k] ?? "") !== "--") {
         const flag = w[k] ?? "";
+        const written = wrapperOutput(bare, flag, w[k + 1]);
+        if (written !== undefined) writes.push(written);
         supplied ||= operands?.suppliedBy?.test(flag) ?? false;
         const attached = CHDIR_ATTACHED.get(bare)?.exec(flag);
         if (attached) chdir = attached[1] ?? attached[2] ?? "";
@@ -695,6 +704,7 @@ function program(seg: string): {
     word: unescapeWord(w[k] ?? ""),
     args: prog === "env" && k >= w.length ? [] : w.slice(k + 1),
     assigns: w.slice(0, k).filter((x) => ASSIGNMENT.test(x)),
+    writes,
     ...(chdir === undefined ? {} : { chdir }),
   };
 }
@@ -795,7 +805,8 @@ interface Parsed {
 /** Program, arguments and redirections of one simple command. */
 function parseSegment(seg: string): Parsed {
   const { rest, outs, ins, docs, strings } = splitRedirects(seg);
-  return { ...program(rest), outs, ins, docs, strings };
+  const { writes, ...command } = program(rest);
+  return { ...command, outs: [...outs, ...writes], ins, docs, strings };
 }
 
 /**
@@ -1025,6 +1036,8 @@ let judgeBudget = MAX_JUDGED_COMMAND_LINES;
 let hookVariableInCommand = false;
 /** The variables the command line sets to a plain literal (`D=.`), so a sweep operand `$D` is placed (one-shot state, as above). */
 let knownVariables: ReadonlyMap<string, string> = new Map();
+/** The functions the command line defines (`mk() { … }`): called with prose as often as with code (one-shot state, as above). */
+let localFunctions: ReadonlySet<string> = new Set();
 /** Has this command's view of the live env files been asked of the caller yet? (one-shot state, as above) */
 let liveEnvListed = false;
 /** The live suite files this command's runners were asked about, listed at most once (one-shot state, as above). */
@@ -1055,6 +1068,7 @@ export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): Bas
     refillWork(ctx.judgeTimeLimitMs ?? MAX_COMMAND_JUDGE_MS);
     hookVariableInCommand = assignsHookVariable(cmd);
     knownVariables = literalAssignmentsOf(cmd);
+    localFunctions = localFunctionNames(cmd);
     liveEnvListed = false;
     setListedLiveEnvFiles([]);
     liveSuiteCache = null;
@@ -2036,7 +2050,8 @@ function mainWrites(prog: string, args: readonly string[]): WriteTarget[] {
       true,
       false,
     );
-  if (/^(tee|touch|truncate|mkdir|ed|ex|vi|vim|nano)$/.test(prog)) return files.map((f) => wt(f));
+  if (/^(tee|touch|truncate|mkdir|ed|ex|vi|vim|nvim|nano)$/.test(prog))
+    return files.map((f) => wt(f));
   if (/^(chmod|chown|chgrp|setfacl|chflags|xattr)$/.test(prog)) {
     return files.map((f) => wt(f, recursive, recursive));
   }
@@ -2276,7 +2291,7 @@ function gitWriteVerdict(
       const rel = resolvePath(p, dir, ctx);
       if (rel === null) return ask(UNKNOWN_DIR_REASON);
       // The literal part of a wildcard pathspec counts too (`scripts/harness/hard-dead*`), then what the wildcard can match.
-      if (protectedTouch(rel, WHOLE_TREE) || (hasWildcard(rel) && wildcardReachesProtected(rel))) {
+      if (touchesProtectedTree(rel)) {
         return ask(protectedReason(rel));
       }
     }
@@ -2295,6 +2310,17 @@ function wildcardReachesProtected(spec: string): boolean {
   if (!protectedNamesComplete()) return true;
   const tokens = globTokens(spec.toLowerCase());
   return protectedNameSamples().some((sample) => globMatches(tokens, sample));
+}
+
+/**
+ * Can a wildcard's directory part (`scripts/h?rness` of `scripts/h?rness/new.ts`) match a directory in which every file is protected?
+ * Then the file it names may not exist yet, and `wildcardReachesProtected` (the names the tree holds) cannot see it.
+ */
+function wildcardMayGainProtected(spec: string): boolean {
+  const slash = spec.lastIndexOf("/");
+  if (slash < 0) return false;
+  const tokens = globTokens(spec.slice(0, slash).toLowerCase());
+  return protectedDirectories().some((dir) => globMatches(tokens, dir));
 }
 
 /** Does the working tree this git command acts on hold the repo (and so the guard)? An unknown directory may. */
@@ -2718,26 +2744,66 @@ function archiveRootVerdict(
 const unmodelledWriterReason = (prog: string, path: string): string =>
   `\`${echo(prog)}\` is not a program the guard knows to be read-only, and its command line names a protected path (${protectedReason(path)}). It may write there, and the guard has no model of it. A human decides.`;
 
+/** Does this resolved path name a protected file, a directory above one, or a wildcard that can match one? */
+const touchesProtectedTree = (rel: string, rootCounts = true): boolean =>
+  protectedTouch(rel, rootCounts ? WHOLE_TREE : { ...WHOLE_TREE, merge: false }) ||
+  // A wildcard with no `/` (`*`, `*.ts`, `.*`) is a pattern for the tool as often as a path, unless a write flag says so.
+  (hasWildcard(rel) &&
+    (rel.includes("/") || rootCounts) &&
+    (wildcardReachesProtected(rel) || wildcardMayGainProtected(rel)));
+
 /**
- * The backstop for writers nobody modelled (`protected-operands.ts`): a program that is neither known to only read nor a
- * modelled writer, handed a word that resolves onto a protected path from a directory the command may run in. A
- * directory the guard cannot resolve is no finding here (it would make every unknown program ask).
+ * The protected path a word names from some directory the command may run in, or null. The word is placed like every
+ * other operand: its brace alternatives, the variables the command line sets to a literal, then the same predicate the
+ * write rules use (the path itself, a directory above it, a wildcard that can match it). A word that still holds a
+ * variable or a substitution is a computed name and stays unseen.
+ */
+function protectedNamedBy(
+  raw: string,
+  here: readonly Cwd[],
+  ctx: BashContext,
+  rootCounts: boolean,
+): string | null {
+  for (const alternative of expandBraces(raw)) {
+    const word = withKnownVariables(alternative, knownVariables);
+    for (const dir of here) {
+      if (work.spent) return null;
+      const rel = resolvePath(word, dir, ctx);
+      if (rel !== null && !/[$`]/.test(rel) && touchesProtectedTree(rel, rootCounts)) return rel;
+    }
+  }
+  return null;
+}
+
+/**
+ * The backstop for writers nobody modelled (`protected-operands.ts`): a program that is not known to only read (or that
+ * carries one of its write flags), handed a word that resolves onto a protected path from a directory the command may run
+ * in, or an inline program or command text that names one or a secret file. A directory the guard cannot resolve is no
+ * finding here (it would make every unknown program ask).
  */
 function unmodelledWriterVerdict(
   prog: string,
   args: readonly string[],
+  strings: readonly string[],
   here: readonly Cwd[],
   ctx: BashContext,
 ): BashVerdict | null {
-  if (!writeCapable(prog, args)) return null;
-  for (const word of pathCandidates(args)) {
-    for (const dir of here) {
-      if (work.spent) return null;
-      const rel = resolvePath(word, dir, ctx);
-      if (rel !== null && protectedPathPattern.test(rel)) {
-        return ask(unmodelledWriterReason(prog, rel));
-      }
+  const plan = backstopPlan(prog, args, localFunctions.has(prog), strings);
+  if (plan === null) return null;
+  for (const word of plan.words) {
+    const rel = protectedNamedBy(word, here, ctx, plan.rootCounts);
+    if (rel !== null) return ask(unmodelledWriterReason(prog, rel));
+  }
+  for (const name of plan.names) {
+    // Only a name that looks like a path is a secret file here: a SQL column such as `r.key`, or a property chain, is not.
+    const secret = /[/~]|^\./.test(name) && !/[$]/.test(name) ? secretPathReason(name) : null;
+    if (secret !== null) {
+      return deny(
+        `\`${echo(prog)}\` is handed code or text that names \`${echo(name)}\`, which is ${secret}. A program that reads it prints it. Agents do not read secrets or dumps.`,
+      );
     }
+    const rel = protectedNamedBy(name, here, ctx, plan.rootCounts);
+    if (rel !== null) return ask(unmodelledWriterReason(prog, rel));
   }
   return null;
 }
@@ -3049,5 +3115,5 @@ function classifySegment(
       "Live suites DROP ROLE chartwarden_app. Confirm DATABASE_URL points at a private chartwarden-postgres:dev container (own port, fresh database), never the shared Docker cluster.",
     );
   }
-  return unmodelledWriterVerdict(prog, args, here, ctx);
+  return unmodelledWriterVerdict(prog, args, parsed.strings, here, ctx);
 }

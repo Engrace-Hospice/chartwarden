@@ -16,6 +16,8 @@ export const WRAPPER_VALUE_FLAG: ReadonlyMap<string, RegExp> = new Map([
     /^-[ughpCDRTUrt]$|^--(?:user|group|host|prompt|chdir|role|type|other-user|login-class|close-from|command-timeout)$/,
   ],
   ["env", /^-[uCSP]$|^--(?:unset|chdir|split-string)$/],
+  // GNU time: `-o FILE` and `-f FORMAT`; a word that is none of these is the command.
+  ["time", /^-[of]$|^--(?:output|format)$/],
   ["nice", /^-n$/],
   ["ionice", /^-[cnp]$/],
   ["xargs", /^-[InPLsdEa]$/],
@@ -44,6 +46,30 @@ export const WRAPPER_OPERANDS: ReadonlyMap<string, { count: number; suppliedBy?:
     ["taskset", { count: 1, suppliedBy: /^-c$|^--cpu-list$/ }],
     ["chrt", { count: 1 }],
   ]);
+
+/**
+ * Wrapper options that name a file the wrapper itself WRITES (`time -o F`, `strace -o F`), spelled `-o F`, `-oF`, `--output F`
+ * or `--output=F`. The classifier judges the file like a redirect target; the options are otherwise dropped with the wrapper.
+ */
+const WRAPPER_OUTPUT_OPTION: ReadonlyMap<string, RegExp> = new Map([
+  ["time", /^(?:-o|--output)$/],
+  ["strace", /^-o$/],
+]);
+
+/** The file `flag` (followed by `next`) makes `wrapper` write, or undefined when it names none. */
+export function wrapperOutput(
+  wrapper: string,
+  flag: string,
+  next: string | undefined,
+): string | undefined {
+  const names = WRAPPER_OUTPUT_OPTION.get(wrapper);
+  if (names === undefined) return undefined;
+  if (names.test(flag)) return next;
+  const attached = /^(?:--output|-o)=?(.+)$/s.exec(flag);
+  return attached !== null && names.test(flag.startsWith("--") ? "--output" : "-o")
+    ? attached[1]
+    : undefined;
+}
 
 /** A word as the shell must read it back as one word. */
 export const shellQuote = (w: string): string =>

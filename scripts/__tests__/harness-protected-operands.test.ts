@@ -37,6 +37,8 @@ describe("pathCandidates: the words that could be a path", () => {
   });
 });
 
+// Wave 8 (T2): a modelled program (`cp`, `git`, `tee`, …) has a plan too: its positional operands are what its own model
+// judges, but a protected path attached to an option is not (`modelledPlan` below), so `writeCapable` is true for it.
 describe("writeCapable: which programs the backstop applies to", () => {
   it.each<[string, string[]]>([
     ["sd", ["a", "b", "f"]],
@@ -66,7 +68,6 @@ describe("writeCapable: which programs the backstop applies to", () => {
     ["stat", ["f"]],
     ["sed", ["-n", "1,5p", "f"]],
     ["jq", [".", "f"]],
-    ["git", ["diff", "f"]],
     ["biome", ["check", "f"]],
     ["eslint", ["f"]],
     ["prettier", ["--check", "f"]],
@@ -80,16 +81,11 @@ describe("writeCapable: which programs the backstop applies to", () => {
     ["printf", ["%s", "f"]],
     ["cd", ["d"]],
     ["test", ["-f", "f"]],
-    ["cp", ["a", "b"]],
-    ["mv", ["a", "b"]],
-    ["rm", ["f"]],
-    ["tee", ["f"]],
     ["docker", ["compose", "-f", "f", "config", "--quiet"]],
     ["for", ["f", "in", "a", "b"]],
     ["while", ["read", "l"]],
     ["shellcheck", ["f.sh"]],
     ["-x", ["/mnt/a.sh"]],
-    ["gh", ["pr", "view", "5"]],
     ["gawk", ["{print}", "f"]],
     ["ruby", ["f.rb"]],
   ])("%s %j is not", (prog, args) => {
@@ -204,11 +200,17 @@ describe("it does not ask when the program only reads, is modelled, or the text 
     `ruby ${G}`,
     `somenewtool --version`,
     `somenewtool apps/backend/src/index.ts`,
-    `somenewtool "see scripts/harness/hard-deadline.ts for details"`,
-    `somenewtool --message="fix scripts/harness/hard-deadline.ts"`,
+    `git commit -m "see scripts/harness/hard-deadline.ts for details"`,
+    `git commit --message="fix scripts/harness/hard-deadline.ts"`,
+    `gh pr create --title "fix scripts/harness/hard-deadline.ts" --body "see scripts/harness/x"`,
     `somenewtool x > /dev/null`,
   ])("%s", (cmd) => {
     expect(d(cmd), cmd).toBe("allow");
+  });
+
+  it("an unknown program is handed prose or code that names a protected path: wave 8 reads it (ADV6-5)", () => {
+    expect(d(`somenewtool "see scripts/harness/hard-deadline.ts for details"`)).toBe("ask");
+    expect(d(`somenewtool --message="fix scripts/harness/hard-deadline.ts"`)).toBe("ask");
   });
 
   it("gh has no `api --output` (gh 2.87.3 refuses the flag), so it writes nothing there and is allowed", () => {
