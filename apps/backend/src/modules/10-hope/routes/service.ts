@@ -64,6 +64,7 @@ import {
   isSettledItemStatus,
   manualUploadTransmittedPayload,
   nonBlankRecordId,
+  nullIfBlank,
   reportHashes,
   resolveRejectedItem,
   resultRefusalCode,
@@ -377,12 +378,12 @@ export interface HopeRouteService extends HopeAbacResolver {
   ): Promise<HopeAssessmentView>;
   /**
    * `options.mayWrite` (REQUIRED): whether the caller holds `hope.timepoint.write`. A caller that does not gets a pure read: the
-   * open runs no spec freeze, chart refresh (prefill), control-answer rewrite or SFV self-heal, which would write on the
-   * strength of a read permission. A reader's view equals a writer's only for the workflow-control items (A0050, A0250, derived
-   * from the record in memory, not stored) and the progress counts that follow from them; what only a writer's open does (the chart
-   * refresh, the SFV self-heal of J2052/J2053, the validation-finding reconcile) is shown as stored, so a draft that needs one of
-   * those reads differently for a reader until a writer opens it. A legacy spec-less draft, which cannot be shown without freezing
-   * its spec, is a static 409. The route resolves it from the caller's grants.
+   * open runs no spec freeze, chart refresh (prefill) or control-answer rewrite, which would write on the strength of a read
+   * permission. A reader's view equals a writer's only for the workflow-control items (A0050, A0250, derived from the record in
+   * memory, not stored) and the progress counts that follow from them; the chart refresh and the workflow-control reconcile are
+   * done for a writer only, so a reader sees chart-derived answers as stored and the workflow controls derived on the fly, and a
+   * draft that needs a chart refresh reads differently for a reader until a writer opens it. A legacy spec-less draft, which
+   * cannot be shown without freezing its spec, is a static 409. The route resolves it from the caller's grants.
    */
   getAssessmentWorkspace(
     organizationId: string,
@@ -2046,8 +2047,9 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       for (const raw of results) {
         const item = itemOf(raw);
         const resultStatus = classifyCmsResult(raw);
-        const code = typeof raw.code === "string" ? raw.code : null;
-        const itemCode = typeof raw.itemCode === "string" ? raw.itemCode : null;
+        // A blank cell is no code, as in the DB backend (where a stored "" would be a unique key).
+        const code = nullIfBlank(raw.code);
+        const itemCode = nullIfBlank(raw.itemCode);
         const message = typeof raw.message === "string" ? raw.message : null;
         if (code || itemCode || message)
           findings.push({

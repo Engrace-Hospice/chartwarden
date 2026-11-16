@@ -156,6 +156,20 @@ describe("twin: importSubmissionResult reads a report row's assessment id the wa
     ]);
   });
 
+  it("a blank code or item code is no code: the finding keeps null, as the database stores NULL, never an empty string", async () => {
+    const { svc, batch } = await uploadedBatch();
+
+    const out = await svc.importSubmissionResult(ORG, "u1", batch.id, {
+      results: [
+        { assessmentId: SIGNED, status: "rejected", code: "", itemCode: "", message: "bad" },
+      ],
+    });
+
+    expect(out.findings).toEqual([
+      expect.objectContaining({ assessmentId: SIGNED, code: null, itemCode: null, message: "bad" }),
+    ]);
+  });
+
   it("a row that names no assessment of the batch is still refused, and the batch is left as it was", async () => {
     const { svc, batch } = await uploadedBatch();
 
