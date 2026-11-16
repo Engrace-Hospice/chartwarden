@@ -41,7 +41,11 @@ export interface CarePlanElementsRecord {
   readonly problems: readonly StoredRelevantProblem[];
   readonly goals: readonly RelevantGoal[];
   readonly interventions: readonly RelevantIntervention[];
-  /** Whether the caller is entitled to read SUD-flagged content for this patient (resolved through the M39 evaluator at call time, never from the row). */
+  /**
+   * Whether the caller is entitled to read SUD-flagged content for this patient (resolved through the M39 evaluator
+   * at call time, never from the row; or a hand-built viewer's route-resolved verdict, or the seeded value in the
+   * in-memory slice).
+   */
   readonly sudReadAllowed: boolean;
 }
 

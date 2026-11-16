@@ -28,6 +28,7 @@ import { runWithRequestContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { consentEvaluatorDenyStub } from "../src/bootstrap/seams/providers";
 import { getSeam, registerSeam } from "../src/bootstrap/seams/registry";
 import { createCareTeamProvider } from "../src/modules/05-patient/seams/care-team-provider";
 import { createDrizzleCareTeamStore } from "../src/modules/05-patient/seams/drizzle-stores";
@@ -257,7 +258,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         return {
           planId: "66666666-6666-4666-8666-666666666666",
           patientId: PATIENT,
-          problems: [{ problemId: "44444444-4444-4444-8444-444444444444" }],
+          problems: [{ problemId: "44444444-4444-4444-8444-444444444444", sudRelated: false }],
           goals: [
             {
               goalId: "55555555-5555-4555-8555-555555555555",
@@ -1728,9 +1729,19 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       ).rows[0].id as string;
     }
 
-    /** Runs `fn` with the real reader + an evaluator over `consents` bound, then restores the stub reader. */
+    /**
+     * Runs `fn` with the real reader + an evaluator over `consents` bound, then restores the stub reader and the
+     * evaluator that was bound before (the registry has no unregister: with none bound, the boot deny-stub that
+     * `validateSeams` binds to an unwired seam goes back, so the in-memory evaluator never outlives the case).
+     */
     async function withRealSeams<T>(consents: StoredConsent[], fn: () => Promise<T>): Promise<T> {
       const stubReader = getSeam("CarePlanReader");
+      let priorEvaluator: unknown;
+      try {
+        priorEvaluator = getSeam("ConsentEvaluator");
+      } catch {
+        // None bound yet (this suite never registers one outside this helper).
+      }
       registerSeam(
         "CarePlanReader",
         createCarePlanReader(createDrizzleCarePlanReaderStore(handle.db)),
@@ -1743,6 +1754,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         return await runWithRequestContext({ organizationId: ORG_A, userId: USER } as never, fn);
       } finally {
         registerSeam("CarePlanReader", stubReader);
+        registerSeam("ConsentEvaluator", priorEvaluator ?? consentEvaluatorDenyStub);
       }
     }
 

@@ -24,10 +24,10 @@
 //     resolved it from the M7 closure (the picker's `deps.sudDisclosureAllowed`) may hand-build one;
 //   • `"patient_level"` — a caller with NO human actor (the scheduling worker, M15's system actor): the patient-level
 //     release lookup (`part2ReleaseAllowed`).
-// Every store-resolved path (`actor`, `"patient_level"`) is FAIL-CLOSED — a hand-built viewer is only as safe as the
-// route that resolved it: while M39 is a deny-stub, throws, or denies, the record reads `sudReadAllowed=false`
-// and the reader drops SUD problems + flags `redacted` — a consent outage narrows what a clinician sees; it never
-// widens it. The picker route calls its closure unconditionally before the reader runs (one M39
+// The store-resolved paths (`actor`, `"patient_level"`) are FAIL-CLOSED: while M39 is a deny-stub, throws, or denies,
+// the record reads `sudReadAllowed=false` and the reader drops SUD problems + flags `redacted` — a consent outage
+// narrows what a clinician sees; it never widens it. A hand-built `{ sudDisclosureAllowed }` viewer is only as safe
+// as the route that resolved it. The picker route calls its closure unconditionally before the reader runs (one M39
 // `evaluateForInternalAccess` call per load); the `actor` and `"patient_level"` round-trips are skipped when the
 // plan carries no SUD-flagged problem.
 import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";

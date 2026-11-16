@@ -225,8 +225,9 @@ export type IdgDecisionChange =
 
 /** A care-plan problem projection for the encounter-relevance picker (§7.8). Free-text `description`
  * is included for clinician display but SUD-flagged problems are filtered out (the verdict is resolved through
- * the M39 evaluator at call time; only the problem's own SUD flag comes from the row) when the caller lacks a
- * `42_cfr_part_2_release` consent context (D7). */
+ * the M39 evaluator at call time; only the problem's own SUD flag comes from the row) when the audience is not
+ * entitled under the per-actor Part 2 rule (the M39 verdict for that actor, with the §7.6 RN-case-manager
+ * carve-out where no release names others) (D7). */
 export interface RelevantProblem {
   readonly problemId: ProblemId;
   readonly icd10Code: string | null;

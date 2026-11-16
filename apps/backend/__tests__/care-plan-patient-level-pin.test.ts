@@ -37,21 +37,26 @@ function sourceFiles(dir: string): string[] {
     .map((f) => `${dir}/${f.split(sep).join("/")}`);
 }
 
+/** Every non-test source file of the backend and of each package (a package without `src` contributes none). */
+function allSourceFiles(): string[] {
+  const dirs = [
+    "apps/backend/src",
+    ...readdirSync(join(REPO, "packages")).map((p) => `packages/${p}/src`),
+  ];
+  return dirs.flatMap((d) => {
+    try {
+      return sourceFiles(d);
+    } catch {
+      return [];
+    }
+  });
+}
+
 describe("the care plan `patient_level` audience is pinned to its reviewed callers", () => {
   it("only the allowlisted files name the literal", () => {
-    const dirs = [
-      "apps/backend/src",
-      ...readdirSync(join(REPO, "packages")).map((p) => `packages/${p}/src`),
-    ];
-    const found = dirs
-      .flatMap((d) => {
-        try {
-          return sourceFiles(d);
-        } catch {
-          return [];
-        }
-      })
-      .filter((f) => readFileSync(join(REPO, f), "utf8").includes('"patient_level"'));
+    const found = allSourceFiles().filter((f) =>
+      readFileSync(join(REPO, f), "utf8").includes('"patient_level"'),
+    );
     expect(
       found.sort(),
       'A caller with a human actor must pass the per-actor audience, not "patient_level". To add a caller with NO ' +
@@ -79,30 +84,41 @@ describe("the care plan `patient_level` audience is pinned to its reviewed calle
     expect(audienceCalls).toHaveLength(calls.length);
   });
 
-  it("no source file hand-builds a `{ sudDisclosureAllowed }` audience from a boolean literal", () => {
-    // The picker route's viewer is `{ sudDisclosureAllowed: await sudDisclosureAllowed({...}) }` (the M7 closure, never a
-    // literal). A literal `true` would bypass M39; the one `false` allowed is the write viewer's fail-closed fallback
-    // when the consent lookup throws (it can only narrow). Comments are stripped: they may quote the shape.
-    const code = (file: string) =>
-      read(file)
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/(^|[^:])\/\/.*$/gm, "$1");
-    const literals = sourceFiles("apps/backend/src").flatMap((f) =>
-      [...code(f).matchAll(/sudDisclosureAllowed:\s*(true|false)\b/g)].map((m) => `${f} ${m[1]}`),
-    );
-    expect(literals).toEqual([
-      "apps/backend/src/modules/07-care-plan/routes/care-plan-routes.ts false",
-    ]);
-    expect(read("apps/backend/src/modules/07-care-plan/routes/care-plan-routes.ts")).toMatch(
-      /sudDisclosureAllowed:\s*await sudDisclosureAllowed\(/,
-    );
-  });
-
   it("M8's link check asks under the ACTOR audience and never names the literal", () => {
     const m8 = read(M8_LINK);
     expect(m8).not.toContain('"patient_level"');
     expect(m8).toMatch(
       /relevantElementsForEncounter\([^;]*\{\s*actor:\s*\{\s*roles:\s*actorRoles,\s*membershipId:\s*actorMembershipId\s*\}\s*\}/,
     );
+  });
+});
+
+// A tripwire for the OBVIOUS shapes only, not a guarantee: a computed value, a quoted key (`"sudDisclosureAllowed": true`),
+// a variable, or a spread would pass it. The real control is review of any new `{ sudDisclosureAllowed }` audience: it
+// replaces the M39 lookup, so whoever hand-builds one is the trust boundary.
+describe("the care plan `{ sudDisclosureAllowed }` audience is not hand-built from a boolean literal (tripwire)", () => {
+  const ROUTES = "apps/backend/src/modules/07-care-plan/routes/care-plan-routes.ts";
+  const read = (file: string) => readFileSync(join(REPO, file), "utf8");
+
+  it("no source file hand-builds a `{ sudDisclosureAllowed }` audience from a boolean literal", () => {
+    // The M7 routes' viewers are `{ sudDisclosureAllowed: await sudDisclosureAllowed({...}) }` (the M7 closure, never a
+    // literal). A literal `true` would bypass M39; the one `false` allowed is the write viewer's fail-closed fallback
+    // when the consent lookup throws (it can only narrow). Comments are stripped: they may quote the shape.
+    const code = (file: string) =>
+      read(file)
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const literals = allSourceFiles().flatMap((f) =>
+      [...code(f).matchAll(/sudDisclosureAllowed:\s*(true|false)\b/g)].map((m) => `${f} ${m[1]}`),
+    );
+    expect(literals).toEqual([`${ROUTES} false`]);
+  });
+
+  it("both M7 viewers (`viewerOf` and the picker route's own) take the closure's verdict", () => {
+    // Two uses today: `viewerOf` (plan-keyed reads) and the picker route's inline viewer. A count of one would mean the
+    // picker's viewer became a variable, which the pattern alone (satisfied by `viewerOf`) would not notice.
+    const closureViewers =
+      read(ROUTES).match(/sudDisclosureAllowed:\s*await sudDisclosureAllowed\(/g) ?? [];
+    expect(closureViewers.length).toBeGreaterThanOrEqual(2);
   });
 });
