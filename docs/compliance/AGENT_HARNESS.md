@@ -177,8 +177,12 @@ symlink to a secret file is refused under an innocent name.
 loaded or run from any directory, and `~/.codex/config.toml` can disable the hook for a user); at the repo root
 so are `.claude/{audit,.cache,rules,agents,skills,commands,hooks,plugins,launch.json}`, `.agents/` (except its
 local `plans/` and `prds/`), `scripts/harness/`, `compliance/`, `.githooks/`, `.github/workflows/`,
-`deploy/production/` and CODEOWNERS at its three homes. One pattern definition (`scripts/harness/protected-paths.ts`; the names the find rule and the wildcard rules try are read from the
-tree by `protected-names.ts`, and the Stop gate's `arch:compliance` map asks the same `isProtectedPath`)
+`deploy/production/` and CODEOWNERS at its three homes. One definition of "protected" (`scripts/harness/protected-paths.ts`: one
+pattern, one fragment pattern derived from it for text, and a list of sample names; the three agree on every tracked protected
+file, `harness-protected-definition.test.ts`; the names the find rule and the wildcard pathspec rules try are read from the tree by
+`protected-names.ts`, each listing root with a budget of its own, and a listing that is incomplete (a root over its budget, an
+unreadable directory, a file deeper than the walk) makes every name test and every wildcard "may match": it fails closed, wave 7,
+CR5-5; and the Stop gate's `arch:compliance` map asks the same `isProtectedPath`)
 judges a shell write, a Codex patch, an MCP string and Claude's own Write/Edit/MultiEdit/NotebookEdit, which ASK
 for every one of them: the `permissions.ask` rules in `settings.json` name fewer paths, and an Edit tool call
 the rules did not name used to pass without a word (2026-11-10 review, ADV-H2); `.codex/config.toml` itself stays local and git-ignored, at any depth: `.gitignore` ignores
@@ -333,7 +337,10 @@ Covered (each has a regression test in `scripts/__tests__/harness-bypasses.test.
   directory the command may run in holds the repo: `reset --hard`, `checkout|switch` with a force or detach option
   or to a lone commit (`abc1234`, `HEAD~3`), `read-tree -u`, `checkout-index -a|-f`, `cherry-pick`, `revert`,
   `stash pop|apply|branch` of a named older stash, a forced `-X ours|theirs`, magic pathspecs (`:/`, `:(top)`)
-  and a wildcard pathspec that matches a protected path. A lone word after `git checkout` is looked up where the
+  and a wildcard pathspec of `git rm|mv|restore|checkout` that keeps a protected directory as its literal prefix
+  (`scripts/harness/hard-dead*`, `compliance/zzz-*`: a file the directory may gain) or can match a protected name the tree holds
+  (`scripts/h*/hard-deadline.ts`); wave 7, CR5-4: the literal prefix used to be dropped for any wildcard, a regression of wave 3. A
+  lone word after `git checkout` is looked up where the
   command RUNS (`cd scripts/harness && git checkout pre-tool-guard.ts` asks). **Not asked, by design:** a plain
   `git merge`, `rebase`, `pull`, `switch <branch>` or `checkout <branch>` (about 2% of the Bash commands in this
   repo's sessions, and git's three-way rules never put an older file over a newer one; CODEOWNERS and PR review
@@ -428,14 +435,20 @@ wall-clock limit of 1 s per judging backs them (the guard judges twice from a sy
 sample names and with no regular expression (so no exponential backtracking), brace alternatives
 (4,096) and path resolutions (16,384) are budgeted per command in items AND in characters (8 MB of expanded
 brace text, 8 MB of resolved path text, so one 4,000-character word expanded 4,096 ways spends what 4,096 short
-words would not; a word over 4,096 characters is not expanded, but with a brace group in it and no whitespace it spends the budget and is
-read one group at a time, all-first and all-last, and a `cd` is charged for characters only), a
+words would not, so the per-word cap is the command's 4,096 alternatives, scaled down for a long word to about a million characters; a
+word over 4,096 characters is not expanded, but when the command holds an UNQUOTED brace group (the lexer's reading, `bare-braces.ts`,
+never whitespace in the word) it spends the budget and is read one group at a time, all-first and all-last; a command whose braces are
+all quoted or escaped expands none and spends nothing; a `cd` is charged for characters only), a
 `git -C` chain of more than 8 operands asks and a followed directory is capped at 1,024 characters, and
 substitutions (32 per level) and judged command lines (300 per call) are capped; over any of those caps the
-answer is ask (a word of up to 4,096 characters that holds more than 256 brace alternatives is cut and spends the budget; a quoted
-word with whitespace in it is not a brace word, and a long inline script with object literals is not a finding), and a deny found before
-the cap was hit still stands. The cut keeps the real name reachable: each group alone, and every group taking its first and its last
-alternative, so `~/.aws/{x,}` repeated nine times and then `credentials` is a deny, not a silent allow. A spent brace or resolution budget does not
+answer is ask (a word that holds more brace alternatives than its cap is cut and spends the budget when the command holds an unquoted
+group; a long inline script or JSON body with object literals, every brace quoted, is not a finding), and a deny found before
+the cap was hit still stands. Inside the cap every alternative is read, so a name that needs a MIX of first and last alternatives
+(`{c,'x y'}{'x y',r}…` spelling `credentials` with a quoted or escaped space as the junk) is found and denied; past the cap the cut
+keeps what a cheap reading can reach (each group alone, and every group taking its first and its last alternative, so `~/.aws/{x,}`
+repeated nine times and then `credentials` is a deny, not a silent allow) and the command ASKS: a name that needs a mix past the cap
+is an ask, never an allow (CR5-1). A brace-expanded destination of `cp`, `mv`, `ln` and `install` is every alternative of the last
+argument, not the last alternative (`cp x .claude/{settings.json,y}` asks). A spent brace or resolution budget does not
 stop the rest of the command from being judged: a secret file name is still found, even one that a single brace
 group builds from a stem and an optional suffix, because each word is also read one group at a time, linearly;
 only the clock and the judged-text budget stop judging. The per-command budget (`work`), the judged-lines counter and the Codex flag are module state, refilled by `classifyBash`
@@ -484,16 +497,20 @@ still denied (`harness-hidden-path-budget.test.ts`).
 
 **Wave 6.** Each item has a test file under `scripts/__tests__/harness-*.test.ts`.
 - *Git and command-line variables are judged wherever a command line sets them* (`shell-assignments.ts`,
-  `git-exec-strings.ts`, `harness-env-assignments.test.ts`). One reading of an assignment (`NAME=v`, `NAME+=v`, `${NAME:=v}`, a
-  name spelled with quotes, backslashes or a brace group: `GIT_TR\ACE=x`, `GIT_TRACE{,}=x`) is shared by the harness-switch rule and
-  these. A prefix assignment, `export`/`declare`/`typeset`/`readonly`/`local`, `env`, a subshell, a brace group, a later statement and
+  `git-exec-strings.ts`, `harness-env-assignments.test.ts`). One reading of an assignment (`assignments()`: `NAME=v`, `NAME+=v`,
+  `${NAME:=v}` wherever it stands in a word, a name spelled with quotes, backslashes, a brace group or a sequence: `GIT_TR\ACE=x`,
+  `GIT_TRACE{,}=x`, `GIT_TRACE{2..2}=x`) is shared by the harness-switch rule, the git rules and the loader rules (wave 7, CR5-3: the
+  harness-switch rule used regular expressions of its own, `braceVariants` was a second brace expander, and `${NAME:=v}` was read only
+  there). A name that is still not a name after expansion (`${X}=v` given to an assigning builtin) asks, and so does a brace group in a
+  program word (`env GIT_TRACE{2..2}=x git status`). A prefix assignment, `export`/`declare`/`typeset`/`readonly`/`local`, `env`, a subshell, a brace group, a later statement and
   a nested `bash -c` or `ssh h '…'` all count: `export GIT_TRACE=<guard file>; git status` no longer slips past a rule that only read
   the git segment's own prefix. The git variables that name a FILE git writes (`GIT_TRACE`, `GIT_TRACE2`, `GIT_TRACE2_EVENT`,
   `GIT_TRACE2_PERF`, `GIT_TRACE_PACKET`, `GIT_TRACE_PACKFILE`, `GIT_TRACE_CURL`, `GIT_TRACE_SETUP`, `GIT_TRACE_PERFORMANCE`,
   `GIT_TRACE_REFS`, `GIT_TRACE_SHALLOW`, `GIT_TRACE_FSMONITOR`, `GIT_TRACE_PACK_ACCESS`, `GIT_REDIRECT_STDOUT`, `GIT_REDIRECT_STDERR`,
   and `GIT_INDEX_FILE`) are judged as write targets, like a redirect: a path onto the guard, the ledger, the hook configuration or a
   startup file **asks** (Codex: denies); `/dev/null`, `/dev/stderr`, `/tmp/x.log`, and the values `1`, `2`, `true`, `false`, `0`, `off`,
-  a file descriptor, `2>&1` and an `af_unix:` socket stay allowed. Why it matters: git appends one trace line to the file, and a line
+  a file descriptor, `2>&1` and an `af_unix:` socket stay allowed as a trace TARGET (the `GIT_TRACE=<file> git status` PREFIX form still
+  asks, whatever the value, through the generic `GIT_*` override rule: only `export` and kin reach the value check). Why it matters: git appends one trace line to the file, and a line
   appended to `pre-tool-guard.ts` or `hard-deadline.ts` (the two modules the entry thread imports before the worker exists) makes bun
   fail to start, so the pinned Claude command exits 1, which Claude Code reads as allow for every later call
   (`harness-trace-corrupts-guard.test.ts` proves it on a copy of the guard tree through the real pinned commands, and that the
@@ -515,7 +532,9 @@ still denied (`harness-hidden-path-budget.test.ts`).
   `-wMstrict`). `NODE_OPTIONS=--max-old-space-size=8192 bunx tsc` (the repo's typecheck script) and `PERL5OPT=-w` stay
   allowed. When the same command line also starts a coding agent (`claude`, `codex`, `bunx claude`, `npx
   @anthropic-ai/claude-code`), `PATH`, `SHELL`, `BASH_ENV`, `ENV`, `ZDOTDIR`, `LD_LIBRARY_PATH` and every `DYLD_*` ask too, in
-  either order: they are too common to refuse everywhere. Reading is not setting: `echo $NODE_OPTIONS`, `printenv NODE_OPTIONS`
+  either order and at every nesting level (wave 7, CR5-2: the variable is looked for in the WHOLE command text, so `PATH=… bash -c
+  'claude -p x'`, `env PATH=… sh -c '…'`, `eval '…'` and `echo '…' | sh` ask; before, the variable and the agent had to sit in the same
+  nested command line): they are too common to refuse everywhere. Reading is not setting: `echo $NODE_OPTIONS`, `printenv NODE_OPTIONS`
   and `rg BUN_OPTIONS= docs` assign nothing, and an empty value clears the variable. Codex denies every ask. **Not decided by
   text:** a variable set by an earlier tool call, a startup file or the human's own shell; `bun`/`node`/`perl` running a harness
   script directly is not modelled.
@@ -523,8 +542,10 @@ still denied (`harness-hidden-path-budget.test.ts`).
   `git diff --no-index DIR DIR`, `diff -r`/`-R`/`--recursive` (any cluster, `-ru`, `-rq`, `-Nr`), `colordiff -r`, and
   `git diff A B` when one operand is outside the working tree (git implies `--no-index`; `git diff HEAD -- A` is not it)
   **ask**, as `grep -r` does, when an operand is the repo root, a directory above it (`..`, `~`), a directory that holds a live
-  env file that exists, a glob that can match such a directory (`apps/*`, `apps/b*`), or cannot be placed (a `cd` the guard
-  cannot follow). A plain `diff DIR DIR` compares the same-named files directly under both (`-N`: any file), so it asks when
+  env file that exists, a glob that can match such a directory (`apps/*`, `apps/b*`), a brace operand (`{apps,docs}`), or cannot be
+  placed (a `cd` the guard cannot follow, a variable it cannot place: wave 7, CR5-6 puts the same reading under `cp -r`, `rsync -a`,
+  `tar c` and `find -exec cat`; a variable the SAME command line sets to a literal is placed there, `D=.; grep -r x $D` asks and
+  `S=/tmp/x; diff -r $S/a $S/b` does not, and any other variable operand asks). A plain `diff DIR DIR` compares the same-named files directly under both (`-N`: any file), so it asks when
   an operand directly holds one. `git grep --no-index` and `grep -r`/`rg -u` now read their operands the same way: pathspec magic
   (`:/apps`, `:(glob)…`, `:!x`; for git grep only) cannot be placed and asks, and so do `..`, `~` and a glob. `cmp` is not
   judged (on a directory it only says "Is a directory"); words inside `<( )` are not operands. `diff -r a.txt b.txt`, `git diff
@@ -634,6 +655,30 @@ document" at the end.
   or let a human run it), 7 are a variable used as the program name (`$M label scripts/harness/x`), 6 a helper script (`commit.sh`
   with harness paths), 2 a relative write after an unresolvable `cd`, 1 `$GL dir . --config .gitleaks.toml`, 1 a shell function that
   wraps `sed -i`, and the two sibling and client findings above.
+- *The round-5 code review* (CR5-1 to CR5-11; each item has its own test file `harness-*.test.ts`, named below).
+  **CR5-1** (`bare-braces.ts`, `harness-cr5-braces-env.test.ts`): described in the budget paragraph above; `{c,'x y'}` and `x\ y`
+  alternatives are read in full inside the cap. **CR5-2** (`env-hazards.ts`): an agent-hook variable assigned anywhere asks when an
+  agent starts at any nesting level. **CR5-3** (`shell-assignments.ts`): one assignment grammar, sequences, `${NAME:=v}`, an
+  unplaceable name asks. **CR5-4, CR5-5** (`protected-names.ts`, `harness-protected-wildcards.test.ts`): described under the
+  protected-path paragraph and the git writers above. **CR5-6** (`harness-sweep-unified.test.ts`): copy-out, archive and
+  `find -exec cat` ask through the reading `grep -r` uses, `find` is read as a boolean expression (`-o` narrows nothing), a brace
+  operand is its alternatives, and a variable operand is placed from the command's own literal assignments or asks. **CR5-7**
+  (`live-env-files.ts`, `harness-live-env-files.test.ts`): "a live env file" is read from the tree (every env file that is not a
+  tracked template, in the root, `deploy/production` and the children of `apps`, `services`, `packages` and `deploy`); the seven-path
+  list is only the fallback for a caller that cannot list; on this machine the main checkout holds one, so the corpus cost is 0.
+  **CR5-8** (`harness-script-text-aliases.test.ts` and additions to `harness-mcp-claude.test.ts`, `harness-hook-matcher.test.ts`): the
+  five surviving hand mutants are pinned (the five `CODE_DELIMITERS` characters, the Gmail send entry of the not-guarded list,
+  `aliasNormalise` in `scriptTextVerdict`) or gone with their code (`MAX_VARIANTS`, the dead `env` entry); wall-clock bounds near
+  their typical time were raised to 3 to 5 s. **CR5-9**: this document's eight claims the review found false are corrected in the
+  paragraphs they sat in. **CR5-10**: `braceVariants` and the fifth long-option abbreviation reader (`tree-sweep.ts` `spells`) are
+  gone (they call `expandBraces` and `isLongOption`); follow-ups left: the two `VARIABLE_SETTER` regular expressions
+  (`git-exec-strings.ts`, `harness-switch.ts`), `patterns.ts` at about 3,000 lines against the 800-line ceiling, module-level state
+  (`work`, `judgeBudget`, the one-shot caches), and `readStdin` duplicating `io.ts`. **CR5-11** (`live-suite-files.ts`,
+  `harness-live-suite-substring.test.ts`): `bunx vitest run care-plan-conformance` runs the live suite beside the unit tests, because
+  vitest filters by substring of the path; a filter that reaches into the file name of a live suite the tree holds **asks**. A
+  directory filter (`scripts/__tests__`, `apps/backend/__tests__`, `packages/db`) runs every test under it, live suites among
+  them, and is not asked (asking was 0.34% of this repo's real commands); the remaining ask costs 0.17% (unit-test stems that also
+  name a live twin). A bare `vitest run` with no filter runs everything the config includes, live suites too, and is not asked.
 
 **Shell lexing.** `scripts/harness/shell-lex.ts` reads a command once, in one linear pass, before any rule
 runs; the line splitter, the redirection reader and the substitution scan all use its result, so a quote, an
@@ -669,7 +714,8 @@ worker (`guard-worker.ts`), and when the timer fires, the worker dies or errors 
 ends, it prints the standard deny JSON, a stderr line and EXITS 2 (a block in both agents), whatever the worker is
 stuck in. The worker makes `process.exit` a throw: on bun 1.3.5 (what CI pins) a `process.exit(0)` called in a
 worker ended the WHOLE process silently with status 0, which both agents read as an allow. Normal answers are unchanged (JSON for a deny or an ask, nothing for an allow, exit 0); the extra
-latency is about 5 ms per call (median 21 to 26 ms over 35 runs). A worker needs neither `--config` nor `--tsconfig-override` of its own: it is
+latency was about 5 ms per call when the deadline was added (median 21 to 26 ms over 35 runs on macOS, bun 1.3.5; measured once, not
+re-measured since, and machine-dependent). A worker needs neither `--config` nor `--tsconfig-override` of its own: it is
 started by the already-hardened entry, and the hostile-config tests run through it. Test seams, never set in
 production and forbidden in the shared `env`: `CW_HARNESS_TEST_FAULT` (`hang`, `exit`, `process-exit`, `throw`) and
 `CW_HARNESS_DEADLINE_MS_FOR_TESTS` (it can only shorten the deadline); `harness-hard-deadline.test.ts` forces each
@@ -762,3 +808,33 @@ bun run harness:ledger:verify       # after a session, the chain is intact
   `bun --config=/dev/null scripts/harness/pre-tool-guard.ts < /dev/null` (a deny JSON is a healthy guard), and start
   Claude Code again.
 - A new synthetic identifier: edit `compliance/synthetic-identifiers.json` and approve the prompt.
+
+## Finding IDs cited in this document
+
+The review records themselves are not committed to this repository; most of these IDs also appear in the message of the commit that
+fixed them (`git log --grep '<ID>'`), and in the tests named in the paragraph that cites them. One line each.
+
+| ID | What it was |
+|---|---|
+| ADV-C3 | The Codex hook command found the checkout with `git rev-parse --show-toplevel`; `git config core.worktree` re-pointed it at another script. Now a walk-up that reads no git configuration. |
+| ADV-H2 | Claude's Edit/Write/MultiEdit/NotebookEdit of a protected path the `permissions.ask` rules did not name passed without a word. Now one protected-path definition asks. |
+| ADV-L2 | MCP tool input was judged by whole strings; now by the words a tool could open as a path (`mcp-tokens.ts`). |
+| ADV-L5 | `apply_patch` name obfuscation (`'apply'_patch`, `$(echo apply)_patch`) is held to the heredoc rule; a name assembled at run time stays with the sandbox. |
+| ADV-1, ADV-7 | `GIT_TRACE=<guard file>` (and its kin, set by prefix, `export`, `env`, `+=`) made git append a line to the guard and corrupt it (exit 1 reads as allow). Now a write target. |
+| ADV-2 | Variables that load code into bun or perl, or pick a nested agent's hook binary, ask. |
+| ADV-3 | `PERL5OPT`, `PERL5LIB`, `PERLLIB`, `PERL5DB` silenced the Codex wrapper before its `-e` body ran. Now `env -u` for each. |
+| ADV-4, ADV-5 | `diff -r`, `git diff --no-index`, `git grep --no-index` printed live env files; now ask like `grep -r`. |
+| ADV-6 | `--output=FILE` and `credential-store --file` of every git command that takes them are write targets. |
+| ADV-8 | The live-suite ask reaches a runner through `node`, `bun`, `npm test` and a glob. |
+| CR-C1, CR-C2 | A brace word over a path's length, or past the alternative cap, was not read; it spends the budget and is still read. |
+| CR-C3 | `find`'s name narrowing used a hand-kept list of protected names; now read from the tree (`protected-names.ts`). |
+| CR-L1 | The classifier's module-level budget state is correct only because the worker judges one hook per process. |
+| CR-M5 | The Stop gate's compliance map, `PROTECTED_SAMPLES` and `PROTECTED_FRAGMENT` agree with the one protected definition. |
+| CR-L3, CR-L4, CR-L5, CR-L6 | Round-4 low findings: the one Claude Code env variable on the allow-list, backup-name suffixes, doc corrections, exports nothing used. |
+| ADV-C1, ADV-C2, ADV-M1, CR-H2, CR-M1 | 2026-11-10 findings on the per-command budget (in characters, not only items), `git -C` chains, and scripts matched under every spelling. |
+| T6 | Protected and secret paths are matched under every spelling the file system folds into one name (NFKC, case, sharp s). |
+| T0 | Wave 7: Claude's guard command ends in an exit-2 tail (this document, "Claude's guard command fails closed"). |
+| ADV5-1 | `sqlite3 .shell`, `psql \!`, `mysql system`, `pgcli \!` ran an operating-system command under Claude; now ask. |
+| ADV5-2 | About twenty ordinary commands wrote to a path the agent names with no rule (`bun build --outfile`, `uniq IN OUT`, …); modelled, plus a generic backstop. |
+| ADV5-3 | Siblings of the tree sweeps (`ack`, `ag -u`, `fd -x`, `cpio -p`, `pax -rw`); judged as the sweeps they are siblings of. |
+| CR5-1 to CR5-11 | The round-5 code review: brace budget and whitespace (1), nested agent variables (2), one assignment grammar (3), wildcard pathspecs (4), per-root names (5), five sweep readings (6), the live env list (7), surviving mutants (8), doc claims (9), structure (10), vitest substring filters (11). |

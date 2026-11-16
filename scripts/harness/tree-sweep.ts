@@ -9,6 +9,7 @@
  * places each one (`classifySegment`, the same placement `grep -r` uses). `cmp` is not here: on a directory it only
  * says "Is a directory". Pure.
  */
+import { isLongOption } from "./option-values";
 
 /** How much of an operand directory the command reads: its whole tree, or the files directly under it. */
 export type SweepDepth = "tree" | "children";
@@ -64,7 +65,7 @@ const optionsOf = (args: readonly string[]): readonly string[] => {
 
 /** Does `given` (the text after `--`, up to any `=`) spell `name` or an unambiguous prefix of it of `min` characters? */
 const spells = (given: string, name: string, min: number): boolean =>
-  given.length >= min && name.startsWith(given);
+  isLongOption(`--${given}`, name, min);
 
 const longName = (arg: string): string | null =>
   arg.startsWith("--") && arg !== "--"
