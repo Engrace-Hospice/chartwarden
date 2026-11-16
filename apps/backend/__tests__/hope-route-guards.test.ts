@@ -105,6 +105,55 @@ describe("requireOverrideJustification", () => {
     ]);
   });
 
+  it("accepts a normal multi-line reason (line feeds, carriage returns and tabs are text)", () => {
+    const multiline =
+      "EHR outage during the window.\r\n\tApproved by the compliance lead.\nTicket on file.";
+
+    const text = requireOverrideJustification({
+      adminOverride: true,
+      adminOverrideJustification: multiline,
+    });
+
+    expect(text).toBe(multiline);
+  });
+
+  it.each([
+    ["a NUL", `${REASON}\u0000 and more`],
+    [
+      "a run of zero-width spaces standing in for a reason",
+      "\u200B".repeat(OVERRIDE_JUSTIFICATION_MIN_LENGTH),
+    ],
+    ["a zero-width joiner inside a real reason", `${REASON}\u200D`],
+    ["a bidi override", `${REASON} \u202Eevil`],
+    ["a soft hyphen", `${REASON}\u00AD`],
+    ["an escape character", `${REASON}\u001B[31m`],
+    ["a lone high surrogate", `${REASON}\uD83D`],
+    ["a lone low surrogate", `${REASON}\uDE00 tail`],
+  ])("refuses %s with a static 422 that does not echo the text", (_label, text) => {
+    const err = capture(() =>
+      requireOverrideJustification({ adminOverride: true, adminOverrideJustification: text }),
+    );
+
+    expect(err).toBeInstanceOf(ValidationError);
+    expect((err as ValidationError).statusCode).toBe(422);
+    expect((err as ValidationError).details).toEqual([
+      expect.objectContaining({ field: "adminOverrideJustification", code: "INVALID_CHARACTERS" }),
+    ]);
+    const everything = JSON.stringify({
+      message: (err as Error).message,
+      details: (err as ValidationError).details,
+    });
+    expect(everything).not.toContain(REASON);
+  });
+
+  it("an emoji pair (a well-formed surrogate pair) is text, not a lone surrogate", () => {
+    const withEmoji = `${REASON} \u{1F6D1} stop`;
+
+    expect(
+      requireOverrideJustification({ adminOverride: true, adminOverrideJustification: withEmoji }),
+    ).toBe(withEmoji);
+  });
+
   it.each([
     ["an SSN", `Patient ${SYNTHETIC_SSN} was readmitted after the outage ended`, SYNTHETIC_SSN],
     ["an MBI", `Medicare number ${SYNTHETIC_MBI} was keyed late after the outage`, SYNTHETIC_MBI],

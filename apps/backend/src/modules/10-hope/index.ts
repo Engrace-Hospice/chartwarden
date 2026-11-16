@@ -10,7 +10,7 @@ import type { FastifyInstance } from "fastify";
 import { registerHopeAbacPredicates as _registerM10Abac } from "./abac-predicates";
 import { type HopeWriteOutboxPort, createDbHopeBackend } from "./hope-route-service-db";
 import type { HopeRetentionHoldPort } from "./jobs/cron-workers";
-import { registerHopeRoutes as _registerM10Routes } from "./routes/hope-routes";
+import { type HopeRouteDeps, registerHopeRoutes as _registerM10Routes } from "./routes/hope-routes";
 
 /**
  * M10L — mount the M10 HOPE routes over the PRODUCTION Drizzle backend (RLS-scoped under `withOrgContext`).
@@ -20,17 +20,19 @@ import { registerHopeRoutes as _registerM10Routes } from "./routes/hope-routes";
  * its `m10.hope.*` event on the passed transactional-outbox publisher (the composition root binds M1's
  * catalog-validating publisher pinned to caller-module `m10`). Replaces the in-memory scaffold mount for M10.
  * `legalHolds` is the M4 legal-hold read (the one the retention cron uses) that a package cancel's byte purge is gated on;
- * without it a cancel keeps the bytes (fail closed).
+ * without it a cancel keeps the bytes (fail closed). `sfvCompletionRateLimit` bounds the SFV completion route per actor (the
+ * denied-probe audit rows); see `HopeRouteDeps`.
  */
 export function mountHopeRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: HopeWriteOutboxPort,
   legalHolds?: HopeRetentionHoldPort,
+  sfvCompletionRateLimit?: HopeRouteDeps["sfvCompletionRateLimit"],
 ): void {
   const backend = createDbHopeBackend(db, outbox, undefined, legalHolds);
   _registerM10Abac({ resolver: backend });
-  _registerM10Routes(app, { service: backend });
+  _registerM10Routes(app, { service: backend, sfvCompletionRateLimit });
 }
 
 export { type HopeWriteOutboxPort, createDbHopeBackend } from "./hope-route-service-db";

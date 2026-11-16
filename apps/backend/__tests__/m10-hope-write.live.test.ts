@@ -22,6 +22,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { importHopeSpec } from "../../../scripts/db/import-hope-spec";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { activeLegalHoldScopeForOrg } from "../src/modules/04-audit/legal-hold-scope";
 import { registerPatientSeams } from "../src/modules/05-patient/index";
 import {
   createAdmissionStatusReader,
@@ -247,7 +248,11 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     // GAP-015: the capture gate judges lateness on the SERVER clock. It defaults to a date before every
     // fixture window (so the gate reads each fixture's own `targetDate`, exactly as before); the GAP-015
     // cases below move it.
-    svc = createDbHopeBackend(handle.db, outbox, () => liveNow);
+    // The cancel's byte purge reads the REAL M4 legal-hold scope (the retention cron's own reader) as the app role.
+    svc = createDbHopeBackend(handle.db, outbox, () => liveNow, {
+      activeLegalHoldScopeForOrg: (organizationId) =>
+        activeLegalHoldScopeForOrg(handle.db, organizationId),
+    });
   }, 120_000);
 
   afterAll(async () => {
@@ -1281,6 +1286,42 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect(commitBetween).toBeGreaterThan(init);
     });
 
+    it("a read-only caller opening a legacy spec-less draft is answered a 409 and writes nothing, in the workspace and the review; a writer's open then freezes the spec", async () => {
+      const id = await freshDraft();
+      await admin.query(
+        "UPDATE hope_assessment SET spec_version_id = NULL, isc = NULL WHERE id=$1",
+        [id],
+      );
+      const snapshot = async () => ({
+        row: (
+          await admin.query(
+            "SELECT version, updated_at, spec_version_id, isc FROM hope_assessment WHERE id=$1",
+            [id],
+          )
+        ).rows[0],
+        answers: (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM hope_assessment_answer WHERE hope_assessment_id=$1",
+            [id],
+          )
+        ).rows[0].n,
+      });
+      const before = await snapshot();
+      expect(before.row.spec_version_id).toBeNull();
+
+      const readOnly = { mayWrite: false };
+      expect(await outcome(svc.getAssessmentWorkspace(ORG_A, id, readOnly))).toBe("409:CONFLICT");
+      expect(await outcome(svc.getAssessmentReview(ORG_A, id, readOnly))).toBe("409:CONFLICT");
+      // Neither the assessment row (spec, ISC, version, updated_at) nor its derived control answers were written.
+      expect(await snapshot()).toEqual(before);
+
+      // A caller who can edit opens it once: that freezes the spec, and then a read-only caller reads it as any draft.
+      await svc.getAssessmentWorkspace(ORG_A, id);
+      expect((await snapshot()).row.spec_version_id).not.toBeNull();
+      expect(await outcome(svc.getAssessmentWorkspace(ORG_A, id, readOnly))).toBeNull();
+      expect(await outcome(svc.getAssessmentReview(ORG_A, id, readOnly))).toBeNull();
+    });
+
     it("a sign behind a long-held assessment lock answers a retryable 409 instead of waiting for the lock and leaves the draft a draft", async () => {
       const id = await freshDraft();
       const before = (
@@ -1800,6 +1841,97 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
         itemsBefore.map((i) => i.hope_assessment_id),
       );
       expect(itemsSecond.every((i) => i.item_status === "pending")).toBe(true);
+    });
+
+    /** An ACTIVE M4 legal hold on these patients (none = org-wide: no patient selector), released by the returned function. */
+    async function holdPatients(...patientIds: string[]): Promise<() => Promise<void>> {
+      const criteria = patientIds.length > 0 ? { patientIds } : {};
+      const {
+        rows: [hold],
+      } = await admin.query(
+        "INSERT INTO legal_hold (organization_id, name, criteria, status, reason) VALUES ($1,'m10 cancel hold',$2::jsonb,'active','litigation hold for the test') RETURNING id",
+        [ORG_A, JSON.stringify(criteria)],
+      );
+      return async () => {
+        await admin.query(
+          "UPDATE legal_hold SET status='released', released_at=now() WHERE id=$1",
+          [hold.id],
+        );
+      };
+    }
+
+    it("a cancel under a patient-scoped legal hold on a patient of the batch still cancels but keeps ALL the bytes, and says so in the event", async () => {
+      const id = await freshPackage();
+      const items = await itemRows(id);
+      const heldPatient = (
+        await admin.query("SELECT patient_id FROM hope_assessment WHERE id=$1", [
+          items[0].hope_assessment_id,
+        ])
+      ).rows[0].patient_id as string;
+      const release = await holdPatients(heldPatient);
+      try {
+        const cancelled = await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, {
+          reasonCode: "package_lost",
+        });
+
+        expect(cancelled.status).toBe("cancelled");
+        const row = await subRow(id);
+        expect(row.status).toBe("cancelled");
+        expect(row.acceptance_report.packageContentBase64).toEqual(expect.any(String));
+        const after = await itemRows(id);
+        expect(after.map((i) => i.item_status)).toEqual(after.map(() => "cancelled"));
+        for (const i of after)
+          expect(i.iqies_validation_result.xmlContentBase64).toEqual(expect.any(String));
+        const [event] = await cancelEvents(id);
+        expect(event.context).toMatchObject({
+          packageBytesPurged: false,
+          bytesKeptForLegalHold: true,
+        });
+      } finally {
+        await release();
+      }
+    });
+
+    it("an org-wide legal hold keeps the bytes too; a hold on a patient who is NOT in the batch purges as usual", async () => {
+      const orgWide = await freshPackage();
+      const releaseOrgWide = await holdPatients();
+      try {
+        await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, orgWide, { reasonCode: "other" });
+      } finally {
+        await releaseOrgWide();
+      }
+      expect((await subRow(orgWide)).acceptance_report).not.toBeNull();
+      expect((await cancelEvents(orgWide))[0].context).toMatchObject({
+        bytesKeptForLegalHold: true,
+      });
+
+      const other = await freshPackage();
+      const releaseElsewhere = await holdPatients("55555555-5555-4555-8555-555555555555");
+      try {
+        await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, other, { reasonCode: "other" });
+      } finally {
+        await releaseElsewhere();
+      }
+      expect((await subRow(other)).acceptance_report).toBeNull();
+      for (const i of await itemRows(other)) expect(i.iqies_validation_result).toBeNull();
+      expect((await cancelEvents(other))[0].context).toMatchObject({
+        packageBytesPurged: true,
+        bytesKeptForLegalHold: false,
+      });
+    });
+
+    it("a download stamps who took the package out (exported_by_membership_id), once, on the packaged -> exported step", async () => {
+      const id = await freshPackage();
+      expect((await subRow(id)).exported_by_membership_id).toBeNull();
+
+      await svc.downloadSubmissionPackage(ORG_A, id, memberOf[ORG_A]!);
+
+      const exported = await subRow(id);
+      expect(exported.status).toBe("exported");
+      expect(exported.exported_by_membership_id).toBe(memberOf[ORG_A]);
+      // A re-download of an exported batch streams again and leaves the first exporter in place.
+      await svc.downloadSubmissionPackage(ORG_A, id, OPERATOR.membershipId);
+      expect((await subRow(id)).exported_by_membership_id).toBe(memberOf[ORG_A]);
     });
 
     it("a cancelled batch refuses mark-uploaded, results, download and retry (409); its bytes are gone and its hash stays", async () => {

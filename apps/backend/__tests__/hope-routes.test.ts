@@ -26,11 +26,14 @@ import {
 import { buildOutOfBandPayload, buildTimepointWindowAlert } from "@chartwarden/hope";
 import { HOPE_ATTESTATION_VERSION } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetSeamsForTest, buildServer } from "../src/bootstrap/index";
+import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
+import { createRouteRateLimit } from "../src/bootstrap/plugins/route-rate-limit";
 import { registerIdentitySeams } from "../src/modules/02-identity/index";
 import { registerAuthorizationAbacPredicates } from "../src/modules/03-authorization/abac-predicates";
 import {
+  type HopeRouteDeps,
   buildHopeAbacPredicates,
   createInMemoryHopeBackend,
   registerHopeRoutes,
@@ -150,6 +153,8 @@ function makeServer(
     realStepUp?: boolean;
     /** Admissions whose M6 status seam throws (an outage): an SFV completion on one is a retryable 503. */
     unavailableAdmissions?: readonly string[];
+    /** The per-actor limiter the composition root binds on the SFV completion route (none by default). */
+    sfvCompletionRateLimit?: HopeRouteDeps["sfvCompletionRateLimit"];
   } = {},
 ) {
   const backend = createInMemoryHopeBackend({
@@ -352,6 +357,7 @@ function makeServer(
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerHopeRoutes(app, {
     service: backend,
+    sfvCompletionRateLimit: options.sfvCompletionRateLimit,
     caseloadPatientIds: async () => {
       if (options.caseloadFails) throw new Error("caseload seam unavailable");
       return options.caseload ?? [PATIENT];
@@ -1133,6 +1139,22 @@ describe("§D13 — skip, retry, mark-uploaded, cancel, results, assemble, packa
       await server.app.close();
     },
   );
+});
+
+describe("GET /hope/submissions/:id/package — who took the package out", () => {
+  it("hands the service the acting membership, which it stamps as exported_by_membership_id", async () => {
+    const server = makeServer({ packagedSubmission: true });
+    const download = vi.spyOn(server.backend, "downloadSubmissionPackage");
+
+    await server.app.inject({
+      method: "GET",
+      url: `/api/v1/hope/submissions/${SUB_PACKAGED}/package`,
+      headers: RN,
+    });
+
+    expect(download).toHaveBeenCalledWith(ORG, SUB_PACKAGED, "rn_1");
+    await server.app.close();
+  });
 });
 
 describe("POST /hope/schedules/:id/skip — the reason is a closed code list", () => {
@@ -2069,6 +2091,58 @@ describe("R-01 — recordSfv is bound to the URL admission", () => {
     expect(res.statusCode).toBe(409);
     expect(codeOf(res)).toBe("M10_SFV_NO_TRIGGER");
     expect((await backend.getSfv(ORG, SFV_OPEN_P1)).status).toBe("open");
+    await app.close();
+  });
+
+  it("probing other admissions' SFVs is limited per actor: the answers within the limit are unchanged, the next request is a 429 that never reaches the service", async () => {
+    const PROBES_ALLOWED = 3;
+    const limiter = createRouteRateLimit({
+      store: createInMemoryRateLimitStore(),
+      limit: { perUser: PROBES_ALLOWED, perOrg: 100, windowMs: 60_000, failMode: "open" },
+      keyPrefix: "test-sfv-completion",
+    });
+    const { app, backend } = makeServer({
+      openSfvForPatientOne: true,
+      resolveAdmissionPatient: resolveBothAdmissions,
+      isInCaseload: async (q) => q.patientId === PATIENT_2,
+      sfvCompletionRateLimit: limiter,
+    });
+    const recordSfv = vi.spyOn(backend, "recordSfv");
+    const absent = await postSfvTo(app, ADMISSION_2, BOGUS_TRIGGER);
+    const foreign = await postSfvTo(app, ADMISSION_2, TRIGGER_P1);
+    const again = await postSfvTo(app, ADMISSION_2, TRIGGER_P1);
+
+    // Byte-identical for an absent and a foreign SFV, as without the limiter.
+    expect([absent.statusCode, foreign.statusCode, again.statusCode]).toEqual([409, 409, 409]);
+    expect(messageShape(foreign)).toBe(messageShape(absent));
+    expect(codeOf(foreign)).toBe(codeOf(absent));
+    const refused = await postSfvTo(app, ADMISSION_2, TRIGGER_P1);
+
+    expect(refused.statusCode).toBe(429);
+    expect(refused.headers["retry-after"]).toBe("60");
+    expect(recordSfv).toHaveBeenCalledTimes(PROBES_ALLOWED);
+    await app.close();
+  });
+
+  it("the limiter sits after the scope guards: a caller refused by scope (404) never spends the budget", async () => {
+    const limiter = createRouteRateLimit({
+      store: createInMemoryRateLimitStore(),
+      limit: { perUser: 1, perOrg: 100, windowMs: 60_000, failMode: "open" },
+      keyPrefix: "test-sfv-completion-scope",
+    });
+    const { app, backend } = makeServer({
+      openSfvForPatientOne: true,
+      resolveAdmissionPatient: resolveBothAdmissions,
+      isInCaseload: async () => false,
+      sfvCompletionRateLimit: limiter,
+    });
+    const recordSfv = vi.spyOn(backend, "recordSfv");
+
+    const first = await postSfvTo(app, ADMISSION, TRIGGER_P1);
+    const second = await postSfvTo(app, ADMISSION, TRIGGER_P1);
+
+    expect([first.statusCode, second.statusCode]).toEqual([404, 404]);
+    expect(recordSfv).not.toHaveBeenCalled();
     await app.close();
   });
 

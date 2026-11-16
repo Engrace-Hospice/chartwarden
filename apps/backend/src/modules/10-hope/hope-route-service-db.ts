@@ -636,15 +636,25 @@ export function createDbHopeBackend(
     return { r, specCode: loaded.specCode, expectedVersion };
   }
 
+  /**
+   * Freeze the spec version and ISC of a legacy spec-less draft (an assessment UPDATE plus its control answers). That is a
+   * WRITE, so a caller without `hope.timepoint.write` (`mayWrite: false`, the workspace / review reads) never runs it: a
+   * spec-less draft answers a static 409 for them instead ("opened once by a clinician who can edit it"), and the draft
+   * stays untouched. A draft that already has its spec, a signed assessment and a non-official kind read as before.
+   */
   async function ensureDraftSpecInitialized(
     tx: DbClient,
     organizationId: string,
     id: string,
+    mayWrite = true,
   ): Promise<AssessmentRow> {
     const assessment = await loadA(tx, organizationId, id);
     if (assessment.specVersionId && assessment.isc) return assessment;
     if (assessment.status !== "draft" || !isOfficialRfaKind(assessment.rfaKind)) {
       return assessment;
+    }
+    if (!mayWrite) {
+      throw new ConflictError("This draft needs to be opened once by a clinician who can edit it.");
     }
 
     const init = await logSpecNotInForce(
@@ -1648,12 +1658,14 @@ export function createDbHopeBackend(
       // review and sign do: the prefill below makes seam calls on their own pooled connections, and left in the same
       // transaction the UPDATE's row lock and connection would be held across them (a bounded self-starvation on a
       // draft's first open).
+      // A read-only caller never runs it: it is shown the stored state, and a spec-less draft is a 409 for it.
+      const mayWrite = options?.mayWrite !== false;
       const assessment = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
-        ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id),
+        ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id, mayWrite),
       );
       // The chart refresh REWRITES draft answers (and bumps `version` when it changes one), so it is a write: only a caller
       // holding `hope.timepoint.write` runs it. A read-only caller (an auditor included) is shown the stored state.
-      if (options?.mayWrite !== false) {
+      if (mayWrite) {
         await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
           refreshChartPrefill(tx as unknown as DbClient, organizationId, assessment),
         );
@@ -1666,14 +1678,14 @@ export function createDbHopeBackend(
       // Spec initialisation (an assessment UPDATE, then control answers) commits in its OWN transaction first, as
       // `signTimepoint` does with `pre`: left in the heal's transaction it would take the assessment row before the heal
       // takes the SFV row, the reverse of M10's lock order (SFV, assessment, answers).
+      // A read-only caller never runs it: it reads the stored state, and a spec-less draft is a 409 for it.
+      const mayWrite = options?.mayWrite !== false;
       await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
-        ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id),
+        ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id, mayWrite),
       );
       // The self-heal writes draft answers, so only a caller holding `hope.timepoint.write` runs it; a read-only caller
-      // reads the stored state (the next writer to open the review repairs it). Spec initialisation above stays: a review
-      // of a spec-less legacy draft is a 409 without it.
-      if (options?.mayWrite === false)
-        return readinessService.getReview({ organizationId, assessmentId: id });
+      // reads the stored state (the next writer to open the review repairs it).
+      if (!mayWrite) return readinessService.getReview({ organizationId, assessmentId: id });
       const healed = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
         reconcileCompletedSfvRegulatoryAnswers(tx as unknown as DbClient, organizationId, id),
       );

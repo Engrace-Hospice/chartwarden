@@ -87,6 +87,12 @@ export interface HopeRouteDeps {
    * `userId` is the M2 USER id (what `patient_assignment.clinician_user_id` keys on).
    */
   caseloadPatientIds?: CaseloadLookup;
+  /**
+   * A per-actor limiter for the SFV completion route (`createRouteRateLimit`, bound at the composition root). It bounds how
+   * many `hope.sfv_completion_denied` audit rows one caller can add by probing other admissions' SFVs; it runs after the
+   * permission, scope and discipline guards and before the step-up, so a caller those refuse never spends the budget.
+   */
+  sfvCompletionRateLimit?: PreHandler;
 }
 
 // Static permission guards (§4.6).
@@ -336,6 +342,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
         LATE_OVERRIDE_GATE,
         SCOPE("hope.timepoint.write"),
         ABAC_SFV,
+        ...(deps.sfvCompletionRateLimit ? [deps.sfvCompletionRateLimit] : []),
         STEP_UP_SFV,
       ],
     },

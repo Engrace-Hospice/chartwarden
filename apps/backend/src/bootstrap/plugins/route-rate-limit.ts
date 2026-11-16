@@ -123,6 +123,21 @@ export const CLEARINGHOUSE_REVOKE_BAA_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "open",
 };
 
+/**
+ * M10 `POST /admissions/:admissionId/hope/sfv` (a signed RFA-04 completion): 10/min/user and 100/min/org. A refused, unbound
+ * completion (a probe for another admission's SFV) writes an immutable `hope.sfv_completion_denied` audit row per request, and
+ * fresh Idempotency-Keys defeat the replay cache, so this caps how many such rows one caseload clinician can add: at most 10 a
+ * minute, where a clinician signing a clinical form completes a handful an hour (a retry after a validation 422 still counts and
+ * is nowhere near 10 a minute). 100/min/org leaves room for every clinician of a large agency finishing visits together.
+ * Fail-OPEN: an availability control, a signature must not be refused because the limiter's store is down.
+ */
+export const HOPE_SFV_COMPLETION_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 10,
+  perOrg: 100,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
 /** M36 WP 6.8 (ADR-0097): the acknowledge-required broadcast routes, 20/min/user and 200/min/org. Fail-open: an availability control. */
 export const ACK_BROADCAST_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 20,

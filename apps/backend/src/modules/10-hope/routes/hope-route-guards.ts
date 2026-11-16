@@ -76,10 +76,23 @@ export const adminOverrideRequested = (body: unknown): boolean => {
 export const OVERRIDE_JUSTIFICATION_MIN_LENGTH = 20;
 
 /**
+ * Characters a justification may not contain: control characters (`\p{Cc}`: NUL, escapes, NEL...) EXCEPT tab, line feed and
+ * carriage return (a multi-line reason is normal), format characters (`\p{Cf}`: zero-width space / joiner, bidi marks, soft
+ * hyphen, BOM...) and a surrogate that has no partner (not text at all). Twenty zero-width characters would otherwise pass the
+ * length minimum as an invisible "reason", and a NUL or a lone surrogate cannot be stored in the audit event's jsonb (22P05),
+ * which would turn this 422 into a 500. REJECTED, never stripped: silently removing characters would store a different text
+ * from the one the admin typed and measured the minimum on. Not screened: other blank-looking glyphs (Hangul fillers, the
+ * Braille blank); the text is attributable to a named admin and still goes through the patient-identifier screen.
+ */
+const FORBIDDEN_JUSTIFICATION_CHARACTER =
+  /(?![\t\n\r])[\p{Cc}\p{Cf}]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
+
+/**
  * The late-deadline override's justification, judged and cleaned. It is stored verbatim in the IMMUTABLE critical
  * `hope.late_deadline_override` audit event (the only record of why the HQRP cutoff was lifted), so it must be a real
  * reason and must not name a patient: the surrounding whitespace is trimmed BEFORE the length is measured (twenty spaces
- * are not a reason), and an SSN- or MBI-shaped value is refused with a 422 that names the field and never echoes the text.
+ * are not a reason), text with control or format characters is refused (see {@link FORBIDDEN_JUSTIFICATION_CHARACTER}), and
+ * an SSN- or MBI-shaped value is refused with a 422 that names the field and never echoes the text.
  * Returns the text to hand the service, `undefined` when no override was asked for (a text sent without the flag is not kept).
  */
 export function requireOverrideJustification(body: {
@@ -94,6 +107,16 @@ export function requireOverrideJustification(body: {
         field: "adminOverrideJustification",
         code: "REQUIRED",
         message: "adminOverrideJustification is required with adminOverride",
+      },
+    ]);
+  }
+  if (FORBIDDEN_JUSTIFICATION_CHARACTER.test(text)) {
+    throw new ValidationError("an admin deadline override needs a plain-text justification", [
+      {
+        field: "adminOverrideJustification",
+        code: "INVALID_CHARACTERS",
+        message:
+          "adminOverrideJustification must not contain control, zero-width or other formatting characters",
       },
     ]);
   }

@@ -18,6 +18,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { activeLegalHoldScopeForOrg } from "../src/modules/04-audit/legal-hold-scope";
 import {
   lockPackageableRecords,
   readAssembleCandidateIds,
@@ -165,7 +166,11 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
     const outbox: HopeWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m10" }),
     };
-    svc = createDbHopeBackend(handle.db, outbox, () => new Date("2026-06-08T12:00:00.000Z"));
+    // The cancel's byte purge reads the REAL M4 legal-hold scope (the retention cron's own reader) as the app role.
+    svc = createDbHopeBackend(handle.db, outbox, () => new Date("2026-06-08T12:00:00.000Z"), {
+      activeLegalHoldScopeForOrg: (organizationId) =>
+        activeLegalHoldScopeForOrg(handle.db, organizationId),
+    });
   }, 120_000);
 
   afterAll(async () => {

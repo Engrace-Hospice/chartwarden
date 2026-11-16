@@ -16,6 +16,7 @@ import {
 } from "@chartwarden/types";
 import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
+import { ValueErrorType } from "@sinclair/typebox/errors";
 import { Value } from "@sinclair/typebox/value";
 import type {
   HopeAnswerPatchResult as ServiceAnswerPatchResult,
@@ -968,12 +969,21 @@ type _Regenerate = Conforms<
   { admissionId: string; scheduleCount: number }
 >;
 
-/** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
+/**
+ * Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. For an `additionalProperties: false`
+ * schema the error's path IS the property name the client chose, which would be echoed into the 422 (and cached by the
+ * idempotency layer for 24 h): an unexpected property is reported as the static `(unexpected property)`, never by name.
+ */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});
   if (!Value.Check(schema, converted)) {
     const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
+    const field =
+      first?.type === ValueErrorType.ObjectAdditionalProperties
+        ? "(unexpected property)"
+        : first
+          ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)"
+          : "(root)";
     throw new ValidationError("request validation failed", [
       { field, code: "INVALID", message: first?.message ?? "invalid request" },
     ]);
