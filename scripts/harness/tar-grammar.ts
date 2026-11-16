@@ -49,17 +49,26 @@ export interface TarReading {
   readonly filesFrom: boolean;
 }
 
-/** `--name` or `--name=value` read as `name` and the attached value, with an unambiguous prefix of `--directory` resolved. */
+/**
+ * The long options the grammar reads, each with the fewest characters after `--` that name only it (GNU tar and bsdtar accept
+ * any unambiguous prefix: `--cr`, `--creat` and `--appe` create or extend an archive, `--dir=apps` is `--directory=apps`).
+ */
+const LONG_NAMES: ReadonlyArray<readonly [name: string, minimum: number]> = [
+  ["directory", 3],
+  ["files-from", 6],
+  ["create", 2],
+  ["append", 2],
+  ["update", 2],
+];
+
+/** `--name` or `--name=value` read as `name` and the attached value, with an unambiguous prefix of the options above resolved. */
 function longName(a: string): { name: string; value?: string } {
   const eq = a.indexOf("=");
   const typed = a.slice(2, eq < 0 ? undefined : eq);
   const value = eq < 0 ? undefined : a.slice(eq + 1);
   const long = `--${typed}`;
-  const name = isLongOption(long, "directory", 3)
-    ? "directory"
-    : isLongOption(long, "files-from", 6)
-      ? "files-from"
-      : typed;
+  const name =
+    LONG_NAMES.find(([full, minimum]) => isLongOption(long, full, minimum))?.[0] ?? typed;
   return value === undefined ? { name } : { name, value };
 }
 
