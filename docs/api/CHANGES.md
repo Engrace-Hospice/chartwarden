@@ -30,6 +30,31 @@ its full description there. Newest first.
 - **Skip, retry and regenerate-schedules now wait at most 5 seconds for a row lock** and answer the retryable `409 M10_RECORD_BUSY`
   (see "Not covered" in the entry below, which no longer lists them). No request or response shape changes.
 
+## 2026-11-15 — HOPE: a package holds at most 200 records per call; one record without a location no longer blocks the others
+
+**Additive; no request or response shape changes.** Four behaviours of existing HOPE submission routes change, none of them the shape of a request or a response.
+
+- **`POST /api/v1/hope/submissions/assemble` looks at no more than 200 eligible records per call** (oldest signed first), so a package
+  holds at most 200 items. The records left over stay eligible: call again to package the next ones. The ordinary `409 CONFLICT`
+  ("No signed HOPE assessments are eligible for iQIES package generation") says none are left; the response has no field that says
+  more remain, so a client that wants everything repeats the call until it answers that `409`. Records the validator refused on an
+  earlier call (an unresolved error finding), or that have no location, sort after the others, so they cannot fill the 200 and hide
+  newer records. Before this, one call validated every eligible record while holding its advisory key and a database connection, so
+  a large set (for example after cancelling a big batch) made a second assemble answer `409 M10_RECORD_BUSY`.
+- **A signed record with no location (no provider entity / location siting, so its validation findings cannot be stored) is skipped**
+  by assemble, and the other records are packaged. Before this, such a record made every assemble for its provider entity answer
+  `409` (the siting error) and nothing could be packaged. The skip is logged by record id and does not appear in the response; such a
+  record stays unpackaged until its siting is repaired. Under the same call the records are also judged again just before the
+  package is written, so a record whose correction was signed while the others were being validated is dropped instead of packaged.
+- **`GET /api/v1/hope/submissions` answers at most 500 batches, newest first.** It used to answer every batch of the organization in no
+  particular order. The route has no pagination and the response does not say when it was cut; an organization has about one batch
+  per provider entity and period, so 500 is decades of history for one entity.
+- **`POST /api/v1/hope/submissions/{id}/results` no longer stores a blank `iqiesRecordId`.** An empty or whitespace-only id in a report
+  row is treated as no id: it is not written on the item or on the assessment (it used to be, and an empty `iqies_record_id` made
+  every `IS NULL` eligibility test read the record as already recorded). A non-blank id is stored exactly as sent. The
+  recording itself is the same operation, written in bulk (one statement per 500 rows) so a long report holds the batch row lock
+  for far less time; its result and error codes are unchanged.
+
 ---
 
 ## 2026-11-15 — HOPE: record writes wait at most 5 seconds for a lock (`409 M10_RECORD_BUSY`); drafts can no longer be rewritten after signing

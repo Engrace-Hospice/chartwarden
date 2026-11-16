@@ -13145,7 +13145,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Org-level HQRP compliance posture */
+        /** Org-level HQRP compliance posture; the submission acceptance rate counts BATCHES (accepted / answered), while M30's rollup reads the same batch statuses but sums accepted_count / item_count */
         get: operations["getApiV1HopeDashboardCompliance"];
         put?: never;
         post?: never;
@@ -13247,7 +13247,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2) */
+        /** HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2); newest first, at most 500 batches (the list is bounded, not paged, and does not say when it was cut) */
         get: operations["getApiV1HopeSubmissions"];
         put?: never;
         post?: never;
@@ -13334,7 +13334,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
+        /** Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent; a blank iqiesRecordId is no id and is not stored on the item or the assessment); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeSubmissionsByIdResults"];
         delete?: never;
         options?: never;
@@ -13368,7 +13368,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Assemble and package the eligible signed assessments of a provider entity into a `packaged` manual iQIES ZIP batch (the only assemble path; no cron runs it); 409 CONFLICT when no signed assessment is eligible; 422 when the submission header or an assessment payload cannot be built (the message names what to set); a second assemble of the same provider entity queues behind the first (an advisory lock), so it can answer 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
+        /** Assemble and package the eligible signed assessments of a provider entity into a `packaged` manual iQIES ZIP batch (the only assemble path; no cron runs it); one call looks at no more than 200 eligible records, oldest signed first, so a package holds at most 200 items and a second call packages the rest (the 409 says none are left); a record with no location is skipped, not an error; 409 CONFLICT when no signed assessment is eligible; 422 when the submission header or an assessment payload cannot be built (the message names what to set); a second assemble of the same provider entity queues behind the first (an advisory lock), so it can answer 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeSubmissionsAssemble"];
         delete?: never;
         options?: never;

@@ -63,6 +63,7 @@ import {
   isResultImportable,
   isSettledItemStatus,
   manualUploadTransmittedPayload,
+  nonBlankRecordId,
   reportHashes,
   resolveRejectedItem,
   resultRefusalCode,
@@ -1994,8 +1995,9 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         if (!winner) continue;
         item.status = winner.status;
         item.processedAt = at;
-        if (typeof winner.raw.iqiesRecordId === "string")
-          item.iqiesRecordId = winner.raw.iqiesRecordId;
+        // A blank id is no id (the database backend stores none either).
+        const recordId = nonBlankRecordId(winner.raw.iqiesRecordId);
+        if (recordId !== null) item.iqiesRecordId = recordId;
       }
       for (const raw of args.results) {
         const item = itemOf(raw);

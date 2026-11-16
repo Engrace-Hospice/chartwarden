@@ -5950,7 +5950,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeSfvResponseSchema,
   },
   "GET /api/v1/hope/submissions": {
-    summary: "HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2)",
+    summary:
+      "HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2); newest first, at most 500 batches (the list is bounded, not paged, and does not say when it was cut)",
     query: M10SubmissionListQuerySchema,
     response: M10HopeSubmissionListResponseSchema,
   },
@@ -5982,17 +5983,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeSubmissionResponseSchema,
   },
   "POST /api/v1/hope/submissions/:id/results": {
-    summary: `Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
+    summary: `Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent; a blank iqiesRecordId is no id and is not stored on the item or the assessment); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
     body: M10ImportSubmissionResultSchema,
     response: M10HopeSubmissionDetailResponseSchema,
   },
   "POST /api/v1/hope/submissions/assemble": {
-    summary: `Assemble and package the eligible signed assessments of a provider entity into a \`packaged\` manual iQIES ZIP batch (the only assemble path; no cron runs it); 409 CONFLICT when no signed assessment is eligible; 422 when the submission header or an assessment payload cannot be built (the message names what to set); AI principals refused (403); a second assemble of the same provider entity queues behind the first (an advisory lock), so it can answer ${M10_RECORD_BUSY_NOTE}`,
+    summary: `Assemble and package the eligible signed assessments of a provider entity into a \`packaged\` manual iQIES ZIP batch (the only assemble path; no cron runs it); one call looks at no more than 200 eligible records, oldest signed first, so a package holds at most 200 items and a second call packages the rest (the 409 says none are left); a record with no location is skipped, not an error; 409 CONFLICT when no signed assessment is eligible; 422 when the submission header or an assessment payload cannot be built (the message names what to set); AI principals refused (403); a second assemble of the same provider entity queues behind the first (an advisory lock), so it can answer ${M10_RECORD_BUSY_NOTE}`,
     body: M10AssembleSubmissionSchema,
     response: M10HopeSubmissionResponseSchema,
   },
   "GET /api/v1/hope/dashboard/compliance": {
-    summary: "Org-level HQRP compliance posture",
+    summary:
+      "Org-level HQRP compliance posture; the submission acceptance rate counts BATCHES (accepted / answered), while M30's rollup reads the same batch statuses but sums accepted_count / item_count",
     query: M10DashboardQuerySchema,
     response: M10HopeComplianceResponseSchema,
   },
