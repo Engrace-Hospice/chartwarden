@@ -436,8 +436,9 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     },
   );
 
-  // 9B — canonical answer workspace: active assessment items + current item-level states. A writer's open also refreshes
-  // chart-derived answers (and bumps `version` when one changes); a read-only caller is shown the stored state.
+  // 9B — canonical answer workspace: active assessment items + current item-level states. A writer's open also freezes the spec
+  // of a legacy spec-less draft and refreshes chart-derived answers (and bumps `version` when one changes); a read-only caller
+  // is shown the stored state, and for a spec-less draft it is a static 409 (nothing is written).
   app.get(
     "/api/v1/hope/assessments/:id/workspace",
     {
@@ -459,9 +460,10 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 9C — final-review/readiness model. Opening it never touches signature state. Its writes, each in a transaction of its
   // own that commits before the next starts, are (1) the spec-freezing step of a legacy spec-less draft (an assessment UPDATE
   // plus its control answers; nothing for a draft that already has a spec) and (2) the self-heal of a completed SFV's
-  // J2052/J2053 answers on a still-draft triggering assessment (see hope-sfv-completion-answers.ts), run only for a caller
-  // holding `hope.timepoint.write` (a read-only caller reads the stored state). The readiness read that
-  // follows writes no assessment data (the read-audit event of `auditRead` is the platform's, not this handler's).
+  // J2052/J2053 answers on a still-draft triggering assessment (see hope-sfv-completion-answers.ts). BOTH run only for a caller
+  // holding `hope.timepoint.write`: a read-only caller reads the stored state, and for a spec-less draft is answered a static
+  // 409 with nothing written. The readiness read that follows writes no assessment data (the read-audit event of `auditRead`
+  // is the platform's, not this handler's).
   app.get(
     "/api/v1/hope/assessments/:id/review",
     {

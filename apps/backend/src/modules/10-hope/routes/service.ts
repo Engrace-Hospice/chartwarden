@@ -329,7 +329,10 @@ export interface InactivateTimepointArgs {
   readonly authorDiscipline: string;
 }
 export interface HopeReadOptions {
-  /** Whether the caller holds `hope.timepoint.write`; `false` makes the open a pure read (no refresh / heal writes). */
+  /**
+   * Whether the caller holds `hope.timepoint.write`; `false` makes the open a pure read: no spec freeze, chart refresh or SFV
+   * heal, and a legacy spec-less draft is a static 409 ("opened once by a clinician who can edit it").
+   */
   readonly mayWrite?: boolean;
 }
 
@@ -372,8 +375,9 @@ export interface HopeRouteService extends HopeAbacResolver {
   ): Promise<HopeAssessmentView>;
   /**
    * `options.mayWrite` (default `true`): whether the caller holds `hope.timepoint.write`. A caller that does not gets the
-   * STORED state: the open runs no chart refresh (prefill) or SFV self-heal, which would write draft answers on the
-   * strength of a read permission. The route resolves it; a service caller with no request (tests, jobs) leaves it on.
+   * STORED state: the open runs no spec freeze, chart refresh (prefill) or SFV self-heal, which would write on the
+   * strength of a read permission; a legacy spec-less draft, which cannot be shown without freezing its spec, is a static
+   * 409. The route resolves it; a service caller with no request (tests, jobs) leaves it on.
    */
   getAssessmentWorkspace(
     organizationId: string,
