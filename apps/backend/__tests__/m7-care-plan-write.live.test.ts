@@ -33,6 +33,7 @@ import {
   idgPacketCarePlanContextForOrg,
 } from "../src/modules/07-care-plan/index";
 import { runCarePlanGatesCron } from "../src/modules/07-care-plan/jobs/cron-workers";
+import { createDbProblemProposalService } from "../src/modules/07-care-plan/problem-proposals-db";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -1933,6 +1934,173 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       });
       expect((await readinessOf(boot.id)).canFinalize).toBe(true);
       await svc.finalizeVersion(ORG_A, boot.id, boot.initialVersionId, 1, null);
+    });
+
+    it("audit D-11: an IDG decision that resolves a non-terminal problem with a note is applied at quorum (status, note and resolved_at)", async () => {
+      const { boot, patientId } = await activePlanWithTerminalProblem("Baseline terminal");
+      const related = (await svc.addProblem(ORG_A, boot.id, {
+        description: "Dyspnea",
+        kind: "related",
+        source: "clinical",
+      })) as Element;
+      const consumer = buildM7IdgDecisionConsumer({ db: handle.db, outbox: svcOutbox() });
+      await consumer.handle(
+        idgEvent({
+          patientId,
+          mutations: [
+            {
+              op: "problem_update",
+              problemId: related.id,
+              updates: { status: "resolved", resolutionNote: "Controlled on the current regimen" },
+            },
+          ],
+        }),
+      );
+      const [review] = (
+        await admin.query(
+          "SELECT id,version FROM care_plan_version WHERE care_plan_id=$1 AND kind='idg_review'",
+          [boot.id],
+        )
+      ).rows;
+      await svc.finalizeVersion(ORG_A, boot.id, review.id, review.version, null);
+      let version = review.version + 1;
+      for (const role of ["rn_case_manager", "msw", "chaplain", "medical_director"] as const) {
+        await svc.signVersion(
+          ORG_A,
+          boot.id,
+          review.id,
+          version,
+          role,
+          "2026-06-22T12:00:00.000Z",
+          signerFor(role),
+        );
+        version++;
+      }
+      const [row] = (
+        await admin.query("SELECT status, resolution_note, resolved_at FROM problem WHERE id=$1", [
+          related.id,
+        ])
+      ).rows;
+      expect(row.status).toBe("resolved");
+      expect(row.resolution_note).toBe("Controlled on the current regimen");
+      expect(row.resolved_at).toBeTruthy();
+      expect(((await svc.getVersion(ORG_A, boot.id, review.id)) as Version).status).toBe("signed");
+    });
+
+    it("audit D-12: a discarded IDG version marks every sibling application of that version conflict, not only the first", async () => {
+      const { boot, patientId, problem } = await activePlanWithTerminalProblem("Baseline terminal");
+      const consumer = buildM7IdgDecisionConsumer({ db: handle.db, outbox: svcOutbox() });
+      const meetingId = randomUUID();
+      const first = idgEvent({
+        patientId,
+        meetingId,
+        mutations: [
+          {
+            op: "problem_update",
+            problemId: problem.id,
+            updates: { description: "First wording" },
+          },
+        ],
+      });
+      const second = idgEvent({
+        patientId,
+        meetingId,
+        mutations: [
+          {
+            op: "problem_add",
+            icd10Code: null,
+            snomedCode: null,
+            description: "A second problem from the same meeting",
+            problemKind: "related",
+          },
+        ],
+      });
+      await consumer.handle(first);
+      await consumer.handle(second);
+      await svc.patchProblem(ORG_A, boot.id, problem.id, problem.version, {
+        description: "Independent clinician update",
+      });
+      const [review] = (
+        await admin.query(
+          "SELECT id,version FROM care_plan_version WHERE care_plan_id=$1 AND kind='idg_review'",
+          [boot.id],
+        )
+      ).rows;
+      await expect(
+        svc.finalizeVersion(ORG_A, boot.id, review.id, review.version, null),
+      ).rejects.toMatchObject({ code: "IDG_PROPOSAL_CONFLICT" });
+      const apps = await admin.query(
+        "SELECT status, conflict_reason FROM care_plan_idg_decision_application WHERE care_plan_version_id=$1 ORDER BY conflict_reason",
+        [review.id],
+      );
+      expect(apps.rows).toHaveLength(2);
+      expect(apps.rows.map((r) => r.status)).toEqual(["conflict", "conflict"]);
+      expect(((await svc.getVersion(ORG_A, boot.id, review.id)) as Version).status).toBe(
+        "superseded",
+      );
+    });
+
+    it("audit D-1: accepting a problem proposal is refused while a version is in review, like every other element write", async () => {
+      const boot = (await svc.bootstrapCarePlan(ORG_A, randomUUID(), randomUUID())) as Boot & {
+        patientId: string;
+      };
+      await svc.addProblem(ORG_A, boot.id, {
+        description: "Terminal illness",
+        kind: "terminal",
+        source: "clinical",
+      });
+      const proposal = (
+        await admin.query(
+          `INSERT INTO problem_proposal
+             (organization_id, care_plan_id, patient_id, description, dedupe_key,
+              source_extraction_commit_id, source_item_key, source_intake_batch_id)
+           VALUES ($1,$2,$3,'Synthetic extracted problem',$4,$5,'item-1',$6) RETURNING id, version`,
+          [ORG_A, boot.id, boot.patientId, randomUUID(), randomUUID(), randomUUID()],
+        )
+      ).rows[0] as { id: string; version: number };
+      const proposalId = proposal.id;
+      const ifVersion = Number(proposal.version);
+      const proposals = createDbProblemProposalService(handle.db);
+      const actor = { userId: USER, membershipId: MEMBER, sudDisclosureAllowed: false };
+      await svc.finalizeVersion(ORG_A, boot.id, boot.initialVersionId, 1, null);
+      await expect(
+        proposals.accept(ORG_A, boot.id, proposalId, { ifVersion, kind: "related" }, actor),
+      ).rejects.toMatchObject({ code: "VERSION_IN_REVIEW", statusCode: 409 });
+      await svc.returnVersionToDraft(ORG_A, boot.id, boot.initialVersionId, 2);
+      const accepted = await proposals.accept(
+        ORG_A,
+        boot.id,
+        proposalId,
+        { ifVersion, kind: "related" },
+        actor,
+      );
+      expect(accepted).toMatchObject({ proposalId });
+    });
+
+    it("audit D-3: a whitespace-only outcome (a newline, a tab) is no outcome", async () => {
+      const boot = (await svc.bootstrapCarePlan(ORG_A, randomUUID(), randomUUID())) as Boot;
+      const terminal = (await svc.addProblem(ORG_A, boot.id, {
+        description: "Terminal illness",
+        kind: "terminal",
+        source: "clinical",
+      })) as Element;
+      await svc.addGoal(
+        ORG_A,
+        boot.id,
+        {
+          problemId: terminal.id,
+          originalText: "Comfort",
+          source: "clinical",
+          measurableOutcome: "\n\t ",
+        },
+        false,
+      );
+      const readiness = (await svc.getReadiness(ORG_A, boot.id)) as {
+        canFinalize: boolean;
+        blockers: { code: string }[];
+      };
+      expect(readiness.canFinalize).toBe(false);
+      expect(readiness.blockers.map((b) => b.code)).toContain("GOAL_OUTCOME_REQUIRED");
     });
 
     it("#18 a stale IDG proposal's conflict is DURABLE: finalize is 409 AND the application row says conflict/baseline_changed", async () => {

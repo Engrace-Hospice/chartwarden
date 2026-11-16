@@ -132,6 +132,9 @@ export function transitionCarePlanVersion(
       return result(from, event.type, "draft", [{ kind: "clear_signatures" }, { kind: "audit" }]);
     }
     case "supersede": {
+      // The one exception lives in the DB service, not in this machine: a conflicted IDG version (draft or
+      // in_review, never signed) is discarded straight to `superseded` so it stops holding the plan's only
+      // open-version slot (`discardConflictedIdgVersion`, audit D-12).
       require_(from === "signed", "ILLEGAL_TRANSITION", "only a signed version can be superseded");
       return result(from, event.type, "superseded", [{ kind: "audit" }]);
     }

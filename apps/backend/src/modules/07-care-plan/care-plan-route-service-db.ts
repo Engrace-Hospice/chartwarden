@@ -84,6 +84,7 @@ import {
   type PatchProblemInput,
 } from "./routes/service";
 import { redactStateSnapshot } from "./routes/snapshot-redaction";
+import { ensureNoVersionInReview } from "./version-in-review-guard";
 
 /** RFC 4122 shape check (any version) for ids the route layer only knows as a string. */
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -319,7 +320,7 @@ export function createDbCarePlanRouteService(
         and(
           eq(GOAL.carePlanId, planId),
           ne(GOAL.status, "discontinued"),
-          sql`coalesce(btrim(${GOAL.measurableOutcome}), '') = ''`,
+          sql`(${GOAL.measurableOutcome} is null or ${GOAL.measurableOutcome} !~ '[^[:space:]]')`,
         ),
       );
     return Number(row?.count ?? 0);
@@ -358,25 +359,6 @@ export function createDbCarePlanRouteService(
         "CARE_PLAN_NOT_READY",
         "care plan is not ready to sign",
         blockers,
-      );
-    }
-  }
-
-  /**
-   * Audit D-1. While a version is `in_review` its signers are signing the sealed snapshot, so a live edit would
-   * leave the plan saying something nobody signed (and, for an IDG review, would strand its proposal as a
-   * conflict). Return the version to draft first; the signatures are invalidated and the signers sign again.
-   */
-  async function ensureNoVersionInReview(tx: DbClient, planId: string): Promise<void> {
-    const [row] = await tx
-      .select({ id: CPV.id })
-      .from(CPV)
-      .where(and(eq(CPV.carePlanId, planId), eq(CPV.status, "in_review")))
-      .limit(1);
-    if (row) {
-      throw new CarePlanStateError(
-        "VERSION_IN_REVIEW",
-        "a version is in review: return it to draft before editing the plan",
       );
     }
   }
@@ -477,6 +459,13 @@ export function createDbCarePlanRouteService(
 
   type ClinicalSnapshot = Awaited<ReturnType<typeof captureStateSnapshot>>;
   type IdgChangeRow = typeof IDG_CHANGE.$inferSelect;
+
+  /** A JSON object as a record, anything else (null, array, scalar) as an empty one. */
+  function recordOrEmpty(v: unknown): Record<string, unknown> {
+    return v !== null && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : {};
+  }
 
   function recordOf(value: unknown, label: string): Record<string, unknown> {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -657,6 +646,17 @@ export function createDbCarePlanRouteService(
       .update(SIG)
       .set({ invalidatedAt: new Date() })
       .where(and(eq(SIG.carePlanVersionId, versionId), sql`${SIG.invalidatedAt} is null`));
+    // A version bundles every decision of its meeting: the sibling applications can never be applied now either,
+    // so they are marked conflict too (the consumer's idempotency check means they would never be re-proposed).
+    await tx
+      .update(IDG_APP)
+      .set({ status: "conflict", conflictReason: "version_discarded" })
+      .where(
+        and(
+          eq(IDG_APP.carePlanVersionId, versionId),
+          inArray(IDG_APP.status, ["proposed", "in_review"]),
+        ),
+      );
     await tx
       .update(CPV)
       .set({ status: "superseded", supersededAt: new Date(), version: sql`${CPV.version} + 1` })
@@ -848,7 +848,31 @@ export function createDbCarePlanRouteService(
     }
 
     const after = await captureStateSnapshot(tx, input.plan.id);
-    if (!jsonEqual(after, input.version.stateSnapshot)) {
+    // An IDG resolve stamps `resolved_at` with the SIGN instant, which the candidate sealed at finalize cannot
+    // know, so the comparison ignores that one field for the problems this review resolves (everything else,
+    // including the status and the resolution note, must still match exactly).
+    const resolvedByThisReview = new Set(
+      changes
+        .filter(
+          (c) =>
+            c.operation === "problem_update" && recordOrEmpty(c.proposed).status === "resolved",
+        )
+        .map((c) => c.targetEntityId),
+    );
+    const withoutResolvedAt = (snapshot: unknown): unknown => {
+      const record = recordOrEmpty(snapshot);
+      const problems = Array.isArray(record.problems) ? record.problems : null;
+      if (problems === null || resolvedByThisReview.size === 0) return snapshot;
+      return {
+        ...record,
+        problems: problems.map((p) =>
+          resolvedByThisReview.has(recordOrEmpty(p).id as string)
+            ? { ...recordOrEmpty(p), resolvedAt: null }
+            : p,
+        ),
+      };
+    };
+    if (!jsonEqual(withoutResolvedAt(after), withoutResolvedAt(input.version.stateSnapshot))) {
       throw new CarePlanStateError(
         "IDG_PROPOSAL_CONFLICT",
         "applied IDG proposal does not match the signed candidate snapshot",
@@ -886,10 +910,6 @@ export function createDbCarePlanRouteService(
         .where(eq(INTV.carePlanId, planId)),
     ]);
     const hidden = new Set(probRows.filter((p) => p.sudRelated).map((p) => p.id));
-    const recordOrEmpty = (v: unknown): Record<string, unknown> =>
-      v !== null && typeof v === "object" && !Array.isArray(v)
-        ? (v as Record<string, unknown>)
-        : {};
     for (const c of changes) {
       const proposed = recordOrEmpty(c.proposed);
       if (c.operation === "problem_add" && proposed.sudRelated === true) {
