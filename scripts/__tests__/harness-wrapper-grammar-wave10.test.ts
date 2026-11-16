@@ -73,7 +73,8 @@ describe("the option reader reads the way GNU getopt does", () => {
     expect(read("-z", "cmd").unplaced).toBe("-z");
     expect(read("--nope", "cmd").unplaced).toBe("--nope");
     // `--name=value` is one word whatever the option is: nothing is in doubt
-    expect(read("--nope=1", "cmd")).toMatchObject({ end: 1, unplaced: undefined });
+    expect(read("--nope=1", "cmd").end).toBe(1);
+    expect(read("--nope=1", "cmd").unplaced).toBeUndefined();
     expect(readOptions({ ...G, lax: true }, ["-z", "--nope", "cmd"], 0)).toMatchObject({ end: 2 });
     expect(readOptions({ ...G, lax: true }, ["-z", "cmd"], 0).unplaced).toBeUndefined();
   });
