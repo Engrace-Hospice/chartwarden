@@ -6,8 +6,8 @@ import { Button, Modal, TextAreaField, TextField, t, useApiClient } from "@chart
 // so a confirmation step sits between the form and the POST. Matching/validation stay the server's (ADR-0030):
 // its 409/422 reasons are shown inline verbatim, except a refusal of the report reference, which is said on that field.
 import { useEffect, useId, useRef, useState } from "react";
-import type { CSSProperties, JSX } from "react";
-import { type CmsItemOutcome, normalizeOutcome, parseCmsReport } from "./cms-result-parser";
+import type { JSX } from "react";
+import { type CmsItemOutcome, parseCmsReport } from "./cms-result-parser";
 import {
   RECORD_BUSY_CODE,
   type SubmissionResultBody,
@@ -18,8 +18,6 @@ import { errorText, meta } from "./hope-dialog-styles";
 import { notifyDone } from "./hope-notify-done";
 import {
   MAX_REFERENCE,
-  MAX_RESULT_MESSAGE,
-  MAX_RESULT_TOKEN,
   MESSAGE_WORDS,
   REFERENCE_HINT,
   REFERENCE_REFUSAL_WORDS,
@@ -32,6 +30,15 @@ import {
   referenceRefusalOf,
   rowRefusalOf,
 } from "./hope-report-reference";
+import {
+  BLANK_ROW,
+  CELL_TOKENS,
+  OUTCOME_OPTIONS,
+  ResultRow,
+  type RowState,
+  cellIdOf,
+  describeRows,
+} from "./hope-result-row";
 
 export interface ResultItem {
   readonly assessmentId: string;
@@ -39,26 +46,12 @@ export interface ResultItem {
   readonly label: string;
 }
 
-interface RowState {
-  /** "" until the user (or the pasted report) sets it: nothing defaults to Accepted, because a result is final. */
-  status: CmsItemOutcome | "";
-  code: string;
-  itemCode: string;
-  message: string;
-}
-
-const OUTCOME_OPTIONS: ReadonlyArray<{ value: CmsItemOutcome; label: string }> = [
-  { value: "accepted", label: "Accepted" },
-  { value: "accepted_with_warnings", label: "Accepted with warnings" },
-  { value: "rejected", label: "Rejected" },
-];
 const MAX_SHOWN_ERRORS = 3;
 const OUTCOME_RANK: Record<CmsItemOutcome, number> = {
   accepted: 1,
   accepted_with_warnings: 2,
   rejected: 3,
 };
-const BLANK_ROW: RowState = { status: "", code: "", itemCode: "", message: "" };
 
 export function buildResultBody(
   items: readonly ResultItem[],
@@ -81,15 +74,6 @@ export function buildResultBody(
     }),
   };
 }
-
-/** The DOM id of one typed cell of a row (the server's row index is the item's index), so a refusal can take focus to it. */
-const cellIdOf = (base: string, row: number, token: string): string => `${base}-${row}-${token}`;
-
-/** The cells a refusal can name that the dialog has an input for. */
-const CELL_TOKENS: ReadonlySet<string> = new Set(["code", "itemCode", "message"]);
-
-/** The red border of a refused cell: the table's inputs sit outside the shared `.wx-form-field [aria-invalid]` rule, so it is drawn here. */
-const invalidCell: CSSProperties = { borderColor: "var(--color-error)" };
 
 export interface RecordCmsResultModalProps {
   readonly open: boolean;
@@ -198,6 +182,12 @@ export function RecordCmsResultModal({
       };
     }
     setRows((prev) => ({ ...prev, ...merged }));
+    // A paste that fills the row a refusal named answers it, as editing the row does: its mark and its alert go.
+    const refusedId = rowRefusal === null ? undefined : items[rowRefusal.row]?.assessmentId;
+    if (refusedId !== undefined && refusedId in merged) {
+      setRowRefusal(null);
+      setError(null);
+    }
     const skipped = parsed.rows.length - matched.length;
     const notes = [
       `Imported ${matched.length} of ${items.length} item${items.length === 1 ? "" : "s"}.`,
@@ -286,15 +276,12 @@ export function RecordCmsResultModal({
   const codeInvalid = (value: string): boolean => hasForbiddenResultCode(value.trim());
   const messageInvalid = (value: string): boolean => hasUnstorableMessage(value.trim());
   const rowOf = (item: ResultItem): RowState => rows[item.assessmentId] ?? BLANK_ROW;
-  // The first offending row (1-based, as the table numbers them; 0 for none): the alerts name it, and the table scrolls.
-  const firstRowWhere = (offends: (row: RowState) => boolean): number =>
-    items.findIndex((item) => offends(rowOf(item))) + 1;
-  const firstCodeRow = firstRowWhere((r) => codeInvalid(r.code) || codeInvalid(r.itemCode));
-  const firstMessageRow = firstRowWhere((r) => messageInvalid(r.message));
-  const rowsInvalid = firstCodeRow > 0 || firstMessageRow > 0;
-  // The cell the server's last refusal named is marked like one the dialog refused itself.
-  const refusedCell = (idx: number, token: string): boolean =>
-    rowRefusal !== null && rowRefusal.row === idx && rowRefusal.token === token;
+  // The offending rows (1-based, as the table numbers them): the alerts list them all, so each refused cell is described truthfully.
+  const rowNumbersWhere = (offends: (row: RowState) => boolean): number[] =>
+    items.flatMap((item, i) => (offends(rowOf(item)) ? [i + 1] : []));
+  const codeRows = rowNumbersWhere((r) => codeInvalid(r.code) || codeInvalid(r.itemCode));
+  const messageRows = rowNumbersWhere((r) => messageInvalid(r.message));
+  const rowsInvalid = codeRows.length > 0 || messageRows.length > 0;
   const shownError =
     error !== null && rowRefusal !== null ? `Row ${rowRefusal.row + 1}: ${error}` : error;
   const referenceError =
@@ -388,6 +375,7 @@ export function RecordCmsResultModal({
               <table className="wx-list-table" style={{ width: "100%" }}>
                 <thead>
                   <tr>
+                    <th scope="col">Row</th>
                     <th scope="col">Record</th>
                     <th scope="col">Outcome</th>
                     <th scope="col">CMS code</th>
@@ -397,101 +385,36 @@ export function RecordCmsResultModal({
                 </thead>
                 <tbody>
                   {items.map((item, idx) => {
-                    const r = rows[item.assessmentId] ?? BLANK_ROW;
-                    // Labels can repeat (same patient + RFA): the row number keeps each accessible name unique.
-                    const name = `${item.label}, row ${idx + 1}`;
-                    // One typed cell: marked invalid (for assistive technology AND with a red border) when the dialog refuses its value
-                    // or the server's last refusal named it.
-                    const textCell = (
-                      token: "code" | "itemCode" | "message",
-                      label: string,
-                      refusedByDialog: boolean,
-                      dialogErrorId: string,
-                      max: number,
-                    ): JSX.Element => {
-                      const refusedByServer = refusedCell(idx, token);
-                      const invalid = refusedByDialog || refusedByServer;
-                      return (
-                        <td>
-                          <input
-                            id={cellIdOf(cellIdBase, idx, token)}
-                            className="wx-select"
-                            aria-label={`${label} for ${name}`}
-                            aria-invalid={invalid || undefined}
-                            aria-describedby={
-                              refusedByDialog
-                                ? dialogErrorId
-                                : refusedByServer
-                                  ? rowErrorId
-                                  : undefined
-                            }
-                            style={invalid ? invalidCell : undefined}
-                            value={r[token]}
-                            maxLength={max}
-                            onChange={(e) =>
-                              patchRow(item.assessmentId, { [token]: e.target.value })
-                            }
-                          />
-                        </td>
-                      );
-                    };
+                    const r = rowOf(item);
                     return (
-                      <tr key={item.assessmentId}>
-                        <td>{item.label}</td>
-                        <td>
-                          <select
-                            className="wx-select"
-                            aria-label={`Outcome for ${name}`}
-                            value={r.status}
-                            onChange={(e) =>
-                              patchRow(item.assessmentId, {
-                                status: normalizeOutcome(e.target.value) ?? "",
-                              })
-                            }
-                          >
-                            <option value="">Select outcome</option>
-                            {OUTCOME_OPTIONS.map((o) => (
-                              <option key={o.value} value={o.value}>
-                                {o.label}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        {textCell(
-                          "code",
-                          "CMS code",
-                          codeInvalid(r.code),
-                          codeErrorId,
-                          MAX_RESULT_TOKEN,
-                        )}
-                        {textCell(
-                          "itemCode",
-                          "Item",
-                          codeInvalid(r.itemCode),
-                          codeErrorId,
-                          MAX_RESULT_TOKEN,
-                        )}
-                        {textCell(
-                          "message",
-                          "Message",
-                          messageInvalid(r.message),
-                          messageErrorId,
-                          MAX_RESULT_MESSAGE,
-                        )}
-                      </tr>
+                      <ResultRow
+                        key={item.assessmentId}
+                        idBase={cellIdBase}
+                        index={idx}
+                        label={item.label}
+                        state={r}
+                        onPatch={(patch) => patchRow(item.assessmentId, patch)}
+                        codeRefused={codeInvalid(r.code)}
+                        itemRefused={codeInvalid(r.itemCode)}
+                        messageRefused={messageInvalid(r.message)}
+                        serverRefusedToken={rowRefusal?.row === idx ? rowRefusal.token : null}
+                        codeErrorId={codeErrorId}
+                        messageErrorId={messageErrorId}
+                        serverErrorId={rowErrorId}
+                      />
                     );
                   })}
                 </tbody>
               </table>
             </div>
-            {firstCodeRow > 0 ? (
+            {codeRows.length > 0 ? (
               <p id={codeErrorId} role="alert" style={errorText}>
-                {`Row ${firstCodeRow}: ${RESULT_CODE_WORDS}`}
+                {`${describeRows(codeRows)}: ${RESULT_CODE_WORDS}`}
               </p>
             ) : null}
-            {firstMessageRow > 0 ? (
+            {messageRows.length > 0 ? (
               <p id={messageErrorId} role="alert" style={errorText}>
-                {`Row ${firstMessageRow}: ${MESSAGE_WORDS}`}
+                {`${describeRows(messageRows)}: ${MESSAGE_WORDS}`}
               </p>
             ) : null}
           </>
@@ -536,6 +459,8 @@ export function RecordCmsResultModal({
               tone="primary"
               onClick={() => {
                 setError(null);
+                // A refusal the server made of the last send is answered by sending again, not by what the dialog still shows of it.
+                setRowRefusal(null);
                 setConfirming(true);
               }}
               disabled={!allSet || referenceInvalid || rowsInvalid}
