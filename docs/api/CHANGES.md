@@ -82,19 +82,28 @@ its full description there. Newest first.
   refused). The service screens them again for a patient identifier, so the check does not depend on the route. On POST the
   idempotency layer replays this `422` for 24 h on the same key, so send a corrected request with a NEW `Idempotency-Key`. The audit
   trail records both references as `<changed>` (as the other free-text and storage columns of a batch).
-- **The tokens of a CMS result row (`status`, `result`, `outcome`, `severity`, `code`, `itemCode`, `iqiesRecordId` in `POST .../results`) take the
-  same characters, at most 64, and are screened for a patient identifier.** They are stored on the item, the assessment and the result
-  event, copied into audit row images and (the edit code) into the `m10.hope.submission_rejected` payload. A token must match
-  `^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/-]*)?$` (letters, digits, `. _ : # / -`, spaces after the first character; empty is a blank cell and
-  names nothing), except that `status`, `result` and `outcome` (a phrase CMS wrote, such as "received, pending review") may also hold
-  `, ; ( )` after the first character: `^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/(),;-]*)?$`. Anything else, including markup, quotes, line
-  breaks or a token of only spaces, is `422 VALIDATION_FAILED`. A token
-  shaped like a Social Security or Medicare number is `422 EVIDENCE_LOOKS_LIKE_PHI` with the field `results.<row>.<token>`; neither 422
-  echoes the value. `assessmentId` and `message` are not screened.
+- **The fields of a CMS result row (`POST .../results`) are checked for format and for patient identifiers; the service checks them
+  again.** `code`, `itemCode` and `iqiesRecordId` are stored unscrubbed in audit row images and (the codes) in the
+  `m10.hope.submission_rejected` payload, so each is ONE word: `^(?:[A-Za-z0-9._:#-]{1,64})?$` (letters, digits, `. _ : # -`, a leading
+  `-` allowed as in `-3015`; no space, no slash; empty is a blank cell and names nothing). `severity` is one of `fatal`, `error`,
+  `warning` (any case) or empty: the values the import acts on. `status`, `result` and `outcome` are phrases CMS wrote ("received,
+  pending review") and keep `^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/(),;-]*)?$`, at most 64. Anything else (markup, quotes, line breaks,
+  a space-only value, a severity outside the set) is `422 VALIDATION_FAILED`. A value shaped like a Social Security or Medicare
+  number is `422 EVIDENCE_LOOKS_LIKE_PHI` with the field `results.<row>.<field>`; for `code`, `itemCode` and `iqiesRecordId` so is a
+  calendar date (`YYYY-MM-DD`, `YYYY.MM.DD`, `DD.MM.YYYY`, `MM-DD-YYYY`; years 1800 to 2099) and a US phone number (3-3-4 digits set apart
+  by `-` or `.`, optional leading 1). An `iqiesRecordId` that is a uuid is not screened (its hex digits resemble an MBI about one time
+  in sixty). `assessmentId` is screened when it is not a uuid, and `message` (at most 1000) is screened too: a message that names a
+  patient's number is refused, so remove it before recording the report (the field is named, never the value). A control character
+  (a message may keep tab, line feed and carriage return) or an unpaired surrogate in an `assessmentId` or a `message` is `422` with
+  the code `INVALID_CHARACTERS` (the database cannot store them; they used to answer `500`). Neither 422 echoes the value. Not
+  closeable here: a single-word surname or a hyphenated name still fits a code, and the real iQIES edit-code and record-id formats are
+  unverified, so the code pattern stays permissive within the no-space, no-slash rule.
 - **`GET /hope/assessments/{id}/validation` and `GET .../workspace` store nothing for a caller who does not hold `hope.timepoint.write`.** The
   final-mode validation read used to reconcile the stored validation findings, and the workspace open used to rewrite out-of-date
-  workflow-control answers, both under no actor. A read-only caller now gets the same findings and the same workspace computed on the
-  fly (the response shape is unchanged); a caller who can write persists them as before.
+  workflow-control answers, both under no actor. A read-only caller now gets the same findings, and the same workspace as a writer for the
+  same draft: the workflow-control items (A0050, A0250) of a draft no writer has opened yet are shown `answered` with their derived
+  values, with the same progress counts, derived in memory and not stored (the response shape is unchanged); a caller who can write
+  persists them as before. A signed or inactivated record is shown as stored, for everyone.
 - **Assemble now records the batch's items in one statement and re-checks the records after the package is serialised.** The request,
   the response and the codes are unchanged. A record superseded while the package was being serialised is dropped as before (it
   is now judged and share-locked just before the batch is written, not before the serialising, so a correction's signature waits
@@ -202,7 +211,9 @@ longer open now answers `409` (below). `POST /hope/submissions/assemble` can now
   immutable and is the only record of why the cutoff was lifted. Because that text is free text, `adminOverrideJustification` is now
   screened for patient identifiers on `POST .../hope/timepoints` and `POST .../hope/sfv`: an SSN- or MBI-shaped value is refused with
   `422 EVIDENCE_LOOKS_LIKE_PHI` (field `adminOverrideJustification`, the text never echoed), and the 20 to 1000 character rule is
-  measured after the surrounding whitespace is trimmed (a blank or padded one is a `422`). A justification that contains control
+  measured after the surrounding whitespace is trimmed and every run of whitespace (spaces, tabs, line breaks, no-break and em spaces,
+  U+2028 and U+2029) is collapsed to one space (a blank, padded or whitespace-stuffed one is a `422 TOO_SHORT`: a text of 20 characters
+  with inner runs of blanks can now fail). The stored text is the trimmed text as typed. A justification that contains control
   characters (other than tab and line breaks), zero-width or other invisible formatting characters, or an unpaired surrogate is also a
   `422` (field `adminOverrideJustification`, code `INVALID_CHARACTERS`): the text is **rejected, never stripped**, so what is stored is
   what the admin typed. User agents also lose lone surrogates, private-use and unassigned code points.
@@ -248,10 +259,13 @@ longer open now answers `409` (below). `POST /hope/submissions/assemble` can now
   (it fails closed), the batch is still cancelled but ALL its bytes are kept (the ZIP cannot be partly cleared), and the
   `hope.submission_cancelled` event says why (`bytesKeptReason`: `legal_hold` or `hold_scope_unreadable`, never both; `packageBytesPurged: false`;
   `bytesKeptForLegalHold` is true only for `legal_hold`). **To delete kept bytes after the hold is released, repeat the cancel
-  (`POST .../cancel` again):** on an already-cancelled batch that still holds bytes, the hold list is read again, and when nothing holds them
-  now they are deleted and a `hope.submission_cancelled` event with `repeatCancel: true` is written (status, reason, time and actor
-  unchanged); otherwise the repeat answers `200` with the batch unchanged and writes nothing. The response and the status flow are the
-  same either way. What stays is the evidence that a package existed: the batch's `packageSha256`,
+  (`POST .../cancel` again, **with a NEW `Idempotency-Key`**: a repeat under the same key replays the first answer for 24 h and never reaches
+  the purge):** on an already-cancelled batch that still holds bytes, the hold list is read again, and when nothing holds them
+  now they are deleted and a `hope.submission_cancelled` event with `repeatCancel: true` (and `priorStatus: "cancelled"`) is written
+  (status, reason, time and actor unchanged); otherwise the repeat answers `200` with the batch unchanged and writes nothing. The
+  response and the status flow are the same either way, so the response does not say whether bytes were deleted: the audit event is the
+  evidence. This path is API-only (the web client offers Cancel only on a batch that was never uploaded), and releasing a legal hold in M4 does
+  not signal M10, so nothing repeats the cancel for you. What stays is the evidence that a package existed: the batch's `packageSha256`,
   `packageSizeBytes` and file name, each record's XML hash and size, and `cancelledAt` / `cancelReasonCode` / who cancelled. Nothing on
   the API returned the bytes of a cancelled batch (the download is `409 M10_SUBMISSION_CANCELLED`), so no response changes shape; the bytes
   of a batch that was marked uploaded, or has a result, are not touched. Cancel, a schedule skip and `regenerate-schedules` each also leave

@@ -40,9 +40,10 @@ export interface HopeValidationService {
     readonly mode?: HopeValidationMode;
     readonly submissionDate?: string;
     /**
-     * Whether a `final` run reconciles (writes) the assessment's stored findings. Default `true`: the write paths (a draft's
-     * validation after a patch, the sign gate) persist. `false` computes the findings and returns them as a draft run does,
-     * writing nothing: the on-demand read of a caller who does not hold `hope.timepoint.write`.
+     * Whether a `final` run reconciles (writes) the assessment's stored findings. Default `true`: the final-mode writers persist
+     * (assemble's validation of its candidates, and the on-demand read of a caller who holds `hope.timepoint.write`). A `draft`
+     * run never persists, whatever this says. `false` computes the findings and returns them as a draft run does, writing
+     * nothing: the on-demand read of a caller who does not hold `hope.timepoint.write`.
      */
     readonly persist?: boolean;
   }): Promise<HopeValidationRunView>;

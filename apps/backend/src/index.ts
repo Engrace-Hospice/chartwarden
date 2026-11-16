@@ -6594,7 +6594,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           );
           mountAssessmentRoutes(app, dbHandle.db, m9OutboxPublisher); // M9 — reads + the §10 write pipeline over Drizzle+RLS, m9.* transactional outbox
           // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox. The M4 legal-hold read gates a
-          // package cancel's byte purge (the same read the retention cron uses; unbound it would fail closed and keep the bytes).
+          // package cancel's byte purge (M4's scope computation, the one the retention cron uses, run on the cancel's own
+          // transaction; unbound it would fail closed and keep the bytes).
           mountHopeRoutes(
             app,
             dbHandle.db,

@@ -134,7 +134,17 @@ evidence. A manual `db://` package lives in `hope_submission.acceptance_report`,
 touches (only a cancel deletes those bytes, together with each item's XML, and not while an M4 legal hold applies to the batch:
 a cancelled package was never transmitted, so it has no CMS 10-year hold; the bytes of every non-cancelled batch outlive a
 destruction certificate); an automated-transport envelope in MinIO is that worker's to purge. To purge a cancelled batch whose bytes
-were kept under a legal hold (or after a transient M4 read failure), repeat the cancel (`POST .../cancel`) once the hold is released. The cancel purge is a LOGICAL
+were kept under a legal hold (or after a transient M4 read failure), repeat the cancel (`POST .../cancel`) once the hold is released,
+with a NEW `Idempotency-Key` (a repeat under the same key replays the first answer for 24 h and never reaches the purge).
+
+**Runbook: purging bytes a cancel kept.** (1) Find the batch: its `hope.submission_cancelled` event has `bytesKeptReason`
+`legal_hold` or `hold_scope_unreadable` and `packageBytesPurged: false`. (2) Confirm in M4 that no active legal hold covers the
+organization or any patient of the batch (M4's release does not signal M10, and the retention scan does not look at cancelled
+batches, so nothing repeats the cancel for you). (3) Send `POST /api/v1/hope/submissions/{id}/cancel` with any valid `reasonCode` and a
+new `Idempotency-Key`, as a user holding `hope.submission.manage`. The call is API-only (the web client offers Cancel only on a batch
+that was never uploaded) and its response is the unchanged batch either way. (4) Verify the purge in the audit trail: a second
+`hope.submission_cancelled` event with `repeatCancel: true` and `packageBytesPurged: true`. No event means a hold still applies, the
+hold scope was unreadable again, or the bytes were already gone. There is no other step. The cancel purge is a LOGICAL
 deletion (NULLed jsonb: dead tuples until vacuum, and WAL, replicas and backups until their own retention expires), so a
 backup restored from before the cancel holds the bytes again.
 `scale_license`-equivalent org configuration is not patient data and is never touched.
