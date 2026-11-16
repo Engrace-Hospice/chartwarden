@@ -81,7 +81,11 @@ export const FinalizeVersionSchema = Type.Object({
   ifVersion: Version(),
   /** A tenant may tighten (add slots) the floor quorum; never loosen (validated server-side). */
   requiredSignerSet: Type.Optional(
-    Type.Array(Type.Object({ role: lit(SIGNER_ROLE), count: Type.Integer({ minimum: 1 }) })),
+    // count is capped at 1: `care_plan_signature_version_role_uq` allows ONE live signature per
+    // (version, signer_role), so a count-2 slot could never be satisfied and would deadlock the version.
+    Type.Array(
+      Type.Object({ role: lit(SIGNER_ROLE), count: Type.Integer({ minimum: 1, maximum: 1 }) }),
+    ),
   ),
 });
 export const SignVersionSchema = Type.Object({
@@ -114,7 +118,7 @@ export const ResolveProblemSchema = Type.Object({
 
 // ── Goals ───────────────────────────────────────────────────────────────────────────────────────
 export const CreateGoalSchema = Type.Object({
-  problemId: Type.String({ minLength: 1, maxLength: 64 }),
+  problemId: Type.String({ format: "uuid" }),
   originalText: Text(),
   source: lit(GOAL_SOURCE),
   actingConsentId: Type.Optional(Type.String({ format: "uuid" })),
@@ -132,8 +136,8 @@ export const PatchGoalSchema = Type.Object({
 
 // ── Interventions ───────────────────────────────────────────────────────────────────────────────
 export const CreateInterventionSchema = Type.Object({
-  problemId: Type.String({ minLength: 1, maxLength: 64 }),
-  goalRefs: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 64 }))),
+  problemId: Type.String({ format: "uuid" }),
+  goalRefs: Type.Optional(Type.Array(Type.String({ format: "uuid" }), { maxItems: 100 })),
   scopeText: Text(),
   frequencyText: Type.String({ minLength: 1, maxLength: 200 }),
   frequencyValue: Type.String({ minLength: 1, maxLength: 64 }),

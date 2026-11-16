@@ -132,8 +132,8 @@ export interface CarePlanGateScanPlan {
  * True once `now` has reached the start of the org-local warning day (`GATE_WARNING_LEAD_DAYS` calendar
  * days before the due day — D2 day 3, D3 day 13); see `warningOpensAt`.
  */
-function withinLead(now: IsoInstant, dueAt: IsoInstant): boolean {
-  return Date.parse(now) >= Date.parse(warningOpensAt(dueAt));
+function withinLead(now: IsoInstant, dueAt: IsoInstant, timeZone?: string): boolean {
+  return Date.parse(now) >= Date.parse(warningOpensAt(dueAt, timeZone));
 }
 
 /**
@@ -144,12 +144,14 @@ function withinLead(now: IsoInstant, dueAt: IsoInstant): boolean {
 export function planInitialGateScan(
   snapshots: readonly CarePlanGateSnapshot[],
   now: IsoInstant,
+  /** The org's IANA timezone, in which the due instants were written; the default applies when omitted. */
+  timeZone?: string,
 ): CarePlanGateScanPlan {
   const events: PlannedCarePlanEvent[] = [];
   const markedPlanIds: string[] = [];
   for (const s of snapshots) {
     if (s.hasSignedInitialVersion || s.initialWarningEmitted) continue;
-    if (!withinLead(now, s.initialDueAt)) continue;
+    if (!withinLead(now, s.initialDueAt, timeZone)) continue;
     events.push({
       eventName: "m7.care_plan.initial_overdue",
       payload: {
@@ -172,6 +174,8 @@ export function planInitialGateScan(
 export function planReviewGateScan(
   snapshots: readonly CarePlanGateSnapshot[],
   now: IsoInstant,
+  /** The org's IANA timezone, in which the due instants were written; the default applies when omitted. */
+  timeZone?: string,
 ): CarePlanGateScanPlan {
   const events: PlannedCarePlanEvent[] = [];
   const markedPlanIds: string[] = [];
@@ -187,7 +191,7 @@ export function planReviewGateScan(
       markedPlanIds.push(s.planId);
       continue; // the overdue event supersedes the due warning for this scan
     }
-    if (!overdue && !s.reviewDueEmitted && withinLead(now, dueAt)) {
+    if (!overdue && !s.reviewDueEmitted && withinLead(now, dueAt, timeZone)) {
       events.push({
         eventName: "m7.care_plan.review_due",
         payload: { planId: s.planId, patientId: s.patientId, dueAt },

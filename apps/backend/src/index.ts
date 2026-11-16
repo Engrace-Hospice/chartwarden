@@ -862,6 +862,7 @@ import {
   buildDrizzleDisciplinePlanAbacResolver,
   buildDrizzleM15ReadService,
   buildDrizzleM15WriteService,
+  buildM15AdmissionDischargedConsumer,
   buildM15IdgDecisionConsumer,
   buildM15PlanBootstrapConsumer,
   buildM15WorkerDeps,
@@ -16116,6 +16117,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // ambient REQUEST scope, and a relay tick is not a request.
             resolveSiting: (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
+          }),
+          // M15 §7.11 / `m15.discharge.apply` — the other end of the plan lifecycle: on
+          // `m6.admission.discharged` every non-discharged discipline plan of the admission seals a
+          // system-signed `discharge` version and goes `discharged`, announcing `m15.plan.discharged`.
+          // Nothing dispatched the plan root's `discharge` transition before this binding existed.
+          buildM15AdmissionDischargedConsumer({
+            db: dbHandle.db,
+            outbox: m15OutboxPublisher,
           }),
           // F-234 (#248) — M15's side of the M14 IDG-decision contract (M15 spec §7.7): a
           // `discipline_plan_update` decision opens a draft next version on the named discipline plan and

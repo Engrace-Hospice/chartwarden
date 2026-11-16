@@ -5,8 +5,9 @@ import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth
 // (`request.context`, never the body). Handlers compose over the injected `CarePlanRouteService`
 // (in-memory slice; Drizzle in prod under withOrgContext so RLS backstops).
 //
-// §4.1.1 (M07-F09) — the three PATCH routes additionally carry `requireIdempotencyKey` + `requireIfMatch`
-// pre-handlers (./concurrency.ts). `Idempotency-Key` presence is enforced here; the replay/body-mismatch
+// §4.1.1 (M07-F09) — EVERY write route carries `requireIdempotencyKey` (a retried POST must not insert a
+// duplicate element or emit a duplicate `m7.*` event), and the three PATCH routes additionally carry
+// `requireIfMatch` (./concurrency.ts). `Idempotency-Key` presence is enforced here; the replay/body-mismatch
 // caching is the M1 platform middleware (applyIdempotency, mounted globally). `If-Match` carries the row
 // version the client read; the service raises 409 STALE_VERSION on skew (§7.7).
 //
@@ -24,11 +25,12 @@ import {
   requireIdempotencyKey,
   requireIfMatch,
 } from "@chartwarden/shared/route-kit";
-import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
+import { ForbiddenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { InterventionDiscipline } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { disciplineScopeOf, membershipIdOf } from "../abac-predicates";
+import { CarePlanStateError } from "../lifecycle/errors";
 import {
   BootstrapCarePlanSchema,
   CreateGoalSchema,
@@ -50,7 +52,13 @@ import {
   SignVersionSchema,
   parse,
 } from "./care-plan-typebox";
-import type { CarePlanRouteService, CarePlanSignActor } from "./service";
+import type {
+  CarePlanRouteService,
+  CarePlanSignActor,
+  CarePlanViewer,
+  CarePlanWriteActor,
+} from "./service";
+import { redactVersionForViewer } from "./snapshot-redaction";
 
 export interface CarePlanRouteDeps {
   service: CarePlanRouteService;
@@ -74,6 +82,14 @@ export interface CarePlanRouteDeps {
      *  recipients), and an unnamed actor against a restricted release is redacted. */
     membershipId: string | null;
   }) => Promise<boolean>;
+  /**
+   * The M6 admission's patient + status (default: the `AdmissionStatusReader` seam). Bootstrap uses it to
+   * refuse a body `admissionId` that is not this patient's active admission.
+   */
+  admissionPatientCare?: (
+    organizationId: string,
+    admissionId: string,
+  ) => Promise<{ readonly patientId: string; readonly status: string } | null>;
 }
 
 // Static permission guards (§4.5).
@@ -85,7 +101,7 @@ const AUTHOR = P("care_plan.author");
 const FINALIZE = P("care_plan.finalize");
 const SIGN = P("care_plan.sign");
 
-// §4.1.1 PATCH pre-handlers: Idempotency-Key presence (400) + If-Match version (428/400).
+// §4.1.1 pre-handlers: Idempotency-Key presence (400) on every write; + If-Match version (428/400) on PATCH.
 const IDEMPOTENT = requireIdempotencyKey();
 const IF_MATCH = requireIfMatch();
 
@@ -98,9 +114,8 @@ const IF_MATCH = requireIfMatch();
 const SCOPE = (action: string): PreHandler =>
   requireAbac(action, "caseload_or_scope", { notFoundOnDeny: true }) as PreHandler;
 
-// The overdue-status route's handler resolves entirely off `?patientId=` (its `:planId` path segment
-// is never read — see the handler below), so the ABAC target must follow the resource the handler
-// actually reads, not the unused path param.
+// The overdue-status route's handler answers for `?patientId=` (the CarePlanReader is patient-keyed), so
+// the ABAC target follows that patient; the handler then binds `:planId` to the same patient (404 otherwise).
 const SCOPE_BY_QUERY_PATIENT = (action: string): PreHandler =>
   requireAbac(action, "caseload_or_scope", {
     notFoundOnDeny: true,
@@ -132,20 +147,88 @@ const DISCIPLINE_SCOPE = requireAbac("care_plan.author", "discipline_scope", {
 const planIdOf = (request: FastifyRequest): string =>
   parse(PlanParamsSchema, request.params).planId;
 
-function signingActorOf(request: FastifyRequest): CarePlanSignActor {
+/**
+ * How the caller's fresh step-up was proven, from the same M2 session seam `requireStepUp` reads: a
+ * WebAuthn ceremony is a `passkey`, anything else `password_step_up` (the column's historic value, also the
+ * fallback when the session carries no id / the seam is unbound, as in the in-memory slice).
+ */
+async function stepUpSignatureMethod(
+  request: FastifyRequest,
+): Promise<"passkey" | "password_step_up"> {
+  const sessionId = request.context?.attributes?.sessionId;
+  if (typeof sessionId !== "string" || !request.context.organizationId) return "password_step_up";
+  try {
+    const state = await getSeam("SessionContextResolver").resolveStepUpState(
+      { orgId: request.context.organizationId },
+      sessionId,
+    );
+    return state?.lastStepUpFactor === "webauthn" ? "passkey" : "password_step_up";
+  } catch {
+    return "password_step_up";
+  }
+}
+
+async function signingActorOf(request: FastifyRequest): Promise<CarePlanSignActor> {
   const ctx = request.context;
   const membershipId = membershipIdOf(ctx);
   if (!ctx?.userId) throw new UnauthorizedError();
   if (!membershipId)
     throw new ForbiddenError("an active membership is required to sign a care plan");
-  return { userId: ctx.userId, membershipId, roles: ctx.roles ?? [] };
+  return {
+    userId: ctx.userId,
+    membershipId,
+    roles: ctx.roles ?? [],
+    signatureMethod: await stepUpSignatureMethod(request),
+  };
 }
+
+/** The acting membership a create stamps as `added_by` / `drafted_by` (session-derived, never the body). */
+const writeActorOf = (request: FastifyRequest): CarePlanWriteActor => ({
+  membershipId: membershipIdOf(request.context),
+});
+
+const defaultAdmissionPatientCare: NonNullable<CarePlanRouteDeps["admissionPatientCare"]> = (
+  organizationId,
+  admissionId,
+) => getSeam("AdmissionStatusReader").getAdmissionPatientCare(organizationId, admissionId as never);
+
+/** Admission statuses a care plan may be opened for (the plan bootstraps at `m6.admission.activated`). */
+const BOOTSTRAPPABLE_ADMISSION_STATUSES: ReadonlySet<string> = new Set(["active", "on_hold"]);
 
 export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRouteDeps): void {
   const { service } = deps;
   const dpoaConsentActive = deps.dpoaConsentActive ?? (async () => false);
+  const admissionPatientCare = deps.admissionPatientCare ?? defaultAdmissionPatientCare;
   // §7.6 fail-closed default: a SUD-flagged problem is omitted from a read unless consent says otherwise.
   const sudDisclosureAllowed = deps.sudDisclosureAllowed ?? (async () => false);
+
+  /** The caller's §7.6 viewer for a plan-keyed read (fail-closed default: deny). */
+  const viewerOf = async (
+    request: FastifyRequest,
+    organizationId: string,
+    planId: string,
+  ): Promise<CarePlanViewer> => ({
+    sudDisclosureAllowed: await sudDisclosureAllowed({
+      organizationId,
+      patientId: "",
+      planId,
+      roles: request.context.roles,
+      membershipId: membershipIdOf(request.context),
+    }),
+  });
+  /** A write result that carries a version's `stateSnapshot` is redacted like the reads are. */
+  const redactedVersionResult = async (
+    request: FastifyRequest,
+    organizationId: string,
+    planId: string,
+    result: unknown,
+  ): Promise<unknown> => {
+    const viewer = await viewerOf(request, organizationId, planId);
+    return redactVersionForViewer(
+      result as { stateSnapshot?: unknown },
+      viewer.sudDisclosureAllowed,
+    );
+  };
 
   // ── Care plan (patient-scoped) ─────────────────────────────────────────────────────────────────
   app.get(
@@ -174,12 +257,30 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.post(
     "/api/v1/patients/:patientId/care-plan",
-    { preHandler: [BOOTSTRAP, SCOPE("care_plan.bootstrap")] },
+    { preHandler: [BOOTSTRAP, SCOPE("care_plan.bootstrap"), IDEMPOTENT] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const { patientId } = parse(PatientParamsSchema, request.params);
       const body = parse(BootstrapCarePlanSchema, request.body);
-      const res = await service.bootstrapCarePlan(organizationId, patientId, body.admissionId);
+      // The body's admissionId is client input: it must be THIS patient's active admission, or patient X's
+      // plan could be bound to patient Y's admission (care_plan has no FK) and block Y's own plan.
+      const care = await admissionPatientCare(organizationId, body.admissionId);
+      if (!care || care.patientId !== patientId) {
+        throw new NotFoundError("admission", body.admissionId); // non-leaking: absent and foreign look alike
+      }
+      if (!BOOTSTRAPPABLE_ADMISSION_STATUSES.has(care.status)) {
+        throw new CarePlanStateError(
+          "CARE_PLAN_NOT_READY",
+          "a care plan can only be opened for an active admission",
+        );
+      }
+      const res = await service.bootstrapCarePlan(
+        organizationId,
+        patientId,
+        body.admissionId,
+        undefined,
+        writeActorOf(request),
+      );
       return reply.code(201).send(res);
     },
   );
@@ -193,7 +294,12 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
     },
     async (request) => {
       const { organizationId } = actorOf(request);
-      return service.listVersions(organizationId, planIdOf(request));
+      const planId = planIdOf(request);
+      return service.listVersions(
+        organizationId,
+        planId,
+        await viewerOf(request, organizationId, planId),
+      );
     },
   );
 
@@ -206,13 +312,18 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
     async (request) => {
       const { organizationId } = actorOf(request);
       const { planId, versionId } = parse(PlanVersionParamsSchema, request.params);
-      return service.getVersion(organizationId, planId, versionId);
+      return service.getVersion(
+        organizationId,
+        planId,
+        versionId,
+        await viewerOf(request, organizationId, planId),
+      );
     },
   );
 
   app.post(
     "/api/v1/care-plans/:planId/versions",
-    { preHandler: [AUTHOR, SCOPE("care_plan.author")] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author"), IDEMPOTENT] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const body = parse(CreateVersionSchema, request.body);
@@ -221,6 +332,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
         planIdOf(request),
         body.kind,
         body.idgMeetingId ?? null,
+        writeActorOf(request),
       );
       return reply.code(201).send(res);
     },
@@ -228,27 +340,28 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.post(
     "/api/v1/care-plans/:planId/versions/:versionId/finalize",
-    { preHandler: [FINALIZE, SCOPE("care_plan.finalize")] },
+    { preHandler: [FINALIZE, SCOPE("care_plan.finalize"), IDEMPOTENT] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { planId, versionId } = parse(PlanVersionParamsSchema, request.params);
       const body = parse(FinalizeVersionSchema, request.body);
-      return service.finalizeVersion(
+      const res = await service.finalizeVersion(
         organizationId,
         planId,
         versionId,
         body.ifVersion,
         body.requiredSignerSet ?? null,
       );
+      return redactedVersionResult(request, organizationId, planId, res);
     },
   );
 
   app.post(
     "/api/v1/care-plans/:planId/versions/:versionId/signatures",
-    { preHandler: [SIGN, SCOPE("care_plan.sign"), SIGNER_MATCH, SIGN_STEP_UP] },
+    { preHandler: [SIGN, SCOPE("care_plan.sign"), SIGNER_MATCH, SIGN_STEP_UP, IDEMPOTENT] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
-      const actor = signingActorOf(request);
+      const actor = await signingActorOf(request);
       const { planId, versionId } = parse(PlanVersionParamsSchema, request.params);
       const body = parse(SignVersionSchema, request.body);
       const res = await service.signVersion(
@@ -261,13 +374,15 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
         actor,
         body.patientUnderstandingText,
       );
-      return reply.code(201).send(res);
+      return reply
+        .code(201)
+        .send(await redactedVersionResult(request, organizationId, planId, res));
     },
   );
 
   app.post(
     "/api/v1/care-plans/:planId/versions/:versionId/return-to-draft",
-    { preHandler: [AUTHOR, SCOPE("care_plan.author")] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author"), IDEMPOTENT] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { planId, versionId } = parse(PlanVersionParamsSchema, request.params);
@@ -279,18 +394,24 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   // ── Problems ─────────────────────────────────────────────────────────────────────────────────
   app.post(
     "/api/v1/care-plans/:planId/problems",
-    { preHandler: [AUTHOR, SCOPE("care_plan.author")] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author"), IDEMPOTENT] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const body = parse(CreateProblemSchema, request.body);
-      const res = await service.addProblem(organizationId, planIdOf(request), {
-        icd10Code: body.icd10Code,
-        snomedCode: body.snomedCode,
-        description: body.description,
-        kind: body.kind,
-        source: body.source,
-        sudRelated: body.sudRelated,
-      });
+      const res = await service.addProblem(
+        organizationId,
+        planIdOf(request),
+        {
+          icd10Code: body.icd10Code,
+          snomedCode: body.snomedCode,
+          description: body.description,
+          kind: body.kind,
+          source: body.source,
+          sudRelated: body.sudRelated,
+          onsetAt: body.onsetAt,
+        },
+        writeActorOf(request),
+      );
       return reply.code(201).send(res);
     },
   );
@@ -314,7 +435,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
 
   app.post(
     "/api/v1/care-plans/:planId/problems/:elementId/resolve",
-    { preHandler: [AUTHOR, SCOPE("care_plan.author")] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author"), IDEMPOTENT] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { planId, elementId } = parse(PlanElementParamsSchema, request.params);
@@ -332,7 +453,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   // ── Goals ───────────────────────────────────────────────────────────────────────────────────
   app.post(
     "/api/v1/care-plans/:planId/goals",
-    { preHandler: [AUTHOR, SCOPE("care_plan.author")] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author"), IDEMPOTENT] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const planId = planIdOf(request);
@@ -350,8 +471,10 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
           source: body.source,
           actingConsentId: body.actingConsentId,
           measurableOutcome: body.measurableOutcome,
+          targetAt: body.targetAt,
         },
         dpoa,
+        writeActorOf(request),
       );
       return reply.code(201).send(res);
     },
@@ -371,7 +494,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   // ── Interventions ────────────────────────────────────────────────────────────────────────────
   app.post(
     "/api/v1/care-plans/:planId/interventions",
-    { preHandler: [AUTHOR, SCOPE("care_plan.author"), DISCIPLINE_SCOPE] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author"), DISCIPLINE_SCOPE, IDEMPOTENT] },
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const body = parse(CreateInterventionSchema, request.body);
@@ -391,6 +514,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
           responsibleRole: body.responsibleRole,
         },
         disciplineScopeOf(request.context),
+        writeActorOf(request),
       );
       return reply.code(201).send(res);
     },
@@ -403,19 +527,22 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
       const { organizationId } = actorOf(request);
       const { planId, elementId } = parse(PlanElementParamsSchema, request.params);
       const body = parse(PatchInterventionSchema, request.body);
+      // §7.4: checked against the intervention's OWN discipline (create checks the body's) — an MSW author
+      // must not edit an RN intervention.
       return service.patchIntervention(
         organizationId,
         planId,
         elementId,
         ifMatchVersionOf(request),
         body,
+        disciplineScopeOf(request.context),
       );
     },
   );
 
   app.post(
     "/api/v1/care-plans/:planId/interventions/:elementId/discontinue",
-    { preHandler: [AUTHOR, SCOPE("care_plan.author")] },
+    { preHandler: [AUTHOR, SCOPE("care_plan.author"), IDEMPOTENT] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { planId, elementId } = parse(PlanElementParamsSchema, request.params);
@@ -426,6 +553,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
         elementId,
         body.ifVersion,
         body.reason,
+        disciplineScopeOf(request.context),
       );
     },
   );
@@ -452,7 +580,12 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
     async (request) => {
       const { organizationId } = actorOf(request);
       const { planId, versionId } = parse(PlanVersionParamsSchema, request.params);
-      return service.getProposedChanges(organizationId, planId, versionId);
+      return service.getProposedChanges(
+        organizationId,
+        planId,
+        versionId,
+        await viewerOf(request, organizationId, planId),
+      );
     },
   );
 
@@ -481,28 +614,31 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
     async (request) => {
       const { organizationId } = actorOf(request);
       const planId = planIdOf(request);
-      const allowSud = await sudDisclosureAllowed({
+      return service.getSummary(
         organizationId,
-        patientId: "",
         planId,
-        roles: request.context.roles,
-        membershipId: membershipIdOf(request.context),
-      });
-      return service.getSummary(organizationId, planId, { sudDisclosureAllowed: allowSud });
+        await viewerOf(request, organizationId, planId),
+      );
     },
   );
 
   app.get(
     "/api/v1/care-plans/:planId/overdue-status",
     {
-      // Scoped by the query's `patientId` (what the handler actually reads), not the path's `:planId`
-      // (unused below) — see `SCOPE_BY_QUERY_PATIENT`'s doc comment.
+      // Scoped by the query's `patientId` (what the reader answers for); the handler binds the path's
+      // `:planId` to that patient — see `SCOPE_BY_QUERY_PATIENT`'s doc comment.
       preHandler: [READ, SCOPE_BY_QUERY_PATIENT("care_plan.read")],
       config: { auditRead: { resourceKind: "care_plan", resourceIdParam: "planId" } },
     },
     async (request) => {
-      actorOf(request);
+      const { organizationId } = actorOf(request);
+      const planId = planIdOf(request);
       const q = parse(RelevantElementsQuerySchema, request.query);
+      // The ABAC scope above followed `?patientId=`, so the `:planId` in the path must be THAT patient's
+      // plan — otherwise any plan id (or none) would answer for a patient the caller is scoped to.
+      if ((await service.getPlanPatientId(organizationId, planId)) !== q.patientId) {
+        throw new NotFoundError("care_plan", planId);
+      }
       return getSeam("CarePlanReader").isReviewOverdue(q.patientId);
     },
   );

@@ -33,6 +33,7 @@ import {
   createDbIdgBackend,
 } from "../src/modules/14-idg/idg-route-service-db";
 import { M14_OUTBOX_EVENTS, buildM14DecisionAppliedConsumer } from "../src/modules/14-idg/index";
+import { buildM15AdmissionDischargedConsumer } from "../src/modules/15-discipline-care-plans/consumers/m6-admission-discharged";
 import {
   M15_OUTBOX_EVENTS,
   buildM15IdgDecisionConsumer,
@@ -528,6 +529,17 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
     expect(await appliedEvents(d.decisionId)).toHaveLength(0);
     expect(await acks(d.decisionId)).toHaveLength(0);
 
+    // The refusal is audited as denied, with the decision id and a code (no record content).
+    const [refusalAudit] = await dbRows(
+      "SELECT outcome, context FROM audit_event WHERE event_type='m15.idg_decision.refused' AND resource_id=$1",
+      [plan.planId],
+    );
+    expect(refusalAudit?.outcome).toBe("denied");
+    expect(refusalAudit?.context).toMatchObject({
+      decisionId: d.decisionId,
+      reason: "sud_goal_targeted",
+    });
+
     // Linking a NEW intervention to the SUD goal is refused for the same reason.
     const d2 = await seedDecision(ORG_A, plan.patientId, {
       kind: "discipline_plan_update",
@@ -607,7 +619,7 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
     });
   });
 
-  it("refuses a discharged plan (terminal) and a plan that never reached active", async () => {
+  it("refuses a discharged plan (terminal); a plan that never reached active WAITS, then is refused once stale", async () => {
     const discharged = await seedPlan(ORG_A, { status: "discharged" });
     const dDis = await seedDecision(ORG_A, discharged.patientId, {
       kind: "discipline_plan_update",
@@ -629,6 +641,24 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
       refusal_reason: "plan_discharged",
       plan_id: discharged.planId,
     });
+    // A plan that has not reached active yet WAITS for its first signature (nothing recorded, no attempt used).
+    expect(await applications(dDraft.decisionId)).toHaveLength(0);
+    const [waiting] = await dbRows(
+      `SELECT status, attempt_count, last_error FROM outbox_event
+        WHERE event_type='idg.decision_recorded' AND aggregate_id=$1`,
+      [dDraft.decisionId],
+    );
+    expect(waiting).toMatchObject({ status: "pending" });
+    expect(Number(waiting?.attempt_count)).toBe(0);
+    expect(waiting?.last_error).toContain("deferred:");
+
+    // Past the wait horizon it stops waiting and the verdict becomes durable.
+    await admin.query(
+      `UPDATE outbox_event SET created_at = now() - interval '15 days', next_attempt_at = now()
+        WHERE event_type='idg.decision_recorded' AND aggregate_id=$1`,
+      [dDraft.decisionId],
+    );
+    await settle();
     expect((await applications(dDraft.decisionId))[0]).toMatchObject({
       status: "refused",
       refusal_reason: "plan_not_yet_active",
@@ -637,7 +667,7 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
     expect(await appliedEvents(dDraft.decisionId)).toHaveLength(0);
   });
 
-  it("THROWS (retry / dead-letter, never a silent drop) when no plan of that kind exists yet or the open version is in review", async () => {
+  it("THROWS (retry / dead-letter, never a silent drop) when no plan of that kind exists yet", async () => {
     // No plan bootstrapped for this patient at all.
     const ghostPatient = randomUUID();
     const dGhost = await seedDecision(ORG_A, ghostPatient, {
@@ -645,11 +675,25 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
       planKind: "spiritual_plan",
       mutations: [{ op: "goal_update", goalId: randomUUID(), event: "meet" }],
     });
-    // A plan whose open version is sealed `in_review`.
+    await publishDecision(ORG_A, dGhost);
+    await dispatcher.tick();
+
+    expect(await applications(dGhost.decisionId)).toHaveLength(0);
+    const [row] = await dbRows(
+      `SELECT status, attempt_count FROM outbox_event WHERE event_type='idg.decision_recorded' AND aggregate_id=$1`,
+      [dGhost.decisionId],
+    );
+    expect(row?.status).toBe("pending"); // failed attempt recorded, scheduled for retry
+    expect(Number(row?.attempt_count)).toBeGreaterThanOrEqual(1);
+  });
+
+  /** A plan whose open version is sealed `in_review`, plus a goal-update decision recorded against it. */
+  async function decisionAgainstVersionInReview() {
     const plan = await seedPlan(ORG_A, { status: "draft_revising" });
-    await admin.query(
+    const inserted = await admin.query(
       `INSERT INTO discipline_care_plan_version (organization_id, provider_entity_id, location_id, plan_id,
-         sequence, status, kind, state_snapshot) VALUES ($1,$2,$3,$4,1,'in_review','idg_review','{}'::jsonb)`,
+         sequence, status, kind, state_snapshot) VALUES ($1,$2,$3,$4,1,'in_review','idg_review','{}'::jsonb)
+       RETURNING id`,
       [ORG_A, peOf[ORG_A], locationOf[ORG_A], plan.planId],
     );
     const dReview = await seedDecision(ORG_A, plan.patientId, {
@@ -657,19 +701,60 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
       planKind: "msw_plan",
       mutations: [{ op: "goal_update", goalId: plan.goalId, event: "meet" }],
     });
-    await publishDecision(ORG_A, dGhost);
     await publishDecision(ORG_A, dReview);
-    await dispatcher.tick();
+    return { plan, dReview, versionId: inserted.rows[0].id as string };
+  }
 
-    for (const d of [dGhost, dReview]) {
-      expect(await applications(d.decisionId)).toHaveLength(0);
-      const [row] = await dbRows(
-        `SELECT status, attempt_count FROM outbox_event WHERE event_type='idg.decision_recorded' AND aggregate_id=$1`,
-        [d.decisionId],
-      );
-      expect(row?.status).toBe("pending"); // failed attempt recorded, scheduled for retry
-      expect(Number(row?.attempt_count)).toBeGreaterThanOrEqual(1);
-    }
+  it("WAITS (deferred: no attempt consumed, never dead-lettered) while the open version awaits signatures, then applies once it is out of review", async () => {
+    // Signatures can outlast the relay's attempt window, so the relay is told to retry later instead of
+    // burning attempts; nobody has to re-record the decision.
+    const { plan, dReview, versionId } = await decisionAgainstVersionInReview();
+    await settle();
+
+    expect(await applications(dReview.decisionId)).toHaveLength(0);
+    const [waiting] = await dbRows(
+      `SELECT status, attempt_count, last_error, next_attempt_at > now() AS later
+         FROM outbox_event WHERE event_type='idg.decision_recorded' AND aggregate_id=$1`,
+      [dReview.decisionId],
+    );
+    expect(waiting).toMatchObject({ status: "pending", later: true });
+    expect(Number(waiting?.attempt_count)).toBe(0);
+    expect(waiting?.last_error).toContain("deferred:");
+
+    // The version leaves review and the retry clock comes due: the decision now applies by itself.
+    await admin.query(`UPDATE discipline_care_plan_version SET status='draft' WHERE id=$1`, [
+      versionId,
+    ]);
+    await admin.query(
+      `UPDATE outbox_event SET next_attempt_at = now()
+        WHERE event_type='idg.decision_recorded' AND aggregate_id=$1`,
+      [dReview.decisionId],
+    );
+    await settle();
+
+    expect((await applications(dReview.decisionId))[0]).toMatchObject({
+      status: "applied",
+      plan_id: plan.planId,
+    });
+    expect(await appliedEvents(dReview.decisionId)).toHaveLength(1);
+  });
+
+  it("records the durable `version_in_review` refusal once the decision has waited past the horizon", async () => {
+    // A version that never gets signed must still leave a human-visible trace, not wait forever.
+    const { plan, dReview } = await decisionAgainstVersionInReview();
+    await admin.query(
+      `UPDATE outbox_event SET created_at = now() - interval '15 days'
+        WHERE event_type='idg.decision_recorded' AND aggregate_id=$1`,
+      [dReview.decisionId],
+    );
+    await settle();
+
+    expect((await applications(dReview.decisionId))[0]).toMatchObject({
+      status: "refused",
+      refusal_reason: "version_in_review",
+      plan_id: plan.planId,
+    });
+    expect(await appliedEvents(dReview.decisionId)).toHaveLength(0);
     expect(
       (await dbRows("SELECT status FROM discipline_goal WHERE id=$1", [plan.goalId]))[0]?.status,
     ).toBe("in_progress");
@@ -760,5 +845,109 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
     } finally {
       await app.end();
     }
+  });
+
+  // ── m6.admission.discharged → M15 discharge (real DB, RLS as chartwarden_app, real catalog publisher) ──
+  describe("m6.admission.discharged discharges ONLY the named admission's plans", () => {
+    const admissionOf = async (planId: string) =>
+      (await dbRows("SELECT admission_id FROM discipline_care_plan WHERE id=$1", [planId]))[0]
+        ?.admission_id as string;
+    const dischargedEvents = (planId: string) =>
+      dbRows(
+        `SELECT payload FROM outbox_event WHERE event_type='m15.plan.discharged' AND payload->>'planId'=$1`,
+        [planId],
+      );
+    const dischargeVersions = (planId: string) =>
+      dbRows(
+        "SELECT status, state_snapshot FROM discipline_care_plan_version WHERE plan_id=$1 AND kind='discharge'",
+        [planId],
+      );
+    const planRow = async (planId: string) =>
+      (
+        await dbRows("SELECT status, discharged_at FROM discipline_care_plan WHERE id=$1", [planId])
+      )[0] as { status: string; discharged_at: Date | null };
+    const consumer = () => {
+      const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M15_OUTBOX_EVENTS]));
+      return buildM15AdmissionDischargedConsumer({
+        db: handle.db,
+        outbox: {
+          publish: (tx: unknown, e: Record<string, unknown>) =>
+            publisher.publish(tx as never, { ...e, callerModule: "m15" } as never),
+        } as never,
+      });
+    };
+    const discharged = (admissionId: string, org = ORG_A, id: string = randomUUID()) =>
+      consumer().handle({
+        id,
+        organizationId: org,
+        payload: {
+          admissionId,
+          reason: "death",
+          dischargeDate: new Date().toISOString(),
+        },
+      });
+
+    it("seals the named admission's plan, supersedes its signed version, announces it once, and touches nothing else", async () => {
+      const target = await seedPlan(ORG_A);
+      const sibling = await seedPlan(ORG_A); // another admission, same org
+      const foreign = await seedPlan(ORG_B); // another tenant
+      await admin.query(
+        `INSERT INTO discipline_care_plan_version (organization_id, provider_entity_id, location_id, plan_id,
+           sequence, status, kind, state_snapshot, required_signer_set, finalized_at, signed_at)
+         VALUES ($1,$2,$3,$4,1,'signed','initial','{}'::jsonb,'[]'::jsonb, now(), now())`,
+        [ORG_A, peOf[ORG_A], locationOf[ORG_A], target.planId],
+      );
+
+      const sourceEventId = randomUUID();
+      await discharged(await admissionOf(target.planId), ORG_A, sourceEventId);
+
+      // The discharge leaves one audit row that traces back to the M6 outbox event that caused it.
+      const dischargeAudits = () =>
+        dbRows(
+          "SELECT outcome, context FROM audit_event WHERE event_type='m15.plan.discharged' AND resource_id=$1",
+          [target.planId],
+        );
+      const [dischargeAudit] = await dischargeAudits();
+      expect(dischargeAudit?.outcome).toBe("success");
+      expect((dischargeAudit?.context as { sourceEventId?: string }).sourceEventId).toBe(
+        sourceEventId,
+      );
+
+      expect((await planRow(target.planId)).status).toBe("discharged");
+      expect((await planRow(target.planId)).discharged_at).not.toBeNull();
+      const sealed = await dischargeVersions(target.planId);
+      expect(sealed).toHaveLength(1);
+      expect(sealed[0]?.status).toBe("signed");
+      expect((sealed[0]?.state_snapshot as { systemSigned?: boolean }).systemSigned).toBe(true);
+      expect(
+        (
+          await dbRows(
+            "SELECT status FROM discipline_care_plan_version WHERE plan_id=$1 AND kind='initial'",
+            [target.planId],
+          )
+        )[0]?.status,
+      ).toBe("superseded");
+      expect(await dischargedEvents(target.planId)).toHaveLength(1);
+
+      // Nothing outside the named admission moved: the sibling plan and the other tenant's plan.
+      for (const other of [sibling, foreign]) {
+        expect((await planRow(other.planId)).status).toBe("active");
+        expect(await dischargeVersions(other.planId)).toHaveLength(0);
+        expect(await dischargedEvents(other.planId)).toHaveLength(0);
+      }
+
+      // A redelivery finds nothing left to do: no second discharge version, no second announcement.
+      await discharged(await admissionOf(target.planId));
+      expect(await dischargeVersions(target.planId)).toHaveLength(1);
+      expect(await dischargedEvents(target.planId)).toHaveLength(1);
+      expect(await dischargeAudits()).toHaveLength(1);
+    });
+
+    it("cannot be pointed at another tenant's admission (RLS scopes the plan read to the delivering org)", async () => {
+      const foreign = await seedPlan(ORG_B);
+      await discharged(await admissionOf(foreign.planId), ORG_A);
+      expect((await planRow(foreign.planId)).status).toBe("active");
+      expect(await dischargedEvents(foreign.planId)).toHaveLength(0);
+    });
   });
 });

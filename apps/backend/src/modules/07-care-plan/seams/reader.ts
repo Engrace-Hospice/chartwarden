@@ -91,7 +91,7 @@ export function createCarePlanReader(
     async isReviewOverdue(patientId: PatientId) {
       const clock = await store.activeCarePlanClock(patientId);
       if (clock === null) return null;
-      return evaluateCarePlanOverdue(clock, now());
+      return evaluateCarePlanOverdue(clock, now(), clock.timeZone);
     },
   };
 }

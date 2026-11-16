@@ -113866,8 +113866,7 @@
                 ],
                 "properties": {
                   "problemId": {
-                    "minLength": 1,
-                    "maxLength": 64,
+                    "format": "uuid",
                     "type": "string"
                   },
                   "originalText": {
@@ -114065,15 +114064,14 @@
                 ],
                 "properties": {
                   "problemId": {
-                    "minLength": 1,
-                    "maxLength": 64,
+                    "format": "uuid",
                     "type": "string"
                   },
                   "goalRefs": {
+                    "maxItems": 100,
                     "type": "array",
                     "items": {
-                      "minLength": 1,
-                      "maxLength": 64,
+                      "format": "uuid",
                       "type": "string"
                     }
                   },
@@ -116215,6 +116213,7 @@
                         },
                         "count": {
                           "minimum": 1,
+                          "maximum": 1,
                           "type": "integer"
                         }
                       }

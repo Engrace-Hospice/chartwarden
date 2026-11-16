@@ -94,6 +94,7 @@ export interface IdgApplyFacts {
 /** Why a decision is refused — recorded on the terminal `refused` application row. */
 export type IdgRefusalReason =
   | "plan_discharged"
+  | "version_in_review"
   | "plan_not_yet_active"
   | "no_mutations"
   | "goal_not_on_plan"
@@ -142,6 +143,28 @@ export type IdgApplyAction =
       readonly openNewVersion: boolean;
       readonly mutations: readonly PlannedDisciplineMutation[];
     };
+
+/** The plan row facts {@link choosePlanForDecision} reads. */
+export interface PlanCandidate {
+  readonly admissionId: string;
+  readonly status: string;
+  readonly createdAt: Date;
+}
+
+/**
+ * Which of a patient's plans of one kind a decision lands on (pure). After a readmission there are several
+ * (one per admission), so: only the decision's own admission when the event names it, the newest-created
+ * plan first, and a live plan preferred over a discharged one. `null` = no plan of that kind at all.
+ * The caller treats a discharged result as the permanent `plan_discharged` refusal.
+ */
+export function choosePlanForDecision<P extends PlanCandidate>(
+  plans: readonly P[],
+  admissionId: string | null,
+): P | null {
+  const scoped = admissionId === null ? plans : plans.filter((p) => p.admissionId === admissionId);
+  const newestFirst = [...scoped].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return newestFirst.find((p) => p.status !== "discharged") ?? newestFirst[0] ?? null;
+}
 
 const refuse = (reason: IdgRefusalReason): IdgApplyAction => ({ kind: "refuse", reason });
 

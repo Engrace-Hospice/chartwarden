@@ -20,12 +20,14 @@
 // `sudReadAllowed=false` and the reader drops SUD problems + flags `redacted` — a consent outage
 // narrows what a clinician sees; it never widens it. The consent round-trip is skipped entirely when
 // the plan carries no SUD-flagged problem (the verdict would be unobservable).
-import { type DbClient, schema } from "@chartwarden/db";
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 import { getRequestContext, withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
 import type { CarePlanCodeUsageRecord } from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { getSeam } from "../../../bootstrap/index";
+import { effectiveNextReviewDueAt } from "../lifecycle/overdue-gate";
+import { PATIENT_PLAN_ORDER } from "../plan-selection";
 import {
   type ClaimDiagnosisCandidate,
   type ClaimDiagnosisRecord,
@@ -93,10 +95,13 @@ async function part2ReleaseAllowed(organizationId: string, patientId: string): P
  * Build the production Drizzle-backed {@link CarePlanReaderStore}. No in-memory fallback: every
  * method reads M7's tables.
  *
- * ACTIVE-PLAN SELECTION (both patient-keyed reads): the patient's non-`discharged` plan, oldest
- * `created_at` first — the same row the route service's `getCarePlanForPatient` resolves, narrowed by
- * the bootstrap invariant (`care_plan_one_per_admission_uq` keeps at most one non-discharged plan per
- * admission). No visible plan ⇒ null, per the interface docs.
+ * ACTIVE-PLAN SELECTION (both patient-keyed reads): the patient's non-`discharged` plan, newest
+ * `created_at` first (`PATIENT_PLAN_ORDER`, ../plan-selection.ts — the ONE rule the route service's
+ * `getCarePlanForPatient` and the two org-level reads below also order by). `care_plan` has one row per
+ * ADMISSION, so a re-admitted patient has a discharged plan 1 and a live plan 2; this store reads only
+ * the live one (the route service falls back to the newest discharged plan so a discharged chart still
+ * reads). `care_plan_one_per_admission_uq` keeps at most one non-discharged plan per admission. No
+ * live plan ⇒ null, per the interface docs.
  *
  * ★ INTERPRETATION (flagged): `RelevantGoal.text` is the goal's CURRENT display text —
  *   `revised_text` when a clinician has revised it, else the verbatim `original_text` (the §7.3/D6
@@ -120,6 +125,7 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
           ...(admissionId ? [eq(CP.admissionId, admissionId)] : []),
         ),
       )
+      .orderBy(...PATIENT_PLAN_ORDER)
       .limit(1);
     return row ?? null;
   }
@@ -188,6 +194,8 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
           hasSignedInitialVersion: plan.initialSignedAt !== null,
           initialDueAt: iso(plan.initialDueAt),
           nextReviewDueAt: isoN(plan.nextReviewDueAt),
+          initialSignedAt: isoN(plan.initialSignedAt),
+          timeZone: await organizationTimezone(t, plan.organizationId),
         };
       });
     },
@@ -377,8 +385,9 @@ export interface IdgPacketCarePlanContext {
  * The ids of the patient's ACTIVE IPOC problems, org-explicit (F-234 / #248). M15's IDG-decision consumer
  * (`discipline_plan_update`, M15 spec §2.1/§7.7) must verify that a goal it adds names a real, active M7
  * problem as its parent — the same check M15's goal route runs through `CarePlanReader`, whose id-keyed reads
- * open `withOrgContextFromRequest` and so cannot run on a relay tick. Reads the patient's care plan
- * (`care_plan` has one row per patient) and returns only ids — no problem text leaves M7. An empty array means
+ * open `withOrgContextFromRequest` and so cannot run on a relay tick. Reads the patient's care plan (the
+ * newest non-discharged plan, else the newest — `PATIENT_PLAN_ORDER`; `care_plan` has one row per ADMISSION)
+ * and returns only ids — no problem text leaves M7. An empty array means
  * "no plan / no active problem": the caller refuses the goal, it never waves it through.
  */
 export function activeProblemIdsForOrg(
@@ -391,7 +400,7 @@ export function activeProblemIdsForOrg(
       .select({ id: CP.id })
       .from(CP)
       .where(and(eq(CP.organizationId, organizationId), eq(CP.patientId, patientId)))
-      .orderBy(desc(CP.createdAt))
+      .orderBy(...PATIENT_PLAN_ORDER)
       .limit(1);
     if (!plan) return [];
     const rows = await tx
@@ -415,10 +424,14 @@ export function idgPacketCarePlanContextForOrg(
 ): Promise<IdgPacketCarePlanContext | null> {
   return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
     const [plan] = await tx
-      .select({ id: CP.id, nextReviewDueAt: CP.nextReviewDueAt })
+      .select({
+        id: CP.id,
+        nextReviewDueAt: CP.nextReviewDueAt,
+        initialSignedAt: CP.initialSignedAt,
+      })
       .from(CP)
       .where(and(eq(CP.organizationId, organizationId), eq(CP.patientId, patientId)))
-      .orderBy(desc(CP.createdAt))
+      .orderBy(...PATIENT_PLAN_ORDER)
       .limit(1);
     if (!plan) return null;
 
@@ -465,7 +478,13 @@ export function idgPacketCarePlanContextForOrg(
       .limit(1);
 
     const asOf = new Date(asOfIso);
-    const nextReviewDueAt = plan.nextReviewDueAt?.toISOString() ?? null;
+    // A plan signed before TASK-040D has next_review_due_at NULL with initial_signed_at set: date it
+    // the same way the overdue gate does, rather than reporting "no review due".
+    const nextReviewDueAt = effectiveNextReviewDueAt(
+      plan.nextReviewDueAt?.toISOString() ?? null,
+      plan.initialSignedAt?.toISOString() ?? null,
+      await organizationTimezone(tx, organizationId),
+    );
 
     return {
       carePlanId: plan.id,

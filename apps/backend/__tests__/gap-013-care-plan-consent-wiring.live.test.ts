@@ -30,6 +30,7 @@ import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
   buildCarePlanAbacPredicates,
   createDbCarePlanAbacResolver,
@@ -93,6 +94,7 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
   afterEach(() => {
     resetAuthorizationContract();
     resetRbacEngine();
+    __resetSeamsForTest();
   });
 
   /** Fresh org + patient per test — isolates each scenario's consent/redaction state. */
@@ -143,11 +145,25 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
       deceasedPatientIds: new Set(),
     });
     registerConsentSeams({ store });
+    // Bootstrap checks the body's admissionId against M6's AdmissionStatusReader (the admission must
+    // belong to the URL patient and be active). This suite is about consent wiring, so any admission id
+    // resolves to this tenant's patient.
+    registerSeam("AdmissionStatusReader", {
+      async getAdmissionPatientCare(_org: string, admissionId: string) {
+        return { admissionId, patientId, status: "active", otherAdmissionUnderCare: false };
+      },
+    } as never);
 
     const app = buildServer({
       db: handle.db as never,
       authenticate: headerAuth,
       security: { rateLimitEnabled: false },
+    });
+    // Every M7 write route requires an Idempotency-Key: a POST that sent none gets a fresh one.
+    app.addHook("onRequest", async (request) => {
+      if (request.method === "POST" && !request.headers["idempotency-key"]) {
+        request.headers["idempotency-key"] = randomUUID();
+      }
     });
     mountCarePlanRoutes(app, handle.db);
     return app;

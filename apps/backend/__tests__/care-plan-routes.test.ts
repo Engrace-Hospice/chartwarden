@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 // apps/backend/__tests__/care-plan-routes.test.ts — M7-T05 route-inventory + §7.7 optimistic-concurrency
 // + §4.1.1 (M07-F09) Idempotency-Key tests (M7 spec §4.1, §4.1.1, §4.5, §7.7).
 //
@@ -105,7 +106,19 @@ function makeServer(
   registerAbacRegistry(registry);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerCarePlanRoutes(app, { service: backend.service });
+  // Every M7 write route now requires an Idempotency-Key (care-plan-hardening-routes.test.ts proves the
+  // 400); these tests exercise other behaviour, so a POST that sent none gets a fresh key here.
+  app.addHook("onRequest", async (request) => {
+    if (request.method === "POST" && !request.headers["idempotency-key"]) {
+      request.headers["idempotency-key"] = randomUUID();
+    }
+  });
+  registerCarePlanRoutes(app, {
+    service: backend.service,
+    // Bootstrap refuses an admission that is not this patient's active admission (the M6 seam, stubbed).
+    admissionPatientCare: async (_org, admissionId) =>
+      admissionId === ADMISSION ? { patientId: PATIENT_NEW, status: "active" } : null,
+  });
   return { app, backend };
 }
 

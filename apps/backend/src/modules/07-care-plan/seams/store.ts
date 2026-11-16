@@ -47,6 +47,10 @@ export interface CarePlanClockRecord {
   readonly hasSignedInitialVersion: boolean;
   readonly initialDueAt: IsoInstant;
   readonly nextReviewDueAt: IsoInstant | null;
+  /** `care_plan.initial_signed_at` — lets the gate date a legacy plan whose `nextReviewDueAt` is NULL. */
+  readonly initialSignedAt?: IsoInstant | null;
+  /** The org's IANA timezone; the writers compute due instants in it, so the gate must grade them in it. */
+  readonly timeZone?: string;
 }
 
 /**

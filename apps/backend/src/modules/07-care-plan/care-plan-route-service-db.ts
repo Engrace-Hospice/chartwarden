@@ -15,10 +15,11 @@ import { randomUUID } from "node:crypto";
 // `care_plan_version.version`; problem/goal/intervention authoring runs the pure §2.3 validators and
 // locks on each element's own `version`. Every mutation emits the matching `m7.*` event on the
 // transactional outbox (the caller's tx) — no route is left at 501. Because the CarePlanRouteService
-// interface does not thread the acting user, writes envelope `withOrgContext` with `userId:""` (the
-// read convention): the M4 write-audit trigger still fires — the audit row records a NULL actor (a
-// follow-up threads the membership when the interface carries it).
-import { type DbClient, schema } from "@chartwarden/db";
+// interface carries only the acting MEMBERSHIP (`CarePlanWriteActor`, stamped as `added_by_membership_id` /
+// `drafted_by_membership_id` on a create), writes envelope `withOrgContext` with `userId:""`: inside a
+// request that inherits the ambient request actor (so the M4 write-audit trigger records the caller), and a
+// relay write (the M6 bootstrap consumer) records the NULL system actor.
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 import { firstOrThrow as firstRow } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
@@ -38,7 +39,12 @@ import {
   redactedSudProblemIds,
 } from "./authoring/index";
 import { CarePlanStateError } from "./lifecycle/errors";
-import { computeNextReviewDueAt, warningOpensAt } from "./lifecycle/gate-clock";
+import {
+  computeInitialDueAt,
+  computeNextReviewDueAt,
+  warningOpensAt,
+} from "./lifecycle/gate-clock";
+import { effectiveNextReviewDueAt } from "./lifecycle/overdue-gate";
 import {
   assertActorHoldsSignerRole,
   assertMembershipNotAlreadySigned,
@@ -53,12 +59,22 @@ import {
   checkOptimisticConcurrency,
   checkPatientStatedGoalVerbatim,
 } from "./lifecycle/validation";
+import { PATIENT_PLAN_ORDER } from "./plan-selection";
+import {
+  assertInterventionEditable,
+  assertProblemEditable,
+  discontinueInterventionStatus,
+  guardGoalStatusChange,
+  guardProblemStatusChange,
+  resolveProblemStatus,
+} from "./routes/element-transitions";
 import {
   type CarePlanAbacResolver,
   CarePlanAlreadyExistsError,
   type CarePlanRouteService,
   type CarePlanSignActor,
   type CarePlanViewer,
+  type CarePlanWriteActor,
   type CreateGoalInput,
   type CreateInterventionInput,
   type CreateProblemInput,
@@ -67,12 +83,16 @@ import {
   type PatchInterventionInput,
   type PatchProblemInput,
 } from "./routes/service";
+import { redactStateSnapshot } from "./routes/snapshot-redaction";
 
+/** RFC 4122 shape check (any version) for ids the route layer only knows as a string. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SIGNER_SLOT_UNIQUE_CONSTRAINT = "care_plan_signature_version_membership_uq";
+const SIGNER_ROLE_UNIQUE_INDEX = "care_plan_signature_version_role_uq";
 const PG_UNIQUE_VIOLATION = "23505";
 
-/** A Postgres 23505 from migration 0620's one-slot-per-membership trigger (Drizzle wraps it in `.cause`). */
-function isSignerSlotCollision(err: unknown): boolean {
+/** A Postgres 23505 on `constraint` (Drizzle wraps the driver error in `.cause`). */
+function isUniqueViolationOn(err: unknown, constraint: string): boolean {
   const e = err as {
     code?: string;
     constraint?: string;
@@ -81,11 +101,19 @@ function isSignerSlotCollision(err: unknown): boolean {
   };
   if ((e?.code ?? e?.cause?.code) !== PG_UNIQUE_VIOLATION) return false;
   return (
-    (e?.constraint ?? e?.cause?.constraint) === SIGNER_SLOT_UNIQUE_CONSTRAINT ||
-    String(e?.message ?? "").includes(SIGNER_SLOT_UNIQUE_CONSTRAINT) ||
-    String(e?.cause?.message ?? "").includes(SIGNER_SLOT_UNIQUE_CONSTRAINT)
+    (e?.constraint ?? e?.cause?.constraint) === constraint ||
+    String(e?.message ?? "").includes(constraint) ||
+    String(e?.cause?.message ?? "").includes(constraint)
   );
 }
+
+/** Migration 0620's one-slot-per-membership trigger. */
+const isSignerSlotCollision = (err: unknown): boolean =>
+  isUniqueViolationOn(err, SIGNER_SLOT_UNIQUE_CONSTRAINT);
+
+/** The one-live-signature-per-(version, signer_role) partial unique index: two signers racing for one role. */
+const isSignerRoleCollision = (err: unknown): boolean =>
+  isUniqueViolationOn(err, SIGNER_ROLE_UNIQUE_INDEX);
 
 const CP = schema.carePlans;
 const CPV = schema.carePlanVersions;
@@ -99,8 +127,12 @@ const IDG_CHANGE = schema.carePlanIdgProposedChanges;
 const iso = (d: Date | string | null): string | null =>
   d == null ? null : d instanceof Date ? d.toISOString() : d;
 
-/** The §2.6 initial-review gate horizon (5 days) the bootstrap seeds the plan's `initial_due_at` with. */
-const INITIAL_GATE_DAYS = 5;
+/**
+ * An IDG `problem_update` carries no resolution note, so the problem machine's own note guard
+ * (RESOLUTION_NOTE_REQUIRED) refuses an IDG resolve — the same rule the proposal builder enforces
+ * (outbox-consumers/m14-idg-proposal-guards.ts); `inactive` is allowed, re-opening never is.
+ */
+const IDG_NO_RESOLUTION_NOTE = "";
 
 const SNAPSHOT_SCHEMA_VERSION = "2026-08-m7-v1";
 
@@ -189,6 +221,7 @@ export function createDbCarePlanRouteService(
   const versionDto = (
     v: typeof CPV.$inferSelect,
     sigs: { signerRole: string; signedAt: string | null }[],
+    allowSud = true,
   ) => ({
     id: v.id,
     planId: v.carePlanId,
@@ -201,7 +234,8 @@ export function createDbCarePlanRouteService(
     draftedAt: iso(v.draftedAt),
     signedAt: iso(v.signedAt),
     supersededAt: iso(v.supersededAt),
-    stateSnapshot: v.stateSnapshot ?? null,
+    // §7.6: the snapshot freezes every problem, SUD-related included — redact it like the top-level lists.
+    stateSnapshot: redactStateSnapshot(v.stateSnapshot, allowSud),
     patientUnderstandingText: v.patientUnderstandingText ?? null,
     version: Number(v.version),
   });
@@ -240,8 +274,14 @@ export function createDbCarePlanRouteService(
   }
 
   /** Resolve a tenant-scoped plan row (RLS-scoped) or raise the non-leaking 404. */
-  async function loadPlan(tx: DbClient, planId: string): Promise<typeof CP.$inferSelect> {
-    const [row] = await tx.select().from(CP).where(eq(CP.id, planId)).limit(1);
+  async function loadPlan(
+    tx: DbClient,
+    planId: string,
+    opts: { readonly lock?: boolean } = {},
+  ): Promise<typeof CP.$inferSelect> {
+    const query = tx.select().from(CP).where(eq(CP.id, planId)).limit(1);
+    // `lock`: SELECT … FOR UPDATE, so a status flip (sign → active) serialises with a concurrent discharge.
+    const [row] = await (opts.lock ? query.for("update") : query);
     if (!row) throw new NotFoundError("care_plan", planId);
     return row;
   }
@@ -390,6 +430,9 @@ export function createDbCarePlanRouteService(
     return value;
   }
 
+  const stringOrUndefined = (value: unknown): string | undefined =>
+    typeof value === "string" ? value : undefined;
+
   /**
    * Structural equality for the IDG baseline check. `baseline_snapshot` is persisted as `jsonb`, which
    * does NOT preserve object key order (Postgres stores keys by length, then bytewise), so comparing
@@ -461,6 +504,11 @@ export function createDbCarePlanRouteService(
         case "problem_update": {
           const target = snapshot.problems.find((p) => p.id === change.targetEntityId);
           if (!target) throw new CarePlanStateError("IDG_PROPOSAL_CONFLICT", "problem is missing");
+          guardProblemStatusChange(
+            target.status,
+            stringOrUndefined(proposed.status),
+            IDG_NO_RESOLUTION_NOTE,
+          );
           Object.assign(target, proposed);
           target.version += 1;
           break;
@@ -483,6 +531,7 @@ export function createDbCarePlanRouteService(
         case "goal_update": {
           const target = snapshot.goals.find((g) => g.id === change.targetEntityId);
           if (!target) throw new CarePlanStateError("IDG_PROPOSAL_CONFLICT", "goal is missing");
+          guardGoalStatusChange(target.status, stringOrUndefined(proposed.status));
           Object.assign(target, proposed);
           target.version += 1;
           break;
@@ -508,6 +557,10 @@ export function createDbCarePlanRouteService(
           if (!target) {
             throw new CarePlanStateError("IDG_PROPOSAL_CONFLICT", "intervention is missing");
           }
+          discontinueInterventionStatus(
+            target.status,
+            stringOrUndefined(proposed.discontinueReason) ?? "",
+          );
           Object.assign(target, proposed);
           target.version += 1;
           break;
@@ -524,11 +577,16 @@ export function createDbCarePlanRouteService(
     snapshot.interventions.sort((a, b) => a.id.localeCompare(b.id));
   }
 
+  /**
+   * The candidate snapshot, or `{ conflict }` when the plan moved under the proposal. The conflict is
+   * persisted on the application (`status=conflict`) and RETURNED rather than thrown: a throw rolls the
+   * whole tx back, so the "baseline_changed" state would never be durable. The caller commits, then throws.
+   */
   async function captureIdgCandidateSnapshot(
     tx: DbClient,
     planId: string,
     versionId: string,
-  ): Promise<ClinicalSnapshot> {
+  ): Promise<ClinicalSnapshot | { readonly conflict: string }> {
     const current = await captureStateSnapshot(tx, planId);
     const { applications, changes } = await loadIdgProposalBundle(tx, versionId);
     if (applications.length === 0 || changes.length === 0) {
@@ -549,14 +607,34 @@ export function createDbCarePlanRouteService(
           .update(IDG_APP)
           .set({ status: "conflict", conflictReason: "baseline_changed" })
           .where(eq(IDG_APP.id, app.id));
-        throw new CarePlanStateError(
-          "IDG_PROPOSAL_CONFLICT",
-          "care plan changed after the IDG proposal was created",
-        );
+        return { conflict: "care plan changed after the IDG proposal was created" };
       }
     }
     mutateCandidateSnapshot(current, changes);
     return current;
+  }
+
+  /**
+   * Before the signature that would meet quorum is inserted: if the plan moved since the proposal entered
+   * review, persist `conflict` and return the message (the caller commits WITHOUT the signature, then throws).
+   */
+  async function markIdgBaselineConflict(
+    tx: DbClient,
+    planId: string,
+    versionId: string,
+  ): Promise<string | null> {
+    const current = await captureStateSnapshot(tx, planId);
+    const { applications } = await loadIdgProposalBundle(tx, versionId);
+    for (const app of applications) {
+      if (app.status !== "in_review") continue;
+      if (app.baselineSnapshot && jsonEqual(app.baselineSnapshot, current)) continue;
+      await tx
+        .update(IDG_APP)
+        .set({ status: "conflict", conflictReason: "baseline_changed" })
+        .where(eq(IDG_APP.id, app.id));
+      return "care plan changed after the IDG proposal entered review";
+    }
+    return null;
   }
 
   async function applyIdgProposalChanges(
@@ -615,12 +693,20 @@ export function createDbCarePlanRouteService(
             status: "active",
           });
           break;
-        case "problem_update":
+        case "problem_update": {
+          // §2.2.3: through the problem machine — a resolved/inactive problem is never re-opened or edited.
+          const row = await loadProblem(tx, input.plan.id, change.targetEntityId!);
+          guardProblemStatusChange(
+            row.status,
+            stringOrUndefined(proposed.status),
+            IDG_NO_RESOLUTION_NOTE,
+          );
           await tx
             .update(PROB)
             .set({ ...proposed, updatedAt: input.at, version: sql`${PROB.version} + 1` })
-            .where(and(eq(PROB.carePlanId, input.plan.id), eq(PROB.id, change.targetEntityId!)));
+            .where(and(eq(PROB.carePlanId, input.plan.id), eq(PROB.id, row.id)));
           break;
+        }
         case "goal_add":
           await tx.insert(GOAL).values({
             ...common,
@@ -632,12 +718,15 @@ export function createDbCarePlanRouteService(
             measurableOutcome: stringOf(proposed, "measurableOutcome"),
           });
           break;
-        case "goal_update":
+        case "goal_update": {
+          const row = await loadGoal(tx, input.plan.id, change.targetEntityId!);
+          guardGoalStatusChange(row.status, stringOrUndefined(proposed.status));
           await tx
             .update(GOAL)
             .set({ ...proposed, updatedAt: input.at, version: sql`${GOAL.version} + 1` })
-            .where(and(eq(GOAL.carePlanId, input.plan.id), eq(GOAL.id, change.targetEntityId!)));
+            .where(and(eq(GOAL.carePlanId, input.plan.id), eq(GOAL.id, row.id)));
           break;
+        }
         case "intervention_add":
           await tx.insert(INTV).values({
             ...common,
@@ -650,12 +739,18 @@ export function createDbCarePlanRouteService(
             discipline: stringOf(proposed, "discipline") as typeof INTV.$inferInsert.discipline,
           });
           break;
-        case "intervention_discontinue":
+        case "intervention_discontinue": {
+          const row = await loadIntervention(tx, input.plan.id, change.targetEntityId!);
+          discontinueInterventionStatus(
+            row.status,
+            stringOrUndefined(proposed.discontinueReason) ?? "",
+          );
           await tx
             .update(INTV)
             .set({ ...proposed, updatedAt: input.at, version: sql`${INTV.version} + 1` })
-            .where(and(eq(INTV.carePlanId, input.plan.id), eq(INTV.id, change.targetEntityId!)));
+            .where(and(eq(INTV.carePlanId, input.plan.id), eq(INTV.id, row.id)));
           break;
+        }
       }
       await tx
         .update(IDG_CHANGE)
@@ -677,16 +772,88 @@ export function createDbCarePlanRouteService(
     return { applicationCount: applications.length, changeCount: changes.length };
   }
 
+  /**
+   * §7.6: drop the IDG proposed changes (before/proposed payloads) anchored to a SUD-related problem —
+   * the problem itself, and any goal/intervention hung on it. FAIL CLOSED: a change whose anchor problem
+   * cannot be determined is withheld too.
+   */
+  async function withoutSudAnchoredChanges(
+    tx: DbClient,
+    planId: string,
+    changes: readonly IdgChangeRow[],
+  ): Promise<IdgChangeRow[]> {
+    const [probRows, goalRows, intvRows] = await Promise.all([
+      tx
+        .select({ id: PROB.id, sudRelated: PROB.sudRelated })
+        .from(PROB)
+        .where(eq(PROB.carePlanId, planId)),
+      tx
+        .select({ id: GOAL.id, problemId: GOAL.problemId })
+        .from(GOAL)
+        .where(eq(GOAL.carePlanId, planId)),
+      tx
+        .select({ id: INTV.id, problemId: INTV.problemId })
+        .from(INTV)
+        .where(eq(INTV.carePlanId, planId)),
+    ]);
+    const hidden = new Set(probRows.filter((p) => p.sudRelated).map((p) => p.id));
+    const recordOrEmpty = (v: unknown): Record<string, unknown> =>
+      v !== null && typeof v === "object" && !Array.isArray(v)
+        ? (v as Record<string, unknown>)
+        : {};
+    for (const c of changes) {
+      const proposed = recordOrEmpty(c.proposed);
+      if (c.operation === "problem_add" && proposed.sudRelated === true) {
+        const id = stringOrUndefined(proposed.id);
+        if (id) hidden.add(id);
+      }
+    }
+    const goalProblem = new Map(goalRows.map((g) => [g.id, g.problemId]));
+    const intvProblem = new Map(intvRows.map((i) => [i.id, i.problemId]));
+    const anchorOf = (c: IdgChangeRow): string | undefined => {
+      const proposed = recordOrEmpty(c.proposed);
+      const before = recordOrEmpty(c.before);
+      const target = c.targetEntityId ?? "";
+      if (c.entityType === "problem") return target || stringOrUndefined(proposed.id);
+      if (c.entityType === "goal") {
+        return (
+          stringOrUndefined(proposed.problemId) ??
+          stringOrUndefined(before.problemId) ??
+          goalProblem.get(target)
+        );
+      }
+      if (c.entityType === "intervention") {
+        return (
+          stringOrUndefined(proposed.problemId) ??
+          stringOrUndefined(before.problemId) ??
+          intvProblem.get(target)
+        );
+      }
+      return undefined;
+    };
+    return changes.filter((c) => {
+      if (recordOrEmpty(c.proposed).sudRelated === true) return false;
+      if (recordOrEmpty(c.before).sudRelated === true) return false;
+      const anchor = anchorOf(c);
+      return anchor !== undefined && !hidden.has(anchor);
+    });
+  }
+
   async function loadVersion(
     tx: DbClient,
     planId: string,
     versionId: string,
+    opts: { readonly lock?: boolean } = {},
   ): Promise<typeof CPV.$inferSelect> {
-    const [row] = await tx
+    const query = tx
       .select()
       .from(CPV)
       .where(and(eq(CPV.id, versionId), eq(CPV.carePlanId, planId)))
       .limit(1);
+    // `lock`: SELECT … FOR UPDATE. The sign path decides quorum from the signatures it can SEE, so two
+    // last signers must serialise on the version row — the loser then re-reads the winner's bumped
+    // version (409 STALE_VERSION) and its signature set, instead of both seeing "one short".
+    const [row] = await (opts.lock ? query.for("update") : query);
     if (!row) throw new NotFoundError("care_plan_version", versionId);
     return row;
   }
@@ -741,7 +908,7 @@ export function createDbCarePlanRouteService(
   }
 
   /** Load every version of a plan (seq asc) with its signatures, projected to the version DTO. */
-  async function versionsForPlan(tx: DbClient, planId: string) {
+  async function versionsForPlan(tx: DbClient, planId: string, allowSud = true) {
     const rows = await tx
       .select()
       .from(CPV)
@@ -764,12 +931,12 @@ export function createDbCarePlanRouteService(
       list.push({ signerRole: s.signerRole, signedAt: iso(s.signedAt) });
       byVersion.set(s.versionId, list);
     }
-    return rows.map((v) => versionDto(v, byVersion.get(v.id) ?? []));
+    return rows.map((v) => versionDto(v, byVersion.get(v.id) ?? [], allowSud));
   }
 
   return {
     // ── Bootstrap (§2.2.1) ──────────────────────────────────────────────────────────────────────────
-    async bootstrapCarePlan(org, patientId, admissionId, admissionActivatedAt) {
+    async bootstrapCarePlan(org, patientId, admissionId, admissionActivatedAt, actor) {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // One active plan per admission (the partial unique `care_plan_one_per_admission_uq` also guards).
@@ -783,7 +950,10 @@ export function createDbCarePlanRouteService(
         // derived from (the bootstrap route runs at `m6.admission.activated`); stamping it here just
         // makes that instant queryable/echoable (§7.1 payload) rather than computing initialDueAt twice.
         const now = admissionActivatedAt ? new Date(admissionActivatedAt) : new Date();
-        const initialDueAt = new Date(now.getTime() + INITIAL_GATE_DAYS * 86_400_000);
+        // §7.1: activation org-day + 5 CALENDAR days at end-of-day org-TZ (gate-clock), not activation + 120h.
+        const initialDueAt = new Date(
+          computeInitialDueAt(now.toISOString(), await organizationTimezone(t, org)),
+        );
         const plan = firstOrThrow(
           await t
             .insert(CP)
@@ -808,6 +978,7 @@ export function createDbCarePlanRouteService(
               kind: "initial",
               status: "draft",
               requiredSignerSet: resolveRequiredSignerSet("initial"),
+              draftedByMembershipId: actor?.membershipId ?? null,
             })
             .returning(),
           "care_plan_version insert returned no row",
@@ -874,20 +1045,22 @@ export function createDbCarePlanRouteService(
     async getCarePlanForPatient(org, patientId, viewer?: CarePlanViewer) {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
+        // `care_plan` is one row per ADMISSION: after discharge + re-admission the patient has two. Pick
+        // the newest non-discharged plan (else the newest) — the rule every patient-keyed read shares.
         const [row] = await t
           .select()
           .from(CP)
           .where(eq(CP.patientId, patientId))
-          .orderBy(asc(CP.createdAt))
+          .orderBy(...PATIENT_PLAN_ORDER)
           .limit(1);
         if (!row) return null;
+        const allowSud = viewer?.sudDisclosureAllowed ?? false;
         const [planVersions, probRows, goalRows, intvRows] = await Promise.all([
-          versionsForPlan(t, row.id),
+          versionsForPlan(t, row.id, allowSud),
           t.select().from(PROB).where(eq(PROB.carePlanId, row.id)),
           t.select().from(GOAL).where(eq(GOAL.carePlanId, row.id)),
           t.select().from(INTV).where(eq(INTV.carePlanId, row.id)),
         ]);
-        const allowSud = viewer?.sudDisclosureAllowed ?? true;
         const planProblems = probRows.map(problemDto);
         const hiddenIds = redactedSudProblemIds(planProblems, allowSud);
         return {
@@ -917,7 +1090,7 @@ export function createDbCarePlanRouteService(
           t.select().from(GOAL).where(eq(GOAL.carePlanId, p.id)),
           t.select().from(INTV).where(eq(INTV.carePlanId, p.id)),
         ]);
-        const allowSud = viewer?.sudDisclosureAllowed ?? true;
+        const allowSud = viewer?.sudDisclosureAllowed ?? false;
         const planProblems = probRows.map(problemDto);
         const hiddenIds = redactedSudProblemIds(planProblems, allowSud);
         const visibleProblems = filterVisibleProblems(planProblems, allowSud);
@@ -948,22 +1121,35 @@ export function createDbCarePlanRouteService(
     },
 
     // ── Version ledger reads ────────────────────────────────────────────────────────────────────────
-    async listVersions(org, planId) {
+    async getPlanPatientId(org, planId) {
+      // `care_plan.id` is a uuid column: a malformed path id is "no such plan", not a 22P02 → 500.
+      if (!UUID_PATTERN.test(planId)) return null;
+      return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
+        const [row] = await (tx as unknown as DbClient)
+          .select({ patientId: CP.patientId })
+          .from(CP)
+          .where(eq(CP.id, planId))
+          .limit(1);
+        return row?.patientId ?? null;
+      });
+    },
+
+    async listVersions(org, planId, viewer?: CarePlanViewer) {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const [p] = await t.select({ id: CP.id }).from(CP).where(eq(CP.id, planId)).limit(1);
         if (!p) throw new NotFoundError("care_plan", planId);
-        const items = await versionsForPlan(t, planId);
+        const items = await versionsForPlan(t, planId, viewer?.sudDisclosureAllowed ?? false);
         return { items, nextCursor: null };
       });
     },
-    async getVersion(org, planId, versionId) {
+    async getVersion(org, planId, versionId, viewer?: CarePlanViewer) {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const [p] = await t.select({ id: CP.id }).from(CP).where(eq(CP.id, planId)).limit(1);
         if (!p) throw new NotFoundError("care_plan", planId);
         const v = await loadVersion(t, planId, versionId);
-        return versionDto(v, await sigsFor(t, v.id));
+        return versionDto(v, await sigsFor(t, v.id), viewer?.sudDisclosureAllowed ?? false);
       });
     },
 
@@ -1016,12 +1202,18 @@ export function createDbCarePlanRouteService(
       });
     },
 
-    async getProposedChanges(org, planId, versionId) {
+    async getProposedChanges(org, planId, versionId, viewer?: CarePlanViewer) {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         await loadPlan(t, planId);
         const version = await loadVersion(t, planId, versionId);
-        const { applications, changes } = await loadIdgProposalBundle(t, versionId);
+        const bundle = await loadIdgProposalBundle(t, versionId);
+        const { applications } = bundle;
+        // §7.6: a caller without Part 2 disclosure sees no change anchored to a SUD-related problem.
+        const changes =
+          (viewer?.sudDisclosureAllowed ?? false)
+            ? bundle.changes
+            : await withoutSudAnchoredChanges(t, planId, bundle.changes);
         return {
           versionId,
           kind: version.kind,
@@ -1069,7 +1261,15 @@ export function createDbCarePlanRouteService(
           )
           .limit(1);
         const now = new Date(nowIso ?? new Date().toISOString());
-        const dueAt = plan.nextReviewDueAt;
+        const reviewTimeZone = await organizationTimezone(t, org);
+        // A plan signed before TASK-040D has a NULL due date: date it the way the overdue gate and the cron
+        // do, so this status never says "not due" about a plan those would block or alert on.
+        const effectiveDueAt = effectiveNextReviewDueAt(
+          plan.nextReviewDueAt?.toISOString() ?? null,
+          plan.initialSignedAt?.toISOString() ?? null,
+          reviewTimeZone,
+        );
+        const dueAt = effectiveDueAt ? new Date(effectiveDueAt) : null;
         let status: "not_due" | "due" | "overdue" | "review_in_progress" = "not_due";
         let overdueByDays = 0;
         if (open) {
@@ -1077,7 +1277,7 @@ export function createDbCarePlanRouteService(
         } else if (dueAt) {
           // D3 — "due" opens at the START of org-local day 13 (the same instant the review_due cron
           // alert uses), not `dueAt − 48h`, which lands on the last millisecond of day 13.
-          const leadAt = new Date(warningOpensAt(dueAt.toISOString()));
+          const leadAt = new Date(warningOpensAt(dueAt.toISOString(), reviewTimeZone));
           if (now.getTime() > dueAt.getTime()) {
             status = "overdue";
             overdueByDays = Math.floor((now.getTime() - dueAt.getTime()) / 86_400_000);
@@ -1098,7 +1298,7 @@ export function createDbCarePlanRouteService(
     },
 
     // ── Version lifecycle (§2.2.2 draft → in_review → signed) ────────────────────────────────────────
-    async createVersion(org, planId, kind, idgMeetingId) {
+    async createVersion(org, planId, kind, idgMeetingId, actor) {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const plan = await loadPlan(t, planId);
@@ -1121,6 +1321,7 @@ export function createDbCarePlanRouteService(
               status: "draft",
               idgMeetingId: idgMeetingId ?? null,
               requiredSignerSet: resolveRequiredSignerSet(kind),
+              draftedByMembershipId: actor?.membershipId ?? null,
             })
             .returning(),
           "care_plan_version insert returned no row",
@@ -1136,11 +1337,13 @@ export function createDbCarePlanRouteService(
     },
 
     async finalizeVersion(org, planId, versionId, ifVersion, set) {
-      return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
+      const outcome = await withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const plan = await loadPlan(t, planId);
+        // Same lock order as signVersion (plan, then version): the three writers of a version's IDG rows
+        // serialise instead of crossing (a sign and a return-to-draft otherwise deadlock on 40P01).
+        const plan = await loadPlan(t, planId, { lock: true });
         ensurePlanWritable(plan);
-        const v = await loadVersion(t, planId, versionId);
+        const v = await loadVersion(t, planId, versionId, { lock: true });
         checkOptimisticConcurrency(ifVersion, Number(v.version));
         if (v.status !== "draft") {
           throw new CarePlanStateError(
@@ -1156,16 +1359,19 @@ export function createDbCarePlanRouteService(
           // the requested set must COVER every floor slot, not merely be as long.
           requiredSignerSet = [...resolveTightenedSignerSet(resolveRequiredSignerSet(v.kind), set)];
         }
+        const snapshot =
+          v.kind === "idg_review"
+            ? await captureIdgCandidateSnapshot(t, planId, versionId)
+            : await captureStateSnapshot(t, planId);
+        // The conflict marker is already written; commit it, then surface the 409 (see below).
+        if ("conflict" in snapshot) return { conflict: snapshot.conflict } as const;
         const updated = firstOrThrow(
           await t
             .update(CPV)
             .set({
               status: "in_review",
               requiredSignerSet,
-              stateSnapshot:
-                v.kind === "idg_review"
-                  ? await captureIdgCandidateSnapshot(t, planId, versionId)
-                  : await captureStateSnapshot(t, planId),
+              stateSnapshot: snapshot,
               version: sql`${CPV.version} + 1`,
             })
             .where(and(eq(CPV.id, versionId), eq(CPV.version, ifVersion)))
@@ -1178,8 +1384,15 @@ export function createDbCarePlanRouteService(
             .set({ status: "in_review", inReviewAt: new Date() })
             .where(and(eq(IDG_APP.carePlanVersionId, versionId), eq(IDG_APP.status, "proposed")));
         }
-        return versionDto(updated, await sigsFor(t, versionId));
+        return { dto: versionDto(updated, await sigsFor(t, versionId)) } as const;
       });
+      // Thrown AFTER the commit so the application's `conflict` / `baseline_changed` state is durable.
+      if ("conflict" in outcome)
+        throw new CarePlanStateError(
+          "IDG_PROPOSAL_CONFLICT",
+          outcome.conflict ?? "the IDG proposal conflicts with the current care plan",
+        );
+      return outcome.dto;
     },
 
     async signVersion(
@@ -1192,146 +1405,182 @@ export function createDbCarePlanRouteService(
       actor: CarePlanSignActor,
       patientUnderstandingText?: string | null,
     ) {
-      return withOrgContext(db, { organizationId: org, userId: actor.userId }, async (tx) => {
-        const t = tx as unknown as DbClient;
-        const plan = await loadPlan(t, planId);
-        ensurePlanWritable(plan);
-        const v = await loadVersion(t, planId, versionId);
-        checkOptimisticConcurrency(ifVersion, Number(v.version));
-        if (v.status !== "in_review") {
-          throw new CarePlanStateError(
-            "ILLEGAL_TRANSITION",
-            `version cannot be signed from '${v.status}'`,
-          );
-        }
-        await requireReadyToSign(t, v);
-        // GAP-011 — bind the claimed slot (a BODY field) to the authenticated actor: they must hold the
-        // role, and one membership fills at most one slot per version.
-        assertActorHoldsSignerRole(actor.roles, signerRole);
-        const signedBy = await t
-          .select({ membershipId: SIG.membershipId })
-          .from(SIG)
-          .where(and(eq(SIG.carePlanVersionId, versionId), sql`${SIG.invalidatedAt} is null`));
-        assertMembershipNotAlreadySigned(
-          signedBy.map((r) => r.membershipId),
-          actor.membershipId,
-        );
-        const existing = await sigsFor(t, versionId);
-        const decision = decideRecordSignature(
-          v.requiredSignerSet as Parameters<typeof decideRecordSignature>[0],
-          existing.map((s) => s.signerRole) as Parameters<typeof decideRecordSignature>[1],
-          signerRole,
-        );
-        try {
-          await t.insert(SIG).values({
-            organizationId: org,
-            carePlanVersionId: versionId,
-            providerEntityId: v.providerEntityId,
-            locationId: v.locationId,
-            membershipId: actor.membershipId,
-            signerRole,
-            signatureMethod: "password_step_up",
-            signedAt: new Date(at),
-          });
-        } catch (err) {
-          // Two concurrent signs by one membership both pass the app-level check above; migration
-          // 0620's trigger is the backstop — surface it as the same 409, not a 500.
-          if (isSignerSlotCollision(err)) {
+      const outcome = await withOrgContext(
+        db,
+        { organizationId: org, userId: actor.userId },
+        async (tx) => {
+          const t = tx as unknown as DbClient;
+          // Lock order: plan, then version. The version lock serialises two last signers (each would
+          // otherwise see "one signature short" and leave the plan stuck in_review with a full quorum);
+          // the plan lock serialises sign → active against a concurrent m6.admission.discharged.
+          const plan = await loadPlan(t, planId, { lock: true });
+          ensurePlanWritable(plan);
+          const v = await loadVersion(t, planId, versionId, { lock: true });
+          checkOptimisticConcurrency(ifVersion, Number(v.version));
+          if (v.status !== "in_review") {
             throw new CarePlanStateError(
-              "SIGNER_ALREADY_SIGNED",
-              "this membership has already signed a slot of this version",
+              "ILLEGAL_TRANSITION",
+              `version cannot be signed from '${v.status}'`,
             );
           }
-          throw err;
-        }
-        let idgApplied: { applicationCount: number; changeCount: number } | null = null;
-        if (decision.quorumMet && v.kind === "idg_review") {
-          idgApplied = await applyIdgProposalChanges(t, {
-            org,
-            plan,
-            version: v,
-            at: new Date(at),
-          });
-        }
-        const updated = firstOrThrow(
-          await t
-            .update(CPV)
-            .set({
-              status: decision.quorumMet ? "signed" : "in_review",
-              signedAt: decision.quorumMet ? new Date(at) : null,
-              patientUnderstandingText:
-                patientUnderstandingText === undefined ? undefined : patientUnderstandingText,
-              version: sql`${CPV.version} + 1`,
-            })
-            .where(eq(CPV.id, versionId))
-            .returning(),
-          "version sign matched no row",
-        );
-        if (decision.quorumMet) {
-          if (plan.activeVersionId && plan.activeVersionId !== versionId) {
+          await requireReadyToSign(t, v);
+          // GAP-011 — bind the claimed slot (a BODY field) to the authenticated actor: they must hold the
+          // role, and one membership fills at most one slot per version.
+          assertActorHoldsSignerRole(actor.roles, signerRole);
+          const signedBy = await t
+            .select({ membershipId: SIG.membershipId })
+            .from(SIG)
+            .where(and(eq(SIG.carePlanVersionId, versionId), sql`${SIG.invalidatedAt} is null`));
+          assertMembershipNotAlreadySigned(
+            signedBy.map((r) => r.membershipId),
+            actor.membershipId,
+          );
+          const existing = await sigsFor(t, versionId);
+          const decision = decideRecordSignature(
+            v.requiredSignerSet as Parameters<typeof decideRecordSignature>[0],
+            existing.map((s) => s.signerRole) as Parameters<typeof decideRecordSignature>[1],
+            signerRole,
+          );
+          if (decision.quorumMet && v.kind === "idg_review") {
+            // Before the quorum signature goes in: a moved plan persists `conflict` and commits WITHOUT it.
+            const conflict = await markIdgBaselineConflict(t, planId, versionId);
+            if (conflict) return { conflict } as const;
+          }
+          try {
+            await t.insert(SIG).values({
+              organizationId: org,
+              carePlanVersionId: versionId,
+              providerEntityId: v.providerEntityId,
+              locationId: v.locationId,
+              membershipId: actor.membershipId,
+              signerRole,
+              signatureMethod: actor.signatureMethod ?? "password_step_up",
+              signedAt: new Date(at),
+            });
+          } catch (err) {
+            // Two concurrent signs by one membership (or for one role) both pass the app-level checks
+            // above; migration 0620's trigger / the one-live-signature-per-role index are the backstops —
+            // surface them as the same 409, not a 500.
+            if (isSignerSlotCollision(err)) {
+              throw new CarePlanStateError(
+                "SIGNER_ALREADY_SIGNED",
+                "this membership has already signed a slot of this version",
+              );
+            }
+            if (isSignerRoleCollision(err)) {
+              throw new CarePlanStateError(
+                "DUPLICATE_SIGNER_ROLE",
+                "this signer role has already signed this version",
+              );
+            }
+            throw err;
+          }
+          let idgApplied: { applicationCount: number; changeCount: number } | null = null;
+          if (decision.quorumMet && v.kind === "idg_review") {
+            idgApplied = await applyIdgProposalChanges(t, {
+              org,
+              plan,
+              version: v,
+              at: new Date(at),
+            });
+          }
+          const updated = firstOrThrow(
             await t
               .update(CPV)
               .set({
-                status: "superseded",
-                supersededAt: new Date(at),
+                status: decision.quorumMet ? "signed" : "in_review",
+                signedAt: decision.quorumMet ? new Date(at) : null,
+                patientUnderstandingText:
+                  patientUnderstandingText === undefined ? undefined : patientUnderstandingText,
                 version: sql`${CPV.version} + 1`,
               })
-              .where(and(eq(CPV.id, plan.activeVersionId), eq(CPV.status, "signed")));
-          }
-          // The last required signature activates the plan and pins the active version (§2.2.2).
-          // TASK-040D (mig 0161) — gate-clock.ts's own doc comment says computeNextReviewDueAt is
-          // "called on every version_signed (initial and each IDG review) so the review clock re-arms
-          // from the most recent signature", but nothing ever called it — nextReviewDueAt stayed NULL
-          // forever, silently no-opping the §7.2 review-gate cron scan regardless of whether it runs.
-          // Recomputing it here on EVERY sign (not just review) + resetting the two emission markers is
-          // what makes planReviewGateScan (jobs/index.ts) do anything once TASK-040D's worker is live.
-          await t
-            .update(CP)
-            .set({
-              status: "active",
-              activeVersionId: versionId,
-              version: sql`${CP.version} + 1`,
-              updatedAt: new Date(),
-              nextReviewDueAt: new Date(computeNextReviewDueAt(at)),
-              reviewDueEmitted: false,
-              reviewOverdueEmitted: false,
-              ...(v.kind === "initial" ? { initialSignedAt: new Date(at) } : {}),
-            })
-            .where(eq(CP.id, planId));
-          await emit(t, org, "m7.care_plan.version_signed", "care_plan_version", versionId, {
-            planId,
-            versionId,
-            patientId: plan.patientId,
-            admissionId: plan.admissionId,
-            kind: v.kind,
-            snapshotRef: versionId,
-          });
-          if (idgApplied) {
-            await emit(
-              t,
-              org,
-              "m7.care_plan.idg_proposal_applied",
-              "care_plan_version",
-              versionId,
-              {
-                planId,
-                versionId,
-                appliedProposalCount: idgApplied.applicationCount,
-                appliedChangeCount: idgApplied.changeCount,
-              },
+              .where(and(eq(CPV.id, versionId), eq(CPV.version, Number(v.version))))
+              .returning(),
+            "version sign matched no row (stale write)",
+          );
+          if (decision.quorumMet) {
+            if (plan.activeVersionId && plan.activeVersionId !== versionId) {
+              await t
+                .update(CPV)
+                .set({
+                  status: "superseded",
+                  supersededAt: new Date(at),
+                  version: sql`${CPV.version} + 1`,
+                })
+                .where(and(eq(CPV.id, plan.activeVersionId), eq(CPV.status, "signed")));
+            }
+            // The last required signature activates the plan and pins the active version (§2.2.2). The
+            // review clock (§7.2, gate-clock.ts: "initial and idg_review") re-arms from this signature only
+            // for those two kinds — an interim revision / discharge version does not push the 15-day review
+            // out — and re-arming resets the two emission markers so the §7.2 gate cron fires again.
+            const rearmReviewClock = v.kind === "initial" || v.kind === "idg_review";
+            firstOrThrow(
+              await t
+                .update(CP)
+                .set({
+                  status: "active",
+                  activeVersionId: versionId,
+                  version: sql`${CP.version} + 1`,
+                  updatedAt: new Date(),
+                  ...(rearmReviewClock
+                    ? {
+                        nextReviewDueAt: new Date(
+                          computeNextReviewDueAt(at, await organizationTimezone(t, org)),
+                        ),
+                        reviewDueEmitted: false,
+                        reviewOverdueEmitted: false,
+                      }
+                    : {}),
+                  ...(v.kind === "initial" ? { initialSignedAt: new Date(at) } : {}),
+                })
+                // A discharge that committed between the plan read and here must not be overwritten
+                // back to active (the plan row is locked above; this is the belt to that brace).
+                .where(and(eq(CP.id, planId), ne(CP.status, "discharged")))
+                .returning({ id: CP.id }),
+              "care_plan was discharged while the version was being signed",
             );
+            await emit(t, org, "m7.care_plan.version_signed", "care_plan_version", versionId, {
+              planId,
+              versionId,
+              patientId: plan.patientId,
+              admissionId: plan.admissionId,
+              kind: v.kind,
+              snapshotRef: versionId,
+            });
+            if (idgApplied) {
+              await emit(
+                t,
+                org,
+                "m7.care_plan.idg_proposal_applied",
+                "care_plan_version",
+                versionId,
+                {
+                  planId,
+                  versionId,
+                  appliedProposalCount: idgApplied.applicationCount,
+                  appliedChangeCount: idgApplied.changeCount,
+                },
+              );
+            }
           }
-        }
-        return versionDto(updated, await sigsFor(t, versionId));
-      });
+          return { dto: versionDto(updated, await sigsFor(t, versionId)) } as const;
+        },
+      );
+      if ("conflict" in outcome)
+        throw new CarePlanStateError(
+          "IDG_PROPOSAL_CONFLICT",
+          outcome.conflict ?? "the IDG proposal conflicts with the current care plan",
+        );
+      return outcome.dto;
     },
 
     async returnVersionToDraft(org, planId, versionId, ifVersion) {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const plan = await loadPlan(t, planId);
+        // Same lock order as signVersion (plan, then version) — see finalizeVersion.
+        const plan = await loadPlan(t, planId, { lock: true });
         ensurePlanWritable(plan);
-        const v = await loadVersion(t, planId, versionId);
+        const v = await loadVersion(t, planId, versionId, { lock: true });
         checkOptimisticConcurrency(ifVersion, Number(v.version));
         if (v.status !== "in_review") {
           throw new CarePlanStateError(
@@ -1375,7 +1624,12 @@ export function createDbCarePlanRouteService(
     },
 
     // ── Problems (§2.2.3) ────────────────────────────────────────────────────────────────────────────
-    async addProblem(org, planId, body: CreateProblemInput): Promise<ElementResult> {
+    async addProblem(
+      org,
+      planId,
+      body: CreateProblemInput,
+      actor?: CarePlanWriteActor,
+    ): Promise<ElementResult> {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const plan = await loadPlan(t, planId);
@@ -1394,7 +1648,9 @@ export function createDbCarePlanRouteService(
               kind: body.kind,
               source: body.source,
               sudRelated: body.sudRelated ?? false,
+              onsetAt: body.onsetAt ? new Date(body.onsetAt) : null,
               status: "active",
+              addedByMembershipId: actor?.membershipId ?? null,
             })
             .returning(),
           "problem insert returned no row",
@@ -1418,6 +1674,7 @@ export function createDbCarePlanRouteService(
         ensurePlanWritable(plan);
         const row = await loadProblem(t, planId, problemId);
         checkOptimisticConcurrency(ifVersion, Number(row.version));
+        assertProblemEditable(row.status); // resolved/inactive are terminal history (§2.2.3)
         const updated = firstOrThrow(
           await t
             .update(PROB)
@@ -1452,11 +1709,13 @@ export function createDbCarePlanRouteService(
         ensurePlanWritable(plan);
         const row = await loadProblem(t, planId, problemId);
         checkOptimisticConcurrency(ifVersion, Number(row.version));
+        // active → resolved only: a re-POST must not overwrite resolutionNote/resolvedAt or re-emit the event.
+        const nextStatus = resolveProblemStatus(row.status, note);
         const updated = firstOrThrow(
           await t
             .update(PROB)
             .set({
-              status: "resolved",
+              status: nextStatus,
               resolutionNote: note,
               resolvedAt: new Date(),
               version: sql`${PROB.version} + 1`,
@@ -1478,7 +1737,13 @@ export function createDbCarePlanRouteService(
     },
 
     // ── Goals (§2.2.3 / §7.3 verbatim / D6) ──────────────────────────────────────────────────────────
-    async addGoal(org, planId, body: CreateGoalInput, dpoaConsentActive) {
+    async addGoal(
+      org,
+      planId,
+      body: CreateGoalInput,
+      dpoaConsentActive,
+      actor?: CarePlanWriteActor,
+    ) {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const plan = await loadPlan(t, planId);
@@ -1496,6 +1761,9 @@ export function createDbCarePlanRouteService(
             "an agent-stated goal requires an active dpoa_healthcare consent",
           );
         }
+        // The FK on goal.problem_id bypasses RLS, so a uuid of another plan's/tenant's problem would be
+        // accepted: the problem must be one of THIS plan's (404 otherwise).
+        await loadProblem(t, planId, body.problemId);
         const g = firstOrThrow(
           await t
             .insert(GOAL)
@@ -1509,7 +1777,9 @@ export function createDbCarePlanRouteService(
               source: body.source,
               actingConsentId: body.actingConsentId ?? null,
               measurableOutcome: body.measurableOutcome ?? null,
+              targetAt: body.targetAt ? new Date(body.targetAt) : null,
               status: "not_started",
+              addedByMembershipId: actor?.membershipId ?? null,
             })
             .returning(),
           "goal insert returned no row",
@@ -1538,13 +1808,15 @@ export function createDbCarePlanRouteService(
           isUpdate: true,
           mutatingOriginalText: false,
         });
+        const nextStatus = guardGoalStatusChange(row.status, body.status); // §2.2.3 graph; terminal → 409
         const updated = firstOrThrow(
           await t
             .update(GOAL)
             .set({
               revisedText: body.revisedText,
               measurableOutcome: body.measurableOutcome,
-              status: body.status,
+              targetAt: body.targetAt ? new Date(body.targetAt) : undefined,
+              status: nextStatus,
               version: sql`${GOAL.version} + 1`,
               updatedAt: new Date(),
             })
@@ -1575,6 +1847,7 @@ export function createDbCarePlanRouteService(
       planId,
       body: CreateInterventionInput,
       authoring?: AuthoringDisciplineScope,
+      actor?: CarePlanWriteActor,
     ) {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
@@ -1584,6 +1857,18 @@ export function createDbCarePlanRouteService(
         if (authoring) assertDisciplineScope(authoring, body.discipline);
         checkInterventionReferencesProblem(body.problemId);
         checkInterventionFrequency(body.frequencyValue);
+        // Same RLS-bypassing FK hole as goals: the problem and every goalRef must be THIS plan's.
+        await loadProblem(t, planId, body.problemId);
+        const goalRefs = [...new Set(body.goalRefs ?? [])];
+        if (goalRefs.length > 0) {
+          const found = await t
+            .select({ id: GOAL.id })
+            .from(GOAL)
+            .where(and(eq(GOAL.carePlanId, planId), inArray(GOAL.id, goalRefs)));
+          const foundIds = new Set(found.map((g) => g.id));
+          const missing = goalRefs.find((id) => !foundIds.has(id));
+          if (missing) throw new NotFoundError("goal", missing);
+        }
         const i = firstOrThrow(
           await t
             .insert(INTV)
@@ -1593,13 +1878,14 @@ export function createDbCarePlanRouteService(
               providerEntityId: plan.providerEntityId,
               locationId: plan.locationId,
               problemId: body.problemId,
-              goalRefs: [...(body.goalRefs ?? [])],
+              goalRefs,
               scopeText: body.scopeText,
               frequencyText: body.frequencyText,
               frequencyValue: body.frequencyValue,
               discipline: body.discipline,
               responsibleRole: body.responsibleRole ?? null,
               status: "active",
+              addedByMembershipId: actor?.membershipId ?? null,
             })
             .returning(),
           "intervention insert returned no row",
@@ -1614,12 +1900,22 @@ export function createDbCarePlanRouteService(
       });
     },
 
-    async patchIntervention(org, planId, interventionId, ifVersion, body: PatchInterventionInput) {
+    async patchIntervention(
+      org,
+      planId,
+      interventionId,
+      ifVersion,
+      body: PatchInterventionInput,
+      authoring?: AuthoringDisciplineScope,
+    ) {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         ensurePlanWritable(await loadPlan(t, planId));
         const row = await loadIntervention(t, planId, interventionId);
         checkOptimisticConcurrency(ifVersion, Number(row.version));
+        // §7.4: the actor's discipline must cover the intervention's OWN discipline (create checks the body's).
+        if (authoring) assertDisciplineScope(authoring, row.discipline);
+        assertInterventionEditable(row.status);
         if (body.frequencyValue !== undefined) checkInterventionFrequency(body.frequencyValue);
         const updated = firstOrThrow(
           await t
@@ -1646,18 +1942,27 @@ export function createDbCarePlanRouteService(
       });
     },
 
-    async discontinueIntervention(org, planId, interventionId, ifVersion, _reason) {
+    async discontinueIntervention(
+      org,
+      planId,
+      interventionId,
+      ifVersion,
+      reason,
+      authoring?: AuthoringDisciplineScope,
+    ) {
       return withOrgContext(db, { organizationId: org, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         ensurePlanWritable(await loadPlan(t, planId));
         const row = await loadIntervention(t, planId, interventionId);
         checkOptimisticConcurrency(ifVersion, Number(row.version));
+        if (authoring) assertDisciplineScope(authoring, row.discipline);
+        const nextStatus = discontinueInterventionStatus(row.status, reason); // active → discontinued only
         const updated = firstOrThrow(
           await t
             .update(INTV)
             .set({
-              status: "discontinued",
-              discontinueReason: _reason,
+              status: nextStatus,
+              discontinueReason: reason,
               version: sql`${INTV.version} + 1`,
               updatedAt: new Date(),
             })

@@ -10,6 +10,7 @@ import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
 import {
   type IdgApplyFacts,
   type ParsedDisciplineMutation,
+  choosePlanForDecision,
   decideDisciplinePlanDecision,
   parseDisciplinePlanDecision,
 } from "../src/modules/15-discipline-care-plans/index";
@@ -286,5 +287,60 @@ describe("the M14 discipline_plan_update envelope arm", () => {
       eventName: "m15.idg_decision.applied",
       consumerName: "m14.m15-idg-decision-applied",
     });
+  });
+});
+
+describe("choosePlanForDecision (readmission: one plan of a kind per admission)", () => {
+  const plan = (id: string, admissionId: string, status: string, day: number) => ({
+    id,
+    admissionId,
+    status,
+    createdAt: new Date(Date.UTC(2026, 0, day)),
+  });
+  const oldLive = plan("old", "adm-1", "active", 1); // a stale undischarged plan of the FIRST admission
+  const newLive = plan("new", "adm-2", "draft_revising", 20);
+  const oldDischarged = plan("old-d", "adm-1", "discharged", 1);
+
+  it("prefers the newest live plan, whatever order the rows arrive in", () => {
+    expect(choosePlanForDecision([oldLive, newLive], null)?.id).toBe("new");
+    expect(choosePlanForDecision([newLive, oldLive], null)?.id).toBe("new");
+  });
+
+  it("scopes to the decision's own admission when the event names it", () => {
+    expect(choosePlanForDecision([oldLive, newLive], "adm-1")?.id).toBe("old");
+    expect(choosePlanForDecision([oldLive, newLive], "adm-2")?.id).toBe("new");
+    expect(choosePlanForDecision([oldLive, newLive], "adm-9")).toBeNull();
+  });
+
+  it("prefers a live plan over a discharged one, and falls back to the newest discharged", () => {
+    expect(choosePlanForDecision([oldDischarged, newLive], null)?.id).toBe("new");
+    const dischargedNew = plan("new-d", "adm-2", "discharged", 30);
+    expect(choosePlanForDecision([oldDischarged, dischargedNew], null)?.id).toBe("new-d");
+  });
+
+  it("is null when the patient has no plan of the kind", () => {
+    expect(choosePlanForDecision([], null)).toBeNull();
+  });
+});
+
+describe("parseDisciplinePlanDecision — admissionId", () => {
+  const base = {
+    decisionId: "d1",
+    meetingId: "m1",
+    patientId: "p1",
+    organizationId: ORG,
+    payloadSchemaVersion: "2026-01-v1",
+    recordedByMembershipId: "u1",
+    payload: {
+      kind: "discipline_plan_update",
+      planKind: "msw_plan",
+      mutations: [{ op: "intervention_discontinue", interventionId: INTERVENTION, reason: "r" }],
+    },
+  };
+  it("is null until M14 emits it, and carried through when present", () => {
+    expect(parseDisciplinePlanDecision(ORG, base)?.admissionId).toBeNull();
+    expect(parseDisciplinePlanDecision(ORG, { ...base, admissionId: "adm-2" })?.admissionId).toBe(
+      "adm-2",
+    );
   });
 });

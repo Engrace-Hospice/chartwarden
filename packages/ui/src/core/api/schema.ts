@@ -57981,6 +57981,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     problemId: string;
                     originalText: string;
                     source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
@@ -58054,6 +58055,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     problemId: string;
                     goalRefs?: string[];
                     scopeText: string;
