@@ -585,6 +585,20 @@ document" at the end.
   a command built at run time (`psql -c "$CMD"`), SQL that makes the SERVER write or run something (`COPY … TO PROGRAM`, `INTO OUTFILE`),
   and a client the table does not name (`litecli`, `usql`, `pgcli` through an alias). Corpus cost: 1 allow to ask in 124,400 real
   commands, the round-5 reviewer's own `.shell` demonstration.
+- *Siblings of the tree sweeps* (`sibling-sweeps.ts`, `harness-sibling-sweeps.test.ts`, ADV5-3). Each is rewritten into the
+  command line it is the sibling of, and that line is judged by the machinery the original already has (operand placement,
+  narrowing by a source-file name test, a write onto a protected path): `ack` (recursive, reads no .gitignore) as `grep -r`, `ag`
+  with `-u`, `-U`, `--unrestricted`, `--skip-vcs-ignores` or `--hidden` as `rg -u`, `fd -x`/`--exec` and `-X`/`--exec-batch` as `find
+  … -exec` (`-e ts` narrows it, as `-name '*.ts'` does for find; one non-source extension such as `env` does not), `find … | cpio -p
+  DEST` and `pax -rw SRC DEST` as `cp -r`, `pax -w` and `find … | cpio -o` as `tar c`. A reason says which sibling it judged and as
+  what. **What reproduced and what did not** (checked on this machine, fd 10.4.2 and macOS's cpio and pax): `find . -depth -print |
+  cpio -pdm DEST` and `pax -rw . DEST` copy a hidden gitignored file, so they ask like `cp -r`. `fd` and `ag` skip gitignored files by
+  default (the repo's ignore list names `.env`), so a plain `fd -H … -x cat` or `ag -l X .` does not reach a live env file there, while
+  `fd -u`/`-I` and `ag -u` do; `fd -x` asks over the root like `find -exec` anyway (the guard does not read a repo's ignore rules),
+  and a plain `ag` stays allowed as a plain `rg` is (`ag` is not installed here: its default is from its documentation). `ag
+  --version`, `ack --version`, `fd -e ts`, `fd pattern src`, `cpio -t < archive`, `pax -r < archive` and a sweep of a directory
+  that holds no live env file are not asked. **Not decided by text:** the names a `cpio` or `pax` reads from standard input when
+  no `find` feeds it in the same pipeline (`cat list | cpio -o`, `git ls-files | cpio -p`), and an `fd` run from `--base-directory`.
 
 **Shell lexing.** `scripts/harness/shell-lex.ts` reads a command once, in one linear pass, before any rule
 runs; the line splitter, the redirection reader and the substitution scan all use its result, so a quote, an

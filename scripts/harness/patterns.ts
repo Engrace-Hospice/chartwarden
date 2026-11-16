@@ -84,6 +84,7 @@ import {
   scanShell,
   splitCommand,
 } from "./shell-lex";
+import { siblingCommands } from "./sibling-sweeps";
 import { isToolchainPath } from "./toolchain-paths";
 import { type SweepDepth, diffSweepOperands, gitDiffSweepOperands } from "./tree-sweep";
 import {
@@ -1130,6 +1131,29 @@ function dbClientVerdicts(
 }
 
 /**
+ * A sibling of a whole-tree sweep (`ack`, `ag -u`, `fd -x`, `find … | cpio -p`, `pax -rw`) is judged as the command it
+ * is a sibling of (`sibling-sweeps.ts`); the nested answer keeps its decision and says which sibling it was.
+ */
+function siblingSweepVerdicts(
+  parts: readonly Segment[],
+  parsed: readonly Parsed[],
+  index: number,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const p = parsed[index] as Parsed;
+  const before = parts[index]?.joiner === "|" ? parsed[index - 1] : undefined;
+  const feeder = before ? { prog: before.prog, args: before.args } : null;
+  return siblingCommands(p.prog, p.args, feeder).map(({ text, label }) => {
+    const v = judge(text, ctx, depth + 1, here);
+    return v.decision === "allow"
+      ? v
+      : { ...v, reason: `\`${p.prog}\` is judged as \`${label}\`. ${v.reason}` };
+  });
+}
+
+/**
  * Command lines git and the variables it honours hand to a shell (`git rebase -x '…'`, `git bisect run …`,
  * `EDITOR='…' git commit`), each judged as a command line; and what the git-related variables set, or a global
  * option that re-points git, call for (`git-exec-strings.ts`).
@@ -1295,6 +1319,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     verdicts.push(
       ...dbClientVerdicts(parts, parsedParts, index, bodiesByPart[index] ?? [], here, ctx),
     );
+    verdicts.push(...siblingSweepVerdicts(parts, parsedParts, index, ctx, depth, here));
     // `$(true)git push --no-verify`: the program's name is built at run time, so it is a command the guard cannot
     // name. The literal rest of the word is judged as the program it would be (a deny stands), and a human decides.
     // A word that is one substitution and nothing else is the `eval "$(ssh-agent -s)"` idiom (no arguments) or an
