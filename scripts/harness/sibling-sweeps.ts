@@ -22,6 +22,14 @@ export interface SiblingCommand {
 }
 
 const quoted = (words: readonly string[]): string => words.map(shellQuote).join(" ");
+
+/**
+ * What `find … -exec PROG {}` can run on every file besides a reader: an archiver or a copier carries each file's content out
+ * (`-exec tar rf /tmp/o.tar {} +`, `-exec cp {} /tmp/x ;`). Over a tree that holds a live env file each asks, like `-exec cat`
+ * (wave 10, B12). A shell (`-exec sh -c 'cat "$1"' _ {} ;`) is one when the string it runs holds one of these or a reader.
+ */
+export const EXEC_SWEEP_READER =
+  /^(?:tar|zip|7z|7za|7zr|7zz|cpio|pax|rsync|cp|scp|ditto|gzip|bzip2|xz|zstd|openssl)$/;
 const isOption = (a: string): boolean => a.startsWith("-");
 /** `--version`, `--help` and the like: nothing is searched. */
 const INFORMATION = /^(?:-V|--help|--version|--man|--help-types)$/;
@@ -221,14 +229,51 @@ const archive = (sources: readonly string[]): SiblingCommand => ({
   label: "tar c",
 });
 
-function cpioSibling(args: readonly string[], feeder: Feeder | null): SiblingCommand[] {
-  const starts = findStarts(feeder);
-  if (starts === null) return []; // the names come from a list the guard cannot see
+/** The names a here-string or an `echo`/`printf` before the reader hands it (`cpio -p dest <<< .`, `echo . | cpio -p dest`). */
+function namedInput(feeder: Feeder | null, hereStrings: readonly string[]): string[] | null {
+  if (feeder?.prog === "echo" || feeder?.prog === "printf") {
+    const words = feeder.args.filter((a) => !isOption(a));
+    if (words.length > 0) return words;
+  }
+  const words = hereStrings.flatMap((text) => text.split(/\s+/).filter((w) => w !== ""));
+  return words.length > 0 ? words : null;
+}
+
+function cpioSibling(
+  args: readonly string[],
+  feeder: Feeder | null,
+  hereStrings: readonly string[],
+): SiblingCommand[] {
+  // The names come from a `find`, an `echo` or a here-string; a list the guard cannot see (a file, another command) is unread.
+  const starts = findStarts(feeder) ?? namedInput(feeder, hereStrings);
+  if (starts === null) return [];
   if (hasLetter(args, "p", "--pass-through")) {
     const dest = operandsOf(args, CPIO_VALUE_SHORT)[0];
     return dest === undefined ? [] : [copyOut(starts, dest)];
   }
   return hasLetter(args, "o", "--create") ? [archive(starts)] : [];
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// 7z a and hdiutil create -srcfolder: archive a tree
+// ---------------------------------------------------------------------------------------------------------
+
+const SEVEN_ZIP = /^(?:7z|7za|7zr|7zz|7zip|p7zip)$/;
+/** `7z a ARCHIVE SRC…`: the command word, then the archive, then the sources; its options (`-mx=9`, `-pSECRET`, `-r`) carry their own values. */
+function sevenZipSibling(args: readonly string[]): SiblingCommand[] {
+  const operands = args.filter((a) => !isOption(a));
+  if (!/^(?:a|u)$/.test(operands[0] ?? "")) return [];
+  const sources = operands.slice(2);
+  return sources.length === 0 ? [] : [archive(sources)];
+}
+
+/** `hdiutil create -srcfolder DIR OUT`: an image of every file under DIR (`-srcdir` is the same). */
+function hdiutilSibling(args: readonly string[]): SiblingCommand[] {
+  if (args[0] !== "create") return [];
+  const sources = args.flatMap((a, k) =>
+    /^-(?:srcfolder|srcdir)$/.test(a) ? [args[k + 1] ?? "."] : [],
+  );
+  return sources.length === 0 ? [] : [archive(sources)];
 }
 
 function paxSibling(args: readonly string[], feeder: Feeder | null): SiblingCommand[] {
@@ -250,12 +295,14 @@ function paxSibling(args: readonly string[], feeder: Feeder | null): SiblingComm
 /**
  * The command lines to judge in place of `prog args`, when it is a sibling of a tree sweep and reaches the tree: `ack`
  * as `grep -r`, `ag` with an ignore-disabling flag as `rg -u`, `fd -x`/`-X` as `find -exec`, `cpio -p`/`-o` and
- * `pax -rw`/`-w` as `cp -r` and `tar c` over the tree a `find` feeds them. None for anything else.
+ * `pax -rw`/`-w` as `cp -r` and `tar c` over the tree a `find` (or an `echo`, or a here-string: `cpio -pdm D <<< .`) feeds them,
+ * and `7z a` and `hdiutil create -srcfolder` as `tar c` of their sources. None for anything else.
  */
 export function siblingCommands(
   prog: string,
   args: readonly string[],
   feeder: Feeder | null,
+  hereStrings: readonly string[] = [],
 ): SiblingCommand[] {
   if (prog === "ack" || prog === "ag") return searchSibling(prog, args);
   if ((prog === "ugrep" || prog === "zgrep") && args.some((a) => RECURSIVE_FLAG.test(a))) {
@@ -275,7 +322,9 @@ export function siblingCommands(
   }
   if (prog === "scp") return scpSibling(args);
   if (prog === "fd") return fdSibling(args);
-  if (prog === "cpio") return cpioSibling(args, feeder);
+  if (prog === "cpio") return cpioSibling(args, feeder, hereStrings);
+  if (SEVEN_ZIP.test(prog)) return sevenZipSibling(args);
+  if (prog === "hdiutil") return hdiutilSibling(args);
   if (prog === "pax") return paxSibling(args, feeder);
   return [];
 }

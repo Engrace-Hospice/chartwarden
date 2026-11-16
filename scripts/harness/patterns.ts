@@ -24,6 +24,7 @@ import { hasBareBraceGroup } from "./bare-braces";
 import { clientFindings, clientTexts, isDbClient } from "./db-client-escapes";
 import { environmentDumpReason } from "./env-dump";
 import { assignsHookVariable, isAgentSpawn, loaderEnvReason } from "./env-hazards";
+import { listedFiles } from "./file-list-options";
 import {
   SAFE_SOURCE_NAME,
   execCommandWrites,
@@ -71,6 +72,7 @@ import { programOptionReason } from "./option-commands";
 import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
 import { isPackageScript, setPackageScriptsReader } from "./package-scripts";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
+import { persistenceReason } from "./persistence-commands";
 import {
   protectedDirectories,
   protectedNameSamples,
@@ -105,6 +107,7 @@ import {
   scanShell,
   splitCommand,
 } from "./shell-lex";
+import { EXEC_SWEEP_READER } from "./sibling-sweeps";
 import { siblingCommands } from "./sibling-sweeps";
 import { readTar } from "./tar-grammar";
 import { isToolchainPath } from "./toolchain-paths";
@@ -154,6 +157,7 @@ export {
   describeFindings,
 } from "./content-scan";
 import { LOCAL_HOST, MBI, scanContent, secretPathReason } from "./content-scan";
+import { anyProgramTarget } from "./db-any-program";
 import { connectTargetOf } from "./db-connect-commands";
 import { type DatabaseTarget, databaseTarget, databaseTargetReason } from "./db-target";
 import { variableStatementWords } from "./db-variables";
@@ -966,7 +970,7 @@ function siblingSweepVerdicts(
   const p = parsed[index] as Parsed;
   const before = parts[index]?.joiner === "|" ? parsed[index - 1] : undefined;
   const feeder = before ? { prog: before.prog, args: before.args } : null;
-  return siblingCommands(p.prog, p.args, feeder).map(({ text, label }) => {
+  return siblingCommands(p.prog, p.args, feeder, p.strings).map(({ text, label }) => {
     const v = judge(text, ctx, depth + 1, here);
     return v.decision === "allow"
       ? v
@@ -2397,6 +2401,20 @@ function copyOutVerdict(
     : null;
 }
 
+const isFileReader = (program: string): boolean =>
+  FILE_READER.test(program) || EXEC_SWEEP_READER.test(program);
+
+/** Does the command a `find -exec` runs read (or carry out) the file it is handed: a reader, or a shell whose string holds one? */
+function execReadsFiles(words: readonly string[]): boolean {
+  const parsed = parseSegment(words.map(shellQuote).join(" "));
+  if (isFileReader(parsed.prog)) return true;
+  if (!SHELL_PROGRAM.test(parsed.prog)) return false;
+  const script = parsed.args[parsed.args.findIndex((a) => /^-[a-z]*c$/.test(a)) + 1];
+  return (
+    script !== undefined && segments(script).some((seg) => isFileReader(parseSegment(seg).prog))
+  );
+}
+
 /** `find . -type f -exec cat {} +`: every file under the start paths is read, live env files included. */
 function findReadVerdict(
   prog: string,
@@ -2407,11 +2425,9 @@ function findReadVerdict(
   if (prog !== "find") return null;
   // The expression is read as a boolean one (find-expr.ts): a name test for a source-file type limits a reader only when
   // it is ANDed in front of it, and `-o` narrows nothing (`find . -name '*.ts' -o -type f -exec cat {} +`).
-  const readers = findActions(
-    args,
-    (words) => FILE_READER.test(parseSegment(words.map(shellQuote).join(" ")).prog),
-    narrowsToSourceFiles,
-  ).filter((action) => action.kind === "exec" && !action.narrowed);
+  const readers = findActions(args, execReadsFiles, narrowsToSourceFiles).filter(
+    (action) => action.kind === "exec" && !action.narrowed,
+  );
   if (readers.length === 0) return null;
   let k = 0;
   while (/^-[HLP]$/.test(args[k] ?? "")) k++;
@@ -2811,6 +2827,8 @@ function classifySegment(
 
   const launchd = launchctlReason(prog, args);
   if (launchd !== null) return ask(launchd);
+  const persists = persistenceReason(prog, args, parsed.strings);
+  if (persists !== null) return ask(persists);
   const optionProgram = programOptionReason(prog, args);
   if (optionProgram !== null) return ask(optionProgram);
 
@@ -2856,6 +2874,16 @@ function classifySegment(
   // --- A file name the guard cannot evaluate, handed to a program that prints files.
   const indirect = dynamicReaderVerdict(prog, args, ins);
   if (indirect) return indirect;
+
+  // --- A file whose lines a program reads as names or code and prints in an error (`file -f F`, `wc --files0-from=F`).
+  for (const listed of listedFiles(prog, args)) {
+    const why = secretPathReason(listed);
+    if (why) {
+      return deny(
+        `\`${echo(listed)}\` is ${why}. \`${echo(prog)}\` reads it line by line and prints the lines it cannot use. Agents do not read secrets or dumps.`,
+      );
+    }
+  }
 
   // --- Secret files read through the shell (the Read tool is blocked separately).
   if (
@@ -2919,6 +2947,9 @@ function classifySegment(
   // --- Production data access. An agent session connecting to a non-local database is PHI access (`db-target.ts`).
   const dbTarget = databaseTarget(prog, args, assigns, variableStatements);
   if (dbTarget) return databaseTargetVerdict(dbTarget);
+  // A program the table does not name, started with a database variable or URL that names a remote host (`db-any-program.ts`).
+  const anyTarget = anyProgramTarget(prog, args, assigns, variableStatements);
+  if (anyTarget) return databaseTargetVerdict(anyTarget);
 
   // --- Remote shells: production access must be a human decision every time.
   if (/^(ssh|scp|sftp|rsync)$/.test(prog)) {
