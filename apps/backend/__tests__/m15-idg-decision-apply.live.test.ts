@@ -21,7 +21,8 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
-import { withOrgContext } from "@chartwarden/tenancy";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
@@ -36,8 +37,15 @@ import { M14_OUTBOX_EVENTS, buildM14DecisionAppliedConsumer } from "../src/modul
 import { buildM15AdmissionDischargedConsumer } from "../src/modules/15-discipline-care-plans/consumers/m6-admission-discharged";
 import {
   M15_OUTBOX_EVENTS,
+  buildDrizzleM15ReadService,
+  buildDrizzleM15WriteService,
   buildM15IdgDecisionConsumer,
+  createDrizzleDisciplinePlanSeamStore,
 } from "../src/modules/15-discipline-care-plans/index";
+import {
+  type DisclosurePort,
+  systemM15Actor,
+} from "../src/modules/15-discipline-care-plans/routes/index";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -948,6 +956,223 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
       await discharged(await admissionOf(foreign.planId), ORG_A);
       expect((await planRow(foreign.planId)).status).toBe("active");
       expect(await dischargedEvents(foreign.planId)).toHaveLength(0);
+    });
+  });
+
+  // ── 42 CFR Part 2 / family violence on the M15 write results and reads (compliance review) ─────────────
+  // A write RESULT carries the row it touched (a goal's text, an assessment's `data`), and an intervention that
+  // serves a Part 2 goal is Part 2 content by its anchor. Driven through the REAL services as the app role.
+  describe("confidential content on M15 write results and reads", () => {
+    const SUD_IV_TEXT = "SYNTHETIC-SUD-INTERVENTION-TEXT";
+    const SUD_ASSESSMENT_TEXT = "SYNTHETIC-SUD-ASSESSMENT-TEXT";
+    const writeActor = () => systemM15Actor(ORG_A, { userId: USER, membershipId: COORDINATOR });
+    const write = () => buildDrizzleM15WriteService(handle.db, { isInCaseload: async () => true });
+    const denied: DisclosurePort = {
+      part2ReleaseActive: async () => ({ allowed: false, restrictedToNamedWorkforce: true }),
+      familyViolenceRedacted: async () => true,
+    };
+    const granted: DisclosurePort = {
+      part2ReleaseActive: async () => ({ allowed: true, restrictedToNamedWorkforce: true }),
+      familyViolenceRedacted: async () => true,
+    };
+    const readActor = {
+      organizationId: ORG_A,
+      userId: USER,
+      membershipId: COORDINATOR,
+      roles: ["rn"],
+      sessionClass: "staff",
+      actorKind: "user",
+      stepUpRecent: false,
+      locationIds: [],
+    } as never;
+    const reader = (disclosure: DisclosurePort) =>
+      buildDrizzleM15ReadService(handle.db, {
+        disclosure,
+        caseload: { isInCaseload: async () => true },
+      });
+
+    async function linkedIntervention(plan: SeededPlan, goalRefs: string[], text: string) {
+      return (
+        await admin.query(
+          `INSERT INTO discipline_intervention (organization_id, provider_entity_id, location_id, plan_id,
+             goal_refs, scope_text, frequency_text, frequency_value, discipline, added_by_membership_id,
+             added_by_discipline) VALUES ($1,$2,$3,$4,$5::jsonb,$6,'Weekly','1:visit:week','msw',$7,'msw')
+           RETURNING id`,
+          [
+            ORG_A,
+            peOf[ORG_A],
+            locationOf[ORG_A],
+            plan.planId,
+            JSON.stringify(goalRefs),
+            text,
+            COORDINATOR,
+          ],
+        )
+      ).rows[0].id as string;
+    }
+    async function seedAssessment(
+      plan: SeededPlan,
+      flags: { sud?: boolean; familyViolence?: boolean; status: "draft" | "signed" },
+    ) {
+      const signed = flags.status === "signed";
+      return (
+        await admin.query(
+          `INSERT INTO discipline_assessment (organization_id, provider_entity_id, location_id, plan_id, kind,
+             status, captured_at, sud_flag, family_violence_flag, data, captured_by_membership_id, signed_at,
+             signed_by_membership_id)
+           VALUES ($1,$2,$3,$4,'msw_psychosocial',$5,now(),$6,$7,$8::jsonb,$9,$10,$11) RETURNING id`,
+          [
+            ORG_A,
+            peOf[ORG_A],
+            locationOf[ORG_A],
+            plan.planId,
+            flags.status,
+            flags.sud ?? false,
+            flags.familyViolence ?? false,
+            JSON.stringify({ note: SUD_ASSESSMENT_TEXT }),
+            COORDINATOR,
+            signed ? new Date().toISOString() : null,
+            signed ? COORDINATOR : null,
+          ],
+        )
+      ).rows[0].id as string;
+    }
+
+    it("a Part 2 goal edit is NOT FOUND for a caller without disclosure: before the version check, and identical to a missing goal", async () => {
+      const plan = await seedPlan(ORG_A);
+      const missing = await write()
+        .updateGoal(writeActor(), plan.planId, randomUUID(), { expectedVersion: 0 })
+        .catch((e: unknown) => e);
+      // A deliberately WRONG version: a version-mismatch answer would confirm the goal exists.
+      for (const gate of [{}, { sudAllowed: false }]) {
+        const hidden = await write()
+          .updateGoal(writeActor(), plan.planId, plan.sudGoalId, { expectedVersion: 99, ...gate })
+          .catch((e: unknown) => e);
+        expect(hidden).toBeInstanceOf(NotFoundError);
+        expect((hidden as Error).message).toBe((missing as Error).message);
+      }
+      // With disclosure the caller gets the row (and a plain goal never needed it).
+      const shown = await write().updateGoal(writeActor(), plan.planId, plan.sudGoalId, {
+        expectedVersion: 0,
+        measurableOutcome: "Engages in two sessions",
+        sudAllowed: true,
+      });
+      expect(shown.originalText).toContain("SUD treatment planning");
+      const plain = await write().updateGoal(writeActor(), plan.planId, plan.goalId, {
+        expectedVersion: 0,
+        measurableOutcome: "Reports less distress",
+      });
+      expect(plain.goalId).toBe(plan.goalId);
+    });
+
+    it("an intervention that serves a Part 2 goal is NOT FOUND without disclosure, whatever the id's case", async () => {
+      const plan = await seedPlan(ORG_A);
+      const direct = await linkedIntervention(plan, [plan.sudGoalId], SUD_IV_TEXT);
+      const mixed = await linkedIntervention(
+        plan,
+        [plan.goalId, plan.sudGoalId.toUpperCase()],
+        SUD_IV_TEXT,
+      );
+      for (const id of [direct, mixed]) {
+        await expect(
+          write().updateIntervention(writeActor(), plan.planId, id, { expectedVersion: 99 }),
+        ).rejects.toBeInstanceOf(NotFoundError);
+      }
+      const shown = await write().updateIntervention(writeActor(), plan.planId, direct, {
+        expectedVersion: 0,
+        scopeText: `${SUD_IV_TEXT} (revised)`,
+        sudAllowed: true,
+      });
+      expect(shown.scopeText).toContain(SUD_IV_TEXT);
+      // An intervention that serves no hidden goal is unaffected.
+      const plain = await write().updateIntervention(
+        writeActor(),
+        plan.planId,
+        plan.interventionId,
+        {
+          expectedVersion: 0,
+          scopeText: "Grief counseling (revised)",
+        },
+      );
+      expect(plain.interventionId).toBe(plan.interventionId);
+    });
+
+    it("signing or amending a SUD- or family-violence-flagged assessment is NOT FOUND without that category's disclosure", async () => {
+      const plan = await seedPlan(ORG_A);
+      const sudDraft = await seedAssessment(plan, { sud: true, status: "draft" });
+      const sudSigned = await seedAssessment(plan, { sud: true, status: "signed" });
+      const fvSigned = await seedAssessment(plan, { familyViolence: true, status: "signed" });
+      const amend = (id: string, gate: object) =>
+        write().amendAssessment(writeActor(), plan.planId, id, {
+          expectedVersion: 99,
+          amendmentReason: "Corrected the recorded history.",
+          data: { note: "x" },
+          ...gate,
+        });
+
+      await expect(
+        write().signAssessment(writeActor(), plan.planId, sudDraft, { expectedVersion: 99 }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      await expect(amend(sudSigned, {})).rejects.toBeInstanceOf(NotFoundError);
+      await expect(amend(fvSigned, { sudAllowed: true })).rejects.toBeInstanceOf(NotFoundError);
+      await expect(amend(sudSigned, { familyViolenceAllowed: true })).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+      // Refused before anything was written: no amendment row exists.
+      const written = await admin.query(
+        "SELECT count(*)::int AS n FROM discipline_assessment WHERE plan_id=$1 AND amends_assessment_id IS NOT NULL",
+        [plan.planId],
+      );
+      expect(Number(written.rows[0].n)).toBe(0);
+
+      // Each category is unlocked by ITS OWN disclosure, and by nothing else.
+      const sudAmend = await write().amendAssessment(writeActor(), plan.planId, sudSigned, {
+        expectedVersion: 0,
+        amendmentReason: "Corrected the recorded history.",
+        data: { note: "x" },
+        sudAllowed: true,
+      });
+      expect(sudAmend.amendsAssessmentId).toBe(sudSigned);
+      const fvAmend = await write().amendAssessment(writeActor(), plan.planId, fvSigned, {
+        expectedVersion: 0,
+        amendmentReason: "Corrected the recorded history.",
+        data: { note: "x" },
+        familyViolenceAllowed: true,
+      });
+      expect(fvAmend.amendsAssessmentId).toBe(fvSigned);
+    });
+
+    it("the plan read, the patient summary and the internal read drop an intervention serving a hidden goal, and its goal id", async () => {
+      const plan = await seedPlan(ORG_A);
+      await linkedIntervention(plan, [plan.sudGoalId], SUD_IV_TEXT);
+
+      const hiddenPlan = JSON.stringify(await reader(denied).getPlan(readActor, plan.planId));
+      expect(hiddenPlan).not.toContain(SUD_IV_TEXT);
+      expect(hiddenPlan.toLowerCase()).not.toContain(plan.sudGoalId.toLowerCase());
+      expect(hiddenPlan).toContain("Grief counseling"); // the unlinked intervention stays
+
+      const shownPlan = JSON.stringify(await reader(granted).getPlan(readActor, plan.planId));
+      expect(shownPlan).toContain(SUD_IV_TEXT);
+
+      // The patient-shareable summary strips Part 2 content whatever the caller's disclosure.
+      const summary = JSON.stringify(await reader(granted).getPlanSummary(readActor, plan.planId));
+      expect(summary).not.toContain(SUD_IV_TEXT);
+      expect(summary).toContain("Grief counseling");
+
+      // Seam reads are system principals with no consent context: always withheld.
+      const internal = JSON.stringify(
+        await reader(granted).listRelevantElements(writeActor(), { planId: plan.planId } as never),
+      );
+      expect(internal).not.toContain(SUD_IV_TEXT);
+      expect(internal).toContain("Grief counseling");
+      const seamStore = createDrizzleDisciplinePlanSeamStore(handle.db);
+      const seam = JSON.stringify(
+        await runWithRequestContext({ organizationId: ORG_A, userId: USER } as never, () =>
+          seamStore.planById(plan.planId as never),
+        ),
+      );
+      expect(seam).not.toContain(SUD_IV_TEXT);
+      expect(seam).toContain("Grief counseling");
     });
   });
 });

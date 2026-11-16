@@ -71,6 +71,7 @@ import type {
   VolunteerAssignmentView,
   VolunteerComplianceGateView,
 } from "./read-service";
+import { isSudAnchored } from "./snapshot-redaction";
 import type {
   AmendAssessmentInput,
   CreateAssessmentInput,
@@ -80,6 +81,7 @@ import type {
   CreateSupervisoryVisitInput,
   CreateVolunteerAssignmentInput,
   CreateVolunteerGateInput,
+  DisclosureGate,
   FinalizeVersionInput,
   M15WriteService,
   OutboxEmission,
@@ -272,6 +274,13 @@ export function buildDrizzleM15WriteService(
     signedByMembershipId: r.signedByMembershipId ?? null,
     version: r.version,
   });
+
+  /** §7.8 / §7.9 — is this assessment confidential to a caller whose gate does not allow its category? */
+  const isConfidentialToCaller = (
+    row: { readonly sudFlag: boolean; readonly familyViolenceFlag: boolean },
+    gate: DisclosureGate,
+  ): boolean =>
+    (row.sudFlag && !gate.sudAllowed) || (row.familyViolenceFlag && !gate.familyViolenceAllowed);
 
   const toSupervisoryVisit = (r: typeof SV.$inferSelect): AideSupervisoryVisitView => ({
     supervisoryVisitId: r.id,
@@ -662,6 +671,10 @@ export function buildDrizzleM15WriteService(
           .where(and(eq(G.id, goalId), eq(G.planId, planId)))
           .limit(1);
         if (!row) throw new NotFoundError("discipline goal not found");
+        // §7.8 — a Part 2 goal the caller may not see is not theirs to edit, and the result carries its text.
+        // Before the version check: a stale-version message would otherwise confirm it exists.
+        if (row.sudRelated && !input.sudAllowed)
+          throw new NotFoundError("discipline goal not found");
         if (input.expectedVersion !== null) {
           checkOptimisticConcurrency(input.expectedVersion, row.version);
         }
@@ -767,6 +780,17 @@ export function buildDrizzleM15WriteService(
           .where(and(eq(I.id, interventionId), eq(I.planId, planId)))
           .limit(1);
         if (!row) throw new NotFoundError("discipline intervention not found");
+        if (!input.sudAllowed) {
+          // §7.8 — an intervention serving a Part 2 goal is Part 2 content by its anchor (the reads drop it).
+          const sudGoals = await tx
+            .select({ id: G.id })
+            .from(G)
+            .where(and(eq(G.planId, planId), eq(G.sudRelated, true)));
+          const hidden = new Set(sudGoals.map((goal) => goal.id.toLowerCase()));
+          if (isSudAnchored(row.goalRefs, hidden)) {
+            throw new NotFoundError("discipline intervention not found");
+          }
+        }
         if (input.expectedVersion !== null) {
           checkOptimisticConcurrency(input.expectedVersion, row.version);
         }
@@ -852,6 +876,11 @@ export function buildDrizzleM15WriteService(
         return row ?? null;
       });
       if (!existing) throw new NotFoundError("discipline assessment not found");
+      // §7.8 / §7.9 — a confidential assessment the caller may not see is not theirs to sign; the result carries
+      // its `data`. Before the version check, so a stale-version message cannot confirm it exists.
+      if (isConfidentialToCaller(existing, input)) {
+        throw new NotFoundError("discipline assessment not found");
+      }
       if (input.expectedVersion !== null) {
         checkOptimisticConcurrency(input.expectedVersion, existing.version);
       }
@@ -917,6 +946,10 @@ export function buildDrizzleM15WriteService(
           .where(and(eq(A.id, assessmentId), eq(A.planId, planId)))
           .limit(1);
         if (!original) throw new NotFoundError("discipline assessment not found");
+        // §7.8 / §7.9 — as signAssessment: a correction of a record the caller may not see is refused as absent.
+        if (isConfidentialToCaller(original, input)) {
+          throw new NotFoundError("discipline assessment not found");
+        }
         if (input.expectedVersion !== null) {
           checkOptimisticConcurrency(input.expectedVersion, original.version);
         }

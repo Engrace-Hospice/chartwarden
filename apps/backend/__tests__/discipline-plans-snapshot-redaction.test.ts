@@ -24,7 +24,10 @@ import type {
   M15ReadService,
   M15WriteService,
 } from "../src/modules/15-discipline-care-plans/routes/index";
-import { redactDisciplineSnapshot } from "../src/modules/15-discipline-care-plans/routes/snapshot-redaction";
+import {
+  isSudAnchored,
+  redactDisciplineSnapshot,
+} from "../src/modules/15-discipline-care-plans/routes/snapshot-redaction";
 
 const SUD_TEXT = "SYNTHETIC-SUD-GOAL-TEXT";
 const PLAIN_TEXT = "SYNTHETIC-PLAIN-GOAL-TEXT";
@@ -75,6 +78,66 @@ describe("redactDisciplineSnapshot", () => {
     expect(redactDisciplineSnapshot(draft, false)).toBe(draft);
   });
 
+  it("withholds a no-goals snapshot that is not the draft shape (fail closed on an unknown shape)", () => {
+    expect(
+      redactDisciplineSnapshot({ volunteerOutOfScopeAcknowledged: [], notes: "x" }, false),
+    ).toBeNull();
+    expect(redactDisciplineSnapshot({ interventions: [] }, false)).toBeNull();
+  });
+
+  describe("interventions that serve a hidden goal", () => {
+    const serving = (id: string, goalRefs: string[]) => ({
+      interventionId: id,
+      goalRefs,
+      scopeText: `text-${id}`,
+    });
+    const interventions = [
+      serving("i-sud", ["G-SUD"]), // upper case: a uuid is case-insensitive
+      serving("i-mixed", ["g-plain", "g-sud"]),
+      serving("i-plain", ["g-plain"]),
+      serving("i-free", []),
+    ];
+
+    it("drops them, so neither their text nor the hidden goal's id survives", () => {
+      const out = redactDisciplineSnapshot(
+        { goals: [sudGoal, plainGoal], interventions },
+        false,
+      ) as {
+        interventions: { interventionId: string }[];
+      };
+      expect(out.interventions.map((i) => i.interventionId)).toEqual(["i-plain", "i-free"]);
+      expect(JSON.stringify(out).toLowerCase()).not.toContain("g-sud");
+    });
+
+    it("keeps every intervention when disclosure is allowed", () => {
+      const snapshot = { goals: [sudGoal, plainGoal], interventions };
+      expect(redactDisciplineSnapshot(snapshot, true)).toBe(snapshot);
+    });
+
+    it("treats a goal with no flag as hidden, and so the interventions that serve it", () => {
+      const out = redactDisciplineSnapshot(
+        { goals: [flaglessGoal, plainGoal], interventions: [serving("i-x", ["g-flagless"])] },
+        false,
+      ) as { interventions: unknown[] };
+      expect(out.interventions).toEqual([]);
+    });
+
+    it("withholds the whole snapshot when interventions is not an array", () => {
+      expect(
+        redactDisciplineSnapshot({ goals: [plainGoal], interventions: "oops" }, false),
+      ).toBeNull();
+    });
+  });
+
+  it("isSudAnchored matches a goal ref against the hidden ids case-insensitively and ignores junk refs", () => {
+    const hidden = new Set(["abc-1"]);
+    expect(isSudAnchored(["ABC-1"], hidden)).toBe(true);
+    expect(isSudAnchored(["other", 7, null], hidden)).toBe(false);
+    expect(isSudAnchored("abc-1", hidden)).toBe(false);
+    expect(isSudAnchored(undefined, hidden)).toBe(false);
+    expect(isSudAnchored(["abc-1"], new Set())).toBe(false);
+  });
+
   it("does not mutate its input", () => {
     const snapshot = Object.freeze({ goals: Object.freeze([sudGoal, plainGoal]) });
     const out = redactDisciplineSnapshot(snapshot, false);
@@ -121,12 +184,21 @@ const versionDetail = {
   signatures: [],
 };
 
-function makeServer(disclosure: DisclosurePort) {
+/** A write-service call the stub recorded: the method and its input (the fourth argument of every command). */
+interface RecordedCall {
+  readonly name: string;
+  readonly input: Record<string, unknown> | undefined;
+}
+
+function makeServer(disclosure: DisclosurePort, calls: RecordedCall[] = []) {
   const writeService = new Proxy({} as Record<string, unknown>, {
     get: (_t, name: string) =>
       name === "planPatientId"
         ? async (_actor: unknown, planId: string) => (planId === PLAN ? PATIENT : null)
-        : async () => versionDetail,
+        : async (...args: unknown[]) => {
+            calls.push({ name, input: args[3] as RecordedCall["input"] });
+            return versionDetail;
+          },
   }) as unknown as M15WriteService;
   const readService = new Proxy({} as Record<string, unknown>, {
     get: () => async () => versionDetail,
@@ -260,4 +332,94 @@ describe("M15 version routes redact the sealed snapshot (42 CFR Part 2)", () => 
     expect(versionDetail.stateSnapshot.goals).toEqual([sudGoal, plainGoal]);
     await app.close();
   });
+});
+
+// A write RESULT carries the row it touched (a goal's text, an assessment's `data`), so the write routes hand the
+// service the caller's disclosure gate and the service answers "not found" for confidential content.
+describe("M15 goal, intervention and assessment writes carry the caller's disclosure gate", () => {
+  const GOAL = "44444444-4444-4444-8444-444444444444";
+  const INTERVENTION = "55555555-5555-4555-8555-555555555555";
+  const ASSESSMENT = "66666666-6666-4666-8666-666666666666";
+  const plan = `/api/v1/discipline-plans/${PLAN}`;
+  const WRITES = [
+    {
+      name: "goal edit",
+      service: "updateGoal",
+      method: "PATCH",
+      url: `${plan}/goals/${GOAL}`,
+      payload: { measurableOutcome: "m" },
+    },
+    {
+      name: "intervention edit",
+      service: "updateIntervention",
+      method: "PATCH",
+      url: `${plan}/interventions/${INTERVENTION}`,
+      payload: { scopeText: "s" },
+    },
+    {
+      name: "assessment sign",
+      service: "signAssessment",
+      method: "POST",
+      url: `${plan}/assessments/${ASSESSMENT}/sign`,
+      payload: undefined,
+    },
+    {
+      name: "assessment amend",
+      service: "amendAssessment",
+      method: "POST",
+      url: `${plan}/assessments/${ASSESSMENT}/amend`,
+      payload: { amendmentReason: "Corrected the recorded history.", data: {} },
+    },
+  ] as const;
+
+  const send = async (
+    route: (typeof WRITES)[number],
+    user: string,
+    port: DisclosurePort,
+    payload: Record<string, unknown> | undefined = route.payload,
+  ) => {
+    const calls: RecordedCall[] = [];
+    const app = makeServer(port, calls);
+    const res = await app.inject({
+      method: route.method,
+      url: route.url,
+      headers: { ...as(user), "idempotency-key": `k-${++keySeq}` },
+      payload,
+    });
+    await app.close();
+    return { res, input: calls.find((c) => c.name === route.service)?.input };
+  };
+
+  for (const route of WRITES) {
+    it(`${route.name}: hands the service a CLOSED gate for a caller without disclosure`, async () => {
+      const { res, input } = await send(route, UNCLEARED, clearedPort);
+      expect(res.statusCode).toBeLessThan(300);
+      expect(input).toMatchObject({ sudAllowed: false, familyViolenceAllowed: false });
+    });
+
+    it(`${route.name}: opens the Part 2 gate for a caller cleared by M39`, async () => {
+      const { input } = await send(route, CLEARED, clearedPort);
+      expect(input).toMatchObject({ sudAllowed: true });
+    });
+
+    it(`${route.name}: fails closed when the disclosure lookup throws`, async () => {
+      const outage: DisclosurePort = {
+        part2ReleaseActive: async () => {
+          throw new Error("M39 outage");
+        },
+        familyViolenceRedacted: async () => {
+          throw new Error("M39 outage");
+        },
+      };
+      const { input } = await send(route, CLEARED, outage);
+      expect(input).toMatchObject({ sudAllowed: false, familyViolenceAllowed: false });
+    });
+
+    it(`${route.name}: a body that claims the gate cannot widen it`, async () => {
+      const claimed = { ...(route.payload ?? {}), sudAllowed: true, familyViolenceAllowed: true };
+      const { input } = await send(route, UNCLEARED, clearedPort, claimed);
+      // Either the body is stripped or refused; the service never sees a widened gate.
+      if (input) expect(input).toMatchObject({ sudAllowed: false, familyViolenceAllowed: false });
+    });
+  }
 });

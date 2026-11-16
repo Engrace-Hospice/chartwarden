@@ -42,7 +42,7 @@ import {
 } from "./m15-typebox";
 import type { M15ReadService } from "./read-service";
 import { redactVersionForCaller } from "./snapshot-redaction";
-import type { M15WriteService } from "./write-service";
+import type { DisclosureGate, M15WriteService } from "./write-service";
 
 export interface PlanRouteDeps {
   readonly readService: M15ReadService;
@@ -53,6 +53,9 @@ export interface PlanRouteDeps {
 
 const IDEMPOTENT = requireIdempotencyKey();
 const NO_OFFSET = rejectOffsetPagination();
+
+/** Nothing confidential may be seen: what a lookup that failed or found no plan resolves to (fail closed). */
+const CLOSED_GATE: DisclosureGate = { sudAllowed: false, familyViolenceAllowed: false };
 
 /** The M4 read-audit declaration every PHI plan read carries (§4.1 / M4 §2.5). */
 const PLAN_READ = { resourceKind: "discipline_care_plan", resourceIdParam: "planId" } as const;
@@ -65,16 +68,22 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
    * resolves. FAIL-CLOSED: an unresolvable plan, or any lookup error, withholds (a write that already
    * committed still answers, redacted, rather than 500ing into a retry).
    */
-  const sudAllowedFor = async (request: FastifyRequest, planId: string): Promise<boolean> => {
+  const disclosureFor = async (
+    request: FastifyRequest,
+    planId: string,
+  ): Promise<DisclosureGate> => {
     try {
       const actor = actorOf(request);
       const patientId = await writeService.planPatientId(actor, planId);
-      if (patientId === null) return false;
-      return (await resolveDisclosure(actor, patientId, disclosure)).sudAllowed;
+      if (patientId === null) return CLOSED_GATE;
+      const gate = await resolveDisclosure(actor, patientId, disclosure);
+      return { sudAllowed: gate.sudAllowed, familyViolenceAllowed: gate.familyViolenceAllowed };
     } catch {
-      return false;
+      return CLOSED_GATE;
     }
   };
+  const sudAllowedFor = async (request: FastifyRequest, planId: string): Promise<boolean> =>
+    (await disclosureFor(request, planId)).sudAllowed === true;
   // GAP-046 — every plan write is caseload-scoped over the plan's patient (404 off-caseload / unknown plan).
   const scope = (key: string) =>
     planCaseloadScope(key, (actor, planId) => writeService.planPatientId(actor, planId));
@@ -210,6 +219,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
       return writeService.updateGoal(writeActorOf(request), planId, goalId, {
         expectedVersion: ifMatchVersionOf(request),
         ...body,
+        ...(await disclosureFor(request, planId)),
       });
     },
   );
@@ -236,6 +246,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
       return writeService.updateIntervention(writeActorOf(request), planId, interventionId, {
         expectedVersion: ifMatchVersionOf(request),
         ...body,
+        ...(await disclosureFor(request, planId)),
       });
     },
   );
@@ -273,6 +284,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
       const { planId, assessmentId } = parse(AssessmentParams, request.params);
       return writeService.signAssessment(writeActorOf(request), planId, assessmentId, {
         expectedVersion: ifMatchVersionOf(request),
+        ...(await disclosureFor(request, planId)),
       });
     },
   );
@@ -295,7 +307,11 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
         writeActorOf(request),
         planId,
         assessmentId,
-        { expectedVersion: ifMatchVersionOf(request), ...body },
+        {
+          expectedVersion: ifMatchVersionOf(request),
+          ...body,
+          ...(await disclosureFor(request, planId)),
+        },
       );
       return reply.code(201).send(amendment);
     },
