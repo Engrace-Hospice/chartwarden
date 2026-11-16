@@ -238,6 +238,34 @@ done, reason given.
 | R-23 | LOW | `m7.care_plan.idg_proposal_refused` was emitted but absent from the audit action registry | Fixed (registered, `compliance` retention, Part 2 eligible) |
 | R-24 | LOW | M15 still refused a decision recorded before the discipline plan's first signature as permanent (`plan_not_yet_active`) while M7 waits on the same condition (R-14 listed only `version_in_review`) | Fixed: a draft plan WAITS like an in-review version and is refused durably past the 14-day horizon (live test) |
 
+### Found by the pre-PR review (`/ecc:code-review` backend, `/ecc:react-review` web; none CRITICAL or HIGH)
+
+| ID | Sev | Defect | Disposition |
+|---|---|---|---|
+| R-25 | LOW | The M7 IDG consumer took no lock: its draft-version read and the application and change inserts are check-then-insert, so a `finalizeVersion` committing between them left a `proposed` application inside an `in_review` version and the last signer got `IDG_PROPOSAL_CONFLICT` until someone returned the version to draft (recoverable, not a wedge) | Fixed: the plan row is read `FOR UPDATE`, the same plan-then-version order as finalize and sign |
+| R-26 | LOW | The `element_targeted_twice` check compared raw strings; the payload's `uuid` format accepts upper case and Postgres compares uuids case-insensitively, so `ABC…` and `abc…` passed the check and could wedge finalize as R-18 describes | Fixed (compared lower-cased; live test with a mixed-case pair) |
+| R-27 | LOW | The M7 service still defaulted OPEN for the versions it returns from finalize and sign (`versionDto`, `versionsForPlan`), relying on a route wrapper that was not failure-safe: a consent-lookup error after the write committed turned a recorded signature into a 500 | Fixed: both defaults are closed; finalize and sign take the viewer and the service redacts; the route resolves the viewer BEFORE the write and falls back to "no disclosure" on a lookup error, as M15 does (route test: lookup failure still answers, redacted; service test: no viewer redacts) |
+| R-28 | MED | e2e signed as `admin@`, which holds every permission but no signer role, so the sign route refuses it (`signer_role_match`) and the spec would fail at its last assertion | Fixed: the admin authors and sends the version, then the RN case manager (`rita@`) signs the `rn_case_manager` slot after the passkey step-up. **Still not run** |
+| R-29 | LOW | After `IDEMPOTENCY_KEY_STUCK` the dialog stayed on the old rows with Save enabled; the client renews the key after that refusal, so the next click was a new write and duplicated a row if the first attempt had committed late | Fixed: the workspace is re-read and the dialog re-seeded before the user decides (DOM test: the repeat quotes the re-read version) |
+| R-30 | LOW | The legacy in-flight 409 (a plain `CONFLICT` carrying the old server sentence, sent during a deploy window) was matched on the error code alone, so the raw server sentence showed | Fixed: matched with the shared `isInFlightDuplicate` / `isKeyStuck` predicates, now exported from `@chartwarden/ui` |
+| R-31 | LOW | "No snapshot was recorded for this version." is false for a snapshot the server withheld (a malformed shape redacts to `null`), and an emptied group under the restricted-content note still read "None recorded." | Fixed: "No snapshot is available for this version."; an empty group of a redacted snapshot reads "None shown to your role." |
+| R-32 | LOW | After "saved, but the workspace could not be refreshed" every write control stayed live on the stale plan, so re-entering an entry that had saved created it twice under a new key | Fixed: authoring, finalize and sign stay off until a re-read succeeds, and the banner carries a Refresh button (DOM test) |
+| R-33 | LOW | The summary's Print button printed on the handout | Fixed: it sits in a `.wx-print-hide` wrapper hidden under `@media print`. The rule is **not verified in a browser** |
+
+### Found by the compliance review (`compliance-reviewer` on the whole branch diff: 1 HIGH, 4 MEDIUM, 4 LOW; each claim was checked against the code before acting)
+
+| ID | Sev | Defect | Disposition |
+|---|---|---|---|
+| R-34 | HIGH | M15 write results returned confidential content to a caller without disclosure. `PATCH /discipline-plans/:planId/goals/:goalId` returned the goal row (its text) for a `sud_related` goal; assessment sign and amend returned the assessment `data` for a `sud_flag` (or family-violence) row; the 409 version message confirmed the row existed and gave its current version, so a guessed `If-Match` was free; and `interventions[].goalRefs` on the plan read listed the hidden goal's id. The M15 IDG consumer refuses SUD goals for exactly this reason | Fixed: the routes resolve the caller's SUD and family-violence verdict (fail closed, a client-supplied value cannot widen it) and the write service answers "not found", identical to a missing row, BEFORE the version check, for a hidden goal, an intervention serving a hidden goal, and a flagged assessment (each category unlocked only by its own verdict). Unit tests for the route gate and live tests against real rows (mutation-checked) |
+| R-35 | MED | M15 interventions were never Part 2 redacted: no flag of their own and no goal anchor, so a `scopeText` naming the treatment reached the caller on the plan read, the patient-shareable summary, the internal read, the seam read and the version snapshot | Fixed: an intervention that serves a hidden goal is hidden with it, on all five surfaces (module 07 treats a problem's dependents the same way); the goal id no longer survives in a snapshot or a `goalRefs` list |
+| R-36 | MED | The `CW-AC-43` gap text named the wrong consumers (M22, M28, M14, M30, M33; the catalog declares only M22, M14 and M33 read through seams, and M28 and M30 are explicitly not consumers) and missed the real sinks and one more path | Fixed (`controls.yaml` rewritten with the consumer set, the persisted `outbox_event.payload`, the M22-rendered PDF, the IDG packet cover and the evidence limit; the row still needs your approval) |
+| R-37 | MED | The cited evidence did not exercise the production chain: the M7 live tests passed a hand-built viewer and `gap-013` never called `/versions`, `/finalize` or `/proposed-changes` | Fixed for M7: `gap-013` finalizes and reads versions through the real routes, plan-to-patient resolver and M39 evaluator, once without and once with a Part 2 release. **Not fixed for M15:** its live tests inject a disclosure port, so the route-to-M39 chain has unit but no live proof (gap 4 of the row) |
+| R-38 | MED | Pre-existing: `GET /api/v1/ops/outbox/:id` returns the event's whole `payload` (which can carry PHI: D-13) and its `auditRead` had no `resourceIdParam`, so the emitter returned early and the read left no trail | Fixed: it declares `resourceIdParam: "id"`; a route test asserts the audit event lands and fails without it. What the payload contains is still D-13 |
+| R-39 | LOW | `OutboxDeferral` trades the dead-letter alert for a silent wait of up to 14 days | Not changed: D-14 (it needs a gauge and a CW-MON-01 reason, which needs your approval) |
+| R-40 | LOW | M15 audit actions are not in the audit catalog (`m15.plan.discharged` follows the existing pattern; M15 has no slice at all). Retention resolves to the `compliance` default, which is right | Not changed: D-15 (a slice for every M15 action means choosing retention and denylists for about twenty of them, in the Workflow 07 module) |
+| R-41 | LOW | The care-plan signature recorded `password_step_up` for a TOTP signer (only a WebAuthn ceremony was recognised) | Fixed: TOTP is recorded `totp_step_up` (the column is free text; nothing pins its two old values); unit test for the mapping |
+| R-42 | LOW | Redaction fail-open edges: M15's redactor passed any object without a `goals` key; M7's treated a snapshot problem with no `sudRelated` key as visible; and a proposal made only of Part 2 changes still listed its id, status and reason | Fixed: only the exact draft shape passes in M15; a problem without the literal `sudRelated: false` is withheld in M7; a proposal whose changes are all hidden is not listed (a proposal with no changes stays). Live test for the proposal case |
+
 ## 9. Decisions requested
 
 - **D-1 Signature integrity.** Enforce "no element writes while a version is `in_review`" (409, return to
@@ -271,13 +299,25 @@ done, reason given.
   later IDG decisions wait 14 days and are then refused. It predates this work (the plan was already wedged at
   HEAD), and B-18 only made the conflict durable. Needs a rebase or an abandon path; D-1's 409 guard removes most
   of the ways in. *Recommendation:* D-1 first, then an explicit "discard IDG review" action.
-- **D-13 `m15.plan.version_signed` carries Part 2 goals.** The payload embeds the full sealed snapshot, so its
-  consumers (M22 PDF, M28 FHIR CarePlan, M14, M30, M33) receive `sud_related` goals. Changing it is a catalog
-  change plus a consumer-side decision on who may see Part 2 text in a rendered document. Not changed here.
+- **D-13 `m15.plan.version_signed` carries Part 2 goals.** The payload embeds the full sealed snapshot. The
+  catalog declares only M22 as a consumer (M14 and M33 read through seams; M28 and M30 were dropped as
+  non-consumers), so the sinks are the persisted `outbox_event.payload` (the ops outbox detail read returns it
+  whole, and now leaves an audit event) and the plan PDF M22 renders from it. Changing it is a catalog change
+  plus a decision on who may see Part 2 text in a rendered document. Not changed here.
 - **D-14 No age alert for a deferred outbox event.** The only alerts are the dead-letter hook and the pending
   depth threshold (500), so a decision waiting on a draft plan (D-2 leaves fresh tenants in that state) is silent
   for up to 14 days and then becomes an audited refusal with no alert. `compliance/controls.yaml` CW-MON-01 is
   already `gap`; extend its reason, or add a gauge for the oldest deferred row. controls.yaml needs your approval.
+- **D-15 M15 has no audit-catalog slice.** None of M15's explicit audit actions is registered in
+  `packages/audit` (the M7 slice is the pattern). `m15.plan.discharged`, added here, and `m15.idg_decision.refused`
+  are the two this work touches. Retention falls back to the `compliance` default (7 years), which is right, but
+  the actions carry no denylist or Part 2 eligibility entry and are absent from `audit_action_catalog`. A slice
+  means choosing retention and denylists for every M15 action, in the Workflow 07 module. *Recommendation:* do it
+  with Workflow 07.
+- **D-16 The IDG packet cover and a SUD-related terminal problem.** `idgPacketCarePlanContextForOrg` returns the
+  first active terminal problem's description and ICD-10 without the SUD filter (it also returns `sudFlag`, so the
+  packet knows a SUD problem exists). Filtering it hides a terminal diagnosis from a clinical packet in the rare
+  case it is SUD-related, which is a product call, so it is left as is and listed in `CW-AC-43`.
 
 ## 10. Verification
 
@@ -287,11 +327,13 @@ Run on `develop` (HEAD `5e53dc0f4` plus the uncommitted work), 2026-11-15.
 |---|---|
 | `bun run typecheck` (build + sharded test typecheck) | 0 errors |
 | `bun run arch:fitness` | 50 of 50 gates pass |
-| `bun run test` (all non-live suites), final code | 2950 files: 2413 passed, 536 skipped, 1 failed; 35721 tests passed, 1 failed. The failure is `10-hope/__tests__/hope-admission-workspace.dom.test.tsx` ("steps through the SFV reassessment one question at a time"), a module this work does not touch: a timing-sensitive DOM test that passed 3 of 3 alone. The previous full run had a different single failure, `12-dosespot/.../secret-cipher.test.ts`, whose test swaps the last two ciphertext characters for `AA` and so flakes when that swap leaves the envelope valid (likely cause, not proven). Neither is fixed here: outside Workflow 06 |
+| `bun run arch:compliance` | OK (register evidence resolves, gaps are dated) |
+| `bun run harness:phi-scan` on the changed files | clean (also run by the pre-commit hook on every commit) |
+| `bun run test` (all non-live suites), final code | 2950 files: 2414 passed, 536 skipped, 0 failed; 35755 tests passed, 8340 skipped, 15 todo. Two unrelated flakes seen in earlier full runs did not fire this time: `10-hope/__tests__/hope-admission-workspace.dom.test.tsx` (timing-sensitive DOM test) and `12-dosespot/.../secret-cipher.test.ts` (swaps the last two ciphertext characters for `AA`, so it can leave the envelope valid). Neither is touched or fixed here |
 | Web care-plan and discipline-plan folders | 11 files, 151 tests, all passed (the care-plan folder alone: 139) |
 | `bun run check:boot:platform` | ran on the code before the review fixes: boots with `DATABASE_PLATFORM_URL`, `/health` 200, outbox relay polling (fresh migrated DB, provisioned roles). **Not re-run on the final code**: it needs a `DATABASE_PLATFORM_URL` that was not available in the last session |
 | OpenAPI, typed client, inject-coverage report | regenerated (the inject-coverage report again after the last test files were added) |
-| Live suites (private `chartwarden-postgres:dev`, `max_locks_per_transaction=1024`, `valkey/valkey:8-alpine`, `chartwarden_app` NOBYPASSRLS), re-run after the review fixes | all pass: `m7-care-plan-write` 46 (incl. the lock-order and IDG-wait tests), `m15-idg-decision-apply` 15 (incl. the discharge block and the IDG wait/horizon tests through the real relay), `care-plan-conformance` 8, `m7-care-plan-read-service` 4, `gap-013-care-plan-consent-wiring` 5, `m14-s05-careplan-to-idg` 16, `gap-044-m15-crons` 6, `m15-plan-bootstrap` 7, `outbox-dispatcher` 9 (incl. the relay's own 14-day horizon). `m7-care-plan-write` is 48 and `m15-idg-decision-apply` 15 after the last review round (two-decision wait/refusal, the draft-plan wait, the M15 audit rows) |
+| Live suites (private `chartwarden-postgres:dev`, `max_locks_per_transaction=1024`, `valkey/valkey:8-alpine`, `chartwarden_app` NOBYPASSRLS), run on the final M7/M15 code | all pass: `m7-care-plan-write` 50, `m15-idg-decision-apply` 19, `gap-013-care-plan-consent-wiring` 7, `care-plan-conformance` 8, `m7-care-plan-read-service` 4, `m14-s05-careplan-to-idg` 16, `gap-044-m15-crons` 6, `m15-plan-bootstrap` 7, `outbox-dispatcher` 9 (incl. the relay's own 14-day horizon). The M15 live tests inject the disclosure port, so the M15 route to M39 chain has no live proof (only the M7 chain does, in `gap-013`) |
 
 **Not verified, by design or limit**
 
@@ -302,11 +344,13 @@ Run on `develop` (HEAD `5e53dc0f4` plus the uncommitted work), 2026-11-15.
   `fix/m23-mac-jurisdiction-enum` branch carries the fix. For the live and boot runs I copied that branch's two
   migration files in temporarily and restored them afterwards (`git status` shows both untouched). CI stays red
   on this until that branch merges.
-- **`compliance/controls.yaml`:** one row is drafted, `CW-AC-43` (Part 2 redaction of care-plan reads, status
-  `partial` with the D-11 and D-13 gaps), in its own commit; it needs your approval before any push. D-2 needs its
-  own row and your decision first.
+- **`compliance/controls.yaml`:** one row is drafted, `CW-AC-43` (Part 2 and family-violence redaction of care-plan
+  and discipline-plan reads and writes; status `partial`). Its gaps are the D-13 outbox payload sinks, D-11, the D-16
+  packet cover, and M15 live evidence that injects the disclosure port. It sits in its own commit and needs a human
+  approval in the PR. D-2 needs its own row and a decision first.
 - **No CMS rule was checked.** Clock constants and the measurable-goal rule stay CMS-VERIFY (D-3, D-7).
-- **Review before a PR.** Three fresh read-only reviewers (backend code, web, compliance) ran on the diff, and
-  their findings are R-18 to R-24 and D-11 to D-14. **Not run:** `/ecc:security-scan` and the `compliance-pr`
-  skill (the auth-and-audit path rule wants the scan first, then the compliance reviewer again after the last
-  changes), because no PR was requested. Nothing is pushed.
+- **Review before a PR.** Fresh read-only reviewers ran on the branch diff: `/ecc:code-review` (backend) and
+  `/ecc:react-review` (web), none CRITICAL or HIGH (R-25 to R-33), then `/ecc:security-scan` (AgentShield: D, 56/100,
+  no finding in a file this branch changes), then `compliance-reviewer` (1 HIGH, 4 MEDIUM, 4 LOW; R-34 to R-42 and
+  D-15, D-16). Every code-fixable finding is fixed; the rest are the recorded decisions. The e2e spec and the print
+  CSS were not exercised in a browser.
