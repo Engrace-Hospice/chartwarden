@@ -200,7 +200,7 @@ function createM15Backend(): {
     goalId: GOAL,
     parentProblemId: PROBLEM,
     parentGoalId: null,
-    source: "clinician_authored",
+    source: "clinical",
     status: "active",
     originalText: "Seed goal — patient will verbalize reduced pain",
     revisedText: null,
@@ -986,7 +986,7 @@ const ROUTE_CASES: readonly RouteCase[] = [
     headers: { ...SUPER_HEADERS, ...IDEMP("k8") },
     payload: {
       parentProblemId: PROBLEM,
-      source: "clinician_authored",
+      source: "clinical",
       originalText: "Patient will verbalize reduced pain within two weeks",
       addedByDiscipline: "rn_case_manager",
     },

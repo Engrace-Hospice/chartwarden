@@ -1,8 +1,6 @@
 import {
   EmptyState,
-  Glyph,
   LoadingSpinner,
-  PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
   t,
@@ -24,6 +22,12 @@ import type { JSX, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
 import {
+  ChartPatientBanner,
+  PatientSummaryPanel,
+  useChartIdentity,
+} from "../../shell/patient-context";
+import { useSession } from "../../shell/session";
+import {
   type PlanDetail,
   type RequiredSignerSlot,
   type VersionDetail,
@@ -41,12 +45,14 @@ import {
   VERSION_STATUS_TONE,
   assessmentKindLabel,
   dateTime,
+  goalSourceLabel,
   humanize,
   kindLabel,
   kindRegulation,
   redactionLabel,
   shortDate,
   toneOf,
+  versionRowActions,
 } from "./discipline-status";
 import {
   Card,
@@ -66,14 +72,6 @@ import {
 } from "./discipline-ui";
 import { SignVersionModal } from "./sign-version-modal";
 
-interface PatientSummary {
-  mrn: string;
-  lastName: string;
-  firstName: string;
-  dob: string;
-  status: string;
-}
-
 export interface PlanWorkspaceProps {
   /** `discipline_plan_kind` — which of the four CoP plans this screen renders. */
   kind: string;
@@ -92,8 +90,9 @@ export function DisciplinePlanWorkspace({
 }: PlanWorkspaceProps): JSX.Element {
   const client = useApiClient();
   const { patientId } = useParams<{ patientId: string }>();
+  const permissions = useSession()?.permissions;
   const [plan, setPlan] = useState<PlanDetail | null>(null);
-  const [patient, setPatient] = useState<PatientSummary | null>(null);
+  const identity = useChartIdentity(patientId);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -106,11 +105,7 @@ export function DisciplinePlanWorkspace({
     if (!patientId) return;
     setLoading(true);
     setError(null);
-    const [planResult, patRes] = await Promise.all([
-      getPlanByKind(client, patientId, kind),
-      client.GET("/api/v1/patients/{id}", { params: { path: { id: patientId } } }),
-    ]);
-    if (patRes.data) setPatient(patRes.data as unknown as PatientSummary);
+    const planResult = await getPlanByKind(client, patientId, kind);
     if (planResult.error) {
       setError(errorMessage(planResult.error, `The ${kindLabel(kind)} could not be loaded.`));
       setLoading(false);
@@ -157,19 +152,9 @@ export function DisciplinePlanWorkspace({
     setSigning({ version, signerSet: normalizeSignerSet(version.requiredSignerSet) });
   }
 
-  const bailBanner = patient ? (
-    <PatientBanner
-      name={`${patient.firstName} ${patient.lastName}`}
-      meta={`DOB ${patient.dob}`}
-      chips={
-        <span style={{ fontFamily: t.fontMono, fontSize: "0.75rem", color: t.onSurfaceVariant }}>
-          {patient.mrn}
-        </span>
-      }
-    />
-  ) : (
-    <PatientBanner name={kindLabel(kind)} />
-  );
+  // The shared chart banner and Patient Summary rail, so this tab shows the same identity header as
+  // every other chart tab.
+  const bailBanner = <ChartPatientBanner patientId={patientId} identity={identity} nameAsHeading />;
   if (loading) {
     return (
       <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
@@ -206,46 +191,17 @@ export function DisciplinePlanWorkspace({
   return (
     <PatientWorkspaceLayout
       banner={
-        patient ? (
-          <PatientBanner
-            name={`${patient.firstName} ${patient.lastName}`}
-            meta={`DOB ${patient.dob}`}
-            chips={
-              <>
-                <span
-                  style={{ fontFamily: t.fontMono, fontSize: "0.75rem", color: t.onSurfaceVariant }}
-                >
-                  {patient.mrn}
-                </span>
-                <StatusPill
-                  label={humanize(plan.status)}
-                  tone={toneOf(PLAN_STATUS_TONE, plan.status)}
-                />
-                {redaction ? (
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.25rem",
-                      fontSize: "0.75rem",
-                      color: t.onSurfaceVariant,
-                    }}
-                  >
-                    <Glyph name="lock" size={12} /> some content restricted
-                  </span>
-                ) : null}
-              </>
-            }
-            actions={
-              <Link to={`/patients/${patientId}/discipline-plans`} style={ghostButtonStyle}>
-                All discipline plans
-              </Link>
-            }
-          />
-        ) : (
-          <PatientBanner name={kindLabel(kind)} />
-        )
+        <ChartPatientBanner
+          patientId={patientId}
+          identity={identity}
+          actions={
+            <Link to={`/patients/${patientId}/discipline-plans`} className="wx-btn-secondary">
+              All discipline plans
+            </Link>
+          }
+        />
       }
+      rail={<PatientSummaryPanel identity={identity} />}
     >
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         <ChartModuleRail patientId={patientId ?? ""} current="discipline-plans" />
@@ -260,7 +216,11 @@ export function DisciplinePlanWorkspace({
           >
             <div>
               <h1 style={pageTitleStyle}>{kindLabel(kind)}</h1>
-              <span style={mutedStyle}>{kindRegulation(kind)}</span>
+              <span style={mutedStyle}>{kindRegulation(kind)}</span>{" "}
+              <StatusPill
+                label={humanize(plan.status)}
+                tone={toneOf(PLAN_STATUS_TONE, plan.status)}
+              />
             </div>
             <div style={{ display: "flex", gap: t.space3 }}>
               <Link
@@ -307,7 +267,7 @@ export function DisciplinePlanWorkspace({
                           <div style={mutedStyle}>outcome: {g.measurableOutcome}</div>
                         ) : null}
                       </td>
-                      <td style={td}>{humanize(g.source)}</td>
+                      <td style={td}>{goalSourceLabel(g.source)}</td>
                       <td style={td}>{g.frequencyText ?? "—"}</td>
                       <td style={td}>{shortDate(g.targetAt)}</td>
                       <td style={td}>
@@ -448,23 +408,47 @@ export function DisciplinePlanWorkspace({
                     <th style={th}>Finalized</th>
                     <th style={th}>Signed</th>
                     <th style={th}>Status</th>
+                    <th style={th}>&nbsp;</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {plan.versions.map((v) => (
-                    <tr key={v.versionId} style={rowLine}>
-                      <td style={td}>v{v.sequence}</td>
-                      <td style={td}>{humanize(v.kind)}</td>
-                      <td style={td}>{dateTime(v.finalizedAt)}</td>
-                      <td style={td}>{dateTime(v.signedAt)}</td>
-                      <td style={td}>
-                        <StatusPill
-                          label={humanize(v.status)}
-                          tone={toneOf(VERSION_STATUS_TONE, v.status)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
+                  {plan.versions.map((v) => {
+                    const actions = versionRowActions(kind, v, permissions);
+                    return (
+                      <tr key={v.versionId} style={rowLine}>
+                        <td style={td}>v{v.sequence}</td>
+                        <td style={td}>{humanize(v.kind)}</td>
+                        <td style={td}>{dateTime(v.finalizedAt)}</td>
+                        <td style={td}>{dateTime(v.signedAt)}</td>
+                        <td style={td}>
+                          <StatusPill
+                            label={humanize(v.status)}
+                            tone={toneOf(VERSION_STATUS_TONE, v.status)}
+                          />
+                        </td>
+                        <td style={td}>
+                          <div style={{ display: "flex", gap: t.space3 }}>
+                            {actions.edit ? (
+                              <Link
+                                to={`/patients/${patientId}/discipline-plans/aide-poc/${v.versionId}/edit`}
+                                style={linkStyle}
+                              >
+                                Edit v{v.sequence}
+                              </Link>
+                            ) : null}
+                            {actions.review ? (
+                              <Link
+                                to={`/patients/${patientId}/discipline-plans/${kind}/idg-revisions/${v.versionId}`}
+                                style={linkStyle}
+                              >
+                                Review v{v.sequence}
+                              </Link>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

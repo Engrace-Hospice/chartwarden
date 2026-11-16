@@ -168,6 +168,8 @@ per-module build truth is the generated matrix (`bun run status:matrix`).
 | [`implementation/03-patient-chart-current-state-audit.md`](./implementation/03-patient-chart-current-state-audit.md) | Workflow 03 G0 audit of chart IA, canonical ownership, permissions, integrity, privacy, performance, tests, and proposed presentation boundaries. |
 | [`implementation/ChartWarden_Workflow_04_Visit_Encounter_Documentation.md`](./implementation/ChartWarden_Workflow_04_Visit_Encounter_Documentation.md) | Proposed Workflow 04 definition for scheduled visit, encounter documentation, signature/cosignature, EVV truth, and downstream continuity. |
 | [`implementation/04-visit-encounter-current-state-audit.md`](./implementation/04-visit-encounter-current-state-audit.md) | Workflow 04 G0 audit of visit-to-encounter continuity, lifecycle authority, security, EVV/mobile truth, draft recovery, runtime behavior, tests, and the proposed first implementation boundary. |
+| [`implementation/ChartWarden_Workflow_06_Care_Plan_Management.md`](./implementation/ChartWarden_Workflow_06_Care_Plan_Management.md) | Workflow 06 plan for care-plan management UX and workflow redesign (audit complete, defect track applied; workspace redesign awaits approval). |
+| [`implementation/06-care-plan-current-state-audit.md`](./implementation/06-care-plan-current-state-audit.md) | Workflow 06 WP0 audit of module 07: corrected plan claims, real lifecycle states, endpoint and role inventory, the defect register with dispositions (sign race, Part 2 snapshot leak, readmission plan selection, M15 discharge), verification results, and decisions requested. |
 
 ---
 

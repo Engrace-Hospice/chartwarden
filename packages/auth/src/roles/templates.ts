@@ -16,6 +16,7 @@
 // `packages/db/src/schema` type surface, not the `@chartwarden/db` runtime barrel (the import
 // boundary in .dependency-cruiser.cjs). check-ddl-legality.ts keeps the DB enum canonical.
 
+import { CARE_PLAN_DEFAULT_GRANTS } from "./care-plan-grants";
 import { SYSTEM_ROLE_DISPLAY_NAMES } from "./display-names";
 
 /** The twelve role categories A–L (mirrors the `role_category` DB enum, spec §3.2). */
@@ -357,7 +358,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     floor: SYSTEM_LOCKED_FLOORS.medical_director,
     // WP 4.1 (ADR-0068): a physician may raise and receive an urgent clinical message, as migration 1105 grants.
     // WP 5.8 (ADR-0087): a physician may open a break-glass read grant, as migration 1140 grants.
-    grants: ["messaging.urgent.send", "messaging.urgent.receive", "messaging.break_glass.invoke"],
+    // D-2 (CW-AC-44): the Medical Director can read and sign a care plan on a fresh tenant, as migration 1494 grants.
+    grants: [
+      "messaging.urgent.send",
+      "messaging.urgent.receive",
+      "messaging.break_glass.invoke",
+      ...(CARE_PLAN_DEFAULT_GRANTS.medical_director ?? []),
+    ],
   },
   {
     key: "director_of_nursing",
@@ -371,11 +378,13 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     // The lifecycle review queue is a supervisory decision (ADR-0065 D6); no template grants it to the org-wide admins.
     // WP 4.1 (ADR-0068): the supervisory nurse may raise and receive an urgent clinical message, as migration 1105 grants.
     // WP 5.8 (ADR-0087): the supervisory nurse may open a break-glass read grant, as migration 1140 grants.
+    // D-2 (CW-AC-44): the DON can open, author and finalize a care plan on a fresh tenant, as migration 1494 grants.
     grants: [
       "messaging.review",
       "messaging.urgent.send",
       "messaging.urgent.receive",
       "messaging.break_glass.invoke",
+      ...(CARE_PLAN_DEFAULT_GRANTS.director_of_nursing ?? []),
     ],
   },
   {

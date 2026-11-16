@@ -76,7 +76,11 @@ describe("M7-T06 §7.3 — patient-stated goal preservation", () => {
       },
       false,
     );
-    const revised = await service.patchGoal(ORG, PLAN, goal.id, goal.version, {
+    // §2.2.3: `revised` is reachable only from `in_progress` (not_started → revise has no event).
+    const started = await service.patchGoal(ORG, PLAN, goal.id, goal.version, {
+      status: "in_progress",
+    });
+    const revised = await service.patchGoal(ORG, PLAN, goal.id, started.version, {
       revisedText: "Will walk 20ft assisted in 4 weeks",
       status: "revised",
     });
@@ -282,7 +286,7 @@ describe("M7-T06 §7.6 — SUD problem confidentiality", () => {
     expect(view.interventions).toHaveLength(0);
   });
 
-  it("the read service omits SUD problems for a non-disclosed viewer; the full set is intact without a viewer", async () => {
+  it("the read service omits SUD problems for a non-disclosed viewer and for no viewer; the full set needs an explicit grant", async () => {
     const { service } = createInMemoryCarePlanBackend({
       plans: [{ id: PLAN, organizationId: ORG, patientId: PATIENT }],
     });
@@ -307,8 +311,18 @@ describe("M7-T06 §7.6 — SUD problem confidentiality", () => {
     expect(redacted.problems).toHaveLength(1);
     expect(redacted.redacted).toBe(true);
 
-    // The SIGNING path uses the FULL problem set (system actor, no viewer) — redaction must not hide it.
-    const full = (await service.getCarePlanForPatient(ORG, PATIENT)) as {
+    // No viewer FAILS CLOSED: a caller that forgets to say who is reading gets the redacted plan.
+    const unspecified = (await service.getCarePlanForPatient(ORG, PATIENT)) as {
+      problems: unknown[];
+      redacted: boolean;
+    };
+    expect(unspecified.problems).toHaveLength(1);
+    expect(unspecified.redacted).toBe(true);
+
+    // An internal reader that needs the full set (signing, system) asks for it explicitly.
+    const full = (await service.getCarePlanForPatient(ORG, PATIENT, {
+      sudDisclosureAllowed: true,
+    })) as {
       problems: unknown[];
       redacted: boolean;
     };

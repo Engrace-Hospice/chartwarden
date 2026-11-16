@@ -116,7 +116,9 @@ export function transitionCarePlanVersion(
       ]);
     }
     case "returnForEdits": {
-      // Any required signer may bounce the version back to draft; prior signatures are cleared.
+      // A care-plan author (`care_plan.author`, the permission the route requires) bounces the version back to
+      // draft and prior signatures are cleared. A signer who cannot author may not: that would let one signer
+      // invalidate everyone else's signature (audit D-10).
       return result(from, event.type, "draft", [
         ...(event.hasSignatures
           ? ([{ kind: "clear_signatures" }] as CarePlanVersionTransition["effects"])
@@ -130,6 +132,9 @@ export function transitionCarePlanVersion(
       return result(from, event.type, "draft", [{ kind: "clear_signatures" }, { kind: "audit" }]);
     }
     case "supersede": {
+      // The one exception lives in the DB service, not in this machine: a conflicted IDG version (draft or
+      // in_review, never signed) is discarded straight to `superseded` so it stops holding the plan's only
+      // open-version slot (`discardConflictedIdgVersion`, audit D-12).
       require_(from === "signed", "ILLEGAL_TRANSITION", "only a signed version can be superseded");
       return result(from, event.type, "superseded", [{ kind: "audit" }]);
     }

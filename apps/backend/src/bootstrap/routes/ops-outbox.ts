@@ -44,6 +44,79 @@ interface OutboxRowSummary {
   nextAttemptAt: string | null;
 }
 
+/** What an operator reads in place of a decision's free text and codes. */
+const PART2_WITHHELD = "[withheld: 42 CFR Part 2]";
+
+/** The structural keys of a care-plan or discipline-plan decision mutation an operator may still read. */
+const MUTATION_KEEP_KEYS: ReadonlySet<string> = new Set([
+  "op",
+  "kind",
+  "problemId",
+  "goalId",
+  "interventionId",
+  "parentProblemId",
+  "parentGoalId",
+  "goalRefs",
+  "problemKind",
+  "source",
+  "status",
+  "sudRelated",
+  "discipline",
+  "event",
+]);
+
+const withheldMutation = (mutation: unknown): unknown => {
+  if (mutation === null || typeof mutation !== "object" || Array.isArray(mutation)) return mutation;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(mutation as Record<string, unknown>)) {
+    if (MUTATION_KEEP_KEYS.has(key)) out[key] = value;
+    else if (key === "updates" && value !== null && typeof value === "object") {
+      // A problem/goal update keeps its status change; every other field is the decision's own text.
+      const status = (value as Record<string, unknown>).status;
+      out[key] = status === undefined ? PART2_WITHHELD : { status, other: PART2_WITHHELD };
+    } else out[key] = PART2_WITHHELD;
+  }
+  return out;
+};
+
+/**
+ * The stored payload as an operator may read it. An `idg.decision_recorded` plan decision carries the decision's
+ * own clinical text (a problem's description and codes, a goal's wording, an intervention's scope, a resolution
+ * note) so M7 and M15 can apply it, and the ops detail read has no disclosure verdict for the patient. The row
+ * stays whole (the consumers need it); this read keeps the structure (operation, ids, enums, the Part 2 flag)
+ * and withholds every other field of every mutation, so an operator can see which decision is stuck and where
+ * but never what it says (audit D-11). Every other event type is returned as stored
+ * (`m15.plan.version_signed` is already redacted at emit, audit D-13).
+ */
+export function payloadForOps(eventType: string, payload: unknown): unknown {
+  if (eventType !== "idg.decision_recorded") return payload;
+  const decision = (
+    payload as { payload?: Record<string, unknown> & { mutations?: unknown } } | null
+  )?.payload;
+  if (!decision || typeof decision !== "object") return payload;
+  if (!Array.isArray(decision.mutations)) {
+    return { ...(payload as object), payload: withheldDecisionFields(decision) };
+  }
+  return {
+    ...(payload as object),
+    payload: {
+      ...withheldDecisionFields(decision),
+      mutations: decision.mutations.map(withheldMutation),
+    },
+  };
+}
+
+/** A decision's own fields other than its kind (a team note's text, a referral's narrative, ...) are clinical text. */
+const DECISION_KEEP_KEYS: ReadonlySet<string> = new Set(["kind", "planKind"]);
+
+function withheldDecisionFields(decision: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(decision)) {
+    out[key] = DECISION_KEEP_KEYS.has(key) || key === "mutations" ? value : PART2_WITHHELD;
+  }
+  return out;
+}
+
 export function registerOpsOutboxRoutes(app: FastifyInstance, deps: { db?: DbClient }): void {
   app.get(
     "/api/v1/ops/outbox",
@@ -105,7 +178,21 @@ export function registerOpsOutboxRoutes(app: FastifyInstance, deps: { db?: DbCli
 
   app.get(
     "/api/v1/ops/outbox/:id",
-    { preHandler: [READ], config: { auditRead: { resourceKind: "outbox_event" } } },
+    {
+      preHandler: [READ],
+      // The detail returns the event's full `payload`, which can carry PHI (e.g. `m15.plan.version_signed` seals the
+      // plan's goals). Without a `resourceIdParam` the emitter has nothing to account the read against, returns
+      // early, and the disclosure leaves no trail.
+      // The event's own `patientId` (most plan, decision and document events carry one) attributes the read to
+      // the patient, so a §164.528 accounting by patient shows an operator opening that row.
+      config: {
+        auditRead: {
+          resourceKind: "outbox_event",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "payload.patientId",
+        },
+      },
+    },
     async (request: FastifyRequest, reply) => {
       if (!deps.db) throw new NotFoundError("outbox event");
       const { id } = request.params as { id: string };
@@ -123,7 +210,7 @@ export function registerOpsOutboxRoutes(app: FastifyInstance, deps: { db?: DbCli
         status: row.status,
         attemptCount: row.attemptCount,
         lastError: row.lastError,
-        payload: row.payload,
+        payload: payloadForOps(row.eventType, row.payload),
         createdAt: row.createdAt.toISOString(),
         dispatchedAt: row.dispatchedAt ? row.dispatchedAt.toISOString() : null,
         nextAttemptAt: row.nextAttemptAt ? row.nextAttemptAt.toISOString() : null,

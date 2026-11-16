@@ -21,22 +21,34 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
-import { withOrgContext } from "@chartwarden/tenancy";
+import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
+import { NotFoundError } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { activeProblemIdsForOrg } from "../src/modules/07-care-plan/index";
+import {
+  activeProblemIdsForOrg,
+  activeSudProblemIdsForOrg,
+} from "../src/modules/07-care-plan/index";
 import {
   type IdgWriteOutboxPort,
   createDbIdgBackend,
 } from "../src/modules/14-idg/idg-route-service-db";
 import { M14_OUTBOX_EVENTS, buildM14DecisionAppliedConsumer } from "../src/modules/14-idg/index";
+import { buildM15AdmissionDischargedConsumer } from "../src/modules/15-discipline-care-plans/consumers/m6-admission-discharged";
 import {
   M15_OUTBOX_EVENTS,
+  buildDrizzleM15ReadService,
+  buildDrizzleM15WriteService,
   buildM15IdgDecisionConsumer,
+  createDrizzleDisciplinePlanSeamStore,
 } from "../src/modules/15-discipline-care-plans/index";
+import {
+  type DisclosurePort,
+  systemM15Actor,
+} from "../src/modules/15-discipline-care-plans/routes/index";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -53,6 +65,8 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
   let dispatcher: ReturnType<typeof createOutboxDispatcher>;
   let svc: ReturnType<typeof createDbIdgBackend>;
   let publishDecision: (org: string, e: SeededDecision, patientOrg?: string) => Promise<void>;
+  /** M15's write-service outbox: the REAL catalog-validating publisher, so a payload the catalog rejects fails. */
+  let m15Outbox: unknown;
   const peOf: Record<string, string> = {};
   const locationOf: Record<string, string> = {};
 
@@ -234,6 +248,7 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
         publisher.publish(tx as never, { ...e, callerModule: module } as never),
     });
     svc = createDbIdgBackend(handle.db, bind("m14") as unknown as IdgWriteOutboxPort);
+    m15Outbox = bind("m15");
 
     // The exact envelope M14's adjournment emit publishes (`idg-route-service-db.ts`), through the real
     // catalog-validating publisher — a payload the catalog rejects (e.g. an unknown arm) fails HERE.
@@ -278,6 +293,8 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
           outbox: bind("m15") as never,
           activeProblemIds: (organizationId, patientId) =>
             activeProblemIdsForOrg(handle.db, organizationId, patientId),
+          sudProblemIds: (organizationId, patientId) =>
+            activeSudProblemIdsForOrg(handle.db, organizationId, patientId),
         }),
         buildM14DecisionAppliedConsumer({ db: handle.db }),
       ],
@@ -464,6 +481,48 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
     expect(ivs).toHaveLength(2); // the seeded one + exactly one add
   });
 
+  it("a goal added under a Part 2 M7 problem is stored as Part 2 (inherits sud_related), and one under an ordinary problem is not (compliance finding 7)", async () => {
+    const plan = await seedPlan(ORG_A);
+    const sudProblemId = (
+      await admin.query(
+        `INSERT INTO problem (organization_id, provider_entity_id, location_id, care_plan_id, description, kind, sud_related)
+         SELECT organization_id, provider_entity_id, location_id, care_plan_id, 'SYNTHETIC-PART2-PROBLEM', 'related', true
+         FROM problem WHERE id=$1 RETURNING id`,
+        [plan.problemId],
+      )
+    ).rows[0].id as string;
+    const d = await seedDecision(ORG_A, plan.patientId, {
+      kind: "discipline_plan_update",
+      planKind: "msw_plan",
+      mutations: [
+        {
+          op: "goal_add",
+          parentProblemId: sudProblemId.toUpperCase(),
+          source: "clinical",
+          originalText: "SYNTHETIC-GOAL-UNDER-PART2",
+          measurableOutcome: "Attends weekly",
+        },
+        {
+          op: "goal_add",
+          parentProblemId: plan.problemId,
+          source: "clinical",
+          originalText: "SYNTHETIC-GOAL-ORDINARY",
+          measurableOutcome: "Reports less distress",
+        },
+      ],
+    });
+    await publishDecision(ORG_A, d);
+    await settle();
+    const rows = await dbRows(
+      "SELECT original_text, sud_related FROM discipline_goal WHERE plan_id=$1 AND original_text LIKE 'SYNTHETIC-GOAL-%' ORDER BY original_text",
+      [plan.planId],
+    );
+    expect(rows).toEqual([
+      { original_text: "SYNTHETIC-GOAL-ORDINARY", sud_related: false },
+      { original_text: "SYNTHETIC-GOAL-UNDER-PART2", sud_related: true },
+    ]);
+  });
+
   it("applies into an already-open DRAFT version instead of opening a second one", async () => {
     const plan = await seedPlan(ORG_A, { status: "draft_revising" });
     const openVersion = (
@@ -527,6 +586,17 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
     expect(await planStatus(plan.planId)).toBe("active");
     expect(await appliedEvents(d.decisionId)).toHaveLength(0);
     expect(await acks(d.decisionId)).toHaveLength(0);
+
+    // The refusal is audited as denied, with the decision id and a code (no record content).
+    const [refusalAudit] = await dbRows(
+      "SELECT outcome, context FROM audit_event WHERE event_type='m15.idg_decision.refused' AND resource_id=$1",
+      [plan.planId],
+    );
+    expect(refusalAudit?.outcome).toBe("denied");
+    expect(refusalAudit?.context).toMatchObject({
+      decisionId: d.decisionId,
+      reason: "sud_goal_targeted",
+    });
 
     // Linking a NEW intervention to the SUD goal is refused for the same reason.
     const d2 = await seedDecision(ORG_A, plan.patientId, {
@@ -607,7 +677,7 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
     });
   });
 
-  it("refuses a discharged plan (terminal) and a plan that never reached active", async () => {
+  it("refuses a discharged plan (terminal); a plan that never reached active WAITS, then is refused once stale", async () => {
     const discharged = await seedPlan(ORG_A, { status: "discharged" });
     const dDis = await seedDecision(ORG_A, discharged.patientId, {
       kind: "discipline_plan_update",
@@ -629,6 +699,24 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
       refusal_reason: "plan_discharged",
       plan_id: discharged.planId,
     });
+    // A plan that has not reached active yet WAITS for its first signature (nothing recorded, no attempt used).
+    expect(await applications(dDraft.decisionId)).toHaveLength(0);
+    const [waiting] = await dbRows(
+      `SELECT status, attempt_count, last_error FROM outbox_event
+        WHERE event_type='idg.decision_recorded' AND aggregate_id=$1`,
+      [dDraft.decisionId],
+    );
+    expect(waiting).toMatchObject({ status: "pending" });
+    expect(Number(waiting?.attempt_count)).toBe(0);
+    expect(waiting?.last_error).toContain("deferred:");
+
+    // Past the wait horizon it stops waiting and the verdict becomes durable.
+    await admin.query(
+      `UPDATE outbox_event SET created_at = now() - interval '15 days', next_attempt_at = now()
+        WHERE event_type='idg.decision_recorded' AND aggregate_id=$1`,
+      [dDraft.decisionId],
+    );
+    await settle();
     expect((await applications(dDraft.decisionId))[0]).toMatchObject({
       status: "refused",
       refusal_reason: "plan_not_yet_active",
@@ -637,7 +725,7 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
     expect(await appliedEvents(dDraft.decisionId)).toHaveLength(0);
   });
 
-  it("THROWS (retry / dead-letter, never a silent drop) when no plan of that kind exists yet or the open version is in review", async () => {
+  it("THROWS (retry / dead-letter, never a silent drop) when no plan of that kind exists yet", async () => {
     // No plan bootstrapped for this patient at all.
     const ghostPatient = randomUUID();
     const dGhost = await seedDecision(ORG_A, ghostPatient, {
@@ -645,11 +733,25 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
       planKind: "spiritual_plan",
       mutations: [{ op: "goal_update", goalId: randomUUID(), event: "meet" }],
     });
-    // A plan whose open version is sealed `in_review`.
+    await publishDecision(ORG_A, dGhost);
+    await dispatcher.tick();
+
+    expect(await applications(dGhost.decisionId)).toHaveLength(0);
+    const [row] = await dbRows(
+      `SELECT status, attempt_count FROM outbox_event WHERE event_type='idg.decision_recorded' AND aggregate_id=$1`,
+      [dGhost.decisionId],
+    );
+    expect(row?.status).toBe("pending"); // failed attempt recorded, scheduled for retry
+    expect(Number(row?.attempt_count)).toBeGreaterThanOrEqual(1);
+  });
+
+  /** A plan whose open version is sealed `in_review`, plus a goal-update decision recorded against it. */
+  async function decisionAgainstVersionInReview() {
     const plan = await seedPlan(ORG_A, { status: "draft_revising" });
-    await admin.query(
+    const inserted = await admin.query(
       `INSERT INTO discipline_care_plan_version (organization_id, provider_entity_id, location_id, plan_id,
-         sequence, status, kind, state_snapshot) VALUES ($1,$2,$3,$4,1,'in_review','idg_review','{}'::jsonb)`,
+         sequence, status, kind, state_snapshot) VALUES ($1,$2,$3,$4,1,'in_review','idg_review','{}'::jsonb)
+       RETURNING id`,
       [ORG_A, peOf[ORG_A], locationOf[ORG_A], plan.planId],
     );
     const dReview = await seedDecision(ORG_A, plan.patientId, {
@@ -657,19 +759,60 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
       planKind: "msw_plan",
       mutations: [{ op: "goal_update", goalId: plan.goalId, event: "meet" }],
     });
-    await publishDecision(ORG_A, dGhost);
     await publishDecision(ORG_A, dReview);
-    await dispatcher.tick();
+    return { plan, dReview, versionId: inserted.rows[0].id as string };
+  }
 
-    for (const d of [dGhost, dReview]) {
-      expect(await applications(d.decisionId)).toHaveLength(0);
-      const [row] = await dbRows(
-        `SELECT status, attempt_count FROM outbox_event WHERE event_type='idg.decision_recorded' AND aggregate_id=$1`,
-        [d.decisionId],
-      );
-      expect(row?.status).toBe("pending"); // failed attempt recorded, scheduled for retry
-      expect(Number(row?.attempt_count)).toBeGreaterThanOrEqual(1);
-    }
+  it("WAITS (deferred: no attempt consumed, never dead-lettered) while the open version awaits signatures, then applies once it is out of review", async () => {
+    // Signatures can outlast the relay's attempt window, so the relay is told to retry later instead of
+    // burning attempts; nobody has to re-record the decision.
+    const { plan, dReview, versionId } = await decisionAgainstVersionInReview();
+    await settle();
+
+    expect(await applications(dReview.decisionId)).toHaveLength(0);
+    const [waiting] = await dbRows(
+      `SELECT status, attempt_count, last_error, next_attempt_at > now() AS later
+         FROM outbox_event WHERE event_type='idg.decision_recorded' AND aggregate_id=$1`,
+      [dReview.decisionId],
+    );
+    expect(waiting).toMatchObject({ status: "pending", later: true });
+    expect(Number(waiting?.attempt_count)).toBe(0);
+    expect(waiting?.last_error).toContain("deferred:");
+
+    // The version leaves review and the retry clock comes due: the decision now applies by itself.
+    await admin.query(`UPDATE discipline_care_plan_version SET status='draft' WHERE id=$1`, [
+      versionId,
+    ]);
+    await admin.query(
+      `UPDATE outbox_event SET next_attempt_at = now()
+        WHERE event_type='idg.decision_recorded' AND aggregate_id=$1`,
+      [dReview.decisionId],
+    );
+    await settle();
+
+    expect((await applications(dReview.decisionId))[0]).toMatchObject({
+      status: "applied",
+      plan_id: plan.planId,
+    });
+    expect(await appliedEvents(dReview.decisionId)).toHaveLength(1);
+  });
+
+  it("records the durable `version_in_review` refusal once the decision has waited past the horizon", async () => {
+    // A version that never gets signed must still leave a human-visible trace, not wait forever.
+    const { plan, dReview } = await decisionAgainstVersionInReview();
+    await admin.query(
+      `UPDATE outbox_event SET created_at = now() - interval '15 days'
+        WHERE event_type='idg.decision_recorded' AND aggregate_id=$1`,
+      [dReview.decisionId],
+    );
+    await settle();
+
+    expect((await applications(dReview.decisionId))[0]).toMatchObject({
+      status: "refused",
+      refusal_reason: "version_in_review",
+      plan_id: plan.planId,
+    });
+    expect(await appliedEvents(dReview.decisionId)).toHaveLength(0);
     expect(
       (await dbRows("SELECT status FROM discipline_goal WHERE id=$1", [plan.goalId]))[0]?.status,
     ).toBe("in_progress");
@@ -760,5 +903,384 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
     } finally {
       await app.end();
     }
+  });
+
+  // ── m6.admission.discharged → M15 discharge (real DB, RLS as chartwarden_app, real catalog publisher) ──
+  describe("m6.admission.discharged discharges ONLY the named admission's plans", () => {
+    const admissionOf = async (planId: string) =>
+      (await dbRows("SELECT admission_id FROM discipline_care_plan WHERE id=$1", [planId]))[0]
+        ?.admission_id as string;
+    const dischargedEvents = (planId: string) =>
+      dbRows(
+        `SELECT payload FROM outbox_event WHERE event_type='m15.plan.discharged' AND payload->>'planId'=$1`,
+        [planId],
+      );
+    const dischargeVersions = (planId: string) =>
+      dbRows(
+        "SELECT status, state_snapshot FROM discipline_care_plan_version WHERE plan_id=$1 AND kind='discharge'",
+        [planId],
+      );
+    const planRow = async (planId: string) =>
+      (
+        await dbRows("SELECT status, discharged_at FROM discipline_care_plan WHERE id=$1", [planId])
+      )[0] as { status: string; discharged_at: Date | null };
+    const consumer = () => {
+      const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M15_OUTBOX_EVENTS]));
+      return buildM15AdmissionDischargedConsumer({
+        db: handle.db,
+        outbox: {
+          publish: (tx: unknown, e: Record<string, unknown>) =>
+            publisher.publish(tx as never, { ...e, callerModule: "m15" } as never),
+        } as never,
+      });
+    };
+    const discharged = (admissionId: string, org = ORG_A, id: string = randomUUID()) =>
+      consumer().handle({
+        id,
+        organizationId: org,
+        payload: {
+          admissionId,
+          reason: "death",
+          dischargeDate: new Date().toISOString(),
+        },
+      });
+
+    it("seals the named admission's plan, supersedes its signed version, announces it once, and touches nothing else", async () => {
+      const target = await seedPlan(ORG_A);
+      const sibling = await seedPlan(ORG_A); // another admission, same org
+      const foreign = await seedPlan(ORG_B); // another tenant
+      await admin.query(
+        `INSERT INTO discipline_care_plan_version (organization_id, provider_entity_id, location_id, plan_id,
+           sequence, status, kind, state_snapshot, required_signer_set, finalized_at, signed_at)
+         VALUES ($1,$2,$3,$4,1,'signed','initial','{}'::jsonb,'[]'::jsonb, now(), now())`,
+        [ORG_A, peOf[ORG_A], locationOf[ORG_A], target.planId],
+      );
+
+      const sourceEventId = randomUUID();
+      await discharged(await admissionOf(target.planId), ORG_A, sourceEventId);
+
+      // The discharge leaves one audit row that traces back to the M6 outbox event that caused it.
+      const dischargeAudits = () =>
+        dbRows(
+          "SELECT outcome, context FROM audit_event WHERE event_type='m15.plan.discharged' AND resource_id=$1",
+          [target.planId],
+        );
+      const [dischargeAudit] = await dischargeAudits();
+      expect(dischargeAudit?.outcome).toBe("success");
+      expect((dischargeAudit?.context as { sourceEventId?: string }).sourceEventId).toBe(
+        sourceEventId,
+      );
+
+      expect((await planRow(target.planId)).status).toBe("discharged");
+      expect((await planRow(target.planId)).discharged_at).not.toBeNull();
+      const sealed = await dischargeVersions(target.planId);
+      expect(sealed).toHaveLength(1);
+      expect(sealed[0]?.status).toBe("signed");
+      expect((sealed[0]?.state_snapshot as { systemSigned?: boolean }).systemSigned).toBe(true);
+      expect(
+        (
+          await dbRows(
+            "SELECT status FROM discipline_care_plan_version WHERE plan_id=$1 AND kind='initial'",
+            [target.planId],
+          )
+        )[0]?.status,
+      ).toBe("superseded");
+      expect(await dischargedEvents(target.planId)).toHaveLength(1);
+
+      // Nothing outside the named admission moved: the sibling plan and the other tenant's plan.
+      for (const other of [sibling, foreign]) {
+        expect((await planRow(other.planId)).status).toBe("active");
+        expect(await dischargeVersions(other.planId)).toHaveLength(0);
+        expect(await dischargedEvents(other.planId)).toHaveLength(0);
+      }
+
+      // A redelivery finds nothing left to do: no second discharge version, no second announcement.
+      await discharged(await admissionOf(target.planId));
+      expect(await dischargeVersions(target.planId)).toHaveLength(1);
+      expect(await dischargedEvents(target.planId)).toHaveLength(1);
+      expect(await dischargeAudits()).toHaveLength(1);
+    });
+
+    it("cannot be pointed at another tenant's admission (RLS scopes the plan read to the delivering org)", async () => {
+      const foreign = await seedPlan(ORG_B);
+      await discharged(await admissionOf(foreign.planId), ORG_A);
+      expect((await planRow(foreign.planId)).status).toBe("active");
+      expect(await dischargedEvents(foreign.planId)).toHaveLength(0);
+    });
+  });
+
+  // ── 42 CFR Part 2 / family violence on the M15 write results and reads (compliance review) ─────────────
+  // A write RESULT carries the row it touched (a goal's text, an assessment's `data`), and an intervention that
+  // serves a Part 2 goal is Part 2 content by its anchor. Driven through the REAL services as the app role.
+  describe("confidential content on M15 write results and reads", () => {
+    const SUD_IV_TEXT = "SYNTHETIC-SUD-INTERVENTION-TEXT";
+    const SUD_ASSESSMENT_TEXT = "SYNTHETIC-SUD-ASSESSMENT-TEXT";
+    const writeActor = () => systemM15Actor(ORG_A, { userId: USER, membershipId: COORDINATOR });
+    const write = () =>
+      buildDrizzleM15WriteService(handle.db, {
+        isInCaseload: async () => true,
+        outbox: m15Outbox as never,
+      });
+    const denied: DisclosurePort = {
+      part2ReleaseActive: async () => ({ allowed: false, restrictedToNamedWorkforce: true }),
+      familyViolenceRedacted: async () => true,
+    };
+    const granted: DisclosurePort = {
+      part2ReleaseActive: async () => ({ allowed: true, restrictedToNamedWorkforce: true }),
+      familyViolenceRedacted: async () => true,
+    };
+    const readActor = {
+      organizationId: ORG_A,
+      userId: USER,
+      membershipId: COORDINATOR,
+      roles: ["rn"],
+      sessionClass: "staff",
+      actorKind: "user",
+      stepUpRecent: false,
+      locationIds: [],
+    } as never;
+    const reader = (disclosure: DisclosurePort) =>
+      buildDrizzleM15ReadService(handle.db, {
+        disclosure,
+        caseload: { isInCaseload: async () => true },
+      });
+
+    async function linkedIntervention(plan: SeededPlan, goalRefs: string[], text: string) {
+      return (
+        await admin.query(
+          `INSERT INTO discipline_intervention (organization_id, provider_entity_id, location_id, plan_id,
+             goal_refs, scope_text, frequency_text, frequency_value, discipline, added_by_membership_id,
+             added_by_discipline) VALUES ($1,$2,$3,$4,$5::jsonb,$6,'Weekly','1:visit:week','msw',$7,'msw')
+           RETURNING id`,
+          [
+            ORG_A,
+            peOf[ORG_A],
+            locationOf[ORG_A],
+            plan.planId,
+            JSON.stringify(goalRefs),
+            text,
+            COORDINATOR,
+          ],
+        )
+      ).rows[0].id as string;
+    }
+    async function seedAssessment(
+      plan: SeededPlan,
+      flags: { sud?: boolean; familyViolence?: boolean; status: "draft" | "signed" },
+    ) {
+      const signed = flags.status === "signed";
+      return (
+        await admin.query(
+          `INSERT INTO discipline_assessment (organization_id, provider_entity_id, location_id, plan_id, kind,
+             status, captured_at, sud_flag, family_violence_flag, data, captured_by_membership_id, signed_at,
+             signed_by_membership_id)
+           VALUES ($1,$2,$3,$4,'msw_psychosocial',$5,now(),$6,$7,$8::jsonb,$9,$10,$11) RETURNING id`,
+          [
+            ORG_A,
+            peOf[ORG_A],
+            locationOf[ORG_A],
+            plan.planId,
+            flags.status,
+            flags.sud ?? false,
+            flags.familyViolence ?? false,
+            JSON.stringify({ note: SUD_ASSESSMENT_TEXT }),
+            COORDINATOR,
+            signed ? new Date().toISOString() : null,
+            signed ? COORDINATOR : null,
+          ],
+        )
+      ).rows[0].id as string;
+    }
+
+    it("m15.plan.version_signed carries the snapshot WITHOUT Part 2 goals or the interventions that serve them; the sealed row stays whole (audit D-13)", async () => {
+      const plan = await seedPlan(ORG_A);
+      await linkedIntervention(plan, [plan.sudGoalId], SUD_IV_TEXT);
+      const versionId = (
+        await admin.query(
+          `INSERT INTO discipline_care_plan_version (organization_id, provider_entity_id, location_id, plan_id,
+             sequence, status, kind, state_snapshot) VALUES ($1,$2,$3,$4,1,'draft','initial','{}'::jsonb)
+           RETURNING id`,
+          [ORG_A, peOf[ORG_A], locationOf[ORG_A], plan.planId],
+        )
+      ).rows[0].id as string;
+      const finalized = await write().finalizeVersion(writeActor(), plan.planId, versionId, {
+        expectedVersion: 0,
+      });
+      // One membership fills at most one slot, so every slot of the sealed quorum signs as its own member.
+      for (const slot of finalized.requiredSignerSet as { role: string; count: number }[]) {
+        for (let i = 0; i < slot.count; i++) {
+          await write().signVersion(
+            systemM15Actor(ORG_A, { userId: USER, membershipId: randomUUID() }),
+            plan.planId,
+            versionId,
+            {
+              expectedVersion: null,
+              signerRole: slot.role,
+              attestationText: "Synthetic attestation",
+            },
+          );
+        }
+      }
+
+      const events = await admin.query(
+        `SELECT payload FROM outbox_event WHERE event_type='m15.plan.version_signed' AND aggregate_id=$1`,
+        [versionId],
+      );
+      expect(events.rows).toHaveLength(1);
+      const emitted = JSON.stringify(events.rows[0].payload);
+      // The persisted event (what the ops outbox detail returns and M22 renders the PDF from): no Part 2.
+      expect(emitted).not.toContain("SUD treatment planning");
+      expect(emitted).not.toContain(SUD_IV_TEXT);
+      expect(emitted.toLowerCase()).not.toContain(plan.sudGoalId.toLowerCase());
+      expect(emitted).toContain("Family will report reduced distress");
+      expect(emitted).toContain("Grief counseling");
+      // The sealed snapshot on the version row is untouched: authorized reads still get the whole of it.
+      const sealed = JSON.stringify(
+        (
+          await admin.query(`SELECT state_snapshot FROM discipline_care_plan_version WHERE id=$1`, [
+            versionId,
+          ])
+        ).rows[0].state_snapshot,
+      );
+      expect(sealed).toContain("SUD treatment planning");
+      expect(sealed).toContain(SUD_IV_TEXT);
+    });
+
+    it("a Part 2 goal edit is NOT FOUND for a caller without disclosure: before the version check, and identical to a missing goal", async () => {
+      const plan = await seedPlan(ORG_A);
+      const missing = await write()
+        .updateGoal(writeActor(), plan.planId, randomUUID(), { expectedVersion: 0 })
+        .catch((e: unknown) => e);
+      // A deliberately WRONG version: a version-mismatch answer would confirm the goal exists.
+      for (const gate of [{}, { sudAllowed: false }]) {
+        const hidden = await write()
+          .updateGoal(writeActor(), plan.planId, plan.sudGoalId, { expectedVersion: 99, ...gate })
+          .catch((e: unknown) => e);
+        expect(hidden).toBeInstanceOf(NotFoundError);
+        expect((hidden as Error).message).toBe((missing as Error).message);
+      }
+      // With disclosure the caller gets the row (and a plain goal never needed it).
+      const shown = await write().updateGoal(writeActor(), plan.planId, plan.sudGoalId, {
+        expectedVersion: 0,
+        measurableOutcome: "Engages in two sessions",
+        sudAllowed: true,
+      });
+      expect(shown.originalText).toContain("SUD treatment planning");
+      const plain = await write().updateGoal(writeActor(), plan.planId, plan.goalId, {
+        expectedVersion: 0,
+        measurableOutcome: "Reports less distress",
+      });
+      expect(plain.goalId).toBe(plan.goalId);
+    });
+
+    it("an intervention that serves a Part 2 goal is NOT FOUND without disclosure, whatever the id's case", async () => {
+      const plan = await seedPlan(ORG_A);
+      const direct = await linkedIntervention(plan, [plan.sudGoalId], SUD_IV_TEXT);
+      const mixed = await linkedIntervention(
+        plan,
+        [plan.goalId, plan.sudGoalId.toUpperCase()],
+        SUD_IV_TEXT,
+      );
+      for (const id of [direct, mixed]) {
+        await expect(
+          write().updateIntervention(writeActor(), plan.planId, id, { expectedVersion: 99 }),
+        ).rejects.toBeInstanceOf(NotFoundError);
+      }
+      const shown = await write().updateIntervention(writeActor(), plan.planId, direct, {
+        expectedVersion: 0,
+        scopeText: `${SUD_IV_TEXT} (revised)`,
+        sudAllowed: true,
+      });
+      expect(shown.scopeText).toContain(SUD_IV_TEXT);
+      // An intervention that serves no hidden goal is unaffected.
+      const plain = await write().updateIntervention(
+        writeActor(),
+        plan.planId,
+        plan.interventionId,
+        {
+          expectedVersion: 0,
+          scopeText: "Grief counseling (revised)",
+        },
+      );
+      expect(plain.interventionId).toBe(plan.interventionId);
+    });
+
+    it("signing or amending a SUD- or family-violence-flagged assessment is NOT FOUND without that category's disclosure", async () => {
+      const plan = await seedPlan(ORG_A);
+      const sudDraft = await seedAssessment(plan, { sud: true, status: "draft" });
+      const sudSigned = await seedAssessment(plan, { sud: true, status: "signed" });
+      const fvSigned = await seedAssessment(plan, { familyViolence: true, status: "signed" });
+      const amend = (id: string, gate: object) =>
+        write().amendAssessment(writeActor(), plan.planId, id, {
+          expectedVersion: 99,
+          amendmentReason: "Corrected the recorded history.",
+          data: { note: "x" },
+          ...gate,
+        });
+
+      await expect(
+        write().signAssessment(writeActor(), plan.planId, sudDraft, { expectedVersion: 99 }),
+      ).rejects.toBeInstanceOf(NotFoundError);
+      await expect(amend(sudSigned, {})).rejects.toBeInstanceOf(NotFoundError);
+      await expect(amend(fvSigned, { sudAllowed: true })).rejects.toBeInstanceOf(NotFoundError);
+      await expect(amend(sudSigned, { familyViolenceAllowed: true })).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+      // Refused before anything was written: no amendment row exists.
+      const written = await admin.query(
+        "SELECT count(*)::int AS n FROM discipline_assessment WHERE plan_id=$1 AND amends_assessment_id IS NOT NULL",
+        [plan.planId],
+      );
+      expect(Number(written.rows[0].n)).toBe(0);
+
+      // Each category is unlocked by ITS OWN disclosure, and by nothing else.
+      const sudAmend = await write().amendAssessment(writeActor(), plan.planId, sudSigned, {
+        expectedVersion: 0,
+        amendmentReason: "Corrected the recorded history.",
+        data: { note: "x" },
+        sudAllowed: true,
+      });
+      expect(sudAmend.amendsAssessmentId).toBe(sudSigned);
+      const fvAmend = await write().amendAssessment(writeActor(), plan.planId, fvSigned, {
+        expectedVersion: 0,
+        amendmentReason: "Corrected the recorded history.",
+        data: { note: "x" },
+        familyViolenceAllowed: true,
+      });
+      expect(fvAmend.amendsAssessmentId).toBe(fvSigned);
+    });
+
+    it("the plan read, the patient summary and the internal read drop an intervention serving a hidden goal, and its goal id", async () => {
+      const plan = await seedPlan(ORG_A);
+      await linkedIntervention(plan, [plan.sudGoalId], SUD_IV_TEXT);
+
+      const hiddenPlan = JSON.stringify(await reader(denied).getPlan(readActor, plan.planId));
+      expect(hiddenPlan).not.toContain(SUD_IV_TEXT);
+      expect(hiddenPlan.toLowerCase()).not.toContain(plan.sudGoalId.toLowerCase());
+      expect(hiddenPlan).toContain("Grief counseling"); // the unlinked intervention stays
+
+      const shownPlan = JSON.stringify(await reader(granted).getPlan(readActor, plan.planId));
+      expect(shownPlan).toContain(SUD_IV_TEXT);
+
+      // The patient-shareable summary strips Part 2 content whatever the caller's disclosure.
+      const summary = JSON.stringify(await reader(granted).getPlanSummary(readActor, plan.planId));
+      expect(summary).not.toContain(SUD_IV_TEXT);
+      expect(summary).toContain("Grief counseling");
+
+      // Seam reads are system principals with no consent context: always withheld.
+      const internal = JSON.stringify(
+        await reader(granted).listRelevantElements(writeActor(), { planId: plan.planId } as never),
+      );
+      expect(internal).not.toContain(SUD_IV_TEXT);
+      expect(internal).toContain("Grief counseling");
+      const seamStore = createDrizzleDisciplinePlanSeamStore(handle.db);
+      const seam = JSON.stringify(
+        await runWithRequestContext({ organizationId: ORG_A, userId: USER } as never, () =>
+          seamStore.planById(plan.planId as never),
+        ),
+      );
+      expect(seam).not.toContain(SUD_IV_TEXT);
+      expect(seam).toContain("Grief counseling");
+    });
   });
 });

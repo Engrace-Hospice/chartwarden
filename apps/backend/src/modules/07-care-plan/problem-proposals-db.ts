@@ -24,6 +24,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import type { CarePlanWriteOutboxPort } from "./care-plan-route-service-db";
 import { CarePlanStateError } from "./lifecycle/errors";
 import { checkOptimisticConcurrency } from "./lifecycle/validation";
+import { ensureNoVersionInReview } from "./version-in-review-guard";
 
 const CP = schema.carePlans;
 const PROB = schema.problems;
@@ -199,6 +200,8 @@ export function createDbProblemProposalService(
       return withOrgContext(db, { organizationId: org, userId: actor.userId }, async (tx) => {
         const t = tx as unknown as DbClient;
         const { row, plan } = await loadDecidable(t, planId, proposalId, body.ifVersion, actor);
+        // Accepting a proposal writes a live problem like any other element write (audit D-1).
+        await ensureNoVersionInReview(t, planId);
         const [problem] = await t
           .insert(PROB)
           .values({

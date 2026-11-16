@@ -10,6 +10,7 @@
 // STALE_VERSION via the pure `checkOptimisticConcurrency` guard (lifecycle/validation.ts). The version
 // sign-off path reuses the pure §2.3/D5 quorum core (`decideRecordSignature` / `resolveRequiredSignerSet`).
 import type {
+  CarePlanElementsViewer,
   CarePlanSignerRole,
   CarePlanVersionKind,
   GoalSource,
@@ -42,12 +43,17 @@ import {
   checkOptimisticConcurrency,
   checkPatientStatedGoalVerbatim,
 } from "../lifecycle/validation";
+import {
+  assertInterventionEditable,
+  assertProblemEditable,
+  discontinueInterventionStatus,
+  guardGoalStatusChange,
+  resolveProblemStatus,
+} from "./element-transitions";
+import { redactVersionForViewer } from "./snapshot-redaction";
 
 /** The per-caller §7.6 consent context a read carries (decided upstream by `sud_disclosure_allowed`). */
-export interface CarePlanViewer {
-  /** Whether this caller may see SUD-flagged problems (false ⇒ they are omitted). */
-  readonly sudDisclosureAllowed: boolean;
-}
+export type CarePlanViewer = CarePlanElementsViewer;
 
 // ── record shapes (in-memory; the Drizzle adapter projects rows to the SAME DTOs) ───────────────────
 
@@ -86,6 +92,7 @@ interface ProblemRecord {
   source: ProblemSource;
   sudRelated: boolean;
   status: "active" | "resolved" | "inactive";
+  onsetAt: string | null;
   resolutionNote: string | null;
   version: number;
 }
@@ -99,6 +106,7 @@ interface GoalRecord {
   source: GoalSource;
   actingConsentId: string | null;
   measurableOutcome: string | null;
+  targetAt: string | null;
   status: GoalStatus;
   version: number;
 }
@@ -114,6 +122,7 @@ interface InterventionRecord {
   discipline: InterventionDiscipline;
   responsibleRole: string | null;
   status: "active" | "discontinued" | "completed";
+  discontinueReason?: string | null;
   version: number;
 }
 
@@ -161,7 +170,10 @@ export interface CarePlanRouteService {
     patientId: string,
     admissionId: string,
     admissionActivatedAt?: string,
+    actor?: CarePlanWriteActor,
   ): Promise<unknown>;
+  /** The patient a plan belongs to (null when absent / cross-tenant) — binds a plan id to a patient id. */
+  getPlanPatientId(org: string, planId: string): Promise<string | null>;
   closeCarePlanForAdmission(
     org: string,
     admissionId: string,
@@ -175,24 +187,40 @@ export interface CarePlanRouteService {
     viewer?: CarePlanViewer,
   ): Promise<unknown | null>;
   getSummary(org: string, planId: string, viewer?: CarePlanViewer): Promise<unknown>;
-  listVersions(org: string, planId: string): Promise<unknown>;
-  getVersion(org: string, planId: string, versionId: string): Promise<unknown | null>;
+  /** §7.6: pass `viewer` to redact SUD content from each version's `stateSnapshot` (fail-closed). */
+  listVersions(org: string, planId: string, viewer?: CarePlanViewer): Promise<unknown>;
+  getVersion(
+    org: string,
+    planId: string,
+    versionId: string,
+    viewer?: CarePlanViewer,
+  ): Promise<unknown | null>;
   getReadiness(org: string, planId: string): Promise<unknown>;
-  getProposedChanges(org: string, planId: string, versionId: string): Promise<unknown>;
+  /** §7.6: pass `viewer` to drop proposed changes anchored to SUD problems (fail-closed). */
+  getProposedChanges(
+    org: string,
+    planId: string,
+    versionId: string,
+    viewer?: CarePlanViewer,
+  ): Promise<unknown>;
   getReviewStatus(org: string, planId: string, now?: string): Promise<unknown>;
   createVersion(
     org: string,
     planId: string,
     kind: CarePlanVersionKind,
     idgMeetingId: string | null,
+    actor?: CarePlanWriteActor,
   ): Promise<unknown>;
+  /** §7.6: the returned version's `stateSnapshot` is redacted unless `viewer` grants disclosure (fail-closed). */
   finalizeVersion(
     org: string,
     planId: string,
     versionId: string,
     ifVersion: number,
     set: RequiredSignerSet | null,
+    viewer?: CarePlanViewer,
   ): Promise<unknown>;
+  /** §7.6: as `finalizeVersion` — the signed version's snapshot is redacted unless `viewer` grants disclosure. */
   signVersion(
     org: string,
     planId: string,
@@ -202,6 +230,7 @@ export interface CarePlanRouteService {
     at: string,
     actor: CarePlanSignActor,
     patientUnderstandingText?: string | null,
+    viewer?: CarePlanViewer,
   ): Promise<unknown>;
   returnVersionToDraft(
     org: string,
@@ -209,7 +238,12 @@ export interface CarePlanRouteService {
     versionId: string,
     ifVersion: number,
   ): Promise<unknown>;
-  addProblem(org: string, planId: string, body: CreateProblemInput): Promise<ElementResult>;
+  addProblem(
+    org: string,
+    planId: string,
+    body: CreateProblemInput,
+    actor?: CarePlanWriteActor,
+  ): Promise<ElementResult>;
   patchProblem(
     org: string,
     planId: string,
@@ -229,6 +263,7 @@ export interface CarePlanRouteService {
     planId: string,
     body: CreateGoalInput,
     dpoaConsentActive: boolean,
+    actor?: CarePlanWriteActor,
   ): Promise<ElementResult>;
   patchGoal(
     org: string,
@@ -243,13 +278,16 @@ export interface CarePlanRouteService {
     planId: string,
     body: CreateInterventionInput,
     authoring?: AuthoringDisciplineScope,
+    actor?: CarePlanWriteActor,
   ): Promise<ElementResult>;
+  /** §7.4: pass `authoring` to enforce `discipline_scope` against the intervention's own discipline. */
   patchIntervention(
     org: string,
     planId: string,
     interventionId: string,
     ifVersion: number,
     body: PatchInterventionInput,
+    authoring?: AuthoringDisciplineScope,
   ): Promise<ElementResult>;
   discontinueIntervention(
     org: string,
@@ -257,12 +295,24 @@ export interface CarePlanRouteService {
     interventionId: string,
     ifVersion: number,
     reason: string,
+    authoring?: AuthoringDisciplineScope,
   ): Promise<ElementResult>;
+}
+
+/**
+ * The acting membership a create stamps as `added_by_membership_id` / `drafted_by_membership_id`
+ * (taken from the authenticated session by the route, never the body). Optional: the internal/relay
+ * write path (the M6 bootstrap consumer) has no acting user and records NULL.
+ */
+export interface CarePlanWriteActor {
+  readonly membershipId: string | null;
 }
 
 export interface CarePlanSignActor {
   readonly userId: string;
   readonly membershipId: string;
+  /** How the actor's fresh step-up was proven (server-resolved from the session; default step_up_unverified). */
+  readonly signatureMethod?: "passkey" | "totp_step_up" | "sms_step_up" | "step_up_unverified";
   /** The authenticated actor's role keys (server-side; never a body field) — GAP-011. */
   readonly roles: readonly string[];
 }
@@ -274,6 +324,7 @@ export interface CreateProblemInput {
   readonly kind: ProblemKind;
   readonly source: ProblemSource;
   readonly sudRelated?: boolean;
+  readonly onsetAt?: string;
 }
 export interface PatchProblemInput {
   readonly description?: string;
@@ -287,11 +338,13 @@ export interface CreateGoalInput {
   readonly source: GoalSource;
   readonly actingConsentId?: string;
   readonly measurableOutcome?: string;
+  readonly targetAt?: string;
 }
 export interface PatchGoalInput {
   readonly revisedText?: string;
   readonly measurableOutcome?: string;
   readonly status?: GoalStatus;
+  readonly targetAt?: string;
 }
 export interface CreateInterventionInput {
   readonly problemId: string;
@@ -345,6 +398,8 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
   const now = seed.now ?? (() => "2026-06-21T12:00:00.000Z");
   let seq = 0;
   const mintId = (prefix: string) => `${prefix}_${(++seq).toString(36)}`;
+  // Problem/goal ids are uuid-shaped (the routes validate `problemId`/`goalRefs` as uuids, like prod).
+  const mintUuid = () => `00000000-0000-4000-8000-${(++seq).toString(16).padStart(12, "0")}`;
 
   for (const p of seed.plans ?? []) {
     plans.set(p.id, {
@@ -395,6 +450,14 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       throw new NotFoundError("intervention", interventionId);
     }
     return row;
+  }
+
+  /** The patient's plan: newest non-discharged, else the newest (same rule as plan-selection.ts). */
+  function patientPlan(org: string, patientId: string): CarePlanRecord | undefined {
+    const mine = [...plans.values()].filter(
+      (p) => p.organizationId === org && p.patientId === patientId,
+    );
+    return [...mine].reverse().find((p) => p.status !== "discharged") ?? mine[mine.length - 1];
   }
 
   const versionDto = (v: VersionRecord) => ({
@@ -509,21 +572,20 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
     },
 
     async getCarePlanForPatient(org, patientId, viewer) {
-      const row = [...plans.values()].find(
-        (p) => p.organizationId === org && p.patientId === patientId,
-      );
+      const row = patientPlan(org, patientId);
       if (!row) return null;
+      // §7.6 per-caller SUD redaction: omit SUD problems (and their dependent goals/interventions)
+      // unless `viewer.sudDisclosureAllowed`. No viewer ⇒ redacted (fail closed); an internal reader passes `{ sudDisclosureAllowed: true }` explicitly.
+      const allowSud = viewer?.sudDisclosureAllowed ?? false;
       const planVersions = [...versions.values()]
         .filter((v) => v.planId === row.id)
-        .map(versionDto);
-      // §7.6 per-caller SUD redaction: omit SUD problems (and their dependent goals/interventions)
-      // unless `viewer.sudDisclosureAllowed`. No viewer ⇒ full set (system/internal read path).
-      const allowSud = viewer?.sudDisclosureAllowed ?? true;
+        .map((v) => redactVersionForViewer(versionDto(v), allowSud));
       const planProblems = [...problems.values()].filter((p) => p.planId === row.id);
       const hiddenIds = redactedSudProblemIds(planProblems, allowSud);
       return {
         id: row.id,
         patientId: row.patientId,
+        admissionId: row.admissionId,
         status: row.status,
         activeVersionId: row.activeVersionId,
         version: row.version,
@@ -543,7 +605,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
 
     async getSummary(org, planId, viewer) {
       const p = plan(org, planId); // 404 if cross-tenant/absent
-      const allowSud = viewer?.sudDisclosureAllowed ?? true;
+      const allowSud = viewer?.sudDisclosureAllowed ?? false;
       const planProblems = [...problems.values()].filter((x) => x.planId === p.id);
       const hiddenIds = redactedSudProblemIds(planProblems, allowSud);
       const visibleProblems = filterVisibleProblems(planProblems, allowSud);
@@ -572,17 +634,26 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       };
     },
 
-    async listVersions(org, planId) {
+    async getPlanPatientId(org, planId) {
+      const row = plans.get(planId);
+      return row && row.organizationId === org ? row.patientId : null;
+    },
+
+    async listVersions(org, planId, viewer) {
       plan(org, planId);
+      const allowSud = viewer?.sudDisclosureAllowed ?? false;
       const items = [...versions.values()]
         .filter((v) => v.planId === planId)
         .sort((a, b) => a.sequence - b.sequence)
-        .map(versionDto);
+        .map((v) => redactVersionForViewer(versionDto(v), allowSud));
       return { items, nextCursor: null };
     },
 
-    async getVersion(org, planId, versionId) {
-      return versionDto(version(org, planId, versionId));
+    async getVersion(org, planId, versionId, viewer) {
+      return redactVersionForViewer(
+        versionDto(version(org, planId, versionId)),
+        viewer?.sudDisclosureAllowed ?? false,
+      );
     },
 
     async getReadiness(org, planId) {
@@ -688,7 +759,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       return versionDto(row);
     },
 
-    async finalizeVersion(org, planId, versionId, ifVersion, set) {
+    async finalizeVersion(org, planId, versionId, ifVersion, set, viewer) {
       const p = plan(org, planId);
       if (p.status === "discharged") {
         throw new CarePlanStateError("CARE_PLAN_CLOSED", "discharged care plans cannot be mutated");
@@ -755,7 +826,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
           })),
       };
       v.version += 1;
-      return versionDto(v);
+      return redactVersionForViewer(versionDto(v), viewer?.sudDisclosureAllowed ?? false);
     },
 
     async signVersion(
@@ -767,6 +838,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       at,
       actor,
       patientUnderstandingText,
+      viewer,
     ) {
       const p = plan(org, planId);
       if (p.status === "discharged") {
@@ -814,7 +886,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
         p.version += 1;
       }
       v.version += 1;
-      return versionDto(v);
+      return redactVersionForViewer(versionDto(v), viewer?.sudDisclosureAllowed ?? false);
     },
 
     async returnVersionToDraft(org, planId, versionId, ifVersion) {
@@ -836,7 +908,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
 
     async addProblem(org, planId, body) {
       plan(org, planId);
-      const id = mintId("prob");
+      const id = mintUuid();
       problems.set(id, {
         id,
         organizationId: org,
@@ -848,6 +920,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
         source: body.source,
         sudRelated: body.sudRelated ?? false,
         status: "active",
+        onsetAt: body.onsetAt ?? null,
         resolutionNote: null,
         version: 1,
       });
@@ -857,6 +930,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
     async patchProblem(org, planId, problemId, ifVersion, body) {
       const row = problem(org, planId, problemId);
       checkOptimisticConcurrency(ifVersion, row.version);
+      assertProblemEditable(row.status);
       if (body.description !== undefined) row.description = body.description;
       if (body.kind !== undefined) row.kind = body.kind;
       if (body.icd10Code !== undefined) row.icd10Code = body.icd10Code;
@@ -868,7 +942,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
     async resolveProblem(org, planId, problemId, ifVersion, note) {
       const row = problem(org, planId, problemId);
       checkOptimisticConcurrency(ifVersion, row.version);
-      row.status = "resolved";
+      row.status = resolveProblemStatus(row.status, note); // active → resolved only (§2.2.3)
       row.resolutionNote = note;
       row.version += 1;
       return { id: row.id, status: row.status, version: row.version };
@@ -889,7 +963,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
           "an agent-stated goal requires an active dpoa_healthcare consent",
         );
       }
-      const id = mintId("goal");
+      const id = mintUuid();
       goals.set(id, {
         id,
         organizationId: org,
@@ -900,6 +974,7 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
         source: body.source,
         actingConsentId: body.actingConsentId ?? null,
         measurableOutcome: body.measurableOutcome ?? null,
+        targetAt: body.targetAt ?? null,
         status: "not_started",
         version: 1,
       });
@@ -917,9 +992,11 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
         isUpdate: true,
         mutatingOriginalText: false,
       });
+      const nextStatus = guardGoalStatusChange(row.status, body.status); // §2.2.3 graph; terminal → 409
       if (body.revisedText !== undefined) row.revisedText = body.revisedText;
       if (body.measurableOutcome !== undefined) row.measurableOutcome = body.measurableOutcome;
-      if (body.status !== undefined) row.status = body.status;
+      if (body.targetAt !== undefined) row.targetAt = body.targetAt;
+      row.status = nextStatus;
       row.version += 1;
       return { id: row.id, status: row.status, version: row.version };
     },
@@ -949,9 +1026,11 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       return { id, status: "active", version: 1 };
     },
 
-    async patchIntervention(org, planId, interventionId, ifVersion, body) {
+    async patchIntervention(org, planId, interventionId, ifVersion, body, authoring) {
       const row = intervention(org, planId, interventionId);
       checkOptimisticConcurrency(ifVersion, row.version);
+      if (authoring) assertDisciplineScope(authoring, row.discipline); // §7.4 on the row's own discipline
+      assertInterventionEditable(row.status);
       if (body.scopeText !== undefined) row.scopeText = body.scopeText;
       if (body.frequencyText !== undefined) row.frequencyText = body.frequencyText;
       if (body.frequencyValue !== undefined) {
@@ -963,10 +1042,12 @@ export function createInMemoryCarePlanBackend(seed: CarePlanBackendSeed = {}): {
       return { id: row.id, status: row.status, version: row.version };
     },
 
-    async discontinueIntervention(org, planId, interventionId, ifVersion, _reason) {
+    async discontinueIntervention(org, planId, interventionId, ifVersion, reason, authoring) {
       const row = intervention(org, planId, interventionId);
       checkOptimisticConcurrency(ifVersion, row.version);
-      row.status = "discontinued";
+      if (authoring) assertDisciplineScope(authoring, row.discipline);
+      row.status = discontinueInterventionStatus(row.status, reason); // active → discontinued only
+      row.discontinueReason = reason;
       row.version += 1;
       return { id: row.id, status: row.status, version: row.version };
     },

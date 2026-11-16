@@ -97,13 +97,17 @@ export function DisciplinePlansSummary(): JSX.Element {
       <PageHeader
         title={<span style={pageTitleStyle}>Discipline plans — summary</span>}
         actions={
-          <div style={{ display: "flex", gap: t.space2 }}>
-            <button type="button" style={ghostButtonStyle} onClick={() => window.print()}>
-              Print
-            </button>
-            <Link to={`/patients/${patientId}/discipline-plans`} style={ghostButtonStyle}>
-              Back
-            </Link>
+          // The page's own controls do not print. The class sits on a wrapper with no inline display: an
+          // inline `display: flex` would beat the print stylesheet's `display: none`.
+          <div className="wx-print-hide">
+            <div style={{ display: "flex", gap: t.space2 }}>
+              <button type="button" style={ghostButtonStyle} onClick={() => window.print()}>
+                Print
+              </button>
+              <Link to={`/patients/${patientId}/discipline-plans`} style={ghostButtonStyle}>
+                Back
+              </Link>
+            </div>
           </div>
         }
       />

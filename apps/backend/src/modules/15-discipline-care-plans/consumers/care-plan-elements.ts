@@ -7,10 +7,12 @@
 // the IDG signs one while the aide works the other.
 //
 // The reader is asked for the elements RELEVANT to this plan's discipline, so an MSW plan is offered the
-// MSW-tagged interventions and a chaplain plan the chaplain-tagged ones. SUD redaction is applied SQL-side
-// inside M7's reader (D7) — M15 never re-derives it, and `redacted:true` rides through so the caller can
+// MSW-tagged interventions and a chaplain plan the chaplain-tagged ones. SUD redaction is applied inside M7's
+// reader (D7; the verdict is resolved through the M39 evaluator at call time, only `containsSud` comes from the
+// row) — M15 never re-derives it, and `redacted:true` rides through so the caller can
 // render the §7.8 "some content has been redacted" envelope rather than a silently short list.
 import type {
+  CarePlanElementsAudience,
   DisciplinePlanKind,
   EncounterType,
   InterventionDiscipline,
@@ -37,16 +39,40 @@ const READER_LENS_BY_KIND: {
   volunteer_plan: { discipline: "volunteer", encounterType: "volunteer_visit" },
 } as const;
 
+/**
+ * The audience an M15 element read is made for. A HUMAN actor is asked under the PER-ACTOR Part 2 rule (their
+ * role keys and active membership id, so the store resolves the same verdict the M7 picker used: an RN case manager
+ * sees a Part 2 problem where no release names others, a nurse the release does not name does not). The one
+ * exception is the SYSTEM actor (`kind === "system"`, minted only by `systemM15Actor`): it has no human and no
+ * roles (its membership id is only the attribution id), so it stays on the patient-level release rule.
+ */
+export function elementsAudienceFor(actor: {
+  readonly kind?: "system";
+  readonly roles: readonly string[];
+  readonly membershipId: string | null;
+}): CarePlanElementsAudience {
+  return actor.kind === "system"
+    ? "patient_level"
+    : { actor: { roles: actor.roles, membershipId: actor.membershipId } };
+}
+
 /** The IPOC elements a discipline plan of `kind` may parent onto (§2.1). Null when the patient has no plan. */
 export async function relevantIpocElements(
   kind: DisciplinePlanKind,
   patientId: PatientId,
+  viewer: CarePlanElementsAudience,
 ): Promise<RelevantCarePlanElements | null> {
   const lens = READER_LENS_BY_KIND[kind];
+  // The elements prove a parent exists and supply its Part 2 flag (`assertParentElements`); none is returned to a
+  // caller. The audience is the caller's (`elementsAudienceFor`), so this check applies the same per-actor Part 2
+  // rule as the M7 picker: what the picker offered is what it accepts, and a Part 2 problem a nurse the release does
+  // not name holds by uuid is rejected 422 like any other element she cannot see.
   return getCarePlanReader().relevantElementsForEncounter(
     patientId,
     lens.encounterType,
     lens.discipline,
+    undefined,
+    viewer,
   );
 }
 
@@ -70,14 +96,20 @@ export interface ParentElementRefs {
  *
  * FAIL-CLOSED: a patient with no resolvable care plan cannot parent anything — the reader returning null
  * lands on `PARENT_ELEMENT_NOT_FOUND` rather than being waved through.
+ *
+ * Returns `parentSudRelated`: for a goal, whether EITHER the problem named by `parentProblemId` OR the problem the
+ * parent goal (`parentGoalId`) sits under is 42 CFR Part 2 flagged (the goal then inherits the flag, whatever the
+ * author sent: a goal refining a Part 2 goal is Part 2 content even when it names a plain problem, because this check
+ * does not require the parent goal to belong to `parentProblemId`); for an intervention, always false.
  */
 export async function assertParentElements(
   kind: DisciplinePlanKind,
   patientId: PatientId,
   refs: ParentElementRefs,
   requireProblem: boolean,
-): Promise<void> {
-  const elements = await relevantIpocElements(kind, patientId);
+  viewer: CarePlanElementsAudience,
+): Promise<{ readonly parentSudRelated: boolean }> {
+  const elements = await relevantIpocElements(kind, patientId, viewer);
   const problemIds = new Set((elements?.problems ?? []).map((p) => p.problemId));
   const goalIds = new Set((elements?.goals ?? []).map((g) => g.goalId));
   const interventionIds = new Set((elements?.interventions ?? []).map((i) => i.interventionId));
@@ -92,4 +124,13 @@ export async function assertParentElements(
     refs.parentInterventionId,
     interventionIds.has(refs.parentInterventionId ?? ""),
   );
+  if (!requireProblem) return { parentSudRelated: false };
+  const parentGoalProblemId = elements?.goals.find(
+    (g) => g.goalId === refs.parentGoalId,
+  )?.problemId;
+  const isSud = (problemId: string | undefined) =>
+    elements?.problems.some((p) => p.problemId === problemId && p.sudRelated === true) === true;
+  return {
+    parentSudRelated: isSud(refs.parentProblemId ?? undefined) || isSud(parentGoalProblemId),
+  };
 }

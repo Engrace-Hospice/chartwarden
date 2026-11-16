@@ -357,6 +357,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // cascade.
       "m13",
       // F-176 (#248) — m14 REMOVED: F-171's T-24h packet-build worker answers §2.3 D9 inclusion by PULL (`idgPacketInclusionForOrg` reads `admission` at build time; no inclusion cache exists to write into), so there is nothing for this push to update.
+      // m15 ADDED — M15 §7.11 / `m15.discharge.apply`: every non-discharged discipline plan of the admission
+      // seals a system-signed `discharge` version and goes `discharged` (`m15.m6-admission-discharged`). Until
+      // this was declared nothing dispatched the plan root's `discharge` transition, so plans stayed
+      // active/draft_revising forever, the M15 crons kept alerting for discharged patients, and a
+      // readmission left two live plans of one kind.
+      "m15",
       "m7",
       // M5 §2.4.1 `active/on_hold → discharged` ("revoke / discharge for cause / transfer (M6)"): the
       // live-discharge edge (`05-patient/outbox-consumers/m6-admission-discharged.ts`). A `reason: death`

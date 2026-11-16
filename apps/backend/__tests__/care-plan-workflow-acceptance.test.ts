@@ -3,14 +3,15 @@
 // (the same backend the routes compose over) plus the pure §7.3–7.6 authoring helpers. Deterministic:
 // no infra, injected clock. The route-auth handshake (§4.5/§4.6) + the §7.7 412 wire behaviour are
 // proven in care-plan-routes.test.ts; this suite asserts the WORKFLOW outcomes (state transitions,
-// quorum, discipline scope, SUD redaction, DPOA gating, verbatim preservation, IDG application).
+// quorum, discipline scope, SUD redaction, DPOA gating, verbatim preservation). The §7.9 IDG application
+// is proven against the live consumer: care-plan-idg-consumer.test.ts (proposal builder) +
+// m7-care-plan-write.live.test.ts (persisted proposal, refusal, quorum apply).
 import { describe, expect, it } from "vitest";
 import {
   type AuthoringDisciplineScope,
   CarePlanStateError,
   assertDisciplineScope,
   createInMemoryCarePlanBackend,
-  decideIdgDecision,
   redactedSudProblemIds,
   resolveRequiredSignerSet,
 } from "../src/modules/07-care-plan/index";
@@ -271,29 +272,6 @@ describe("M7-T09 §7 workflow acceptance", () => {
     await expect(
       svc.patchProblem(ORG, planId, problemId, 1, { description: "stale write" }),
     ).rejects.toMatchObject({ code: "STALE_VERSION" });
-  });
-
-  it("§7.9 — IDG decision: the pure decision core applies a meeting decision and is idempotent on idgDecisionId", () => {
-    const decision = {
-      idgDecisionId: "dec-1",
-      idgMeetingId: "idg_meeting_1",
-      planId: "cp-1",
-      patientId: PATIENT,
-      changes: [{ target: "intervention" as const, op: "add" as const, discipline: "rn" as const }],
-    };
-    const baseFacts = {
-      alreadyApplied: false,
-      planActive: true,
-      openDraftVersionId: null,
-      terminalProblemIds: [] as string[],
-    };
-
-    const applied = decideIdgDecision(decision, baseFacts);
-    expect(applied.kind).toBe("apply");
-
-    // Replay: the same decision id (alreadyApplied) is a no-op.
-    const replay = decideIdgDecision(decision, { ...baseFacts, alreadyApplied: true });
-    expect(replay.kind).toBe("idempotent_skip");
   });
 
   it("§6.6 — cross-tenant: Org B cannot read Org A's plan (non-leaking 404)", async () => {

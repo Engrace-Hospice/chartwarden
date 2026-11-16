@@ -53,6 +53,19 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
 }
 
+/** Every M7 write route requires an Idempotency-Key: a POST that sent none gets a fresh one (PATCHes send their own). */
+function withPostIdempotencyKeys(app: FastifyInstance): void {
+  app.addHook("onRequest", async (request) => {
+    if (request.method === "POST" && !request.headers["idempotency-key"]) {
+      request.headers["idempotency-key"] = crypto.randomUUID();
+    }
+  });
+}
+
+/** Bootstrap checks the body's admissionId against M6's `AdmissionStatusReader`; this suite stubs that seam. */
+const admissionOf = (patientId: string, admissionId: string) => async (_org: string, id: string) =>
+  id === admissionId ? { patientId, status: "active" } : null;
+
 /** Runs the same 401→403→409(bootstrap)→409(patch) sequence against whatever service backend is mounted. */
 async function runConformanceSuite(
   label: string,
@@ -192,11 +205,17 @@ describe("M7 Care Plan conformance (TASK-050B)", () => {
     registerAbacRegistry(registry);
 
     const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-    registerCarePlanRoutes(app, { service });
+    const patientId = crypto.randomUUID();
+    const admissionId = crypto.randomUUID();
+    withPostIdempotencyKeys(app);
+    registerCarePlanRoutes(app, {
+      service,
+      admissionPatientCare: admissionOf(patientId, admissionId),
+    });
     return {
       app,
-      patientId: crypto.randomUUID(),
-      admissionId: crypto.randomUUID(),
+      patientId,
+      admissionId,
       authHeaders: { "x-test-user": "author_1", "x-test-org": "org_a" },
     };
   });
@@ -321,7 +340,11 @@ describe("M7 Care Plan conformance (TASK-050B)", () => {
         authenticate: headerAuth,
         security: { rateLimitEnabled: false },
       });
-      registerCarePlanRoutes(app, { service });
+      withPostIdempotencyKeys(app);
+      registerCarePlanRoutes(app, {
+        service,
+        admissionPatientCare: admissionOf(patientId, admissionId),
+      });
       return {
         app,
         patientId,

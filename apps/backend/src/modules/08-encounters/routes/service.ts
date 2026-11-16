@@ -600,11 +600,17 @@ export interface EncounterRouteService {
     encounterId: string,
     input: MileageInput,
   ): Promise<MileageResult>;
+  /**
+   * `actorRoles` is REQUIRED (omitting it is a compile error): the link check validates the picked ids against the
+   * M7 elements under the SAME per-actor Part 2 rule the picker used (the actor's roles + membership id), so the
+   * picker and the check cannot disagree.
+   */
   addCarePlanLink(
     organizationId: string,
     actorMembershipId: string,
     encounterId: string,
     input: CarePlanLinkInput,
+    actorRoles: readonly string[],
   ): Promise<CarePlanLinkView>;
   removeCarePlanLink(
     organizationId: string,
@@ -1204,7 +1210,8 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       recordOutbox(r.id, plan.effects);
       return { mileageId, milesDriven: plan.milesDriven, source: plan.source };
     },
-    async addCarePlanLink(organizationId, actorMembershipId, encounterId, input) {
+    // The in-memory twin has no M7 reader to validate against, so it takes `_actorRoles` only to keep the signature.
+    async addCarePlanLink(organizationId, actorMembershipId, encounterId, input, _actorRoles) {
       const r = load(organizationId, encounterId);
       checkMutableForEdit({ status: r.status });
       assertAtLeastOneCarePlanRef(input);

@@ -114,6 +114,8 @@ export interface OutboxMetricsDeps {
    * Omitted (no dispatcher running, e.g. `DATABASE_PLATFORM_URL` unconfigured) reports depth 0.
    */
   readonly pendingDepth?: () => Promise<number>;
+  /** Lazy, like `pendingDepth`: the age in seconds of the oldest pending row (audit D-14). Omitted reports 0. */
+  readonly oldestPendingAgeSeconds?: () => Promise<number>;
 }
 
 export interface OutboxMetricsHooks {
@@ -151,6 +153,18 @@ export function registerOutboxMetrics(
     registers: [registry],
     async collect() {
       this.set(deps.pendingDepth ? await deps.pendingDepth() : 0);
+    },
+  });
+
+  // Audit D-14. A consumer may DEFER an event for up to 14 days (an IDG decision waiting on a draft plan), and
+  // the dead-letter hook and the depth threshold both stay quiet through that. Suggested alert: above 86400
+  // (a day) investigate, above 604800 (a week) the decision is about to become an audited refusal.
+  new Gauge({
+    name: "chartwarden_outbox_oldest_pending_age_seconds",
+    help: "Age in seconds of the oldest pending org-scoped outbox row (a long wait means a deferred or stuck event), read on scrape",
+    registers: [registry],
+    async collect() {
+      this.set(deps.oldestPendingAgeSeconds ? await deps.oldestPendingAgeSeconds() : 0);
     },
   });
 
