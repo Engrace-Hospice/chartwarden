@@ -776,6 +776,21 @@ controls:
       - file: apps/backend/src/modules/15-discipline-care-plans/routes/disclosure.ts
       - file: apps/backend/__tests__/discipline-plans-snapshot-redaction.test.ts
 
+  - id: CW-AC-44
+    title: A tenant's clinical roles hold the care-plan permissions they need by default and no more (least privilege) - read for the roles that work from the plan, author and finalize for the nurse case manager, clinical supervisor and director of nursing, sign for exactly the six roles the signer-role-match rule accepts - and never the system keys (bootstrap, IDG revise), an external, portal or collaborator role; a tenant may still remove a key from a role it owns
+    hipaa: ["164.312(a)(1)", "164.308(a)(4)(ii)(B)"]
+    soc2: ["CC6.1", "CC6.3"]
+    status: implemented
+    evidence:
+      # Re-runs migration 1494 over staged roles in a real database: each clinical role gets exactly its keys, an
+      # external or unlisted role and a platform template get none, existing grants survive, and a second run adds nothing.
+      - script: test:m3:role-floor:live
+      # The single source of the grants, the backfill migration (insert-only, idempotent) and the pin test that keeps
+      # the constant, the migration and the DON template identical and the sign grant equal to the six signer roles.
+      - file: packages/auth/src/roles/care-plan-grants.ts
+      - file: packages/db/migrations/1494_care_plan_clinical_default_grants.sql
+      - file: packages/auth/__tests__/care-plan-grants.test.ts
+
   - id: CW-AU-01
     title: Audit controls — PHI reads and writes leave an integrity-checked trail
     hipaa: ["164.312(b)", "164.312(c)(1)"]
