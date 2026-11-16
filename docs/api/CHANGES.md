@@ -86,7 +86,9 @@ its full description there. Newest first.
   same characters, at most 64, and are screened for a patient identifier.** They are stored on the item, the assessment and the result
   event, copied into audit row images and (the edit code) into the `m10.hope.submission_rejected` payload. A token must match
   `^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/-]*)?$` (letters, digits, `. _ : # / -`, spaces after the first character; empty is a blank cell and
-  names nothing); anything else, including markup, quotes, line breaks or a token of only spaces, is `422 VALIDATION_FAILED`. A token
+  names nothing), except that `status`, `result` and `outcome` (a phrase CMS wrote, such as "received, pending review") may also hold
+  `, ; ( )` after the first character: `^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/(),;-]*)?$`. Anything else, including markup, quotes, line
+  breaks or a token of only spaces, is `422 VALIDATION_FAILED`. A token
   shaped like a Social Security or Medicare number is `422 EVIDENCE_LOOKS_LIKE_PHI` with the field `results.<row>.<token>`; neither 422
   echoes the value. `assessmentId` and `message` are not screened.
 - **`GET /hope/assessments/{id}/validation` and `GET .../workspace` store nothing for a caller who does not hold `hope.timepoint.write`.** The
