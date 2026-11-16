@@ -116,16 +116,24 @@ export async function recentlyExpiredSchedulesForOrg(
  * `schedule-mark-completed` trigger) that committed between the watchdog's unlocked snapshot and this write must not
  * be overwritten `completed` -> `expired`, and an overlapping tick that already expired it must not announce it twice.
  * Returns whether a row was written; `false` is a benign lost race, and the caller must not publish the event.
+ * The tenant is an explicit predicate beside the id, on top of RLS (as the snapshot reads above).
  */
 export async function updateHopeScheduleStatus(
   tx: DbClient,
+  organizationId: string,
   scheduleId: string,
   status: HopeScheduleStatus,
 ): Promise<boolean> {
   const rows = await tx
     .update(SCHED)
     .set({ status, updatedAt: new Date() })
-    .where(and(eq(SCHED.id, scheduleId), eq(SCHED.status, "open")))
+    .where(
+      and(
+        eq(SCHED.id, scheduleId),
+        eq(SCHED.organizationId, organizationId),
+        eq(SCHED.status, "open"),
+      ),
+    )
     .returning({ id: SCHED.id });
   return rows.length > 0;
 }
@@ -213,6 +221,8 @@ export async function sfvsToReplayAlertsForOrg(
 
 /** One planned watchdog decay of an SFV: from the status its snapshot read to the status the plan chose. */
 export interface SfvStatusFlip {
+  /** The tenant the SFV belongs to: an explicit predicate beside the id, on top of RLS. */
+  readonly organizationId: string;
   readonly sfvId: string;
   /** The status the watchdog's snapshot read; the UPDATE only matches a row that still has exactly this one. */
   readonly from: Extract<HopeSfvStatus, "open" | "overdue">;
@@ -247,6 +257,7 @@ export async function updateSfvStatus(tx: DbClient, flip: SfvStatusFlip): Promis
     .where(
       and(
         eq(SFV.id, flip.sfvId),
+        eq(SFV.organizationId, flip.organizationId),
         eq(SFV.status, flip.from),
         sql`date_trunc('milliseconds', ${SFV.dueAt}) = ${flip.snapshotDueAt}::timestamptz`,
       ),

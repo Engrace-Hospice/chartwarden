@@ -54,7 +54,7 @@ const outcome = (p: Promise<unknown>) =>
 
 describe("in-memory skipSchedule — only an open schedule can be skipped", () => {
   it("skips an open schedule", async () => {
-    const skipped = await backend().skipSchedule(ORG, SCHEDULE_IDS.open, "patient_declined");
+    const skipped = await backend().skipSchedule(ORG, SCHEDULE_IDS.open, "other");
 
     expect(skipped.status).toBe("skipped");
   });
@@ -64,9 +64,7 @@ describe("in-memory skipSchedule — only an open schedule can be skipped", () =
     async (status) => {
       const svc = backend();
 
-      const failure = await outcome(
-        svc.skipSchedule(ORG, SCHEDULE_IDS[status], "patient_declined"),
-      );
+      const failure = await outcome(svc.skipSchedule(ORG, SCHEDULE_IDS[status], "other"));
 
       expect(failure).toMatchObject({ statusCode: 409 });
       expect(String(failure?.message)).toContain(`is ${status}`);
@@ -76,9 +74,9 @@ describe("in-memory skipSchedule — only an open schedule can be skipped", () =
 
   it("skipping twice is a 409 the second time (a double click must not read as a success)", async () => {
     const svc = backend();
-    await svc.skipSchedule(ORG, SCHEDULE_IDS.open, "patient_declined");
+    await svc.skipSchedule(ORG, SCHEDULE_IDS.open, "other");
 
-    const failure = await outcome(svc.skipSchedule(ORG, SCHEDULE_IDS.open, "patient_declined"));
+    const failure = await outcome(svc.skipSchedule(ORG, SCHEDULE_IDS.open, "other"));
 
     expect(failure).toMatchObject({ statusCode: 409 });
   });
@@ -87,7 +85,7 @@ describe("in-memory skipSchedule — only an open schedule can be skipped", () =
     const svc = backend();
 
     const unknown = await outcome(
-      svc.skipSchedule(ORG, "55555555-5555-4555-8555-5555555555ff", "patient_declined"),
+      svc.skipSchedule(ORG, "55555555-5555-4555-8555-5555555555ff", "other"),
     );
 
     expect(unknown).toMatchObject({ statusCode: 404 });
@@ -97,11 +95,7 @@ describe("in-memory skipSchedule — only an open schedule can be skipped", () =
   it("an id in another spelling names the same schedule, as the uuid column does in the database", async () => {
     const svc = backend();
 
-    const skipped = await svc.skipSchedule(
-      ORG,
-      SCHEDULE_IDS.open.toUpperCase(),
-      "patient_declined",
-    );
+    const skipped = await svc.skipSchedule(ORG, SCHEDULE_IDS.open.toUpperCase(), "other");
 
     expect(skipped.status).toBe("skipped");
     expect((await svc.getSchedule(ORG, SCHEDULE_IDS.open)).status).toBe("skipped");

@@ -46,7 +46,7 @@ describe("regenerate-schedules: 404 from the scope guard vs 422 for a visible, u
       /const SCOPE_BODY_ADMISSION = [\s\S]*?"hope\.scope", \{\s*notFoundOnDeny: true,[\s\S]*?admissionId: \(request\.body/,
     );
     expect(routes).toMatch(
-      /preHandler: \[ADMIN_REGEN, SCOPE_BODY_ADMISSION\("hope\.admin\.regenerate_schedules"\)\]/,
+      /preHandler: \[\s*ADMIN_REGEN,\s*REJECT_AI_OPERATIONS,\s*SCOPE_BODY_ADMISSION\("hope\.admin\.regenerate_schedules"\),?\s*\]/,
     );
   });
 

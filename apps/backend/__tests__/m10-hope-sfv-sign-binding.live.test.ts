@@ -954,7 +954,13 @@ describe.skipIf(!DB_URL)(
         snapshotDueAt: string,
       ) =>
         withOrgContext(handle.db, { organizationId: ORG, userId: "" }, async (tx) =>
-          updateSfvStatus(tx as unknown as DbClient, { sfvId, from, to, snapshotDueAt }),
+          updateSfvStatus(tx as unknown as DbClient, {
+            organizationId: ORG,
+            sfvId,
+            from,
+            to,
+            snapshotDueAt,
+          }),
         );
 
       it("the watchdog's status flip leaves a completed SFV completed and reports the lost race", async () => {

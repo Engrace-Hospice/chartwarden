@@ -78,6 +78,7 @@ import {
   initializeHopeInactivation,
   initializeNewHopeRecord,
 } from "./hope-record-initializer";
+import { requireSkipReasonCode } from "./hope-schedule-skip";
 import { reconcileCompletedSfvRegulatoryAnswers } from "./hope-sfv-completion-answers";
 import { timepointProjectionGapMessage } from "./hope-sfv-completion-guards";
 import { createSfvCompletionRecorder } from "./hope-sfv-completion-record";
@@ -1155,11 +1156,12 @@ export function createDbHopeBackend(
       const admissionId = uuidOrNotFound(urlAdmissionId, `Admission ${urlAdmissionId} not found`);
       await regenerateSchedulesForAdmission(db, outbox, { organizationId, admissionId });
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const rows = await tx
-          .select({ id: SCHED.id })
+        // A count, not the rows: only the total is answered.
+        const [total] = await tx
+          .select({ n: count() })
           .from(SCHED)
-          .where(eq(SCHED.admissionId, admissionId));
-        return { admissionId, scheduleCount: rows.length };
+          .where(and(eq(SCHED.admissionId, admissionId), eq(SCHED.organizationId, organizationId)));
+        return { admissionId, scheduleCount: total?.n ?? 0 };
       });
     },
 
@@ -1233,27 +1235,43 @@ export function createDbHopeBackend(
 
     // ── Schedule skip (§2.2.1) ────────────────────────────────────────────────────────────────────
     async skipSchedule(organizationId, id, reasonCode) {
+      // A closed code list (the route's schema is the first gate; a caller that reaches the service another way is judged here too).
+      const skipReasonCode = requireSkipReasonCode(reasonCode);
       const scheduleId = uuidOrNotFound(id, `HOPE schedule ${id} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // Only an OPEN schedule can be skipped (spec §2.2.1). The UPDATE judges the row it waits for: a sign that closes the
         // schedule (`trg_hope_schedule_mark_completed`) between a read and this write would otherwise be overwritten with
-        // 'skipped', and an already completed / expired schedule would be rewritten. (This route keeps no lock timeout.)
-        const rows = (await t
-          .update(SCHED)
-          .set({
-            status: "skipped",
-            skipReasonCode: reasonCode,
-            updatedAt: new Date(),
-          })
-          .where(and(eq(SCHED.id, scheduleId), eq(SCHED.status, "open")))
-          .returning()) as ScheduleRow[];
+        // 'skipped', and an already completed / expired schedule would be rewritten. It queues behind that sign's row lock,
+        // so it waits at most `M10_LOCK_TIMEOUT_MS` (then `M10_RECORD_BUSY`: the skip was not applied).
+        const rows = (await takeBoundedLock(
+          t,
+          (statement) =>
+            statement
+              .update(SCHED)
+              .set({
+                status: "skipped",
+                skipReasonCode,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(SCHED.id, scheduleId),
+                  eq(SCHED.organizationId, organizationId),
+                  eq(SCHED.status, "open"),
+                ),
+              )
+              .returning(),
+          {
+            lock: `schedule row ${idForLog(scheduleId)} (org ${idForLog(organizationId)}) for a skip`,
+          },
+        )) as ScheduleRow[];
         if (rows.length > 0)
           return toScheduleView(firstOrThrow(rows, "schedule skip matched no row"));
         const [current] = await t
           .select({ status: SCHED.status })
           .from(SCHED)
-          .where(eq(SCHED.id, scheduleId))
+          .where(and(eq(SCHED.id, scheduleId), eq(SCHED.organizationId, organizationId)))
           .limit(1);
         if (!current) throw new NotFoundError(`HOPE schedule ${id} not found`);
         throw new ConflictError(
@@ -1283,21 +1301,21 @@ export function createDbHopeBackend(
       // The admission as Postgres writes it (the M6 seam read, the schedule and draft lookups and the advisory key all take
       // that text), and a 404 for an id that is no uuid, before the seam or any statement.
       const admissionId = uuidOrNotFound(urlAdmissionId, `Admission ${urlAdmissionId} not found`);
+      // The M6 seam opens its own connection, so it is read BEFORE the transaction opens (inside it, this request would hold
+      // one pool connection while waiting for a second: the self-starvation `signTimepoint` and the workspace read avoid the
+      // same way). A seam that throws, or answers another tenant's admission (404), refuses exactly as it did inside.
+      const admissionSummary =
+        args.rfaKind === "01_admission" ||
+        args.rfaKind === "02_huv1" ||
+        args.rfaKind === "03_huv2" ||
+        args.rfaKind === "05_discharge"
+          ? await getSeam("AdmissionStatusReader").getAdmissionSummary(organizationId, admissionId)
+          : null;
+      if (admissionSummary && admissionSummary.organizationId !== organizationId) {
+        throw new NotFoundError(`Admission ${admissionId} not found`);
+      }
       const view = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const admissionSummary =
-          args.rfaKind === "01_admission" ||
-          args.rfaKind === "02_huv1" ||
-          args.rfaKind === "03_huv2" ||
-          args.rfaKind === "05_discharge"
-            ? await getSeam("AdmissionStatusReader").getAdmissionSummary(
-                organizationId,
-                admissionId,
-              )
-            : null;
-        if (admissionSummary && admissionSummary.organizationId !== organizationId) {
-          throw new NotFoundError(`Admission ${admissionId} not found`);
-        }
         const regulatoryTargetDate =
           args.rfaKind === "01_admission"
             ? (admissionSummary?.admissionAt ?? args.targetDate)
@@ -1987,7 +2005,7 @@ export function createDbHopeBackend(
         const [r] = (await t
           .select(LIGHT_SUB_COLUMNS)
           .from(SUB)
-          .where(eq(SUB.id, id))
+          .where(and(eq(SUB.id, id), eq(SUB.organizationId, organizationId)))
           .limit(1)) as LightSubmissionColumns[];
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
         require_(
@@ -1997,12 +2015,23 @@ export function createDbHopeBackend(
         );
         // The UPDATE judges the row it waits for: two clicks both read `rejected`, and the second UPDATE queues behind the
         // first, re-reads the row as `queued` and matches nothing (a 409), so the batch is queued, and the event emitted,
-        // once. (This route keeps no lock timeout: spec §4.1.1.)
-        const rows = (await t
-          .update(SUB)
-          .set({ status: "queued", updatedAt: new Date() })
-          .where(and(eq(SUB.id, id), eq(SUB.status, "rejected")))
-          .returning(LIGHT_SUB_COLUMNS)) as LightSubmissionColumns[];
+        // once. It waits at most `M10_LOCK_TIMEOUT_MS` for that row lock (then `M10_RECORD_BUSY`: the retry was not applied).
+        const rows = (await takeBoundedLock(
+          t,
+          (statement) =>
+            statement
+              .update(SUB)
+              .set({ status: "queued", updatedAt: new Date() })
+              .where(
+                and(
+                  eq(SUB.id, id),
+                  eq(SUB.organizationId, organizationId),
+                  eq(SUB.status, "rejected"),
+                ),
+              )
+              .returning(LIGHT_SUB_COLUMNS),
+          { lock: `submission row ${idForLog(id)} (org ${idForLog(organizationId)}) for a retry` },
+        )) as LightSubmissionColumns[];
         require_(
           rows.length > 0,
           "M10_SUBMISSION_RETRY_NOT_REJECTED",
@@ -2198,7 +2227,7 @@ export function createDbHopeBackend(
         const [r] = (await t
           .select(LIGHT_SUB_COLUMNS)
           .from(SUB)
-          .where(eq(SUB.id, id))
+          .where(and(eq(SUB.id, id), eq(SUB.organizationId, organizationId)))
           .limit(1)) as LightSubmissionColumns[];
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
         // R-08: a cancelled package is dead evidence (the bytes stay stored) and must not be uploaded to CMS.
@@ -2209,7 +2238,7 @@ export function createDbHopeBackend(
         const [report] = await t
           .select({ status: SUB.status, acceptanceReport: SUB.acceptanceReport })
           .from(SUB)
-          .where(eq(SUB.id, id))
+          .where(and(eq(SUB.id, id), eq(SUB.organizationId, organizationId)))
           .limit(1);
         if (!report) throw new NotFoundError(`HOPE submission ${id} not found`);
         requireNotCancelled(id, report.status);
@@ -2253,7 +2282,7 @@ export function createDbHopeBackend(
             statement
               .select(LIGHT_SUB_COLUMNS)
               .from(SUB)
-              .where(eq(SUB.id, id))
+              .where(and(eq(SUB.id, id), eq(SUB.organizationId, organizationId)))
               .limit(1)
               .for("update"),
           { lock: `submission row ${idForLog(id)} (org ${idForLog(organizationId)})` },
@@ -2281,7 +2310,7 @@ export function createDbHopeBackend(
             iqiesSubmissionReference: args.iqiesSubmissionReference ?? null,
             updatedAt: transmittedAt,
           })
-          .where(eq(SUB.id, id))
+          .where(and(eq(SUB.id, id), eq(SUB.organizationId, organizationId)))
           .returning(LIGHT_SUB_COLUMNS)) as LightSubmissionColumns[];
         await emit(
           t,

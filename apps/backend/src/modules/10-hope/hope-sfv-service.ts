@@ -134,6 +134,7 @@ export function createHopeSfvService(): HopeSfvService {
    */
   async function updateWhileIn(
     tx: DbClient,
+    organizationId: string,
     existing: SfvRow,
     from: readonly SfvRow["status"][],
     patch: Partial<typeof SFV.$inferInsert>,
@@ -141,7 +142,13 @@ export function createHopeSfvService(): HopeSfvService {
     const rows = await tx
       .update(SFV)
       .set(patch)
-      .where(and(eq(SFV.id, existing.id), inArray(SFV.status, [...from])))
+      .where(
+        and(
+          eq(SFV.id, existing.id),
+          eq(SFV.organizationId, organizationId),
+          inArray(SFV.status, [...from]),
+        ),
+      )
       .returning({ id: SFV.id });
     return rows.length > 0;
   }
@@ -176,7 +183,7 @@ export function createHopeSfvService(): HopeSfvService {
 
       if (trigger.state !== "true" || !trigger.symptomImpactDate) {
         if (existing && mutableOperationalStatus && existing.status !== "withdrawn") {
-          const won = await updateWhileIn(tx, existing, OPERATIONAL_STATUSES, {
+          const won = await updateWhileIn(tx, organizationId, existing, OPERATIONAL_STATUSES, {
             status: "withdrawn",
             updatedAt: now,
           });
@@ -208,7 +215,7 @@ export function createHopeSfvService(): HopeSfvService {
         return { trigger, sfvId: existing.id, action: "none" };
       }
       if (existing.status === "withdrawn") {
-        const won = await updateWhileIn(tx, existing, ["withdrawn"], {
+        const won = await updateWhileIn(tx, organizationId, existing, ["withdrawn"], {
           status: "open",
           dueAt,
           updatedAt: now,
@@ -216,7 +223,7 @@ export function createHopeSfvService(): HopeSfvService {
         return { trigger, sfvId: existing.id, action: won ? "reopened" : "none" };
       }
       if (existing.dueAt.getTime() !== dueAt.getTime()) {
-        const won = await updateWhileIn(tx, existing, OPERATIONAL_STATUSES, {
+        const won = await updateWhileIn(tx, organizationId, existing, OPERATIONAL_STATUSES, {
           dueAt,
           updatedAt: now,
         });

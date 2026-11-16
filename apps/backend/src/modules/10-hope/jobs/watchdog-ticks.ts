@@ -191,7 +191,14 @@ export async function runWindowWatchdogTick(deps: WatchdogTickDeps): Promise<voi
       const lostRace = new Set<string>();
       for (const transition of plan.transitions) {
         if (!transition.changed) continue;
-        if (!(await updateHopeScheduleStatus(t, transition.scheduleId, transition.toStatus))) {
+        if (
+          !(await updateHopeScheduleStatus(
+            t,
+            organizationId,
+            transition.scheduleId,
+            transition.toStatus,
+          ))
+        ) {
           lostRace.add(transition.scheduleId);
         }
       }
@@ -267,6 +274,7 @@ export async function runSfvWatchdogTick(deps: WatchdogTickDeps): Promise<void> 
           snapshot !== undefined &&
           (from === "open" || from === "overdue") &&
           (await updateSfvStatus(t, {
+            organizationId,
             sfvId: transition.sfvId,
             from,
             to: transition.toStatus,

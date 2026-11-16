@@ -45,17 +45,26 @@ describe("the window watchdog's store", () => {
   it("flips a schedule only while it is still open, and reports a lost race as false", async () => {
     const { tx, seen } = recordingTx([]);
 
-    await expect(updateHopeScheduleStatus(tx, "sched-1", "expired")).resolves.toBe(false);
+    await expect(updateHopeScheduleStatus(tx, "org-1", "sched-1", "expired")).resolves.toBe(false);
 
     expect(seen.where).toMatch(/"status" = \$\d+/);
     expect(seen.params).toContain("open");
     expect(seen.params).not.toContain("completed");
   });
 
+  it("names the tenant beside the schedule id, on top of RLS", async () => {
+    const { tx, seen } = recordingTx([]);
+
+    await updateHopeScheduleStatus(tx, "org-9", "sched-1", "expired");
+
+    expect(seen.where).toMatch(/"hope_timepoint_schedule"\."organization_id" = \$\d+/);
+    expect(seen.params).toEqual(expect.arrayContaining(["org-9", "sched-1", "open"]));
+  });
+
   it("reports a written flip as true", async () => {
     const { tx } = recordingTx([{ id: "sched-1" }]);
 
-    await expect(updateHopeScheduleStatus(tx, "sched-1", "expired")).resolves.toBe(true);
+    await expect(updateHopeScheduleStatus(tx, "org-1", "sched-1", "expired")).resolves.toBe(true);
   });
 
   it("replays only schedules expired since the window start, in id order", async () => {

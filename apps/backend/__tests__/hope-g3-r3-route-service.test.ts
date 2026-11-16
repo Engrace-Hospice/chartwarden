@@ -54,7 +54,7 @@ describe("skipSchedule — the UPDATE re-judges the row it waited for", () => {
   it("skips an OPEN schedule, and the UPDATE names the status it needs", async () => {
     const { svc, statements } = backend([[scheduleRow("skipped")]]);
 
-    const skipped = await svc.skipSchedule(ORG, SPELLED, "patient_declined");
+    const skipped = await svc.skipSchedule(ORG, SPELLED, "other");
 
     expect(skipped.status).toBe("skipped");
     const update = statements.find((s) => s.kind === "update");
@@ -66,7 +66,7 @@ describe("skipSchedule — the UPDATE re-judges the row it waited for", () => {
     // The UPDATE matched no row (its status is no longer open); the re-read says why.
     const { svc, statements } = backend([[], [{ status: "completed" }]]);
 
-    const failure = await outcome(svc.skipSchedule(ORG, SPELLED, "patient_declined"));
+    const failure = await outcome(svc.skipSchedule(ORG, SPELLED, "other"));
 
     expect(failure).toMatchObject({ statusCode: 409 });
     expect(String(failure?.message)).toContain("completed");
@@ -76,7 +76,7 @@ describe("skipSchedule — the UPDATE re-judges the row it waited for", () => {
   it("a schedule that does not exist (or is hidden by RLS) is still a 404", async () => {
     const { svc } = backend([[], []]);
 
-    const failure = await outcome(svc.skipSchedule(ORG, SPELLED, "patient_declined"));
+    const failure = await outcome(svc.skipSchedule(ORG, SPELLED, "other"));
 
     expect(failure).toMatchObject({ statusCode: 404 });
   });

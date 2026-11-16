@@ -536,7 +536,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
           `${A}/inactivations`,
           { reason: "entered on the wrong patient chart", authorDiscipline: "RN" },
         ],
-        ["POST", `/api/v1/hope/schedules/${schedule}/skip`, { reasonCode: "patient_declined" }],
+        ["POST", `/api/v1/hope/schedules/${schedule}/skip`, { reasonCode: "other" }],
       ];
       for (const [method, url, payload] of attempts) {
         const res = await app.inject({

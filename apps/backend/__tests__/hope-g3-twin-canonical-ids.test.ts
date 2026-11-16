@@ -65,7 +65,7 @@ describe("twin: an id in any spelling names the same record", () => {
     const svc = backend();
 
     const read = await svc.getSchedule(ORG, spell(SCHEDULE));
-    const skipped = await svc.skipSchedule(ORG, spell(SCHEDULE), "patient_declined");
+    const skipped = await svc.skipSchedule(ORG, spell(SCHEDULE), "other");
 
     expect(read.id).toBe(SCHEDULE);
     expect(skipped.status).toBe("skipped");

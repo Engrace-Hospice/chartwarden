@@ -290,7 +290,7 @@ describe("spec 4.1 / 4.4 regenerate-schedules: an admission the caller cannot se
     expect(gap).toContain("on that route only for a visible admission that is not sited");
     const routes = read(`${M10_SRC}/routes/hope-routes.ts`);
     expect(routes).toMatch(
-      /preHandler: \[ADMIN_REGEN, SCOPE_BODY_ADMISSION\("hope\.admin\.regenerate_schedules"\)\]/,
+      /preHandler: \[\s*ADMIN_REGEN,\s*REJECT_AI_OPERATIONS,\s*SCOPE_BODY_ADMISSION\("hope\.admin\.regenerate_schedules"\),?\s*\]/,
     );
     expect(routes).toMatch(/SCOPE_BODY_ADMISSION = [\s\S]*?notFoundOnDeny: true/);
     expect(read(`${M10_SRC}/abac-predicates.ts`)).toMatch(/if \(!facts\) return false;/);

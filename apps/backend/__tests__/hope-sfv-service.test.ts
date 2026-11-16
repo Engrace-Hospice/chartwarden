@@ -340,9 +340,12 @@ describe("HOPE SFV status writers never overwrite a SFV that completed in the me
       expect(writes).toHaveLength(1);
       // The guard names the whole family the write may legitimately start from, and never a terminal status.
       expect(writes[0]?.sql).toMatch(/"status" in \(\$\d+(, \$\d+)*\)/);
-      expect(writes[0]?.params.filter((p) => typeof p === "string" && p !== "sfv-1")).toEqual([
-        ...family,
-      ]);
+      expect(
+        writes[0]?.params.filter((p) => typeof p === "string" && p !== "sfv-1" && p !== "org-1"),
+      ).toEqual([...family]);
+      // ... and names the tenant beside the id, on top of RLS.
+      expect(writes[0]?.sql).toMatch(/"organization_id" = \$\d+/);
+      expect(writes[0]?.params).toContain("org-1");
       // The race was lost: nothing changed, so nothing is reported as changed (and nothing throws).
       expect(result).toMatchObject({ sfvId: "sfv-1", action: "none" });
     },
@@ -356,6 +359,7 @@ describe("HOPE SFV status writers never overwrite a SFV that completed in the me
 
     await expect(
       updateSfvStatus(tx, {
+        organizationId: "org-1",
         sfvId: "sfv-1",
         from: "open",
         to: "overdue",
@@ -378,6 +382,7 @@ describe("HOPE SFV status writers never overwrite a SFV that completed in the me
       const writes: RecordedWrite[] = [];
 
       await updateSfvStatus(fakeTxLosingRace(from, STALE_DUE, writes), {
+        organizationId: "org-1",
         sfvId: "sfv-1",
         from,
         to,
@@ -390,6 +395,21 @@ describe("HOPE SFV status writers never overwrite a SFV that completed in the me
     },
   );
 
+  it("the watchdog's status flip names the tenant beside the id, on top of RLS", async () => {
+    const writes: RecordedWrite[] = [];
+
+    await updateSfvStatus(fakeTxLosingRace("open", STALE_DUE, writes), {
+      organizationId: "org-9",
+      sfvId: "sfv-1",
+      from: "open",
+      to: "overdue",
+      snapshotDueAt: STALE_DUE.toISOString(),
+    });
+
+    expect(writes[0]?.sql).toMatch(/"symptom_follow_up_visit"\."organization_id" = \$\d+/);
+    expect(writes[0]?.params).toContain("org-9");
+  });
+
   it("the watchdog's status flip is also keyed on the due date its decision was planned from", async () => {
     // A reconcile can move `due_at` later between the watchdog's snapshot and its UPDATE. Judged against
     // the snapshot's due date the SFV is overdue; against the moved one it is not, so the flip must miss.
@@ -397,6 +417,7 @@ describe("HOPE SFV status writers never overwrite a SFV that completed in the me
     const tx = fakeTxLosingRace("open", STALE_DUE, writes);
 
     await updateSfvStatus(tx, {
+      organizationId: "org-1",
       sfvId: "sfv-1",
       from: "open",
       to: "overdue",

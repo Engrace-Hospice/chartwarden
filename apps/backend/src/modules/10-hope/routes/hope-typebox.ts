@@ -11,6 +11,7 @@ import "@chartwarden/shared/route-kit";
 import {
   HOPE_J2051_SYMPTOM_CODES,
   HOPE_RFA_KINDS,
+  HOPE_SCHEDULE_SKIP_REASON_CODES,
   HOPE_SUBMISSION_CANCEL_REASON_CODES,
 } from "@chartwarden/types";
 import { ValidationError } from "@chartwarden/types";
@@ -175,10 +176,16 @@ export const SubmissionParamsSchema = Type.Object({
 });
 
 // ── Bodies ────────────────────────────────────────────────────────────────────────────────────────────
-export const SkipScheduleSchema = Type.Object({
-  reasonCode: Type.String({ minLength: 1, maxLength: 64 }),
-  note: Type.Optional(Type.String({ maxLength: 2000 })),
-});
+/**
+ * The reason is one of a fixed code list (no free text, so no PHI rides along into `skip_reason_code` or the audit before/after),
+ * and there is no `note`: nothing kept it, so a body that carries one is refused rather than accepted and silently dropped.
+ */
+export const SkipScheduleSchema = Type.Object(
+  {
+    reasonCode: lit(HOPE_SCHEDULE_SKIP_REASON_CODES),
+  },
+  { additionalProperties: false },
+);
 export const RecordTimepointSchema = Type.Object({
   rfaKind: RFA_KIND,
   targetDate: Type.String({ format: "date-time" }),

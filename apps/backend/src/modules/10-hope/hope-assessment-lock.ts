@@ -24,6 +24,12 @@
 //                                     entities whose unlocked scan found batchable work; candidates are read again behind
 //                                     the key (`jobs/cron-workers.ts`; a timeout fails that organization's tick, logged)
 //   cancel, mark-uploaded, results    the submission row (`takeBoundedLock`); `results` then UPDATEs the batch's assessments
+//   skip, retry                       no row lock of their own: the status-judging UPDATE queues behind another writer's row
+//                                     lock (a sign that closes the schedule, a second retry), and that UPDATE is the bounded
+//                                     statement (`takeBoundedLock`)
+//   regenerate-schedules (the route)  no row lock: the schedule INSERT ... ON CONFLICT DO NOTHING queues behind a concurrent
+//                                     insert of the same window, and that INSERT is the bounded statement (`writeSchedules`
+//                                     with `boundLockWait`; the outbox consumer's call is not bounded)
 //
 // BOUNDED WAITS. A request that cannot get a row lock within `M10_LOCK_TIMEOUT_MS` answers a retryable 409
 // `M10_RECORD_BUSY` (that step was not applied; an earlier step of the same request, committed in its own transaction,
@@ -32,9 +38,9 @@
 // the same key may be reused; when an earlier step had committed the 409 is replayed, and the caller checks the current
 // state and sends the request again with a NEW key. Every lock statement taken through THIS FILE's helpers goes through
 // `takeBoundedLock` (the named helpers below are thin callers of it; the SFV completion lock, the sign lock, the
-// submission row locks and the UPDATEs that queue behind a row lock call it directly), so the bound and the mapping live
-// in one place. NOT covered: a route that takes none of these locks keeps PostgreSQL's default of no timeout: the
-// schedule `skip`, the submission `retry`, `regenerate-schedules` and the validation-finding writes
+// submission row locks and the UPDATEs / INSERTs that queue behind a row lock call it directly: the schedule `skip`, the
+// submission `retry` and `regenerate-schedules` among them), so the bound and the mapping live in one place. NOT covered:
+// a route that takes none of these locks keeps PostgreSQL's default of no timeout: the validation-finding writes
 // (docs/api/CHANGES.md lists them); the destruction eraser takes its own advisory lock directly, with no bound. The bound
 // is `SET LOCAL` (it ends with the transaction) and stays in force for the rest of the transaction, so a later wait in the
 // same request is bounded too, and `mapLockTimeoutToBusy` (installed on the database `createDbHopeBackend` hands the

@@ -20,7 +20,10 @@ const SUBITEM = schema.hopeSubmissionItems;
 
 export interface CancelHopeSubmissionArgs {
   readonly id: string;
-  /** The tenant the batch belongs to: named (with the batch id) in the lock-timeout log line, nothing else. */
+  /**
+   * The tenant the batch belongs to: an explicit predicate on every statement (on top of RLS, so a connection that
+   * bypasses RLS still cannot cancel another tenant's batch), and named (with the batch id) in the lock-timeout log line.
+   */
   readonly organizationId: string;
   /** The acting membership, stored on the batch (the write-audit trigger runs with no actor on this path). */
   readonly actorMembershipId: string;
@@ -47,7 +50,12 @@ export async function cancelHopeSubmission(
   const [row] = (await takeBoundedLock(
     t,
     (statement) =>
-      statement.select(LIGHT_SUB_COLUMNS).from(SUB).where(eq(SUB.id, id)).limit(1).for("update"),
+      statement
+        .select(LIGHT_SUB_COLUMNS)
+        .from(SUB)
+        .where(and(eq(SUB.id, id), eq(SUB.organizationId, args.organizationId)))
+        .limit(1)
+        .for("update"),
     {
       lock: `submission row ${idForLog(id)} (org ${idForLog(args.organizationId)}) for a cancel`,
     },
@@ -62,7 +70,13 @@ export async function cancelHopeSubmission(
   await t
     .update(SUBITEM)
     .set({ itemStatus: "cancelled", updatedAt: args.now })
-    .where(and(eq(SUBITEM.hopeSubmissionId, id), eq(SUBITEM.itemStatus, "pending")));
+    .where(
+      and(
+        eq(SUBITEM.hopeSubmissionId, id),
+        eq(SUBITEM.organizationId, args.organizationId),
+        eq(SUBITEM.itemStatus, "pending"),
+      ),
+    );
   const [cancelled] = (await t
     .update(SUB)
     .set({
@@ -72,11 +86,11 @@ export async function cancelHopeSubmission(
       cancelReasonCode: args.reasonCode,
       updatedAt: args.now,
     })
-    .where(eq(SUB.id, id))
+    .where(and(eq(SUB.id, id), eq(SUB.organizationId, args.organizationId)))
     .returning(LIGHT_SUB_COLUMNS)) as LightSubmissionColumns[];
-  // Unreachable in practice: the row lock above holds this row until the transaction ends and the UPDATE adds no
-  // predicate of its own, so it always returns the locked row. Kept as defence in depth (a zero-row result fails
-  // loudly as a 404 instead of returning `undefined`); it becomes reachable if a predicate is ever added to the UPDATE.
+  // Unreachable in practice: the row lock above holds this row until the transaction ends and the UPDATE's predicate
+  // (the id and the tenant the lock matched) selects exactly it, so it always returns the locked row. Kept as defence in
+  // depth (a zero-row result fails loudly as a 404 instead of returning `undefined`).
   if (!cancelled) throw new NotFoundError(`HOPE submission ${id} not found`);
   return cancelled;
 }
@@ -102,14 +116,20 @@ export async function advancePackagedToExported(
       statement
         .update(SUB)
         .set({ status: "exported", exportedAt: at, updatedAt: at })
-        .where(and(eq(SUB.id, id), eq(SUB.status, "packaged")))
+        .where(
+          and(eq(SUB.id, id), eq(SUB.organizationId, organizationId), eq(SUB.status, "packaged")),
+        )
         .returning({ id: SUB.id }),
     {
       lock: `submission row ${idForLog(id)} (org ${idForLog(organizationId)}) for a package download`,
     },
   );
   if (advanced.length > 0) return;
-  const [current] = await t.select({ status: SUB.status }).from(SUB).where(eq(SUB.id, id)).limit(1);
+  const [current] = await t
+    .select({ status: SUB.status })
+    .from(SUB)
+    .where(and(eq(SUB.id, id), eq(SUB.organizationId, organizationId)))
+    .limit(1);
   if (!current) throw new NotFoundError(`HOPE submission ${id} not found`);
   requireNotCancelled(id, current.status);
 }

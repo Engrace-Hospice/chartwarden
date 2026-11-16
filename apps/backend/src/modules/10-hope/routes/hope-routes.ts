@@ -144,6 +144,13 @@ const ABAC_CORRECT = requireAbac(
 // `requireStepUp` is not satisfiable by an active break-glass grant. The attestation itself is the required
 // `attestationConfirmed: true` in the request schema.
 const REJECT_AI = rejectAiActor("AI principals cannot sign a HOPE record") as PreHandler;
+// §D13 — the compliance-affecting operator writes that are NOT signatures (skipping a window closes an HQRP deadline and
+// counts against the on-time rate; cancel, mark-uploaded, results, retry and assemble move a CMS package through its states;
+// regenerate creates the windows an admission is held to) refuse an `ai_*` principal too, even one granted the permission.
+// No step-up: these are not signing ceremonies. It sits right after the permission guard, as REJECT_AI does on sign.
+const REJECT_AI_OPERATIONS = rejectAiActor(
+  "AI principals cannot skip schedules, regenerate them or change a HOPE submission",
+) as PreHandler;
 const STEP_UP_SIGN = requireStepUp(HOPE_SIGN_STEP_UP_OPERATION) as PreHandler;
 const STEP_UP_SFV = requireStepUp(HOPE_SFV_STEP_UP_OPERATION) as PreHandler;
 
@@ -274,10 +281,10 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     },
   );
 
-  // 3 — skip a schedule (requires reason code).
+  // 3 — skip a schedule (requires a reason code from the closed list; no free text, no note).
   app.post(
     "/api/v1/hope/schedules/:id/skip",
-    { preHandler: [SKIP, SCOPE_SCHEDULE("hope.schedule.skip")] },
+    { preHandler: [SKIP, REJECT_AI_OPERATIONS, SCOPE_SCHEDULE("hope.schedule.skip")] },
     async (request) => {
       const { organizationId } = membershipActorOf(request);
       const { id } = parse(ScheduleParamsSchema, request.params);
@@ -644,7 +651,13 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // still the right transition to expose; describing it as work it does not do is not.
   app.post(
     "/api/v1/hope/submissions/:id/retry",
-    { preHandler: [SUBMISSION_MANAGE, SCOPE_SUBMISSION("hope.submission.manage")] },
+    {
+      preHandler: [
+        SUBMISSION_MANAGE,
+        REJECT_AI_OPERATIONS,
+        SCOPE_SUBMISSION("hope.submission.manage"),
+      ],
+    },
     async (request) => {
       const { organizationId } = membershipActorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);
@@ -658,7 +671,13 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // `hope_submission_item` rows at all, ignoring `planAssembleSubmissions`, and answer 201.
   app.post(
     "/api/v1/hope/submissions/assemble",
-    { preHandler: [SUBMISSION_MANAGE, SCOPE_BODY_PE("hope.submission.manage")] },
+    {
+      preHandler: [
+        SUBMISSION_MANAGE,
+        REJECT_AI_OPERATIONS,
+        SCOPE_BODY_PE("hope.submission.manage"),
+      ],
+    },
     async (request, reply) => {
       const { organizationId } = membershipActorOf(request);
       const body = parse(AssembleSubmissionSchema, request.body);
@@ -686,7 +705,13 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
 
   app.post(
     "/api/v1/hope/submissions/:id/mark-uploaded",
-    { preHandler: [SUBMISSION_MANAGE, SCOPE_SUBMISSION("hope.submission.manage")] },
+    {
+      preHandler: [
+        SUBMISSION_MANAGE,
+        REJECT_AI_OPERATIONS,
+        SCOPE_SUBMISSION("hope.submission.manage"),
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);
@@ -700,7 +725,13 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // marked uploaded; the reason is a fixed code list (no free text, so no PHI). Replaying a cancel returns 200.
   app.post(
     "/api/v1/hope/submissions/:id/cancel",
-    { preHandler: [SUBMISSION_MANAGE, SCOPE_SUBMISSION("hope.submission.manage")] },
+    {
+      preHandler: [
+        SUBMISSION_MANAGE,
+        REJECT_AI_OPERATIONS,
+        SCOPE_SUBMISSION("hope.submission.manage"),
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);
@@ -711,7 +742,13 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
 
   app.post(
     "/api/v1/hope/submissions/:id/results",
-    { preHandler: [SUBMISSION_MANAGE, SCOPE_SUBMISSION("hope.submission.manage")] },
+    {
+      preHandler: [
+        SUBMISSION_MANAGE,
+        REJECT_AI_OPERATIONS,
+        SCOPE_SUBMISSION("hope.submission.manage"),
+      ],
+    },
     async (request) => {
       const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);
@@ -742,7 +779,13 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // in any status is left as it is, so nothing is recomputed, reopened or moved to a corrected date.
   app.post(
     "/api/v1/hope/admin/regenerate-schedules",
-    { preHandler: [ADMIN_REGEN, SCOPE_BODY_ADMISSION("hope.admin.regenerate_schedules")] },
+    {
+      preHandler: [
+        ADMIN_REGEN,
+        REJECT_AI_OPERATIONS,
+        SCOPE_BODY_ADMISSION("hope.admin.regenerate_schedules"),
+      ],
+    },
     async (request) => {
       const { organizationId } = membershipActorOf(request);
       const body = parse(RegenerateSchedulesSchema, request.body);

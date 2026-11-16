@@ -30,6 +30,8 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { HopeRfaKind, LocalDate } from "@chartwarden/types";
 import { and, eq, inArray } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
+import { takeBoundedLock } from "../hope-assessment-lock";
+import { idForLog } from "../hope-log-id";
 import type { HopeWriteOutboxPort } from "../outbox-port";
 
 const SCHED = schema.hopeTimepointSchedules;
@@ -185,6 +187,13 @@ export async function writeSchedules(
     readonly admissionId: string;
     readonly siting: SchedulingSiting;
     readonly descriptors: readonly TimepointScheduleDescriptor[];
+    /**
+     * Wait at most `M10_LOCK_TIMEOUT_MS` for a lock another transaction holds on the insert (a concurrent regenerate of the
+     * same admission), then answer `M10_RECORD_BUSY` (nothing was written). Set by the REQUEST path (route 20), whose
+     * pool connection must not queue behind a stuck transaction; the outbox consumer leaves it off, so a slow delivery
+     * is retried by the dispatcher as before rather than failed with a request-shaped error.
+     */
+    readonly boundLockWait?: boolean;
   },
 ): Promise<readonly string[]> {
   if (input.descriptors.length === 0) return [];
@@ -205,31 +214,38 @@ export async function writeSchedules(
     const todo = input.descriptors.filter((d) => !already.has(d.rfaKind));
     if (todo.length === 0) return [];
 
-    const rows = (await t
-      .insert(SCHED)
-      .values(
-        todo.map((d) => ({
-          organizationId: input.organizationId,
-          providerEntityId: input.siting.providerEntityId,
-          locationId: input.siting.locationId,
-          patientId: input.siting.patientId,
-          admissionId: input.admissionId,
-          rfaKind: d.rfaKind,
-          windowOpensAt: new Date(d.window.windowOpensAt),
-          windowClosesAt: new Date(d.window.windowClosesAt),
-          lateDeadlineAt: new Date(d.window.lateDeadlineAt),
-          alertCadence: d.alertCadence as unknown as Record<string, unknown>,
-          generatedBy: d.generatedBy,
-        })),
-      )
-      .onConflictDoNothing()
-      .returning({
-        id: SCHED.id,
-        rfaKind: SCHED.rfaKind,
-        windowOpensAt: SCHED.windowOpensAt,
-        windowClosesAt: SCHED.windowClosesAt,
-        lateDeadlineAt: SCHED.lateDeadlineAt,
-      })) as {
+    const insertMissing = (executor: DbClient) =>
+      executor
+        .insert(SCHED)
+        .values(
+          todo.map((d) => ({
+            organizationId: input.organizationId,
+            providerEntityId: input.siting.providerEntityId,
+            locationId: input.siting.locationId,
+            patientId: input.siting.patientId,
+            admissionId: input.admissionId,
+            rfaKind: d.rfaKind,
+            windowOpensAt: new Date(d.window.windowOpensAt),
+            windowClosesAt: new Date(d.window.windowClosesAt),
+            lateDeadlineAt: new Date(d.window.lateDeadlineAt),
+            alertCadence: d.alertCadence as unknown as Record<string, unknown>,
+            generatedBy: d.generatedBy,
+          })),
+        )
+        .onConflictDoNothing()
+        .returning({
+          id: SCHED.id,
+          rfaKind: SCHED.rfaKind,
+          windowOpensAt: SCHED.windowOpensAt,
+          windowClosesAt: SCHED.windowClosesAt,
+          lateDeadlineAt: SCHED.lateDeadlineAt,
+        });
+    // The conflict check queues behind a concurrent insert of the same window, so the request path bounds that wait.
+    const rows = (await (input.boundLockWait
+      ? takeBoundedLock(t, insertMissing, {
+          lock: `schedule insert for admission ${idForLog(input.admissionId)} (org ${idForLog(input.organizationId)})`,
+        })
+      : insertMissing(t))) as {
       id: string;
       rfaKind: HopeRfaKind;
       windowOpensAt: Date;
@@ -291,10 +307,12 @@ export async function regenerateSchedulesForAdmission(
   if (siting.dischargeDate !== null) {
     descriptors.push(planDischargeTimepoint({ dischargeDate: siting.dischargeDate, timeZone }));
   }
+  // Only the route (a request holding a pool connection) calls this: it bounds the insert's lock wait.
   return writeSchedules(db, outbox, {
     organizationId: input.organizationId,
     admissionId: input.admissionId,
     siting,
     descriptors,
+    boundLockWait: true,
   });
 }

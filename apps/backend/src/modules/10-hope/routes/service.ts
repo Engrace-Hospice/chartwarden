@@ -42,6 +42,7 @@ import type {
 import { normalizeDateText } from "../hope-answer-value";
 import { requireCalendarDateTime, requireCalendarTargetDate } from "../hope-calendar-date";
 import type { HopeReviewReadModel } from "../hope-readiness-service";
+import { requireSkipReasonCode } from "../hope-schedule-skip";
 import { sfvProjectionGapMessage } from "../hope-sfv-completion-guards";
 import {
   SFV_COMPLETION_INCOMPLETE_MESSAGE,
@@ -939,7 +940,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     async getSchedule(organizationId, id) {
       return viewS(findSchedule(organizationId, id));
     },
-    async skipSchedule(organizationId, id, _reasonCode) {
+    async skipSchedule(organizationId, id, reasonCode) {
+      requireSkipReasonCode(reasonCode); // the closed list, as in the DB backend (nothing is stored here)
       const r = findSchedule(organizationId, id);
       // Only an OPEN schedule can be skipped (spec §2.2.1), as in the DB backend (which answers 409 with this text).
       if (r.status !== "open")

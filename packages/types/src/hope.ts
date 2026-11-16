@@ -106,6 +106,24 @@ export const HOPE_SUBMISSION_CANCEL_REASON_CODES = [
 ] as const;
 export type HopeSubmissionCancelReasonCode = (typeof HOPE_SUBMISSION_CANCEL_REASON_CODES)[number];
 
+/**
+ * Why an operator skipped an OPEN timepoint schedule (`POST /hope/schedules/:id/skip`). A CLOSED list on purpose, like the
+ * cancel reasons above: the code is stored in `hope_timepoint_schedule.skip_reason_code` and copied into the immutable
+ * write-audit before/after, so it can never carry free text (and so never PHI). There is NO database CHECK: rows written
+ * before this list (any 1-64 character string) stay readable, and the system's own `discharged_before_huv_window`
+ * (the M6 discharge consumer) is not an operator choice and so not on this list. The web skip dialog offers exactly these.
+ */
+export const HOPE_SCHEDULE_SKIP_REASON_CODES = [
+  "patient_deceased",
+  "patient_revoked",
+  "patient_hospitalized",
+  "transferred_out",
+  "admission_discharged",
+  "duplicate_window",
+  "other",
+] as const;
+export type HopeScheduleSkipReasonCode = (typeof HOPE_SCHEDULE_SKIP_REASON_CODES)[number];
+
 /** A `hope_validation_finding`'s blocking class (mirrors `hope_validation_severity`). */
 export type HopeValidationSeverity = "error" | "warning";
 

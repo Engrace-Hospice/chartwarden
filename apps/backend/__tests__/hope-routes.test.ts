@@ -1038,6 +1038,131 @@ describe("M10-T06 — submission retry guard (§4.4)", () => {
   });
 });
 
+// ── §D13 — the operator writes that are not signatures refuse an AI principal ────────────────────────
+// The principal below HOLDS every permission these routes ask for (it is `rn_1`); only its actor kind is `ai_*`.
+describe("§D13 — skip, retry, mark-uploaded, cancel, results, assemble and regenerate refuse an AI principal", () => {
+  const AI = { ...RN, "x-test-actor-kind": "ai_agent" };
+  const ASSEMBLE_PE = "77777777-7777-4777-8777-777777777777";
+  type Server = ReturnType<typeof makeServer>;
+  const cases: readonly {
+    name: string;
+    url: string;
+    payload: Record<string, unknown>;
+    unchanged: (s: Server) => Promise<unknown>;
+  }[] = [
+    {
+      name: "skip a schedule",
+      url: `/api/v1/hope/schedules/${SCHEDULE}/skip`,
+      payload: { reasonCode: "other" },
+      unchanged: async (s) => (await s.backend.getSchedule(ORG, SCHEDULE)).status,
+    },
+    {
+      name: "retry a submission",
+      url: `/api/v1/hope/submissions/${SUB_REJECTED}/retry`,
+      payload: {},
+      unchanged: async (s) => (await s.backend.getSubmission(ORG, SUB_REJECTED)).status,
+    },
+    {
+      name: "mark a package uploaded",
+      url: `/api/v1/hope/submissions/${SUB_PACKAGED}/mark-uploaded`,
+      payload: {},
+      unchanged: async (s) => (await s.backend.getSubmission(ORG, SUB_PACKAGED)).status,
+    },
+    {
+      name: "cancel a package",
+      url: `/api/v1/hope/submissions/${SUB_PACKAGED}/cancel`,
+      payload: { reasonCode: "package_lost" },
+      unchanged: async (s) => (await s.backend.getSubmission(ORG, SUB_PACKAGED)).status,
+    },
+    {
+      name: "import a CMS result",
+      url: `/api/v1/hope/submissions/${SUB_PACKAGED}/results`,
+      payload: { results: [{ assessmentId: SIGNED_A, status: "accepted" }] },
+      unchanged: async (s) => (await s.backend.getSubmission(ORG, SUB_PACKAGED)).status,
+    },
+    {
+      name: "assemble a package",
+      url: "/api/v1/hope/submissions/assemble",
+      payload: { providerEntityId: ASSEMBLE_PE },
+      unchanged: async (s) => (await s.backend.listSubmissions(ORG)).submissions.length,
+    },
+    {
+      name: "regenerate schedules",
+      url: "/api/v1/hope/admin/regenerate-schedules",
+      payload: { admissionId: ADMISSION },
+      unchanged: async (s) => JSON.stringify(await s.backend.getWorkflowState(ORG, ADMISSION)),
+    },
+  ];
+
+  it.each(cases)(
+    "$name: an ai_* principal holding the permission is refused (403) and nothing changes",
+    async ({ url, payload, unchanged }) => {
+      const server = makeServer({ packagedSubmission: true });
+      const before = await unchanged(server);
+
+      const res = await server.app.inject({ method: "POST", url, headers: AI, payload });
+
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.message).toContain("AI principals");
+      expect(await unchanged(server)).toEqual(before);
+      await server.app.close();
+    },
+  );
+
+  it.each(cases)(
+    "$name: the same request from the same user as a person is not refused for its actor kind",
+    async ({ url, payload }) => {
+      const server = makeServer({ packagedSubmission: true });
+
+      const res = await server.app.inject({
+        method: "POST",
+        url,
+        headers: { ...RN, "x-test-pe": `pe_1,${ASSEMBLE_PE}` },
+        payload,
+      });
+
+      expect(res.statusCode).not.toBe(403);
+      await server.app.close();
+    },
+  );
+});
+
+describe("POST /hope/schedules/:id/skip — the reason is a closed code list", () => {
+  const skip = (app: ReturnType<typeof makeServer>["app"], payload: Record<string, unknown>) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/hope/schedules/${SCHEDULE}/skip`,
+      headers: RN,
+      payload,
+    });
+
+  it("skips an open schedule for a listed code (200)", async () => {
+    const { app } = makeServer();
+    const res = await skip(app, { reasonCode: "patient_hospitalized" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("skipped");
+    await app.close();
+  });
+
+  it("refuses free text with a 422 that does not echo it, and the schedule stays open", async () => {
+    const { app, backend } = makeServer();
+    const res = await skip(app, { reasonCode: "Jane Doe is in the hospital" });
+    expect(res.statusCode).toBe(422);
+    expect(JSON.stringify(res.json())).not.toContain("Jane");
+    expect((await backend.getSchedule(ORG, SCHEDULE)).status).toBe("open");
+    await app.close();
+  });
+
+  it("refuses a note, an absent reason and an empty body (422), and the schedule stays open", async () => {
+    const { app, backend } = makeServer();
+    for (const payload of [{ reasonCode: "other", note: "typed by the clinician" }, {}]) {
+      expect((await skip(app, payload)).statusCode).toBe(422);
+    }
+    expect((await backend.getSchedule(ORG, SCHEDULE)).status).toBe("open");
+    await app.close();
+  });
+});
+
 // ── R-08 — cancel a package that never reached CMS ───────────────────────────────────────────────────
 describe("R-08 — POST /hope/submissions/:id/cancel", () => {
   const cancel = (

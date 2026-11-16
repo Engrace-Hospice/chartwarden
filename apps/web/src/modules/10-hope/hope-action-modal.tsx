@@ -1,4 +1,7 @@
-import { HOPE_SUBMISSION_CANCEL_REASON_CODES } from "@chartwarden/types";
+import {
+  HOPE_SCHEDULE_SKIP_REASON_CODES,
+  HOPE_SUBMISSION_CANCEL_REASON_CODES,
+} from "@chartwarden/types";
 import { Button, Modal, SelectField, t, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — the small §4.1 write ceremonies (#91).
 //
@@ -31,20 +34,11 @@ import { useFocusOnNewError } from "./use-focus-on-new-error";
 export type HopeAction = "skip" | "summary-pdf" | "regenerate" | "cancel-package";
 
 /**
- * §4.1 route 3 — the schedule-skip reason codes. There is no closed server codelist for this one
- * (`SkipScheduleSchema.reasonCode` is `Type.String({maxLength: 64})`), unlike the D12 late-completion
- * list which IS closed and enumerated in the contract. These are offered as the operational vocabulary
- * and the field stays free-text-backed, so a tenant reason the list does not carry is still recordable
- * rather than silently unavailable.
+ * §4.1 route 3 — the schedule-skip reason codes are the server's CLOSED list (`HOPE_SCHEDULE_SKIP_REASON_CODES`, the same
+ * list `SkipScheduleSchema` and the service enforce): a reason is never free text, so no PHI can be typed into it, and a code
+ * the list does not carry is refused (422), so the dialog offers exactly what the server accepts.
  */
-const SKIP_REASONS = [
-  "patient_deceased",
-  "patient_revoked",
-  "transferred_out",
-  "admission_discharged",
-  "duplicate_window",
-  "other",
-] as const;
+const SKIP_REASONS = HOPE_SCHEDULE_SKIP_REASON_CODES;
 
 const LABEL: Record<HopeAction, string> = {
   skip: "Skip timepoint window",
@@ -119,10 +113,11 @@ export function HopeActionModal({
   function perform(): Promise<WriteResult<unknown>> {
     switch (action) {
       case "skip":
-        // The route's body also accepts a `note`, but the server records only the reason code (`skipSchedule(org, id,
-        // body.reasonCode)`): a Note field here would imply an explanation is kept on a terminal, HQRP-counted skip when it
-        // is dropped. It comes back when the server persists it.
-        return skipSchedule(client, targetId, { reasonCode });
+        // The route's body is the reason code alone (a `note` is refused): the server keeps nothing else on a terminal,
+        // HQRP-counted skip, so no Note field is offered here.
+        return skipSchedule(client, targetId, {
+          reasonCode: reasonCode as (typeof HOPE_SCHEDULE_SKIP_REASON_CODES)[number],
+        });
       case "summary-pdf":
         return requestSummaryPdf(client, targetId);
       case "regenerate":

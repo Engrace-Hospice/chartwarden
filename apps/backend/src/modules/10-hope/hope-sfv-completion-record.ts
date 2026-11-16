@@ -113,8 +113,9 @@ async function insertSignedSfvAssessment(
  * Flip the SFV to `completed` while it is still in a completable state. Defence in depth, unreachable today (see
  * {@link SFV_COMPLETABLE_STATUSES}); a miss is reported as the ALREADY_COMPLETED case.
  */
-async function closeCompletedSfv(
+export async function closeCompletedSfv(
   t: DbClient,
+  organizationId: string,
   sfv: SfvRow,
   completingAssessmentId: string,
   at: Date,
@@ -122,7 +123,13 @@ async function closeCompletedSfv(
   const completed = await t
     .update(SFV)
     .set({ status: "completed", completingAssessmentId, completedAt: at, updatedAt: at })
-    .where(and(eq(SFV.id, sfv.id), inArray(SFV.status, SFV_COMPLETABLE_STATUSES)))
+    .where(
+      and(
+        eq(SFV.id, sfv.id),
+        eq(SFV.organizationId, organizationId),
+        inArray(SFV.status, SFV_COMPLETABLE_STATUSES),
+      ),
+    )
     .returning({ id: SFV.id });
   require_(
     completed.length === 1,
@@ -317,7 +324,7 @@ async function completeSfvInTx(
     { organizationId, userId },
     { args, assessmentId: row.id, sfvId: sfv.id, completedAtIso, dueAtIso },
   );
-  await closeCompletedSfv(t, sfv, plan.completingAssessmentId, at);
+  await closeCompletedSfv(t, organizationId, sfv, plan.completingAssessmentId, at);
   await recordCompletionEvidence(deps, t, {
     organizationId,
     userId,

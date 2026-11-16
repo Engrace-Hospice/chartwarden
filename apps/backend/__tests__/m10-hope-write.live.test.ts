@@ -1360,8 +1360,83 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   it("skipSchedule marks the schedule skipped", async () => {
     const adm = await admitted();
     const sched = await seedSchedule(ORG_A, adm);
-    const skipped = await svc.skipSchedule(ORG_A, sched, "patient_declined");
+    const skipped = await svc.skipSchedule(ORG_A, sched, "other");
     expect(skipped.status).toBe("skipped");
+    const { rows } = await admin.query(
+      "SELECT skip_reason_code FROM hope_timepoint_schedule WHERE id=$1",
+      [sched],
+    );
+    expect(rows[0].skip_reason_code).toBe("other");
+  });
+
+  it("skipSchedule refuses a reason that is not on the closed list (422, nothing sent to the database to change)", async () => {
+    const adm = await admitted();
+    const sched = await seedSchedule(ORG_A, adm);
+    await expect(svc.skipSchedule(ORG_A, sched, "typed by the clinician")).rejects.toMatchObject({
+      statusCode: 422,
+    });
+    const { rows } = await admin.query(
+      "SELECT status, skip_reason_code FROM hope_timepoint_schedule WHERE id=$1",
+      [sched],
+    );
+    expect(rows[0]).toMatchObject({ status: "open", skip_reason_code: null });
+  });
+
+  // The tenant predicate is explicit on every write, on top of RLS. RLS cannot show that: the owner connection below
+  // bypasses it, so only the statements' own `organization_id` predicate stands between ORG_B and ORG_A's rows.
+  it("another tenant's id finds nothing on a connection that bypasses RLS: skip, retry, mark-uploaded, cancel and download", async () => {
+    const adm = await admitted();
+    const sched = await seedSchedule(ORG_A, adm);
+    const insertSubmission = async (status: string): Promise<string> =>
+      (
+        await admin.query(
+          `INSERT INTO hope_submission (organization_id, provider_entity_id, submission_period, status, item_count)
+           VALUES ($1,$2,'2026-07',$3,1) RETURNING id`,
+          [ORG_A, providerOf[ORG_A], status],
+        )
+      ).rows[0].id as string;
+    const rejected = await insertSubmission("rejected");
+    const packaged = await insertSubmission("packaged");
+    // The later assemble test starts from "no package exists": these two rows are removed again, pass or fail.
+    try {
+      const owner = createDbClient({ connectionString: DB_URL as string });
+      try {
+        const backend = createDbHopeBackend(
+          owner.db,
+          { publish: async () => undefined },
+          () => liveNow,
+        );
+        const asOrgB = memberOf[ORG_B] as string;
+        const statusCode = (p: Promise<unknown>) =>
+          p.then(
+            () => null,
+            (e: { statusCode?: number }) => e.statusCode,
+          );
+        expect(await statusCode(backend.skipSchedule(ORG_B, sched, "other"))).toBe(404);
+        expect(await statusCode(backend.retrySubmission(ORG_B, rejected))).toBe(404);
+        expect(await statusCode(backend.markSubmissionUploaded(ORG_B, asOrgB, packaged, {}))).toBe(
+          404,
+        );
+        expect(
+          await statusCode(
+            backend.cancelSubmission(ORG_B, asOrgB, packaged, { reasonCode: "other" }),
+          ),
+        ).toBe(404);
+        expect(await statusCode(backend.downloadSubmissionPackage(ORG_B, packaged))).toBe(404);
+      } finally {
+        await owner.close();
+      }
+      const status = async (table: string, id: string): Promise<string> =>
+        (await admin.query(`SELECT status FROM ${table} WHERE id=$1`, [id])).rows[0]
+          .status as string;
+      expect(await status("hope_timepoint_schedule", sched)).toBe("open");
+      expect(await status("hope_submission", rejected)).toBe("rejected");
+      expect(await status("hope_submission", packaged)).toBe("packaged");
+    } finally {
+      await admin.query("DELETE FROM hope_submission WHERE id = ANY($1::uuid[])", [
+        [rejected, packaged],
+      ]);
+    }
   });
 
   it("assembleSubmission queues a submission; retry is refused unless the submission is rejected", async () => {
