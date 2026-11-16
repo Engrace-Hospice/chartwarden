@@ -459,9 +459,13 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
       ],
     });
 
+    // The workforce member the release names, and one it does not.
+    const NAMED = "member-b";
+    const OTHER = "member-a";
+
     // A real uuid: the read-audit row casts the acting user to uuid, and the best-effort emitter swallows a failure,
     // so a non-uuid reader would leave no trail and the audit assertion below would be vacuous.
-    const READER = "44444444-4444-4444-8444-444444444444";
+    const READER = "55555555-5555-4555-8555-555555555555";
 
     /**
      * A plan with one SUD problem and one plain problem, each served by an `rn` intervention, read as `caller`.
@@ -484,7 +488,7 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
           author_1: ["care_plan.bootstrap", "care_plan.author", "care_plan.read"],
           [READER]: ["care_plan.read"],
         },
-        consents: release ? [release("member-b")] : [],
+        consents: release ? [release(NAMED)] : [],
       });
       registerSeam(
         "CarePlanReader",
@@ -527,6 +531,17 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
           },
         });
         expect(res.statusCode, row.description).toBe(201);
+        const goal = await app.inject({
+          method: "POST",
+          url: `/api/v1/care-plans/${planId}/goals`,
+          headers: AUTHOR,
+          payload: {
+            problemId: row.id,
+            originalText: `goal for ${row.description}`,
+            source: "clinical",
+          },
+        });
+        expect(goal.statusCode, `goal for ${row.description}`).toBe(201);
       }
       if (opts.evaluator === "unbound") {
         __resetSeamsForTest();
@@ -549,28 +564,39 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
       expect(res.statusCode).toBe(200);
       // The read is accounted against the patient (§164.528): `resource_id` falls back to the patient id.
       const { rows: audit } = await admin.query(
-        `SELECT event_type, resource_id, context FROM audit_event WHERE resource_kind = 'care_plan_element' AND resource_id = $1`,
+        `SELECT event_type, resource_id, actor_user_id, organization_id, context FROM audit_event WHERE resource_kind = 'care_plan_element' AND resource_id = $1`,
         [patientId],
       );
       return {
         ...(res.json() as {
           redacted: boolean;
           problems: { description: string }[];
+          goals: { text: string }[];
           interventions: { scopeText: string }[];
         }),
-        audit: audit as { event_type: string; resource_id: string; context: unknown }[],
+        audit: audit as {
+          event_type: string;
+          resource_id: string;
+          actor_user_id: string;
+          organization_id: string;
+          context: unknown;
+        }[],
       };
     }
 
-    it("withholds the SUD problem and its intervention from a nurse the release does NOT name, and the read leaves its audit event", async () => {
-      const body = await readAs({ membership: "member-a", roles: "rn" }, releaseNaming);
+    it("withholds the SUD problem, its goal and its intervention from a nurse the release does NOT name, and the read leaves its audit event", async () => {
+      const body = await readAs({ membership: OTHER, roles: "rn" }, releaseNaming);
       expect(body.redacted).toBe(true);
       expect(body.problems.map((p) => p.description)).toEqual([PLAIN_PROBLEM]);
+      expect(body.goals.map((g) => g.text)).toEqual([`goal for ${PLAIN_PROBLEM}`]);
       expect(body.interventions.map((i) => i.scopeText)).toEqual([`visit for ${PLAIN_PROBLEM}`]);
-      // CW-AU-01: this route is reachable by default now, and a read-audit config that cannot write is swallowed.
+      // A read-audit config's resource id falls back to the patient id and the emitter swallows a failed insert, so a
+      // live suite must assert the read event actually lands (CLAUDE.md "Standing verification habits").
       expect(body.audit).toHaveLength(1);
       expect(body.audit[0]?.event_type).toBe("care_plan_element.viewed");
-      expect(JSON.stringify(body.audit[0]?.context)).toContain(patientId);
+      expect(body.audit[0]?.actor_user_id).toBe(READER);
+      expect(body.audit[0]?.organization_id).toBe(org);
+      expect(body.audit[0]?.context).toMatchObject({ patientId });
     });
 
     it("fails closed with no membership id against a release that names staff (actor_unidentified), even for the RN case manager", async () => {
@@ -582,7 +608,9 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
     });
 
     it("fails closed when the M39 evaluator is unbound: the outage narrows the read, never widens it", async () => {
-      const body = await readAs({ membership: "member-b", roles: "rn" }, releaseNaming, {
+      // The RN case manager is the caller the §7.6 carve-out would let through if the evaluator's catch block stopped
+      // marking the verdict restricted, so it is the caller that proves the outage narrows rather than widens.
+      const body = await readAs({ membership: NAMED, roles: "rn,rn_case_manager" }, releaseNaming, {
         evaluator: "unbound",
       });
       expect(body.redacted).toBe(true);
@@ -591,24 +619,28 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
     });
 
     it("shows them to the workforce member the release names", async () => {
-      const body = await readAs({ membership: "member-b", roles: "rn" }, releaseNaming);
+      const body = await readAs({ membership: NAMED, roles: "rn" }, releaseNaming);
       expect(body.redacted).toBe(false);
       expect(body.problems.map((p) => p.description).sort()).toEqual([PLAIN_PROBLEM, SUD_PROBLEM]);
+      expect(body.goals.map((g) => g.text).sort()).toEqual([
+        `goal for ${PLAIN_PROBLEM}`,
+        `goal for ${SUD_PROBLEM}`,
+      ]);
       expect(body.interventions).toHaveLength(2);
     });
 
     it("withholds them from a plain nurse when there is no release at all", async () => {
-      const body = await readAs({ membership: "member-a", roles: "rn" }, null);
+      const body = await readAs({ membership: OTHER, roles: "rn" }, null);
       expect(body.redacted).toBe(true);
       expect(body.problems.map((p) => p.description)).toEqual([PLAIN_PROBLEM]);
     });
 
     it("treats the RN case manager as every other M7 read does: §7.6 carve-out only where no release names others", async () => {
-      const noRelease = await readAs({ membership: "member-a", roles: "rn,rn_case_manager" }, null);
+      const noRelease = await readAs({ membership: OTHER, roles: "rn,rn_case_manager" }, null);
       expect(noRelease.redacted).toBe(false);
       expect(noRelease.problems).toHaveLength(2);
       const namesOthers = await readAs(
-        { membership: "member-a", roles: "rn,rn_case_manager" },
+        { membership: OTHER, roles: "rn,rn_case_manager" },
         releaseNaming,
       );
       expect(namesOthers.redacted).toBe(true);
