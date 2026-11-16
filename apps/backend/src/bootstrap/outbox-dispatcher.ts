@@ -298,6 +298,36 @@ export function outboxBackoffMs(attempt: number, baseMs: number, capMs: number):
   return Math.min(capMs, baseMs * 2 ** Math.max(0, attempt - 1));
 }
 
+/**
+ * A consumer throws this for a condition that clears by itself (a plan whose revision is awaiting
+ * signatures). The row stays `pending` and is retried after `retryAfterMs` WITHOUT consuming an attempt, so a
+ * wait of hours never dead-letters it. The consumer owns the bound: once waiting is no longer reasonable it
+ * must stop deferring and record its own durable verdict. Org-scoped bindings only; the platform pass does not
+ * honour it. The message is persisted to `last_error`, so carry ids, never record content.
+ */
+export class OutboxDeferral extends Error {
+  constructor(
+    message: string,
+    readonly retryAfterMs: number,
+  ) {
+    super(message);
+    this.name = "OutboxDeferral";
+  }
+}
+
+/** How often a deferred row is retried (a self-clearing condition is re-checked, not hammered). */
+export const OUTBOX_DEFERRAL_RETRY_MS = 30 * 60_000;
+/** How long a consumer may keep deferring one event before it must record a durable verdict instead. */
+export const OUTBOX_DEFERRAL_HORIZON_MS = 14 * 24 * 60 * 60_000;
+
+/** True while `event` is young enough that a consumer may still defer it (see {@link OutboxDeferral}). */
+export function withinDeferralHorizon(
+  event: { readonly createdAt: Date },
+  now: number = Date.now(),
+): boolean {
+  return now - event.createdAt.getTime() < OUTBOX_DEFERRAL_HORIZON_MS;
+}
+
 /** The relay's actor id — dispatch runs on behalf of the platform, not a user (NULL audit actor). */
 const DISPATCHER_USER_ID = "";
 
@@ -534,6 +564,22 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
         // ops-outbox route, so a Drizzle wrapper here would put the failed statement's bound
         // parameters in a database column and an ops response (F-027 / #65).
         const message = safeErrorMessage(err);
+        if (err instanceof OutboxDeferral && withinDeferralHorizon(row, now.getTime())) {
+          // A consumer's own "wait": the attempt is handed back (the claim added one), so it does not dead-letter
+          // while the event is young. The horizon is enforced HERE as well as by each consumer: a consumer that
+          // keeps deferring past it falls through to the ordinary retry/dead-letter path below (and its alert)
+          // instead of parking the event forever.
+          // Receipts for the bindings that already completed are kept, so only the waiting one is retried.
+          await finalize({
+            status: "pending",
+            attemptCount: row.attemptCount - 1,
+            dispatchedAt: null,
+            nextAttemptAt: new Date(now.getTime() + err.retryAfterMs),
+            lastError: `deferred: ${message}`.slice(0, 2000),
+          });
+          summary.deferred += 1;
+          continue;
+        }
         if (row.attemptCount >= maxAttempts) {
           // dispatched_at nulled: the row never succeeded, and the column means SUCCESS instant.
           await finalize({
