@@ -56,20 +56,23 @@ function mount(post: Mocked) {
   const onDone = vi.fn();
   const onOutcomeUnknown = vi.fn();
   const client = { GET: vi.fn(async () => ok({})), POST: post } as unknown as ApiClient;
-  render(
+  const view = (window: typeof EXPIRED_WINDOW) => (
     <SessionProvider session={OVERRIDE_SESSION}>
       <ApiClientProvider client={client}>
         <HopeRecordModal
           open
           admissionId="adm-1"
-          window={EXPIRED_WINDOW}
+          window={window}
           onClose={onClose}
           onDone={onDone}
           onOutcomeUnknown={onOutcomeUnknown}
         />
       </ApiClientProvider>
-    </SessionProvider>,
+    </SessionProvider>
   );
+  const rendered = render(view(EXPIRED_WINDOW));
+  /** The page behind re-reads the schedule while a request is out: the window the dialog was given changes. */
+  const rerenderWindow = (window: typeof EXPIRED_WINDOW) => rendered.rerender(view(window));
   const dialog = screen.getByRole("dialog", { name: "Record HOPE timepoint" });
   fireEvent.click(
     within(dialog).getByRole("checkbox", { name: "Record with administrative override" }),
@@ -81,7 +84,7 @@ function mount(post: Mocked) {
   fireEvent.change(field(), { target: { value: JUSTIFICATION } });
   const record = () =>
     within(dialog).getByRole("button", { name: "Record draft" }) as HTMLButtonElement;
-  return { dialog, field, record, onClose, onDone, onOutcomeUnknown };
+  return { dialog, field, record, onClose, onDone, onOutcomeUnknown, rerenderWindow };
 }
 
 describe("an override justification refused as looking like a patient identifier", () => {
@@ -119,17 +122,85 @@ describe("an override justification refused as looking like a patient identifier
     expect(within(dialog).queryByRole("alert")).toBeNull();
   });
 
-  it("says it again when the same text is sent again and is refused again", async () => {
-    const post = vi.fn(async () => phiRefusal());
+  it("takes the old refusal away as soon as the text is sent again, and says it again if it is refused again", async () => {
+    let answer: (reply: ReturnType<typeof phiRefusal>) => void = () => undefined;
+    const post = vi
+      .fn()
+      .mockImplementationOnce(async () => phiRefusal())
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answer = resolve;
+          }),
+      );
     const { dialog, field, record } = mount(post);
     fireEvent.click(record());
     await waitFor(() => expect(field().getAttribute("aria-invalid")).toBe("true"));
+    const firstAlert = within(dialog).getByRole("alert");
 
     fireEvent.click(record());
 
+    // While the second request is out, the first refusal is not still describing the text: it is gone from the field.
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    expect(field().getAttribute("aria-invalid")).toBeNull();
+    answer(phiRefusal());
     await waitFor(() => expect(within(dialog).getAllByRole("alert")).toHaveLength(1));
+    expect(within(dialog).getByRole("alert")).not.toBe(firstAlert);
     expect(field().getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("cannot be edited while the request is out, so a refusal never lands on text it was not about", async () => {
+    let answer: (reply: ReturnType<typeof phiRefusal>) => void = () => undefined;
+    const post = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const { dialog, field, record } = mount(post);
+
+    fireEvent.click(record());
+
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    // The form's fields sit in a disabled fieldset: a browser refuses typing, and unticking the override, in every one of them.
+    expect(field().closest("fieldset[disabled]")).not.toBeNull();
+    expect(
+      within(dialog)
+        .getByRole("checkbox", { name: "Record with administrative override" })
+        .closest("fieldset[disabled]"),
+    ).not.toBeNull();
+    answer(phiRefusal());
+    await waitFor(() => expect(field().getAttribute("aria-invalid")).toBe("true"));
+    expect(field().closest("fieldset[disabled]")).toBeNull();
+    expect(document.activeElement).toBe(field());
+  });
+
+  it("says the server's words in the alert when the field is gone by the time the refusal arrives", async () => {
+    let answer: (reply: ReturnType<typeof phiRefusal>) => void = () => undefined;
+    const post = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const { dialog, record, rerenderWindow } = mount(post);
+    fireEvent.click(record());
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    const now = Date.now();
+    const DAY = 24 * 60 * 60 * 1000;
+    // The schedule the page behind re-read has a window that is open again: there is no override, and no justification field.
+    rerenderWindow({
+      ...EXPIRED_WINDOW,
+      windowOpensAt: new Date(now - 5 * DAY).toISOString(),
+      windowClosesAt: new Date(now + 5 * DAY).toISOString(),
+      lateDeadlineAt: new Date(now + 12 * DAY).toISOString(),
+    });
+    expect(within(dialog).queryByRole("textbox", { name: /Justification/ })).toBeNull();
+
+    answer(phiRefusal());
+
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(SERVER_WORDS);
   });
 
   it("leaves a patient-identifier refusal that names another field as the server's own words", async () => {

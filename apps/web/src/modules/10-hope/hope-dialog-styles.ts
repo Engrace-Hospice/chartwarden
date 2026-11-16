@@ -429,3 +429,26 @@ export const textareaField: CSSProperties = {
   minHeight: "7rem",
   resize: "vertical",
 };
+
+// The recording dialog (`hope-record-modal.tsx`) and its override section (`hope-override-section.tsx`).
+export const meta: CSSProperties = {
+  margin: 0,
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+};
+
+export const lateBox: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.375rem",
+  padding: "0.625rem",
+  borderRadius: "0.375rem",
+  border: "1px solid var(--color-outline-variant)",
+};
+
+export const checkRow: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  fontSize: "0.85rem",
+};

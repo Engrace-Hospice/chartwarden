@@ -65,16 +65,22 @@ import {
   failedResultOutcomeUnknown,
   recordTimepoint,
 } from "./hope-api";
+import { checkRow, lateBox, meta } from "./hope-dialog-styles";
 import { notifyDone } from "./hope-notify-done";
+import { type JustificationRefusal, justificationRefusalOf } from "./hope-override-justification";
 import {
-  JUSTIFICATION_REFUSAL_WORDS,
-  type JustificationRefusal,
-  OVERRIDE_JUSTIFICATION_MAX,
-  OVERRIDE_JUSTIFICATION_MIN,
-  hasForbiddenJustificationCharacter,
-  justificationLengthOk,
-  justificationRefusalOf,
-} from "./hope-override-justification";
+  HopeOverrideSection,
+  OVERRIDE_NOT_PERMITTED_ASKED,
+  OVERRIDE_PERMISSION,
+  judgeOverride,
+} from "./hope-override-section";
+import {
+  ASKED_MESSAGES,
+  type RecordWindow,
+  SPAN_ASKED_BY_CODE,
+  asksForMore,
+  spanOf,
+} from "./hope-record-window";
 import { rfaLabel } from "./hope-status";
 import { useFocusOnNewError } from "./use-focus-on-new-error";
 
@@ -127,22 +133,6 @@ const LATE_REASONS: readonly LateReasonCode[] = [
  */
 const CHOOSABLE_LATE_REASONS = LATE_REASONS.filter((r) => r !== "admin_override");
 
-/**
- * The permission the server requires for `adminOverride` (hope-routes.ts `ADMIN_LATE_OVERRIDE`): a request that asks for the override
- * without it is refused 403, after the clinician has typed a justification. A session known to lack it is not offered the control.
- */
-const OVERRIDE_PERMISSION = "hope.admin.late_deadline_override";
-/**
- * What a clinician who cannot tick the override is told: only what is certain. Who else could record the visit is not (recording
- * needs the author discipline of the recorder's OWN roles, and files the visit under the recorder), so nobody is named to do it: the
- * administrator decides how it is to be recorded.
- */
-const OVERRIDE_NOT_PERMITTED =
-  "Only an administrator with override permission can override the late deadline. Ask your administrator how this visit should be recorded.";
-/** What the refusal M10_TIMEPOINT_EXPIRED says to a clinician who cannot tick the override (instead of telling them to). */
-const OVERRIDE_NOT_PERMITTED_ASKED =
-  "This visit is past the late deadline, so recording it needs an administrative override. Only an administrator with override permission can give one: ask your administrator how this visit should be recorded.";
-
 /** The visit date opens at the current time, so the clinician who records an earlier visit changes it instead of filing it as now. The capture form says the same. */
 export const DEFAULT_DATE_HINT =
   "Set to the current time. Change it if the visit took place at another time.";
@@ -153,83 +143,6 @@ const RECORD_NOT_PREPARED =
 
 const humanize = (k: string): string =>
   k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-
-/** The window a schedule row publishes; supplied when the capture completes a known timepoint. */
-export interface RecordWindow {
-  readonly id: string;
-  readonly rfaKind: string;
-  readonly windowOpensAt: string;
-  readonly windowClosesAt: string;
-  readonly lateDeadlineAt: string;
-}
-
-/** Where the capture falls against the window — used ONLY to decide what to ask for. */
-type CaptureSpan = "before_open" | "in_window" | "late" | "expired" | "unscheduled";
-
-/**
- * Mirrors the server's capture gate (`assertCaptureAllowed`, GAP-015). A visit dated before the window opens is refused on
- * its own date; everything else is judged at the LATER of the visit date and now, so a visit dated inside the window but
- * entered after it closed is late (it needs a reason), and one entered after the late deadline needs the override. Judging
- * the typed date alone would never offer either control, and the server's 400 / 409 would have no way to be answered.
- */
-export function spanOf(
-  targetIso: string,
-  window: RecordWindow | null,
-  nowMs: number = Date.now(),
-): CaptureSpan {
-  if (window === null) return "unscheduled";
-  const at = Date.parse(targetIso);
-  if (Number.isNaN(at)) return "unscheduled";
-  if (at < Date.parse(window.windowOpensAt)) return "before_open";
-  const judgedAt = Math.max(at, nowMs);
-  if (judgedAt <= Date.parse(window.windowClosesAt)) return "in_window";
-  if (judgedAt <= Date.parse(window.lateDeadlineAt)) return "late";
-  return "expired";
-}
-
-/**
- * What the SERVER's refusal asks for when the modal's own picture of the window could not (opened with no schedule, or a stored
- * window that looked in time): the late-reason control for M10_LATE_REASON_REQUIRED, the override for M10_TIMEPOINT_EXPIRED. Without
- * this the refusal would repeat over a form with nothing that answers it. Judged for the date and reason typed, so it is dropped
- * when either changes.
- */
-const SPAN_ASKED_BY_CODE: Readonly<
-  Record<string, { readonly span: "late" | "expired"; readonly message: string }>
-> = {
-  M10_LATE_REASON_REQUIRED: {
-    span: "late",
-    message:
-      "This visit is after the normal window, so a late completion reason is required. Choose one in the form (it has been added), then record again.",
-  },
-  M10_TIMEPOINT_EXPIRED: {
-    span: "expired",
-    message:
-      "This visit is past the late deadline, so recording it needs an administrative override. Tick the override in the form (it has been added) and give its justification, then record again.",
-  },
-};
-
-/** The explanations above, so one that describes a control that has since gone can be told from any other error. */
-const ASKED_MESSAGES: ReadonlySet<string> = new Set([
-  ...Object.values(SPAN_ASKED_BY_CODE).map((asked) => asked.message),
-  OVERRIDE_NOT_PERMITTED_ASKED,
-]);
-
-/** How strict a verdict is, to tell whether a refusal asks for more than the modal's own window did. */
-const STRICTNESS: Readonly<Record<CaptureSpan, number>> = {
-  before_open: -1,
-  unscheduled: 0,
-  in_window: 0,
-  late: 1,
-  expired: 2,
-};
-
-/**
- * Whether the server's refusal asks for more than the modal's own verdict offered (a client clock behind the server, a stored
- * window that has since moved, or no schedule at all): then the control it asks for is added. A visit the modal judged before the
- * window opened is a different refusal (M10_TIMEPOINT_NOT_OPEN), so nothing is added for it.
- */
-const asksForMore = (asked: "late" | "expired", own: CaptureSpan): boolean =>
-  own !== "before_open" && STRICTNESS[asked] > STRICTNESS[own];
 
 /** The server's own bounds on the free-text fields that are not otherwise limited (`J2051Entry`, `HopeData.N`). */
 const OTHER_SYMPTOM_LABEL_MAX = 100;
@@ -354,6 +267,12 @@ export function HopeRecordModal({
     setBowelRegimenContraindication("");
   }, [open, pinnedRfa, defaultRfaKind, authorRoles]);
 
+  // After a refusal of the justification, the field to edit takes focus: the pressed button was disabled while the request was out,
+  // which can drop focus to the page. Run after the commit, when the fieldset is enabled again (a disabled control cannot be focused).
+  useEffect(() => {
+    if (justificationRefusal !== null && !busy) document.getElementById(justificationId)?.focus();
+  }, [justificationRefusal, busy, justificationId]);
+
   if (!open) return null;
 
   // A cleared, part-typed or out-of-range value (a five-digit year) does not parse: it blocks the record, and must not throw.
@@ -367,29 +286,26 @@ export function HopeRecordModal({
     rfaKind === "05_discharge" && dischargeReason !== "" && dischargeReason !== "death";
   const forbidsQ = rfaKind === "05_discharge" && dischargeReason === "death";
 
-  // The override only exists past the late deadline: the checkbox is only offered there, so a tick left over from another
-  // date is not sent, and cannot block a capture whose justification box is not on screen.
-  const overriding = span === "expired" && adminOverride && canOverride;
-  const justification = overrideJustification.trim();
+  const {
+    overriding,
+    justification,
+    error: justificationError,
+    blocked: overrideBlocked,
+  } = judgeOverride(
+    { checked: adminOverride, text: overrideJustification, refusal: justificationRefusal },
+    span === "expired",
+    canOverride,
+  );
   // The server wants a typed late reason on a late capture AND on an overridden expired one (M10_LATE_REASON_REQUIRED). A late
   // capture takes the clinician's choice; the override IS its own reason (`admin_override`), so nothing is asked twice.
   const lateCode: LateReasonCode | "" =
     span === "late" ? lateReason : overriding ? "admin_override" : "";
-  // What the server refuses is refused here first: a pasted zero-width space passes the length minimum but never the server.
-  const justificationInvisible = overriding && hasForbiddenJustificationCharacter(justification);
-  const justificationError =
-    justificationRefusal !== null
-      ? JUSTIFICATION_REFUSAL_WORDS[justificationRefusal]
-      : justificationInvisible
-        ? JUSTIFICATION_REFUSAL_WORDS.invalid_characters
-        : undefined;
   const blocked =
     targetIso === "" ||
     authorDiscipline === "" ||
     (span === "late" && lateReason === "") ||
     (rfaKind === "05_discharge" && dischargeReason === "") ||
-    (overriding && !justificationLengthOk(justification)) ||
-    justificationInvisible;
+    overrideBlocked;
 
   /** The §2.1 payload for the four sections this codebase defines items for. */
   function buildData(): HopeData {
@@ -484,12 +400,11 @@ export function HopeRecordModal({
         );
         return;
       }
-      // Only a sent justification can be what the server refused: a refusal with none on screen keeps the server's words.
+      // Only a sent justification can be what the server refused, and only a field that is still on screen can show it: a refusal
+      // with nowhere to be said keeps the server's words in the alert.
       const refusal = overriding ? justificationRefusalOf(res) : null;
-      if (refusal !== null) {
+      if (refusal !== null && document.getElementById(justificationId) !== null) {
         setJustificationRefusal(refusal);
-        // The pressed button was disabled while the request was out, which can drop focus to the page: the field to edit takes it.
-        document.getElementById(justificationId)?.focus();
         return;
       }
       setError(res.message);
@@ -530,7 +445,7 @@ export function HopeRecordModal({
       width="36rem"
       accent={t.primary}
     >
-      <div style={body}>
+      <fieldset disabled={busy} style={body}>
         <h2 style={title}>{`Record ${rfaLabel(rfaKind)}`}</h2>
 
         {/* The instrument gap, stated before the clinician commits rather than discovered after. */}
@@ -631,41 +546,18 @@ export function HopeRecordModal({
           </div>
         ) : null}
         {span === "expired" ? (
-          <div style={lateBox}>
-            <StatusPill label="Past the late deadline" tone="error" />
-            <p style={meta}>
-              The window's late deadline has passed. Recording now requires an administrative
-              override, which the server records on the row; the late-completion reason is filed as
-              "Admin Override".
-            </p>
-            {canOverride ? (
-              <label style={checkRow}>
-                <input
-                  type="checkbox"
-                  checked={adminOverride}
-                  onChange={(e) => setAdminOverride(e.target.checked)}
-                />
-                <span>Record with administrative override</span>
-              </label>
-            ) : (
-              <p style={meta}>{OVERRIDE_NOT_PERMITTED}</p>
-            )}
-            {canOverride && adminOverride ? (
-              <TextAreaField
-                id={justificationId}
-                label="Justification for the override"
-                hint={`Between ${OVERRIDE_JUSTIFICATION_MIN} and ${OVERRIDE_JUSTIFICATION_MAX} characters (a run of spaces or line breaks counts as one). It is recorded in the audit trail when the override is used and cannot be changed later, so do not enter a patient's name or a Social Security or Medicare number.`}
-                error={justificationError}
-                value={overrideJustification}
-                onChange={(e) => {
-                  setOverrideJustification(e.target.value);
-                  setJustificationRefusal(null);
-                }}
-                maxLength={OVERRIDE_JUSTIFICATION_MAX}
-                rows={3}
-              />
-            ) : null}
-          </div>
+          <HopeOverrideSection
+            canOverride={canOverride}
+            checked={adminOverride}
+            onCheckedChange={setAdminOverride}
+            text={overrideJustification}
+            onTextChange={(text) => {
+              setOverrideJustification(text);
+              setJustificationRefusal(null);
+            }}
+            fieldId={justificationId}
+            error={justificationError}
+          />
         ) : null}
         {span === "before_open" ? (
           <p style={meta}>
@@ -824,12 +716,17 @@ export function HopeRecordModal({
             </>
           )}
         </div>
-      </div>
+      </fieldset>
     </Modal>
   );
 }
 
+// A fieldset, so the form's controls (and the Cancel and Record buttons) are all disabled while a request is out: a browser refuses typing
+// in a disabled fieldset, and a refusal can never land on text that was edited after the request left. Its UA border and sizing are reset.
 const body: CSSProperties = {
+  border: 0,
+  margin: 0,
+  minWidth: 0,
   padding: "1.5rem",
   display: "flex",
   flexDirection: "column",
@@ -844,32 +741,13 @@ const sectionTitle: CSSProperties = {
   fontWeight: 600,
   color: "var(--color-on-surface-variant)",
 };
-const meta: CSSProperties = {
-  margin: 0,
-  fontSize: "0.75rem",
-  color: "var(--color-on-surface-variant)",
-};
 const banner: CSSProperties = {
   ...meta,
   padding: "0.5rem 0.625rem",
   borderRadius: "0.375rem",
   background: "var(--color-surface-variant)",
 };
-const lateBox: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.375rem",
-  padding: "0.625rem",
-  borderRadius: "0.375rem",
-  border: "1px solid var(--color-outline-variant)",
-};
 const triggerBox: CSSProperties = { ...lateBox };
-const checkRow: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  fontSize: "0.85rem",
-};
 const symptomGrid: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))",

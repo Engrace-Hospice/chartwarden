@@ -36,7 +36,8 @@ import { usePatientNames } from "../../shell/patient-names";
 import { type HopeAction, HopeActionModal } from "./hope-action-modal";
 import { type RfaKind, withRequestTimeout } from "./hope-api";
 import { HopeListReadState } from "./hope-read-state";
-import { HopeRecordModal, type RecordWindow } from "./hope-record-modal";
+import { HopeRecordModal } from "./hope-record-modal";
+import type { RecordWindow } from "./hope-record-window";
 import { BUCKET_TONE, rfaLabel, stateLabel } from "./hope-status";
 
 interface ScheduleRow {
