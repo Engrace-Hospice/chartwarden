@@ -13,7 +13,8 @@ import type { WriteResult } from "./hope-api";
 export const OVERRIDE_JUSTIFICATION_MIN = 20;
 export const OVERRIDE_JUSTIFICATION_MAX = 1000;
 
-const WHITE_SPACE_RUN = /\p{White_Space}+/gu;
+/** Mirror of `WHITE_SPACE_RUN` in hope-route-guards.ts (kept identical: hope-mirror-parity.test.ts). */
+export const WHITE_SPACE_RUN = /\p{White_Space}+/gu;
 
 /** Whether the TRIMMED justification is within the server's bounds, measured as the server measures them. */
 export const justificationLengthOk = (trimmedText: string): boolean =>
@@ -26,7 +27,7 @@ export const justificationLengthOk = (trimmedText: string): boolean =>
  * (zero-width space, LRM, soft hyphen, BOM...) and a lone surrogate. The server REJECTS them, never strips them, and tests the TRIMMED
  * text, so callers of {@link hasForbiddenJustificationCharacter} pass the trimmed text.
  */
-const FORBIDDEN_JUSTIFICATION_CHARACTER =
+export const FORBIDDEN_JUSTIFICATION_CHARACTER =
   /(?![\t\n\r])[\p{Cc}\p{Cf}]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
 
 /** Whether the (trimmed) justification holds a character the server refuses: a paste often carries one nobody can see. */
