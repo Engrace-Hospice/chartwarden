@@ -4,8 +4,8 @@ import { Button, Modal, TextAreaField, TextField, t, useApiClient } from "@chart
 // either per item or by pasting it (parsed defensively by cms-result-parser.ts, which only PRE-FILLS the form
 // so the user reviews before anything is sent). Recording flips the batch status and the HQRP acceptance rate,
 // so a confirmation step sits between the form and the POST. Matching/validation stay the server's (ADR-0030):
-// its 409/422 reasons are shown inline verbatim.
-import { useEffect, useRef, useState } from "react";
+// its 409/422 reasons are shown inline verbatim, except a refusal of the report reference, which is said on that field.
+import { useEffect, useId, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { type CmsItemOutcome, normalizeOutcome, parseCmsReport } from "./cms-result-parser";
 import {
@@ -15,6 +15,14 @@ import {
   recordSubmissionResult,
 } from "./hope-api";
 import { notifyDone } from "./hope-notify-done";
+import {
+  MAX_REFERENCE,
+  REFERENCE_HINT,
+  REFERENCE_REFUSAL_WORDS,
+  type ReferenceRefusal,
+  hasForbiddenReferenceCharacter,
+  referenceRefusalOf,
+} from "./hope-report-reference";
 
 export interface ResultItem {
   readonly assessmentId: string;
@@ -35,7 +43,6 @@ const OUTCOME_OPTIONS: ReadonlyArray<{ value: CmsItemOutcome; label: string }> =
   { value: "accepted_with_warnings", label: "Accepted with warnings" },
   { value: "rejected", label: "Rejected" },
 ];
-const MAX_REFERENCE = 128;
 const MAX_SHOWN_ERRORS = 3;
 const OUTCOME_RANK: Record<CmsItemOutcome, number> = {
   accepted: 1,
@@ -96,6 +103,9 @@ export function RecordCmsResultModal({
   const [discarding, setDiscarding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What the server's last refusal said about the report reference: said on the field, which the clinician is taken back to.
+  const [referenceRefusal, setReferenceRefusal] = useState<ReferenceRefusal | null>(null);
+  const referenceId = useId();
   // Synchronous guard: `busy` only lands on the next render, and this is a final, non-editable write.
   const submitting = useRef(false);
   // Focus targets: the step heading (confirm / discard) when a step opens, the dialog title when it closes.
@@ -116,6 +126,7 @@ export function RecordCmsResultModal({
     setDiscarding(false);
     setBusy(false);
     setError(null);
+    setReferenceRefusal(null);
   }, [open]);
 
   const inStep = confirming || discarding;
@@ -126,6 +137,14 @@ export function RecordCmsResultModal({
     else if (hadStep.current) titleRef.current?.focus();
     hadStep.current = step !== null;
   }, [step]);
+
+  // The refusal is answered on the reference field, which is not on screen during the confirmation step: once the form is back,
+  // the field takes focus (the pressed button was disabled while the request was out, which can drop focus to the page). Declared
+  // AFTER the step effect above, which sends focus to the title when a step closes: the later effect of one commit wins.
+  const backOnForm = !inStep;
+  useEffect(() => {
+    if (referenceRefusal !== null && backOnForm) document.getElementById(referenceId)?.focus();
+  }, [referenceRefusal, backOnForm, referenceId]);
 
   if (!open) return null;
 
@@ -182,10 +201,12 @@ export function RecordCmsResultModal({
   }
 
   async function submit(): Promise<void> {
-    if (!allSet || submitting.current) return;
+    if (!allSet || referenceInvalid || submitting.current) return;
     submitting.current = true;
     setBusy(true);
     setError(null);
+    // Each attempt clears the field's refusal first, so a second refusal of the same reference is announced again.
+    setReferenceRefusal(null);
     let res: Awaited<ReturnType<typeof recordSubmissionResult>>;
     try {
       res = await recordSubmissionResult(
@@ -204,8 +225,15 @@ export function RecordCmsResultModal({
       setBusy(false);
     }
     if (!res.ok) {
-      setError(res.message);
       setConfirming(false);
+      // A refusal of the reference itself (its characters, or a patient identifier) is definite: nothing changed, so it is said on the
+      // field in the dialog's own words, never the server's (which name the wire field), and the page is not re-read.
+      const refusal = referenceRefusalOf(res);
+      if (refusal !== null) {
+        setReferenceRefusal(refusal);
+        return;
+      }
+      setError(res.message);
       // A 409 means the page is out of date, unless the record was only busy (a lock wait timed out: nothing was applied). An empty
       // 5xx or a fault of the server's own may have recorded the result after all, as a rejected request may: re-read like that path.
       const changed = res.status === 409 && res.code !== RECORD_BUSY_CODE;
@@ -216,6 +244,13 @@ export function RecordCmsResultModal({
     notifyDone(onDone, onClose);
   }
 
+  const referenceInvalid = hasForbiddenReferenceCharacter(reference.trim());
+  const referenceError =
+    referenceRefusal !== null
+      ? REFERENCE_REFUSAL_WORDS[referenceRefusal]
+      : referenceInvalid
+        ? REFERENCE_REFUSAL_WORDS.invalid_characters
+        : undefined;
   const statusOf = (id: string): RowState["status"] => rows[id]?.status ?? "";
   const unsetCount = items.filter((i) => statusOf(i.assessmentId) === "").length;
   const allSet = items.length > 0 && unsetCount === 0;
@@ -274,10 +309,16 @@ export function RecordCmsResultModal({
         ) : (
           <>
             <TextField
+              id={referenceId}
               label="Report reference (optional)"
+              hint={REFERENCE_HINT}
+              error={referenceError}
               value={reference}
               maxLength={MAX_REFERENCE}
-              onChange={(e) => setReference(e.target.value)}
+              onChange={(e) => {
+                setReference(e.target.value);
+                setReferenceRefusal(null);
+              }}
             />
             <TextAreaField
               label="Paste CMS report (JSON, CSV, or one line per record)"
@@ -410,7 +451,7 @@ export function RecordCmsResultModal({
                 setError(null);
                 setConfirming(true);
               }}
-              disabled={!allSet}
+              disabled={!allSet || referenceInvalid}
             >
               Review and record
             </Button>

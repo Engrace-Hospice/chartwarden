@@ -1,0 +1,44 @@
+// apps/web/src/modules/10-hope — the "Report reference" an operator types when recording a CMS result: the server's charset and
+// length, mirrored so the dialog refuses what the server would refuse, and the words it says on the field when the server refuses
+// it anyway. Every sentence is static: the reference typed is never echoed, and the wire field's name (`reportReference`) is for
+// matching, never for showing.
+import type { WriteResult } from "./hope-api";
+
+/** The server's length limit on a report reference (`referenceString(500)` in `ImportSubmissionResultSchema`, hope-typebox.ts). */
+export const MAX_REFERENCE = 500;
+
+/**
+ * Mirror of `REFERENCE_CHARSET` in `apps/backend/src/modules/10-hope/routes/hope-typebox.ts` (web does not import backend code: keep the
+ * two identical): letters, digits, space and `. _ : # / -`, so markup, control characters and quotes never reach a stored row.
+ */
+const REFERENCE_PATTERN = /^[A-Za-z0-9 ._:#/-]+$/;
+
+/** Whether a (trimmed) reference holds a character the server refuses. Nothing at all is fine: the reference is optional and then not sent. */
+export const hasForbiddenReferenceCharacter = (trimmedText: string): boolean =>
+  trimmedText !== "" && !REFERENCE_PATTERN.test(trimmedText);
+
+export const REFERENCE_HINT = `Letters, digits, spaces and . _ : # / - only, up to ${MAX_REFERENCE} characters.`;
+
+/** What the server refused the reference for. */
+export type ReferenceRefusal = "invalid_characters" | "looks_like_phi";
+
+const PHI_REFUSAL_CODE = "EVIDENCE_LOOKS_LIKE_PHI";
+const REFERENCE_FIELD = "reportReference";
+
+export const REFERENCE_REFUSAL_WORDS: Readonly<Record<ReferenceRefusal, string>> = {
+  invalid_characters: `That reference has a character that is not allowed. Use only letters, digits, spaces and . _ : # / -, up to ${MAX_REFERENCE} characters.`,
+  looks_like_phi:
+    "This looks like it contains a Social Security or Medicare number. Enter the reference CMS gave for the report, never a patient's number.",
+};
+
+/**
+ * What a refused result says about the reference, or null when the refusal is not about it (the caller keeps the server's words): the
+ * patient-identifier screen (this route screens nothing else), or a validation refusal that names the reference's field (the charset
+ * answers "Expected union value", which says nothing to a clinician).
+ */
+export function referenceRefusalOf(
+  refusal: Extract<WriteResult<unknown>, { ok: false }>,
+): ReferenceRefusal | null {
+  if (refusal.code === PHI_REFUSAL_CODE) return "looks_like_phi";
+  return refusal.invalidField?.field === REFERENCE_FIELD ? "invalid_characters" : null;
+}
