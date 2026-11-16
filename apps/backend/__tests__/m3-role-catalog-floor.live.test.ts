@@ -25,7 +25,11 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { SYSTEM_LOCKED_FLOORS, allPermissionMirrorRows } from "@chartwarden/auth";
+import {
+  CARE_PLAN_DEFAULT_GRANTS,
+  SYSTEM_LOCKED_FLOORS,
+  allPermissionMirrorRows,
+} from "@chartwarden/auth";
 import { type DbClient, createDbClient, schema } from "@chartwarden/db";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
@@ -367,5 +371,39 @@ describe.skipIf(!DB_URL)("F-093 M3 role catalog floor — LIVE Postgres", () => 
     expect(await grantsOf(readerOnly)).toEqual(["patient.read"]);
     expect(await grantsOf(already)).toEqual(["patient.edit", "patient.edit_payers"]);
     expect(await grantsOf(template)).toEqual(["patient.edit"]);
+  });
+
+  // D-2 (CW-AC-44) — migration 1494 gives the clinical roles their default care_plan.* keys. A fresh replay finds no
+  // roles, so the SQL is re-run over staged rows: every tenant role in the table gets exactly its keys, an
+  // unlisted or external role and a platform template (no organization) get none, existing grants survive, and a
+  // second run adds nothing.
+  it("D-2 migration 1494 grants each clinical role exactly its care_plan keys, idempotently", async () => {
+    const sql = readFileSync(
+      join(MIGRATIONS_DIR, "1494_care_plan_clinical_default_grants.sql"),
+      "utf8",
+    );
+    const staged: Record<string, string> = {};
+    for (const key of Object.keys(CARE_PLAN_DEFAULT_GRANTS)) staged[key] = await seedRole(key, []);
+    const external = await seedRole("physician_office", ["patient.read"]);
+    const portal = await seedRole("portal_patient", []);
+    const template = await seedRole("rn", [], { organizationId: null });
+    const keeps = await seedRole("billing_lead", ["patient.read"]);
+    await admin.query(
+      "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,'patient.read')",
+      [ORG_A, staged.rn_case_manager],
+    );
+
+    await admin.query(sql);
+    await admin.query(sql); // idempotent
+
+    for (const [key, id] of Object.entries(staged)) {
+      const expected = [...(CARE_PLAN_DEFAULT_GRANTS[key] ?? [])];
+      if (key === "rn_case_manager") expected.push("patient.read"); // the pre-existing grant survives
+      expect(await grantsOf(id), key).toEqual(expected.sort());
+    }
+    expect(await grantsOf(external)).toEqual(["patient.read"]);
+    expect(await grantsOf(portal)).toEqual([]);
+    expect(await grantsOf(template)).toEqual([]);
+    expect(await grantsOf(keeps)).toEqual(["patient.read"]);
   });
 });
