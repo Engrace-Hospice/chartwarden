@@ -151,6 +151,7 @@ export {
   describeFindings,
 } from "./content-scan";
 import { LOCAL_HOST, MBI, scanContent, secretPathReason } from "./content-scan";
+import { databaseTarget, databaseTargetReason } from "./db-target";
 
 // ---------------------------------------------------------------------------------------------------
 // 3. Shell commands
@@ -2868,22 +2869,12 @@ function classifySegment(
     if (code) return code;
   }
 
-  // --- Production data access. An agent session connecting to a non-local database is PHI access.
-  if (/^(psql|pg_dump|pg_dumpall|pg_restore|pgcli)$/.test(prog)) {
-    const hostFlag = /(?:^|\s)(?:-h\s*|--host[=\s])([^\s'"]+)/.exec(argline)?.[1];
-    const urlHost = /postgres(?:ql)?:\/\/[^@\s]*@([^/:\s?'"]+)/.exec(argline)?.[1];
-    const envHost = assigns.map((a) => /^PGHOST=(.*)$/.exec(a)?.[1]).find(Boolean);
-    const host = hostFlag ?? urlHost ?? envHost;
-    if (host && !isLocalHost(host)) {
-      return deny(
-        `Connecting to database host \`${echo(host)}\` from an agent session is access to PHI. Agents work against local or private-container databases with synthetic data only.`,
-      );
-    }
-    if (!host && /\$\{?[A-Z_]*DATABASE_URL/.test(argline)) {
-      return ask(
-        "`$DATABASE_URL` could point anywhere. Confirm it is a local or private-container database with synthetic data.",
-      );
-    }
+  // --- Production data access. An agent session connecting to a non-local database is PHI access (`db-target.ts`).
+  const shellEnvironment = [...knownVariables].map(([name, value]) => `${name}=${value}`);
+  const dbTarget = databaseTarget(prog, args.map(unescapeWord), [...assigns, ...shellEnvironment]);
+  if (dbTarget) {
+    const reason = databaseTargetReason(dbTarget, echo);
+    return dbTarget.kind === "remote" || dbTarget.kind === "unparsed" ? deny(reason) : ask(reason);
   }
 
   // --- Remote shells: production access must be a human decision every time.

@@ -411,7 +411,7 @@ describe("ADV6-5 / T3(d): clients the table did not name", () => {
   });
 
   it.each([
-    String.raw`usql pg://x -c '\! id'`,
+    String.raw`usql pg://localhost/x -c '\! id'`,
     `litecli db -e '.shell id'`,
     `duckdb -c ".shell id"`,
     `sqlcmd -Q '!!id'`,
