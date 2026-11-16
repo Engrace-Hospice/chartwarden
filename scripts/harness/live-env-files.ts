@@ -10,11 +10,13 @@
  * command. A file deeper than that is not listed; the fallback list in `secret-reads.ts` and the secret-path rules
  * still name the usual ones. The listing says whether it saw everything (`complete`): a directory over the cap, one it
  * could not read and a symlink under a parent (a directory behind it is not walked) make it incomplete, and the rules then
- * answer "may match" (ask), as the protected-names listing does (wave 8, CR6-6). Not pure: it reads the file system (a test
+ * answer "may match" (ask), as the protected-names listing does (wave 8, CR6-6). A symlink is decided by its target (wave 9,
+ * W9-0): a link to a file is a file, a dangling link holds nothing, and only a link to a directory is a gap. Not pure: it reads the file system (a test
  * passes its own reader).
  */
 import { readdirSync } from "node:fs";
 import type { Listing } from "./listing";
+import { linkTarget } from "./symlink-target";
 
 /** Directories whose direct children are listed as locations of env files. */
 const PARENT_DIRECTORIES: readonly string[] = ["apps", "services", "packages", "deploy"];
@@ -32,18 +34,22 @@ const TEMPLATE_NAME = /\.(?:example|sample|template|dist)$/i;
 export type DirectoryReader = (dir: string) => readonly {
   readonly name: string;
   readonly isDirectory: boolean;
-  /** A symlink (to anything): a directory behind one is not walked, so the listing is not complete. */
+  /** A symlink to a directory (or one that cannot be resolved): a directory behind one is not walked, so the listing is not complete. */
   readonly isSymbolicLink?: boolean;
 }[];
 
+/** A symlink is decided by its target (wave 9, W9-0): a link to a file is a file, a dangling link is gone, the rest is a gap. */
 const readFromDisk =
   (root: string): DirectoryReader =>
-  (dir) =>
-    readdirSync(`${root}${dir === "" ? "" : `/${dir}`}`, { withFileTypes: true }).map((entry) => ({
-      name: entry.name,
-      isDirectory: entry.isDirectory(),
-      isSymbolicLink: entry.isSymbolicLink(),
-    }));
+  (dir) => {
+    const path = `${root}${dir === "" ? "" : `/${dir}`}`;
+    return readdirSync(path, { withFileTypes: true }).flatMap((entry) => {
+      const target = entry.isSymbolicLink() ? linkTarget(`${path}/${entry.name}`) : null;
+      if (target === "dangling") return [];
+      const isGap = target === "directory" || target === "unreadable";
+      return [{ name: entry.name, isDirectory: entry.isDirectory(), isSymbolicLink: isGap }];
+    });
+  };
 
 /** Repo-relative paths of the live env files under `root`, and whether the walk saw everything; `read` is the test seam. */
 export function listLiveEnvFiles(

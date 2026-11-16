@@ -8,11 +8,14 @@
  * `build` and the like, bounded (a few thousand directories at most), and read on demand, once per command, only when a
  * runner is started with a filter. An untracked suite is listed too. The listing says whether it saw everything
  * (`complete`): a directory cap (a loop that creates 17,000 empty directories used to empty the list), a depth cap, a
- * symlinked directory and a directory it could not read make it incomplete, and a filter then "may match" (ask). Not pure:
- * it reads the file system.
+ * directory it could not read, a symlink to a directory outside the walked roots and a symlink it cannot resolve make it
+ * incomplete, and a filter then "may match" (ask). A symlink is decided by its target (wave 9, W9-0): a link to a file is
+ * judged by its name like a file, a dangling link holds nothing, and a link to a directory inside the walked roots holds
+ * nothing new (a Linux virtualenv's `lib64 -> lib`). Not pure: it reads the file system.
  */
-import { type Dirent, readdirSync } from "node:fs";
+import { type Dirent, readdirSync, realpathSync } from "node:fs";
 import type { Listing } from "./listing";
+import { linkTarget } from "./symlink-target";
 
 const ROOTS: readonly string[] = ["apps", "packages", "services", "scripts"];
 const SKIPPED_DIRECTORIES = new Set(["node_modules", ".git", "dist", "build", ".next", "coverage"]);
@@ -21,9 +24,26 @@ const LIVE_SUITE_FILE = /\.live\.test\.tsx?$/;
 const MAX_DEPTH = 16;
 const MAX_DIRECTORIES = 5000;
 
+const realOrNull = (path: string): string | null => {
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
+};
+
 /** Repo-relative paths of the live suite files under `root`, and whether the walk saw everything. */
 export function listLiveSuiteFiles(root: string): Listing {
   const base = root.replace(/\/+$/, "");
+  let walkedRoots: readonly string[] | null = null;
+  /** A link to a directory that lies inside a walked root is a second name for something walked on its own. */
+  const insideWalkedRoots = (path: string): boolean => {
+    walkedRoots ??= ROOTS.map((top) => realOrNull(`${base}/${top}`)).filter(
+      (real): real is string => real !== null,
+    );
+    const real = realOrNull(path);
+    return real !== null && walkedRoots.some((top) => real === top || real.startsWith(`${top}/`));
+  };
   const found: string[] = [];
   let directories = 0;
   let complete = true;
@@ -42,9 +62,13 @@ export function listLiveSuiteFiles(root: string): Listing {
     }
     for (const entry of entries) {
       if (SKIPPED_DIRECTORIES.has(entry.name)) continue;
-      if (entry.isSymbolicLink()) complete = false;
-      else if (entry.isDirectory()) walk(`${rel}/${entry.name}`, depth + 1);
-      else if (LIVE_SUITE_FILE.test(entry.name)) found.push(`${rel}/${entry.name}`);
+      const path = `${rel}/${entry.name}`;
+      const target = entry.isSymbolicLink() ? linkTarget(`${base}/${path}`) : null;
+      if (target === "unreadable") complete = false;
+      else if (target === "directory") complete &&= insideWalkedRoots(`${base}/${path}`);
+      else if (target === "dangling") continue;
+      else if (entry.isDirectory()) walk(path, depth + 1);
+      else if (LIVE_SUITE_FILE.test(entry.name)) found.push(path);
     }
   };
   for (const top of ROOTS) walk(top, 0);
