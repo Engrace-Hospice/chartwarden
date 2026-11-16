@@ -434,7 +434,15 @@ export interface BackstopPlan {
    * scan --path .`, 11 `live.sh "$PWD"`); a directory that holds protected files but is not the root (`scripts`) always counts.
    */
   readonly rootCounts: boolean;
+  /** Is the program neither a reader nor modelled, and its command line asks for a recursive or all-files read (`-r`, `-a`, `--hidden`)? */
+  readonly recursiveRead: boolean;
 }
+
+/** An option that makes an unknown program read every file under a directory operand, hidden and ignored ones included. */
+const RECURSIVE_READ_FLAG =
+  /^-[A-Za-z]*[rRaA]|^--(?:recursive|all|hidden|no-ignore|unrestricted|deep)/;
+const asksRecursiveRead = (args: readonly string[]): boolean =>
+  args.some((a) => RECURSIVE_READ_FLAG.test(a));
 
 /** An option that makes an otherwise unknown program write in place or to a named output. */
 const GENERIC_WRITE_FLAG =
@@ -493,12 +501,14 @@ export function backstopPlan(
       words: candidates.filter((c) => !c.positional).map((c) => c.word),
       names: [],
       rootCounts,
+      recursiveRead: false,
     };
   }
   // A function the command defines is called with prose as often as with code (`mk "title" "body that names a path"`): its
   // BODY is judged as commands, so its arguments are read as words only.
   const names = isLocalFunction ? [] : embeddedNames([...args, ...hereStrings]);
-  return { words: candidates.map((c) => c.word), names, rootCounts };
+  const recursiveRead = reader === undefined && asksRecursiveRead(args);
+  return { words: candidates.map((c) => c.word), names, rootCounts, recursiveRead };
 }
 
 /** `name() {`, `name () {` and `function name {`: the functions a command line defines for itself. */

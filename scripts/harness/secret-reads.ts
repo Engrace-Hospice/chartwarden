@@ -6,6 +6,7 @@
  * a few known locations and commands; what it does not name it cannot see. Pure.
  */
 import { globMatches, globTokens } from "./glob";
+import { fold } from "./path-alias";
 
 /**
  * Where live environment files sit when the caller cannot list the tree (a unit test that injects only `exists`): the
@@ -23,19 +24,33 @@ const FALLBACK_LIVE_ENV_FILES: readonly string[] = [
 ];
 
 let LIVE_ENV_FILES: readonly string[] = FALLBACK_LIVE_ENV_FILES;
+/** Did the listing of the tree's live env files see everything? When not, any directory "may" hold one (wave 8, CR6-6). */
+let LIVE_ENV_COMPLETE = true;
 
-/** Add the live env files found in the tree to the fallback list (one classified command's view; `[]` clears it). */
-export function setListedLiveEnvFiles(files: readonly string[]): void {
+/**
+ * Add the live env files found in the tree to the fallback list (one classified command's view; `[]` clears it), and say
+ * whether the listing was complete: an incomplete one makes every repo directory "may reach a live env file".
+ */
+export function setListedLiveEnvFiles(files: readonly string[], complete = true): void {
   LIVE_ENV_FILES = [...new Set([...FALLBACK_LIVE_ENV_FILES, ...files])];
+  LIVE_ENV_COMPLETE = complete;
 }
+
+/** A repo-relative directory as the file system folds its name; the root (`""`) stays the root (`fold` makes it `/`). */
+const foldedDirectory = (dir: string): string => (dir === "" ? "" : fold(dir));
 
 /**
  * Does a recursive read of the repo-relative directory `dir` (`""` is the root) reach a live environment file that
- * exists? `exists` takes a repo-relative path.
+ * exists? `exists` takes a repo-relative path. Compared as the file system folds names (case, normalization): `APPS/PORTAL`
+ * is `apps/portal` (wave 8, ADV6-10).
  */
 export function reachesLiveEnv(dir: string, exists: (file: string) => boolean): boolean {
-  const d = dir.replace(/\/+$/, "").replace(/^\.$/, "");
-  return LIVE_ENV_FILES.some((f) => (d === "" || f === d || f.startsWith(`${d}/`)) && exists(f));
+  if (!LIVE_ENV_COMPLETE) return true;
+  const d = foldedDirectory(dir.replace(/\/+$/, "").replace(/^\.$/, ""));
+  return LIVE_ENV_FILES.some((f) => {
+    const folded = fold(f);
+    return (d === "" || folded === d || folded.startsWith(`${d}/`)) && exists(f);
+  });
 }
 
 /** The existing live env files, each with every directory above it: what a recursive read of a tree can land on. */
@@ -56,8 +71,9 @@ function liveEnvPaths(exists: (file: string) => boolean): string[] {
  * file, or the file itself? `*` is taken to cross `/`, as a git pathspec does, which is the wider reading.
  */
 export function globReachesLiveEnv(glob: string, exists: (file: string) => boolean): boolean {
-  const tokens = globTokens(glob.replace(/\/+$/, ""));
-  return liveEnvPaths(exists).some((path) => globMatches(tokens, path));
+  if (!LIVE_ENV_COMPLETE) return true;
+  const tokens = globTokens(fold(glob.replace(/\/+$/, "")));
+  return liveEnvPaths(exists).some((path) => globMatches(tokens, fold(path)));
 }
 
 /**
@@ -65,8 +81,11 @@ export function globReachesLiveEnv(glob: string, exists: (file: string) => boole
  * all a non-recursive `diff DIR DIR` compares.
  */
 export function holdsLiveEnvDirectly(dir: string, exists: (file: string) => boolean): boolean {
-  const d = dir.replace(/\/+$/, "").replace(/^\.$/, "");
-  return LIVE_ENV_FILES.some((f) => f.slice(0, Math.max(f.lastIndexOf("/"), 0)) === d && exists(f));
+  if (!LIVE_ENV_COMPLETE) return true;
+  const d = foldedDirectory(dir.replace(/\/+$/, "").replace(/^\.$/, ""));
+  return LIVE_ENV_FILES.some(
+    (f) => foldedDirectory(f.slice(0, Math.max(f.lastIndexOf("/"), 0))) === d && exists(f),
+  );
 }
 
 /** The name of an environment variable that holds a secret. */

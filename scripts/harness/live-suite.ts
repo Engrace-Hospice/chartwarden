@@ -10,6 +10,7 @@
  * A live file is named or globbed (`x.live.test.ts`, `"apps/backend/__tests__/*.live.*"`). `xargs bunx vitest run < list`
  * takes its files from standard input, which cannot be read: not asked. Pure.
  */
+import { type Listed, asListing } from "./listing";
 
 const LIVE_FILE = /\.live\.(?:test|[*?])/;
 const LIVE_SCRIPT = /^run\s+test:[^\s]*:live\b/;
@@ -63,13 +64,14 @@ function filters(words: readonly string[]): string[] {
 /** Is one of the filters a substring of a live suite file's path (vitest filters by substring)? */
 function filtersLiveSuite(
   words: readonly string[],
-  liveFiles: (() => readonly string[]) | undefined,
+  liveFiles: (() => Listed) | undefined,
 ): boolean {
   if (liveFiles === undefined) return false;
   const wanted = filters(words);
   if (wanted.length === 0) return false;
-  const files = liveFiles();
-  return wanted.some((filter) => files.some((file) => namesFile(file, filter)));
+  // A listing cut short (a directory cap, a symlinked or unreadable directory) may hold the suite: any filter may match.
+  const { files, complete } = asListing(liveFiles());
+  return !complete || wanted.some((filter) => files.some((file) => namesFile(file, filter)));
 }
 
 /**
@@ -93,7 +95,7 @@ function namesFile(file: string, filter: string): boolean {
 export function runsLiveSuite(
   prog: string,
   args: readonly string[],
-  liveFiles?: () => readonly string[],
+  liveFiles?: () => Listed,
 ): boolean {
   const argline = args.join(" ");
   if (prog === "bun" && LIVE_SCRIPT.test(argline)) return true;

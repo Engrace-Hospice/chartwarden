@@ -64,6 +64,7 @@ import {
   runsInlineCode,
   scriptsHandedToShell,
 } from "./inline-code";
+import { type Listed, asListing } from "./listing";
 import { runsLiveSuite } from "./live-suite";
 import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
 import { isPackageScript, setPackageScriptsReader } from "./package-scripts";
@@ -101,6 +102,7 @@ import {
   splitCommand,
 } from "./shell-lex";
 import { siblingCommands } from "./sibling-sweeps";
+import { readTar } from "./tar-grammar";
 import { isToolchainPath } from "./toolchain-paths";
 import { type SweepDepth, diffSweepOperands, gitDiffSweepOperands } from "./tree-sweep";
 import {
@@ -454,9 +456,9 @@ export interface BashContext {
    * The live env files that exist in the tree (repo-relative; `live-env-files.ts`), asked for once and only when a
    * recursive read needs them. Without it the usual ones in `secret-reads.ts` are the whole list.
    */
-  readonly liveEnvFiles?: () => readonly string[];
+  readonly liveEnvFiles?: () => Listed;
   /** The live suite files that exist (`live-suite-files.ts`), asked for only when a vitest runner has a filter. */
-  readonly liveSuiteFiles?: () => readonly string[];
+  readonly liveSuiteFiles?: () => Listed;
   /** The scripts of the package the command runs in (`package-scripts.ts`), asked for only when `bun run X` needs them. */
   readonly packageScripts?: () => ReadonlySet<string>;
 }
@@ -1041,8 +1043,8 @@ let localFunctions: ReadonlySet<string> = new Set();
 /** Has this command's view of the live env files been asked of the caller yet? (one-shot state, as above) */
 let liveEnvListed = false;
 /** The live suite files this command's runners were asked about, listed at most once (one-shot state, as above). */
-let liveSuiteCache: readonly string[] | null = null;
-const liveSuiteFilesOnce = (ctx: BashContext): readonly string[] => {
+let liveSuiteCache: Listed | null = null;
+const liveSuiteFilesOnce = (ctx: BashContext): Listed => {
   liveSuiteCache ??= ctx.liveSuiteFiles?.() ?? [];
   return liveSuiteCache;
 };
@@ -1923,7 +1925,8 @@ function unpackWrites(prog: string, args: readonly string[]): WriteTarget[] {
       /^--(extract|get)$/.test(a) ||
       (/^-?[A-Za-z]+$/.test(a) && (i === 0 || a.startsWith("-")) && a.includes("x")),
   );
-  return extract ? [wt(flagValue("-C", "--directory") ?? ".", true, true)] : [];
+  // The directory the archive unpacks into: the last `-C`, in any spelling (`-cCf`, `-Capps`, `--dir=apps`).
+  return extract ? [wt(readTar(args).dirs.at(-1) ?? ".", true, true)] : [];
 }
 
 /**
@@ -2508,7 +2511,8 @@ function searchPaths(args: readonly string[], shortValue: string, longValue: Reg
 const liveEnvExists = (ctx: BashContext): ((file: string) => boolean) => {
   if (!liveEnvListed) {
     liveEnvListed = true;
-    setListedLiveEnvFiles(ctx.liveEnvFiles?.() ?? []);
+    const { files, complete } = asListing(ctx.liveEnvFiles?.() ?? []);
+    setListedLiveEnvFiles(files, complete);
   }
   return (file) => ctx.exists?.(ctx.root ? `${trimSlashes(ctx.root)}/${file}` : file) ?? false;
 };
@@ -2708,7 +2712,7 @@ function recursiveSearchVerdict(
   );
 }
 
-/** `tar c`/`zip` of the repo root packs every live .env into one blob that can be piped anywhere. */
+/** `tar c`/`zip` of the repo root packs every live env file into one blob that can be piped anywhere. */
 function archiveRootVerdict(
   prog: string,
   args: readonly string[],
@@ -2716,26 +2720,25 @@ function archiveRootVerdict(
   ctx: BashContext,
 ): BashVerdict | null {
   if (!TAR.test(prog) && prog !== "zip") return null;
-  let creating = prog === "zip";
-  let dir: string | undefined;
-  const operands: string[] = [];
-  for (let k = 0; k < args.length; k++) {
-    const a = args[k] ?? "";
-    const cluster =
-      TAR.test(prog) && /^-?[A-Za-z]+$/.test(a) && (k === 0 || a.startsWith("-"))
-        ? a.replace(/^-/, "")
-        : "";
-    if (TAR.test(prog) && (a === "-C" || a === "--directory")) dir = args[++k];
-    else if (a === "--create") creating = true;
-    else if (cluster) {
-      creating ||= cluster.includes("c");
-      if (cluster.includes("f")) k++;
-    } else if (!a.startsWith("-")) operands.push(a);
-  }
-  const base = dir === undefined ? cwd : resolvePath(dir, cwd, ctx);
-  const names = prog === "zip" ? operands.slice(1) : operands;
-  const root = names.some((o) => treeOperandReaches(o, base, ctx, "tree"));
-  if (!creating || !root) return null;
+  const reading = TAR.test(prog)
+    ? readTar(args)
+    : {
+        creating: true,
+        filesFrom: false,
+        members: fileArgs(args)
+          .slice(1)
+          .map((name) => ({ name, dirs: [] })),
+      };
+  if (!reading.creating) return null;
+  // Each member is relative to the `-C` directories before it, each relative to the one before.
+  const reaches = reading.members.some((m) => {
+    const base = m.dirs.reduce<Cwd>(
+      (at, dir) => (at === null ? null : resolvePath(dir, at, ctx)),
+      cwd,
+    );
+    return treeOperandReaches(m.name, base, ctx, "tree");
+  });
+  if (!reaches && !reading.filesFrom) return null;
   return ask(
     "Archiving the repo root, or a directory that holds live env files, packs them into one blob. Archive the files you need.",
   );
@@ -2775,6 +2778,27 @@ function protectedNamedBy(
   return null;
 }
 
+const RECURSIVE_READ_REASON = (prog: string): string =>
+  `\`${echo(prog)}\` is not a program the guard knows to only read, and it is asked to read recursively (\`-r\`, \`-a\`, \`--hidden\`) a directory that holds a live env file, which it would read and may print. Name the files you need, or use a search the guard knows (\`rg\`, \`grep\` with an include).`;
+
+/** Does this word name a placed directory (not the root, not a wildcard) that holds a live env file? */
+function heldLiveEnvDirectory(raw: string, here: readonly Cwd[], ctx: BashContext): boolean {
+  return expandBraces(raw).some((alternative) => {
+    const word = withKnownVariables(alternative, knownVariables);
+    return here.some((dir) => {
+      if (work.spent) return false;
+      const rel = resolvePath(word, dir, ctx);
+      const placed =
+        rel !== null &&
+        rel !== "" &&
+        !/[$`*?[]/.test(rel) &&
+        !rel.startsWith("/") &&
+        !rel.startsWith("~");
+      return placed && reachesLiveEnv(rel, liveEnvExists(ctx));
+    });
+  });
+}
+
 /**
  * The backstop for writers nobody modelled (`protected-operands.ts`): a program that is not known to only read (or that
  * carries one of its write flags), handed a word that resolves onto a protected path from a directory the command may run
@@ -2793,6 +2817,9 @@ function unmodelledWriterVerdict(
   for (const word of plan.words) {
     const rel = protectedNamedBy(word, here, ctx, plan.rootCounts);
     if (rel !== null) return ask(unmodelledWriterReason(prog, rel));
+  }
+  if (plan.recursiveRead && plan.words.some((word) => heldLiveEnvDirectory(word, here, ctx))) {
+    return ask(RECURSIVE_READ_REASON(prog));
   }
   for (const name of plan.names) {
     // Only a name that looks like a path is a secret file here: a SQL column such as `r.key`, or a property chain, is not.

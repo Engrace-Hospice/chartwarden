@@ -49,7 +49,7 @@ describe("listLiveEnvFiles: the env files the tree holds, templates excluded", (
   };
 
   it("lists each live file once, as repo-relative paths", () => {
-    const found = listLiveEnvFiles("/repo", reader(tree)).sort();
+    const found = listLiveEnvFiles("/repo", reader(tree)).files.slice().sort();
     expect(found).toEqual(
       [
         ENV(),
@@ -67,7 +67,7 @@ describe("listLiveEnvFiles: the env files the tree holds, templates excluded", (
   });
 
   it("leaves out the tracked templates and a file deeper than the listing goes", () => {
-    const found = listLiveEnvFiles("/repo", reader(tree));
+    const found = listLiveEnvFiles("/repo", reader(tree)).files;
     for (const name of [
       ENV(".example"),
       `apps/portal/${ENV(".sample")}`,
@@ -98,8 +98,9 @@ describe("listLiveEnvFiles: the env files the tree holds, templates excluded", (
       mkdirSync(join(root, "apps/portal"), { recursive: true });
       writeFileSync(join(root, PORTAL), "");
       writeFileSync(join(root, "apps/portal", ENV(".example")), "");
-      expect(listLiveEnvFiles(root)).toEqual([PORTAL]);
-      expect(listLiveEnvFiles(join(root, "missing"))).toEqual([]);
+      expect(listLiveEnvFiles(root)).toEqual({ files: [PORTAL], complete: true });
+      // A directory that is not there is normal: it is no finding and the listing is still complete.
+      expect(listLiveEnvFiles(join(root, "missing"))).toEqual({ files: [], complete: true });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

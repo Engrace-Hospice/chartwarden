@@ -43,7 +43,53 @@ function findStarts(feeder: Feeder | null): string[] | null {
 // ---------------------------------------------------------------------------------------------------------
 
 /** `ag` skips gitignored and hidden files unless one of these stops it (as `rg -u` / `--hidden` / `--no-ignore`). */
-const AG_NO_IGNORE = /^(?:-[A-Za-z]*[uU][A-Za-z]*|--unrestricted|--skip-vcs-ignores|--hidden)$/;
+const AG_NO_IGNORE =
+  /^(?:-[A-Za-z]*[uUa][A-Za-z]*|--unrestricted|--skip-vcs-ignores|--hidden|--all-types)$/;
+
+/** `ugrep` and `zgrep` search a tree only when told (`-r`, `-R`, `--recursive`); `rga`, `pt`, `sift` and `ucg` search one by default. */
+const RECURSIVE_FLAG = /^(?:-[A-Za-z]*[rR][A-Za-z]*|--recursive|--dereference-recursive)$/;
+const SEARCHES_TREE_BY_DEFAULT: ReadonlySet<string> = new Set(["rga", "pt", "sift", "ucg"]);
+
+/** `gitleaks detect --no-git --source DIR`, `gitleaks dir DIR`, `trufflehog filesystem DIR`: every file under DIR is read. */
+function secretScannerSibling(prog: string, args: readonly string[]): SiblingCommand[] {
+  // `gitleaks … --redact` masks the secrets it finds (the repo's own pre-commit hook); a scan of git history reads no working file.
+  if (args.some((a) => a === "--redact" || a.startsWith("--redact="))) return [];
+  const scansFiles =
+    prog === "trufflehog"
+      ? args.includes("filesystem")
+      : args.includes("--no-git") || args.includes("dir") || args.includes("directory");
+  if (!scansFiles) return [];
+  const sources = args.flatMap((a, k) =>
+    a === "--source" || a === "-s"
+      ? [args[k + 1] ?? "."]
+      : a.startsWith("--source=")
+        ? [a.slice("--source=".length)]
+        : [],
+  );
+  const positional = args.filter(
+    (a) =>
+      !isOption(a) && !["dir", "directory", "filesystem", "detect", "protect", "git"].includes(a),
+  );
+  const roots = sources.length > 0 ? sources : positional.length > 0 ? positional : ["."];
+  return [{ text: `grep -r secret ${quoted(roots)}`, label: "grep -r" }];
+}
+
+/** `scp -r SRC… DEST`: the local sources are copied out. Remote specs (`host:path`) name another machine's files. */
+function scpSibling(args: readonly string[]): SiblingCommand[] {
+  if (!args.some((a) => /^-[A-Za-z]*r[A-Za-z]*$/.test(a))) return [];
+  const operands = operandsOf(args, /^-[PiFcloJSoD]$/).map(localOperand);
+  const sources = operands.slice(0, -1).filter((w) => w !== null) as string[];
+  return sources.length === 0
+    ? []
+    : [{ text: `cp -r ${quoted([...sources, "/dev/null"])}`, label: "cp -r" }];
+}
+
+/** `host:path` is another machine's file, except `localhost:path`; any other word is a local path. */
+const localOperand = (w: string): string | null => {
+  const local = /^(?:[^@/:]+@)?(?:localhost|127\.0\.0\.1|\[::1\]):(.*)$/s.exec(w)?.[1];
+  if (local !== undefined) return local.startsWith("/") ? local : `~/${local}`;
+  return /^[^/]*:/.test(w) ? null : w;
+};
 
 function searchSibling(prog: string, args: readonly string[]): SiblingCommand[] {
   if (args.some((a) => INFORMATION.test(a))) return [];
@@ -76,6 +122,17 @@ interface FdParts {
   readonly batch: boolean;
 }
 
+/** What a short cluster (`-Hx`, `-HIx`, `-xcat`, `-He`) holds: the exec letter with its attached text, or a letter that takes a value. */
+function fdCluster(a: string): { exec?: "x" | "X"; valued?: string; attached: string } | null {
+  if (a.startsWith("--") || !/^-[A-Za-z]/.test(a)) return null;
+  for (let p = 1; p < a.length; p++) {
+    const letter = a[p] as string;
+    if (letter === "x" || letter === "X") return { exec: letter, attached: a.slice(p + 1) };
+    if (/[dEteSocjC]/.test(letter)) return { valued: letter, attached: a.slice(p + 1) };
+  }
+  return null;
+}
+
 /** `fd [options] [pattern] [path…] -x cmd …`: the search paths, the `-e` extensions and the command run on each file. */
 function fdParts(args: readonly string[]): FdParts | null {
   const positional: string[] = [];
@@ -83,19 +140,29 @@ function fdParts(args: readonly string[]): FdParts | null {
   const searchPaths: string[] = [];
   for (let k = 0; k < args.length; k++) {
     const a = args[k] as string;
-    if (a === "-x" || a === "--exec" || a === "-X" || a === "--exec-batch") {
-      // fd takes every word after `-x`/`-X` as the command (up to a lone `;`).
+    const cluster = fdCluster(a);
+    const long = /^--(exec|exec-batch)(?:=(.*))?$/s.exec(a);
+    const exec = cluster?.exec ?? (long ? (long[1] === "exec" ? "x" : "X") : null);
+    if (exec !== null) {
+      // fd takes every word after `-x`/`-X` as the command (up to a lone `;`); `-xcat` and `--exec=cat` carry its first word.
+      const first = cluster?.exec ? cluster.attached : (long?.[2] ?? "");
       const end = args.indexOf(";", k + 1);
-      const command = args.slice(k + 1, end < 0 ? undefined : end);
+      const command = [
+        ...(first === "" ? [] : [first]),
+        ...args.slice(k + 1, end < 0 ? undefined : end),
+      ];
       if (command.length === 0) return null;
       const paths = searchPaths.length > 0 ? searchPaths : positional.slice(1);
-      return { paths, extensions, command, batch: a === "-X" || a === "--exec-batch" };
+      return { paths, extensions, command, batch: exec === "X" };
     }
-    if (a === "-e" || a === "--extension") extensions.push(args[++k] ?? "");
+    if (cluster?.valued === "e")
+      extensions.push(cluster.attached !== "" ? cluster.attached : (args[++k] ?? ""));
+    else if (cluster?.valued !== undefined) k += cluster.attached === "" ? 1 : 0;
+    else if (a === "-e" || a === "--extension") extensions.push(args[++k] ?? "");
     else if (a.startsWith("--extension=")) extensions.push(a.slice("--extension=".length));
     else if (a === "--search-path") searchPaths.push(args[++k] ?? "");
     else if (a.startsWith("--search-path=")) searchPaths.push(a.slice("--search-path=".length));
-    else if (FD_VALUE_SHORT.test(a) || FD_VALUE_LONG.test(a)) k++;
+    else if (FD_VALUE_LONG.test(a)) k++;
     else if (!isOption(a)) positional.push(a);
   }
   return null; // no -x or -X: fd only lists names
@@ -191,6 +258,22 @@ export function siblingCommands(
   feeder: Feeder | null,
 ): SiblingCommand[] {
   if (prog === "ack" || prog === "ag") return searchSibling(prog, args);
+  if ((prog === "ugrep" || prog === "zgrep") && args.some((a) => RECURSIVE_FLAG.test(a))) {
+    return [{ text: `grep -r ${quoted(args)}`, label: "grep -r" }];
+  }
+  if (SEARCHES_TREE_BY_DEFAULT.has(prog) && args.some((a) => !isOption(a))) {
+    return [{ text: `grep -r ${quoted(args)}`, label: "grep -r" }];
+  }
+  if (prog === "gitleaks" || prog === "trufflehog") return secretScannerSibling(prog, args);
+  if (prog === "semgrep" && args.includes("--no-git-ignore")) {
+    return [
+      {
+        text: `grep -r ${quoted(args.filter((a) => !isOption(a)).length > 0 ? ["x", ...args.filter((a) => !isOption(a))] : ["x"])}`,
+        label: "grep -r",
+      },
+    ];
+  }
+  if (prog === "scp") return scpSibling(args);
   if (prog === "fd") return fdSibling(args);
   if (prog === "cpio") return cpioSibling(args, feeder);
   if (prog === "pax") return paxSibling(args, feeder);

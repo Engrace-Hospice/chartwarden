@@ -116,7 +116,7 @@ describe("listLiveSuiteFiles reads the tree", () => {
         mkdirSync(join(root, rel, ".."), { recursive: true });
         writeFileSync(join(root, rel), "");
       }
-      expect(listLiveSuiteFiles(root).sort()).toEqual(
+      expect(listLiveSuiteFiles(root).files.slice().sort()).toEqual(
         [
           "apps/backend/__tests__/a.live.test.ts",
           "apps/backend/src/x/__tests__/c.live.test.ts",
@@ -124,7 +124,7 @@ describe("listLiveSuiteFiles reads the tree", () => {
           "scripts/__tests__/e.live.test.ts",
         ].sort(),
       );
-      expect(listLiveSuiteFiles(join(root, "missing"))).toEqual([]);
+      expect(listLiveSuiteFiles(join(root, "missing"))).toEqual({ files: [], complete: true });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
