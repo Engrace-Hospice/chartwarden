@@ -5,6 +5,7 @@
  * `grep -r x deploy/production` reads every live .env under it (grep -r ignores .gitignore). A text heuristic over
  * a few known locations and commands; what it does not name it cannot see. Pure.
  */
+import { GUARDED_WORDS } from "./env-shapes";
 import { globMatches, globTokens } from "./glob";
 import { fold } from "./path-alias";
 
@@ -92,8 +93,18 @@ export function holdsLiveEnvDirectly(dir: string, exists: (file: string) => bool
 const SECRET_VARIABLE =
   /^[A-Z0-9_]*(?:DATABASE_URL|SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|CREDENTIAL|_KEY)S?$/;
 export const isSecretVariable = (name: string): boolean => SECRET_VARIABLE.test(name);
+/** The repo's own key-encryption and administrative variables (`GUARDED_WORDS`): printing one asks. */
+const GUARDED_VARIABLE = new RegExp(`^${GUARDED_WORDS}$`);
+export const isGuardedVariable = (name: string): boolean => GUARDED_VARIABLE.test(name);
+/** `$NAME` or `${NAME}` of such a variable inside a word (`echo $M34_TENANT_KEK`). */
+export const GUARDED_VARIABLE_REFERENCE = new RegExp(
+  String.raw`\$\{?${GUARDED_WORDS}(?![A-Za-z0-9_])`,
+);
 
 export { environmentLeak } from "./env-shapes";
+
+export const GUARDED_REASON =
+  'Printing a key-encryption key, an administrative database URL or another of the repo\'s guarded variables puts it in the transcript. Check presence with `[ -n "$VAR" ] && echo set` instead; a human approves a deliberate seed.';
 
 export interface SecretVerdict {
   readonly decision: "ask" | "deny";
@@ -136,6 +147,8 @@ export function storedSecretVerdict(prog: string, args: readonly string[]): Secr
         'Printing a secret-bearing variable puts it in the transcript. Check presence with `[ -n "$VAR" ] && echo set` instead.',
     };
   }
+  if (prog === "printenv" && args.some(isGuardedVariable))
+    return { decision: "ask", reason: GUARDED_REASON };
   if (/^(?:docker|podman|nerdctl)$/.test(prog) && args[0] === "inspect") {
     const format = args.findIndex(
       (a) => a === "-f" || a === "--format" || a.startsWith("--format="),

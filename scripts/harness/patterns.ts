@@ -85,6 +85,8 @@ import {
 } from "./protected-paths";
 import { peelRunnerWithFiles } from "./runners";
 import {
+  GUARDED_REASON,
+  GUARDED_VARIABLE_REFERENCE,
   environmentLeak,
   globReachesLiveEnv,
   holdsLiveEnvDirectly,
@@ -643,7 +645,7 @@ const SECRET_BY_NAME =
 
 const isLocalHost = (h: string) => LOCAL_HOST.test(h.replace(/^.*@/, "").replace(/:\d+$/, ""));
 const SECRET_VAR =
-  /\$\{?[A-Z0-9_]*(DATABASE_URL|SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|_KEY)\b/;
+  /\$\{?[A-Z0-9_]*(DATABASE_URL|SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|_KEY)S?\b/;
 const READ_ONLY_CHECK = /^(ls|test|\[|stat|file)$/;
 const COMPOSE_SAFE = /^(up|down|start|stop|restart|run|exec|ps|logs|build|pull|rm)$/;
 
@@ -2021,7 +2023,9 @@ function scriptTextVerdict(given: string): BashVerdict | null {
   }
   // Tested as written too: squashing puts the word before a path against it (`rm scripts/harness` reads
   // `rmscripts/harness`), and the fragment's lookbehind then takes that word for a parent directory.
-  if (environmentLeak(text) !== null) {
+  const leak = environmentLeak(text);
+  if (leak === "guarded") return ask(GUARDED_REASON);
+  if (leak !== null) {
     return deny(
       "Inline code that reads the whole environment, or a secret variable by name, puts credentials into the transcript. Check presence, not the value.",
     );
@@ -2823,6 +2827,9 @@ function classifySegment(
     return deny(
       'Echoing a secret-bearing variable puts it in the transcript. Check presence with `[ -n "$VAR" ] && echo set` instead.',
     );
+  }
+  if (/^(echo|printf|cat)$/.test(prog) && GUARDED_VARIABLE_REFERENCE.test(argline)) {
+    return ask(GUARDED_REASON);
   }
 
   // --- docker compose: lifecycle commands may use --env-file; `config` prints resolved secrets.
