@@ -93,23 +93,7 @@ const SECRET_VARIABLE =
   /^[A-Z0-9_]*(?:DATABASE_URL|SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|CREDENTIAL|_KEY)S?$/;
 export const isSecretVariable = (name: string): boolean => SECRET_VARIABLE.test(name);
 
-const SECRET_WORDS = String.raw`[A-Za-z0-9_]*(?:DATABASE_URL|SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|_KEY)`;
-/** What prints or serializes its argument. A script that only PASSES the environment on (`connect(process.env)`) is not one. */
-const SINK = String.raw`(?:print|pprint|repr|json\.dumps|console\.(?:log|info|warn|error|dir)|JSON\.stringify|Object\.(?:keys|values|entries)|puts|p)`;
-/** A script printing the whole environment: `print(os.environ)`, `console.log(process.env)`, `print %ENV`, `p ENV.to_h`. */
-const ENVIRONMENT_DUMP = new RegExp(
-  String.raw`\b${SINK}\s*\(?\s*(?:dict\(\s*)?(?:os\.environ|process\.env)\b(?![.\[])|\b(?:print|puts|p)\s+(?:%ENV\b|ENV\.(?:to_h|to_a|inspect)\b)`,
-);
-/** A script printing one secret variable by name. */
-const SECRET_LOOKUP = new RegExp(
-  String.raw`\b${SINK}\s*\(?\s*(?:os\.environ(?:\.get)?\s*[\[(]\s*['"]|os\.getenv\s*\(\s*['"]|process\.env\.|process\.env\[\s*['"]|ENV\[\s*['"])${SECRET_WORDS}`,
-);
-
-/** What inline or stdin script text prints from the environment: all of it, or a secret by name; null for neither. */
-export function environmentLeak(text: string): "dump" | "secret" | null {
-  if (ENVIRONMENT_DUMP.test(text)) return "dump";
-  return SECRET_LOOKUP.test(text) ? "secret" : null;
-}
+export { environmentLeak } from "./env-shapes";
 
 export interface SecretVerdict {
   readonly decision: "ask" | "deny";

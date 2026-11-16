@@ -23,6 +23,7 @@ import { userInfo } from "node:os";
 import { backupName } from "./backup-names";
 import { hasBareBraceGroup } from "./bare-braces";
 import { clientFindings, clientTexts, isDbClient } from "./db-client-escapes";
+import { environmentDumpReason } from "./env-dump";
 import { assignsHookVariable, isAgentSpawn, loaderEnvReason } from "./env-hazards";
 import {
   SAFE_SOURCE_NAME,
@@ -2957,14 +2958,8 @@ function classifySegment(
   if (stored) return stored.decision === "deny" ? deny(stored.reason) : ask(stored.reason);
 
   // --- Environment dumps and secret variables echoed into the transcript.
-  if (
-    /^(printenv|env|set|export|declare)$/.test(prog) &&
-    (args.length === 0 || /^(-p|-x)$/.test(args[0] ?? ""))
-  ) {
-    return deny(
-      "Dumping the environment would put DATABASE_URL and vendor secrets into the transcript. Print the one non-secret variable you need, by name.",
-    );
-  }
+  const dumped = environmentDumpReason(prog, args);
+  if (dumped !== null) return deny(dumped);
   if (/\/proc\/[^\s]*\/environ/.test(seg))
     return deny("Reading a process environment exposes its secrets.");
   if (/^(echo|printf|cat)$/.test(prog) && SECRET_VAR.test(argline)) {
