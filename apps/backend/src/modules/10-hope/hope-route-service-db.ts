@@ -86,7 +86,11 @@ import {
 } from "./hope-signature-audit";
 import { createHopeSpecRegistry, logSpecNotInForce } from "./hope-spec-registry";
 import { requireNotCancelled } from "./hope-submission-cancel";
-import { advancePackagedToExported, cancelHopeSubmission } from "./hope-submission-cancel-db";
+import {
+  advancePackagedToExported,
+  cancelHopeSubmission,
+  readCancelHoldScope,
+} from "./hope-submission-cancel-db";
 import { buildHopeSubmissionHeader, readHopeSoftwareVendor } from "./hope-submission-header";
 import {
   LIGHT_ITEM,
@@ -123,6 +127,7 @@ import {
   createHopeValidationService,
 } from "./hope-validation-service";
 import { buildDeterministicZip } from "./hope-zip";
+import type { HopeRetentionHoldPort } from "./jobs/cron-workers";
 import type { HopeWriteOutboxPort } from "./outbox-port";
 import type {
   CorrectTimepointArgs,
@@ -354,6 +359,12 @@ export function createDbHopeBackend(
   outbox: HopeWriteOutboxPort = NOOP_OUTBOX,
   /** GAP-015: the SERVER clock the capture gate judges lateness / the hard cutoff on (injectable for tests). */
   clock: () => Date = () => new Date(),
+  /**
+   * The M4 legal-hold read a cancel's byte purge is gated on (the same port the retention cron uses, bound at the
+   * composition root). Optional, and UNBOUND IS FAIL-CLOSED: a cancel still happens but keeps the package bytes, since a
+   * default of "nothing is held" would purge held records.
+   */
+  legalHolds?: HopeRetentionHoldPort,
 ): HopeRouteService {
   // Every HOPE service below runs on this database, so a lock timeout (55P03) raised by ANY statement of a bounded
   // transaction is the typed retryable `409 M10_RECORD_BUSY`, never a generic 500.
@@ -2269,7 +2280,7 @@ export function createDbHopeBackend(
         return toSubmissionView(packaged ?? row);
       });
     },
-    async downloadSubmissionPackage(organizationId, urlId) {
+    async downloadSubmissionPackage(organizationId, urlId, actorMembershipId) {
       const id = uuidOrNotFound(urlId, `HOPE submission ${urlId} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
@@ -2301,7 +2312,8 @@ export function createDbHopeBackend(
           throw new ConflictError("HOPE submission package is not available");
         // Only a freshly packaged batch advances; re-downloading a settled/uploaded batch just streams the bytes
         // (otherwise a recorded result could be re-opened for recording by a mere download).
-        if (report.status === "packaged") await advancePackagedToExported(t, organizationId, id);
+        if (report.status === "packaged")
+          await advancePackagedToExported(t, organizationId, id, actorMembershipId ?? null);
         return {
           filename: r.packageFilename,
           contentType: "application/zip",
@@ -2310,6 +2322,8 @@ export function createDbHopeBackend(
       });
     },
     async cancelSubmission(organizationId, userId, id, args) {
+      // Read BEFORE the transaction opens (the port runs its own); never throws, an unreadable scope keeps the bytes.
+      const legalHoldScope = await readCancelHoldScope(legalHolds, organizationId);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const row = await cancelHopeSubmission(t, {
@@ -2318,6 +2332,7 @@ export function createDbHopeBackend(
           actorMembershipId: userId,
           reasonCode: args.reasonCode,
           now: clock(),
+          legalHoldScope,
           request: args.request,
         });
         return toSubmissionView(row);

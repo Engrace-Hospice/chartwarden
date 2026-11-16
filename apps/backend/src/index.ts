@@ -6589,7 +6589,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             createHearthnoteCiphers(getTenantKeyProvider()),
           );
           mountAssessmentRoutes(app, dbHandle.db, m9OutboxPublisher); // M9 — reads + the §10 write pipeline over Drizzle+RLS, m9.* transactional outbox
-          mountHopeRoutes(app, dbHandle.db, m10OutboxPublisher); // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox
+          // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox. The M4 legal-hold read gates a
+          // package cancel's byte purge (the same read the retention cron uses; unbound it would fail closed and keep the bytes).
+          mountHopeRoutes(app, dbHandle.db, m10OutboxPublisher, {
+            activeLegalHoldScopeForOrg: (organizationId) =>
+              activeLegalHoldScopeForOrg(dbHandle.db, organizationId),
+          });
           // M11 — reads + the write lifecycle over Drizzle+RLS, m11.order.* transactional outbox. F-181 (#248): the
           // fourth argument is what lets a signed lab order request its outbound HL7 ORM (M5 demographics, M40
           // physician + facility, M29's single active `orm_outbound` feed) — refused-not-fabricated when unresolvable.

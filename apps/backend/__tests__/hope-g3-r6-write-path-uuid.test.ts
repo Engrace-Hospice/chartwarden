@@ -224,6 +224,7 @@ describe("the shared lock helpers", () => {
         actorMembershipId: USER,
         reasonCode: "generated_in_error",
         now: new Date("2026-06-01T00:00:00.000Z"),
+        legalHoldScope: { kind: "read", orgWide: false, patientIds: new Set() },
       }),
     ).rejects.toBeInstanceOf(NotFoundError);
 

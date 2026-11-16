@@ -74,6 +74,7 @@ describe("every write names the tenant beside the id, on top of RLS", () => {
       actorMembershipId: USER,
       reasonCode: "other",
       now: new Date("2026-06-01T00:00:00.000Z"),
+      legalHoldScope: { kind: "read", orgWide: false, patientIds: new Set() },
     });
 
     const data = dataStatements(fake);
@@ -86,7 +87,7 @@ describe("every write names the tenant beside the id, on top of RLS", () => {
   it("advancePackagedToExported: the guarded write and the status re-read", async () => {
     const fake = scriptedDb([[], [{ status: "packaged" }]]);
 
-    await advancePackagedToExported(fake.tx, ORG, SUB);
+    await advancePackagedToExported(fake.tx, ORG, SUB, USER);
 
     const data = dataStatements(fake);
     expect(data.map((s) => s.kind)).toEqual(["update", "select"]);

@@ -230,6 +230,7 @@ describe("a lock timeout of the SFV completion and the submission locks leaves a
       actorMembershipId: MEMBERSHIP,
       reasonCode: "other" as never,
       now: new Date("2026-06-01T00:00:00.000Z"),
+      legalHoldScope: { kind: "read", orgWide: false, patientIds: new Set() },
     }).catch((e: unknown) => e);
 
     expect(failure).toMatchObject({ code: "M10_RECORD_BUSY", statusCode: 409 });
@@ -240,7 +241,9 @@ describe("a lock timeout of the SFV completion and the submission locks leaves a
   it("advancePackagedToExported: logged with the submission and the org", async () => {
     const { tx } = scriptedDb([pgFailure("55P03")]);
 
-    const failure = await advancePackagedToExported(tx, ORG, SUBMISSION).catch((e: unknown) => e);
+    const failure = await advancePackagedToExported(tx, ORG, SUBMISSION, MEMBERSHIP).catch(
+      (e: unknown) => e,
+    );
 
     expect(failure).toMatchObject({ code: "M10_RECORD_BUSY", statusCode: 409 });
     expect(warned()).toContain(`${SUBMISSION} (org ${ORG})`);

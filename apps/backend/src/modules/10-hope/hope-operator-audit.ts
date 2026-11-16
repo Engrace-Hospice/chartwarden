@@ -69,7 +69,10 @@ async function writeOperatorEvent(
   );
 }
 
-/** A package cancelled before upload: the batch, why, and the hash of the package whose bytes were purged with it. */
+/**
+ * A package cancelled before upload: the batch, why, and the hash of the package whose bytes were purged with it, or
+ * `bytesKeptForLegalHold: true` when an M4 legal hold (or an unreadable hold scope) kept them.
+ */
 export const auditHopeSubmissionCancelled = (
   t: DbClient,
   input: OperatorAuditBase & {
@@ -79,6 +82,7 @@ export const auditHopeSubmissionCancelled = (
     readonly priorStatus: string;
     readonly packageSha256: string | null;
     readonly itemsCancelled: number;
+    readonly bytesKeptForLegalHold: boolean;
   },
 ): Promise<void> =>
   writeOperatorEvent(t, input, {
@@ -92,7 +96,8 @@ export const auditHopeSubmissionCancelled = (
       priorStatus: input.priorStatus,
       // The hash survives as the evidence that this exact package existed; the bytes it hashes do not (CW-DS-01).
       packageSha256: input.packageSha256,
-      packageBytesPurged: true,
+      packageBytesPurged: !input.bytesKeptForLegalHold,
+      bytesKeptForLegalHold: input.bytesKeptForLegalHold,
       itemsCancelled: input.itemsCancelled,
     },
   });

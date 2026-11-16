@@ -1040,14 +1040,16 @@ describe("M10-T06 — submission retry guard (§4.4)", () => {
 
 // ── §D13 — the operator writes that are not signatures refuse an AI principal ────────────────────────
 // The principal below HOLDS every permission these routes ask for (it is `rn_1`); only its actor kind is `ai_*`.
-describe("§D13 — skip, retry, mark-uploaded, cancel, results, assemble and regenerate refuse an AI principal", () => {
+describe("§D13 — skip, retry, mark-uploaded, cancel, results, assemble, package download and regenerate refuse an AI principal", () => {
   const AI = { ...RN, "x-test-actor-kind": "ai_agent" };
   const ASSEMBLE_PE = "77777777-7777-4777-8777-777777777777";
   type Server = ReturnType<typeof makeServer>;
   const cases: readonly {
     name: string;
     url: string;
-    payload: Record<string, unknown>;
+    /** POST unless a case says otherwise (the package download is a GET). */
+    method?: "GET" | "POST";
+    payload?: Record<string, unknown>;
     unchanged: (s: Server) => Promise<unknown>;
   }[] = [
     {
@@ -1087,6 +1089,12 @@ describe("§D13 — skip, retry, mark-uploaded, cancel, results, assemble and re
       unchanged: async (s) => (await s.backend.listSubmissions(ORG)).submissions.length,
     },
     {
+      name: "download a package (it advances packaged -> exported and streams the PHI package)",
+      method: "GET",
+      url: `/api/v1/hope/submissions/${SUB_PACKAGED}/package`,
+      unchanged: async (s) => (await s.backend.getSubmission(ORG, SUB_PACKAGED)).status,
+    },
+    {
       name: "regenerate schedules",
       url: "/api/v1/hope/admin/regenerate-schedules",
       payload: { admissionId: ADMISSION },
@@ -1096,11 +1104,11 @@ describe("§D13 — skip, retry, mark-uploaded, cancel, results, assemble and re
 
   it.each(cases)(
     "$name: an ai_* principal holding the permission is refused (403) and nothing changes",
-    async ({ url, payload, unchanged }) => {
+    async ({ url, method, payload, unchanged }) => {
       const server = makeServer({ packagedSubmission: true });
       const before = await unchanged(server);
 
-      const res = await server.app.inject({ method: "POST", url, headers: AI, payload });
+      const res = await server.app.inject({ method: method ?? "POST", url, headers: AI, payload });
 
       expect(res.statusCode).toBe(403);
       expect(res.json().error.message).toContain("AI principals");
@@ -1111,11 +1119,11 @@ describe("§D13 — skip, retry, mark-uploaded, cancel, results, assemble and re
 
   it.each(cases)(
     "$name: the same request from the same user as a person is not refused for its actor kind",
-    async ({ url, payload }) => {
+    async ({ url, method, payload }) => {
       const server = makeServer({ packagedSubmission: true });
 
       const res = await server.app.inject({
-        method: "POST",
+        method: method ?? "POST",
         url,
         headers: { ...RN, "x-test-pe": `pe_1,${ASSEMBLE_PE}` },
         payload,

@@ -9,6 +9,7 @@ import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
 import { registerHopeAbacPredicates as _registerM10Abac } from "./abac-predicates";
 import { type HopeWriteOutboxPort, createDbHopeBackend } from "./hope-route-service-db";
+import type { HopeRetentionHoldPort } from "./jobs/cron-workers";
 import { registerHopeRoutes as _registerM10Routes } from "./routes/hope-routes";
 
 /**
@@ -18,13 +19,16 @@ import { registerHopeRoutes as _registerM10Routes } from "./routes/hope-routes";
  * completion, schedule skip, submission assemble/retry) are live over Drizzle; every state transition emits
  * its `m10.hope.*` event on the passed transactional-outbox publisher (the composition root binds M1's
  * catalog-validating publisher pinned to caller-module `m10`). Replaces the in-memory scaffold mount for M10.
+ * `legalHolds` is the M4 legal-hold read (the one the retention cron uses) that a package cancel's byte purge is gated on;
+ * without it a cancel keeps the bytes (fail closed).
  */
 export function mountHopeRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: HopeWriteOutboxPort,
+  legalHolds?: HopeRetentionHoldPort,
 ): void {
-  const backend = createDbHopeBackend(db, outbox);
+  const backend = createDbHopeBackend(db, outbox, undefined, legalHolds);
   _registerM10Abac({ resolver: backend });
   _registerM10Routes(app, { service: backend });
 }

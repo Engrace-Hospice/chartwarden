@@ -19,7 +19,7 @@ import {
 import { createSfvCompletionRecorder } from "../src/modules/10-hope/hope-sfv-completion-record";
 import { cancelHopeSubmission } from "../src/modules/10-hope/hope-submission-cancel-db";
 import { regenerateSchedulesForAdmission } from "../src/modules/10-hope/scheduling/schedule-writer";
-import { scriptedDb } from "./_hope-g3-fake-db";
+import { renderSql, scriptedDb } from "./_hope-g3-fake-db";
 
 // R-08 / audit-trail gaps (no Postgres; the database is scripted): cancel, schedule skip, the admin regenerate and a
 // refused SFV completion each write an explicit audit event with the acting membership and the request's session user,
@@ -88,6 +88,7 @@ describe("the operator audit writers", () => {
         priorStatus: "exported",
         packageSha256: SHA,
         itemsCancelled: 3,
+        bytesKeptForLegalHold: false,
       }),
     );
 
@@ -111,6 +112,7 @@ describe("the operator audit writers", () => {
       priorStatus: "exported",
       packageSha256: SHA,
       packageBytesPurged: true,
+      bytesKeptForLegalHold: false,
       itemsCancelled: 3,
       byMembershipId: MEMBERSHIP,
       clientCorrelationId: "client-corr",
@@ -226,6 +228,7 @@ describe("the operator audit writers", () => {
           priorStatus: "packaged",
           packageSha256: SHA,
           itemsCancelled: 0,
+          bytesKeptForLegalHold: false,
         }),
       ),
       written((t) =>
@@ -266,19 +269,29 @@ describe("cancelHopeSubmission", () => {
     actorMembershipId: MEMBERSHIP,
     reasonCode: "package_lost" as const,
     now: new Date("2026-06-01T00:00:00.000Z"),
+    legalHoldScope: { kind: "read" as const, orgWide: false, patientIds: new Set<string>() },
     request: REQUEST,
   };
 
   it("nulls the package bytes and every item's XML, keeps the hash and size, and records the event on the same transaction", async () => {
-    const fake = capturing([[locked("exported")], [{ id: "i1" }, { id: "i2" }], [cancelled], []]);
+    const fake = capturing([
+      [locked("exported")],
+      [
+        { id: "i1", itemStatus: "cancelled" },
+        { id: "i2", itemStatus: "cancelled" },
+      ],
+      [cancelled],
+      [],
+    ]);
 
     await cancelHopeSubmission(fake.tx, args);
 
     const [itemUpdate, batchUpdate] = fake.writes.filter((w) => w.kind === "update");
-    expect(itemUpdate?.values).toMatchObject({
-      itemStatus: "cancelled",
-      iqiesValidationResult: null,
-    });
+    expect(itemUpdate?.values).toMatchObject({ iqiesValidationResult: null });
+    // Only a pending item flips; any other status is written back as it is (the purge covers EVERY item of the batch).
+    expect(renderSql(itemUpdate?.values.itemStatus).sql).toBe(
+      `case when "hope_submission_item"."item_status" = 'pending' then 'cancelled' else "hope_submission_item"."item_status" end`,
+    );
     expect(batchUpdate?.values).toMatchObject({
       status: "cancelled",
       cancelReasonCode: "package_lost",
@@ -298,6 +311,8 @@ describe("cancelHopeSubmission", () => {
     expect(event?.context).toMatchObject({
       priorStatus: "exported",
       packageSha256: SHA,
+      packageBytesPurged: true,
+      bytesKeptForLegalHold: false,
       itemsCancelled: 2,
     });
     expect(fake.statements.filter((s) => s.kind !== "execute").map((s) => s.kind)).toEqual([

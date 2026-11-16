@@ -255,7 +255,9 @@ describe("spec 4.1 PATCH .../answers: the statuses and codes are the database ba
     const huv = slice(service, "async setHuvCompletionDate(", "async signTimepoint(");
     expect(huv).toContain('"M10_ASSESSMENT_IMMUTABLE"');
     expect(service.replace(huv, "")).not.toContain("M10_ASSESSMENT_IMMUTABLE");
-    expect(read(`${M10_SRC}/index.ts`)).toContain("createDbHopeBackend(db, outbox)");
+    expect(read(`${M10_SRC}/index.ts`)).toContain(
+      "createDbHopeBackend(db, outbox, undefined, legalHolds)",
+    );
   });
 });
 

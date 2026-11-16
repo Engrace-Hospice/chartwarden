@@ -455,9 +455,14 @@ export interface HopeRouteService extends HopeAbacResolver {
    */
   retrySubmission(organizationId: string, id: string): Promise<HopeSubmissionView>;
   assembleSubmission(organizationId: string, providerEntityId: string): Promise<HopeSubmissionView>;
+  /**
+   * Stream the package. `actorMembershipId` (the route always passes it) is stamped as `exported_by_membership_id` when the
+   * download advances `packaged -> exported`, so the row says who took the PHI package out.
+   */
   downloadSubmissionPackage(
     organizationId: string,
     id: string,
+    actorMembershipId?: string,
   ): Promise<{ filename: string; contentType: string; bytes: Buffer }>;
   /**
    * R-08 — cancel a package that was never marked uploaded (`packaged`/`exported`), so its signed assessments can be
@@ -1924,7 +1929,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       r.cancelledAt = now();
       r.cancelReasonCode = args.reasonCode;
       for (const item of r.items) if (item.status === "pending") item.status = "cancelled";
-      // As in the DB backend: the package bytes are dropped with the cancel (the hash and size stay on the view).
+      // As in the DB backend: the package bytes are dropped with the cancel (the hash and size stay on the view). The
+      // scaffold has no M4 legal-hold reader, so it always purges; the DB backend keeps the bytes of a held batch.
       r.packageContentBase64 = undefined;
       return viewSub(r);
     },

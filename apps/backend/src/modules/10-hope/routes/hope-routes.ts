@@ -693,13 +693,19 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   app.get(
     "/api/v1/hope/submissions/:id/package",
     {
-      preHandler: [SUBMISSION_MANAGE, SCOPE_SUBMISSION("hope.submission.manage")],
+      // Like every other submission-lifecycle route this refuses an AI principal: it streams the whole PHI package and
+      // advances `packaged -> exported`.
+      preHandler: [
+        SUBMISSION_MANAGE,
+        REJECT_AI_OPERATIONS,
+        SCOPE_SUBMISSION("hope.submission.manage"),
+      ],
       config: { auditRead: { resourceKind: "hope_submission", resourceIdParam: "id" } },
     },
     async (request, reply) => {
-      const { organizationId } = membershipActorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);
-      const pkg = await service.downloadSubmissionPackage(organizationId, id);
+      const pkg = await service.downloadSubmissionPackage(organizationId, id, userId);
       return reply
         .header("content-type", pkg.contentType)
         .header("content-disposition", `attachment; filename="${pkg.filename}"`)
