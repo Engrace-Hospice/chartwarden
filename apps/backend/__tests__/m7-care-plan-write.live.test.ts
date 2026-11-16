@@ -1890,6 +1890,11 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
     });
 
     it("audit D-3: an initial plan cannot be finalized, and reports a blocker, while a live goal states no measurable outcome (42 CFR 418.56(c)(3))", async () => {
+      const readinessOf = async (planId: string) =>
+        (await svc.getReadiness(ORG_A, planId)) as {
+          canFinalize: boolean;
+          blockers: { code: string }[];
+        };
       const boot = (await svc.bootstrapCarePlan(ORG_A, randomUUID(), randomUUID())) as Boot;
       const terminal = (await svc.addProblem(ORG_A, boot.id, {
         description: "Terminal illness",
@@ -1903,7 +1908,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
         false,
       )) as Element;
 
-      const readiness = await svc.getReadiness(ORG_A, boot.id);
+      const readiness = await readinessOf(boot.id);
       expect(readiness.canFinalize).toBe(false);
       expect(readiness.blockers).toEqual([
         expect.objectContaining({ code: "GOAL_OUTCOME_REQUIRED" }),
@@ -1921,12 +1926,12 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       const blank = (await svc.patchGoal(ORG_A, boot.id, goal.id, goal.version, {
         measurableOutcome: "   ",
       })) as Element;
-      expect((await svc.getReadiness(ORG_A, boot.id)).canFinalize).toBe(false);
+      expect((await readinessOf(boot.id)).canFinalize).toBe(false);
 
       await svc.patchGoal(ORG_A, boot.id, goal.id, blank.version, {
         measurableOutcome: "Reports comfort on each visit",
       });
-      expect((await svc.getReadiness(ORG_A, boot.id)).canFinalize).toBe(true);
+      expect((await readinessOf(boot.id)).canFinalize).toBe(true);
       await svc.finalizeVersion(ORG_A, boot.id, boot.initialVersionId, 1, null);
     });
 

@@ -108,6 +108,7 @@ const INTERVENTION = schema.disciplineIntervention;
 const planRow = (id: string, kind: string, status: string): Row => ({
   id,
   organizationId: ORG,
+  patientId: "patient-1",
   admissionId: ADMISSION,
   providerEntityId: PE,
   locationId: LOC,
@@ -229,20 +230,38 @@ describe("buildM15AdmissionDischargedConsumer (in-memory)", () => {
     expect(discharge[0]?.sequence).toBe(3);
     expect(discharge.every((v) => Array.isArray(v.requiredSignerSet))).toBe(true);
 
+    // Per plan: the system-signed discharge version is announced (so M22 renders the plan's FINAL PDF, audit
+    // D-6), then the discharge itself.
     expect(published.map((e) => e.eventName)).toEqual([
+      "m15.plan.version_signed",
       "m15.plan.discharged",
+      "m15.plan.version_signed",
       "m15.plan.discharged",
     ]);
-    expect(published[0]?.payload).toMatchObject({
+    const discharged = published.filter((e) => e.eventName === "m15.plan.discharged");
+    const signed = published.filter((e) => e.eventName === "m15.plan.version_signed");
+    expect(discharged[0]?.payload).toMatchObject({
       planId: "plan-aide",
       admissionId: ADMISSION,
       kind: "aide_poc",
     });
-    expect(published[0]?.payload.finalSnapshotVersionId).toBe(discharge[0]?.id);
-    // What the real catalog-validating publisher would enforce: the payload satisfies the declared schema.
-    const entry = M15_OUTBOX_EVENTS.find((e) => e.eventName === "m15.plan.discharged");
-    expect(entry).toBeDefined();
-    for (const e of published) expect(Value.Check(entry!.payloadSchema, e.payload)).toBe(true);
+    expect(discharged[0]?.payload.finalSnapshotVersionId).toBe(discharge[0]?.id);
+    expect(signed[0]?.payload).toMatchObject({
+      planId: "plan-aide",
+      versionId: discharge[0]?.id,
+      kind: "aide_poc",
+      versionKind: "discharge",
+      signers: [],
+      snapshot: expect.objectContaining({ systemSigned: true, versionKind: "discharge" }),
+    });
+    // What the real catalog-validating publisher would enforce: each payload satisfies its declared schema.
+    for (const name of ["m15.plan.discharged", "m15.plan.version_signed"]) {
+      const entry = M15_OUTBOX_EVENTS.find((e) => e.eventName === name);
+      expect(entry).toBeDefined();
+      for (const e of published.filter((p) => p.eventName === name)) {
+        expect(Value.Check(entry!.payloadSchema, e.payload)).toBe(true);
+      }
+    }
   });
 
   it("is idempotent on replay: nothing new is written or announced", async () => {
