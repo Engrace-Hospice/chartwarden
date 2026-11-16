@@ -145,6 +145,21 @@ describe("JSON-style multi-level nesting: every level is decoded, and a nesting 
     },
   );
 
+  it.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 12])(
+    "%i levels of `bash -c '…'` with `'\\''` quoting judge the inner command (v9 allowed 2 to 8)",
+    (levels) => {
+      const single = (text: string): string => `'${text.replace(/'/g, "'\\''")}'`;
+      let text = `cat .e${"nv"}`;
+      for (let level = 0; level < levels; level++) text = `bash -c ${single(text)}`;
+      expect(rank(text), `${levels} levels`).toBeGreaterThanOrEqual(1);
+      const harmless = rank(text.replace(`.e${"nv"}`, "x"));
+      // up to the cap a harmless command is allowed; past it (or past 64 KB) the guard refuses to guess
+      if (levels > 8)
+        expect(harmless, `${levels} levels of a harmless command`).toBeGreaterThanOrEqual(1);
+      else expect(harmless, `${levels} levels of a harmless command`).toBe(0);
+    },
+  );
+
   it("mixed single and double quote levels decode level by level", () => {
     const single = (text: string): string => `'${text.replace(/'/g, "'\\''")}'`;
     const inner = `cat ".e${"nv"}"`;

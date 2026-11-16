@@ -384,10 +384,6 @@ export const MODELLED: ReadonlySet<string> = new Set(
   ).split(" "),
 );
 
-/** Editors take their commands as an argument, on standard input or in a here-document: `ed f <<< 'w CLAUDE.md'`. */
-const EDITORS: ReadonlySet<string> = new Set(["ed", "ex", "vi", "vim", "nvim"]);
-export const isEditor = (prog: string): boolean => EDITORS.has(prog);
-
 const isOption = (a: string): boolean => a.startsWith("-") && a !== "-";
 
 /** A word and whether it stood alone (a positional operand) or was attached to an option (`--out=P`, `-o=P`, `key=P`). */

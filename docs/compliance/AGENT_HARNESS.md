@@ -686,7 +686,7 @@ mapped in "Finding IDs cited in this document".
   ADV6-1, CR6-2, CR6-8). `bunx`, `npx`, `pnpx`, `bun x`, `pnpm|yarn|npm exec|dlx`, `npm x` and `bun|yarn run X` start a program, so where the
   classifier finds a command's program (under `env`, `nice`, `timeout`, `time`, `sudo` or another runner too) the runner is replaced by what it
   starts, and EVERY rule judges that command: `bunx git push origin main` asks, `bunx git commit --no-verify` is denied, `bunx rm -rf
-  scripts/harness`, `npx rm .claude/settings.json`, `pnpm exec cp x CLAUDE.md` and `bun run cp x CLAUDE.md` ask, as typed. `-c STR`, `--call
+  scripts/harness`, `npx rm .claude/settings.json`, `pnpm exec cp x CLAUDE.md` and `bun run cp x CLAUDE.md` ask, as typed. (That held only for the spellings the one regex of wave 8 read: `pnpm -r exec`, `pnpm -w exec`, `pnpm -c exec`, `yarn workspace X exec`, `yarn workspaces foreach exec` and `bun exec STR` hid their command until wave 10, part A8: each manager now has the option grammar of its own CLI, see "Wave 10 part A" below.) `-c STR`, `--call
   STR`, `--call=STR` and pnpm's `--shell-mode` hand a string to a shell (`sh -c STR`, judged as a command line). `bun run X`, `yarn run X`,
   `bun X` and `yarn X` run a package SCRIPT when X is a key of the nearest `package.json` (read once per command, only when a name needs
   it; a name with a colon such as `arch:fitness` always is one), a file when X looks like one, a builtin subcommand (`bun test`, `yarn install`),
@@ -765,9 +765,10 @@ mapped in "Finding IDs cited in this document".
   spelling. The tree-sweep operand is matched as the file system folds names (case, NFKC): `grep -r X APPS/PORTAL` asks. The listings of the live env
   files and the live suites return `{files, complete}`: more directories than the cap, a depth past 16 (it was a silent 8), a symlinked directory and
   an unreadable one make the listing incomplete, and every rule that asks "could this reach one?" then answers yes (ask), as the protected-names listing
-  does; `.envrc` is a live env file. A symlinked directory under a listed root is a gap, not followed, unless it points inside a walked root; a symlink to a FILE is a file (wave 9, W9-0: wave 8 treated every symlink as a gap, which made every vitest filter ask on a checkout that holds a Python virtualenv). Not unified (a follow-up): the three
-  inline long-option abbreviation readers named under CR5-10, and the `isOption`/`operands` copies in `writers.ts`, `writers-more.ts` and
-  `sibling-sweeps.ts`.
+  does; `.envrc` is a live env file. A symlinked directory under a listed root is a gap, not followed, unless it points inside a walked root; a symlink to a FILE is a file (wave 9, W9-0: wave 8 treated every symlink as a gap, which made every vitest filter ask on a checkout that holds a Python virtualenv). The three inline long-option abbreviation readers named under CR5-10 were
+  unified in wave 9 (W9-4); the `isOption` definitions (four: `client-reading.ts`, `protected-operands.ts`, `sibling-sweeps.ts`, `writers-more.ts`) and the
+  operand readers (`operands` in `writers.ts` and `writers-more.ts`, `operandsOf` in `sibling-sweeps.ts`) are not unified: they differ on a lone `-` and on an
+  empty argument, so one function would change an answer (wave 10 list: not done).
 - *PATH shadows, persistence, secret names* (`toolchain-paths.ts`, `launchctl-rules.ts`, `secret-names.ts`, `harness-persistence-wave8.test.ts`; T7,
   ADV6-3, ADV6-12, ADV6-14). A program the pinned commands and the guard call (`bun`, `bunx`, `perl`, `env`, `sh`, `node`, `git`, `python3`) is protected BY
   NAME in any directory (`cp /usr/bin/true ~/.kimi-code/bin/bun` asks; Codex denies): the fixed list could never name every user-writable PATH directory
@@ -819,7 +820,7 @@ mapped in "Finding IDs cited in this document".
   `c apps/portal /tmp/o`; `g() { git "$@"; }`) hides its command by name; a function body is judged, its call is not tied to it. A glob target is
   read only when it has a slash (or a write flag). A symlinked directory is a gap in the listings and a symlink in a sweep operand is not followed.
   `xargs`-fed names (a pipe) and `-T`-listed names are unreadable (`xargs -a FILE` is read: wave 9). A heredoc handed to an unknown program is not read (a here-string is). A package-runner or wrapper this
-  table does not name (wave 9 added the version managers and loaders; `nsenter`, `sshpass`, `firejail`, `bwrap`, `systemd-run`, `fakeroot`, `rlwrap`, `valgrind` and `gdb --args` remain) hides its command by name. The guard runs under whatever `bun` the PATH
+  table does not name (wave 9 added the version managers and loaders; wave 10 added `uv`, `uvx`, `pipx`, `poetry`, `pdm`, `rye`, `hatch`, `pipenv`, `conda`, `micromamba`, `devbox`, `flox`, `nix`, `nix-shell` and the wrappers `nsenter`, `sshpass`, `firejail`, `systemd-run`, `fakeroot`, `valgrind`, `gdb --args`, `ltrace`, `dtruss`, `perf`, `numactl`, `cpulimit`, `torify`, `tsocks`, `toybox`, `setpriv`; `bwrap`, `rlwrap`, `hyperfine` and the recipes of `make`, `just` and `task` remain) hides its command by name. The guard runs under whatever `bun` the PATH
   resolves (the PATH-shadow residual above). The positive-acknowledgement residual above (Codex too: it has no acknowledgement at all). The write flags and
   abbreviations of tools not installed here (`cloc`, `tokei`, `scc`, `cspell`, `depcruise`, `shfmt`, `ruff`, `semgrep`, `trivy`, `code`, `markdownlint`,
   `jest`, `mocha`, `deno`, `tree`, `7z`, `objcopy`, `ugrep`, `rga`, `pt`, `sift`, `ucg`, `trufflehog`, GNU `sed`, `litecli`, `usql`, `duckdb`, `sqlcmd`,
@@ -867,12 +868,11 @@ mapped in "Finding IDs cited in this document".
   files); `flock FILE cmd`, `parallel --joblog|--results|--tmpdir`, `strace -o|--output` and `time -o|--output` WRITE or create one and are judged like a redirect target
   (a protected path **asks**); `sudo -e FILE` (`--edit`) edits the files that follow, so sudo stays the program and they are judged as operands. Second, a long
   option with a SEPARATE value made its value the program: `nice --adjustment 5 git commit …` ran `5` as far as the rules knew. The long value options of `sudo`,
-  `env`, `time`, `nice`, `ionice`, `xargs`, `stdbuf`, `strace`, `taskset`, `flock`, `parallel`, `chroot` and `unshare` are listed (a prefix of two characters or more is one, as GNU
-  getopt reads it), and the short ones were audited (`xargs -J -R -S`, `env -a`, `ionice -P -u` added; `parallel -X`, `strace -T -D -k` were flags read as values and
+  `env`, `time`, `nice`, `ionice`, `xargs`, `stdbuf`, `strace`, `taskset`, `flock`, `parallel`, `chroot` and `unshare` are listed (wave 9 said "a prefix of two characters or more"; GNU getopt takes ANY unambiguous prefix, one character included, and since wave 10 every wrapper is read that way), and the short ones were audited (`xargs -J -R -S`, `env -a`, `ionice -P -u` added; `parallel -X`, `strace -T -D -k` were flags read as values and
   are fixed). New wrappers: `chroot`, `unshare`, `chronic`, `proxychains`, `proxychains4`, `ssh-agent`; `entr` and `watch` hand a command line to the judge; the
   Homebrew `g`-prefixed GNU tools (`gxargs`, `gnice`, `gstdbuf`, `genv`, `gnohup`, `gtime`) are the wrapper they prefix. A data-driven test walks every entry of the
   tables in every spelling. **Residuals:** a file named by `$(…)` is asked only when the inner program prints files (`xargs -a "$(ls)" echo` is not); a wrapper this
-  table does not name (`nsenter`, `sshpass`, `firejail`, `bwrap`, `systemd-run`, `fakeroot`, `rlwrap`, `valgrind`, `gdb --args`) still hides its command by name; the
+  table does not name (after wave 10: `bwrap`, `rlwrap`, `hyperfine`) still hides its command by name; the
   `sudo -R` (chroot) and `env -P` (alternative PATH) values are not followed.
 - *Runners and environment loaders* (`runners.ts`, `harness-runners-wave9.test.ts`; W9-3). `corepack`, `volta run`, `mise exec|x` (tool specs and the `--`
   separator, `-c STR`), `asdf exec`, `direnv exec DIR`, `cross-env VAR=x cmd` (and `cross-env-shell "string"`), `dotenv`, `dotenvx run`, `env-cmd`, `doppler run`
@@ -885,12 +885,10 @@ mapped in "Finding IDs cited in this document".
   F`, `op run --env-file F`, `direnv exec F`: the secret-name rule reads any word of the command line); the wave-9 brief assumed they were allowed and proposed an ask,
   which would have loosened them, so they stay denied. A template (`.env.example`, `.sample`, `.template`, `.dist`) and `docker compose --env-file F up` (the
   documented lifecycle exemption) stay allowed. A valued option's value never starts with a dash (`dotenv -c -e F -- cmd` keeps `-e F`). **Residuals:** `direnv exec .`
-  loads the `.envrc` of the directory it names and is not asked; an alias or a function hides its command (as before); `op --account X run` (an option before the
-  subcommand the manager table does not know) is not peeled.
+  loads the `.envrc` of the directory it names and is not asked; an alias or a function hides its command (as before); `op --account X run` was not peeled in wave 9; since wave 10 every manager reads the options before its subcommand with its own grammar, and an unknown one is a flag (lax grammars) or asks (bun, uv).
 - *One reader of a long option's name* (`option-values.ts`, `harness-option-values-wave9.test.ts`; W9-4, CR6-8 follow-up). `git-grep-sweep.ts`, `git-exec-strings.ts`
   and `harness-switch.ts` read the text of a long option and its abbreviation through `longName` and `spellsLong`, which `optionValues` uses too. No answer changed
-  (every harness test passes unchanged; no transition on 35,932 git-related real commands). **Not done:** the `isOption`/`operands`/`operandsOf` copies in
-  `writers.ts`, `writers-more.ts` and `sibling-sweeps.ts` stay three, because they differ on a lone `-` and on an empty argument and one function would change an answer. `patterns.ts` got wiring only: 2,960 lines (wave 8: 2,963); the new logic is in `symlink-target.ts`, `db-target.ts` (and its client table `db-target-clients.ts`, 597 lines of data), `wrapper-options.ts` and `runners.ts`.
+  (every harness test passes unchanged; no transition on 35,932 git-related real commands). **Not done, and miscounted in wave 9 (R7-CR-16):** the `isOption` definitions are FOUR after wave 10 (`client-reading.ts`, `protected-operands.ts`, `sibling-sweeps.ts`, `writers-more.ts`; `runners.ts` had a fifth, gone with its rewrite) plus the `operands`/`operandsOf` readers of `writers.ts`, `writers-more.ts` and `sibling-sweeps.ts`; they differ on a lone `-` and on an empty argument and one function would change an answer. The other prefix readers (`tar-grammar.ts`, `tree-sweep.ts`, `db-target.ts`, `option-commands.ts`) are not shared with `option-values.ts`; the wrapper and runner tables use `option-grammar.ts` since wave 10. `patterns.ts` got wiring only: 2,960 lines (wave 8: 2,963); the new logic is in `symlink-target.ts`, `db-target.ts` (and its client table `db-target-clients.ts`, 597 lines of data), `wrapper-options.ts` and `runners.ts`.
 - **Corpus cost, measured on the final tree against the REAL checkout.** 140,767 distinct Bash commands recorded in this machine's Claude sessions (the transcript
   cache was rebuilt recursively, subagent sessions included), classified in process
   with `/tmp/cw-v8` (the wave-8 tip) and with this tree, the live listings read from the real checkout (read only; nothing executed; the differ is a scratch script,
@@ -1087,5 +1085,5 @@ fixed them (`git log --grep '<ID>'`), and in the tests named in the paragraph th
 | W9-1 | A non-local database host was allowed in a URL without userinfo, a libpq connection string, `-d`/`--dbname` URIs, `pg_dump` URIs, `export PGHOST=H; psql` and every client but four. One target reader for 46 programs. |
 | W9-2 | `xargs -a <live env file> echo` was allowed; a wrapper's file options and long options with a separate value were dropped unjudged (`nice --adjustment 5 cmd` hid `cmd`). Tables per wrapper. |
 | W9-3 | `corepack`, `volta run`, `mise exec`, `asdf exec`, `direnv exec`, `cross-env`, `dotenv`, `dotenvx`, `env-cmd`, `doppler`, `op run`, `lerna exec`, `nx exec` hid their command; and wave 8's runner peel dropped the runner's own file options (`bun --env-file F run echo` was allowed). |
-| W9-4 | One long-option abbreviation reader instead of three inline copies; the `isOption`/`operands` copies stay three (they differ on a lone `-` and an empty argument). |
+| W9-4 | One long-option abbreviation reader instead of three inline copies; four `isOption` definitions and three operand readers stay separate (they differ on a lone `-` and an empty argument; wave 10 corrected the count). |
 | CR5-1 to CR5-11 | The round-5 code review: brace budget and whitespace (1), nested agent variables (2), one assignment grammar (3), wildcard pathspecs (4), per-root names (5), five sweep readings (6), the live env list (7), surviving mutants (8), doc claims (9), structure (10), vitest substring filters (11). |
