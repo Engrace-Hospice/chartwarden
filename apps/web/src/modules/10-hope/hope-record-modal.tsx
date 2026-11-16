@@ -71,6 +71,7 @@ import {
   EMPTY_SECTIONS,
   HopeRecordSections,
   type SectionValues,
+  applySectionChange,
   buildHopeData,
   humanize,
 } from "./hope-record-sections";
@@ -482,7 +483,7 @@ export function HopeRecordModal({
 
           <HopeRecordSections
             values={sections}
-            onChange={(patch) => setSections((prev) => ({ ...prev, ...patch }))}
+            onChange={(change) => setSections((current) => applySectionChange(current, change))}
           />
 
           {error ? (

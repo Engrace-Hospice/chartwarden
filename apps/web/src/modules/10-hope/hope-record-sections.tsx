@@ -113,10 +113,24 @@ export function buildHopeData(values: SectionValues, needsQ: boolean): HopeData 
   return data as HopeData;
 }
 
+/** A change to the values: a patch, or a function of the values AS THEY ARE when it is applied (two changes in one batch both land). */
+export type SectionChange =
+  | Partial<SectionValues>
+  | ((current: SectionValues) => Partial<SectionValues>);
+
+/** The values after one change; the dialog applies it inside its state updater, so it never reads a stale render. */
+export const applySectionChange = (
+  current: SectionValues,
+  change: SectionChange,
+): SectionValues => ({
+  ...current,
+  ...(typeof change === "function" ? change(current) : change),
+});
+
 export interface HopeRecordSectionsProps {
   readonly values: SectionValues;
-  /** One change at a time: the dialog merges the patch into its values. */
-  readonly onChange: (patch: Partial<SectionValues>) => void;
+  /** One change at a time: the dialog applies it to its values with {@link applySectionChange}. */
+  readonly onChange: (change: SectionChange) => void;
 }
 
 export function HopeRecordSections({ values, onChange }: HopeRecordSectionsProps): JSX.Element {
@@ -175,10 +189,14 @@ export function HopeRecordSections({ values, onChange }: HopeRecordSectionsProps
             label={humanize(symptom)}
             value={severities[symptom] ?? ""}
             onChange={(e) => {
-              const { [symptom]: _removed, ...rest } = severities;
-              onChange({
-                severities:
-                  e.target.value === "" ? rest : { ...rest, [symptom]: e.target.value as Severity },
+              const chosen = e.target.value;
+              // Built from the severities at the moment the change is applied, not from this render's: a second select changed in
+              // the same batch must not undo the first.
+              onChange((current) => {
+                const { [symptom]: _removed, ...rest } = current.severities;
+                return {
+                  severities: chosen === "" ? rest : { ...rest, [symptom]: chosen as Severity },
+                };
               });
             }}
             options={[

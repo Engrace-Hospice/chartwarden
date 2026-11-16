@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_SECTIONS, type SectionValues, buildHopeData } from "./hope-record-sections";
+import {
+  EMPTY_SECTIONS,
+  type SectionValues,
+  applySectionChange,
+  buildHopeData,
+} from "./hope-record-sections";
 
 // The §2.1 payload is a pure function of what the clinician entered (the dialog's tests drive it through the form).
 
@@ -28,6 +33,27 @@ describe("buildHopeData", () => {
 
     expect(screened.J?.J2030).toEqual({ screened: "yes", characteristics: "sharp" });
     expect(screened.J?.J2050).toEqual({ screened: "no" });
+  });
+
+  it("omits characteristics and the other symptom's label that are only white space, and the contraindication too", () => {
+    const data = buildHopeData(
+      with_({
+        painScreened: true,
+        painCharacteristics: "   \t ",
+        dyspneaScreened: true,
+        dyspneaCharacteristics: "  ",
+        severities: { other: "mild" },
+        otherSymptomLabel: "   ",
+        opioidPrescribed: true,
+        bowelRegimenContraindication: "\n ",
+      }),
+      false,
+    );
+
+    expect(data.J?.J2030).toEqual({ screened: "yes" });
+    expect(data.J?.J2050).toEqual({ screened: "yes" });
+    expect(data.J?.J2051?.entries).toEqual([{ symptomCode: "other", severity: "mild" }]);
+    expect(data.N).toEqual({ opioidPrescribed: true, scheduledBowelRegimen: false });
   });
 
   it("lists the severities in the roster's order and labels only the other symptom", () => {
@@ -71,5 +97,26 @@ describe("buildHopeData", () => {
       bowelRegimenContraindication: "ileus",
     });
     expect(opioidRegimen.N).toEqual({ opioidPrescribed: true, scheduledBowelRegimen: true });
+  });
+});
+
+describe("applySectionChange", () => {
+  it("merges a patch without touching the values it does not name, and does not mutate", () => {
+    const before = with_({ painCharacteristics: "x" });
+
+    const after = applySectionChange(before, { painScreened: true });
+
+    expect(after).toEqual({ ...before, painScreened: true });
+    expect(before.painScreened).toBe(false);
+  });
+
+  it("applies a function change to the values as they are at that moment", () => {
+    const first = applySectionChange(EMPTY_SECTIONS, { severities: { pain: "mild" } });
+
+    const second = applySectionChange(first, (current) => ({
+      severities: { ...current.severities, anxiety: "severe" },
+    }));
+
+    expect(second.severities).toEqual({ pain: "mild", anxiety: "severe" });
   });
 });
