@@ -258,6 +258,53 @@ describe("an override justification with invisible or formatting characters", ()
   });
 });
 
+// The server measures the 20-character minimum after each run of Unicode White_Space collapses to one space, so no-break spaces and
+// line separators cannot pad a reason; the dialog measures it the same way instead of sending what the server will refuse.
+describe("an override justification padded with white space", () => {
+  it.each([
+    ["no-break spaces", "\u00a0"],
+    ["line separators", "\u2028"],
+    ["paragraph separators", "\u2029"],
+    ["ideographic spaces", "\u3000"],
+    ["tabs", "\t"],
+  ])("does not count a run of %s, so nineteen visible characters stay too short", (_n, pad) => {
+    const post = vi.fn(async () => ok({ id: "created" }));
+    const { dialog, field, record } = mount(post);
+
+    fireEvent.change(field(), { target: { value: `Outage${pad.repeat(8)}delayed entr` } });
+
+    expect(record().disabled).toBe(true);
+    fireEvent.click(record());
+    expect(post).not.toHaveBeenCalled();
+    // Too short is not a refusal of what was typed: no error on the field, the hint carries the bounds.
+    expect(field().getAttribute("aria-invalid")).toBeNull();
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+  });
+
+  it("allows exactly twenty once a run counts as one, and sends the text as typed, trimmed", async () => {
+    const post = vi.fn(async () => ok({ id: "created" }));
+    const { field, record } = mount(post);
+
+    fireEvent.change(field(), { target: { value: "  Outage\u00a0\u00a0delayed entry  " } });
+
+    expect(record().disabled).toBe(false);
+    fireEvent.click(record());
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    const [, init] = post.mock.calls[0] as unknown as [string, { body: Record<string, unknown> }];
+    expect(init.body.adminOverrideJustification).toBe("Outage\u00a0\u00a0delayed entry");
+  });
+
+  it("blocks a justification over the maximum, measured on the trimmed text", () => {
+    const { field, record } = mount(vi.fn(async () => ok({ id: "created" })));
+
+    fireEvent.change(field(), { target: { value: "a".repeat(1001) } });
+    expect(record().disabled).toBe(true);
+
+    fireEvent.change(field(), { target: { value: `  ${"a".repeat(1000)}` } });
+    expect(record().disabled).toBe(false);
+  });
+});
+
 describe("the override justification's hint", () => {
   it("states both bounds, that the text cannot be changed later, and what must not be typed", () => {
     const { dialog, field } = mount(vi.fn(async () => ok({ id: "created" })));

@@ -72,6 +72,7 @@ import {
   OVERRIDE_JUSTIFICATION_MAX,
   OVERRIDE_JUSTIFICATION_MIN,
   hasForbiddenJustificationCharacter,
+  justificationLengthOk,
   justificationRefusalOf,
 } from "./hope-override-justification";
 import { rfaLabel } from "./hope-status";
@@ -387,7 +388,7 @@ export function HopeRecordModal({
     authorDiscipline === "" ||
     (span === "late" && lateReason === "") ||
     (rfaKind === "05_discharge" && dischargeReason === "") ||
-    (overriding && justification.length < OVERRIDE_JUSTIFICATION_MIN) ||
+    (overriding && !justificationLengthOk(justification)) ||
     justificationInvisible;
 
   /** The §2.1 payload for the four sections this codebase defines items for. */
@@ -653,7 +654,7 @@ export function HopeRecordModal({
               <TextAreaField
                 id={justificationId}
                 label="Justification for the override"
-                hint={`Between ${OVERRIDE_JUSTIFICATION_MIN} and ${OVERRIDE_JUSTIFICATION_MAX} characters. It is recorded in the audit trail when the override is used and cannot be changed later, so do not enter a patient's name or a Social Security or Medicare number.`}
+                hint={`Between ${OVERRIDE_JUSTIFICATION_MIN} and ${OVERRIDE_JUSTIFICATION_MAX} characters (a run of spaces or line breaks counts as one). It is recorded in the audit trail when the override is used and cannot be changed later, so do not enter a patient's name or a Social Security or Medicare number.`}
                 error={justificationError}
                 value={overrideJustification}
                 onChange={(e) => {

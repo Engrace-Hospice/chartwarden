@@ -6,10 +6,19 @@ import type { WriteResult } from "./hope-api";
 
 /**
  * The server's own bounds on the justification (`RecordTimepointSchema.adminOverrideJustification`; `requireOverrideJustification`
- * refuses an override without one and measures the minimum after trimming).
+ * refuses an override without one). The maximum is measured on the trimmed text as it is; the minimum on that text with each run of
+ * Unicode White_Space collapsed to one space, so no-break spaces and line or paragraph separators cannot pad a reason to the minimum
+ * ({@link justificationLengthOk}). The text the server keeps is the trimmed text, never the collapsed one.
  */
 export const OVERRIDE_JUSTIFICATION_MIN = 20;
 export const OVERRIDE_JUSTIFICATION_MAX = 1000;
+
+const WHITE_SPACE_RUN = /\p{White_Space}+/gu;
+
+/** Whether the TRIMMED justification is within the server's bounds, measured as the server measures them. */
+export const justificationLengthOk = (trimmedText: string): boolean =>
+  trimmedText.length <= OVERRIDE_JUSTIFICATION_MAX &&
+  trimmedText.replace(WHITE_SPACE_RUN, " ").length >= OVERRIDE_JUSTIFICATION_MIN;
 
 /**
  * Mirror of `FORBIDDEN_JUSTIFICATION_CHARACTER` in `apps/backend/src/modules/10-hope/routes/hope-route-guards.ts` (web does not import
