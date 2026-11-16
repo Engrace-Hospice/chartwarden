@@ -5951,7 +5951,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/hope/submissions": {
     summary:
-      "HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2); newest first, at most 500 batches (the list is bounded, not paged, and does not say when it was cut)",
+      "HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2); newest first, at most 500 batches (the list is bounded, not paged, and does not say when it was cut); the cap keeps the unfinished batches first (every status but accepted, accepted_with_warnings and cancelled), so an old exported or rejected batch is not dropped behind 500 newer finished ones",
     query: M10SubmissionListQuerySchema,
     response: M10HopeSubmissionListResponseSchema,
   },
@@ -5973,7 +5973,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: `Download the generated manual iQIES ZIP package; a cancelled package cannot be downloaded (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); the first download of a packaged batch records the acting membership as the exporter; ${M10_RECORD_BUSY_READ_NOTE}`,
   },
   "POST /api/v1/hope/submissions/:id/mark-uploaded": {
-    summary: `Mark a generated HOPE package as manually uploaded to iQIES; \`submittedAt\`, when given, must be a real calendar date-time with an explicit offset (else 422); a cancelled package cannot be marked uploaded (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
+    summary: `Mark a generated HOPE package as manually uploaded to iQIES; \`submittedAt\`, when given, must be a real calendar date-time with an explicit offset (else 422); a cancelled package cannot be marked uploaded (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); ${M10_RECORD_BUSY_NOTE}; \`iqiesSubmissionReference\`, when given, holds only letters, digits and \` . _ : # / -\` (else 422) and is refused when shaped like a Social Security or Medicare number (422 EVIDENCE_LOOKS_LIKE_PHI)`,
     body: M10MarkSubmissionUploadedSchema,
     response: M10HopeSubmissionResponseSchema,
   },
@@ -5983,7 +5983,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeSubmissionResponseSchema,
   },
   "POST /api/v1/hope/submissions/:id/results": {
-    summary: `Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent; a blank iqiesRecordId is no id and is not stored on the item or the assessment); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
+    summary: `Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent; a blank iqiesRecordId is no id and is not stored on the item or the assessment); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); ${M10_RECORD_BUSY_NOTE}; \`reportReference\`, when given, holds only letters, digits and \` . _ : # / -\` (else 422) and is refused when shaped like a Social Security or Medicare number (422 EVIDENCE_LOOKS_LIKE_PHI); if the bulk item update stores fewer items than the report named nothing is kept and the call answers 409`,
     body: M10ImportSubmissionResultSchema,
     response: M10HopeSubmissionDetailResponseSchema,
   },

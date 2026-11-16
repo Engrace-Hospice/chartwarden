@@ -18,7 +18,7 @@ its full description there. Newest first.
   answers, which a read permission does not allow. A draft that already has its spec reads as before.
 - **`POST /admissions/{admissionId}/hope/timepoints` on an admission and RFA that already has a draft does the same.** It returns that draft, and when the chart has since changed an answer the clinician did not type it rewrites it, bumps `version` by one and answers the new version (it used to rewrite without a bump and answer the version it had read before). The first fill of a brand-new record is unchanged: it answers `version` 1.
 - **A refused coded answer names the item, not the value.** `PATCH .../answers` with a value outside the item's CMS list answers `422` with the same code (`HOPE_INVALID_ANSWER_VALUE`) and the message "the value is not an allowed CMS value for <item code>" (it used to repeat the value, and the idempotency layer replays a `422` for 24 hours). A string `value` longer than 64 characters is now `422 VALIDATION_FAILED` (the longest HOPE assessment text item, A0500C, is 18).
-- **A `401` or `403` is no longer cached under an `Idempotency-Key` (every module; POST, PUT and PATCH).** The claim is taken before a route's own permission, scope and step-up guards run, so a `403 STEP_UP_REQUIRED` used to be replayed to a retry on the same key after the user completed the step-up. A refusal now frees the key, exactly as a `5xx` does: the same-key retry runs again. As for a `5xx`, the key is freed only when nothing of the request had committed (a refusal after a committed write is still replayed, so the write is never run twice). A `2xx` and every other `4xx` replay as before, and a replay is still answered before the guards run (the fingerprint binds organization, user and actor kind).
+- **A `401` or `403` is no longer cached under an `Idempotency-Key` (every module; every method except GET and HEAD, which carry no key).** The claim is taken before a route's own permission, scope and step-up guards run, so a `403 STEP_UP_REQUIRED` used to be replayed to a retry on the same key after the user completed the step-up. A refusal now frees the key, exactly as a `5xx` does: the same-key retry runs again. As for a `5xx`, the key is freed only when nothing of the request had committed (a refusal after a committed write is still replayed, so the write is never run twice). A `2xx` and every other `4xx` replay as before, and a replay is still answered before the guards run (the fingerprint binds organization, user and actor kind).
 
 ## 2026-11-15 — HOPE: a schedule skip takes a fixed reason code (breaking for a client that sends another); the operator writes refuse an AI principal
 
@@ -58,14 +58,35 @@ its full description there. Newest first.
   `409` (the siting error) and nothing could be packaged. The skip is logged by record id and does not appear in the response; such a
   record stays unpackaged until its siting is repaired. Under the same call the records are also judged again just before the
   package is written, so a record whose correction was signed while the others were being validated is dropped instead of packaged.
-- **`GET /api/v1/hope/submissions` answers at most 500 batches, newest first.** It used to answer every batch of the organization in no
-  particular order. The route has no pagination and the response does not say when it was cut; an organization has about one batch
-  per provider entity and period, so 500 is decades of history for one entity.
+- **`GET /api/v1/hope/submissions` answers at most 500 batches, newest first, and the cap keeps the unfinished batches first.** It
+  used to answer every batch of the organization in no particular order. The route has no pagination and the response does not say
+  when it was cut. An organization has about one batch per provider entity and period, but the worklist reads the whole organization
+  (every entity at once), so 500 is not a long history per entity: once 500 newer batches exist, an old `exported` or `rejected`
+  batch would have dropped off the worklist while it still needed someone. The cap is therefore applied with the unfinished batches
+  first (every status but `accepted`, `accepted_with_warnings` and `cancelled`), newest first within each group, and the answer is
+  then put back newest first. A batch that still needs an operator can be cut only when more than 500 of them are unfinished at once.
 - **`POST /api/v1/hope/submissions/{id}/results` no longer stores a blank `iqiesRecordId`.** An empty or whitespace-only id in a report
   row is treated as no id: it is not written on the item or on the assessment (it used to be, and an empty `iqies_record_id` made
   every `IS NULL` eligibility test read the record as already recorded). A non-blank id is stored exactly as sent. The
   recording itself is the same operation, written in bulk (one statement per 500 rows) so a long report holds the batch row lock
-  for far less time; its result and error codes are unchanged.
+  for far less time; its result and error codes are unchanged, with one addition: if the bulk update of the items stores fewer
+  items than the report named (an item gone or settled meanwhile), nothing of the import is kept and the call answers `409 CONFLICT`
+  ("The batch's items changed while the result was being recorded ..."), naming no id or value: reload the batch and record the
+  result again.
+- **`reportReference` (`POST .../results`) and `iqiesSubmissionReference` (`POST .../mark-uploaded`) are limited to letters, digits and
+  ` . _ : # / -`, and refused when they look like a patient identifier.** Both are operator-typed free text that is stored on the
+  batch (the report reference also on every stored report row). A value with any other character, or an empty string, answers
+  `422 VALIDATION_FAILED`; a value shaped like a Social Security or Medicare number answers `422 EVIDENCE_LOOKS_LIKE_PHI`. Neither
+  422 echoes the value. Omit the field or send `null` for no reference; the length bounds (500 and 200) are as before. On POST the
+  idempotency layer replays this `422` for 24 h on the same key, so send a corrected request with a NEW `Idempotency-Key`. The audit
+  trail records both references as `<changed>` (as the other free-text and storage columns of a batch).
+- **Assemble now records the batch's items in one statement and re-checks the records after the package is serialised.** The request,
+  the response and the codes are unchanged. A record superseded while the package was being serialised is dropped as before (it
+  is now judged and share-locked just before the batch is written, not before the serialising, so a correction's signature waits
+  for the lock for a much shorter time).
+- **A legacy record whose `iqies_record_id` is an empty string is not packaged by assemble**, as the candidate scan of the assemble
+  job already did not: a blank id is not "no id". Such a record needs its id cleared (set to `NULL`) to be packaged; the result import no longer
+  writes blank ids.
 
 ---
 
