@@ -432,8 +432,9 @@ export const textareaField: CSSProperties = {
   resize: "vertical",
 };
 
-// The write dialogs' own notes, boxes and alerts: `meta` (small helper text) is used by all five files named at the top, `lateBox` and
-// `checkRow` by the recording dialog and its parts (`hope-record-modal.tsx`, `hope-record-sections.tsx`, `hope-override-section.tsx`).
+// The write dialogs' own notes, boxes and alerts: `meta` (small helper text) is used by all five files named at the top. `lateBox` is
+// used by the recording dialog and its parts (`hope-record-modal.tsx`, `hope-record-sections.tsx`, `hope-override-section.tsx`);
+// `checkRow` by the sections and the override section only.
 export const meta: CSSProperties = {
   margin: 0,
   fontSize: "0.75rem",

@@ -12,9 +12,9 @@
 //      and jsonb and which would surface as a 500) and, as a policy choice, for any other control character but tab, line feed and
 //      carriage return;
 //   2. the CONTENT: the patient-identifier screen every operator free text shares (SSN and MBI shapes) over every text field, plus,
-//      for the three code-like tokens, a calendar-date shape and a US phone shape (a code is never either, and both identify a person
-//      together with anything else on the row). The refusal text is static: a 422 never echoes the value, and the field it names is
-//      built from a fixed key list and a row index, never from the client.
+//      for the three code-like tokens and for an assessment id that is not a uuid, a calendar-date shape and a US phone shape (a code
+//      is never either, and both identify a person together with anything else on the row). The refusal text is static: a 422 never
+//      echoes the value, and the field it names is built from a fixed key list and a row index, never from the client.
 // `status`, `result`, `outcome`, `message` and the two references get only the SSN and MBI screen (and the charset where there is
 // one), and the severity is a closed set, so a row with another severity (`Info`) is refused and is dropped from the report.
 //

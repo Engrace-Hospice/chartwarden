@@ -112,7 +112,8 @@ its full description there. Newest first.
   and every `assessmentId` that is not a uuid (a uuid is free).** The budget is shared by the messages, so about 660 rows fit at
   150-character messages and about 330 at 300; the 2000-row limit is reachable only when messages average 50 characters. A bigger
   import is `422` with the field `results` and the code `TOO_LARGE`; split it into several imports. **The request body is limited to
-  3 MiB** (a report at the 2000-row limit with every field at its limit is about 1.9 MB): a larger body is `413` with the standard
+  3 MiB** (a report at the 2000-row limit with every field filled is about 1.2 MB, at most about 1.9 MB if every message character
+  is escaped): a larger body is `413` with the standard
   error envelope. **A batch holds at most 20,000 recorded report rows across all its imports** (an import that would pass it is a
   static `409 CONFLICT` and records nothing: send only the rows that still need recording); a batch's findings read returns at most
   that many. **A report that was accepted before these rules and is sent again under a new `Idempotency-Key`, and that the stricter rules now
