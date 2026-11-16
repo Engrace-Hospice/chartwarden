@@ -76,6 +76,9 @@ export const adminOverrideRequested = (body: unknown): boolean => {
 /** The justification's minimum length; `RecordTimepointSchema` / `RecordSfvSchema` declare the same number (a unit test pins it). */
 export const OVERRIDE_JUSTIFICATION_MIN_LENGTH = 20;
 
+/** A run of Unicode White_Space: one space for the length minimum. The web client's counter must collapse the same runs. */
+const WHITE_SPACE_RUN = /\p{White_Space}+/gu;
+
 /**
  * Characters a justification may not contain: control characters (`\p{Cc}`: NUL, escapes, NEL...) EXCEPT tab, line feed and
  * carriage return (a multi-line reason is normal), format characters (`\p{Cf}`: zero-width space / joiner, bidi marks, soft
@@ -91,9 +94,11 @@ const FORBIDDEN_JUSTIFICATION_CHARACTER =
 /**
  * The late-deadline override's justification, judged and cleaned. It is stored verbatim in the IMMUTABLE critical
  * `hope.late_deadline_override` audit event (the only record of why the HQRP cutoff was lifted), so it must be a real
- * reason and must not name a patient: the surrounding whitespace is trimmed BEFORE the length is measured (twenty spaces
- * are not a reason), text with control or format characters is refused (see {@link FORBIDDEN_JUSTIFICATION_CHARACTER}), and
- * an SSN- or MBI-shaped value is refused with a 422 that names the field and never echoes the text.
+ * reason and must not name a patient: the surrounding whitespace is trimmed, and the minimum length is measured after every run
+ * of Unicode White_Space (spaces, tabs, line breaks, U+00A0, U+2028 and U+2029, the em and en spaces...) is collapsed to ONE
+ * space, so twenty blanks of any kind are not a reason (the stored text is the trimmed text as typed, never the collapsed one);
+ * text with control or format characters is refused (see {@link FORBIDDEN_JUSTIFICATION_CHARACTER}); and an SSN- or MBI-shaped
+ * value is refused with a 422 that names the field and never echoes the text.
  * Returns the text to hand the service, `undefined` when no override was asked for (a text sent without the flag is not kept).
  */
 export function requireOverrideJustification(body: {
@@ -121,12 +126,12 @@ export function requireOverrideJustification(body: {
       },
     ]);
   }
-  if (text.length < OVERRIDE_JUSTIFICATION_MIN_LENGTH) {
+  if (text.replace(WHITE_SPACE_RUN, " ").length < OVERRIDE_JUSTIFICATION_MIN_LENGTH) {
     throw new ValidationError("an admin deadline override needs a fuller justification", [
       {
         field: "adminOverrideJustification",
         code: "TOO_SHORT",
-        message: `adminOverrideJustification must be at least ${OVERRIDE_JUSTIFICATION_MIN_LENGTH} characters once surrounding whitespace is removed`,
+        message: `adminOverrideJustification must be at least ${OVERRIDE_JUSTIFICATION_MIN_LENGTH} characters once surrounding whitespace is removed and each run of whitespace counts as one space`,
       },
     ]);
   }

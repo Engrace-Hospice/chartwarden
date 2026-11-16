@@ -146,6 +146,36 @@ describe("requireOverrideJustification", () => {
     expect(everything).not.toContain(REASON);
   });
 
+  it.each([
+    ["no-break spaces", "\u00A0"],
+    ["line separators", "\u2028"],
+    ["paragraph separators", "\u2029"],
+    ["em spaces", "\u2003"],
+    ["mixed blanks", " \u00A0\t\u2028"],
+  ])(
+    "a run of %s cannot pad the 20-character minimum (each run counts as one space)",
+    (_label, blank) => {
+      const padded = `ab${blank.repeat(30)}cd`;
+
+      const err = capture(() =>
+        requireOverrideJustification({ adminOverride: true, adminOverrideJustification: padded }),
+      );
+
+      expect(err).toBeInstanceOf(ValidationError);
+      expect((err as ValidationError).details).toEqual([
+        expect.objectContaining({ field: "adminOverrideJustification", code: "TOO_SHORT" }),
+      ]);
+    },
+  );
+
+  it("a real reason is judged on its collapsed length but stored as typed", () => {
+    const typed = "Outage ended;\n\n   approved by the lead\u00A0\u00A0today.";
+
+    expect(
+      requireOverrideJustification({ adminOverride: true, adminOverrideJustification: typed }),
+    ).toBe(typed);
+  });
+
   it("an emoji pair (a well-formed surrogate pair) is text, not a lone surrogate", () => {
     const withEmoji = `${REASON} \u{1F6D1} stop`;
 
