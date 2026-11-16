@@ -194,7 +194,8 @@ module.
   target date is `422 M10_SPEC_NOT_IN_FORCE`; an admission the M6 seam cannot project or site is
   `422 M10_ADMISSION_PROJECTION_GAP`. On POST, PUT and PATCH the idempotency layer replays such a 422 for 24 h on the same
   key, so use a NEW `Idempotency-Key` after an operator fixes the cause; a GET carries no key. Only an `open` schedule can
-  be skipped (any other status is `409 CONFLICT`). `POST /hope/admin/regenerate-schedules` only creates the windows an
+  be skipped (any other status is `409 CONFLICT`), for a reason from a fixed code list (anything else is `422`, so no free
+  text, and no PHI, is stored). `POST /hope/admin/regenerate-schedules` only creates the windows an
   admission is missing: existing windows, in any status, are left untouched, so a window computed from a wrong date is not
   recomputed or reopened. Signed assessments are packaged for iQIES only by the operator-run
   `POST /hope/submissions/assemble` (the operator then uploads the ZIP in the iQIES portal by hand); no cron runs it.

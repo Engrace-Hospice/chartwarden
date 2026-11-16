@@ -14,6 +14,22 @@ its full description there. Newest first.
 - **A refused coded answer names the item, not the value.** `PATCH .../answers` with a value outside the item's CMS list answers `422` with the same code (`HOPE_INVALID_ANSWER_VALUE`) and the message "the value is not an allowed CMS value for <item code>" (it used to repeat the value, and the idempotency layer replays a `422` for 24 hours). A string `value` longer than 64 characters is now `422 VALIDATION_FAILED` (the longest HOPE assessment text item, A0500C, is 18).
 - **A `401` or `403` is no longer cached under an `Idempotency-Key` (every module; POST, PUT and PATCH).** The claim is taken before a route's own permission, scope and step-up guards run, so a `403 STEP_UP_REQUIRED` used to be replayed to a retry on the same key after the user completed the step-up. A refusal now frees the key, exactly as a `5xx` does: the same-key retry runs again. As for a `5xx`, the key is freed only when nothing of the request had committed (a refusal after a committed write is still replayed, so the write is never run twice). A `2xx` and every other `4xx` replay as before, and a replay is still answered before the guards run (the fingerprint binds organization, user and actor kind).
 
+## 2026-11-15 — HOPE: a schedule skip takes a fixed reason code (breaking for a client that sends another); the operator writes refuse an AI principal
+
+- **`POST /api/v1/hope/schedules/{id}/skip`: `reasonCode` is one of a closed list, and `note` is gone (breaking).** The reason used to
+  be any 1 to 64 characters, was stored on the window and copied into the audit trail, and a `note` was accepted and silently dropped.
+  It is now one of `patient_deceased`, `patient_revoked`, `patient_hospitalized`, `transferred_out`, `admission_discharged`,
+  `duplicate_window`, `other` (the list the web dialog offers; `HOPE_SCHEDULE_SKIP_REASON_CODES`), so no free text, and no PHI, can be
+  stored. Any other value, a `note` or any other property answers `422 VALIDATION_FAILED`; the error names the field (and the list)
+  and never echoes what was sent. Windows already skipped keep whatever code they hold; only a new skip is judged. On POST the
+  idempotency layer replays this `422` for 24 h on the same key, so send a corrected request with a NEW `Idempotency-Key`.
+- **An AI principal is refused (`403`) on seven more HOPE writes**, even one that holds the permission: `POST /hope/schedules/{id}/skip`,
+  `POST /hope/submissions/{id}/retry`, `POST /hope/submissions/assemble`, `POST /hope/submissions/{id}/mark-uploaded`,
+  `POST /hope/submissions/{id}/cancel`, `POST /hope/submissions/{id}/results` and `POST /hope/admin/regenerate-schedules`. Signing and
+  the SFV completion already refused an AI principal (they also ask for a fresh step-up; these seven do not).
+- **Skip, retry and regenerate-schedules now wait at most 5 seconds for a row lock** and answer the retryable `409 M10_RECORD_BUSY`
+  (see "Not covered" in the entry below, which no longer lists them). No request or response shape changes.
+
 ---
 
 ## 2026-11-15 — HOPE: record writes wait at most 5 seconds for a lock (`409 M10_RECORD_BUSY`); drafts can no longer be rewritten after signing
@@ -37,12 +53,13 @@ longer open now answers `409` (below). `POST /hope/submissions/assemble` can now
   submission-batch rows (patching answers, updating a draft, the HUV completion date, signing with its own sign lock, the SFV completion's
   SFV and draft locks, cancelling a package, marking it uploaded, recording its CMS result), the advisory keys that serialise recording
   a timepoint, a correction or an inactivation and assembling a package (`POST /hope/submissions/assemble`, one key per provider
-  entity, taken as its first statement), the write that freezes a legacy draft's spec when its workspace is opened, and the download's
-  `packaged` to `exported` write. The bound stays in force for the rest of the transaction that set it, so a lock timeout raised by any
+  entity, taken as its first statement), the write that freezes a legacy draft's spec when its workspace is opened, the download's
+  `packaged` to `exported` write, and the writes that queue behind another request's row lock: the schedule skip
+  (`POST /hope/schedules/{id}/skip`), the submission retry (`POST /hope/submissions/{id}/retry`) and the schedule insert of
+  `POST /hope/admin/regenerate-schedules` (a concurrent regenerate of the same admission). The bound stays in force for the rest of the transaction that set it, so a lock timeout raised by any
   LATER statement of that same transaction answers the same code, not a `500` (signing a correction or an inactivation also updates the
   corrected original through a trigger; a wait on that row answers it too). **Not covered**: a route that takes none of these locks
-  keeps PostgreSQL's default of no timeout, namely `POST /hope/schedules/{id}/skip`, `POST /hope/submissions/{id}/retry`,
-  `POST /hope/admin/regenerate-schedules` and the validation-finding writes. The destruction eraser takes its own per-patient
+  keeps PostgreSQL's default of no timeout, namely the validation-finding writes. The destruction eraser takes its own per-patient
   advisory lock with no timeout. The background jobs have their own bound (below).
 - **Retrying a `409 M10_RECORD_BUSY` with an `Idempotency-Key` (POST, PUT and PATCH only).** On those routes the same Idempotency-Key
   may be reused because the key is released. The key is released only when nothing of the request had committed; if an earlier step of the request had
@@ -62,8 +79,8 @@ longer open now answers `409` (below). `POST /hope/submissions/assemble` can now
 - **`POST /api/v1/hope/schedules/{id}/skip` skips only an `open` schedule.** The write now judges the row it waits for: a schedule a
   sign completed (or the watchdog expired) in the meantime is no longer overwritten with `skipped`, and a schedule that is already
   `completed`, `expired` or `skipped` is no longer rewritten (a second skip of the same schedule included). Each of those answers
-  `409 CONFLICT` ("HOPE schedule {id} is {status}; only an open schedule can be skipped"; not the retryable `M10_RECORD_BUSY`, and the
-  route stays in the "not covered" list above); an unknown id is still `404`. A skip that succeeded and is sent again under a NEW
+  `409 CONFLICT` ("HOPE schedule {id} is {status}; only an open schedule can be skipped"; not the retryable `M10_RECORD_BUSY`, which
+  is only the answer when the row's lock was not granted within the bound above); an unknown id is still `404`. A skip that succeeded and is sent again under a NEW
   Idempotency-Key answers this `409`; read the schedule for its current status instead.
 - **`POST /api/v1/admissions/{admissionId}/hope/timepoints` with `rfaKind: "04_sfv"` is now `422 VALIDATION_FAILED`** (detail
   `field: "rfaKind"`, `code: "M10_RFA_KIND_NOT_A_TIMEPOINT"`; it used to answer a generic `500`). An SFV completion is inserted signed

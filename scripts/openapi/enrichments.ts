@@ -5864,8 +5864,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeScheduleResponseSchema,
   },
   "POST /api/v1/hope/schedules/:id/skip": {
-    summary:
-      'Skip an OPEN schedule (requires reason code); a schedule that is already completed, expired or skipped answers 409 CONFLICT ("only an open schedule can be skipped") and is left unchanged, because the status is checked by the same UPDATE that writes the skip; an unknown schedule is 404',
+    summary: `Skip an OPEN schedule; \`reasonCode\` is one of a closed list (patient_deceased, patient_revoked, patient_hospitalized, transferred_out, admission_discharged, duplicate_window, other) and nothing else is accepted, a note included (422 VALIDATION_FAILED, which never echoes what was sent); a schedule that is already completed, expired or skipped answers 409 CONFLICT ("only an open schedule can be skipped") and is left unchanged, because the status is checked by the same UPDATE that writes the skip; an unknown schedule is 404; AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
     body: M10SkipScheduleSchema,
     response: M10HopeScheduleResponseSchema,
   },
@@ -5965,8 +5964,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeAssessmentSubmissionsResponseSchema,
   },
   "POST /api/v1/hope/submissions/:id/retry": {
-    summary:
-      "Deprecated for the UI: requeue a rejected batch (status rejected to queued; nothing consumes queued, and it neither re-validates nor re-assembles). iQIES has no retry; fix a rejected record with a correction assessment and re-package it in a new batch",
+    summary: `Deprecated for the UI: requeue a rejected batch (status rejected to queued; nothing consumes queued, and it neither re-validates nor re-assembles). iQIES has no retry; fix a rejected record with a correction assessment and re-package it in a new batch; AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
     body: M10RetrySubmissionSchema,
     response: M10HopeSubmissionResponseSchema,
   },
@@ -5974,22 +5972,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: `Download the generated manual iQIES ZIP package; a cancelled package cannot be downloaded (409 M10_SUBMISSION_CANCELLED); ${M10_RECORD_BUSY_READ_NOTE}`,
   },
   "POST /api/v1/hope/submissions/:id/mark-uploaded": {
-    summary: `Mark a generated HOPE package as manually uploaded to iQIES; \`submittedAt\`, when given, must be a real calendar date-time with an explicit offset (else 422); a cancelled package cannot be marked uploaded (409 M10_SUBMISSION_CANCELLED); ${M10_RECORD_BUSY_NOTE}`,
+    summary: `Mark a generated HOPE package as manually uploaded to iQIES; \`submittedAt\`, when given, must be a real calendar date-time with an explicit offset (else 422); a cancelled package cannot be marked uploaded (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
     body: M10MarkSubmissionUploadedSchema,
     response: M10HopeSubmissionResponseSchema,
   },
   "POST /api/v1/hope/submissions/:id/cancel": {
-    summary: `Cancel a generated HOPE package that was never marked uploaded (packaged/exported), freeing its assessments to be packaged again in a NEW batch; 409 once uploaded; replaying a cancel returns the cancelled batch; ${M10_RECORD_BUSY_NOTE}`,
+    summary: `Cancel a generated HOPE package that was never marked uploaded (packaged/exported), freeing its assessments to be packaged again in a NEW batch; 409 once uploaded; replaying a cancel returns the cancelled batch; AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
     body: M10CancelSubmissionSchema,
     response: M10HopeSubmissionResponseSchema,
   },
   "POST /api/v1/hope/submissions/:id/results": {
-    summary: `Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); ${M10_RECORD_BUSY_NOTE}`,
+    summary: `Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
     body: M10ImportSubmissionResultSchema,
     response: M10HopeSubmissionDetailResponseSchema,
   },
   "POST /api/v1/hope/submissions/assemble": {
-    summary: `Assemble and package the eligible signed assessments of a provider entity into a \`packaged\` manual iQIES ZIP batch (the only assemble path; no cron runs it); 409 CONFLICT when no signed assessment is eligible; 422 when the submission header or an assessment payload cannot be built (the message names what to set); a second assemble of the same provider entity queues behind the first (an advisory lock), so it can answer ${M10_RECORD_BUSY_NOTE}`,
+    summary: `Assemble and package the eligible signed assessments of a provider entity into a \`packaged\` manual iQIES ZIP batch (the only assemble path; no cron runs it); 409 CONFLICT when no signed assessment is eligible; 422 when the submission header or an assessment payload cannot be built (the message names what to set); AI principals refused (403); a second assemble of the same provider entity queues behind the first (an advisory lock), so it can answer ${M10_RECORD_BUSY_NOTE}`,
     body: M10AssembleSubmissionSchema,
     response: M10HopeSubmissionResponseSchema,
   },
@@ -5999,7 +5997,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeComplianceResponseSchema,
   },
   "POST /api/v1/hope/admin/regenerate-schedules": {
-    summary: `Admin: create any missing HOPE schedule windows for an admission (existing rows, in any status, are left untouched, so nothing is recomputed or reopened and a window computed from a wrong date stays as it is); returns the admission's schedule count; an admission the caller cannot see (absent here, or another organization's) answers 404 from the scope guard before anything is written; an admission that is visible but not sited (no provider entity or location) is ${M10_ADMISSION_PROJECTION_GAP_NOTE}`,
+    summary: `Admin: create any missing HOPE schedule windows for an admission (existing rows, in any status, are left untouched, so nothing is recomputed or reopened and a window computed from a wrong date stays as it is); returns the admission's schedule count; AI principals refused (403); a concurrent regenerate of the same admission is waited for at most 5 seconds, then ${M10_RECORD_BUSY_NOTE}; an admission the caller cannot see (absent here, or another organization's) answers 404 from the scope guard before anything is written; an admission that is visible but not sited (no provider entity or location) is ${M10_ADMISSION_PROJECTION_GAP_NOTE}`,
     body: M10RegenerateSchedulesSchema,
     response: M10HopeRegenerateResponseSchema,
   },

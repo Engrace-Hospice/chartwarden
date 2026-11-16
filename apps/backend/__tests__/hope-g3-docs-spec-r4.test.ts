@@ -135,29 +135,38 @@ describe("spec 4.1 / 4.1.1: lock coverage names what the code does", () => {
     expect(row(ROUTES, "`POST` | `/hope/submissions/assemble`")).toContain("`409 M10_RECORD_BUSY`");
   });
 
-  it("the routes the spec lists as not covered take no bounded lock", () => {
+  it("skip, retry and regenerate bound the one statement that queues behind a row lock, and only the validation-finding writes are listed as not covered", () => {
     const service = read(`${M10_SRC}/hope-route-service-db.ts`);
-    const bodies = [
+    // The status-judging UPDATE is the bounded statement; neither route takes an advisory or row lock of its own.
+    for (const body of [
       slice(service, "async skipSchedule(", "async recordTimepoint("),
       slice(service, "async retrySubmission(", "async assembleSubmission("),
-      slice(service, "async regenerateSchedules(", "async loadAssessment("),
-      read(`${M10_SRC}/scheduling/schedule-writer.ts`),
-    ];
-    for (const body of bodies) {
+    ]) {
+      expect(body).toContain("takeBoundedLock(");
       expect(body).not.toMatch(
-        /takeBoundedLock|lockRecordKey|lockAssessmentRow|lockTriggeredSfv|lock_timeout/,
+        /lockRecordKey|lockAssessmentRow|lockTriggeredSfv|\.for\("update"\)/,
       );
     }
+    // Regenerate bounds the schedule INSERT in the writer, on the request path only (the consumer's call stays unbounded).
+    const writer = read(`${M10_SRC}/scheduling/schedule-writer.ts`);
+    expect(writer).toMatch(/input\.boundLockWait\s*\?\s*takeBoundedLock\(/);
+    expect(writer).toContain("boundLockWait: true");
+    for (const route of [
+      "`POST /hope/schedules/:id/skip`, `POST /hope/submissions/:id/retry`",
+      "`POST /hope/admin/regenerate-schedules`",
+    ]) {
+      expect(LOCKS.slice(0, LOCKS.indexOf("**Not covered**")), route).toContain(route);
+    }
     const notCovered = LOCKS.slice(LOCKS.indexOf("**Not covered**"));
+    expect(notCovered).toContain("validation-finding writes");
     for (const route of [
       "POST /hope/schedules/:id/skip",
       "POST /hope/submissions/:id/retry",
       "POST /hope/admin/regenerate-schedules",
-      "validation-finding writes",
+      "POST /hope/submissions/assemble",
     ]) {
-      expect(notCovered, route).toContain(route);
+      expect(notCovered, route).not.toContain(route);
     }
-    expect(notCovered).not.toContain("POST /hope/submissions/assemble");
   });
 
   it("the cron ticks bound their waits with boundCronLockWait, not takeBoundedLock; the eraser has no timeout", () => {

@@ -6,6 +6,7 @@
 // emitted openapi.json, which is regenerated centrally) so a summary that drifts from the code fails here.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { HOPE_SCHEDULE_SKIP_REASON_CODES } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { ROUTE_ENRICHMENTS } from "../../../scripts/openapi/enrichments";
 
@@ -115,8 +116,32 @@ describe("M10 OpenAPI summaries: refusals added to existing routes", () => {
     expect(summary).toContain("POST /admissions/{admissionId}/hope/sfv");
   });
 
-  it("no summary calls the record-skip route a bounded-lock route (it keeps PostgreSQL's default of no timeout)", () => {
-    expect(summaryOf("POST /api/v1/hope/schedules/:id/skip")).not.toContain("M10_RECORD_BUSY");
+  it("the skip, retry and regenerate summaries name the bounded wait (409 M10_RECORD_BUSY), as the code takes it", () => {
+    for (const route of [
+      "POST /api/v1/hope/schedules/:id/skip",
+      "POST /api/v1/hope/submissions/:id/retry",
+      "POST /api/v1/hope/admin/regenerate-schedules",
+    ]) {
+      expect(summaryOf(route), route).toContain("M10_RECORD_BUSY");
+    }
+  });
+
+  it("the skip summary names the closed reason list and that a note is refused", () => {
+    const summary = summaryOf("POST /api/v1/hope/schedules/:id/skip");
+    for (const code of HOPE_SCHEDULE_SKIP_REASON_CODES) expect(summary).toContain(code);
+    expect(summary).toContain("a note included");
+  });
+
+  it.each([
+    "POST /api/v1/hope/schedules/:id/skip",
+    "POST /api/v1/hope/submissions/:id/retry",
+    "POST /api/v1/hope/submissions/assemble",
+    "POST /api/v1/hope/submissions/:id/mark-uploaded",
+    "POST /api/v1/hope/submissions/:id/cancel",
+    "POST /api/v1/hope/submissions/:id/results",
+    "POST /api/v1/hope/admin/regenerate-schedules",
+  ])("%s documents that an AI principal is refused (403)", (route) => {
+    expect(summaryOf(route)).toContain("AI principals refused (403)");
   });
 });
 

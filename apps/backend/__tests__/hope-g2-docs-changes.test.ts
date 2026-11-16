@@ -51,25 +51,29 @@ describe("CHANGES.md: lock coverage matches the code", () => {
     );
   });
 
-  it("keeps skip, retry, regenerate-schedules and the validation-finding writes in the uncovered list, and the code takes no bounded lock there", () => {
+  it("lists only the validation-finding writes as uncovered, and the code bounds the skip, retry and regenerate waits", () => {
     const uncovered = notCoveredSentence();
+    expect(uncovered).toContain("validation-finding writes");
     for (const route of [
       "POST /hope/schedules/{id}/skip",
       "POST /hope/submissions/{id}/retry",
       "POST /hope/admin/regenerate-schedules",
-      "validation-finding writes",
     ]) {
-      expect(uncovered).toContain(route);
+      expect(uncovered).not.toContain(route);
+      // ... and the covered list names them, as the routes whose queued write is bounded.
+      expect(NEWEST).toContain(route);
     }
     const code = read(`${M10}/hope-route-service-db.ts`);
     const body = (name: string, next: string): string =>
       code.slice(code.indexOf(`async ${name}(`), code.indexOf(`async ${next}(`));
-    expect(body("skipSchedule", "recordTimepoint")).not.toMatch(/takeBoundedLock|lockRecordKey/);
-    expect(body("retrySubmission", "assembleSubmission")).not.toMatch(
-      /takeBoundedLock|lockRecordKey/,
+    expect(body("skipSchedule", "recordTimepoint")).toContain("takeBoundedLock(");
+    expect(body("retrySubmission", "assembleSubmission")).toContain("takeBoundedLock(");
+    // regenerate takes its bound where it writes: the schedule insert, on the request path only.
+    expect(read(`${M10}/scheduling/schedule-writer.ts`)).toMatch(
+      /input\.boundLockWait\s*\?\s*takeBoundedLock\(/,
     );
-    expect(body("regenerateSchedules", "loadAssessment")).not.toMatch(
-      /takeBoundedLock|lockRecordKey/,
+    expect(body("regenerateSchedules", "loadAssessment")).toContain(
+      "regenerateSchedulesForAdmission(",
     );
   });
 
