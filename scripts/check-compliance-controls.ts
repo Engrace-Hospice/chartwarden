@@ -74,6 +74,7 @@ import {
   claudeGuardMatcherViolations,
   matcherCovers,
 } from "./harness/hook-matcher";
+import { hookObjectViolations } from "./harness/hook-pin";
 
 export const MAX_REVIEW_DAYS = 180;
 const STATUSES = new Set(["implemented", "partial", "gap", "not-applicable"]);
@@ -709,6 +710,8 @@ export function checkHarness(files: HarnessFiles): string[] {
   const ask = new Set(s.permissions?.ask ?? []);
   for (const d of REQUIRED_READ_DENIES)
     if (!deny.has(d)) v.push(`.claude/settings.json: permissions.deny is missing \`${d}\``);
+  // The whole hook object, not only its command and timeout (wave 8, ADV6-11): no `if`, `shell`, `once`, `asyncRewake`, another type, a stray hook.
+  v.push(...hookObjectViolations(s, PINNED_CLAUDE_HOOKS));
   for (const p of PINNED_CLAUDE_HOOKS) {
     const script = `scripts/harness/${p.script}.ts`;
     const commands = commandsFor(s, p.event).filter((c) => c.includes(script));
