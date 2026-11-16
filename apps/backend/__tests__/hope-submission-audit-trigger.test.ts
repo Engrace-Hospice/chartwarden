@@ -14,18 +14,18 @@ const MIGRATIONS = join(process.cwd(), "packages/db/migrations");
 const TRIGGER_FUNCTION = "audit_phi_write_hope_submission()";
 
 /** The LAST migration that (re)defines the trigger function: the one that decides what the trigger does. */
-function currentDefinition(): { file: string; body: string } {
+function currentDefinition(triggerFunction = TRIGGER_FUNCTION): { file: string; body: string } {
   let found: { file: string; body: string } | undefined;
   for (const file of readdirSync(MIGRATIONS)
     .filter((f) => f.endsWith(".sql"))
     .sort()) {
     const text = readFileSync(join(MIGRATIONS, file), "utf8");
-    const at = text.indexOf(`CREATE OR REPLACE FUNCTION ${TRIGGER_FUNCTION}`);
+    const at = text.indexOf(`CREATE OR REPLACE FUNCTION ${triggerFunction}`);
     if (at < 0) continue;
     const end = text.indexOf("END $$;", at);
     found = { file, body: text.slice(at, end) };
   }
-  if (!found) throw new Error("no migration defines the hope_submission audit trigger function");
+  if (!found) throw new Error(`no migration defines ${triggerFunction}`);
   return found;
 }
 
@@ -59,7 +59,9 @@ describe("audit_phi_write_hope_submission: the row images list every column of t
 
   it("scrubs exactly the columns M10_AUDIT_DENYLIST names, the two operator-typed references included", () => {
     const scrubbed = [
-      ...(body.match(/v_cols text\[\] := ARRAY\[([^\]]*)\]/)?.[1] ?? "").matchAll(/'([a-z_0-9]+)'/g),
+      ...(body.match(/v_cols text\[\] := ARRAY\[([^\]]*)\]/)?.[1] ?? "").matchAll(
+        /'([a-z_0-9]+)'/g,
+      ),
     ].map((m) => m[1] as string);
     expect(scrubbed.sort()).toEqual([...M10_AUDIT_DENYLIST.hope_submission].sort());
     expect(scrubbed).toEqual(
@@ -107,6 +109,63 @@ describe("audit_phi_write_hope_submission_result_event: the report reference is 
       );
     expect(definitions.at(-1)).toBe(
       "1499_m10_hope_submission_result_event_audit_scrub_reference.sql",
+    );
+  });
+});
+
+describe("audit_phi_write_hope_submission_item: the row images list every column of the table, and never read the XML", () => {
+  const { file, body } = currentDefinition("audit_phi_write_hope_submission_item()");
+  const columns = Object.values(getTableColumns(schema.hopeSubmissionItems)).map((c) => c.name);
+
+  it("is the by-name definition (1500 or later), not the to_jsonb(row) one", () => {
+    expect(file >= "1500").toBe(true);
+    expect(body).not.toMatch(/to_jsonb\(/i);
+  });
+
+  it.each(["OLD", "NEW"] as const)(
+    "the %s image names every column except the XML result, by column",
+    (record) => {
+      const named = imageKeys(body, record).sort();
+      expect(named).toEqual(columns.filter((c) => c !== "iqies_validation_result").sort());
+    },
+  );
+
+  it("never reads iqies_validation_result off the row: it is a placeholder the scrub list replaces", () => {
+    expect(body).not.toMatch(/(OLD|NEW)\.iqies_validation_result/);
+    expect(body.match(/'iqies_validation_result', NULL::text/g)).toHaveLength(2);
+  });
+
+  it("scrubs exactly the columns M10_AUDIT_DENYLIST names", () => {
+    const scrubbed = [
+      ...(body.match(/v_cols text\[\] := ARRAY\[([^\]]*)\]/)?.[1] ?? "").matchAll(
+        /'([a-z_0-9]+)'/g,
+      ),
+    ].map((m) => m[1] as string);
+    expect(scrubbed.sort()).toEqual([...M10_AUDIT_DENYLIST.hope_submission_item].sort());
+  });
+
+  it("keeps jsonb_build_object under its 100-argument limit", () => {
+    const pairs = imageKeys(body, "NEW").length + 1; // + the iqies_validation_result placeholder
+    expect(pairs * 2).toBeLessThanOrEqual(100);
+  });
+
+  it("keeps the audit event the old trigger wrote: type, resource, retention class and the scrubbed images", () => {
+    expect(body).toContain("'hope_submission_item.' || lower(TG_OP)");
+    expect(body).toContain("'hope_submission_item',");
+    expect(body).toContain("'compliance'");
+    expect(body).toContain("public.audit_scrub(");
+    expect(body.match(/\), v_cols\);/g)).toHaveLength(2);
+  });
+
+  it("keeps SECURITY DEFINER, a pinned search_path with pg_temp last, and the audit writer as owner", () => {
+    expect(body).toContain("SECURITY DEFINER");
+    expect(body).toContain("SET search_path = pg_catalog, public, pg_temp");
+    const migration = readFileSync(join(MIGRATIONS, file), "utf8");
+    expect(migration).toContain(
+      "ALTER FUNCTION audit_phi_write_hope_submission_item() OWNER TO chartwarden_audit_writer;",
+    );
+    expect(migration).toMatch(
+      /CREATE OR REPLACE TRIGGER "trg_audit_hope_submission_item" AFTER INSERT OR UPDATE OR DELETE ON hope_submission_item/,
     );
   });
 });

@@ -1028,6 +1028,150 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
     });
   });
 
+  describe("audit_phi_write_hope_submission_item: the audit rows are exactly what audit_scrub(to_jsonb(row)) wrote (1500)", () => {
+    const DENYLIST = ["iqies_validation_result"];
+    const image = async (id: string): Promise<string> =>
+      (
+        await admin.query(
+          "SELECT audit_scrub(to_jsonb(i), $2::text[])::text AS image FROM hope_submission_item i WHERE id=$1",
+          [id, DENYLIST],
+        )
+      ).rows[0].image as string;
+    const auditOf = async (id: string, op: "insert" | "update" | "delete") =>
+      (
+        await admin.query(
+          `SELECT before::text AS before, after::text AS after, resource_kind, retention_class, outcome, severity
+             FROM audit_event WHERE resource_id=$1 AND event_type=$2 ORDER BY created_at DESC, id DESC LIMIT 1`,
+          [id, `hope_submission_item.${op}`],
+        )
+      ).rows[0];
+    const insertItem = async (columns: Record<string, unknown>): Promise<string> => {
+      const batch = await seedBatch("packaged", []);
+      const id = uuid(++seq);
+      const values: Record<string, unknown> = {
+        id,
+        organization_id: ORG_A,
+        hope_submission_id: batch,
+        hope_assessment_id: uuid(++seq),
+        ...Object.fromEntries(
+          Object.entries(columns).map(([key, value]) => [
+            key,
+            value !== null && typeof value === "object" ? JSON.stringify(value) : value,
+          ]),
+        ),
+      };
+      const names = Object.keys(values);
+      await admin.query(
+        `INSERT INTO hope_submission_item (${names.join(", ")}) VALUES (${names.map((_, i) => `$${i + 1}`).join(", ")})`,
+        names.map((name) => values[name]),
+      );
+      return id;
+    };
+    const SHAPES: readonly (readonly [string, Record<string, unknown>])[] = [
+      [
+        "every column filled (an accepted item)",
+        {
+          item_status: "accepted",
+          operation: "submit",
+          spec_version_id: "99999999-9999-4999-8999-999999999999",
+          assessment_version: "3",
+          validation_profile: "profile-1",
+          xml_filename: "HOPE_HA_SUBMIT.xml",
+          xml_storage_uri: "db://hope_submission/x/HOPE_HA_SUBMIT.xml",
+          xml_sha256: "f".repeat(64),
+          xml_size_bytes: 4321,
+          iqies_record_id: "REC-9",
+          iqies_validation_result: { xmlContentBase64: "QUJD".repeat(40), code: "-7", note: "n" },
+          processed_at: "2026-06-03T01:02:03.123456Z",
+        },
+      ],
+      ["a pending item, the rest empty", { item_status: "pending" }],
+      [
+        "a rejected item carrying a 3 MB result (the column the trigger must not read)",
+        {
+          item_status: "rejected",
+          iqies_validation_result: { xmlContentBase64: "QUJD".repeat(750_000) },
+        },
+      ],
+    ];
+
+    it.each(SHAPES)(
+      "%s: INSERT, UPDATE and DELETE rows are identical to the old image, the scrubbed column included",
+      async (_label, columns) => {
+        const id = await insertItem(columns);
+        const afterInsert = await image(id);
+        const inserted = await auditOf(id, "insert");
+        expect(inserted.before).toBeNull();
+        expect(inserted.after).toBe(afterInsert);
+
+        await admin.query(
+          "UPDATE hope_submission_item SET xml_size_bytes = 77, updated_at = now() WHERE id=$1",
+          [id],
+        );
+        const afterUpdate = await image(id);
+        const updated = await auditOf(id, "update");
+        expect(updated.before).toBe(afterInsert);
+        expect(updated.after).toBe(afterUpdate);
+        expect(updated.before).not.toBe(updated.after);
+
+        await admin.query("DELETE FROM hope_submission_item WHERE id=$1", [id]);
+        const deleted = await auditOf(id, "delete");
+        expect(deleted.before).toBe(afterUpdate);
+        expect(deleted.after).toBeNull();
+        for (const event of [inserted, updated, deleted]) {
+          expect(event).toMatchObject({
+            resource_kind: "hope_submission_item",
+            retention_class: "compliance",
+            outcome: "success",
+            severity: "info",
+          });
+        }
+        // the scrubbed column reads "<changed>", whatever it held
+        const after = JSON.parse(inserted.after as string) as Record<string, unknown>;
+        for (const column of DENYLIST) expect(after[column]).toBe("<changed>");
+      },
+    );
+
+    it("an UPDATE of an item holding a 1.5 MB result reads none of it out of TOAST (the trigger never converts iqies_validation_result)", async () => {
+      const id = await insertItem({
+        iqies_validation_result: { xmlContentBase64: randomBytes(1_500_000).toString("base64") },
+      });
+      // pg_stat counters are flushed on demand: read them before and after each statement
+      const toastBlocks = async (): Promise<number> => {
+        await admin.query("SELECT pg_stat_force_next_flush()");
+        const { rows } = await admin.query(
+          "SELECT coalesce(toast_blks_hit,0) + coalesce(toast_blks_read,0) AS n FROM pg_statio_all_tables WHERE relid = 'hope_submission_item'::regclass",
+        );
+        return Number(rows[0].n);
+      };
+      // control: converting the whole row (what the old trigger did, twice) does read the result, so the counter can see it
+      const beforeControl = await toastBlocks();
+      await admin.query("SELECT to_jsonb(i) FROM hope_submission_item i WHERE id=$1", [id]);
+      const control = (await toastBlocks()) - beforeControl;
+      expect(control).toBeGreaterThan(100);
+
+      const before = await toastBlocks();
+      await admin.query("UPDATE hope_submission_item SET xml_size_bytes = 2 WHERE id=$1", [id]);
+      const updateReads = (await toastBlocks()) - before;
+
+      expect(updateReads).toBeLessThan(10);
+      expect((await auditOf(id, "update")).after).toContain('"xml_size_bytes": 2');
+    });
+
+    it("the image names exactly the table's columns (a column added without updating the trigger fails here)", async () => {
+      const id = await insertItem({ item_status: "pending" });
+      await admin.query("UPDATE hope_submission_item SET xml_size_bytes = 1 WHERE id=$1", [id]);
+      const { after } = await auditOf(id, "update");
+      const keys = Object.keys(JSON.parse(after as string) as Record<string, unknown>).sort();
+      const columns = (
+        await admin.query(
+          "SELECT column_name FROM information_schema.columns WHERE table_name='hope_submission_item' AND table_schema='public' ORDER BY column_name",
+        )
+      ).rows.map((r) => r.column_name as string);
+      expect(keys).toEqual(columns);
+    });
+  });
+
   describe("audit_phi_write_hope_submission_result_event: the CMS response, its message and the report reference are scrubbed (1499)", () => {
     it("an INSERT's audit image holds none of the three values, whatever the row held", async () => {
       const batch = await seedBatch("exported", [await seedAssessment()]);
