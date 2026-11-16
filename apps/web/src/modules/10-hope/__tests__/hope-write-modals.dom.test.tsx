@@ -141,6 +141,33 @@ describe.each([
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("holds Cancel and Escape shut while the request is out, and frees them once it is answered", async () => {
+    let answer: (reply: ReturnType<typeof refusal>) => void = () => undefined;
+    const post = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const { dialog, onClose } = renderModal(post);
+    press(dialog, submit);
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+
+    expect(
+      (within(dialog).getByRole("button", { name: cancel }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+
+    answer(refusal(409, "This window is already complete."));
+    await within(dialog).findByRole("alert");
+    expect(
+      (within(dialog).getByRole("button", { name: cancel }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("still closes when the caller's completion callback throws, and reports the throw instead of leaving it unhandled", async () => {
     const reportError = vi.fn();
     restores.push(stubProperty(globalThis, "reportError", reportError));
@@ -256,6 +283,23 @@ describe("the recording modal", () => {
     ];
     expect(path).toBe("/api/v1/admissions/{admissionId}/hope/timepoints");
     expect(init.body.authorDiscipline).toBe("RN");
+  });
+});
+
+describe("the recording modal's fieldset", () => {
+  it("is a plain wrapper: the form's layout and scrolling are on the div inside it, not on the fieldset", () => {
+    const { dialog } = renderRecord(vi.fn(async () => ok({ id: "created-fieldset" })));
+
+    const fieldset = dialog.querySelector("fieldset") as HTMLFieldSetElement;
+    const inner = fieldset.firstElementChild as HTMLElement;
+
+    expect(fieldset.style.border).toMatch(/^0/);
+    expect(fieldset.style.display).toBe("");
+    expect(fieldset.style.overflowY).toBe("");
+    expect(inner.tagName).toBe("DIV");
+    expect(inner.style.display).toBe("flex");
+    expect(inner.style.overflowY).toBe("auto");
+    expect(within(inner).getByRole("button", { name: "Record draft" })).toBeTruthy();
   });
 });
 

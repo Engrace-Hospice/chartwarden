@@ -442,276 +442,278 @@ export function HopeRecordModal({
       width="36rem"
       accent={t.primary}
     >
-      <fieldset disabled={busy} style={body}>
-        <h2 style={title}>{`Record ${rfaLabel(rfaKind)}`}</h2>
+      <fieldset disabled={busy} style={plainFieldset}>
+        <div style={body}>
+          <h2 style={title}>{`Record ${rfaLabel(rfaKind)}`}</h2>
 
-        {/* The instrument gap, stated before the clinician commits rather than discovered after. */}
-        <p style={banner}>
-          Four HOPE sections have item definitions in this system — I (diagnosis), J (J2030 / J2050
-          / J2051) and N (medications). The remaining sections will be reported as missing by the
-          CMS pre-submission check until their items are built.
-        </p>
-
-        <SelectField
-          label="Reason for assessment"
-          value={rfaKind}
-          disabled={pinnedRfa !== undefined}
-          onChange={(e) => {
-            setRfaKind(e.target.value as RfaKind);
-            dropAskedSpan();
-          }}
-          options={RFA_KINDS.map((k) => ({ value: k, label: rfaLabel(k) }))}
-        />
-        {pinnedRfa !== undefined ? (
-          <p style={meta}>
-            Pinned by the scheduled window — a payload whose RFA does not match the schedule is
-            refused (M10_RFA_KIND_MISMATCH).
+          {/* The instrument gap, stated before the clinician commits rather than discovered after. */}
+          <p style={banner}>
+            Four HOPE sections have item definitions in this system — I (diagnosis), J (J2030 /
+            J2050 / J2051) and N (medications). The remaining sections will be reported as missing
+            by the CMS pre-submission check until their items are built.
           </p>
-        ) : null}
 
-        <TextField
-          label="Visit date &amp; time"
-          type="datetime-local"
-          value={targetLocal}
-          onChange={(e) => {
-            setTargetLocal(e.target.value);
-            setDateEdited(true);
-            dropAskedSpan();
-          }}
-          hint={dateEdited ? undefined : DEFAULT_DATE_HINT}
-          error={targetIso === "" ? "Enter a valid visit date and time." : undefined}
-        />
-
-        {authorRoles.length === 0 ? (
-          // Not a permission verdict — the server still owns §4.7. This says the capture cannot be
-          // ATTRIBUTED, because none of the caller's roles is in the author vocabulary at all.
-          <p style={meta}>
-            None of your roles can be recorded as a HOPE author discipline, so this capture cannot
-            be attributed. Ask an administrator to review your role grants.
-          </p>
-        ) : (
           <SelectField
-            label="Recording as"
-            value={authorDiscipline}
-            onChange={(e) => setAuthorDiscipline(e.target.value as AuthorDiscipline | "")}
-            options={[
-              ...(authorRoles.length > 1 ? [{ value: "", label: "Select a discipline…" }] : []),
-              ...authorRoles.map((d) => ({ value: d, label: authorDisciplineLabel(d) })),
-            ]}
-          />
-        )}
-
-        {rfaKind === "05_discharge" ? (
-          <>
-            <SelectField
-              label="Discharge reason"
-              value={dischargeReason}
-              onChange={(e) => setDischargeReason(e.target.value as DischargeReason | "")}
-              options={[
-                { value: "", label: "Select a reason" },
-                ...DISCHARGE_REASONS.map((r) => ({ value: r, label: humanize(r) })),
-              ]}
-            />
-            {forbidsQ || needsQ ? (
-              <p style={meta}>
-                {forbidsQ
-                  ? "Section Q (Participation) is forbidden on a death discharge (D9) and will not be sent."
-                  : "Section Q (Participation) is required on this discharge (D9) and will be recorded."}
-              </p>
-            ) : null}
-          </>
-        ) : null}
-
-        {/* The §4.4 / D12 late-completion confirmation. Shown from the STORED window; the server decides. */}
-        {span === "late" ? (
-          <div style={lateBox}>
-            <StatusPill label="Late completion" tone="warning" />
-            <p style={meta}>
-              The window has closed and the late deadline has not passed (judged at the later of the
-              visit date and now), so this is a late completion. CMS requires a reason code, and
-              each late completion counts against the HQRP compliance rate (D12).
-            </p>
-            <SelectField
-              label="Late completion reason"
-              value={lateReason}
-              onChange={(e) => setLateReason(e.target.value as LateReasonCode | "")}
-              options={[
-                { value: "", label: "Select a reason" },
-                ...CHOOSABLE_LATE_REASONS.map((r) => ({ value: r, label: humanize(r) })),
-              ]}
-            />
-          </div>
-        ) : null}
-        {span === "expired" ? (
-          <HopeOverrideSection
-            canOverride={canOverride}
-            checked={adminOverride}
-            onCheckedChange={setAdminOverride}
-            text={overrideJustification}
-            onTextChange={(text) => {
-              setOverrideJustification(text);
-              setJustificationRefusal(null);
+            label="Reason for assessment"
+            value={rfaKind}
+            disabled={pinnedRfa !== undefined}
+            onChange={(e) => {
+              setRfaKind(e.target.value as RfaKind);
+              dropAskedSpan();
             }}
-            fieldId={justificationId}
-            error={justificationError}
+            options={RFA_KINDS.map((k) => ({ value: k, label: rfaLabel(k) }))}
           />
-        ) : null}
-        {span === "before_open" ? (
-          <p style={meta}>
-            This visit date is before the window opens; the server will refuse it
-            (M10_TIMEPOINT_NOT_OPEN).
-          </p>
-        ) : null}
+          {pinnedRfa !== undefined ? (
+            <p style={meta}>
+              Pinned by the scheduled window — a payload whose RFA does not match the schedule is
+              refused (M10_RFA_KIND_MISMATCH).
+            </p>
+          ) : null}
 
-        <h3 style={sectionTitle}>Section I — Active diagnoses</h3>
-        <CodeSearchInput
-          label="Primary terminal diagnosis (ICD-10-CM)"
-          system="icd10cm"
-          value={primaryDiagnosisIcd10}
-          onChange={(code) => setPrimaryDiagnosisIcd10(code)}
-          placeholder="Search ICD-10-CM, e.g. C34.90"
-        />
+          <TextField
+            label="Visit date &amp; time"
+            type="datetime-local"
+            value={targetLocal}
+            onChange={(e) => {
+              setTargetLocal(e.target.value);
+              setDateEdited(true);
+              dropAskedSpan();
+            }}
+            hint={dateEdited ? undefined : DEFAULT_DATE_HINT}
+            error={targetIso === "" ? "Enter a valid visit date and time." : undefined}
+          />
 
-        <h3 style={sectionTitle}>Section J — Health conditions</h3>
-        <label style={checkRow}>
-          <input
-            type="checkbox"
-            checked={painScreened}
-            onChange={(e) => setPainScreened(e.target.checked)}
-          />
-          <span>J2030 — screened for pain</span>
-        </label>
-        {painScreened ? (
-          <TextAreaField
-            label="Pain characteristics"
-            value={painCharacteristics}
-            onChange={(e) => setPainCharacteristics(e.target.value)}
-            rows={2}
-          />
-        ) : null}
-        <label style={checkRow}>
-          <input
-            type="checkbox"
-            checked={dyspneaScreened}
-            onChange={(e) => setDyspneaScreened(e.target.checked)}
-          />
-          <span>J2050 — screened for shortness of breath</span>
-        </label>
-        {dyspneaScreened ? (
-          <TextAreaField
-            label="Dyspnea characteristics"
-            value={dyspneaCharacteristics}
-            onChange={(e) => setDyspneaCharacteristics(e.target.value)}
-            rows={2}
-          />
-        ) : null}
-
-        <p style={meta}>J2051 — symptom impact at this visit</p>
-        <div style={symptomGrid}>
-          {SYMPTOMS.map((symptom) => (
+          {authorRoles.length === 0 ? (
+            // Not a permission verdict — the server still owns §4.7. This says the capture cannot be
+            // ATTRIBUTED, because none of the caller's roles is in the author vocabulary at all.
+            <p style={meta}>
+              None of your roles can be recorded as a HOPE author discipline, so this capture cannot
+              be attributed. Ask an administrator to review your role grants.
+            </p>
+          ) : (
             <SelectField
-              key={symptom}
-              label={humanize(symptom)}
-              value={severities[symptom] ?? ""}
-              onChange={(e) =>
-                setSeverities((prev) => {
-                  const next = { ...prev };
-                  if (e.target.value === "") delete next[symptom];
-                  else next[symptom] = e.target.value as Severity;
-                  return next;
-                })
-              }
+              label="Recording as"
+              value={authorDiscipline}
+              onChange={(e) => setAuthorDiscipline(e.target.value as AuthorDiscipline | "")}
               options={[
-                { value: "", label: "Not screened" },
-                ...SEVERITIES.map((s) => ({ value: s, label: humanize(s) })),
+                ...(authorRoles.length > 1 ? [{ value: "", label: "Select a discipline…" }] : []),
+                ...authorRoles.map((d) => ({ value: d, label: authorDisciplineLabel(d) })),
               ]}
             />
-          ))}
-        </div>
-        {severities.other !== undefined ? (
-          <TextField
-            label="Other symptom — label"
-            maxLength={OTHER_SYMPTOM_LABEL_MAX}
-            value={otherSymptomLabel}
-            onChange={(e) => setOtherSymptomLabel(e.target.value)}
-          />
-        ) : null}
-        {triggering.length > 0 ? (
-          // Informational, never blocking — the clinician records what is clinically true and the SFV
-          // is the consequence. The SERVER evaluates the trigger from the stored payload at sign (D4);
-          // this is a preview of a decision it makes, not the decision.
-          <output style={triggerBox}>
-            <StatusPill label="Follow-up will be required" tone="warning" />
-            <p style={meta}>
-              {triggering.map(humanize).join(", ")} at moderate or severe will create a Symptom
-              Follow-Up Visit obligation due within 2 calendar days once this timepoint is signed.
-            </p>
-          </output>
-        ) : null}
+          )}
 
-        <h3 style={sectionTitle}>Section N — Medications</h3>
-        <label style={checkRow}>
-          <input
-            type="checkbox"
-            checked={opioidPrescribed}
-            onChange={(e) => setOpioidPrescribed(e.target.checked)}
-          />
-          <span>Opioid prescribed for pain</span>
-        </label>
-        {opioidPrescribed ? (
-          <>
-            <label style={checkRow}>
-              <input
-                type="checkbox"
-                checked={scheduledBowelRegimen}
-                onChange={(e) => setScheduledBowelRegimen(e.target.checked)}
-              />
-              <span>Scheduled bowel regimen in place</span>
-            </label>
-            {!scheduledBowelRegimen ? (
-              <TextField
-                label="Bowel regimen contraindication"
-                maxLength={BOWEL_CONTRAINDICATION_MAX}
-                value={bowelRegimenContraindication}
-                onChange={(e) => setBowelRegimenContraindication(e.target.value)}
-              />
-            ) : null}
-          </>
-        ) : null}
-
-        {error ? (
-          <p ref={alertRef} tabIndex={-1} role="alert" style={errorText}>
-            {error}
-          </p>
-        ) : null}
-        {existingDraft ? (
-          <output ref={existingRef} tabIndex={-1} style={errorText}>
-            {EXISTING_DRAFT_NOTICE}
-          </output>
-        ) : null}
-
-        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-          {existingDraft ? (
+          {rfaKind === "05_discharge" ? (
             <>
-              <Button tone="tertiary" onClick={() => leaveExisting(existingDraft, false)}>
-                Close
-              </Button>
-              {onOpenExisting ? (
-                <Button onClick={() => leaveExisting(existingDraft, true)}>
-                  Open existing draft
-                </Button>
+              <SelectField
+                label="Discharge reason"
+                value={dischargeReason}
+                onChange={(e) => setDischargeReason(e.target.value as DischargeReason | "")}
+                options={[
+                  { value: "", label: "Select a reason" },
+                  ...DISCHARGE_REASONS.map((r) => ({ value: r, label: humanize(r) })),
+                ]}
+              />
+              {forbidsQ || needsQ ? (
+                <p style={meta}>
+                  {forbidsQ
+                    ? "Section Q (Participation) is forbidden on a death discharge (D9) and will not be sent."
+                    : "Section Q (Participation) is required on this discharge (D9) and will be recorded."}
+                </p>
               ) : null}
             </>
-          ) : (
+          ) : null}
+
+          {/* The §4.4 / D12 late-completion confirmation. Shown from the STORED window; the server decides. */}
+          {span === "late" ? (
+            <div style={lateBox}>
+              <StatusPill label="Late completion" tone="warning" />
+              <p style={meta}>
+                The window has closed and the late deadline has not passed (judged at the later of
+                the visit date and now), so this is a late completion. CMS requires a reason code,
+                and each late completion counts against the HQRP compliance rate (D12).
+              </p>
+              <SelectField
+                label="Late completion reason"
+                value={lateReason}
+                onChange={(e) => setLateReason(e.target.value as LateReasonCode | "")}
+                options={[
+                  { value: "", label: "Select a reason" },
+                  ...CHOOSABLE_LATE_REASONS.map((r) => ({ value: r, label: humanize(r) })),
+                ]}
+              />
+            </div>
+          ) : null}
+          {span === "expired" ? (
+            <HopeOverrideSection
+              canOverride={canOverride}
+              checked={adminOverride}
+              onCheckedChange={setAdminOverride}
+              text={overrideJustification}
+              onTextChange={(text) => {
+                setOverrideJustification(text);
+                setJustificationRefusal(null);
+              }}
+              fieldId={justificationId}
+              error={justificationError}
+            />
+          ) : null}
+          {span === "before_open" ? (
+            <p style={meta}>
+              This visit date is before the window opens; the server will refuse it
+              (M10_TIMEPOINT_NOT_OPEN).
+            </p>
+          ) : null}
+
+          <h3 style={sectionTitle}>Section I — Active diagnoses</h3>
+          <CodeSearchInput
+            label="Primary terminal diagnosis (ICD-10-CM)"
+            system="icd10cm"
+            value={primaryDiagnosisIcd10}
+            onChange={(code) => setPrimaryDiagnosisIcd10(code)}
+            placeholder="Search ICD-10-CM, e.g. C34.90"
+          />
+
+          <h3 style={sectionTitle}>Section J — Health conditions</h3>
+          <label style={checkRow}>
+            <input
+              type="checkbox"
+              checked={painScreened}
+              onChange={(e) => setPainScreened(e.target.checked)}
+            />
+            <span>J2030 — screened for pain</span>
+          </label>
+          {painScreened ? (
+            <TextAreaField
+              label="Pain characteristics"
+              value={painCharacteristics}
+              onChange={(e) => setPainCharacteristics(e.target.value)}
+              rows={2}
+            />
+          ) : null}
+          <label style={checkRow}>
+            <input
+              type="checkbox"
+              checked={dyspneaScreened}
+              onChange={(e) => setDyspneaScreened(e.target.checked)}
+            />
+            <span>J2050 — screened for shortness of breath</span>
+          </label>
+          {dyspneaScreened ? (
+            <TextAreaField
+              label="Dyspnea characteristics"
+              value={dyspneaCharacteristics}
+              onChange={(e) => setDyspneaCharacteristics(e.target.value)}
+              rows={2}
+            />
+          ) : null}
+
+          <p style={meta}>J2051 — symptom impact at this visit</p>
+          <div style={symptomGrid}>
+            {SYMPTOMS.map((symptom) => (
+              <SelectField
+                key={symptom}
+                label={humanize(symptom)}
+                value={severities[symptom] ?? ""}
+                onChange={(e) =>
+                  setSeverities((prev) => {
+                    const next = { ...prev };
+                    if (e.target.value === "") delete next[symptom];
+                    else next[symptom] = e.target.value as Severity;
+                    return next;
+                  })
+                }
+                options={[
+                  { value: "", label: "Not screened" },
+                  ...SEVERITIES.map((s) => ({ value: s, label: humanize(s) })),
+                ]}
+              />
+            ))}
+          </div>
+          {severities.other !== undefined ? (
+            <TextField
+              label="Other symptom — label"
+              maxLength={OTHER_SYMPTOM_LABEL_MAX}
+              value={otherSymptomLabel}
+              onChange={(e) => setOtherSymptomLabel(e.target.value)}
+            />
+          ) : null}
+          {triggering.length > 0 ? (
+            // Informational, never blocking — the clinician records what is clinically true and the SFV
+            // is the consequence. The SERVER evaluates the trigger from the stored payload at sign (D4);
+            // this is a preview of a decision it makes, not the decision.
+            <output style={triggerBox}>
+              <StatusPill label="Follow-up will be required" tone="warning" />
+              <p style={meta}>
+                {triggering.map(humanize).join(", ")} at moderate or severe will create a Symptom
+                Follow-Up Visit obligation due within 2 calendar days once this timepoint is signed.
+              </p>
+            </output>
+          ) : null}
+
+          <h3 style={sectionTitle}>Section N — Medications</h3>
+          <label style={checkRow}>
+            <input
+              type="checkbox"
+              checked={opioidPrescribed}
+              onChange={(e) => setOpioidPrescribed(e.target.checked)}
+            />
+            <span>Opioid prescribed for pain</span>
+          </label>
+          {opioidPrescribed ? (
             <>
-              <Button tone="tertiary" onClick={onClose} disabled={busy}>
-                Cancel
-              </Button>
-              <Button onClick={submit} disabled={busy || blocked}>
-                {busy ? "Recording…" : "Record draft"}
-              </Button>
+              <label style={checkRow}>
+                <input
+                  type="checkbox"
+                  checked={scheduledBowelRegimen}
+                  onChange={(e) => setScheduledBowelRegimen(e.target.checked)}
+                />
+                <span>Scheduled bowel regimen in place</span>
+              </label>
+              {!scheduledBowelRegimen ? (
+                <TextField
+                  label="Bowel regimen contraindication"
+                  maxLength={BOWEL_CONTRAINDICATION_MAX}
+                  value={bowelRegimenContraindication}
+                  onChange={(e) => setBowelRegimenContraindication(e.target.value)}
+                />
+              ) : null}
             </>
-          )}
+          ) : null}
+
+          {error ? (
+            <p ref={alertRef} tabIndex={-1} role="alert" style={errorText}>
+              {error}
+            </p>
+          ) : null}
+          {existingDraft ? (
+            <output ref={existingRef} tabIndex={-1} style={errorText}>
+              {EXISTING_DRAFT_NOTICE}
+            </output>
+          ) : null}
+
+          <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+            {existingDraft ? (
+              <>
+                <Button tone="tertiary" onClick={() => leaveExisting(existingDraft, false)}>
+                  Close
+                </Button>
+                {onOpenExisting ? (
+                  <Button onClick={() => leaveExisting(existingDraft, true)}>
+                    Open existing draft
+                  </Button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <Button tone="tertiary" onClick={onClose} disabled={busy}>
+                  Cancel
+                </Button>
+                <Button onClick={submit} disabled={busy || blocked}>
+                  {busy ? "Recording…" : "Record draft"}
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </fieldset>
     </Modal>
@@ -719,11 +721,10 @@ export function HopeRecordModal({
 }
 
 // A fieldset, so the form's controls (and the Cancel and Record buttons) are all disabled while a request is out: a browser refuses typing
-// in a disabled fieldset, and a refusal can never land on text that was edited after the request left. Its UA border and sizing are reset.
+// in a disabled fieldset, and a refusal can never land on text that was edited after the request left. It stays a PLAIN wrapper (its UA
+// border and sizing reset): the layout, the scrolling and the height limit belong to the div inside it.
+const plainFieldset: CSSProperties = { border: 0, margin: 0, padding: 0, minWidth: 0 };
 const body: CSSProperties = {
-  border: 0,
-  margin: 0,
-  minWidth: 0,
   padding: "1.5rem",
   display: "flex",
   flexDirection: "column",
