@@ -17,7 +17,7 @@
  *
  * Pure: the caller hands over the parsed commands, so this module imports nothing from the classifier.
  */
-import { isLongInPlace } from "./option-values";
+import { isLongInPlace, longName, spellsLong } from "./option-values";
 import {
   ASSIGN,
   VARIABLE_SETTERS,
@@ -65,9 +65,7 @@ const EXECUTOR_OPTION =
 const isGitPagerOption = (arg: string): boolean => {
   if (arg.startsWith("-O")) return true;
   if (!arg.startsWith("--op")) return false;
-  const eq = arg.indexOf("=");
-  const given = arg.slice(2, eq < 0 ? undefined : eq);
-  return given.length >= 4 && "open-files-in-pager".startsWith(given);
+  return spellsLong(longName(arg), "open-files-in-pager", 4);
 };
 
 /** The parts of a parsed command this rule reads. */

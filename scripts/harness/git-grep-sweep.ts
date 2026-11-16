@@ -7,15 +7,13 @@
  * classifier judges it like `grep -r` over that directory (`secret-reads.ts`, `reachesLiveEnv`). Pure.
  */
 
+import { longName, spellsLong } from "./option-values";
+
 /** `git grep` options (short letters) that take the next word as their value: a pattern, a file, a count. */
 export const GIT_GREP_VALUE_LETTERS = "efmABC";
 /** `git grep` long options that take the next word as their value. */
 export const GIT_GREP_VALUE_LONG =
   /^--(?:max-depth|max-count|threads|context|after-context|before-context|parent-basename)$/;
-
-/** Does `given` (the text after `--`, up to any `=`) spell `name` or an unambiguous prefix of it of `min` characters? */
-const spells = (given: string, name: string, min: number): boolean =>
-  given.length >= min && name.startsWith(given);
 
 /**
  * Does this `git grep` (`rest` is what follows the subcommand) search without applying .gitignore? The last of
@@ -32,11 +30,11 @@ export function gitGrepIgnoresGitignore(rest: readonly string[]): boolean {
     // `-e --no-index` searches for the text `--no-index`: the word after -e / -f is a value, not an option.
     if (/^-[A-Za-z]*[ef]$/.test(a)) k++;
     if (!a.startsWith("--")) continue;
-    const given = a.slice(2, a.indexOf("=") < 0 ? undefined : a.indexOf("="));
-    if (spells(given, "no-index", 5)) noIndex = true;
-    else if (spells(given, "untracked", 2)) untracked = true;
-    else if (spells(given, "no-exclude-standard", 5)) excludeStandard = false;
-    else if (spells(given, "exclude-standard", 3)) excludeStandard = true;
+    const given = longName(a);
+    if (spellsLong(given, "no-index", 5)) noIndex = true;
+    else if (spellsLong(given, "untracked", 2)) untracked = true;
+    else if (spellsLong(given, "no-exclude-standard", 5)) excludeStandard = false;
+    else if (spellsLong(given, "exclude-standard", 3)) excludeStandard = true;
   }
   return (noIndex && excludeStandard !== true) || (untracked && excludeStandard === false);
 }

@@ -12,7 +12,7 @@
  * them on. Pure.
  */
 import { GIT_EXEC_CONFIG, configKey } from "./git-config-rules";
-import { type LongOption, optionValues } from "./option-values";
+import { type LongOption, longName, optionValues, spellsLong } from "./option-values";
 import { VARIABLE_SETTERS, assignments, hasParameterAssignment } from "./shell-assignments";
 import { shellQuote } from "./wrappers";
 
@@ -85,10 +85,8 @@ function grepPagers(rest: readonly string[]): string[] {
     if (GREP_VALUE_SHORT.test(a)) k++;
     else if (a.startsWith("--")) {
       const eq = a.indexOf("=");
-      const given = a.slice(2, eq < 0 ? undefined : eq);
-      if (eq >= 0 && given.length >= PAGER_LONG[1] && PAGER_LONG[0].startsWith(given)) {
+      if (eq >= 0 && spellsLong(longName(a), PAGER_LONG[0], PAGER_LONG[1]))
         out.push(a.slice(eq + 1));
-      }
     } else {
       const pager = /^-[A-Za-z]*O(.+)$/s.exec(a)?.[1];
       if (pager !== undefined) out.push(pager);

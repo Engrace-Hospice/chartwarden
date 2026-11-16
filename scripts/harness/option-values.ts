@@ -8,6 +8,16 @@
  */
 export type LongOption = readonly [name: string, minChars: number];
 
+/** The name of a long option word: the text between `--` and any `=` (`--no-ver=x` is `no-ver`). */
+export const longName = (arg: string): string => {
+  const eq = arg.indexOf("=");
+  return arg.slice(2, eq < 0 ? undefined : eq);
+};
+
+/** Does `given` (the text after `--`, up to any `=`) spell `name` or an unambiguous prefix of it of `minChars` characters? */
+export const spellsLong = (given: string, name: string, minChars: number): boolean =>
+  given.length >= minChars && name.startsWith(given);
+
 /** GNU getopt takes any unambiguous prefix of a long option (`--rec`); `minChars` is the fewest after `--` that is one. */
 export const isLongOption = (arg: string, name: string, minChars: number): boolean =>
   arg.startsWith("--") && arg.length - 2 >= minChars && name.startsWith(arg.slice(2));
@@ -35,8 +45,8 @@ export function optionValues(
     let value: string | undefined;
     if (a.startsWith("--")) {
       const eq = a.indexOf("=");
-      const given = a.slice(2, eq < 0 ? undefined : eq);
-      if (long.some(([name, min]) => given.length >= min && name.startsWith(given)))
+      const given = longName(a);
+      if (long.some(([name, min]) => spellsLong(given, name, min)))
         value = eq < 0 ? args[++k] : a.slice(eq + 1);
     } else if (a.startsWith("-")) {
       for (let p = 1; p < a.length && /[A-Za-z]/.test(a[p] as string); p++) {
