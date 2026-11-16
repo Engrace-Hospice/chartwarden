@@ -601,10 +601,45 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
       expect(text).not.toContain('"acceptance_report"');
       expect(text).not.toContain("->>");
     }
-    // the list is bounded and newest first
+    // the list is bounded: unfinished batches first, then newest first, then the cap
     const listRead = readsOfBatches.find((text) => /order by/i.test(text));
-    expect(listRead).toMatch(/order by "hope_submission"\."created_at" desc/i);
+    expect(listRead).toMatch(
+      /order by "hope_submission"\."status" not in \(\$\d+, \$\d+, \$\d+\) desc, "hope_submission"\."created_at" desc/i,
+    );
     expect(listRead).toMatch(/limit \$\d+/i);
+  });
+
+  it("the 500-batch cap keeps an old unfinished batch behind 501 newer accepted ones, and the answer is newest first", async () => {
+    const PERIOD = "2099-12";
+    const oldExported = uuid(++seq);
+    try {
+      await admin.query(
+        `INSERT INTO hope_submission (id, organization_id, provider_entity_id, submission_period, status, item_count, created_at)
+         VALUES ($1,$2,$3,$4,'exported',1,'2000-01-01T00:00:00Z')`,
+        [oldExported, ORG_A, provider, PERIOD],
+      );
+      await admin.query(
+        `INSERT INTO hope_submission (organization_id, provider_entity_id, submission_period, status, item_count, created_at)
+         SELECT $1, $2, $3, 'accepted', 1, now() + (g || ' seconds')::interval FROM generate_series(1, 501) g`,
+        [ORG_A, provider, PERIOD],
+      );
+
+      const { submissions } = await svc.listSubmissions(ORG_A, provider);
+
+      expect(submissions).toHaveLength(500);
+      expect(submissions.map((s) => s.id)).toContain(oldExported); // by created_at alone it was the 502nd newest
+      const ids = submissions.map((s) => s.id);
+      expect(ids.at(-1)).toBe(oldExported); // and, being the oldest, it is listed last
+      const { rows } = await admin.query(
+        "SELECT id, created_at FROM hope_submission WHERE id = ANY($1::uuid[])",
+        [ids],
+      );
+      const created = new Map(rows.map((r) => [r.id as string, (r.created_at as Date).getTime()]));
+      const times = ids.map((id) => created.get(id) as number);
+      expect(times).toEqual([...times].sort((a, b) => b - a));
+    } finally {
+      await admin.query("DELETE FROM hope_submission WHERE submission_period = $1", [PERIOD]);
+    }
   });
 
   it("migration 1498 backfills the reference of a recorded batch from the jsonb, once, without overwriting or touching updated_at", async () => {

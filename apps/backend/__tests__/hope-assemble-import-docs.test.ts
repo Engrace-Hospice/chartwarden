@@ -56,8 +56,14 @@ describe("assemble: the documents quote the code's cap", () => {
 describe("the submission list and the result import: the documents quote the code's bounds", () => {
   it("the list says 500, newest first, as the code does", () => {
     expect(SERVICE).toContain("const SUBMISSION_LIST_LIMIT = 500;");
-    expect(SERVICE).toContain(".orderBy(desc(SUB.createdAt), desc(SUB.id))");
+    expect(SERVICE).toContain("desc(notInArray(SUB.status, [...CLOSED_BATCH_STATUSES])),");
+    expect(SERVICE).toContain("newestFirst(scoped)");
     for (const text of [SPEC, CHANGES, ENRICHMENTS]) expect(text).toContain("at most 500 batches");
+    // the cap keeps the batches that can still need an operator, and the documents do not claim it is "decades" of one entity
+    for (const text of [SPEC, CHANGES, ENRICHMENTS]) {
+      expect(text).toContain("unfinished batches first");
+      expect(text).not.toMatch(/decades/i);
+    }
   });
 
   it("the import writes 500 rows per statement, as the spec says", () => {

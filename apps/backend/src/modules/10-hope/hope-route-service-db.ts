@@ -39,7 +39,7 @@ import { assertNoPatientIdentifier } from "@chartwarden/shared";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { HopeRfaKind, LatestAssessment, ScaleType } from "@chartwarden/types";
 import { ConflictError, NotFoundError, ValidationError } from "@chartwarden/types";
-import { type SQL, and, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { type SQL, and, count, desc, eq, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";
@@ -104,12 +104,14 @@ import {
 import {
   ACCEPTED_BATCH_STATUSES,
   ANSWERED_BATCH_STATUSES,
+  CLOSED_BATCH_STATUSES,
   appendReportResults,
   classifyCmsResult,
   deriveBatchOutcome,
   isResultImportable,
   isSettledItemStatus,
   manualUploadTransmittedPayload,
+  newestFirst,
   nonBlankRecordId,
   reportHashes,
   resultRefusalCode,
@@ -199,7 +201,12 @@ type SubmissionRow = typeof SUB.$inferSelect;
 // column (migration 1496): projecting it out of the jsonb detoasted every batch's ZIP, so it is selected, not extracted.
 type LightSubmissionRow = Omit<SubmissionRow, "acceptanceReport">;
 
-/** The most batches the submission list answers (newest first): the worklist read has no pagination, so it is bounded. */
+/**
+ * The most batches the submission list answers: the worklist read has no pagination, so it is bounded. The cap is applied
+ * AFTER the batches that can still need an operator (every status but CLOSED_BATCH_STATUSES) are put first, newest first within
+ * each group, so an old `exported` or `rejected` batch cannot fall off the worklist behind 500 newer accepted ones. The answer
+ * itself is newest first. Only when more than this many batches are unfinished at once does the cap cut one of them.
+ */
 const SUBMISSION_LIST_LIMIT = 500;
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
@@ -1018,14 +1025,20 @@ export function createDbHopeBackend(
               canonicalIdFilter(SUB.providerEntityId, providerEntityId),
             ),
           )
-          .orderBy(desc(SUB.createdAt), desc(SUB.id))
+          .orderBy(
+            desc(notInArray(SUB.status, [...CLOSED_BATCH_STATUSES])),
+            desc(SUB.createdAt),
+            desc(SUB.id),
+          )
           .limit(SUBMISSION_LIST_LIMIT)) as LightSubmissionRow[];
         const resolutions = await resolutionCountsByBatch(
           tx as unknown as DbClient,
           organizationId,
           scoped.filter((r) => r.rejectedCount > 0).map((r) => r.id),
         );
-        return { submissions: scoped.map((r) => toSubmissionView(r, resolutions.get(r.id))) };
+        return {
+          submissions: newestFirst(scoped).map((r) => toSubmissionView(r, resolutions.get(r.id))),
+        };
       });
     },
     async getSubmission(organizationId, id) {

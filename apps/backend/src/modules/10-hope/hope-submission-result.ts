@@ -33,6 +33,29 @@ export const ANSWERED_BATCH_STATUSES = [
   "partially_accepted",
 ] as const satisfies readonly HopeSubmissionStatus[];
 
+/**
+ * The batch statuses with nothing left for an operator to do: answered clean by CMS (`accepted`, `accepted_with_warnings`) or
+ * dead (`cancelled`: never uploaded, its records are packaged again in a new batch). EVERY OTHER status can still need someone:
+ * a batch to download or mark uploaded (`packaged`), to record a result for (`exported`, `in_flight`,
+ * `submitted_pending_result`), or rejected items to correct (`rejected`, `partially_accepted`); `ready`, `queued` and
+ * `file_error` are in no manual lifecycle but are not closed either. The submission list is capped, and the cap keeps these
+ * batches first (see `GET /hope/submissions`), so a status added later is kept by default rather than hidden.
+ */
+export const CLOSED_BATCH_STATUSES = [
+  "accepted",
+  "accepted_with_warnings",
+  "cancelled",
+] as const satisfies readonly HopeSubmissionStatus[];
+
+/** Newest first (`created_at`, then `id`, both descending): the order the submission list answers in. */
+export const newestFirst = <T extends { readonly createdAt: Date; readonly id: string }>(
+  rows: readonly T[],
+): T[] =>
+  [...rows].sort(
+    (a, b) =>
+      b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+  );
+
 /** Why a result cannot be recorded against a batch in `status` (the 409 code): never handed to CMS, cancelled
  * (R-08: it must never be uploaded or settled), or already settled. */
 export const resultRefusalCode = (status: string): M10ErrorCode =>
@@ -77,10 +100,12 @@ export function classifyCmsResult(
   return byText ?? "pending";
 }
 
+/** The item statuses that are a CMS verdict (final, see `isSettledItemStatus`). */
+export const SETTLED_ITEM_STATUSES = ["accepted", "accepted_with_warnings", "rejected"] as const;
+
 /** A CMS verdict on an item is final: once an item is accepted/accepted_with_warnings/rejected, a later
  * report must not flip it (the RESULT event rows are still recorded for audit). Correct a rejection with a
  * correction assessment in a new batch, not by re-reporting. */
-export const SETTLED_ITEM_STATUSES = ["accepted", "accepted_with_warnings", "rejected"] as const;
 export const isSettledItemStatus = (status: string): boolean =>
   (SETTLED_ITEM_STATUSES as readonly string[]).includes(status);
 
