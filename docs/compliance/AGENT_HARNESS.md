@@ -313,7 +313,7 @@ It answers **deny** for these:
 - the git hook-skip flag and its abbreviations, `SKIP_FITNESS=1`, re-pointing `core.hooksPath`, and
   `git -c` with hook-disabling keys;
 - force-pushing main;
-- `psql`/`pg_dump` to a non-local host;
+- a database client (`psql`, `pg_dump`, `mysql`, `redis-cli`, `mongosh`, and 41 more programs; wave 9) connecting to a non-local host, in any spelling of the target;
 - writing an SSN/MBI-shaped value not in `compliance/synthetic-identifiers.json`, or a credential.
 
 These are guard rails for a cooperative agent, not a sandbox. The authoritative controls remain RLS,
@@ -669,8 +669,8 @@ document" at the end.
   `aliasNormalise` in `scriptTextVerdict`) or gone with their code (`MAX_VARIANTS`, the dead `env` entry); wall-clock bounds near
   their typical time were raised to 3 to 5 s. **CR5-9**: this document's eight claims the review found false are corrected in the
   paragraphs they sat in. **CR5-10**: `braceVariants` is gone, and `tree-sweep.ts` `spells` now delegates to `isLongOption` (it was the fifth
-  reader); three inline long-option abbreviation readers REMAIN (`git-grep-sweep.ts`, `git-exec-strings.ts`, `harness-switch.ts`; wave 8 did
-  not unify them, see Wave 8); follow-ups left: the two `VARIABLE_SETTER` regular expressions
+  reader); three inline long-option abbreviation readers REMAINED (`git-grep-sweep.ts`, `git-exec-strings.ts`, `harness-switch.ts`; wave 8 did
+  not unify them; wave 9, W9-4, did: `longName` and `spellsLong` in `option-values.ts`); follow-ups left: the two `VARIABLE_SETTER` regular expressions
   (`git-exec-strings.ts`, `harness-switch.ts`), `patterns.ts` at about 3,000 lines against the 800-line ceiling, module-level state
   (`work`, `judgeBudget`, the one-shot caches), and `readStdin` duplicating `io.ts`. **CR5-11** (`live-suite-files.ts`,
   `harness-live-suite-substring.test.ts`): `bunx vitest run care-plan-conformance` runs the live suite beside the unit tests, because
@@ -691,9 +691,9 @@ mapped in "Finding IDs cited in this document".
   `bun X` and `yarn X` run a package SCRIPT when X is a key of the nearest `package.json` (read once per command, only when a name needs
   it; a name with a colon such as `arch:fitness` always is one), a file when X looks like one, a builtin subcommand (`bun test`, `yarn install`),
   and otherwise the PATH program X (`bun run echo hello` ran `echo`: the reviewer checked); `npm run X` and `pnpm run X` only run scripts. The
-  two readers that disagreed (`executed()` and `underRunner()`) are deleted. A runner this table does not name (`corepack`, `volta run`, `mise
-  exec`, `direnv exec`, `cross-env`, `dotenv --`) still hides its command from the rules by name; the backstop below asks when such a program is
-  handed a protected path. Everyday `bunx biome check x.ts`, `bunx tsc --noEmit`, `bunx vitest run <unit test>`, `bun run test`, `bun run
+  two readers that disagreed (`executed()` and `underRunner()`) are deleted. Wave 9 added `corepack`, `volta run`, `mise
+  exec`, `asdf exec`, `direnv exec`, `cross-env`, `dotenv`, `dotenvx run`, `env-cmd`, `doppler run`, `op run`, `lerna exec` and `nx exec` (see Wave 9); a runner no table names still
+  hides its command from the rules by name, and the backstop below asks when such a program is handed a protected path. Everyday `bunx biome check x.ts`, `bunx tsc --noEmit`, `bunx vitest run <unit test>`, `bun run test`, `bun run
   arch:fitness`, `npx --version` and `bunx playwright test <spec>` stay allowed.
 - *The backstop, rewritten* (`protected-operands.ts`, `harness-backstop-wave8.test.ts`, `harness-protected-operands.test.ts`; T2, CR6-1, ADV6-2,
   CR6-4, ADV6-5). Three kinds of program. A READER (`cat`, `grep`, `ls`, `cloc`, `shfmt -d`, `docker`, `bun`, `node`, `python`, `sed`, `awk`, …) is
@@ -765,7 +765,7 @@ mapped in "Finding IDs cited in this document".
   spelling. The tree-sweep operand is matched as the file system folds names (case, NFKC): `grep -r X APPS/PORTAL` asks. The listings of the live env
   files and the live suites return `{files, complete}`: more directories than the cap, a depth past 16 (it was a silent 8), a symlinked directory and
   an unreadable one make the listing incomplete, and every rule that asks "could this reach one?" then answers yes (ask), as the protected-names listing
-  does; `.envrc` is a live env file. A symlinked directory under a listed root is therefore a gap, not followed. Not unified (a follow-up): the three
+  does; `.envrc` is a live env file. A symlinked directory under a listed root is a gap, not followed, unless it points inside a walked root; a symlink to a FILE is a file (wave 9, W9-0: wave 8 treated every symlink as a gap, which made every vitest filter ask on a checkout that holds a Python virtualenv). Not unified (a follow-up): the three
   inline long-option abbreviation readers named under CR5-10, and the `isOption`/`operands` copies in `writers.ts`, `writers-more.ts` and
   `sibling-sweeps.ts`.
 - *PATH shadows, persistence, secret names* (`toolchain-paths.ts`, `launchctl-rules.ts`, `secret-names.ts`, `harness-persistence-wave8.test.ts`; T7,
@@ -818,12 +818,92 @@ mapped in "Finding IDs cited in this document".
 - **Residuals, stated plainly.** Computed names (`$VAR/x`, `$(printf …)`, an encoded name) stay unseen. An alias or a function wrapper (`alias c='cp -r'` then
   `c apps/portal /tmp/o`; `g() { git "$@"; }`) hides its command by name; a function body is judged, its call is not tied to it. A glob target is
   read only when it has a slash (or a write flag). A symlinked directory is a gap in the listings and a symlink in a sweep operand is not followed.
-  `xargs`-fed and `-T`-listed names are unreadable. A heredoc handed to an unknown program is not read (a here-string is). A package-runner or wrapper this
-  table does not name (`corepack`, `volta run`, `mise exec`, `direnv exec`, `cross-env`) hides its command by name. The guard runs under whatever `bun` the PATH
+  `xargs`-fed names (a pipe) and `-T`-listed names are unreadable (`xargs -a FILE` is read: wave 9). A heredoc handed to an unknown program is not read (a here-string is). A package-runner or wrapper this
+  table does not name (wave 9 added the version managers and loaders; `nsenter`, `sshpass`, `firejail`, `bwrap`, `systemd-run`, `fakeroot`, `rlwrap`, `valgrind` and `gdb --args` remain) hides its command by name. The guard runs under whatever `bun` the PATH
   resolves (the PATH-shadow residual above). The positive-acknowledgement residual above (Codex too: it has no acknowledgement at all). The write flags and
   abbreviations of tools not installed here (`cloc`, `tokei`, `scc`, `cspell`, `depcruise`, `shfmt`, `ruff`, `semgrep`, `trivy`, `code`, `markdownlint`,
   `jest`, `mocha`, `deno`, `tree`, `7z`, `objcopy`, `ugrep`, `rga`, `pt`, `sift`, `ucg`, `trufflehog`, GNU `sed`, `litecli`, `usql`, `duckdb`, `sqlcmd`,
   `sqlplus`, `mongosh`, `clickhouse-client`, `trino`) were read from documentation; nothing was run on Linux or with bun 1.3.5.
+
+**Wave 9.** Residuals the orchestrator found while verifying wave 8, in priority order. Each item has a test file
+`scripts/__tests__/harness-*-wave9.test.ts` and its own commit; the data-driven tests walk every entry of the new tables.
+- *A regression of wave 8, fixed first: a symlink is decided by its target* (`symlink-target.ts`, `live-suite-files.ts`, `live-env-files.ts`,
+  `harness-listing-symlinks-wave9.test.ts`; W9-0, CR6-6). Wave 8 treated every symlink in the live-suite and live-env listings as "listing
+  incomplete", and the real checkout holds `services/docling-worker/.venv/bin/python`, `python3` and `python3.12` (links to FILES in a Python virtualenv),
+  so on the real checkout every `bunx vitest run <any filter>`, `bunx vitest run scripts/__tests__/harness-hooks.test.ts` included, asked "Live suites DROP ROLE
+  chartwarden_app": 9,241 of 140,767 real commands (6.56%) against the 60 (0.047%) that wave 8's own figure reported, because that figure was measured on a
+  worktree that has no virtualenv. **Measure false positives against the real checkout's listing, not only a worktree's.** Now `statSync` (it follows the link)
+  says what a link points at: a link to a FILE is judged by its name like a file (a `.live.test.ts` link is a suite), a dangling link holds nothing, a link to a
+  directory that is inside a walked root (`.venv/lib64 -> lib` on Linux) holds nothing new (it is walked on its own), and only a link to a directory elsewhere, or
+  one that cannot be resolved (a link to itself: ELOOP), is a gap. The env listing reads the direct children of `apps`, `services`, `packages` and `deploy` the
+  same way (a file link is a file, a dangling link is gone, a directory link is a gap). On the real checkout the suite listing is now complete (530 suites, 3
+  symlinks, 1,366 directories) where wave 8's was not. **Residual:** a filter that matches only the NAME of a symlinked directory is not seen.
+- *One reader of the database target for every client* (`db-target.ts`, `db-target-clients.ts`, `harness-db-targets-wave9.test.ts`; W9-1; the rule of
+  `.claude/rules/phi-and-secrets.md`: no production access from a session). The rule behind "Connecting to database host … is access to PHI" read `-h`,
+  `--host=`, a postgres URL WITH userinfo and `PGHOST=` for four programs. A URL without userinfo (`psql postgres://HOST/db`), a libpq connection string
+  (`psql "host=HOST dbname=db"`, `hostaddr=`), `-d` and `--dbname` URIs, `pg_dump postgres://HOST/db` and every other client were allowed. One reader now serves
+  `psql`, `pg_dump`, `pg_dumpall`, `pg_restore`, `pg_basebackup`, `pg_receivewal`, `pg_recvlogical`, `createdb`, `dropdb`, `pg_isready`, `vacuumdb`,
+  `reindexdb`, `pgbench`, `pgcli`, `mysql`, `mariadb` and the `mysqldump`/`mysqladmin`/`mysqlshow`/`mysqlcheck`/`mysqlimport` family (and their `mariadb-*` names),
+  `mycli`, `mysqlsh`, `redis-cli`, `valkey-cli`, `mongosh`, `mongo`, `mongodump`, `mongorestore`, `mongoexport`, `mongoimport`, `mongostat`, `mongotop`,
+  `clickhouse-client`, `clickhouse`, `cockroach`, `usql`, `sqlcmd`, `trino` and `cqlsh`: an option table per client (which option letters take a value, which
+  name the host, which carry a connection string, which name an alias or a file), a URI reader (no userinfo needed, a port, IPv6 literals, percent-encoding,
+  `a,b` host lists, `?host=` and `?hostaddr=` parameters, `mongodb+srv://`), a libpq connection-string reader that handles quoting and a `dbname=` that is itself
+  a URI, and the EXISTING local-host predicate of `content-scan.ts`, unchanged (loopback, `host.docker.internal`, a compose service, a socket directory;
+  `prod`, `db.internal` and `10.0.0.5` are not local). A host that is not local is **denied**, in any option spelling (`-h H`, `-hH`, `--host=H`, `--host H`, `--ho=H`,
+  `-AtXqh H`), inline (`PGHOST=H psql`, `env PGHOST=H psql`, `MYSQL_HOST`, `COCKROACH_URL`, `COCKROACH_HOST`, `CLICKHOUSE_HOST`) and set earlier on the same
+  command line (`export PGHOST=H; psql`, `PGHOST=H; psql`: those were allowed before), under a runner or a wrapper (`bunx psql …`, `sudo -u postgres pg_dump …`).
+  A target the reader cannot read (an open quote, an open bracket) is **denied**, not allowed. A service, a password file, a login path or a DSN alias (`psql
+  service=NAME`, `PGSERVICE=`, `PGSERVICEFILE=`, `PGPASSFILE=`, `mysql --login-path=`, `--defaults-file=`, `pgcli -D NAME`, `mycli --dsn NAME`) names the host
+  in a file the guard cannot read: **asks**. `$DATABASE_URL` asks for every client in the table (it was four). A SQL string, a file name and a `-v NAME=value`
+  are values of options the table names, never read as a host: `psql -c "select … host = 'x.example.org'"` allows. Everyday `psql -h localhost`, `psql
+  postgres://u@127.0.0.1:5433/db`, `psql -p 5433 -U u db`, `redis-cli get key:123`, `docker exec … psql` and `docker compose exec postgres psql` allow.
+  **Residuals:** an option the table does not list is read as a flag (its value, if it is a host, is not seen); a bare single-label `mongosh NAME` is read as a
+  database name, not a host; `clickhouse`, `usql` and `sqlcmd` take their DSN forms as the table lists them; a client behind an alias or `docker exec` is not
+  read (as before); a variable that holds the host (`-h $HOST`) is still refused as an unplaceable host, never resolved.
+- *The files a wrapper's own options name, and every long option's value* (`wrapper-options.ts`, `wrappers.ts`, `harness-wrapper-options-wave9.test.ts`; W9-2).
+  A wrapper is stripped before its command is judged, so two things in its options were never looked at. First, the FILE an option names: `xargs -a FILE`
+  (also `-aFILE`, `--arg-file`, `--arg-file=FILE`, `--arg`) and `parallel -a`, `--arg-file`, `--argfile`, `--sshloginfile`, `--slf`, `proxychains4 -f`, `doas -C` READ
+  it and are judged like an input redirect (a live env file is **denied**, as for `cat`; a file named by a command substitution asks when the inner program prints
+  files); `flock FILE cmd`, `parallel --joblog|--results|--tmpdir`, `strace -o|--output` and `time -o|--output` WRITE or create one and are judged like a redirect target
+  (a protected path **asks**); `sudo -e FILE` (`--edit`) edits the files that follow, so sudo stays the program and they are judged as operands. Second, a long
+  option with a SEPARATE value made its value the program: `nice --adjustment 5 git commit …` ran `5` as far as the rules knew. The long value options of `sudo`,
+  `env`, `time`, `nice`, `ionice`, `xargs`, `stdbuf`, `strace`, `taskset`, `flock`, `parallel`, `chroot` and `unshare` are listed (a prefix of two characters or more is one, as GNU
+  getopt reads it), and the short ones were audited (`xargs -J -R -S`, `env -a`, `ionice -P -u` added; `parallel -X`, `strace -T -D -k` were flags read as values and
+  are fixed). New wrappers: `chroot`, `unshare`, `chronic`, `proxychains`, `proxychains4`, `ssh-agent`; `entr` and `watch` hand a command line to the judge; the
+  Homebrew `g`-prefixed GNU tools (`gxargs`, `gnice`, `gstdbuf`, `genv`, `gnohup`, `gtime`) are the wrapper they prefix. A data-driven test walks every entry of the
+  tables in every spelling. **Residuals:** a file named by `$(…)` is asked only when the inner program prints files (`xargs -a "$(ls)" echo` is not); a wrapper this
+  table does not name (`nsenter`, `sshpass`, `firejail`, `bwrap`, `systemd-run`, `fakeroot`, `rlwrap`, `valgrind`, `gdb --args`) still hides its command by name; the
+  `sudo -R` (chroot) and `env -P` (alternative PATH) values are not followed.
+- *Runners and environment loaders* (`runners.ts`, `harness-runners-wave9.test.ts`; W9-3). `corepack`, `volta run`, `mise exec|x` (tool specs and the `--`
+  separator, `-c STR`), `asdf exec`, `direnv exec DIR`, `cross-env VAR=x cmd` (and `cross-env-shell "string"`), `dotenv`, `dotenvx run`, `env-cmd`, `doppler run`
+  (`--command STR`), `op run`, `lerna exec` and `nx exec` start a command by name; they are peeled by the same code as `bunx` and every rule judges the inner
+  command (`dotenv -- git commit` with the skip-hooks flag is denied, `volta run vitest run <live suite>` asks). `npm run-script` is a package script like `npm run` (no
+  program); `turbo` has no `exec`; `tsx`/`ts-node`/`bun`/`deno run FILE` run a file, which is judged by name like any operand. **A runner's own option that names a file is no longer
+  lost when the runner is peeled** (`peelRunnerWithFiles`): wave 8's peel dropped it, so `bun --env-file <live env file> run echo hi`, `bunx --package F echo` and `npx
+  --userconfig F echo` were ALLOWED by wave 8 (wave 7 denied them); each is a deny again. **The env-file loaders already deny a live env file named in their flags**
+  (`node --env-file=F`, `bun --env-file F`, `deno run --env-file=F`, `docker run --env-file F`, `uv run --env-file F`, `dotenv -e F`, `dotenvx run -f F`, `env-cmd -f
+  F`, `op run --env-file F`, `direnv exec F`: the secret-name rule reads any word of the command line); the wave-9 brief assumed they were allowed and proposed an ask,
+  which would have loosened them, so they stay denied. A template (`.env.example`, `.sample`, `.template`, `.dist`) and `docker compose --env-file F up` (the
+  documented lifecycle exemption) stay allowed. A valued option's value never starts with a dash (`dotenv -c -e F -- cmd` keeps `-e F`). **Residuals:** `direnv exec .`
+  loads the `.envrc` of the directory it names and is not asked; an alias or a function hides its command (as before); `op --account X run` (an option before the
+  subcommand the manager table does not know) is not peeled.
+- *One reader of a long option's name* (`option-values.ts`, `harness-option-values-wave9.test.ts`; W9-4, CR6-8 follow-up). `git-grep-sweep.ts`, `git-exec-strings.ts`
+  and `harness-switch.ts` read the text of a long option and its abbreviation through `longName` and `spellsLong`, which `optionValues` uses too. No answer changed
+  (every harness test passes unchanged; no transition on 35,932 git-related real commands). **Not done:** the `isOption`/`operands`/`operandsOf` copies in
+  `writers.ts`, `writers-more.ts` and `sibling-sweeps.ts` stay three, because they differ on a lone `-` and on an empty argument and one function would change an answer. `patterns.ts` got wiring only: 2,960 lines (wave 8: 2,963); the new logic is in `symlink-target.ts`, `db-target.ts` (and its client table `db-target-clients.ts`, 597 lines of data), `wrapper-options.ts` and `runners.ts`.
+- **Corpus cost, measured on the final tree against the REAL checkout.** 140,767 distinct Bash commands recorded in this machine's Claude sessions (the transcript
+  cache was rebuilt recursively, subagent sessions included), classified in process
+  with `/tmp/cw-v8` (the wave-8 tip) and with this tree, the live listings read from the real checkout (read only; nothing executed; the differ is a scratch script,
+  not committed). Wave 9 against wave 8: 9,239 ask to allow (6.563%), every one in the
+  "Live suites DROP ROLE chartwarden_app" bucket (the first word of those compound commands: `cd` 6,761, `bunx` 819, `python3` 518, `sed` 158): the regression, undone, and
+  2 commands of that bucket remain, the two where a substring filter really names a live suite; 0 allow to ask, 0 allow to deny, 0 ask to deny; no throws; the slowest single
+  classification 107 ms (126 ms for the wave-8 tip). So wave 9 adds no classifier-level ask or deny on any real command (its budget was 0.02%, about 25 commands). Each
+  task was also measured on the commands it touches before the final run: 5,088 database-client commands (W9-1), 6,614 wrapper commands (W9-2), 36,857 runner and
+  environment-loader commands, `--env-file` ones included (W9-3: 0 transitions per loader), 35,932 git-related commands (W9-4, against the previous commit): no transition
+  other than the regression's. Wave 8's own cost is unchanged (the orchestrator's real-checkout figures for wave 7 to wave 8: 9,241 asks in the live-suite bucket, now gone;
+  44 "not a program the guard knows to be read-only, and its command line names a protected path", 13 "is the bun the agent hooks run on", 4 tar archives of the repo root or an
+  env directory, 1 ask to deny: about 0.043%, accepted in wave 8). Against wave 7 the live-suite substring rule adds 2 asks on the vitest-related commands (24,368 of them). The pinned
+  hook commands, replayed on this tree (Claude and Codex; the corrupted-copy fail-closed checks), answer as on the wave-8 tip, 44 to 98 ms per call.
 
 **Shell lexing.** `scripts/harness/shell-lex.ts` reads a command once, in one linear pass, before any rule
 runs; the line splitter, the redirection reader and the substitution scan all use its result, so a quote, an
@@ -998,9 +1078,14 @@ fixed them (`git log --grep '<ID>'`), and in the tests named in the paragraph th
 | ADV6-14 | Secret-name gaps: `.envrc`, `env.sh`, `secrets.json`, gcloud's ADC, `.my.cnf`. |
 | CR6-4 | The backstop did not place its operands as every other rule does (braces, variables, ancestors, wildcards). |
 | CR6-5 | `fd -Hx`, `-HIx`, `-xcat`, `--exec=cat` were not judged as `find -exec`. |
-| CR6-6 | The live-suite and live-env listings truncated silently instead of answering "may match". |
+| CR6-6 | The live-suite and live-env listings truncated silently instead of answering "may match". Wave 8's fix was itself a regression (every symlink, a virtualenv's file links included, made every vitest filter ask on the real checkout): see W9-0. |
 | CR6-7 | Five surviving hand mutants and no test that every exempted program is really modelled. |
 | CR6-9 | `spendIfShellWouldExpand` could never be false. |
 | CR6-10 | `judge` (150 lines) and `mainWrites` (58) over 50 lines. |
 | CR6-11 | The `ISSUED_SSN` exception was recorded only in a code comment: now also in the fixture comment and Wave 8 above; the rule file `.claude/rules/phi-and-secrets.md` (and its `.agents` twin) should name it, which needs the owner. |
+| W9-0 | Wave 8's listings called every symlink a gap; the real checkout's `.venv/bin/python*` file links made 9,241 real commands (6.6%) ask. A symlink is decided by its target. |
+| W9-1 | A non-local database host was allowed in a URL without userinfo, a libpq connection string, `-d`/`--dbname` URIs, `pg_dump` URIs, `export PGHOST=H; psql` and every client but four. One target reader for 46 programs. |
+| W9-2 | `xargs -a <live env file> echo` was allowed; a wrapper's file options and long options with a separate value were dropped unjudged (`nice --adjustment 5 cmd` hid `cmd`). Tables per wrapper. |
+| W9-3 | `corepack`, `volta run`, `mise exec`, `asdf exec`, `direnv exec`, `cross-env`, `dotenv`, `dotenvx`, `env-cmd`, `doppler`, `op run`, `lerna exec`, `nx exec` hid their command; and wave 8's runner peel dropped the runner's own file options (`bun --env-file F run echo` was allowed). |
+| W9-4 | One long-option abbreviation reader instead of three inline copies; the `isOption`/`operands` copies stay three (they differ on a lone `-` and an empty argument). |
 | CR5-1 to CR5-11 | The round-5 code review: brace budget and whitespace (1), nested agent variables (2), one assignment grammar (3), wildcard pathspecs (4), per-root names (5), five sweep readings (6), the live env list (7), surviving mutants (8), doc claims (9), structure (10), vitest substring filters (11). |
