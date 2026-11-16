@@ -49,7 +49,7 @@ import {
 // AN SFV IS NOT RECORDED HERE. Completing a symptom follow-up visit records a signed RFA-04 whose J2053A-H
 // answers the server requires; this modal has no such fields, so it submits timepoint DRAFTS only. The
 // follow-up is completed in the triggering assessment's "Complete SFV" dialog (`hope-sfv-complete-dialog.tsx`).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useSession } from "../../shell/session";
 import {
@@ -124,6 +124,15 @@ const CHOOSABLE_LATE_REASONS = LATE_REASONS.filter((r) => r !== "admin_override"
  */
 const OVERRIDE_JUSTIFICATION_MIN = 20;
 const OVERRIDE_JUSTIFICATION_MAX = 1000;
+
+/**
+ * The code the server answers (422) when the justification looks like a patient identifier. Its own words are written for an evidence
+ * note ("describe what was checked", "cite documents") and name the wire field, so the clinician is told this instead, on the field.
+ * Static on purpose: the field's error is an alert, announced again on every change of its text.
+ */
+const PHI_REFUSAL_CODE = "EVIDENCE_LOOKS_LIKE_PHI";
+const JUSTIFICATION_LOOKS_LIKE_PHI =
+  "This looks like it contains a Social Security or Medicare number. Say why the visit is late without naming a patient or quoting an identifier. A long ID number can trip this check, so leave it out.";
 
 /**
  * The permission the server requires for `adminOverride` (hope-routes.ts `ADMIN_LATE_OVERRIDE`): a request that asks for the override
@@ -297,6 +306,9 @@ export function HopeRecordModal({
   const [lateReason, setLateReason] = useState<LateReasonCode | "">("");
   const [adminOverride, setAdminOverride] = useState(false);
   const [overrideJustification, setOverrideJustification] = useState("");
+  // The last refusal was for the justification looking like a patient identifier: said on the field until it is edited.
+  const [justificationRefused, setJustificationRefused] = useState(false);
+  const justificationId = useId();
   const [primaryDiagnosisIcd10, setPrimaryDiagnosisIcd10] = useState("");
   const [painScreened, setPainScreened] = useState(false);
   const [painCharacteristics, setPainCharacteristics] = useState("");
@@ -334,6 +346,7 @@ export function HopeRecordModal({
     setLateReason("");
     setAdminOverride(false);
     setOverrideJustification("");
+    setJustificationRefused(false);
     setPrimaryDiagnosisIcd10("");
     setPainScreened(false);
     setPainCharacteristics("");
@@ -425,6 +438,8 @@ export function HopeRecordModal({
     if (authorDiscipline === "") return;
     setBusy(true);
     setError(null);
+    // Each attempt clears the field's refusal first, so a second refusal of the same text is announced again.
+    setJustificationRefused(false);
     let data: HopeData;
     try {
       data = buildData();
@@ -463,6 +478,13 @@ export function HopeRecordModal({
         setError(
           asked.span === "expired" && !canOverride ? OVERRIDE_NOT_PERMITTED_ASKED : asked.message,
         );
+        return;
+      }
+      // Only a sent justification can be what looked like an identifier: a refusal with none on screen keeps the server's words.
+      if (res.code === PHI_REFUSAL_CODE && overriding) {
+        setJustificationRefused(true);
+        // The pressed button was disabled while the request was out, which can drop focus to the page: the field to edit takes it.
+        document.getElementById(justificationId)?.focus();
         return;
       }
       setError(res.message);
@@ -625,10 +647,15 @@ export function HopeRecordModal({
             )}
             {canOverride && adminOverride ? (
               <TextAreaField
+                id={justificationId}
                 label="Justification for the override"
-                hint={`At least ${OVERRIDE_JUSTIFICATION_MIN} characters. It is recorded in the audit trail when the override is used, so do not enter a patient's name or a Social Security or Medicare number.`}
+                hint={`Between ${OVERRIDE_JUSTIFICATION_MIN} and ${OVERRIDE_JUSTIFICATION_MAX} characters. It is recorded in the audit trail when the override is used and cannot be changed later, so do not enter a patient's name or a Social Security or Medicare number.`}
+                error={justificationRefused ? JUSTIFICATION_LOOKS_LIKE_PHI : undefined}
                 value={overrideJustification}
-                onChange={(e) => setOverrideJustification(e.target.value)}
+                onChange={(e) => {
+                  setOverrideJustification(e.target.value);
+                  setJustificationRefused(false);
+                }}
                 maxLength={OVERRIDE_JUSTIFICATION_MAX}
                 rows={3}
               />

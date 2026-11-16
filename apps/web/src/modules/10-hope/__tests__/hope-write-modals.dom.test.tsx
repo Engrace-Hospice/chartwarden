@@ -290,7 +290,7 @@ describe("the recording modal past the late deadline", () => {
     );
   });
 
-  it("tells the admin the justification goes into the audit trail and must not name a patient", () => {
+  it("tells the admin the bounds, that the justification goes into the audit trail for good, and that it must not name a patient", () => {
     const { dialog } = renderRecord(
       vi.fn(async () => ok({ id: "created-hint" })),
       {
@@ -299,9 +299,9 @@ describe("the recording modal past the late deadline", () => {
     );
     fireEvent.click(override());
 
-    expect(
-      within(dialog).getByText(/do not enter a patient's name or a Social Security/i),
-    ).toBeTruthy();
+    const hint = within(dialog).getByText(/do not enter a patient's name or a Social Security/i);
+    expect(hint.textContent).toContain("Between 20 and 1000 characters");
+    expect(hint.textContent).toContain("cannot be changed later");
   });
 
   it("sends neither without the override ticked", async () => {
