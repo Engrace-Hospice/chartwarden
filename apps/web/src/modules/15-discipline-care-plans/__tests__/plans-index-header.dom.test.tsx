@@ -28,7 +28,7 @@ const ok = (data: unknown) => ({
   response: new Response(null, { status: 200 }),
 });
 
-function renderIndex(): ApiClient {
+function renderIndex(): void {
   const client = {
     GET: vi.fn(async (path: string) => {
       if (path === "/api/v1/discipline-plans") return ok({ data: [], nextCursor: null });
