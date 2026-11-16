@@ -1179,7 +1179,7 @@ function dbClientVerdicts(
   const client = parsed[index] as Parsed;
   if (!isDbClient(client.prog)) return [];
   const stages = parsed.map((q, i) => ({ ...q, joiner: parts[i]?.joiner ?? "" }));
-  const found = clientFindings(client.prog, clientTexts(stages, index, bodies));
+  const found = clientFindings(client.prog, clientTexts(stages, index, bodies), client.args);
   if (found === null) return [];
   const out: BashVerdict[] = found.shell
     .slice(0, 1)

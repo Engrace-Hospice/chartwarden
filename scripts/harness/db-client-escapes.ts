@@ -1,35 +1,56 @@
 /**
- * What a SQL client's own command language can do beyond SQL (ADV5-1): `sqlite3 .shell`/`.system`, `psql \!`,
- * `mysql system`, `pgcli \!` run an operating-system command from inside an ordinary database client, and the
- * dot-commands and backslash commands around them write or read files (`.output F`, `\o F`, `\copy t to F`, `tee F`,
- * `.read F`, `\i F`). A text heuristic for a cooperative agent, not a sandbox: it reads the text the client is
- * handed (an argument, a here-string, a heredoc body, what an `echo`/`printf` pipes in) and nothing else.
+ * What a database client's own command language can do beyond SQL (ADV5-1, widened in wave 8, T3): `sqlite3 .shell`,
+ * `psql \!`, `mysql system` and the like run an operating-system command from inside an ordinary client, and the
+ * commands around them write or read files (`.output F`, `\o F`, `\copy t to F`, `tee F`, `.read F`, `\i F`, SQL such as
+ * `writefile()`, `COPY … TO`). A text heuristic for a cooperative agent, not a sandbox: it reads the text the client is
+ * handed (an argument, a here-string, a heredoc body, what an `echo`/`printf` pipes in), both as the guard lexed it and as
+ * the client receives it once the shell has reduced the backslashes of a double-quoted word (`"\\o X"` is `\o X`).
  *
- * Not read, and so not judged: a script file (`psql -f F`, `sqlite3 db < F`, `mysql < F`), a command assembled at
- * run time (`psql -c "$CMD"`), and SQL that makes the SERVER write a file (`COPY … TO PROGRAM`, `INTO OUTFILE`). Pure.
+ * The readers: sqlite3, litecli and duckdb (`sqlite-commands.ts`), psql, pgcli, usql and `cockroach sql`
+ * (`postgres-commands.ts`), mysql, mariadb and mycli (here), sqlcmd, sqlplus, mongosh, clickhouse-client and trino (here,
+ * coarser), the SQL that names a file (`sql-file-functions.ts`), and the editors (`ed`, `ex`, `vi`, `vim`, `nvim`: every
+ * name in a command text is a file they may write). Not read: a script file's CONTENTS (`psql -f F`, `sqlite3 db < F`),
+ * a command assembled at run time (`psql -c "$CMD"`), a client this table does not name (`iredis`, `mssql-cli`,
+ * `harlequin`, one reached through an alias), and a bound variable (`\set X …` then `\o :X`). Pure.
  */
+import {
+  type ClientFindings,
+  LINE_BREAK,
+  type Reading,
+  bothReadings,
+  readOf,
+  shellOf,
+  tokens,
+  writeOf,
+} from "./client-reading";
 import { printedText } from "./inline-code";
+import { optionValues } from "./option-values";
+import { postgresReading } from "./postgres-commands";
 import { embeddedNames } from "./protected-operands";
+import { sqlFileReadings } from "./sql-file-functions";
+import { sqliteReading } from "./sqlite-commands";
 
-/** What one client was handed to run, by what the guard should do about it. */
-export interface ClientFindings {
-  /** Escapes that run a program or load code; whatever they name, a human decides. */
-  readonly shell: readonly string[];
-  /** Files the client writes: judged like a redirect target. */
-  readonly writes: readonly string[];
-  /** Files the client reads and runs or prints: a secret one is refused. */
-  readonly reads: readonly string[];
-}
+export type { ClientFindings } from "./client-reading";
 
-type Kind = "sqlite" | "postgres" | "mysql" | "editor";
+type Kind = "sqlite" | "postgres" | "mysql" | "editor" | "sqlcmd" | "sqlplus" | "mongo" | "sql";
 
 const CLIENTS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
   ["sqlite3", "sqlite"],
+  ["litecli", "sqlite"],
+  ["duckdb", "sqlite"],
   ["psql", "postgres"],
   ["pgcli", "postgres"],
+  ["usql", "postgres"],
+  ["cockroach", "postgres"],
   ["mysql", "mysql"],
   ["mariadb", "mysql"],
   ["mycli", "mysql"],
+  ["sqlcmd", "sqlcmd"],
+  ["sqlplus", "sqlplus"],
+  ["mongosh", "mongo"],
+  ["clickhouse-client", "sql"],
+  ["clickhouse-local", "sql"],
+  ["trino", "sql"],
   // An editor takes its commands as an argument, on standard input or in a here-document (`ed f <<< 'w F'`, `vim -c 'w! F'`):
   // every name in that text is a file it may write (wave 8, ADV6-2).
   ["ed", "editor"],
@@ -39,137 +60,13 @@ const CLIENTS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
   ["nvim", "editor"],
 ]);
 
-/** Is this program a SQL client with a command language of its own? */
+/** Is this program a client with a command language of its own? (`cockroach` only as `cockroach sql`: see {@link kindOf}.) */
 export const isDbClient = (prog: string): boolean => CLIENTS.has(prog);
 
-const LINE_BREAK = /\r\n|[\n\r\v\f\u0085\u2028\u2029]/;
-const isOption = (t: string): boolean => t.startsWith("-");
-const isPipe = (t: string): boolean => t.startsWith("|");
-/** A target that names the terminal or switches logging off, not a file. */
-const NOT_A_FILE = new Set(["stdout", "stderr", "off", "-", ":memory:"]);
-
-/** A word the client reads as one token: surrounding quotes removed (`'/tmp/a b.csv'`). */
-const unquote = (t: string): string => t.replace(/^(['"])(.*)\1$/s, "$2");
-
-/** The blank-separated tokens of an argument line, a quoted token kept whole. */
-function tokens(rest: string): string[] {
-  return (rest.match(/'[^']*'|"[^"]*"|\S+/g) ?? []).map(unquote);
-}
-
-/** One reading of a command line: what it runs, writes and reads. */
-type Reading = Partial<ClientFindings>;
-
-const shellOf = (what: string): Reading => ({ shell: [what] });
-const writeOf = (file: string | undefined): Reading =>
-  file === undefined || file === "" || NOT_A_FILE.has(file) ? {} : { writes: [file] };
-const readOf = (file: string | undefined): Reading =>
-  file === undefined || file === "" ? {} : { reads: [file] };
-
-/** Does this word name `command`, as the shell accepts it: a prefix of at least `min` letters? */
-const names = (word: string, command: string, min: number): boolean =>
-  word.length >= min && command.startsWith(word);
-
-// ---------------------------------------------------------------------------------------------------------
-// sqlite3: dot-commands at the start of a line (abbreviated to a prefix, as its shell accepts), and SQL functions
-// ---------------------------------------------------------------------------------------------------------
-
-/** A dot-command that runs a program or loads code. Prefix lengths are the shortest the shell resolves. */
-const SQLITE_SHELL: ReadonlyArray<readonly [string, number]> = [
-  ["shell", 3],
-  ["system", 3],
-  ["load", 3],
-  ["excel", 3],
-  ["www", 3],
-];
-
-/** `.output`/`.once` and the rest: [name, shortest prefix, which operand is the file]. */
-const SQLITE_FILE: ReadonlyArray<readonly [string, number, "first" | "last"]> = [
-  ["output", 2, "first"],
-  ["once", 2, "first"],
-  ["backup", 3, "last"],
-  ["save", 3, "first"],
-  ["clone", 3, "first"],
-  ["log", 2, "first"],
-  ["trace", 3, "first"],
-  ["open", 2, "first"],
-];
-
-function sqliteDot(name: string, rest: string): Reading {
-  const lower = name.toLowerCase();
-  const args = tokens(rest);
-  const operands = args.filter((t) => !isOption(t));
-  if (SQLITE_SHELL.some(([command, min]) => names(lower, command, min)))
-    return shellOf(`.${lower}`);
-  // `.output |cmd`, `.once |cmd`, `.import |cmd t`, `.read |cmd`: a pipe makes the file a command; `.once -e`
-  // and `-x` open an editor or a spreadsheet.
-  const sink = names(lower, "output", 2) || names(lower, "once", 2);
-  const pipes = sink || names(lower, "import", 3) || names(lower, "read", 3);
-  if (pipes && args.some(isPipe)) return shellOf(`.${lower} |`);
-  if (sink && args.some((t) => t === "-e" || t === "-x")) return shellOf(`.${lower} -e`);
-  const file = SQLITE_FILE.find(([command, min]) => names(lower, command, min));
-  if (file) return writeOf(file[2] === "last" ? operands.at(-1) : operands[0]);
-  if (names(lower, "import", 3) || names(lower, "read", 3)) return readOf(operands[0]);
-  return {};
-}
-
-const SQLITE_SQL_WRITES: readonly RegExp[] = [
-  /\bwritefile\s*\(\s*(['"])(.+?)\1/gis,
-  /\bvacuum\s+(?:\w+\s+)?into\s+(['"])(.+?)\1/gis,
-  /\battach\s+(?:database\s+)?(['"])(.+?)\1/gis,
-];
-
-function sqliteReading(text: string): Reading[] {
-  const out: Reading[] = [];
-  for (const line of text.split(LINE_BREAK)) {
-    const dot = /^\s*\.([A-Za-z]+)(?:\s+(.*))?$/s.exec(line);
-    if (dot) out.push(sqliteDot(dot[1] as string, dot[2] ?? ""));
-  }
-  for (const pattern of SQLITE_SQL_WRITES) {
-    for (const m of text.matchAll(pattern)) out.push(writeOf(m[2]));
-  }
-  return out;
-}
-
-// ---------------------------------------------------------------------------------------------------------
-// psql and pgcli: backslash commands
-// ---------------------------------------------------------------------------------------------------------
-
-/**
- * A backslash command starts a line, follows a `;` or the `\\` separator, or is `\!`, `\g` or `\gx` (psql reads
- * those after SQL on the same line). Not any backslash: `'\w+'` inside a quoted regular expression is SQL, not `\w`.
- */
-const PG_COMMAND = /(?:^|[\r\n;]|\\\\)[ \t]*\\([A-Za-z_]+|!)(?:[ \t]+([^\r\n]*)|(?=[\r\n]|$))/g;
-const PG_ANYWHERE = /\\(!|gx?(?![A-Za-z_]))[ \t]*([^\r\n]*)/g;
-
-function postgresCommand(name: string, rest: string): Reading {
-  const args = tokens(rest);
-  const first = args[0];
-  if (name === "!" || name === "setenv" || name === "pager") return shellOf(`\\${name}`);
-  if (/^(?:o|g|gx|w|write)$/.test(name)) {
-    if (first !== undefined && isPipe(first)) return shellOf(`\\${name} |`);
-    return first?.startsWith("(") ? {} : writeOf(first);
-  }
-  if (name === "copy") return postgresCopy(rest);
-  if (name === "lo_export") return writeOf(args[1]);
-  if (/^(?:i|ir|include|include_relative|lo_import)$/.test(name)) return readOf(first);
-  return {};
-}
-
-/** `\copy t to 'F'` writes F, `\copy t from 'F'` reads it, and `program 'cmd'` runs a command. */
-function postgresCopy(rest: string): Reading {
-  if (/\bprogram\b/i.test(rest)) return shellOf("\\copy … program");
-  const m = /\b(to|from)\s+(?:'((?:[^']|'')*)'|(\S+))/i.exec(rest);
-  if (!m) return {};
-  const file = (m[2] ?? m[3])?.replace(/''/g, "'");
-  const reads = (m[1] as string).toLowerCase() === "from";
-  if (file === undefined || /^(?:stdin|stdout|pstdin|pstdout)$/i.test(file)) return {};
-  return reads ? readOf(file) : writeOf(file);
-}
-
-function postgresReading(text: string): Reading[] {
-  return [...text.matchAll(PG_ANYWHERE), ...text.matchAll(PG_COMMAND)].map((m) =>
-    postgresCommand(m[1] as string, m[2] ?? ""),
-  );
+/** The reader for a program and its arguments: `cockroach` is a client only for its `sql` subcommand. */
+function kindOf(prog: string, args: readonly string[]): Kind | undefined {
+  if (prog === "cockroach" && args[0] !== "sql") return undefined;
+  return CLIENTS.get(prog);
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -189,17 +86,71 @@ function mysqlCommand(name: string, rest: string): Reading {
   return readOf(file); // `source F`, `\. F`
 }
 
-function mysqlReading(text: string): Reading[] {
-  return [...text.matchAll(MYSQL_COMMAND)].map((m) =>
-    mysqlCommand(m[1] as string, (m[2] ?? "").trim()),
-  );
-}
-
 /** `--pager=cmd` runs a program and `--tee=F` writes a file, whatever the statement says. */
 function mysqlOption(arg: string): Reading {
   const m = /^--(pager|tee)=(.+)$/s.exec(arg);
   if (!m) return {};
   return m[1] === "pager" ? shellOf("--pager") : writeOf(m[2]);
+}
+
+function mysqlReading(text: string): Reading[] {
+  const commands = [...text.matchAll(MYSQL_COMMAND)].map((m) =>
+    mysqlCommand(m[1] as string, (m[2] ?? "").trim()),
+  );
+  return [...commands, ...text.split(LINE_BREAK).map(mysqlOption), ...sqlFileReadings(text)];
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// sqlcmd, sqlplus, mongosh: coarser readers
+// ---------------------------------------------------------------------------------------------------------
+
+/** sqlcmd: `!!cmd` and `:!!cmd` run a program, `:out F` writes, `:r F` reads. */
+function sqlcmdReading(text: string): Reading[] {
+  const out: Reading[] = [];
+  for (const line of text.split(LINE_BREAK)) {
+    if (/^\s*:?!!/.test(line)) out.push(shellOf("!!"));
+    const file = /^\s*:(out|o|r)\s+(\S+)/i.exec(line);
+    if (file) out.push(/^r$/i.test(file[1] as string) ? readOf(file[2]) : writeOf(file[2]));
+  }
+  return [...out, ...sqlFileReadings(text)];
+}
+
+/** sqlplus: `host`, `ho`, `!` and `$` run a program; `spool`, `save`, `store set` write; `@`, `@@`, `start`, `get` read. */
+function sqlplusReading(text: string): Reading[] {
+  const out: Reading[] = [];
+  for (const line of text.split(LINE_BREAK)) {
+    if (/^\s*(?:host|ho|!|\$)(?:\s|$)/i.test(line)) out.push(shellOf("host"));
+    const writes = /^\s*(?:spool|save|store\s+set)\s+(\S+)/i.exec(line)?.[1];
+    if (writes !== undefined) out.push(writeOf(writes.replace(/[;.]$/, "")));
+    const reads = /^\s*(?:@@?|start\s+|get\s+)\s*(\S+)/i.exec(line)?.[1];
+    if (reads !== undefined) out.push(readOf(reads.replace(/;$/, "")));
+  }
+  return [...out, ...sqlFileReadings(text)];
+}
+
+const FILE_ARGUMENT = String.raw`\(\s*(['"])(.+?)\1`;
+
+/** mongosh: `cat("F")` and `load("F")` read, `fs.writeFileSync("F")` writes, `child_process` runs a program. */
+function mongoReading(text: string): Reading[] {
+  const out: Reading[] = [];
+  for (const m of text.matchAll(
+    new RegExp(
+      String.raw`\b(?:cat|load|readFileSync|readFile|createReadStream)\s*${FILE_ARGUMENT}`,
+      "g",
+    ),
+  )) {
+    out.push(readOf(m[2]));
+  }
+  for (const m of text.matchAll(
+    new RegExp(
+      String.raw`\b(?:writeFileSync|writeFile|appendFileSync|appendFile|createWriteStream)\s*${FILE_ARGUMENT}`,
+      "g",
+    ),
+  )) {
+    out.push(writeOf(m[2]));
+  }
+  if (/\bchild_process\b/.test(text)) out.push(shellOf("child_process"));
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -218,8 +169,10 @@ export interface ClientStage {
 
 /**
  * Every text the client at `stages[index]` reads as commands: each argument and the value attached to it
- * (`--command=…`, `-c…`), a here-string, the heredoc bodies of this command, and what an `echo` or `printf` earlier
- * in its pipeline prints.
+ * (`--command=…`, `-c…`), a here-string, the heredoc bodies of this command, and what an `echo` or `printf` earlier in
+ * its pipeline prints. Returned as the text the guard lexed and, when it differs, the text the client receives after the
+ * shell reduced the backslashes of a double-quoted word; each is one text (its parts on separate lines, in order) so that
+ * `.cd` and `\cd` carry from one argument to the next.
  */
 export function clientTexts(
   stages: readonly ClientStage[],
@@ -227,30 +180,92 @@ export function clientTexts(
   bodies: readonly string[],
 ): string[] {
   const client = stages[index] as ClientStage;
-  const texts: string[] = [...client.strings, ...bodies];
+  const parts: string[] = [...client.strings, ...bodies];
   for (const arg of client.args) {
-    texts.push(arg);
+    parts.push(arg);
     const attached = /^--[A-Za-z][\w-]*=(.*)$/s.exec(arg) ?? /^-[A-Za-z](.+)$/s.exec(arg);
-    if (attached) texts.push(attached[1] as string);
+    if (attached) parts.push(attached[1] as string);
   }
   for (let j = index; stages[j]?.joiner === "|"; j--) {
     const source = stages[j - 1] as ClientStage;
     const printed = printedText(source.prog, source.args);
-    if (printed !== null) texts.push(printed);
+    if (printed !== null) parts.push(printed);
   }
-  return texts;
+  const readings = parts.map(bothReadings);
+  const lexed = parts.join("\n");
+  const received = readings.map((r) => r.at(-1) as string).join("\n");
+  return received === lexed ? [lexed] : [lexed, received];
 }
 
-/** What `prog` does with the texts it is handed; null for a program that is not a SQL client. */
-export function clientFindings(prog: string, texts: readonly string[]): ClientFindings | null {
-  const kind = CLIENTS.get(prog);
+function readingsOf(kind: Kind, text: string): Reading[] {
+  switch (kind) {
+    case "sqlite":
+      return sqliteReading(text);
+    case "postgres":
+      return postgresReading(text);
+    case "mysql":
+      return mysqlReading(text);
+    case "sqlcmd":
+      return sqlcmdReading(text);
+    case "sqlplus":
+      return sqlplusReading(text);
+    case "mongo":
+      return mongoReading(text);
+    case "sql":
+      return sqlFileReadings(text);
+    case "editor":
+      return embeddedNames([text], true).map((name) => writeOf(name));
+  }
+}
+
+/** The files a client's own options name: a script it reads (`psql -f F`), a config (`--defaults-file`), an output (`sqlcmd -o F`). */
+function optionReadings(kind: Kind, args: readonly string[]): Reading[] {
+  const reads = (files: readonly string[]): Reading[] => files.map((f) => readOf(f));
+  switch (kind) {
+    case "postgres":
+      return reads(optionValues(args, "f", [["file", 4]]));
+    case "mysql":
+      return reads(
+        optionValues(args, "", [
+          ["defaults-file", 8],
+          ["defaults-extra-file", 8],
+        ]),
+      );
+    case "sqlcmd":
+      return [
+        ...reads(optionValues(args, "i", [])),
+        ...optionValues(args, "o", []).map((f) => writeOf(f)),
+      ];
+    case "sql":
+      return reads(
+        optionValues(args, "f", [
+          ["file", 4],
+          ["queries-file", 7],
+        ]),
+      );
+    case "mongo":
+      return reads(optionValues(args, "f", [["file", 4]]));
+    case "sqlite":
+      return reads(
+        args.flatMap((a, k) => (a === "-init" && args[k + 1] ? [args[k + 1] as string] : [])),
+      );
+    default:
+      return [];
+  }
+}
+
+/** What `prog` does with the texts it is handed (and the options it is started with); null for a program that is not a client. */
+export function clientFindings(
+  prog: string,
+  texts: readonly string[],
+  args: readonly string[] = [],
+): ClientFindings | null {
+  const kind = kindOf(prog, args);
   if (kind === undefined) return null;
-  const readings = texts.flatMap((text): Reading[] => {
-    if (kind === "sqlite") return sqliteReading(text);
-    if (kind === "postgres") return postgresReading(text);
-    if (kind === "editor") return embeddedNames([text], true).map((name) => writeOf(name));
-    return [...mysqlReading(text), mysqlOption(text)];
-  });
+  const readings = [
+    ...texts.flatMap((text) => readingsOf(kind, text)),
+    ...optionReadings(kind, args),
+  ];
   const collect = (pick: (r: Reading) => readonly string[] | undefined): string[] => [
     ...new Set(readings.flatMap((r) => pick(r) ?? [])),
   ];
