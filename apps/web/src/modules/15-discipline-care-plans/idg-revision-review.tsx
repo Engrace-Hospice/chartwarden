@@ -34,6 +34,7 @@ import {
   INTERVENTION_STATUS_TONE,
   VERSION_STATUS_TONE,
   dateTime,
+  goalSourceLabel,
   humanize,
   kindLabel,
   shortId,
@@ -204,7 +205,7 @@ export function IdgRevisionReview(): JSX.Element {
               {recentGoals.map((g) => (
                 <tr key={g.goalId} style={rowLine}>
                   <td style={td}>{g.revisedText ?? g.originalText}</td>
-                  <td style={td}>{humanize(g.source)}</td>
+                  <td style={td}>{goalSourceLabel(g.source)}</td>
                   <td style={td}>{dateTime(g.addedAt)}</td>
                   <td style={td}>
                     <StatusPill

@@ -101,6 +101,19 @@ export function humanize(value: string | null | undefined): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** `discipline_goal_source` → the label shown in the goals tables and the Aide POC editor's Source select. */
+const GOAL_SOURCE_LABELS: Record<string, string> = {
+  clinical: "Clinician authored",
+  patient_stated: "Patient stated",
+  family_stated: "Family stated",
+  agent_stated: "Agent stated",
+};
+
+/** The label for a goal `source`; an unknown wire value still renders (humanized). */
+export function goalSourceLabel(source: string): string {
+  return GOAL_SOURCE_LABELS[source] ?? humanize(source);
+}
+
 /** `discipline_plan_kind` → the CoP-facing screen label. */
 export function kindLabel(kind: string | null | undefined): string {
   switch (kind) {

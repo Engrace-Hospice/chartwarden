@@ -34,6 +34,7 @@ import {
 import {
   GOAL_STATUS_TONE,
   INTERVENTION_STATUS_TONE,
+  goalSourceLabel,
   humanize,
   shortDate,
   shortId,
@@ -62,11 +63,10 @@ import {
 
 /** `discipline_goal_source` values this form may send (`agent_stated` needs an acting consent this form does
  *  not collect). The route union and the pgEnum are pinned equal by `m15-goal-source-parity.test.ts`. */
-const SOURCE_OPTIONS = [
-  { value: "clinical", label: "Clinician authored" },
-  { value: "patient_stated", label: "Patient stated" },
-  { value: "family_stated", label: "Family stated" },
-];
+const SOURCE_OPTIONS = ["clinical", "patient_stated", "family_stated"].map((value) => ({
+  value,
+  label: goalSourceLabel(value),
+}));
 
 /** The §4.2 `UpdateGoalBody.event.type` ladder. */
 const GOAL_EVENTS = [
@@ -355,7 +355,7 @@ export function AidePocEditor(): JSX.Element {
                       <div style={mutedStyle}>originally: {g.originalText}</div>
                     ) : null}
                   </td>
-                  <td style={td}>{humanize(g.source)}</td>
+                  <td style={td}>{goalSourceLabel(g.source)}</td>
                   <td style={td}>{shortDate(g.targetAt)}</td>
                   <td style={td}>
                     <StatusPill

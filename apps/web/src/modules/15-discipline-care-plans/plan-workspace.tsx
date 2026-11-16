@@ -45,6 +45,7 @@ import {
   VERSION_STATUS_TONE,
   assessmentKindLabel,
   dateTime,
+  goalSourceLabel,
   humanize,
   kindLabel,
   kindRegulation,
@@ -266,7 +267,7 @@ export function DisciplinePlanWorkspace({
                           <div style={mutedStyle}>outcome: {g.measurableOutcome}</div>
                         ) : null}
                       </td>
-                      <td style={td}>{humanize(g.source)}</td>
+                      <td style={td}>{goalSourceLabel(g.source)}</td>
                       <td style={td}>{g.frequencyText ?? "—"}</td>
                       <td style={td}>{shortDate(g.targetAt)}</td>
                       <td style={td}>
