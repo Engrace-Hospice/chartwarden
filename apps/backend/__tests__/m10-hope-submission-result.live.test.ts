@@ -18,7 +18,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { activeLegalHoldScopeForOrg } from "../src/modules/04-audit/legal-hold-scope";
+import { activeLegalHoldScopeInTransaction } from "../src/modules/04-audit/legal-hold-scope";
 import {
   lockPackageableRecords,
   readAssembleCandidateIds,
@@ -166,10 +166,10 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
     const outbox: HopeWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m10" }),
     };
-    // The cancel's byte purge reads the REAL M4 legal-hold scope (the retention cron's own reader) as the app role.
+    // The cancel's byte purge reads the REAL M4 legal-hold scope on its own transaction, as the app role.
     svc = createDbHopeBackend(handle.db, outbox, () => new Date("2026-06-08T12:00:00.000Z"), {
-      activeLegalHoldScopeForOrg: (organizationId) =>
-        activeLegalHoldScopeForOrg(handle.db, organizationId),
+      activeLegalHoldScopeInTransaction: (tx, organizationId) =>
+        activeLegalHoldScopeInTransaction(tx, organizationId),
     });
   }, 120_000);
 
@@ -1277,6 +1277,65 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
       });
       for (const typed of ["FVR-AUDIT-9", "free text from CMS", "raw CMS row"])
         expect(image).not.toContain(typed);
+    });
+
+    it("an UPDATE's and a DELETE's audit images hold none of the three values either (before and after)", async () => {
+      const batch = await seedBatch("exported", [await seedAssessment()]);
+      const id = uuid(++seq);
+      await admin.query(
+        `INSERT INTO hope_submission_result_event
+           (id, organization_id, hope_submission_id, report_hash, report_reference, result_status, message, raw_result)
+         VALUES ($1,$2,$3,$4,'FVR-OLD-1','rejected','first CMS text',$5::jsonb)`,
+        [id, ORG_A, batch, "e".repeat(64), JSON.stringify({ note: "first raw row" })],
+      );
+      await admin.query(
+        `UPDATE hope_submission_result_event
+            SET report_reference='FVR-NEW-2', message='edited CMS text', raw_result=$2::jsonb, result_status='accepted'
+          WHERE id=$1`,
+        [id, JSON.stringify({ note: "edited raw row" })],
+      );
+      await admin.query("DELETE FROM hope_submission_result_event WHERE id=$1", [id]);
+
+      const image = async (eventType: string, column: "before" | "after") =>
+        (
+          await admin.query(
+            `SELECT ${column}::text AS image FROM audit_event WHERE resource_id=$1 AND event_type=$2`,
+            [id, eventType],
+          )
+        ).rows;
+      const scrubbed = {
+        report_reference: "<changed>",
+        message: "<changed>",
+        raw_result: "<changed>",
+      };
+      const updateBefore = await image("hope_submission_result_event.update", "before");
+      const updateAfter = await image("hope_submission_result_event.update", "after");
+      const deleteBefore = await image("hope_submission_result_event.delete", "before");
+      expect([updateBefore.length, updateAfter.length, deleteBefore.length]).toEqual([1, 1, 1]);
+      expect(JSON.parse(updateBefore[0].image)).toMatchObject({
+        ...scrubbed,
+        result_status: "rejected",
+      });
+      expect(JSON.parse(updateAfter[0].image)).toMatchObject({
+        ...scrubbed,
+        result_status: "accepted",
+      });
+      expect(JSON.parse(deleteBefore[0].image)).toMatchObject({
+        ...scrubbed,
+        result_status: "accepted",
+      });
+      const everything = [updateBefore, updateAfter, deleteBefore]
+        .map((rows) => rows[0].image as string)
+        .join("\n");
+      for (const typed of [
+        "FVR-OLD-1",
+        "FVR-NEW-2",
+        "first CMS text",
+        "edited CMS text",
+        "first raw row",
+        "edited raw row",
+      ])
+        expect(everything).not.toContain(typed);
     });
   });
 });

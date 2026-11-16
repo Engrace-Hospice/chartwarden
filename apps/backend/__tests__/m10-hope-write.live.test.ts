@@ -22,7 +22,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { importHopeSpec } from "../../../scripts/db/import-hope-spec";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { activeLegalHoldScopeForOrg } from "../src/modules/04-audit/legal-hold-scope";
+import { activeLegalHoldScopeInTransaction } from "../src/modules/04-audit/legal-hold-scope";
 import { registerPatientSeams } from "../src/modules/05-patient/index";
 import {
   createAdmissionStatusReader,
@@ -248,10 +248,10 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     // GAP-015: the capture gate judges lateness on the SERVER clock. It defaults to a date before every
     // fixture window (so the gate reads each fixture's own `targetDate`, exactly as before); the GAP-015
     // cases below move it.
-    // The cancel's byte purge reads the REAL M4 legal-hold scope (the retention cron's own reader) as the app role.
+    // The cancel's byte purge reads the REAL M4 legal-hold scope on its own transaction, as the app role.
     svc = createDbHopeBackend(handle.db, outbox, () => liveNow, {
-      activeLegalHoldScopeForOrg: (organizationId) =>
-        activeLegalHoldScopeForOrg(handle.db, organizationId),
+      activeLegalHoldScopeInTransaction: (tx, organizationId) =>
+        activeLegalHoldScopeInTransaction(tx, organizationId),
     });
   }, 120_000);
 
@@ -1947,11 +1947,90 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
         expect(event.context).toMatchObject({
           packageBytesPurged: false,
           bytesKeptForLegalHold: true,
+          bytesKeptReason: "legal_hold",
+          repeatCancel: false,
         });
       } finally {
         await release();
       }
     });
+
+    it("repeating the cancel while the hold applies changes nothing; once the hold is released it purges the kept bytes (status and provenance untouched, one more event)", async () => {
+      const id = await freshPackage();
+      const heldPatient = (
+        await admin.query("SELECT patient_id FROM hope_assessment WHERE id=$1", [
+          (await itemRows(id))[0].hope_assessment_id,
+        ])
+      ).rows[0].patient_id as string;
+      const release = await holdPatients(heldPatient);
+      let provenance: Record<string, unknown>;
+      try {
+        await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, { reasonCode: "package_lost" });
+        const kept = await subRow(id);
+        provenance = {
+          status: kept.status,
+          cancelled_at: kept.cancelled_at,
+          cancelled_by_membership_id: kept.cancelled_by_membership_id,
+          cancel_reason_code: kept.cancel_reason_code,
+        };
+        // The hold still applies: a repeat is a no-op (bytes stay, no new event).
+        await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, { reasonCode: "other" });
+        expect((await subRow(id)).acceptance_report).not.toBeNull();
+        expect(await cancelEvents(id)).toHaveLength(1);
+      } finally {
+        await release();
+      }
+
+      // Released: the same call purges what was kept, and says so.
+      const again = await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, {
+        reasonCode: "other",
+      });
+
+      expect(again.status).toBe("cancelled");
+      const purged = await subRow(id);
+      expect(purged.acceptance_report).toBeNull();
+      expect({
+        status: purged.status,
+        cancelled_at: purged.cancelled_at,
+        cancelled_by_membership_id: purged.cancelled_by_membership_id,
+        cancel_reason_code: purged.cancel_reason_code,
+      }).toEqual(provenance);
+      for (const i of await itemRows(id)) expect(i.iqies_validation_result).toBeNull();
+      const events = await cancelEvents(id);
+      expect(events).toHaveLength(2);
+      expect(events[1].context).toMatchObject({
+        repeatCancel: true,
+        packageBytesPurged: true,
+        bytesKeptReason: "none",
+        reasonCode: "package_lost",
+      });
+      // Purged: a further repeat writes nothing.
+      await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, { reasonCode: "other" });
+      expect(await cancelEvents(id)).toHaveLength(2);
+    });
+
+    it("an org-wide hold seen only AFTER the batch row lock keeps the bytes: a hold committed while the cancel waited for the row", async () => {
+      const id = await freshPackage();
+      const holder = await holdRowLock(id);
+      let release: (() => Promise<void>) | undefined;
+      try {
+        const cancelling = svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, {
+          reasonCode: "package_lost",
+        });
+        await awaitBlockedStatement();
+        // The hold commits while the cancel is parked on the row lock: a scope read before the lock would not see it.
+        release = await holdPatients();
+        await holder.query("ROLLBACK");
+        await cancelling;
+      } finally {
+        await holder.end().catch(() => undefined);
+        await release?.();
+      }
+
+      expect((await subRow(id)).status).toBe("cancelled");
+      expect((await subRow(id)).acceptance_report).not.toBeNull();
+      expect((await cancelEvents(id))[0].context).toMatchObject({ bytesKeptReason: "legal_hold" });
+    }, 30_000);
 
     it("an org-wide legal hold keeps the bytes too; a hold on a patient who is NOT in the batch purges as usual", async () => {
       const orgWide = await freshPackage();
@@ -1964,6 +2043,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect((await subRow(orgWide)).acceptance_report).not.toBeNull();
       expect((await cancelEvents(orgWide))[0].context).toMatchObject({
         bytesKeptForLegalHold: true,
+        bytesKeptReason: "legal_hold",
       });
 
       const other = await freshPackage();
@@ -1978,6 +2058,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect((await cancelEvents(other))[0].context).toMatchObject({
         packageBytesPurged: true,
         bytesKeptForLegalHold: false,
+        bytesKeptReason: "none",
       });
     });
 

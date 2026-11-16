@@ -53,7 +53,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { importHopeSpec } from "../../../scripts/db/import-hope-spec";
 import { __resetSeamsForTest, buildServer, registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { activeLegalHoldScopeForOrg } from "../src/modules/04-audit/legal-hold-scope";
+import { activeLegalHoldScopeInTransaction } from "../src/modules/04-audit/legal-hold-scope";
 import { registerPatientSeams } from "../src/modules/05-patient/index";
 import {
   createAdmissionStatusReader,
@@ -493,10 +493,10 @@ describe.skipIf(!DB_URL)(
       };
       // A fixed clock BEFORE every fixture window (as m10-hope-write): the answer engine picks the spec version
       // effective at the server clock, and the capture gate judges lateness on the later of this and `targetDate`.
-      // The cancel's byte purge reads the REAL M4 legal-hold scope (the retention cron's own reader) as the app role.
+      // The cancel's byte purge reads the REAL M4 legal-hold scope on its own transaction, as the app role.
       svc = createDbHopeBackend(handle.db, outbox, () => new Date("2026-06-01T00:00:00.000Z"), {
-        activeLegalHoldScopeForOrg: (organizationId) =>
-          activeLegalHoldScopeForOrg(handle.db, organizationId),
+        activeLegalHoldScopeInTransaction: (tx, organizationId) =>
+          activeLegalHoldScopeInTransaction(tx, organizationId),
       });
     }, 120_000);
 
@@ -557,8 +557,19 @@ describe.skipIf(!DB_URL)(
       );
       registerAbacRegistry(registry);
       await app?.close();
-      app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-      registerHopeRoutes(app, { service: svc, caseloadPatientIds: async () => [] });
+      // `db` installs the read-audit EMISSION hook (the coverage gate is on without it): the package download's read event is
+      // asserted below, as CLAUDE.md asks of every read-audit config ("the live suite asserts the read event lands").
+      app = buildServer({
+        authenticate: headerAuth,
+        security: { rateLimitEnabled: false },
+        db: handle.db,
+      });
+      registerHopeRoutes(app, {
+        service: svc,
+        caseloadPatientIds: async () => [],
+        // The SFV route's per-actor limiter is a composition-root concern (unit-tested in hope-routes.test.ts): no-op here.
+        sfvCompletionRateLimit: async () => undefined,
+      });
       await app.ready();
     });
 
@@ -2854,6 +2865,33 @@ describe.skipIf(!DB_URL)(
         expect(await exporter()).toEqual({
           status: "exported",
           exported_by_membership_id: member.orgwide,
+        });
+      });
+
+      it("the package download's read event lands in audit_event (resourceIdParam is set): the batch, the org and the reader", async () => {
+        const adm = await admitted();
+        const draft = await recordDraft(adm, member.victim, QUIET_DATA);
+        const batch = await packagedBatch(draft.id);
+
+        const res = await app.inject({
+          method: "GET",
+          url: `/api/v1/hope/submissions/${batch}/package`,
+          headers: as(member.orgwide),
+        });
+
+        expect(res.statusCode).toBe(200);
+        // The emission runs on the reply (best effort, after it is sent): wait for the row rather than race it.
+        let events: Awaited<ReturnType<typeof eventRows>> = [];
+        for (let attempt = 0; attempt < 40 && events.length === 0; attempt += 1) {
+          events = await eventRows("hope_submission.viewed", batch);
+          if (events.length === 0) await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        expect(events).toHaveLength(1);
+        expect(events[0]).toMatchObject({
+          outcome: "success",
+          organization_id: ORG,
+          resource_kind: "hope_submission",
+          actor_user_id: userOf[member.orgwide],
         });
       });
 
