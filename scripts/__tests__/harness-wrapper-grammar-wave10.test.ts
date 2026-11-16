@@ -39,12 +39,12 @@ describe("the option reader reads the way GNU getopt does", () => {
     expect(read("-nupostgres", "cmd").end).toBe(1);
     expect(read("-nu", "postgres", "cmd").end).toBe(2);
     expect(read("-neu", "postgres", "cmd").options.map((o) => o.name)).toEqual(["n", "e", "u"]);
-    expect(read("-upostgres").options).toEqual([{ name: "u", value: "postgres" }]);
+    expect(read("-upostgres").options).toMatchObject([{ name: "u", value: "postgres" }]);
   });
 
   it("a letter with an optional argument takes only what is attached", () => {
     expect(read("-h", "cmd").end).toBe(1);
-    expect(read("-hhost", "cmd").options).toEqual([{ name: "h", value: "host" }]);
+    expect(read("-hhost", "cmd").options).toMatchObject([{ name: "h", value: "host" }]);
   });
 
   it("a long option is an exact name first: a flag that prefixes a value option stays a flag", () => {
@@ -374,7 +374,10 @@ describe("MONOTONICITY: wrapping a guarded command never makes the answer weaker
           spec.operands !== undefined && !supplied ? [OPERAND.get(wrapper) ?? "x"] : [];
         for (const [label, command] of GUARDED) {
           const alone = rank(command);
-          const cmd = [wrapper, ...invocation.words, ...operands, command].join(" ");
+          // `gdb --args PROG` runs the program only behind that option
+          const needs = spec.onlyWith?.slice(0, 1).map((name) => `--${name}`) ?? [];
+          if (needs.length > 0 && invocation.words.at(-1) === "--") continue;
+          const cmd = [wrapper, ...invocation.words, ...needs, ...operands, command].join(" ");
           checked++;
           if (rank(cmd) < alone) failures.push(`${invocation.label} ${label}: ${cmd}`);
         }

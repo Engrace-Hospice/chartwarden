@@ -99,6 +99,10 @@ export const MANAGERS: ReadonlyMap<string, Manager> = new Map([
   ["devbox", manager(G.PLAIN_RUN, ["run", plain(G.PLAIN_RUN)])],
   ["flox", manager(G.FLOX, ["activate", plain(G.FLOX, { call: ["c", "command"] })])],
   ["nix", manager(G.NIX, ["shell", NIX], ["develop", NIX])],
+  [
+    "perf",
+    manager(G.PERF, ["stat", plain(G.PERF)], ["record", plain(G.PERF)], ["trace", plain(G.PERF)]),
+  ],
 ]);
 
 export const BARE_RUNNERS: ReadonlyMap<string, Grammar> = new Map([

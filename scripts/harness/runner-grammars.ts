@@ -203,3 +203,10 @@ export const NIX: OptionGrammar = loose({
   longFlags: words("impure ignore-environment keep-env-var pure"),
   longValues: words("command run keep unset override-input extra-experimental-features option"),
 });
+
+/** perf stat|record|trace [options] [--] COMMAND (unverified here). */
+export const PERF: OptionGrammar = loose({
+  flags: "adBvSgnR",
+  values: "eCpoIDFGrtmcAsT",
+  longValues: words("event cpu pid output interval-print delay cgroup repeat"),
+});

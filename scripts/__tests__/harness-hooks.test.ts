@@ -474,6 +474,14 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
         "timeout 10 ls",
         "timeout --signal TERM 10 ls",
       ]) {
+        // Wave 10 (A9): `kubectl exec|debug` opens a session on another machine and asks (Codex: denies) whatever it runs, so these
+        // rows are no longer allowed outright; what this test pins is that the INTERACTIVE-shell rule does not fire for them.
+        if (/^kubectl\b.*\b(?:exec|debug)\b/.test(command)) {
+          expect(JSON.stringify(shell(command).out ?? ""), command).not.toContain(
+            "interactive shell",
+          );
+          continue;
+        }
         expect(shell(command).out, command).toBeNull();
       }
     },

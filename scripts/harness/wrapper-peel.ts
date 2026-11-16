@@ -61,6 +61,7 @@ export function peelWrapper(
   let next = read.end;
   const operands = takeOperands(spec, words, next, options);
   next += operands.length;
+  if (spec.onlyWith !== undefined && named(options, spec.onlyWith).length === 0) return null;
   let stays = named(options, spec.stays).length > 0;
   // `flock FILE -c STRING`, `runuser USER -c STRING`: options may follow the operands once more.
   if (!stays && spec.optionsAfterOperands === true && operands.length > 0) {

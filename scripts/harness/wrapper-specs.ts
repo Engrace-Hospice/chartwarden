@@ -27,7 +27,11 @@ export interface WrapperSpec {
   readonly splits?: readonly string[];
   /** After its operands, options may follow once more (`flock FILE -c CMD`, `runuser USER -c CMD`). */
   readonly optionsAfterOperands?: boolean;
+  /** The program runs a command only with one of these options (`gdb --args PROG`); without one it is no wrapper. */
+  readonly onlyWith?: readonly string[];
 }
+
+const words = (list: string): string[] => list.split(" ");
 
 const grammar = (g: Partial<OptionGrammar>): OptionGrammar => ({
   flags: "",
@@ -420,6 +424,118 @@ export const WRAPPER_SPECS: ReadonlyMap<string, WrapperSpec> = new Map<string, W
         longFlags: PARALLEL_FLAGS,
         longValues: PARALLEL_VALUES,
       }),
+    },
+  ],
+  // The residuals wave 9 listed (wave 10, A9). Their option tables are from the manuals (none is installed here): lax, unverified.
+  ["torify", LAX_NO_OPTIONS],
+  ["tsocks", LAX_NO_OPTIONS],
+  ["toybox", LAX_NO_OPTIONS],
+  ["firejail", LAX_NO_OPTIONS],
+  ["valgrind", { grammar: grammar({ flags: "vq", lax: true }) }],
+  [
+    "fakeroot",
+    {
+      grammar: grammar({
+        flags: "uvh",
+        values: "lfisb",
+        lax: true,
+        longFlags: ["unknown-is-real", "version", "help"],
+        longValues: ["lib", "faked"],
+      }),
+    },
+  ],
+  [
+    "setpriv",
+    {
+      grammar: grammar({
+        lax: true,
+        longValues: words(
+          "ruid euid rgid egid reuid regid groups inh-caps bounding-set ambient-caps securebits pdeathsig selinux-label apparmor-profile landlock-access",
+        ),
+      }),
+    },
+  ],
+  [
+    "nsenter",
+    {
+      // util-linux: `-t PID`, `-S UID`, `-G GID` take a value; the namespace letters carry an optional `FILE` attached.
+      grammar: grammar({
+        flags: "FZa",
+        optional: "mupinCUTrw",
+        values: "tSG",
+        lax: true,
+        longValues: words("target setuid setgid"),
+      }),
+    },
+  ],
+  [
+    "sshpass",
+    {
+      // `sshpass [-f FILE|-d NUM|-p PASSWORD|-e] [-P PROMPT] COMMAND`: `-f FILE` is read (`wrapper-options.ts`).
+      grammar: grammar({ flags: "eVh", values: "pfdP" }),
+    },
+  ],
+  [
+    "systemd-run",
+    {
+      grammar: grammar({
+        flags: "qtdrP",
+        values: "pEuHMG",
+        lax: true,
+        longValues: words(
+          "property setenv unit description slice uid gid nice working-directory machine host service-type on-active on-boot on-startup on-unit-active on-unit-inactive on-calendar timer-property",
+        ),
+      }),
+    },
+  ],
+  ["ltrace", { grammar: grammar({ flags: "bcfhiltSrTV", values: "aAeFnopsuw", lax: true }) }],
+  ["dtruss", { grammar: grammar({ flags: "acdeflhoLs", values: "tnpb", lax: true }) }],
+  [
+    "numactl",
+    {
+      grammar: grammar({
+        flags: "lhHs",
+        values: "CmNiMpP",
+        lax: true,
+        longValues: words("cpunodebind physcpubind membind interleave preferred"),
+      }),
+    },
+  ],
+  [
+    "cpulimit",
+    {
+      grammar: grammar({
+        flags: "ivzbh",
+        values: "lpeP",
+        lax: true,
+        longValues: words("limit pid exe path"),
+      }),
+    },
+  ],
+  [
+    "gdb",
+    {
+      grammar: grammar({
+        flags: "qnh",
+        wordValues: [
+          "-ex",
+          "-iex",
+          "-x",
+          "-ix",
+          "-cd",
+          "-d",
+          "-s",
+          "-e",
+          "-se",
+          "-c",
+          "-p",
+          "-tty",
+        ],
+        longFlags: ["args", "batch", "quiet", "nx", "silent"],
+        longValues: words("eval-command init-eval-command command init-command directory"),
+        lax: true,
+      }),
+      onlyWith: ["args"],
     },
   ],
   ["timeout", TIMEOUT],

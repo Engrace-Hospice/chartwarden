@@ -86,6 +86,7 @@ import {
   isProtectedPath,
   protectedPathPattern,
 } from "./protected-paths";
+import { remoteAccessReason } from "./remote-access";
 import { peelRunnerWithFiles } from "./runners";
 import {
   environmentLeak,
@@ -1161,6 +1162,8 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
   if (v) walk.verdicts.push(v);
   if (parsed.unplaced !== undefined)
     walk.verdicts.push(ask(UNPLACED_WRAPPER_REASON(parsed.unplaced)));
+  const remote = remoteAccessReason(parsed.prog, parsed.args, parsed.assigns);
+  if (remote !== null) walk.verdicts.push(ask(remote));
   // A SQL client's own shell escapes and file commands (`sqlite3 .shell`, `psql \\!`, `mysql system`).
   walk.verdicts.push(
     ...dbClientVerdicts(parts, parsedParts, index, bodiesByPart[index] ?? [], here, ctx),

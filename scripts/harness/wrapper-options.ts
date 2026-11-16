@@ -41,6 +41,7 @@ export const READ_OPTIONS: ReadonlyMap<string, FileOptions> = new Map([
     },
   ],
   ["proxychains", { short: "f", long: [] }],
+  ["sshpass", { short: "f", long: [] }],
   ["proxychains4", { short: "f", long: [] }],
   ["doas", { short: "C", long: [] }],
 ]);

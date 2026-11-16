@@ -313,7 +313,11 @@ describe("every long option that takes a value, in both spellings, leaves the co
   const rows = [...WRAPPER_LONG_VALUE]
     .flatMap(([wrapper, names]) => names.map((name) => [wrapper, name] as const))
     .filter(
-      ([wrapper, name]) => name !== "command" && !(wrapper === "env" && name === "split-string"),
+      ([wrapper, name]) =>
+        name !== "command" &&
+        !(wrapper === "env" && name === "split-string") &&
+        // `gdb` runs a command only behind `--args`; the wave-10 property test covers it
+        wrapper !== "gdb",
     );
   it.each(rows)("%s --%s", (wrapper, name) => {
     // `runuser --user NAME` names the user itself: no operand stands before the command
