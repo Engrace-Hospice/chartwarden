@@ -10,6 +10,7 @@
 // STALE_VERSION via the pure `checkOptimisticConcurrency` guard (lifecycle/validation.ts). The version
 // sign-off path reuses the pure §2.3/D5 quorum core (`decideRecordSignature` / `resolveRequiredSignerSet`).
 import type {
+  CarePlanElementsViewer,
   CarePlanSignerRole,
   CarePlanVersionKind,
   GoalSource,
@@ -52,10 +53,7 @@ import {
 import { redactVersionForViewer } from "./snapshot-redaction";
 
 /** The per-caller §7.6 consent context a read carries (decided upstream by `sud_disclosure_allowed`). */
-export interface CarePlanViewer {
-  /** Whether this caller may see SUD-flagged problems (false ⇒ they are omitted). */
-  readonly sudDisclosureAllowed: boolean;
-}
+export type CarePlanViewer = CarePlanElementsViewer;
 
 // ── record shapes (in-memory; the Drizzle adapter projects rows to the SAME DTOs) ───────────────────
 
