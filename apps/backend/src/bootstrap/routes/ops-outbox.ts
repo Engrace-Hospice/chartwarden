@@ -44,31 +44,59 @@ interface OutboxRowSummary {
   nextAttemptAt: string | null;
 }
 
-/** What an operator reads in place of a Part 2 problem's text and codes. */
+/** What an operator reads in place of a decision's free text and codes. */
 const PART2_WITHHELD = "[withheld: 42 CFR Part 2]";
 
+/** The structural keys of a care-plan or discipline-plan decision mutation an operator may still read. */
+const MUTATION_KEEP_KEYS: ReadonlySet<string> = new Set([
+  "op",
+  "kind",
+  "problemId",
+  "goalId",
+  "interventionId",
+  "parentProblemId",
+  "parentGoalId",
+  "goalRefs",
+  "problemKind",
+  "source",
+  "status",
+  "sudRelated",
+  "discipline",
+  "event",
+]);
+
+const withheldMutation = (mutation: unknown): unknown => {
+  if (mutation === null || typeof mutation !== "object" || Array.isArray(mutation)) return mutation;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(mutation as Record<string, unknown>)) {
+    if (MUTATION_KEEP_KEYS.has(key)) out[key] = value;
+    else if (key === "updates" && value !== null && typeof value === "object") {
+      // A problem/goal update keeps its status change; every other field is the decision's own text.
+      const status = (value as Record<string, unknown>).status;
+      out[key] = status === undefined ? PART2_WITHHELD : { status, other: PART2_WITHHELD };
+    } else out[key] = PART2_WITHHELD;
+  }
+  return out;
+};
+
 /**
- * The stored payload as an operator may read it. An `idg.decision_recorded` care-plan decision carries the
- * decision's own text so M7 can apply it, including a problem the decision flags SUD-related (`sudRelated: true`).
- * The row stays whole (the consumer needs it), but the ops detail read, which has no disclosure verdict for the
- * patient, names such a problem by its kind and withholds its text and codes (audit D-11). Every other event type
- * is returned as stored (`m15.plan.version_signed` is already redacted at emit, audit D-13).
+ * The stored payload as an operator may read it. An `idg.decision_recorded` plan decision carries the decision's
+ * own clinical text (a problem's description and codes, a goal's wording, an intervention's scope, a resolution
+ * note) so M7 and M15 can apply it, and the ops detail read has no disclosure verdict for the patient. The row
+ * stays whole (the consumers need it); this read keeps the structure (operation, ids, enums, the Part 2 flag)
+ * and withholds every other field of every mutation, so an operator can see which decision is stuck and where
+ * but never what it says (audit D-11). Every other event type is returned as stored
+ * (`m15.plan.version_signed` is already redacted at emit, audit D-13).
  */
 export function payloadForOps(eventType: string, payload: unknown): unknown {
   if (eventType !== "idg.decision_recorded") return payload;
-  const decision = (payload as { payload?: { mutations?: unknown } } | null)?.payload;
+  const decision = (payload as { payload?: { kind?: unknown; mutations?: unknown } } | null)
+    ?.payload;
   if (!decision || !Array.isArray(decision.mutations)) return payload;
-  const mutations = decision.mutations.map((m: unknown) =>
-    (m as { sudRelated?: unknown } | null)?.sudRelated === true
-      ? {
-          ...(m as object),
-          description: PART2_WITHHELD,
-          icd10Code: PART2_WITHHELD,
-          snomedCode: PART2_WITHHELD,
-        }
-      : m,
-  );
-  return { ...(payload as object), payload: { ...decision, mutations } };
+  return {
+    ...(payload as object),
+    payload: { ...decision, mutations: decision.mutations.map(withheldMutation) },
+  };
 }
 
 export function registerOpsOutboxRoutes(app: FastifyInstance, deps: { db?: DbClient }): void {

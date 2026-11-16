@@ -143,13 +143,13 @@ describe("ops-outbox routes — GET /api/v1/ops/outbox/:id", () => {
   });
 });
 
-describe("payloadForOps — Part 2 text never reaches an operator (audit D-11)", () => {
+describe("payloadForOps — a decision's clinical text never reaches an operator (audit D-11)", () => {
   const decision = (mutations: unknown[]) => ({
     decisionId: "d1",
     payload: { kind: "care_plan_update", mutations },
   });
 
-  it("withholds the description and codes of a problem the decision flags SUD-related, and leaves the rest", () => {
+  it("keeps the structure of every mutation and withholds its text, codes, notes and updates", () => {
     const out = payloadForOps(
       "idg.decision_recorded",
       decision([
@@ -162,20 +162,48 @@ describe("payloadForOps — Part 2 text never reaches an operator (audit D-11)",
           sudRelated: true,
         },
         {
-          op: "problem_add",
-          description: "Ordinary problem",
-          icd10Code: "R06.02",
-          snomedCode: null,
-          problemKind: "related",
+          op: "problem_update",
+          problemId: "pr-1",
+          updates: { status: "resolved", resolutionNote: "SYNTHETIC-RESOLUTION-NOTE" },
+        },
+        {
+          op: "goal_add",
+          problemId: "pr-1",
+          originalText: "SYNTHETIC-GOAL-TEXT",
+          source: "clinical",
+        },
+        {
+          op: "intervention_add",
+          problemId: "pr-1",
+          scopeText: "SYNTHETIC-SCOPE-TEXT",
+          frequencyText: "Weekly",
+          discipline: "rn",
         },
       ]),
     );
     const text = JSON.stringify(out);
-    expect(text).not.toContain("SYNTHETIC-PART2-TEXT");
-    expect(text).not.toContain("F10.20");
-    expect(text).toContain("Ordinary problem");
-    expect(text).toContain("R06.02");
-    expect(text).toContain("problem_add");
+    for (const secret of [
+      "SYNTHETIC-PART2-TEXT",
+      "F10.20",
+      "SYNTHETIC-RESOLUTION-NOTE",
+      "SYNTHETIC-GOAL-TEXT",
+      "SYNTHETIC-SCOPE-TEXT",
+      "Weekly",
+    ]) {
+      expect(text).not.toContain(secret);
+    }
+    // What an operator needs to find a stuck decision stays.
+    for (const kept of [
+      "problem_add",
+      "problem_update",
+      "goal_add",
+      "intervention_add",
+      "pr-1",
+      "resolved",
+      "d1",
+    ]) {
+      expect(text).toContain(kept);
+    }
   });
 
   it("returns every other event, and an unrecognised decision shape, exactly as stored", () => {
