@@ -94,6 +94,8 @@ export type WriteResult<T> =
       readonly message: string;
       /** The server's error code (`M10_TIMEPOINT_EXPIRED`...), for a screen that words a few of them itself; null when it sent none. */
       readonly code: string | null;
+      /** For a VALIDATION_FAILED refusal, the first field it objected to (see {@link validationFieldOf}); absent otherwise. */
+      readonly invalidField?: ValidationField;
     };
 
 /**
@@ -126,9 +128,15 @@ export const SPEC_NOT_IN_FORCE_MESSAGE =
   "No HOPE specification is available for this date. Contact your administrator (code M10_SPEC_NOT_IN_FORCE).";
 export const ADMISSION_PROJECTION_GAP_MESSAGE =
   "The admission record is incomplete or unavailable, so this step could not be completed. Contact your administrator (code M10_ADMISSION_PROJECTION_GAP).";
+/**
+ * A NOT_FOUND names the record's id and doubles its own "not found" ("HOPE schedule <id> not found not found"), and the server answers
+ * it just as it does for a record this user may not read (no existence oracle): so every screen says this one sentence instead.
+ */
+export const RECORD_NOT_AVAILABLE_MESSAGE = "That HOPE record is no longer available to you.";
 const CLINICIAN_WORDS_BY_CODE: ReadonlyMap<string, string> = new Map([
   ["M10_SPEC_NOT_IN_FORCE", SPEC_NOT_IN_FORCE_MESSAGE],
   ["M10_ADMISSION_PROJECTION_GAP", ADMISSION_PROJECTION_GAP_MESSAGE],
+  ["NOT_FOUND", RECORD_NOT_AVAILABLE_MESSAGE],
 ]);
 
 /**
@@ -156,6 +164,25 @@ export function validationDetailOf(body: unknown): string | null {
   return typeof first.field === "string" && first.field !== ""
     ? `${first.field}: ${first.message}`
     : first.message;
+}
+
+/** The field a VALIDATION_FAILED refusal objected to, and the code of that objection (`INVALID_CHARACTERS`, `INVALID`...); null when it sent none. */
+export interface ValidationField {
+  readonly field: string;
+  readonly code: string | null;
+}
+
+/**
+ * For a `VALIDATION_FAILED` refusal, the first field it objected to and why, or null (another code, no details, a detail that names no
+ * field). The wire name is for a screen to match on, never to show: it answers on its own control in its own static words.
+ */
+export function validationFieldOf(body: unknown): ValidationField | null {
+  if (errorCodeOf(body) !== "VALIDATION_FAILED") return null;
+  const first = (body as { error?: { details?: ReadonlyArray<unknown> } }).error?.details?.[0];
+  if (typeof first !== "object" || first === null) return null;
+  const { field, code } = first as { field?: unknown; code?: unknown };
+  if (typeof field !== "string" || field === "") return null;
+  return { field, code: typeof code === "string" ? code : null };
 }
 
 /**
@@ -285,7 +312,7 @@ export function isStaleVersionRefusal(reply: WriteReply): boolean {
 const FALLBACK_BY_STATUS: Readonly<Record<number, string>> = {
   400: "The server rejected the details supplied.",
   403: "Your role is not eligible to record or sign this HOPE timepoint.",
-  404: "That HOPE record is no longer available to you.",
+  404: RECORD_NOT_AVAILABLE_MESSAGE,
   409: "This timepoint changed before your action was applied. Reload and retry.",
   422: "The server rejected the details supplied.",
 };
@@ -306,7 +333,14 @@ function failure<T>(status: number | undefined, body: unknown): WriteResult<T> {
     SERVER_FAULT_MESSAGE,
     (code !== null && FALLBACK_BY_STATUS[code]) || "The action could not be completed.",
   );
-  return { ok: false, status: code, message, code: errorCodeOf(body) };
+  const invalidField = validationFieldOf(body);
+  return {
+    ok: false,
+    status: code,
+    message,
+    code: errorCodeOf(body),
+    ...(invalidField === null ? {} : { invalidField }),
+  };
 }
 
 /**

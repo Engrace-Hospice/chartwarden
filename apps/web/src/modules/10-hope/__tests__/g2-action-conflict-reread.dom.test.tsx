@@ -98,10 +98,18 @@ describe("the dashboard's Skip dialog", () => {
   });
 
   it("re-reads the schedules when the window is no longer available (404), so the row stops offering Skip", async () => {
-    const reads = mountDashboard(json({ error: { code: "NOT_FOUND", message: "gone" } }, 404));
+    const reads = mountDashboard(
+      json(
+        { error: { code: "NOT_FOUND", message: `HOPE schedule ${SCHEDULE} not found not found` } },
+        404,
+      ),
+    );
     const dialog = await skipWithReason();
 
-    expect((await within(dialog).findByRole("alert")).textContent).toContain("gone");
+    // The server's text carries the record's id: the dialog says one fixed sentence instead.
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "That HOPE record is no longer available to you.",
+    );
     await waitFor(() => expect(reads.length).toBe(2));
   });
 
