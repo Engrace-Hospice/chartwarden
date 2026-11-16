@@ -18,19 +18,6 @@ import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { ValueErrorType } from "@sinclair/typebox/errors";
 import { Value } from "@sinclair/typebox/value";
-import type {
-  HopeAnswerPatchResult as ServiceAnswerPatchResult,
-  HopeAssessmentView as ServiceAssessmentView,
-  HopeAssessmentWorkspace as ServiceAssessmentWorkspace,
-  HopeComplianceView as ServiceComplianceView,
-  HopeReviewReadModel as ServiceReviewReadModel,
-  HopeScheduleView as ServiceScheduleView,
-  HopeSfvView as ServiceSfvView,
-  HopeSignResult as ServiceSignResult,
-  HopeSubmissionView as ServiceSubmissionView,
-  HopeValidationRunView as ServiceValidationRunView,
-  HopeWorkflowStateView as ServiceWorkflowStateView,
-} from "./service";
 
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
@@ -405,7 +392,7 @@ export const ValidationQuerySchema = Type.Object({
 // The read + write routes returned typed service view shapes (`HopeAssessmentView` / `HopeScheduleView` /
 // `HopeSfvView` / `HopeSubmissionView` / `HopeComplianceView` and their `{ items }` envelopes) but published
 // NO response contract, so the generated client typed every body as `never`. These DTOs mirror the service's
-// read views 1:1 and are pinned to them by the compile-time `Conforms` aliases below, so a view field added
+// read views 1:1 and are pinned to them by the compile-time `Conforms` aliases in `hope-typebox-conformance.ts`, so a view field added
 // or renamed breaks `bun run build` rather than silently drifting from the client.
 const ASSESSMENT_STATUS = lit(["draft", "signed", "superseded"] as const);
 const SCHEDULE_STATUS = lit(["open", "completed", "expired", "skipped"] as const);
@@ -983,53 +970,6 @@ export const HopeRegenerateResponseSchema = Type.Object({
   admissionId: Type.String(),
   scheduleCount: Type.Integer(),
 });
-
-// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
-type Conforms<T extends V, V> = T;
-type _Assessment = Conforms<Static<typeof HopeAssessmentResponseSchema>, ServiceAssessmentView>;
-type _Workspace = Conforms<
-  Static<typeof HopeAssessmentWorkspaceResponseSchema>,
-  ServiceAssessmentWorkspace
->;
-type _Review = Conforms<Static<typeof HopeAssessmentReviewResponseSchema>, ServiceReviewReadModel>;
-type _AnswerPatch = Conforms<
-  Static<typeof HopeAnswerPatchResponseSchema>,
-  ServiceAnswerPatchResult
->;
-type _Sign = Conforms<Static<typeof HopeSignResponseSchema>, ServiceSignResult>;
-type _Schedule = Conforms<Static<typeof HopeScheduleResponseSchema>, ServiceScheduleView>;
-type _Sfv = Conforms<Static<typeof HopeSfvResponseSchema>, ServiceSfvView>;
-type _Submission = Conforms<Static<typeof HopeSubmissionResponseSchema>, ServiceSubmissionView>;
-type _Compliance = Conforms<Static<typeof HopeComplianceResponseSchema>, ServiceComplianceView>;
-type _WorkflowState = Conforms<
-  Static<typeof HopeWorkflowStateResponseSchema>,
-  ServiceWorkflowStateView
->;
-type _Validation = Conforms<Static<typeof HopeValidationResponseSchema>, ServiceValidationRunView>;
-type _ScheduleList = Conforms<
-  Static<typeof HopeScheduleListResponseSchema>,
-  { readonly schedules: readonly ServiceScheduleView[] }
->;
-type _AssessmentList = Conforms<
-  Static<typeof HopeAssessmentListResponseSchema>,
-  { readonly assessments: readonly ServiceAssessmentView[] }
->;
-type _SfvList = Conforms<
-  Static<typeof HopeSfvListResponseSchema>,
-  { readonly sfvs: readonly ServiceSfvView[] }
->;
-type _SubmissionList = Conforms<
-  Static<typeof HopeSubmissionListResponseSchema>,
-  { readonly submissions: readonly ServiceSubmissionView[] }
->;
-type _SummaryRequested = Conforms<
-  Static<typeof HopeSummaryRequestedResponseSchema>,
-  { assessmentId: string; requested: true }
->;
-type _Regenerate = Conforms<
-  Static<typeof HopeRegenerateResponseSchema>,
-  { admissionId: string; scheduleCount: number }
->;
 
 /**
  * Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. For an `additionalProperties: false`
