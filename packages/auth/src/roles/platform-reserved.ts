@@ -12,8 +12,9 @@
 // confers nothing. The whole `platform_` prefix is reserved rather than the six PLATFORM_OPS_ROLE_KEYS,
 // because predicates already read keys outside that list (`platform_security_owner`).
 //
-// GAP-096 adds the one platform authority whose key does NOT carry the prefix: M32's `ai_safety_owner`
-// (the cross-tenant AI kill switch / lifecycle authority, §4.7). It is reserved by exact key.
+// GAP-096 adds the platform authority whose key does NOT carry the prefix: M32's `ai_safety_owner`
+// (the cross-tenant AI kill switch / lifecycle authority, §4.7). It is reserved by exact key. ADR-0112 adds a second,
+// `superadmin` (one platform-owned role that stands for `administrator`, `org_admin` and every platform role).
 import { PLATFORM_OPS_ROLE_KEYS } from "./templates";
 
 /** Key prefix reserved to platform-owned roles. */
@@ -31,13 +32,23 @@ export const PLATFORM_OPS_ROLE_KEY = "platform_ops";
  */
 export const PLATFORM_ALERT_AUDIENCE_ROLE_KEY = "platform_alert_audience";
 
+/**
+ * The one role that stands for every other. A membership bound to the platform-owned `superadmin` row
+ * reads as `administrator`, `org_admin` and every {@link PLATFORM_GRANTABLE_ROLE_KEYS} key (see
+ * {@link expandSuperadminRoles}), and holds the permission catalog less the keys withheld from the admin roles
+ * (`effectivePermissionKeys`). It is the only way to hold all of them without binding each; it does NOT reach another
+ * tenant's PHI (RLS, the consented support session and break-glass are untouched). Reserved by exact key like
+ * `ai_safety_owner`, so no tenant row can carry it.
+ */
+export const SUPERADMIN_ROLE_KEY = "superadmin";
+
 /** Platform-authority keys outside the `platform_` prefix, reserved by exact match (GAP-096). */
-export const RESERVED_PLATFORM_ROLE_KEYS = ["ai_safety_owner"] as const;
+export const RESERVED_PLATFORM_ROLE_KEYS = ["ai_safety_owner", SUPERADMIN_ROLE_KEY] as const;
 
 /**
  * The platform role keys an operator may GRANT (`scripts/db/platform-role.ts`): every key a platform
  * predicate reads. The six platform-ops templates (M2/M22/M26/M29/M34/M35), M34's
- * `platform_security_owner` alert audience and M32's `ai_safety_owner`. All are reserved, so none of
+ * `platform_security_owner` alert audience, M32's `ai_safety_owner` and `superadmin` (ADR-0112). All are reserved, so none of
  * them confers anything unless it is bound through a platform-owned row.
  */
 export const PLATFORM_GRANTABLE_ROLE_KEYS = [
@@ -51,6 +62,21 @@ export type PlatformGrantableRoleKey = (typeof PLATFORM_GRANTABLE_ROLE_KEYS)[num
 /** True when `key` is one of {@link PLATFORM_GRANTABLE_ROLE_KEYS}. */
 export function isPlatformGrantableRoleKey(key: string): key is PlatformGrantableRoleKey {
   return (PLATFORM_GRANTABLE_ROLE_KEYS as readonly string[]).includes(key);
+}
+
+/** The two tenant admin roles `superadmin` supersedes: sysadmin's `administrator` and orgadmin's `org_admin`. */
+const SUPERSEDED_ADMIN_ROLE_KEYS = ["administrator", "org_admin"] as const;
+
+/**
+ * The role keys an actor holding `roles` is treated as holding. Anyone without `superadmin` gets `roles`
+ * back untouched; a holder additionally reads as `administrator`, `org_admin` and every platform-grantable
+ * role, so every existing `hasRole` / `PLATFORM_OPS_ROLE_KEYS` predicate admits them without being edited
+ * (many list `administrator` without `org_admin`, so both are needed to supersede both). Call it only on keys
+ * that already passed {@link roleConfersKey}: a tenant row named `superadmin` never gets here.
+ */
+export function expandSuperadminRoles(roles: readonly string[]): readonly string[] {
+  if (!roles.includes(SUPERADMIN_ROLE_KEY)) return roles;
+  return [...new Set([...roles, ...SUPERSEDED_ADMIN_ROLE_KEYS, ...PLATFORM_GRANTABLE_ROLE_KEYS])];
 }
 
 /** The role category reserved to platform-owned roles. */

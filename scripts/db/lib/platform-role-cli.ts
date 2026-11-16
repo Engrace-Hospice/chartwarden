@@ -4,7 +4,7 @@
  * operator runs, against its own database, without spawning a process.
  */
 import { randomUUID } from "node:crypto";
-import type { PlatformGrantableRoleKey } from "@chartwarden/auth";
+import { type PlatformGrantableRoleKey, SUPERADMIN_ROLE_KEY } from "@chartwarden/auth";
 import type { Client } from "pg";
 import {
   assertPlatformGrantableKey,
@@ -30,8 +30,9 @@ export const PLATFORM_ROLE_USAGE = `Usage:
   bun run db:platform-role <grant|revoke> --email <user email> --org <org slug or id> \\
     --role <platform role key> --ticket <change ticket ref>
 
-Grants or revokes a PLATFORM-OWNED role (organization_id IS NULL) on the user's ACTIVE membership in
-the org. Connects with DATABASE_ADMIN_URL (or DATABASE_URL). Idempotent.`;
+Grants or revokes a PLATFORM-OWNED role (organization_id IS NULL) on the user's membership in the org
+(a grant needs an ACTIVE one; a revoke also reaches a suspended one). Connects with DATABASE_ADMIN_URL
+(or DATABASE_URL). Idempotent.`;
 
 /** Ticket refs land in `audit_event.correlation_id`; keep them short and free of separators/whitespace. */
 const TICKET_RE = /^[A-Za-z0-9._#/-]{1,64}$/;
@@ -76,7 +77,9 @@ export async function runPlatformRoleCommand(
   command: PlatformRoleCommand,
   log: (line: string) => void,
 ): Promise<void> {
-  const member = await resolveActiveMembership(db, command.email, command.org);
+  const member = await resolveActiveMembership(db, command.email, command.org, {
+    allowInactive: command.action === "revoke",
+  });
   const correlationId = `ops-cli:platform-role:${command.action}:${command.ticket}:${randomUUID()}`;
   const target = `${command.role} on ${command.email} @ ${member.organizationSlug} (membership ${member.membershipId})`;
 
@@ -114,9 +117,13 @@ export async function runPlatformRoleCommand(
       () => revokePlatformRole(db, { membershipId: member.membershipId, key: command.role }),
     );
     log(`${removed ? "revoked" : "not granted (nothing to revoke)"}: ${target}`);
+    // revokePlatformRole signs the holder out everywhere for this role, so say so rather than surprise the operator.
+    if (removed && command.role === SUPERADMIN_ROLE_KEY) {
+      log("  ended every session of the holder (they must sign in again)");
+    }
   }
   log(`  audit correlation id: ${correlationId}`);
   log(
-    "  takes effect on the next request (role keys are re-read per request; cached permission sets live <= 5 min)",
+    "  takes effect on the next request (role keys are re-read per request; cached permission sets live <= 5 min, but a superadmin set is never cached)",
   );
 }

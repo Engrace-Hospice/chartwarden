@@ -10,6 +10,8 @@ import {
   PLATFORM_GRANTABLE_ROLE_KEYS,
   PLATFORM_OPS_ROLE_KEYS,
   ROLE_TEMPLATES,
+  SUPERADMIN_ROLE_KEY,
+  expandSuperadminRoles,
   isPlatformGrantableRoleKey,
   isReservedPlatformRoleKey,
   isTenantRoleReserved,
@@ -66,10 +68,52 @@ describe("GAP-096 — ai_safety_owner is platform authority without the platform
   });
 });
 
+describe("superadmin — the one platform role that stands for every other", () => {
+  it("is reserved by exact key, not as a prefix", () => {
+    expect(SUPERADMIN_ROLE_KEY).toBe("superadmin");
+    expect(isReservedPlatformRoleKey("superadmin")).toBe(true);
+    expect(isReservedPlatformRoleKey("superadmin_deputy")).toBe(false);
+    expect(isPlatformGrantableRoleKey("superadmin")).toBe(true);
+  });
+
+  it("a tenant-owned superadmin row is refused at create and confers nothing", () => {
+    expect(isTenantRoleReserved({ key: "superadmin", category: "operations" })).toBe(true);
+    expect(
+      roleConfersKey({ organizationId: "org_a", key: "superadmin", category: "operations" }),
+    ).toBe(false);
+    expect(
+      roleConfersKey({ organizationId: null, key: "superadmin", category: "platform_staff" }),
+    ).toBe(true);
+  });
+
+  it("expands to administrator, org_admin and every grantable platform key, keeping the roles it already held", () => {
+    // sysadmin holds `administrator` and orgadmin holds `org_admin`; many predicates list one without the other,
+    // so superadmin must read as both to supersede both.
+    const held = ["rn", "superadmin"] as const;
+    const expanded = expandSuperadminRoles(held);
+    for (const key of ["rn", "administrator", "org_admin", ...PLATFORM_GRANTABLE_ROLE_KEYS]) {
+      expect(expanded).toContain(key);
+    }
+    expect(new Set(expanded).size).toBe(expanded.length);
+    expect(held).toEqual(["rn", "superadmin"]); // input is never mutated
+  });
+
+  it("changes nothing for anyone who does not hold superadmin — a platform_admin stays a platform_admin", () => {
+    const held = ["platform_admin", "rn"];
+    expect(expandSuperadminRoles(held)).toEqual(held);
+    expect(expandSuperadminRoles([])).toEqual([]);
+  });
+});
+
 describe("platform-role CLI allowlist", () => {
   it("is exactly the platform keys a predicate reads, every one reserved", () => {
     expect([...PLATFORM_GRANTABLE_ROLE_KEYS].sort()).toEqual(
-      [...PLATFORM_OPS_ROLE_KEYS, "platform_security_owner", "ai_safety_owner"].sort(),
+      [
+        ...PLATFORM_OPS_ROLE_KEYS,
+        "platform_security_owner",
+        "ai_safety_owner",
+        "superadmin",
+      ].sort(),
     );
     for (const key of PLATFORM_GRANTABLE_ROLE_KEYS)
       expect(isReservedPlatformRoleKey(key)).toBe(true);
