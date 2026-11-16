@@ -83,7 +83,7 @@ import {
   isProtectedPath,
   protectedPathPattern,
 } from "./protected-paths";
-import { peelRunner } from "./runners";
+import { peelRunnerWithFiles } from "./runners";
 import {
   environmentLeak,
   globReachesLiveEnv,
@@ -421,9 +421,11 @@ function program(seg: string): {
       reads.push(...files.reads);
     } else {
       // `bunx git push`, `npx -c '…'`, `bun run cp …`: the program the runner starts is the command (`runners.ts`).
-      const peeled = peelRunner(w.slice(k), isPackageScript);
+      const peeled = peelRunnerWithFiles(w.slice(k), isPackageScript);
       if (peeled === null) break;
-      w = [...w.slice(0, k), ...peeled];
+      // `dotenv -e FILE -- cmd`: the runner's file options are read like `< FILE`, whatever the command is.
+      reads.push(...peeled.files);
+      w = [...w.slice(0, k), ...peeled.inner];
     }
   }
   // `env -u X` with no command prints the environment: it is still `env`.

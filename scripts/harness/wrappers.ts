@@ -89,7 +89,19 @@ const RUNS_COMMAND_STRING: ReadonlySet<string> = new Set(["flock", "runuser"]);
  */
 export const staysProgram = (wrapper: string, words: readonly string[]): boolean =>
   (RUNS_COMMAND_STRING.has(wrapper) && words.some((x) => /^-c$|^--command(?:=|$)/.test(x))) ||
-  (wrapper === "sudo" && words.some((x) => /^-[A-Za-z]*e[A-Za-z]*$|^--edit$/.test(x)));
+  (wrapper === "sudo" &&
+    leadingFlags("sudo", words).some((x) => /^-[A-Za-z]*e[A-Za-z]*$|^--edit$/.test(x)));
+
+/** The wrapper's own option words: those before the first word that is neither an option nor an option's value. */
+function leadingFlags(wrapper: string, words: readonly string[]): string[] {
+  const valued = WRAPPER_VALUE_FLAG.get(wrapper);
+  const flags: string[] = [];
+  for (let k = 0; k < words.length && (words[k] ?? "").startsWith("-") && words[k] !== "--"; k++) {
+    flags.push(words[k] as string);
+    if (valued?.test(words[k] as string)) k++;
+  }
+  return flags;
+}
 
 /** The value of `-c STR`, `-cSTR`, `--command STR` and `--command=STR`. */
 function commandOption(args: readonly string[]): string[] {
