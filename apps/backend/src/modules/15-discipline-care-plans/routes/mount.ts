@@ -23,8 +23,8 @@ export {
 
 /** Mount every M15 §4.1 route plugin over the Drizzle-backed (or in-memory) read + write services. */
 export function mountM15Routes(app: FastifyInstance, services: M15RouteServices): void {
-  const { readService, writeService } = services;
-  registerDisciplinePlanRoutes(app, { readService, writeService });
+  const { readService, writeService, disclosure } = services;
+  registerDisciplinePlanRoutes(app, { readService, writeService, disclosure });
   registerAideSupervisoryRoutes(app, { writeService });
   registerVolunteerRoutes(app, { readService, writeService });
   registerDisciplinePlanInternalRoutes(app, { readService });
