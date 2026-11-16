@@ -607,4 +607,26 @@
       }
     }
   }
+
+  /* ---- Print: a page's own printout (e.g. the Care Plan summary handout) is just its main content.
+     The chrome is hidden, and the viewport clamp above is released: with `height: 100dvh` plus
+     `.wx-main { overflow: auto }` the browser would print one screenful of the content and cut the rest. ---- */
+  @media print {
+    .wx-sidebar,
+    .wx-header,
+    .wx-skip-link,
+    .wx-nav-backdrop,
+    .wx-route-breadcrumbs,
+    .wx-module-tabs-frame {
+      display: none;
+    }
+    .wx-shell,
+    .wx-shell-column,
+    .wx-main {
+      display: block;
+      height: auto;
+      min-height: 0;
+      overflow: visible;
+    }
+  }
 }
