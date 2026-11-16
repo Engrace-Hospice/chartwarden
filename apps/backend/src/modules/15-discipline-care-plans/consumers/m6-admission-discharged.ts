@@ -293,21 +293,24 @@ export function buildM15AdmissionDischargedConsumer(deps: DisciplinePlanDischarg
             // 4. announce + audit, same transaction. First the discharge version itself: it is signed (by the
             // system) like any other, so M22 renders the plan's FINAL PDF from this event (audit D-6). Its
             // snapshot is the Part 2-redacted one (audit D-13): no viewer decides who reads a rendered PDF.
-            await deps.outbox.publish(tx, {
-              organizationId,
-              eventName: "m15.plan.version_signed",
-              aggregateKind: "discipline_care_plan_version",
-              aggregateId: created.id,
-              payload: {
-                planId: plan.id,
-                versionId: created.id,
-                patientId: plan.patientId,
-                kind: step.kind,
-                versionKind: "discharge",
-                snapshot: redactDisciplineSnapshot(dischargeSnapshot, false),
-                signers: [],
-              },
-            });
+            // A plan that never had a goal or an intervention (a spiritual plan the family declined, a draft that
+            // was never used) has nothing to render: no blank PDF, only the discharge announcement below.
+            if (goals.length + interventions.length > 0)
+              await deps.outbox.publish(tx, {
+                organizationId,
+                eventName: "m15.plan.version_signed",
+                aggregateKind: "discipline_care_plan_version",
+                aggregateId: created.id,
+                payload: {
+                  planId: plan.id,
+                  versionId: created.id,
+                  patientId: plan.patientId,
+                  kind: step.kind,
+                  versionKind: "discharge",
+                  snapshot: redactDisciplineSnapshot(dischargeSnapshot, false),
+                  signers: [],
+                },
+              });
             await deps.outbox.publish(tx, {
               organizationId,
               eventName: "m15.plan.discharged",

@@ -118,7 +118,9 @@ const planRow = (id: string, kind: string, status: string): Row => ({
   dischargedAt: null,
 });
 
-function buildTables(): Record<"plan" | "version" | "goal" | "intervention", Row[]> {
+function buildTables(
+  withContent = true,
+): Record<"plan" | "version" | "goal" | "intervention", Row[]> {
   return {
     plan: [
       planRow("plan-aide", "aide_poc", "draft_revising"),
@@ -135,7 +137,31 @@ function buildTables(): Record<"plan" | "version" | "goal" | "intervention", Row
         version: 0,
       },
     ],
-    goal: [],
+    // The fake ignores predicates, so every plan reads these. A goal is what gives the discharge version
+    // something to render (a plan with no goal and no intervention has no PDF to produce).
+    goal: withContent
+      ? [
+          {
+            id: "goal-1",
+            planId: "plan-aide",
+            parentProblemId: null,
+            parentGoalId: null,
+            source: "clinical",
+            status: "in_progress",
+            originalText: "Comfort",
+            revisedText: null,
+            measurableOutcome: null,
+            targetAt: null,
+            frequencyText: null,
+            frequencyValue: null,
+            modalityText: null,
+            sudRelated: false,
+            addedByDiscipline: "aide",
+            addedAt: AT,
+            version: 1,
+          },
+        ]
+      : [],
     intervention: [],
   };
 }
@@ -185,8 +211,8 @@ function fakeTx(tables: ReturnType<typeof buildTables>) {
   };
 }
 
-function run() {
-  const tables = buildTables();
+function run(withContent = true) {
+  const tables = buildTables(withContent);
   harness.tx = fakeTx(tables);
   const published: Array<{ eventName: string; payload: Row }> = [];
   const consumer = buildM15AdmissionDischargedConsumer({
@@ -262,6 +288,15 @@ describe("buildM15AdmissionDischargedConsumer (in-memory)", () => {
         expect(Value.Check(entry!.payloadSchema, e.payload)).toBe(true);
       }
     }
+  });
+
+  it("publishes no version_signed for a plan with no goal and no intervention (nothing to render), only the discharge", async () => {
+    const { published, deliver } = run(false);
+    await deliver();
+    expect(published.map((e) => e.eventName)).toEqual([
+      "m15.plan.discharged",
+      "m15.plan.discharged",
+    ]);
   });
 
   it("is idempotent on replay: nothing new is written or announced", async () => {
