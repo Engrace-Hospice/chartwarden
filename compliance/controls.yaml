@@ -764,8 +764,10 @@ controls:
       # ConsentEvaluator, with a release, without one, and with the evaluator unbound (fail closed). Covers the M15
       # plan read, the goal edit, the version detail and list routes, and the ops outbox detail read (a decision's
       # text withheld, the read attributed to the patient, the audit event landing). It also drives the M7 element
-      # picker (`/internal/care-plan/relevant-elements`) per caller: a nurse the release does not name, the nurse it
-      # names, no release, and the RN case manager carve-out.
+      # picker (`/internal/care-plan/relevant-elements`) per caller: a nurse the release does not name (problem, goal
+      # and intervention text withheld, and the read's audit event landing with the reader and the patient), the nurse
+      # it names, no release, the RN case manager carve-out, a caller with no membership id and one with the evaluator
+      # unbound (the RN case manager is withheld in both).
       - script: test:m7:consent-wiring:live
       # M15 write results and reads against real rows, the version-signed event payload and the Part 2 goal
       # inheritance of an IDG-applied goal.
@@ -777,6 +779,12 @@ controls:
       - file: apps/backend/src/modules/15-discipline-care-plans/routes/snapshot-redaction.ts
       - file: apps/backend/src/modules/15-discipline-care-plans/routes/disclosure.ts
       - file: apps/backend/__tests__/discipline-plans-snapshot-redaction.test.ts
+      # The element picker route hands the reader the closure's per-actor verdict, and with no closure bound the
+      # verdict it hands over denies.
+      - file: apps/backend/__tests__/care-plan-hardening-routes.test.ts
+      # The `"patient_level"` audience (the patient-level rule, which skips the per-actor verdict) is named only by the
+      # three reviewed callers that return ids or serve no human; a new one fails until it is added with a reason.
+      - file: apps/backend/__tests__/care-plan-patient-level-pin.test.ts
 
   - id: CW-AC-44
     title: The care-plan permissions a tenant's clinical roles hold by default are least privilege (the RBAC half only; which patient is caseload_or_scope and Part 2 content is CW-AC-43) - read for the roles that work from the plan, author and finalize for the nurse case manager, clinical supervisor and director of nursing, sign for exactly the six roles the signer-role-match rule accepts - and never the system keys (bootstrap, IDG revise), an external, portal or collaborator role. Coverage is the roles a tenant already has when migration 1494 runs plus the director of nursing and medical director templates on a new tenant; a role created later receives nothing, and a tenant may still remove a key from a role it owns
