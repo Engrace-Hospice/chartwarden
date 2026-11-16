@@ -298,6 +298,7 @@
         "apps/backend/__tests__/discipline-plans-caseload-scope.test.ts",
         "apps/backend/__tests__/discipline-plans-inject.test.ts",
         "apps/backend/__tests__/discipline-plans-snapshot-redaction.test.ts",
+        "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 28
