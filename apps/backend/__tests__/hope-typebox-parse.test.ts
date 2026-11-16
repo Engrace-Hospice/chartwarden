@@ -1,4 +1,5 @@
 import type { ValidationError } from "@chartwarden/types";
+import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import {
   CancelSubmissionSchema,
@@ -52,16 +53,22 @@ describe("parse — an unexpected property is never echoed by name", () => {
 });
 
 describe("parse reads the first error only", () => {
-  it("an oversized array in a body is refused fast and without building an error per element (3.3M rows took 0.6 s and 600 MB)", () => {
+  it("an oversized array in a body is refused without building an error per element (3.3M rows: the old spread cost about 3-4x the conversion alone and hundreds of MB)", () => {
     const rows = Array.from({ length: 3_300_000 }, () => ({}));
-    const started = performance.now();
+    // The body is converted before it is checked, and that cost is the machine's, not the code under test: time it on the same rows
+    // and bound `parse` by a multiple of it, so a slow or loaded machine does not fail a correct `parse`. With the old
+    // `[...Value.Errors(...)][0]` spread `parse` took about 3-4x this baseline; with `.First()` it takes about 1x.
+    const baselineStarted = performance.now();
+    Value.Convert(ImportSubmissionResultSchema, { results: rows });
+    const baselineMs = performance.now() - baselineStarted;
     const rssBefore = process.memoryUsage().rss;
+    const started = performance.now();
 
     const err = capture(() => parse(ImportSubmissionResultSchema, { results: rows }));
 
     expect(err.statusCode).toBe(422);
     expect(err.details).toEqual([expect.objectContaining({ field: "results" })]);
-    expect(performance.now() - started).toBeLessThan(400);
+    expect(performance.now() - started).toBeLessThan(2 * baselineMs + 100);
     expect(process.memoryUsage().rss - rssBefore).toBeLessThan(300 * 1024 * 1024);
   });
 });
