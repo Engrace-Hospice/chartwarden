@@ -8,6 +8,7 @@ import {
   enrolPasskey,
   expectNoAxeViolations,
   signInAs,
+  signOut,
   stepUpWithPasskey,
 } from "../fixtures/helpers";
 import { openPatientChartByLastName } from "../fixtures/patients";
@@ -23,8 +24,10 @@ test.describe("Care Plan workspace", () => {
 
   // Selectors follow the shipped UI (care-plan-view.tsx): the page h1 is "Plan of Care"; the tabs are
   // Goals / Interventions / Problems / Review & Sign / Revisions; the success notices are the exact
-  // strings the view renders. One ADMIN login signs ONE slot, so this proves authoring + finalize +
-  // a recorded signature, not quorum/activation (the quorum rule is asserted server-side).
+  // strings the view renders. An ADMIN authors and sends the version for signatures; ONE RN login then
+  // signs ONE slot (the RN case manager), so this proves authoring + finalize + a recorded signature, not
+  // quorum/activation (the quorum rule is asserted server-side). Signing needs a signer role, which the
+  // admin account lacks: it holds every permission but no clinical role, so the sign route refuses it.
   //
   // Re-runnable: the single signature leaves the version in review, where nothing can be authored, so
   // a second run returns it to draft first (which invalidates that signature) instead of assuming a
@@ -33,11 +36,8 @@ test.describe("Care Plan workspace", () => {
     page,
   }) => {
     await signInAs(page, ADMIN_ACCOUNT());
-    // `care_plan.sign` is guarded by requireStepUp: do the real passkey step-up before the gated write
-    // (same pattern as encounters.spec.ts / idg.spec.ts), landing back on the plan.
     const planPath = `/patients/${patientId}/care-plan`;
-    await enrolPasskey(page);
-    await stepUpWithPasskey(page, planPath);
+    await page.goto(planPath);
 
     await expect(page.getByRole("heading", { name: "Plan of Care" })).toBeVisible();
     // The next-step card only renders once the plan is loaded, so the state checks below are not
@@ -107,9 +107,20 @@ test.describe("Care Plan workspace", () => {
     await send.click();
     await expect(page.getByText("Version sent for signatures.")).toBeVisible();
 
+    // The RN case manager signs. `care_plan.sign` is guarded by requireStepUp, so do the real passkey
+    // step-up before the gated write (same pattern as encounters.spec.ts / idg.spec.ts), landing back on
+    // the plan.
+    await signOut(page);
+    await signInAs(page, RN_ACCOUNT());
+    await enrolPasskey(page);
+    await stepUpWithPasskey(page, planPath);
+    await expect(page.getByRole("heading", { name: "Plan of Care" })).toBeVisible();
+    await page.getByRole("tab", { name: "Review & sign" }).click();
     // The workflow guide above the tabs has a button of the same name; scope to the tab panel.
     await page.getByRole("tabpanel").getByRole("button", { name: "Review & sign" }).click();
     await expect(page.getByLabel("Version being signed")).toBeVisible();
+    // The dialog preselects the physician slot; the RN signs the case-manager slot she holds.
+    await page.getByLabel("Signing role").selectOption("rn_case_manager");
     await page.getByRole("button", { name: "Sign care plan" }).click();
     await expect(page.getByText("Signature recorded.")).toBeVisible();
   });
