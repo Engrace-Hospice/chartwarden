@@ -94,7 +94,7 @@ export type WriteResult<T> =
       readonly message: string;
       /** The server's error code (`M10_TIMEPOINT_EXPIRED`...), for a screen that words a few of them itself; null when it sent none. */
       readonly code: string | null;
-      /** For a VALIDATION_FAILED refusal, the first field it objected to (see {@link validationFieldOf}); absent otherwise. */
+      /** For a VALIDATION_FAILED or EVIDENCE_LOOKS_LIKE_PHI refusal, the first field it objected to (see {@link validationFieldOf}); absent otherwise. */
       readonly invalidField?: ValidationField;
     };
 
@@ -172,11 +172,14 @@ export interface ValidationField {
   readonly code: string | null;
 }
 
+/**
+ * The code the server's patient-identifier screen refuses with (422), whichever field it screened: a screen of this web module decides
+ * which field it was by the refusal's detail (`validationFieldOf`), never by this code alone.
+ */
+export const PHI_REFUSAL_CODE = "EVIDENCE_LOOKS_LIKE_PHI";
+
 /** The codes whose `details[0].field` names what was refused: the patient-identifier screen names the field it screened the same way. */
-const FIELD_NAMING_CODES: ReadonlySet<string> = new Set([
-  "VALIDATION_FAILED",
-  "EVIDENCE_LOOKS_LIKE_PHI",
-]);
+const FIELD_NAMING_CODES: ReadonlySet<string> = new Set(["VALIDATION_FAILED", PHI_REFUSAL_CODE]);
 
 /**
  * For a `VALIDATION_FAILED` or `EVIDENCE_LOOKS_LIKE_PHI` refusal, the first field it objected to and why, or null (another code, no

@@ -2,7 +2,7 @@
 // character rule, mirrored so the recording dialog refuses what the server would refuse, and the words the dialog says on the field
 // when the server refuses it anyway. Every sentence here is static: the text typed is never echoed, and the wire field's name
 // (`adminOverrideJustification`) is for matching, never for showing.
-import type { WriteResult } from "./hope-api";
+import { PHI_REFUSAL_CODE, type WriteResult } from "./hope-api";
 
 /**
  * The server's own bounds on the justification (`RecordTimepointSchema.adminOverrideJustification`; `requireOverrideJustification`
@@ -38,12 +38,11 @@ export const hasForbiddenJustificationCharacter = (trimmedText: string): boolean
 export type JustificationRefusal = "looks_like_phi" | "invalid_characters" | "not_accepted";
 
 /**
- * The code the server answers (422) when the justification looks like a patient identifier. Its own words are written for an evidence
- * note ("describe what was checked", "cite documents") and name the wire field, so the clinician is told these instead, on the field.
- * Static on purpose: the field's error is an alert, announced again on every change of its text.
+ * The wire field the server names when it refuses the justification (matched, never shown). Its own words for the patient-identifier
+ * screen are written for an evidence note ("describe what was checked", "cite documents") and name that field, so the clinician is
+ * told the words below instead, on the field. Static on purpose: the field's error is an alert, announced again on every change.
  */
-const PHI_REFUSAL_CODE = "EVIDENCE_LOOKS_LIKE_PHI";
-const JUSTIFICATION_FIELD = "adminOverrideJustification";
+export const JUSTIFICATION_FIELD = "adminOverrideJustification";
 const INVALID_CHARACTERS_CODE = "INVALID_CHARACTERS";
 
 export const JUSTIFICATION_REFUSAL_WORDS: Readonly<Record<JustificationRefusal, string>> = {

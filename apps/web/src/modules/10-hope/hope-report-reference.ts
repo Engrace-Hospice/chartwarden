@@ -2,7 +2,7 @@
 // charset and length, mirrored so the dialog refuses what the server would refuse, and the words it says on the field when the
 // server refuses it anyway. Every sentence is static: the text typed is never echoed, and the wire field's name (`reportReference`)
 // is for matching, never for showing. hope-mirror-parity.test.ts compares these mirrors with the server's sources.
-import type { WriteResult } from "./hope-api";
+import { PHI_REFUSAL_CODE, type WriteResult } from "./hope-api";
 
 /** The server's length limit on a report reference (`HOPE_REFERENCE_MAX_LENGTH` in hope-typebox.ts). */
 export const MAX_REFERENCE = 128;
@@ -61,8 +61,8 @@ export const REFERENCE_HINT = `Letters, digits, spaces and . _ : # / - only, up 
 /** What the server refused the reference for. */
 export type ReferenceRefusal = "invalid_characters" | "looks_like_phi";
 
-const PHI_REFUSAL_CODE = "EVIDENCE_LOOKS_LIKE_PHI";
-const REFERENCE_FIELD = "reportReference";
+/** The wire field the server names when it refuses the reference (matched, never shown). */
+export const REFERENCE_FIELD = "reportReference";
 
 export const REFERENCE_REFUSAL_WORDS: Readonly<Record<ReferenceRefusal, string>> = {
   invalid_characters: `That reference has a character that is not allowed. Use only letters, digits, spaces and . _ : # / -, up to ${MAX_REFERENCE} characters.`,
