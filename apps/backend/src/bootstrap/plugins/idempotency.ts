@@ -19,7 +19,7 @@ import { createHmac, randomBytes } from "node:crypto";
 // A concurrent duplicate uses its own code so a client keeps its key and retries instead of renewing it while the first
 // request is still writing.
 //
-// RETRYABLE FAILURES (a 5xx, or the 409s CONCURRENT_UPDATE and M10_RECORD_BUSY) are released instead of cached, but ONLY when
+// RETRYABLE FAILURES (a 5xx, the 409s CONCURRENT_UPDATE and M10_RECORD_BUSY, and a 401 or 403 refusal) are released instead of cached, but ONLY when
 // the request provably committed nothing. A response that says "retry" is true only if no write of this request is durable: a
 // handler whose transaction committed and which then failed (a throwing post-commit step, a response the serializer refuses, a
 // second transaction that deadlocks after the first committed) HAS written, and re-running it on a same-key retry would write
@@ -93,12 +93,18 @@ const RETRYABLE_CONFLICT_CODES: ReadonlySet<unknown> = new Set([
 const commitTrackers = new WeakMap<FastifyRequest, CommitTracker>();
 
 /**
- * A response that SAYS the write did not happen and the client should run it again — any 5xx, and the retryable
- * 409s (deadlock/serialization, M10 lock-wait timeout). Replaying it for the 24h TTL would turn "retry" into "never" when the write really did not run;
+ * A response that SAYS the write did not happen and the client should run it again — any 5xx, the retryable
+ * 409s (deadlock/serialization, M10 lock-wait timeout), and a 401/403 refusal. Replaying it for the 24h TTL would turn "retry" into "never" when the write really did not run;
  * these are released instead of completed, but only if the request also committed nothing (see the header).
+ *
+ * A 401/403 is here because the claim is made BEFORE the route's own guards run, so a refusal (a 403 STEP_UP_REQUIRED, a
+ * permission not yet granted) would otherwise be replayed to a same-key retry made after the caller completed the step-up
+ * or was granted the permission: the refusal is a fact about the caller at that moment, not about the request. Only
+ * refusals are released. A 2xx is still replayed before the guards run (the fingerprint binds org, user and actor kind, and
+ * the replayed body is what that same user was already given); re-running scope on a replay was not added here.
  */
 function isRetryableOutcome(statusCode: number, body: unknown): boolean {
-  if (statusCode >= 500) return true;
+  if (statusCode >= 500 || statusCode === 401 || statusCode === 403) return true;
   if (statusCode !== 409 || typeof body !== "object" || body === null) return false;
   const error = (body as { error?: unknown }).error;
   return (
