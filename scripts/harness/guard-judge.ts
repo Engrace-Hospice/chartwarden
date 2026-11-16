@@ -7,7 +7,10 @@
  *   Bash                                                          → `classifyBash` (deny / ask / allow)
  *
  * Silence means "no opinion": the normal permission rules in .claude/settings.json still apply. Every
- * deny/ask is written to the agent ledger (metadata only).
+ * deny/ask this judgement reaches is written to the agent ledger (metadata only). The emergency denies are NOT:
+ * the entry thread's deadline, a worker that died or errored, a malformed answer (`hard-deadline.ts`) and the
+ * internal-error deny below are deliberate silences, because a worker that is failing cannot be trusted to log and
+ * the entry thread must stay free to answer its own timer (`harness-ledger-asks.test.ts` pins both halves).
  *
  * Fails CLOSED: empty or unparseable input, an internal error, and content too large to scan all answer
  * `deny`, because a guard that goes quiet when it breaks is a guard an oversized or malformed call can
@@ -120,9 +123,11 @@ function refuseSecret(log: Log, name: string, why: string): never {
 }
 
 /**
- * `--codex`: the repo root is where THIS script lives. The pinned hook command runs
- * `$(git rev-parse --show-toplevel)/scripts/harness/pre-tool-guard.ts`, so the script's grandparent is the git
- * toplevel of the Codex session, with no `git` call and no environment variable to move it: `CLAUDE_PROJECT_DIR`
+ * `--codex`: the repo root is where THIS script lives. The pinned hook command walks up from the session directory to
+ * the nearest directory that holds `.git`, `.codex/hooks.json` and `scripts/harness/pre-tool-guard.ts` and runs that
+ * script (it used to run `$(git rev-parse --show-toplevel)/…`, which `git config core.worktree` re-pointed), so the
+ * script's grandparent is the checkout of the Codex session, with no `git` call and no environment variable to move
+ * it: `CLAUDE_PROJECT_DIR`
  * (a developer may export it from a Claude shell, pointing at another tree) used to override the root here, and
  * protected-path matching then ran against the wrong tree without a word. `CW_HARNESS_ROOT_FOR_TESTS` is the
  * test seam; production never sets it.
@@ -150,7 +155,7 @@ function checkPatch(text: string, root: string, base: string, log: Log): void {
   if (text.length > MAX_PATCH_CHARS) {
     refuse(
       log,
-      `This patch is ${Math.round(text.length / 1024)} KB, past the ${MAX_PATCH_CHARS / 1024} KB the guard can scan inside Codex's hook timeout (a hook that times out lets the call run). Split it.`,
+      `This patch is ${Math.round(text.length / 1024)} KB, past the ${MAX_PATCH_CHARS / 1024} KB the guard can scan inside its deadline (a call the guard cannot judge in time is refused). Split it.`,
     );
   }
   const parsed = parseApplyPatch(text);

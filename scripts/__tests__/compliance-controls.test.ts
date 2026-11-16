@@ -24,6 +24,7 @@ import {
   CODEX_ALARM_SECONDS,
   CODEX_GUARD_COMMAND,
   CODEX_GUARD_MATCHER,
+  FORBIDDEN_ENV,
   type HarnessFiles,
   LOCAL_PROBE_PATHS,
   MIN_BUN,
@@ -867,6 +868,21 @@ describe("the gate's blind spots (third review round): timeouts, session-wide sw
         s.env.ECC_GATEGUARD = "off";
       }).join("\n");
       expect(v).toMatch(/env\.ECC_GATEGUARD must not be set/);
+    });
+    // Wave 7, T4 (round-5 compliance review): the doc's ECC table says ECC_GOVERNANCE_CAPTURE is "deliberately not set" (it writes
+    // detections and approvals to ECC's own state store, outside this repo's retention), but the `ECC_` prefix admitted it.
+    it.each(["1", "true", "on"])(
+      "fails ECC_GOVERNANCE_CAPTURE=%s even though ECC_ variables are allowed: the doc says it is deliberately not set",
+      (value) => {
+        const v = withSettings((s) => {
+          s.env.ECC_GOVERNANCE_CAPTURE = value;
+        }).join("\n");
+        expect(v).toMatch(/env\.ECC_GOVERNANCE_CAPTURE must not be set/);
+      },
+    );
+    it("the committed settings do not set ECC_GOVERNANCE_CAPTURE, and the doc still says so", () => {
+      expect(Object.keys(JSON.parse(settings).env)).not.toContain("ECC_GOVERNANCE_CAPTURE");
+      expect(FORBIDDEN_ENV).toContain("ECC_GOVERNANCE_CAPTURE");
     });
     it("accepts the env entries the committed settings carry, and other ECC_ variables", () => {
       expect(Object.keys(JSON.parse(settings).env).length).toBeGreaterThan(0);

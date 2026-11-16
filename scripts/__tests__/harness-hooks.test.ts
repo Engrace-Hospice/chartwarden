@@ -18,10 +18,8 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { verifyChain } from "../harness/io";
 import { gatesFor } from "../harness/stop-gate";
+import { ISSUED_SSN } from "./_fixtures";
 
-// Fixture values are assembled at runtime so this file does not trip the very scanner it tests
-// (the Stop gate and harness:phi-scan read test files too).
-const ISSUED_SSN = ["524", "71", "3388"].join("-");
 const ROOT = join(__dirname, "../..");
 const tmp = mkdtempSync(join(tmpdir(), "cw-harness-"));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));

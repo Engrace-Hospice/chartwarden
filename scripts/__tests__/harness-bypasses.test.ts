@@ -27,9 +27,8 @@ import {
   scanLarge,
 } from "../harness/patterns";
 import { splitNul } from "../harness/stop-gate";
+import { ISSUED_SSN_PARTS } from "./_fixtures";
 
-// Fixture values are assembled at runtime so this file does not trip the scanner it tests.
-const ISSUED_SSN_DIGITS = ["524", "71", "3388"];
 const ROOT = join(__dirname, "../..");
 const tmp = mkdtempSync(join(tmpdir(), "cw-bypass-"));
 afterAll(() => rmSync(tmp, { recursive: true, force: true }));
@@ -150,7 +149,7 @@ describe("H3 — the guard cannot be switched off by input", () => {
     expect(f.map((x) => x.kind)).toEqual(["unscannable"]);
   });
   it("scans a large FILE in chunks, with line numbers kept, instead of skipping it", () => {
-    const ssn = ISSUED_SSN_DIGITS.join("-");
+    const ssn = ISSUED_SSN_PARTS.join("-");
     const filler = `${"a".repeat(99)}\n`.repeat(Math.ceil((MAX_SCAN_CHARS + 1_000_000) / 100));
     const text = `${filler}x ${ssn}\n${filler}`;
     const f = scanLarge(text, EMPTY_REGISTRY, "docs/api/big.json");
@@ -371,7 +370,7 @@ describe("M7 — non-ASCII file names are scanned, not skipped", () => {
     git("init", "-q");
     writeFileSync(
       join(repo, "café.ts"),
-      `export const p = { ssn: "${ISSUED_SSN_DIGITS.join("-")}" };\n`,
+      `export const p = { ssn: "${ISSUED_SSN_PARTS.join("-")}" };\n`,
     );
     git("add", ".");
     const scan = (flag: string) =>
@@ -388,8 +387,8 @@ describe("M7 — non-ASCII file names are scanned, not skipped", () => {
 
 describe("L — detection coverage", () => {
   it("flags a keyed SSN written with spaces, once", () => {
-    const spaced = ISSUED_SSN_DIGITS.join(" ");
+    const spaced = ISSUED_SSN_PARTS.join(" ");
     expect(scanContent(`ssn ${spaced}`, EMPTY_REGISTRY).map((f) => f.kind)).toEqual(["ssn"]);
-    expect(scanContent(`ssn: ${ISSUED_SSN_DIGITS.join("-")}`, EMPTY_REGISTRY)).toHaveLength(1);
+    expect(scanContent(`ssn: ${ISSUED_SSN_PARTS.join("-")}`, EMPTY_REGISTRY)).toHaveLength(1);
   });
 });

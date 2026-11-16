@@ -3,7 +3,7 @@
  *
  * The 64 KB cap bounds the text, not the work: 1,300 words that each expand to 256 brace alternatives, judged
  * against 16 candidate directories, are five million path resolutions (12 s), and a hook that is killed at its
- * timeout lets the call run. So brace alternatives and path resolutions draw on a budget that `classifyBash`
+ * timeout is refused (the guard's own 6.5 s deadline now answers first). So brace alternatives and path resolutions draw on a budget that `classifyBash`
  * refills for each command and that every nested `$( )` and `bash -c` shares, counted in ITEMS and in
  * CHARACTERS (one 4,000-character word expanded 4,096 ways is as costly as 4,096 times more words). Past it
  * nothing more is expanded or resolved (a resolution answers "unknown directory"), and the command asks, but

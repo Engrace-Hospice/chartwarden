@@ -247,7 +247,7 @@ const CREDENTIAL_RULES: ReadonlyArray<readonly [RegExp, FindingKind]> = [
 
 /** A postgres URL carrying an inline password for a host that is not local/compose-internal. */
 // Every quantifier is bounded: an unbounded `[^@\s]+` backtracks to the end of the text from each
-// `postgres://x:` start (quadratic), and the guard fails OPEN on a timeout.
+// `postgres://x:` start (quadratic), and a guard that runs out of time refuses the call.
 const DB_URL = /\bpostgres(?:ql)?:\/\/[^:\s/@]{1,64}:([^@\s]{1,256})@([^/:\s?#'"`]{1,255})/g;
 // Local means loopback, the Docker host alias, or a service this repo's docker-compose.yml names. A bare
 // single-label name or a `*.internal` suffix is NOT local: production hosts look exactly like that.
@@ -297,7 +297,7 @@ export function isScannable(path: string): boolean {
 }
 
 // ponytail: one memo for the text being scanned; the hook is a one-shot process. Counting newlines from the
-// start for every finding made a 1 MB patch of findings take 14 s, and the guard fails OPEN past Codex's timeout.
+// start for every finding made a 1 MB patch of findings take 14 s, and a guard that runs out of time refuses the call.
 let lineStarts: { readonly text: string; readonly starts: readonly number[] } | undefined;
 function lineOf(text: string, index: number): number {
   if (lineStarts?.text !== text) {
@@ -982,14 +982,15 @@ const ask = (reason: string): BashVerdict => ({ decision: "ask", reason: scrub(r
 const MAX_NESTING = 8;
 
 // Every `$( … )` is judged as a command line of its own, so a few thousand nested ones fan out without
-// bound, and the guard fails OPEN when the hook times out. One budget for the whole call keeps it bounded.
+// bound, and a guard that runs out of time refuses the call (the 6.5 s deadline of `hard-deadline.ts`; before it the
+// hook was killed at its own timeout and Claude Code let the call run). One budget for the whole call keeps it bounded.
 const MAX_JUDGED_COMMAND_LINES = 300;
 let judgeBudget = MAX_JUDGED_COMMAND_LINES;
 const MAX_SUBSTITUTIONS = 32;
 
 /**
- * Longest command the guard will parse. Every rule below is linear in the command, but the hook is killed at
- * its timeout and Claude Code then lets the call run, so size is bounded before any work is done. A real
+ * Longest command the guard will parse. Every rule below is linear in the command, but a guard that runs out of
+ * time refuses the call (`hard-deadline.ts`) and a refusal costs a rephrase, so size is bounded before any work is done. A real
  * command, even one with a here-doc, is far shorter. Nothing in an oversize command is read, so it is REFUSED:
  * asking would let padding turn a command that is denied on its own (`cat .env` and 64 KB of spaces) into a
  * prompt a human might approve.
@@ -1736,7 +1737,7 @@ const isContentsSource = (s: string): boolean => /(^|\/)\.?$/.test(s);
 const SHORT_FLAGS = /^-[A-Za-z]+$/;
 /**
  * Is `arg` a short-flag cluster (`-rf`) holding one of `letters`? Two `[A-Za-z]*` around the letter backtrack
- * quadratically on a long word, and the hook fails OPEN at its timeout, so this is one anchored test and a scan.
+ * quadratically on a long word, and a guard that runs out of time refuses the call, so this is one anchored test and a scan.
  */
 function clusterHas(arg: string, letters: string, cluster: RegExp = SHORT_FLAGS): boolean {
   if (!cluster.test(arg)) return false;

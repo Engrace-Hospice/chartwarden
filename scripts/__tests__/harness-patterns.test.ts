@@ -10,11 +10,8 @@ import {
   secretPathReason,
   ssnNeverIssued,
 } from "../harness/patterns";
+import { ISSUED_SSN, ISSUED_SSN_RAW } from "./_fixtures";
 
-// Fixture values are assembled at runtime so this file does not trip the very scanner it tests
-// (the Stop gate and harness:phi-scan read test files too).
-const ISSUED_SSN = ["524", "71", "3388"].join("-");
-const ISSUED_SSN_RAW = ISSUED_SSN.replace(/-/g, "");
 const MBI_PARTS = ["2TW7", "HD4", "KC61"];
 const PEM_BEGIN = ["-----BEGIN", "PRIVATE KEY-----"].join(" ");
 const PEM_END = ["-----END", "PRIVATE KEY-----"].join(" ");

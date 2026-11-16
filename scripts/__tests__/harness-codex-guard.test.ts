@@ -18,9 +18,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { ISSUED_SSN } from "./_fixtures";
 
-// Fixture values are assembled at runtime so this file does not trip the scanner it tests.
-const ISSUED_SSN = ["524", "71", "3388"].join("-");
 const AWS_KEY = ["AKIA", "Z".repeat(16)].join("");
 const ROOT = join(__dirname, "../..");
 const GUARD = join(ROOT, "scripts/harness/pre-tool-guard.ts");

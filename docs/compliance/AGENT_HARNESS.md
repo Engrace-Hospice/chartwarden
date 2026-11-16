@@ -79,8 +79,8 @@ through the shell is also bound by the 64 KB command cap below, so a larger one 
   percent-decoded, also after decoding the whole line), and each word is judged as a whole line is
   (`scripts/harness/mcp-tokens.ts`; ADV-L2). A string that only MENTIONS a protected or secret path in prose
   (`see compliance/controls.yaml`) is therefore refused too: the guard cannot tell prose from a path the tool will
-  open, and a refusal there costs a rephrase. Of the 3,160 MCP calls in this repo's Claude sessions (96.5% the
-  Chrome extension, the rest Chrome DevTools, Pencil and REA), none is refused by it.
+  open, and a refusal there costs a rephrase. None of the MCP calls recorded in this repo's Claude sessions (nearly all of
+  them the Chrome extension, the rest Chrome DevTools, Pencil and REA) is refused by it; the count is in the MCP section below.
 - **The root is where the guard script lives**, not `CLAUDE_PROJECT_DIR`. The pinned command walks up from the
   session directory (its real path, `Cwd::getcwd`) to the nearest directory that holds `.git`,
   `.codex/hooks.json` AND `scripts/harness/pre-tool-guard.ts`, and runs that script, so the script's
@@ -94,8 +94,8 @@ through the shell is also bound by the 64 KB command cap below, so a larger one 
   protected path, denied in Codex); nothing found exits 127 and the wrapper refuses the call. **Residual:** a
   nested repo that plants all three files by a means the shell classifier cannot see (a script file, an
   interpreter's own `open()`) still wins, and `.git/config`, `.git/hooks/` and the hook config are protected
-  paths for that reason; the sandbox is the boundary. (The managed-rollout dispatcher under `deploy/codex/`, where
-  it exists, resolves the root with `git rev-parse` too and needs the same change.) An exported
+  paths for that reason; the sandbox is the boundary. (A managed-rollout dispatcher that resolves the root with `git rev-parse`
+  would need the same change; there is none in this repository.) An exported
   `CLAUDE_PROJECT_DIR` (from a Claude shell, pointing at another tree) used to override that and silently moved
   every protected-path match onto the wrong root. `CW_HARNESS_ROOT_FOR_TESTS` is the test-only seam; production
   never sets it, and a developer must not export it. Claude Code still takes its root from
@@ -197,7 +197,7 @@ is an ALLOW-list: `PATH`, `BASH_ENV`, `ZDOTDIR`, `NODE_OPTIONS`, `HOME`, `SHELL`
 `DYLD_INSERT_LIBRARIES`, `CODEX_HOME`, `CLAUDE_CONFIG_DIR` and `BUN_OPTIONS` (a `--preload` there runs before the
 guard) all fail, naming the key), or one of the named switches `CW_HARNESS_FAIL_OPEN`, `CW_AGENT_LEDGER`,
 `CW_STOP_GATE`, `CLAUDE_PROJECT_DIR`, `CW_HARNESS_ROOT_FOR_TESTS`, the deadline's test seams `CW_HARNESS_TEST_FAULT` and
-`CW_HARNESS_DEADLINE_MS_FOR_TESTS`, or `ECC_GATEGUARD` (which the prefix would let
+`CW_HARNESS_DEADLINE_MS_FOR_TESTS`, `ECC_GATEGUARD` or `ECC_GOVERNANCE_CAPTURE` (which the `ECC_` prefix would let
 through), if the `.claude/` and `.agents/` mirror reads as empty on either side or differs by a
 single byte (files are compared by SHA-256 of their bytes, not decoded text), or if `.gitignore` or
 CODEOWNERS stop covering any of this or `bunfig.toml`. `.gitignore` is judged by git, not by its text: the
@@ -241,17 +241,20 @@ are judged: there is **no PHI/credential text scan** in Claude mode (Codex still
 ask into a deny; `harness-mcp-claude.test.ts` pins both). Two narrowings keep prose and code quiet: a line of
 several words and no slash is judged by its words, not whole, and a dotted identifier with no slash (`e.key`,
 `process.env`) is not a file among them; a line that is one path (a single word, or one with a slash) is judged
-whole. Measured on this repo's sessions: 1,268 of the 3,359 recorded MCP calls are of a guarded tool, and the
-rule asks for none of them (the one false positive before the narrowing was `e.key`); a call takes about 20 ms.
+whole. Measured once on the sessions recorded when this stack was built (the one MCP count in this document; it grows with
+every session): 1,268 of the 3,359 recorded MCP calls are of a guarded tool, and the rule asks for none of them (the one
+false positive before the narrowing was `e.key`); a call takes about 20 ms.
 
 **Not covered, and why.** `computer`, `find`, `read_page`, `get_page_text`, `form_input`, `read_network_requests`,
-`gif_creator` and the other tools that carry coordinates, element references or no path are not judged (the hook
+and the other tools that carry coordinates, element references or no path are not judged (the hook
 is not run for them: the matcher is tested against the real tool names, `harness-mcp-claude-hook.test.ts`).
 Free-text connectors (Gmail send, reply and forward, Drive create and download, Calendar, and any other
 claude.ai connector) carry prose and can send it off the machine; whether to guard them is an owner decision, since
 a path-word judge would stop a message that names `.env`. Pencil's `execute` (a `filePath` of a design file and a
-script) and REA's binary tools open files the agent names and are not guarded either: they have no demonstrated
-path to a protected file in this repo's use and are left to an owner decision. The words are text, so a path the
+script), REA's tools (`mcp__rea__open_binary` and `mcp__rea__export_evidence_bundle` take absolute local paths, and the
+matcher names the Chrome tools only, so `mcp__rea__*` is not matched) and the Chrome extension's `gif_creator` (its `filename`;
+what Chrome's download sandbox does with a `../` there was not verified) are **ungated by owner decision: these tools can name an
+arbitrary local path.** The words are text, so a path the
 page code computes (`'.' + 'env'`), reads from a string table or builds from `atob` is not seen. The names are
 the ones this repo's sessions show (`claude-in-chrome`, `plugin_ecc_chrome-devtools`): the same server installed
 under another name (`mcp__chrome-devtools__…`) is not matched until it is added to the list and to the pin. The tools' own

@@ -243,6 +243,9 @@ interface Settings {
  */
 export const FORBIDDEN_ENV = [
   "ECC_GATEGUARD",
+  // The doc's ECC table says it is deliberately not set: it writes detections and approvals to ECC's own state store,
+  // outside this repo's retention and review, and the `ECC_` prefix would admit it.
+  "ECC_GOVERNANCE_CAPTURE",
   "CW_HARNESS_FAIL_OPEN",
   "CW_AGENT_LEDGER",
   "CW_STOP_GATE",

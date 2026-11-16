@@ -12,13 +12,12 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { judgeHook } from "../harness/guard-judge";
 import { claudeMcpFinding } from "../harness/mcp-claude";
+import { ISSUED_SSN } from "./_fixtures";
 
 const ROOT = join(__dirname, "../..");
 /** Built from parts: the repo's own guard refuses a shell command whose text names a live env file. */
 const LIVE_ENV = ["apps/backend/", ".", "env"].join("");
 const ABSOLUTE_LIVE_ENV = `${ROOT}/${LIVE_ENV}`;
-/** An issued-looking SSN the PHI scan flags, built from parts like the other guard tests do. */
-const ISSUED_SSN = ["524", "71", "3388"].join("-");
 const CHROME = "mcp__claude-in-chrome__";
 const DEVTOOLS = "mcp__plugin_ecc_chrome-devtools__";
 
