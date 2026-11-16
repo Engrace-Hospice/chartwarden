@@ -88,6 +88,12 @@ export function wholeTreeWriterReason(sub: string, rest: readonly string[]): str
       ? "`git stash pop|apply|branch` of an older stash applies saved changes to the working tree"
       : null;
   }
+  if (sub === "sparse-checkout") {
+    // `set`, `add`, `reapply`, `init` and `clean` remove files outside the patterns from the working tree.
+    return /^(?:set|add|reapply|init|clean)$/.test(rest[0] ?? "")
+      ? `\`git sparse-checkout ${rest[0]}\` removes the tracked files outside its patterns from the working tree`
+      : null;
+  }
   if (sub === "read-tree") {
     return flags.some((a) => clusterHas(a, "u") || isLongOption(a, "reset", 3))
       ? "`git read-tree -u` rewrites the working tree"

@@ -61,6 +61,7 @@ import {
 import { runsLiveSuite } from "./live-suite";
 import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
+import { pathCandidates, writeCapable } from "./protected-operands";
 import {
   PROTECTED_FRAGMENT,
   PROTECTED_SAMPLES,
@@ -109,6 +110,7 @@ import {
   sshHost,
 } from "./wrappers";
 import { extraOutputFiles, localPath } from "./writers";
+import { moreGitWrites, moreWriterTargets } from "./writers-more";
 import { fileRuns, heredocCount, isScriptText, writtenTexts } from "./written-scripts";
 
 export interface SyntheticRegistry {
@@ -1938,7 +1940,11 @@ function underGitDirs(dirs: readonly string[], file: string): string {
 
 /** Every path one simple command writes, deletes, moves or re-modes (redirections are added by the caller). */
 function commandWrites(prog: string, args: readonly string[]): WriteTarget[] {
-  return [...mainWrites(prog, args), ...targetsOf(extraOutputFiles(prog, args))];
+  return [
+    ...mainWrites(prog, args),
+    ...targetsOf(extraOutputFiles(prog, args)),
+    ...targetsOf(moreWriterTargets(prog, args)),
+  ];
 }
 
 function mainWrites(prog: string, args: readonly string[]): WriteTarget[] {
@@ -1973,7 +1979,9 @@ function mainWrites(prog: string, args: readonly string[]): WriteTarget[] {
   if (prog === "git") {
     const { sub, rest, dirs } = gitInvocation(args);
     // git writes `--output=F` relative to where it runs: `git -C DIR … --output=F` writes DIR/F.
-    return gitFileWrites(sub, rest).map((f) => wt(underGitDirs(dirs, f)));
+    return [...gitFileWrites(sub, rest), ...moreGitWrites(sub, rest)].map((f) =>
+      wt(underGitDirs(dirs, f)),
+    );
   }
   const outputOptions = OUTPUT_OPTIONS.get(prog);
   if (outputOptions) {
@@ -2640,6 +2648,33 @@ function archiveRootVerdict(
   );
 }
 
+const unmodelledWriterReason = (prog: string, path: string): string =>
+  `\`${echo(prog)}\` is not a program the guard knows to be read-only, and its command line names a protected path (${protectedReason(path)}). It may write there, and the guard has no model of it. A human decides.`;
+
+/**
+ * The backstop for writers nobody modelled (`protected-operands.ts`): a program that is neither known to only read nor a
+ * modelled writer, handed a word that resolves onto a protected path from a directory the command may run in. A
+ * directory the guard cannot resolve is no finding here (it would make every unknown program ask).
+ */
+function unmodelledWriterVerdict(
+  prog: string,
+  args: readonly string[],
+  here: readonly Cwd[],
+  ctx: BashContext,
+): BashVerdict | null {
+  if (!writeCapable(prog, args)) return null;
+  for (const word of pathCandidates(args)) {
+    for (const dir of here) {
+      if (work.spent) return null;
+      const rel = resolvePath(word, dir, ctx);
+      if (rel !== null && protectedPathPattern.test(rel)) {
+        return ask(unmodelledWriterReason(prog, rel));
+      }
+    }
+  }
+  return null;
+}
+
 function classifySegment(
   seg: string,
   parsed: Parsed,
@@ -2938,5 +2973,5 @@ function classifySegment(
       "Live suites DROP ROLE chartwarden_app. Confirm DATABASE_URL points at a private chartwarden-postgres:dev container (own port, fresh database), never the shared Docker cluster.",
     );
   }
-  return null;
+  return unmodelledWriterVerdict(prog, args, here, ctx);
 }

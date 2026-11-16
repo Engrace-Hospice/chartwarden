@@ -370,9 +370,9 @@ inline interpreter code and heredoc or stdin script bodies as text, with quotes 
 read a script file written by an earlier tool call (`python3 /tmp/w.py`; one written and run by the same command line is read, see Wave 4 below), computed or encoded names, glob targets, symlinked shell targets inside command text (a path it reads in the text is not followed), a `$VAR` path
 prefix, a path piped into `xargs`, `curl -O` or a bare `wget URL` (they write the URL's file name into the
 current directory; they are judged only when that directory is itself protected), a `$VAR` or computed program
-name (`${X:-git} push`, an array run as a command), or the writers it has no model for (`split`, `cpio -p`,
-compilers and bundlers with an output option such as `cc -o` or `tsc --outFile`,
-and any program that writes where its own configuration says). Wave 3 added, each with a test file under `scripts/__tests__/harness-*.test.ts`:
+name (`${X:-git} push`, an array run as a command), or a program that writes where its own configuration says (wave 7
+models `split`, `cpio -p`, `cc -o`, `tsc --outFile` and a few dozen more, and a generic backstop asks about a program it has
+no model for that is handed a protected path: see Wave 7). Wave 3 added, each with a test file under `scripts/__tests__/harness-*.test.ts`:
 the `&&` trust of a `cd` is per command (only a group, a pipe or a `&` at or before a command cancels it, and the
 lines of a script a shell reads do; a later pipe does not); another spelling of the root or home (upper case,
 the `/System/Volumes/Data` firmlink, `/tmp` for `/private/tmp`) names the same protected file; a write to the bun
@@ -599,6 +599,38 @@ document" at the end.
   --version`, `ack --version`, `fd -e ts`, `fd pattern src`, `cpio -t < archive`, `pax -r < archive` and a sweep of a directory
   that holds no live env file are not asked. **Not decided by text:** the names a `cpio` or `pax` reads from standard input when
   no `find` feeds it in the same pipeline (`cat list | cpio -o`, `git ls-files | cpio -p`), and an `fd` run from `--base-directory`.
+- *More writers, and a backstop for the rest* (`writers-more.ts`, `protected-operands.ts`, `harness-writers-more.test.ts`,
+  `harness-protected-operands.test.ts`, ADV5-2). About twenty ordinary commands wrote to a path the agent names and had no
+  rule: a file written onto `pre-tool-guard.ts` or `hard-deadline.ts` makes the hook's entry thread unable to start. **Modelled
+  now** (each judged like a redirect target; options read from the tool's own `--help` or manual): `bun build --outfile|--outdir|
+  --metafile`, `tsc --outFile|--outDir|--declarationDir|--tsBuildInfoFile|--generateTrace|--generateCpuProfile` (any case,
+  through `bunx`, `npx`, `bun x|run`, `pnpm|yarn|npm exec|dlx`), `vitest --outputFile[.reporter]|--coverage.reportsDirectory`,
+  `eslint -o|--output-file|--cache-location`, `biome --log-path`, `uniq IN OUT`, `split`/`csplit` prefixes, `shuf -o`, `pandoc -o`,
+  `cc|gcc|g++|clang|rustc|swiftc|ld|strip|objcopy -o`, `go build|test|install -o`, `curl --etag-save|--hsts|--alt-svc|--ssl-sessions`,
+  `wget --save-cookies|--hsts-file|--rejected-log|--warc-file|-e output_document=`, `ssh -E|-S|-o UserKnownHostsFile=|ControlPath=`,
+  `gh release download -D|-O`, `gh run download -D`, `gh repo|gist clone DIR`, `docker|podman cp CONTAINER:… DEST|save|export -o`, the
+  `git` subcommands that write outside `.git` (`fast-export|fast-import --export-marks`, `worktree add|move`, `init [DIR]`, `clone SRC
+  [DIR]`, `pack-objects BASE`, `index-pack -o`, `merge-file`, `interpret-trailers --in-place`, `checkout-index --prefix`, `read-tree
+  --index-output`, `mailsplit -o`, `mailinfo`, `bugreport|diagnose -o`, `submodule add`), and `git sparse-checkout set|add|reapply|init`
+  joins the whole-working-tree writers (it removes the tracked files outside its patterns, the guard included). **Did not reproduce:**
+  `gh api --output` is not a gh option (gh 2.87.3 refuses it), so it writes nothing; `git hash-object -w --path=` only names a path
+  for filters and writes under `.git`; `git cat-file --filters`, `git var` and `git commit -F|--template` read; `git update-ref`,
+  `symbolic-ref`, `notes` and `update-index` write under `.git`, which is not on the protected list except `config`, `hooks`, `modules`
+  and `worktrees`. **The backstop:** the class is unbounded (five rounds, each found more), so a command whose text names a protected
+  path (a literal operand, an option value, `key=value`, in any alias spelling and from every directory the command may run in) as
+  an argument of a program that is neither known to only read, nor a writer whose handling of its operands is modelled, **asks**
+  (Codex: denies), naming the program (`sd 's/a/b/' scripts/harness/x.ts`, `prettier --write`, `shfmt -w`, `bunx biome check
+  --write scripts/harness/x.ts`, a tool invented next year). The read/check list was chosen from this repo's real Bash commands:
+  of 124,735 distinct commands, 5,201 name a protected path and were allowed before, led by `grep`, `git`, `sed`, `ls`, `cat`, `bunx`,
+  `wc`, `cmp`, `diff`, `bun`, `awk`, `head`, `rg`; all of those that only read, and the shell keywords (`for`, `do`), are listed. It never
+  turns a deny into an ask (a deny is found first), reads a word with whitespace as prose (a commit message), skips a directory it
+  cannot resolve (no unknown program asks after `cd $VAR`), and does not read a computed name, a variable path or an encoded name:
+  **the sandbox is the real boundary.** **Corpus cost** (frozen tree against this one, 124,738 real commands): 87 allow to ask, 0.07%,
+  all explained: 67 are `bunx biome check|format --write` of files under `scripts/harness` (an in-place write of a protected file
+  that skips the Edit prompt: the intended catch, and the cost of a fixer formatting harness files from the shell; use the Edit tool
+  or let a human run it), 7 are a variable used as the program name (`$M label scripts/harness/x`), 6 a helper script (`commit.sh`
+  with harness paths), 2 a relative write after an unresolvable `cd`, 1 `$GL dir . --config .gitleaks.toml`, 1 a shell function that
+  wraps `sed -i`, and the two sibling and client findings above.
 
 **Shell lexing.** `scripts/harness/shell-lex.ts` reads a command once, in one linear pass, before any rule
 runs; the line splitter, the redirection reader and the substitution scan all use its result, so a quote, an
