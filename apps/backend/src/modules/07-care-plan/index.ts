@@ -108,6 +108,7 @@ export {
   getCarePlanReader,
   type IdgPacketCarePlanContext,
   activeProblemIdsForOrg,
+  activeSudProblemIdsForOrg,
   idgPacketCarePlanContextForOrg,
   registerCarePlanSeams,
 } from "./seams/index";

@@ -25,6 +25,7 @@ import type {
   M15WriteService,
 } from "../src/modules/15-discipline-care-plans/routes/index";
 import {
+  PART2_WITHHELD_NOTICE,
   isSudAnchored,
   redactDisciplineSnapshot,
 } from "../src/modules/15-discipline-care-plans/routes/snapshot-redaction";
@@ -44,6 +45,16 @@ describe("redactDisciplineSnapshot", () => {
 
   it("drops a sudRelated goal when disclosure is not allowed", () => {
     const out = redactDisciplineSnapshot({ sealedAt: "t", goals: [sudGoal, plainGoal] }, false);
+    // A redacted copy says so (the signers signed the whole plan, so a copy missing content must not read as complete).
+    expect(out).toEqual({
+      sealedAt: "t",
+      goals: [plainGoal],
+      partTwoNotice: PART2_WITHHELD_NOTICE,
+    });
+  });
+
+  it("adds no notice when nothing was dropped", () => {
+    const out = redactDisciplineSnapshot({ sealedAt: "t", goals: [plainGoal] }, false);
     expect(out).toEqual({ sealedAt: "t", goals: [plainGoal] });
   });
 
@@ -52,7 +63,7 @@ describe("redactDisciplineSnapshot", () => {
       { goals: [flaglessGoal, { sudRelated: "false" }, null, "x", plainGoal] },
       false,
     );
-    expect(out).toEqual({ goals: [plainGoal] });
+    expect(out).toEqual({ goals: [plainGoal], partTwoNotice: PART2_WITHHELD_NOTICE });
   });
 
   it("withholds the whole snapshot when goals is not an array", () => {

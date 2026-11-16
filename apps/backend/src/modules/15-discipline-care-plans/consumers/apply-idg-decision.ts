@@ -190,7 +190,7 @@ export function decideDisciplinePlanDecision(
   for (const m of mutations) {
     switch (m.op) {
       case "goal_add": {
-        if (!facts.activeProblemIds.has(m.parentProblemId))
+        if (!facts.activeProblemIds.has(m.parentProblemId.toLowerCase()))
           return refuse("parent_problem_not_active");
         if (m.originalText.trim().length === 0) return refuse("malformed_mutation");
         planned.push({

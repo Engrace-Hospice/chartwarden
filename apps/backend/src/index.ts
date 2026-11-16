@@ -621,6 +621,7 @@ import {
   M7_OUTBOX_EVENTS,
   M7_PLATFORM_JOB_ID,
   activeProblemIdsForOrg,
+  activeSudProblemIdsForOrg,
   buildM7AdmissionActivatedConsumer,
   buildM7AdmissionDischargedConsumer,
   buildM7ExtractionDiagnosisWritebackConsumer,
@@ -16139,6 +16140,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             outbox: m15OutboxPublisher,
             activeProblemIds: (organizationId, patientId) =>
               activeProblemIdsForOrg(dbHandle.db, organizationId, patientId),
+            sudProblemIds: (organizationId, patientId) =>
+              activeSudProblemIdsForOrg(dbHandle.db, organizationId, patientId),
           }),
           // F-234 (#248) — the return leg: M14 records M15's `m15.idg_decision.applied` acknowledgement.
           buildM14DecisionAppliedConsumer({ db: dbHandle.db }),

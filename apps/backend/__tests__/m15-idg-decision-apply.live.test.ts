@@ -28,7 +28,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { activeProblemIdsForOrg } from "../src/modules/07-care-plan/index";
+import {
+  activeProblemIdsForOrg,
+  activeSudProblemIdsForOrg,
+} from "../src/modules/07-care-plan/index";
 import {
   type IdgWriteOutboxPort,
   createDbIdgBackend,
@@ -290,6 +293,8 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
           outbox: bind("m15") as never,
           activeProblemIds: (organizationId, patientId) =>
             activeProblemIdsForOrg(handle.db, organizationId, patientId),
+          sudProblemIds: (organizationId, patientId) =>
+            activeSudProblemIdsForOrg(handle.db, organizationId, patientId),
         }),
         buildM14DecisionAppliedConsumer({ db: handle.db }),
       ],
@@ -474,6 +479,48 @@ describe.skipIf(!DB_URL)("F-234 — M14 ⇄ M15 IDG-decision loop, LIVE Postgres
       plan.planId,
     ]);
     expect(ivs).toHaveLength(2); // the seeded one + exactly one add
+  });
+
+  it("a goal added under a Part 2 M7 problem is stored as Part 2 (inherits sud_related), and one under an ordinary problem is not (compliance finding 7)", async () => {
+    const plan = await seedPlan(ORG_A);
+    const sudProblemId = (
+      await admin.query(
+        `INSERT INTO problem (organization_id, provider_entity_id, location_id, care_plan_id, description, kind, sud_related)
+         SELECT organization_id, provider_entity_id, location_id, care_plan_id, 'SYNTHETIC-PART2-PROBLEM', 'related', true
+         FROM problem WHERE id=$1 RETURNING id`,
+        [plan.problemId],
+      )
+    ).rows[0].id as string;
+    const d = await seedDecision(ORG_A, plan.patientId, {
+      kind: "discipline_plan_update",
+      planKind: "msw_plan",
+      mutations: [
+        {
+          op: "goal_add",
+          parentProblemId: sudProblemId.toUpperCase(),
+          source: "clinical",
+          originalText: "SYNTHETIC-GOAL-UNDER-PART2",
+          measurableOutcome: "Attends weekly",
+        },
+        {
+          op: "goal_add",
+          parentProblemId: plan.problemId,
+          source: "clinical",
+          originalText: "SYNTHETIC-GOAL-ORDINARY",
+          measurableOutcome: "Reports less distress",
+        },
+      ],
+    });
+    await publishDecision(ORG_A, d);
+    await settle();
+    const rows = await dbRows(
+      "SELECT original_text, sud_related FROM discipline_goal WHERE plan_id=$1 AND original_text LIKE 'SYNTHETIC-GOAL-%' ORDER BY original_text",
+      [plan.planId],
+    );
+    expect(rows).toEqual([
+      { original_text: "SYNTHETIC-GOAL-ORDINARY", sud_related: false },
+      { original_text: "SYNTHETIC-GOAL-UNDER-PART2", sud_related: true },
+    ]);
   });
 
   it("applies into an already-open DRAFT version instead of opening a second one", async () => {

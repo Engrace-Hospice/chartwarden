@@ -411,6 +411,34 @@ export function activeProblemIdsForOrg(
   });
 }
 
+/**
+ * The ids of the patient's ACTIVE problems that are 42 CFR Part 2 (`sud_related`), org-explicit, for the plan
+ * `activeProblemIdsForOrg` resolves. M15's IDG consumer reads it so a goal it adds under such a problem inherits
+ * the flag: a Part 2 problem's goal is Part 2 content whichever module stores it (audit round 3, finding 7).
+ */
+export function activeSudProblemIdsForOrg(
+  db: DbClient,
+  organizationId: string,
+  patientId: string,
+): Promise<readonly string[]> {
+  return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    const [plan] = await tx
+      .select({ id: CP.id })
+      .from(CP)
+      .where(and(eq(CP.organizationId, organizationId), eq(CP.patientId, patientId)))
+      .orderBy(...PATIENT_PLAN_ORDER)
+      .limit(1);
+    if (!plan) return [];
+    const rows = await tx
+      .select({ id: PROB.id })
+      .from(PROB)
+      .where(
+        and(eq(PROB.carePlanId, plan.id), eq(PROB.status, "active"), eq(PROB.sudRelated, true)),
+      );
+    return rows.map((r) => r.id.toLowerCase());
+  });
+}
+
 /** What the IDG packet cover shows for a terminal problem that is Part 2 (the packet cover reads "Primary
  *  diagnosis: 42 CFR Part 2 (withheld)"). Fixed text: nothing of the problem survives. */
 const PART2_COVER_ICD10 = "withheld";

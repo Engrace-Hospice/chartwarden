@@ -575,32 +575,36 @@ export function buildDrizzleM15WriteService(
               .where(and(eq(P.id, planId), eq(P.version, plan.version)));
           }
           // §2.4 / D12 — the M22 discipline-plan PDF render handshake + the M28/M14/M30/M33 fan-out.
-          await emit(tx, {
-            organizationId: actor.organizationId,
-            eventName: "m15.plan.version_signed",
-            aggregateKind: "discipline_care_plan_version",
-            aggregateId: versionId,
-            payload: {
-              planId,
-              versionId,
-              // F-166 (#248) — the M22 render-request chart target; already in scope on `plan`.
-              patientId: plan.patientId,
-              kind: plan.kind,
-              versionKind: updated.kind,
-              // 42 CFR Part 2: the event is persisted (and readable through the ops outbox detail) and M22
-              // renders the plan PDF from it, with no viewer to decide who may see SUD goals. So the payload
-              // carries the snapshot WITHOUT Part 2 goals and the interventions that serve them (null if the
-              // shape is not recognised); the sealed snapshot itself stays whole on the version row, behind
-              // the disclosure-gated reads. Audit D-13.
-              snapshot: redactDisciplineSnapshot(updated.stateSnapshot, false),
-              signers: signatures.map((s) => ({
-                membershipId: s.signerMembershipId,
-                role: s.signerRole,
-                signedAt: iso(s.signedAt),
-                isAcknowledgment: s.isAcknowledgment,
-              })),
-            },
-          });
+          const eventSnapshot = redactDisciplineSnapshot(updated.stateSnapshot, false);
+          // A snapshot whose shape the redactor does not recognise is not rendered at all (fail closed): a blank
+          // PDF that looks like the signed plan is worse than none.
+          if (eventSnapshot !== null)
+            await emit(tx, {
+              organizationId: actor.organizationId,
+              eventName: "m15.plan.version_signed",
+              aggregateKind: "discipline_care_plan_version",
+              aggregateId: versionId,
+              payload: {
+                planId,
+                versionId,
+                // F-166 (#248) — the M22 render-request chart target; already in scope on `plan`.
+                patientId: plan.patientId,
+                kind: plan.kind,
+                versionKind: updated.kind,
+                // 42 CFR Part 2: the event is persisted (and readable through the ops outbox detail) and M22
+                // renders the plan PDF from it, with no viewer to decide who may see SUD goals. So the payload
+                // carries the snapshot WITHOUT Part 2 goals and the interventions that serve them (null if the
+                // shape is not recognised); the sealed snapshot itself stays whole on the version row, behind
+                // the disclosure-gated reads. Audit D-13.
+                snapshot: eventSnapshot,
+                signers: signatures.map((s) => ({
+                  membershipId: s.signerMembershipId,
+                  role: s.signerRole,
+                  signedAt: iso(s.signedAt),
+                  isAcknowledgment: s.isAcknowledgment,
+                })),
+              },
+            });
         }
         return toVersionDetail(updated, signatures);
       });

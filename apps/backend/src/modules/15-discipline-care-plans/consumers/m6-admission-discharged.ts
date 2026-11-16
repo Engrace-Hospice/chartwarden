@@ -295,7 +295,8 @@ export function buildM15AdmissionDischargedConsumer(deps: DisciplinePlanDischarg
             // snapshot is the Part 2-redacted one (audit D-13): no viewer decides who reads a rendered PDF.
             // A plan that never had a goal or an intervention (a spiritual plan the family declined, a draft that
             // was never used) has nothing to render: no blank PDF, only the discharge announcement below.
-            if (goals.length + interventions.length > 0)
+            const dischargeEventSnapshot = redactDisciplineSnapshot(dischargeSnapshot, false);
+            if (dischargeEventSnapshot !== null && goals.length + interventions.length > 0)
               await deps.outbox.publish(tx, {
                 organizationId,
                 eventName: "m15.plan.version_signed",
@@ -307,7 +308,7 @@ export function buildM15AdmissionDischargedConsumer(deps: DisciplinePlanDischarg
                   patientId: plan.patientId,
                   kind: step.kind,
                   versionKind: "discharge",
-                  snapshot: redactDisciplineSnapshot(dischargeSnapshot, false),
+                  snapshot: dischargeEventSnapshot,
                   signers: [],
                 },
               });

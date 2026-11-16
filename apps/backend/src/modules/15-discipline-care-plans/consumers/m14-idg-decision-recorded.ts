@@ -89,6 +89,8 @@ export interface DisciplinePlanIdgDecisionDeps {
    *  applied decision can never be unannounced. */
   readonly outbox: WriteOutboxPort;
   readonly activeProblemIds: ActiveProblemIdsResolver;
+  /** The subset of those problems that are 42 CFR Part 2: a goal added under one is stored as Part 2 too. */
+  readonly sudProblemIds: ActiveProblemIdsResolver;
 }
 
 const fail = (message: string): never => {
@@ -244,8 +246,16 @@ export function buildM15IdgDecisionConsumer(deps: DisciplinePlanIdgDecisionDeps)
       if (decision === null) return; // another module's decision arm
 
       // The M7 read opens its own tenant transaction, so it runs before ours.
+      // Lower-cased: a uuid is case-insensitive and the decider compares the author's casing against this set.
       const activeProblemIds = new Set(
-        await deps.activeProblemIds(organizationId, decision.patientId),
+        (await deps.activeProblemIds(organizationId, decision.patientId)).map((id) =>
+          id.toLowerCase(),
+        ),
+      );
+      const sudProblemIds = new Set(
+        (await deps.sudProblemIds(organizationId, decision.patientId)).map((id) =>
+          id.toLowerCase(),
+        ),
       );
 
       await withOrgContext(
@@ -439,6 +449,9 @@ export function buildM15IdgDecisionConsumer(deps: DisciplinePlanIdgDecisionDeps)
                   ...inherit(plan),
                   planId: plan.id,
                   parentProblemId: m.parentProblemId,
+                  // A goal under a Part 2 problem is Part 2 content (the same rule M7 applies to a problem's
+                  // dependents), whichever module stores it.
+                  sudRelated: sudProblemIds.has(m.parentProblemId.toLowerCase()),
                   source: m.source,
                   originalText: m.originalText,
                   measurableOutcome: m.measurableOutcome,

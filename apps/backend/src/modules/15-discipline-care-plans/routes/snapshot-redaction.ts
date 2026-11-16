@@ -24,6 +24,15 @@ export function isSudAnchored(goalRefs: unknown, hiddenGoalIds: ReadonlySet<stri
   );
 }
 
+/** The sentence a redacted snapshot carries when anything was dropped (a rendered PDF prints it as a field). */
+export const PART2_WITHHELD_NOTICE =
+  "Some content is withheld from this document under 42 CFR Part 2; the signed record holds the whole plan.";
+
+/** A redacted snapshot says so: the signers signed the whole plan, so a copy missing content must not read as complete. */
+function withheldNotice<T extends Record<string, unknown>>(snapshot: T, dropped: boolean): T {
+  return dropped ? { ...snapshot, partTwoNotice: PART2_WITHHELD_NOTICE } : snapshot;
+}
+
 export function redactDisciplineSnapshot(snapshot: unknown, sudAllowed: boolean): unknown {
   if (snapshot === null || snapshot === undefined) return null;
   if (sudAllowed) return snapshot;
@@ -45,7 +54,9 @@ export function redactDisciplineSnapshot(snapshot: unknown, sudAllowed: boolean)
       hiddenGoalIds.add(entry.goalId.toLowerCase());
     }
   }
-  if (!("interventions" in record)) return { ...record, goals: visibleGoals };
+  if (!("interventions" in record)) {
+    return withheldNotice({ ...record, goals: visibleGoals }, visibleGoals.length < goals.length);
+  }
   const { interventions } = record;
   if (!Array.isArray(interventions)) return null;
   const visibleInterventions = (interventions as readonly unknown[]).filter(
@@ -55,7 +66,10 @@ export function redactDisciplineSnapshot(snapshot: unknown, sudAllowed: boolean)
         hiddenGoalIds,
       ),
   );
-  return { ...record, goals: visibleGoals, interventions: visibleInterventions };
+  return withheldNotice(
+    { ...record, goals: visibleGoals, interventions: visibleInterventions },
+    visibleGoals.length < goals.length || visibleInterventions.length < interventions.length,
+  );
 }
 
 /** A version projection with its snapshot redacted for the caller. */
