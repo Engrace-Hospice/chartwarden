@@ -101,7 +101,8 @@ its full description there. Newest first.
   apart by any of `- . _ : #` (mixed allowed, `1990-05_17`). Compact digit forms (`YYYYMMDD`, `MMDDYYYY`, ten unbroken digits) and
   month-name dates such as `12-Mar-1945` remain a documented residual: nothing tells them from a code. An `iqiesRecordId` that is a
   uuid is not screened (its hex digits resemble an MBI about one time in sixty). An `assessmentId` that is no uuid is screened for an SSN
-  or MBI shape and, like a code, for a calendar date or a US phone number set apart by any of `- . _ : #` (`422
+  or MBI shape and, like a code, for a calendar date or a US phone number, set apart here by hyphens, blanks (a space, a no-break
+  space), braces or any run of them (`1990 05 17`, `555 867 5309`, `{555}{867}{5309}`, `555 - 867 - 5309`; `422
   EVIDENCE_LOOKS_LIKE_PHI`, field `results.<row>.assessmentId`; the compact forms stay the documented residual above), and
   `message` (at most 1000) is screened for an SSN or MBI shape: a message that names a patient's number is refused, so remove it
   before recording the report (the field is named, never the value). `status`, `result`, `outcome`, `message` and `reportReference`
@@ -114,9 +115,10 @@ its full description there. Newest first.
   import is `422` with the field `results` and the code `TOO_LARGE`; split it into several imports. **The request body is limited to
   3 MiB** (a report at the 2000-row limit with every field filled is about 1.2 MB, at most about 1.9 MB if every message character
   is escaped): a larger body is `413` with the standard
-  error envelope. **A batch holds at most 20,000 recorded report rows across all its imports** (an import that would pass it is a
-  static `409 CONFLICT` and records nothing: send only the rows that still need recording); a batch's findings read returns at most
-  that many. **A report that was accepted before these rules and is sent again under a new `Idempotency-Key`, and that the stricter rules now
+  error envelope. **A batch holds at most 20,000 recorded report rows across all its imports that settle no item**: an import that
+  settles no pending item and would pass that is a static `409 CONFLICT` and records nothing, while an import that settles an item
+  (a CMS verdict, which is final) always lands, so a batch's real result can never be refused for the count. A batch's findings read
+  returns its newest rows, at most 20,000, oldest first. **A report that was accepted before these rules and is sent again under a new `Idempotency-Key`, and that the stricter rules now
   refuse, answers `422` rather than the batch's idempotent replay** (the rows are checked before the stored report is compared;
   nothing is stored either way, and the same key still replays the stored answer for 24 h). Neither 422 echoes the value. Not closeable here: a single-word surname or a hyphenated name still fits a code, and the
   real iQIES edit-code and record-id formats are unverified, so the code pattern stays permissive within the no-space, no-slash rule.
