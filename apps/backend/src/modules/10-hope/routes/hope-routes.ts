@@ -1,4 +1,10 @@
-import { type AbacTarget, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import {
+  type AbacTarget,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+  resolveActorPermissions,
+} from "@chartwarden/auth";
 import { assertAuthorBoundToActor } from "@chartwarden/hope";
 // apps/backend/src/modules/10-hope/routes/hope-routes.ts — M10-T06 the §4.1 route inventory
 // behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth, M3) on the
@@ -25,7 +31,7 @@ import { assertAuthorBoundToActor } from "@chartwarden/hope";
 // applied as a query narrowing instead, GAP-182). `POST /hope/admin/regenerate-schedules` (§4.1 ABAC = `platform_admin`, a role
 // check) was left out of GAP-018 but now binds `hope.scope` on the body's admissionId (`SCOPE_BODY_ADMISSION`, GAP-124).
 import { type PreHandler, membershipActorOf, rejectAiActor } from "@chartwarden/shared/route-kit";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { HOPE_SFV_STEP_UP_OPERATION, HOPE_SIGN_STEP_UP_OPERATION } from "../hope-signature-audit";
 import {
@@ -97,6 +103,16 @@ const SUBMISSION_MANAGE = P("hope.submission.manage");
 const DASHBOARD_READ = P("hope.dashboard.read");
 const ADMIN_REGEN = P("hope.admin.regenerate_schedules");
 const ADMIN_LATE_OVERRIDE = P("hope.admin.late_deadline_override");
+
+/**
+ * Whether the caller holds `hope.timepoint.write`, from the SAME resolver `requirePermission` gates on. The workspace and
+ * review reads pass it down so that only a writer's open refreshes chart-derived answers (a write); a read-only caller
+ * is shown the stored state.
+ */
+async function callerMayWrite(request: FastifyRequest): Promise<boolean> {
+  const granted = await resolveActorPermissions(request.context);
+  return granted.has("hope.timepoint.write");
+}
 
 const LATE_OVERRIDE_GATE: PreHandler = async (request, reply) => {
   if (!adminOverrideRequested(request.body)) return;
@@ -428,7 +444,8 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     },
   );
 
-  // 9B — canonical answer workspace: active assessment items + current item-level states.
+  // 9B — canonical answer workspace: active assessment items + current item-level states. A writer's open also refreshes
+  // chart-derived answers (and bumps `version` when one changes); a read-only caller is shown the stored state.
   app.get(
     "/api/v1/hope/assessments/:id/workspace",
     {
@@ -440,7 +457,9 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { id } = parse(AssessmentParamsSchema, request.params);
       return parse(
         HopeAssessmentWorkspaceResponseSchema,
-        await service.getAssessmentWorkspace(organizationId, id),
+        await service.getAssessmentWorkspace(organizationId, id, {
+          mayWrite: await callerMayWrite(request),
+        }),
       );
     },
   );
@@ -448,7 +467,8 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 9C — final-review/readiness model. Opening it never touches signature state. Its writes, each in a transaction of its
   // own that commits before the next starts, are (1) the spec-freezing step of a legacy spec-less draft (an assessment UPDATE
   // plus its control answers; nothing for a draft that already has a spec) and (2) the self-heal of a completed SFV's
-  // J2052/J2053 answers on a still-draft triggering assessment (see hope-sfv-completion-answers.ts). The readiness read that
+  // J2052/J2053 answers on a still-draft triggering assessment (see hope-sfv-completion-answers.ts), run only for a caller
+  // holding `hope.timepoint.write` (a read-only caller reads the stored state). The readiness read that
   // follows writes no assessment data (the read-audit event of `auditRead` is the platform's, not this handler's).
   app.get(
     "/api/v1/hope/assessments/:id/review",
@@ -461,7 +481,9 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { id } = parse(AssessmentParamsSchema, request.params);
       return parse(
         HopeAssessmentReviewResponseSchema,
-        await service.getAssessmentReview(organizationId, id),
+        await service.getAssessmentReview(organizationId, id, {
+          mayWrite: await callerMayWrite(request),
+        }),
       );
     },
   );

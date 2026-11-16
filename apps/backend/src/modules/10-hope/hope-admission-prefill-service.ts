@@ -6,7 +6,7 @@ import type {
   PatientHopeAdmissionPrefillFacts,
   PatientHopeAdmissionPrefillReader,
 } from "@chartwarden/types";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";
 import { lockAssessmentRow } from "./hope-assessment-lock";
@@ -545,10 +545,17 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
         return { assessmentId: assessment.id, prefilledItemCodes: written };
       }
       await reconcileApplicability({ tx, assessment, specVersionCode });
-      // `updated_at` only, deliberately NOT `version`: prefill (like spec initialisation) has never bumped the version,
-      // and it is not compare-before-write across opens, so bumping here would invalidate every open editor's
-      // `ifVersion` on every workspace open. (Known gap: a signer cannot tell that prefill changed an answer.)
-      await tx.update(A).set({ updatedAt: new Date() }).where(eq(A.id, assessment.id));
+      // A re-open (`refreshOnly`) that changed an answer bumps `version` in this same transaction: whoever reviewed the
+      // draft at the old version must not be able to sign (`ifVersion`) content the chart has since rewritten under them,
+      // and the response of the open carries the new version. An open that changed nothing returned above and bumps
+      // nothing, so a plain re-open never invalidates anyone's `ifVersion`. A FIRST fill (`!refreshOnly`: the record was
+      // just created, nobody has seen it, and its caller returns the row it holds, at version 1) keeps `updated_at` only,
+      // as spec initialisation does: the content an editor reviewed is not changed by pinning the spec.
+      const at = new Date();
+      await tx
+        .update(A)
+        .set(refreshOnly ? { updatedAt: at, version: sql`${A.version} + 1` } : { updatedAt: at })
+        .where(eq(A.id, assessment.id));
       return { assessmentId: assessment.id, prefilledItemCodes: written };
     },
   };

@@ -316,6 +316,10 @@ export interface InactivateTimepointArgs {
   readonly ifVersion?: number;
   readonly authorDiscipline: string;
 }
+export interface HopeReadOptions {
+  /** Whether the caller holds `hope.timepoint.write`; `false` makes the open a pure read (no refresh / heal writes). */
+  readonly mayWrite?: boolean;
+}
 
 /** The §4.1 route service contract (the routes compose over it; the in-mem slice + the prod Drizzle
  * backend both implement it). All ids/org binding come from server context, never the body. */
@@ -349,8 +353,21 @@ export interface HopeRouteService extends HopeAbacResolver {
     id: string,
     data: Record<string, unknown>,
   ): Promise<HopeAssessmentView>;
-  getAssessmentWorkspace(organizationId: string, id: string): Promise<HopeAssessmentWorkspace>;
-  getAssessmentReview(organizationId: string, id: string): Promise<HopeReviewReadModel>;
+  /**
+   * `options.mayWrite` (default `true`): whether the caller holds `hope.timepoint.write`. A caller that does not gets the
+   * STORED state: the open runs no chart refresh (prefill) or SFV self-heal, which would write draft answers on the
+   * strength of a read permission. The route resolves it; a service caller with no request (tests, jobs) leaves it on.
+   */
+  getAssessmentWorkspace(
+    organizationId: string,
+    id: string,
+    options?: HopeReadOptions,
+  ): Promise<HopeAssessmentWorkspace>;
+  getAssessmentReview(
+    organizationId: string,
+    id: string,
+    options?: HopeReadOptions,
+  ): Promise<HopeReviewReadModel>;
   patchAssessmentAnswers(
     organizationId: string,
     userId: string,

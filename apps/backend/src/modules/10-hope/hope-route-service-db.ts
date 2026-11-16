@@ -546,7 +546,8 @@ export function createDbHopeBackend(
   /**
    * Chart facts captured after the draft was created (e.g. a Medicare number added to the patient's
    * coverage at intake) flow into the draft when it is opened. Only answers the clinician has not
-   * typed (`source !== "user"`) are refreshed, and an unchanged chart writes nothing.
+   * typed (`source !== "user"`) are refreshed, and an unchanged chart writes nothing. A refresh that changes an answer
+   * bumps the draft's `version` (see `prefillAdmission`), so a signer who reviewed the older version is refused.
    */
   async function refreshChartPrefill(
     tx: DbClient,
@@ -1547,7 +1548,7 @@ export function createDbHopeBackend(
       });
     },
 
-    async getAssessmentWorkspace(organizationId, urlId) {
+    async getAssessmentWorkspace(organizationId, urlId, options) {
       const id = uuidOrNotFound(urlId, `HOPE assessment ${urlId} not found`);
       // Spec initialisation (an assessment UPDATE for a legacy spec-less draft) commits in its OWN transaction first, as
       // review and sign do: the prefill below makes seam calls on their own pooled connections, and left in the same
@@ -1556,13 +1557,17 @@ export function createDbHopeBackend(
       const assessment = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
         ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id),
       );
-      await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
-        refreshChartPrefill(tx as unknown as DbClient, organizationId, assessment),
-      );
+      // The chart refresh REWRITES draft answers (and bumps `version` when it changes one), so it is a write: only a caller
+      // holding `hope.timepoint.write` runs it. A read-only caller (an auditor included) is shown the stored state.
+      if (options?.mayWrite !== false) {
+        await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
+          refreshChartPrefill(tx as unknown as DbClient, organizationId, assessment),
+        );
+      }
       return answerService.getWorkspace(organizationId, id);
     },
 
-    async getAssessmentReview(organizationId, urlId) {
+    async getAssessmentReview(organizationId, urlId, options) {
       const id = uuidOrNotFound(urlId, `HOPE assessment ${urlId} not found`);
       // Spec initialisation (an assessment UPDATE, then control answers) commits in its OWN transaction first, as
       // `signTimepoint` does with `pre`: left in the heal's transaction it would take the assessment row before the heal
@@ -1570,6 +1575,11 @@ export function createDbHopeBackend(
       await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
         ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id),
       );
+      // The self-heal writes draft answers, so only a caller holding `hope.timepoint.write` runs it; a read-only caller
+      // reads the stored state (the next writer to open the review repairs it). Spec initialisation above stays: a review
+      // of a spec-less legacy draft is a 409 without it.
+      if (options?.mayWrite === false)
+        return readinessService.getReview({ organizationId, assessmentId: id });
       const healed = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
         reconcileCompletedSfvRegulatoryAnswers(tx as unknown as DbClient, organizationId, id),
       );

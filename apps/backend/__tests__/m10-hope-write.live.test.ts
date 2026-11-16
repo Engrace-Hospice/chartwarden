@@ -1120,6 +1120,63 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       }
     });
 
+    it("a workspace open that rewrites a chart-derived answer bumps the version (a stale signer is refused); one that changes nothing, or a read-only one, does not", async () => {
+      const id = await freshDraft();
+      const first = await svc.getAssessmentWorkspace(ORG_A, id);
+      const patientId = (
+        await admin.query("SELECT patient_id FROM hope_assessment WHERE id=$1", [id])
+      ).rows[0].patient_id as string;
+      const storedLastName = async () =>
+        (
+          await admin.query(
+            `SELECT a.value #>> '{}' AS value FROM hope_assessment_answer a
+             JOIN hope_spec_item i ON i.id = a.spec_item_id
+             WHERE a.hope_assessment_id=$1 AND i.item_code='A0500C'`,
+            [id],
+          )
+        ).rows[0]?.value as string | undefined;
+      const renameChartPatient = (name: string) =>
+        admin.query("UPDATE patient SET legal_last_name=$2 WHERE id=$1", [patientId, name]);
+
+      // The chart did not move: a re-open writes nothing and keeps the version everyone's `ifVersion` names.
+      const unchanged = await svc.getAssessmentWorkspace(ORG_A, id);
+      expect(unchanged.assessment.version).toBe(first.assessment.version);
+
+      // A caller without hope.timepoint.write is shown the STORED state: the chart's new value is not written.
+      await renameChartPatient("Renamed-One");
+      const readOnly = await svc.getAssessmentWorkspace(ORG_A, id, { mayWrite: false });
+      expect(readOnly.assessment.version).toBe(first.assessment.version);
+      expect(await storedLastName()).toBe("Patient");
+
+      // A writer's open rewrites the chart-derived answer, in the same transaction as the version bump.
+      const reopened = await svc.getAssessmentWorkspace(ORG_A, id);
+      expect(await storedLastName()).toBe("Renamed-One");
+      expect(reopened.assessment.version).toBe(first.assessment.version + 1);
+
+      // The reviewer who loaded the older version can no longer patch or sign what the chart rewrote under them.
+      await expect(
+        svc.patchAssessmentAnswers(
+          ORG_A,
+          memberOf[ORG_A],
+          id,
+          patchInput(first.assessment.version),
+        ),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      await expect(
+        svc.signTimepoint(ORG_A, memberOf[ORG_A], id, {
+          ifVersion: first.assessment.version,
+          attestationConfirmed: true,
+        }),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      // ...and the version the open returned is the one to act on.
+      await svc.patchAssessmentAnswers(
+        ORG_A,
+        memberOf[ORG_A],
+        id,
+        patchInput(reopened.assessment.version),
+      );
+    });
+
     it("a lock that waited out a partition move retries on the moved row instead of failing 40001", async () => {
       const id = await freshDraft();
       const ws = await svc.getAssessmentWorkspace(ORG_A, id);
