@@ -12,8 +12,11 @@
  * Fails CLOSED: empty or unparseable input, an internal error, and content too large to scan all answer
  * `deny`, because a guard that goes quiet when it breaks is a guard an oversized or malformed call can
  * switch off. A human who needs the session back sets `CW_HARNESS_FAIL_OPEN=1` for that one session.
- * (A guard process that never starts, e.g. `bun` missing, is non-blocking in Claude Code itself; the
- * Stop gate, the pre-commit scan and CI are the lines behind it.)
+ * (A guard process that never starts, e.g. `bun` missing or an entry module that does not parse, exits
+ * non-zero; Claude Code reads that as allow, so Claude's pinned command ends in a plain-shell
+ * `|| { …; exit 2; }` tail that refuses the call instead (wave 7). `CW_HARNESS_FAIL_OPEN=1` makes THIS code
+ * answer allow on exit 0, which the tail never touches; it cannot help a guard that cannot start. The Stop gate,
+ * the pre-commit scan and CI are the lines behind a corrupted `.claude/settings.json`.)
  *
  * `codex` (the hook run from `.codex/hooks.json`) is the same guard for Codex. Codex cannot prompt: `ask` is
  * "parsed but not supported yet" there, the hook run is marked failed and the tool call PROCEEDS. So every

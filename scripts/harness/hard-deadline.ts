@@ -3,8 +3,9 @@
  *
  * A guard that is killed (SIGTERM at the hook's own 10 s timeout), crashes, or exits with anything but 2 lets
  * the tool call RUN in Claude Code. Codex's pinned command wraps the guard in `perl alarm 8 ... || exit 2`, so
- * there a hang is a refusal; Claude's pinned commands deliberately have no perl wrapper (a missing `perl` would
- * lock out every Claude tool call). So the guard enforces its own deadline: this entry thread reads stdin and
+ * there a hang is a refusal; Claude's pinned command has no perl wrapper (a missing `perl` would lock out every
+ * Claude tool call), only a plain-shell `|| { …; exit 2; }` tail that turns a guard that cannot start or crashes
+ * into a refusal but never sees a hang. So the guard enforces its own deadline: this entry thread reads stdin and
  * waits, the classification runs in a Bun Worker (`guard-worker.ts`), and when the deadline passes, or the worker
  * dies without answering, THIS thread prints the standard deny and exits 2, whatever the worker is stuck in (a
  * regular expression, a quadratic loop). Exit 2 blocks the call in both agents; the JSON is for Claude Code's

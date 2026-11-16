@@ -21,6 +21,12 @@ const commandOf = (file: string): string =>
   JSON.parse(readFileSync(join(REPO, file), "utf8")).hooks.PreToolUse[0].hooks[0].command;
 /** The two pinned commands, as committed. */
 export const CLAUDE_HOOK: string = commandOf(".claude/settings.json");
+/**
+ * Claude's guard command as it was before the fail-closed tail (wave 7, T0), spelled out rather than derived: the
+ * negative control that really exits 1 (= Claude Code's allow) when the guard cannot start.
+ */
+export const CLAUDE_HOOK_WITHOUT_TAIL =
+  'bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null "$CLAUDE_PROJECT_DIR"/scripts/harness/pre-tool-guard.ts';
 export const CODEX_HOOK: string = commandOf(".codex/hooks.json");
 
 const made: string[] = [];
@@ -89,12 +95,16 @@ export const bashPayload = (command: string): { tool_name: string; tool_input: u
   tool_input: { command },
 });
 
-/** The pinned Claude command, with the project directory set the way Claude Code sets it. */
+/**
+ * The pinned Claude command (the committed one unless `hook` says otherwise), with the project directory set the way
+ * Claude Code sets it.
+ */
 export const runClaude = (
   dir: string,
   payload: unknown,
   env: Record<string, string> = {},
-): HookRun => run(CLAUDE_HOOK, dir, payload, env);
+  hook: string = CLAUDE_HOOK,
+): HookRun => run(hook, dir, payload, env);
 
 /** A pinned Codex command (the committed one unless `hook` says otherwise), from the session directory `dir`. */
 export const runCodex = (

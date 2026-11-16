@@ -458,13 +458,60 @@ describe("the Claude hooks are pinned like the Codex one (a bunfig.toml preload 
     }
     expect(run(settings)).toEqual([]);
   });
-  it("keeps the timeout and async settings the hooks had (no perl alarm or `|| exit 2` for Claude)", () => {
+  it("pins the guard command with its fail-closed tail, spelled out (T0: Claude reads every exit code but 2 as allow)", () => {
+    expect(CLAUDE_GUARD_COMMAND).toBe(
+      `bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null "$CLAUDE_PROJECT_DIR"/scripts/harness/pre-tool-guard.ts || { echo '[chartwarden-harness] the guard failed to run, so the call is refused' >&2; exit 2; }`,
+    );
+    const groups: Array<{ hooks: Array<{ command: string }> }> =
+      JSON.parse(settings).hooks.PreToolUse;
+    for (const g of groups) expect(g.hooks[0]?.command).toBe(CLAUDE_GUARD_COMMAND);
+  });
+  it("keeps the timeout and async settings the hooks had; only the guard has the tail, and no perl alarm", () => {
     const parsed = JSON.parse(settings);
     expect(parsed.hooks.PreToolUse[0].hooks[0]).toMatchObject({ timeout: 10 });
     expect(parsed.hooks.PostToolUse[0].hooks[0]).toMatchObject({ async: true, timeout: 10 });
     expect(parsed.hooks.Stop[0].hooks[0]).toMatchObject({ timeout: 300 });
     for (const h of hooks) {
-      expect(h.command).not.toMatch(/perl|exit 2|\|\|/);
+      expect(h.command).not.toMatch(/perl|alarm/);
+      // The ledger and the Stop gate stay bare: only the guard decides whether a call runs.
+      if (h.event === "PreToolUse") expect(h.command).toMatch(/ \|\| \{ echo .*; exit 2; \}$/);
+      else expect(h.command).not.toMatch(/exit 2|\|\|/);
+    }
+  });
+  it.each([
+    ["dropped", (c: string) => c.replace(/ \|\| \{.*$/, "")],
+    ["exit 2 changed to exit 0", (c: string) => c.replace("exit 2", "exit 0")],
+    ["exit 2 changed to exit 1", (c: string) => c.replace("exit 2", "exit 1")],
+    ["no exit at all", (c: string) => c.replace("; exit 2;", ";")],
+    ["`||` changed to `&&`", (c: string) => c.replace(" || {", " && {")],
+    ["`||` changed to `;`", (c: string) => c.replace(" || {", " ; {")],
+    ["message reworded", (c: string) => c.replace("failed to run", "had a problem")],
+    ["message sent to stdout", (c: string) => c.replace(" >&2", "")],
+    ["`|| true`", (c: string) => c.replace(/ \|\| \{.*$/, " || true")],
+    ["`|| :`", (c: string) => c.replace(/ \|\| \{.*$/, " || :")],
+    ["a trailing comment", (c: string) => `${c} #`],
+    ["a second tail", (c: string) => `${c} || true`],
+  ])("fails when the guard's fail-closed tail is %s", (_name, mutate) => {
+    const guard = hooks[0];
+    expect(guard.event).toBe("PreToolUse");
+    const parsed = JSON.parse(settings);
+    const original: string = parsed.hooks.PreToolUse[0].hooks[0].command;
+    const changed = mutate(original);
+    expect(changed).not.toBe(original);
+    // the core group alone, then the MCP group alone: each of the two commands is pinned
+    for (const group of [0, 1]) {
+      const copy = JSON.parse(settings);
+      copy.hooks.PreToolUse[group].hooks[0].command = changed;
+      expect(run(JSON.stringify(copy)).join("\n"), `group ${group}`).toMatch(
+        /must be exactly CLAUDE_GUARD_COMMAND/,
+      );
+    }
+  });
+  it("the tail is not required of (and not accepted on) the ledger or the Stop gate", () => {
+    const tail = CLAUDE_GUARD_COMMAND.slice(CLAUDE_GUARD_COMMAND.indexOf(" || {"));
+    for (const h of hooks.filter((x) => x.event !== "PreToolUse")) {
+      const v = run(withCommand(h.event, `${h.command}${tail}`)).join("\n");
+      expect(v, h.event).toMatch(/must be exactly CLAUDE_(LEDGER|STOP)_COMMAND/);
     }
   });
   it.each(hooks)(

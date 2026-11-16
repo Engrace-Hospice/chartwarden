@@ -89,7 +89,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null \"$CLAUDE_PROJECT_DIR\"/scripts/harness/pre-tool-guard.ts",
+            "command": "bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null \"$CLAUDE_PROJECT_DIR\"/scripts/harness/pre-tool-guard.ts || { echo '[chartwarden-harness] the guard failed to run, so the call is refused' >&2; exit 2; }",
             "timeout": 10
           }
         ]
@@ -99,7 +99,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null \"$CLAUDE_PROJECT_DIR\"/scripts/harness/pre-tool-guard.ts",
+            "command": "bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null \"$CLAUDE_PROJECT_DIR\"/scripts/harness/pre-tool-guard.ts || { echo '[chartwarden-harness] the guard failed to run, so the call is refused' >&2; exit 2; }",
             "timeout": 10
           }
         ]

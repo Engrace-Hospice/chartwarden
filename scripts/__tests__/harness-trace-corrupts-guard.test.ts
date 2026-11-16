@@ -3,7 +3,9 @@
  * line to the file the variable names. Appended to the two modules the hook's entry thread imports synchronously
  * (`pre-tool-guard.ts`, `hard-deadline.ts`), that line is not valid TypeScript: bun cannot start the hook and
  * exits 1, and Claude Code treats any exit code other than 0 and 2 as a non-blocking error, that is, as ALLOW, for
- * every later call of the session. (The pinned Codex command has a `|| exit 2` wrapper: it fails closed.)
+ * every later call of the session. (The pinned Codex command has a `|| exit 2` wrapper: it fails closed. Wave 7, T0,
+ * gave Claude's guard command the same plain-shell tail: the hazard stays proved with the OLD command, spelled out
+ * as `CLAUDE_HOOK_WITHOUT_TAIL`, and the committed command refuses; see `harness-claude-fail-closed.test.ts`.)
  *
  * Everything runs on a COPY of the guard tree under a temp dir through the REAL pinned commands; the worktree's own
  * guard files are never written, and no payload command is executed (the hooks only classify it).
@@ -11,7 +13,14 @@
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { bashPayload, guardCopy, removeCopies, runClaude, runCodex } from "./_guard-copy";
+import {
+  CLAUDE_HOOK_WITHOUT_TAIL,
+  bashPayload,
+  guardCopy,
+  removeCopies,
+  runClaude,
+  runCodex,
+} from "./_guard-copy";
 
 afterAll(removeCopies);
 
@@ -28,14 +37,25 @@ describe("a trace line appended to an entry-thread module", () => {
   });
 
   it.each(ENTRY_FILES)(
-    "%s: the Claude hook exits 1 with no decision, which Claude Code reads as allow",
+    "%s: the OLD Claude command (no tail) exits 1 with no decision, which Claude Code reads as allow",
+    (file) => {
+      const dir = guardCopy();
+      appendFileSync(join(dir, "scripts/harness", file), TRACE_LINE);
+      const r = runClaude(dir, bashPayload("cat apps/backend/.env"), {}, CLAUDE_HOOK_WITHOUT_TAIL);
+      expect(r.status).toBe(1);
+      expect(r.stdout.trim()).toBe("");
+      expect(r.decision).toBe("exit1");
+    },
+  );
+
+  it.each(ENTRY_FILES)(
+    "%s: the committed Claude command now fails closed too (exit 2, the refusal on stderr)",
     (file) => {
       const dir = guardCopy();
       appendFileSync(join(dir, "scripts/harness", file), TRACE_LINE);
       const r = runClaude(dir, bashPayload("cat apps/backend/.env"));
-      expect(r.status).toBe(1);
-      expect(r.stdout.trim()).toBe("");
-      expect(r.decision).toBe("exit1");
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/the guard failed to run, so the call is refused/);
     },
   );
 

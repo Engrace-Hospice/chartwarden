@@ -129,8 +129,27 @@ through the shell is also bound by the 64 KB command cap below, so a larger one 
   `perl` and `bun` must be on the hook's PATH; without them every shell call and patch is refused, loudly.
   Claude's own three hooks (guard, ledger, Stop gate) are pinned the same way (`CLAUDE_GUARD_COMMAND`,
   `CLAUDE_LEDGER_COMMAND`, `CLAUDE_STOP_COMMAND`) and run with the same
-  `--config=/dev/null --no-env-file --tsconfig-override=/dev/null`, for the same reason. They deliberately have no perl alarm and no `|| exit 2`: Claude Code has its own
-  timeout, and a missing `perl` would otherwise lock out every Claude tool call.
+  `--config=/dev/null --no-env-file --tsconfig-override=/dev/null`, for the same reason. None has a perl alarm: Claude
+  Code has its own timeout, the guard enforces its own deadline (see "A hard deadline" below), and a missing `perl`
+  would otherwise lock out every Claude tool call.
+- **Claude's guard command fails closed (wave 7, T0, owner-approved).** It used to be the bare `bun … pre-tool-guard.ts`.
+  Claude Code reads any exit code other than 2 as ALLOW, so a guard that could not run let the call through: a corrupted
+  entry module (`pre-tool-guard.ts` or `hard-deadline.ts`: exit 1, which `GIT_TRACE=<file>` could cause by appending a
+  line, `harness-trace-corrupts-guard.test.ts`), a missing `bun` (127), an OOM kill (137). The guard command, in BOTH
+  PreToolUse groups (the core group and the MCP group), now ends in `|| { echo '[chartwarden-harness] the guard failed to
+  run, so the call is refused' >&2; exit 2; }`, a plain-shell tail like Codex's: no perl, no alarm, no program that could
+  be missing (`echo` and `exit` are shell builtins). `CLAUDE_GUARD_COMMAND` pins it byte for byte; dropping or altering
+  the tail fails `arch:compliance`. The guard's own answers are untouched: a deny or an ask is JSON on exit 0, the
+  emergency deny of `hard-deadline.ts` is exit 2 (the tail then prints its line as well, harmlessly), an allow is exit 0,
+  and `||` never fires on exit 0, so `CW_HARNESS_FAIL_OPEN=1` (which makes the guard itself answer allow on exit 0) still
+  lets a call through; it cannot rescue a guard that cannot start. The ledger and Stop-gate commands keep the bare form.
+  **The price is a lockout:** a broken guard now refuses EVERY Claude tool call, the editing tools and the shell the
+  repair would need included. The human repairs it outside Claude Code, in a terminal: `git restore scripts/harness`
+  (or `git checkout -- scripts/harness`) and a `bun --version` check that `bun` is on the PATH Claude Code runs hooks
+  with. **Residual:** a corrupted or edited `.claude/settings.json` itself is a different failure that the tail cannot
+  close (the tail lives in that file; what Claude Code does with a settings file it cannot parse was not verified
+  here); `arch:compliance`, the Stop gate, the pre-commit scan, CI and CODEOWNERS are the lines behind it, and the file
+  is a protected path (an Edit of it asks).
 - **The hook layer is a guardrail, not a boundary.** Each developer must trust the hook once (`/hooks`, tied
   to its hash, so a changed hook is skipped until re-trusted) and the project `.codex/` layer must be
   trusted. It can be switched off (`[features] hooks = false`, or a fresh `CODEX_HOME`) or bypassed
@@ -397,8 +416,8 @@ judged by what the command can DO: `sort -o`/`--output`/`--compress-program`, `u
 command or flag (or `sed -f`), `git grep -O`/`--open-files-in-pager`, `git commit -t`/`--template`, `rg --pre`/`--hostname-bin`
 and `ag`/`ack --pager` write a file or run a command, so none of them is a print. A switch name with no `=`
 (`export CODEX_HOME`) sets nothing and is allowed. Reasons
-never echo URL userinfo and cap any token they quote. Work is bounded because a guard that times out lets the
-call through in Claude Code: a command over 64 KB (64 x 1,024 UTF-16 code units, the JavaScript string length, not bytes) is REFUSED before it is parsed (an ask would let padding
+never echo URL userinfo and cap any token they quote. Work is bounded because a guard that runs out of time
+refuses the call (the 6.5 s deadline below) and a refusal costs a rephrase: a command over 64 KB (64 x 1,024 UTF-16 code units, the JavaScript string length, not bytes) is REFUSED before it is parsed (an ask would let padding
 turn a denied command into a prompt; put large file content in a file with the Write tool, and a heredoc patch
 that size through the `apply_patch` tool), the text judged across a command and everything nested in it is
 budgeted (256 KB: a text nested N deep in `$( )` is judged once per level, each nearly the whole command), a
@@ -571,9 +590,10 @@ command word built around a substitution (`$(true)git …`). Heredoc scripts nes
 (substitutions stay capped at 32 per level, as above).
 
 **A hard deadline, in both agents.** A guard that crashes, is killed at the hook's own 10 s timeout, or exits with
-anything but 2 lets the tool call run in Claude Code; only Codex's pinned command wraps the guard in `perl alarm 8
-… || exit 2`, and Claude's three pinned commands deliberately have no perl wrapper (a missing `perl` would lock
-out every Claude call). So the guard enforces its own deadline. `pre-tool-guard.ts` is a small entry thread
+anything but 2 lets the tool call run in Claude Code; Codex's pinned command wraps the guard in `perl alarm 8
+… || exit 2`, and Claude's has no perl wrapper (a missing `perl` would lock out every Claude call; its plain-shell
+`|| exit 2` tail, above, covers a guard that cannot start or crashes, but not a hang the tail never sees). So the
+guard enforces its own deadline. `pre-tool-guard.ts` is a small entry thread
 (`hard-deadline.ts`): it arms a 6.5 s timer before it reads stdin, runs the judgement (`guard-judge.ts`) in a Bun
 worker (`guard-worker.ts`), and when the timer fires, the worker dies or errors without answering, or stdin never
 ends, it prints the standard deny JSON, a stderr line and EXITS 2 (a block in both agents), whatever the worker is
@@ -583,14 +603,18 @@ latency is about 5 ms per call (median 21 to 26 ms over 35 runs). A worker needs
 started by the already-hardened entry, and the hostile-config tests run through it. Test seams, never set in
 production and forbidden in the shared `env`: `CW_HARNESS_TEST_FAULT` (`hang`, `exit`, `process-exit`, `throw`) and
 `CW_HARNESS_DEADLINE_MS_FOR_TESTS` (it can only shorten the deadline); `harness-hard-deadline.test.ts` forces each
-through the entry point and through both real pinned commands. Not covered: a `bun` that is missing or too slow
-to start, and a process killed for memory before it can answer; the Stop gate, the pre-commit scan and CI are the
-lines behind those. A `Read`/`Write`/`Edit` path of 500 KB made of `a/../` used to go quadratic in the real-path
+through the entry point and through both real pinned commands. A `bun` that is missing, a module that cannot be
+parsed, and a process killed for memory before it can answer exit non-zero, and both pinned commands now turn that
+into exit 2 (Claude's through its tail, above); a `bun` so slow to start that the hook's own 10 s timeout kills the
+whole `sh` first is not covered (the deadline starts only once the entry thread runs): the Stop gate, the pre-commit
+scan and CI are the lines behind that. A `Read`/`Write`/`Edit` path of 500 KB made of `a/../` used to go quadratic in the real-path
 walk (4 to 9 s); the written path is judged first, the walk is iterative, and a path longer than PATH_MAX is
 collapsed textually and never resolved link by link.
 
 **Fails closed.** Empty or unparseable hook input, an internal error, and a write too large to scan
-(over 8 MB) all answer `deny`. A human who needs the session back sets `CW_HARNESS_FAIL_OPEN=1` for it.
+(over 8 MB) all answer `deny`. A human who needs the session back sets `CW_HARNESS_FAIL_OPEN=1` for it (that makes
+the guard answer allow on exit 0, which the fail-closed tail never touches; it does not help when the guard cannot
+start at all: repair it outside Claude Code).
 Codex PTY requests (`tty`, `pty`, or `use_pty`) also fail closed: later `write_stdin` input does not fire
 the original command's PreToolUse check. The Codex hook therefore matches `write_stdin` itself and allows
 only empty polling; every non-empty or malformed `chars` value is denied before reaching the process.
@@ -609,8 +633,11 @@ Cannot cover:
 - `Grep` with no `glob` over a directory: it relies on ripgrep honouring `.gitignore`, which lists `.env`
   (`arch:compliance` checks that line stays).
 - Files the scanners skip as binary: `.pdf`, images, archives and `.pen` design files.
-- A guard process that never starts (for example `bun` missing): Claude Code treats that as
-  non-blocking. The Stop gate, the pre-commit scan and CI are the lines behind it.
+- A guard process that never starts (for example `bun` missing) used to be non-blocking in Claude Code; the
+  command's `|| exit 2` tail now refuses the call instead (wave 7, T0), at the price of a lockout until a human
+  repairs the guard outside Claude Code (see "Claude's guard command fails closed"). Not covered: a hook killed by
+  Claude Code's own 10 s timeout before it can exit (the whole `sh` dies with it), and a corrupted
+  `.claude/settings.json`. The Stop gate, the pre-commit scan and CI are the lines behind those.
 - The Stop gate is advisory after two identical failures (it releases with a notice instead of looping).
 
 ## The ledger
@@ -659,4 +686,9 @@ bun run harness:ledger:verify       # after a session, the chain is intact
 
 - `CW_STOP_GATE=off claude`: skip the Stop gate for one session (e.g. a docs-only marathon).
 - `CW_AGENT_LEDGER=off`: no ledger lines.
+- Every Claude tool call is refused with "the guard failed to run, so the call is refused": the guard cannot start
+  (a corrupted `scripts/harness/pre-tool-guard.ts` or `hard-deadline.ts`, no `bun` on the hook's PATH). Claude Code can no longer
+  repair it; in a terminal outside Claude Code run `git restore scripts/harness`, check `bun --version` and
+  `bun --config=/dev/null scripts/harness/pre-tool-guard.ts < /dev/null` (a deny JSON is a healthy guard), and start
+  Claude Code again.
 - A new synthetic identifier: edit `compliance/synthetic-identifiers.json` and approve the prompt.

@@ -310,12 +310,20 @@ export { CLAUDE_MCP_GUARD_MATCHER };
  * script and could silence it. `--tsconfig-override=/dev/null`: bun applies `compilerOptions.paths` from the
  * `tsconfig.json` (or `jsconfig.json`) in the session directory, and the one it extends, to the script's OWN
  * imports, so `"paths": {"*": ["./evil.ts"]}` made the guard exit 0 without reading its input; an empty
- * override leaves no `paths` to apply. Deliberately no perl alarm and no `|| exit 2` wrapper (Codex needs
- * them, Claude does not): a missing `perl` would lock out every Claude tool call, and Claude Code has its own
- * timeout.
+ * override leaves no `paths` to apply.
+ *
+ * The GUARD command alone ends in {@link FAIL_CLOSED_TAIL}. Claude Code reads every exit code other than 2 as
+ * ALLOW, so a guard that cannot run (a corrupted entry module: exit 1; no `bun`: 127; an OOM kill: 137) let every
+ * later call through. The tail is plain shell: no perl and no alarm (a missing perl would lock out every call; the
+ * in-process deadline of `hard-deadline.ts` already answers before Claude Code's own timeout). The price is a
+ * lockout: a broken guard refuses every Claude tool call until a human repairs it outside Claude Code. The ledger
+ * and the Stop gate keep the bare form: their failure blocks nothing the guard decides. An exit 0 (an allow, or a
+ * `CW_HARNESS_FAIL_OPEN=1` bypass) never reaches the tail.
  */
 const BUN_HARDENED = "bun --config=/dev/null --no-env-file --tsconfig-override=/dev/null";
-export const CLAUDE_GUARD_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/pre-tool-guard.ts`;
+const FAIL_CLOSED_TAIL =
+  "|| { echo '[chartwarden-harness] the guard failed to run, so the call is refused' >&2; exit 2; }";
+export const CLAUDE_GUARD_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/pre-tool-guard.ts ${FAIL_CLOSED_TAIL}`;
 export const CLAUDE_LEDGER_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/post-tool-ledger.ts`;
 export const CLAUDE_STOP_COMMAND = `${BUN_HARDENED} "$CLAUDE_PROJECT_DIR"/scripts/harness/stop-gate.ts`;
 
@@ -704,7 +712,7 @@ export function checkHarness(files: HarnessFiles): string[] {
     if (commands.length === 0) v.push(`.claude/settings.json: ${p.event} does not run ${script}`);
     else if (commands.some((c) => c !== p.command))
       v.push(
-        `.claude/settings.json: the ${p.event} command for ${script} must be exactly ${p.name} from scripts/check-compliance-controls.ts (pinned \`${BUN_HARDENED}\`: a bunfig.toml preload or a tsconfig.json paths map would otherwise run or replace code before it)`,
+        `.claude/settings.json: the ${p.event} command for ${script} must be exactly ${p.name} from scripts/check-compliance-controls.ts (pinned \`${BUN_HARDENED}\`: a bunfig.toml preload or a tsconfig.json paths map would otherwise run or replace code before it${p.event === "PreToolUse" ? "; the guard also keeps its `|| { …; exit 2; }` tail: Claude Code reads every other exit code as allow" : ""})`,
       );
     // The guard's own timeout is checked below; the ledger and the Stop gate may take longer, but a 0 or negative
     // one kills them before they run.
