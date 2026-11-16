@@ -133,7 +133,8 @@ SFVs and validation findings; the `hope_submission` / `hope_submission_item` row
 evidence. A manual `db://` package lives in `hope_submission.acceptance_report`, which M4's envelope-purge worker never
 touches (only a cancel deletes those bytes, together with each item's XML, and not while an M4 legal hold applies to the batch:
 a cancelled package was never transmitted, so it has no CMS 10-year hold; the bytes of every non-cancelled batch outlive a
-destruction certificate); an automated-transport envelope in MinIO is that worker's to purge. The cancel purge is a LOGICAL
+destruction certificate); an automated-transport envelope in MinIO is that worker's to purge. To purge a cancelled batch whose bytes
+were kept under a legal hold (or after a transient M4 read failure), repeat the cancel (`POST .../cancel`) once the hold is released. The cancel purge is a LOGICAL
 deletion (NULLed jsonb: dead tuples until vacuum, and WAL, replicas and backups until their own retention expires), so a
 backup restored from before the cancel holds the bytes again.
 `scale_license`-equivalent org configuration is not patient data and is never touched.

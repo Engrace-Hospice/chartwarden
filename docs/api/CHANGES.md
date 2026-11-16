@@ -77,9 +77,22 @@ its full description there. Newest first.
   ` . _ : # / -`, and refused when they look like a patient identifier.** Both are operator-typed free text that is stored on the
   batch (the report reference also on every stored report row). A value with any other character, or an empty string, answers
   `422 VALIDATION_FAILED`; a value shaped like a Social Security or Medicare number answers `422 EVIDENCE_LOOKS_LIKE_PHI`. Neither
-  422 echoes the value. Omit the field or send `null` for no reference; the length bounds (500 and 200) are as before. On POST the
+  422 echoes the value. Omit the field or send `null` for no reference. **Both are now at most 128 characters (they were 500 and
+  200) and must not start with a space** (the pattern is `^[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/-]*$`, so a value of only spaces is
+  refused). The service screens them again for a patient identifier, so the check does not depend on the route. On POST the
   idempotency layer replays this `422` for 24 h on the same key, so send a corrected request with a NEW `Idempotency-Key`. The audit
   trail records both references as `<changed>` (as the other free-text and storage columns of a batch).
+- **The tokens of a CMS result row (`status`, `result`, `outcome`, `severity`, `code`, `itemCode`, `iqiesRecordId` in `POST .../results`) take the
+  same characters, at most 64, and are screened for a patient identifier.** They are stored on the item, the assessment and the result
+  event, copied into audit row images and (the edit code) into the `m10.hope.submission_rejected` payload. A token must match
+  `^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/-]*)?$` (letters, digits, `. _ : # / -`, spaces after the first character; empty is a blank cell and
+  names nothing); anything else, including markup, quotes, line breaks or a token of only spaces, is `422 VALIDATION_FAILED`. A token
+  shaped like a Social Security or Medicare number is `422 EVIDENCE_LOOKS_LIKE_PHI` with the field `results.<row>.<token>`; neither 422
+  echoes the value. `assessmentId` and `message` are not screened.
+- **`GET /hope/assessments/{id}/validation` and `GET .../workspace` store nothing for a caller who does not hold `hope.timepoint.write`.** The
+  final-mode validation read used to reconcile the stored validation findings, and the workspace open used to rewrite out-of-date
+  workflow-control answers, both under no actor. A read-only caller now gets the same findings and the same workspace computed on the
+  fly (the response shape is unchanged); a caller who can write persists them as before.
 - **Assemble now records the batch's items in one statement and re-checks the records after the package is serialised.** The request,
   the response and the codes are unchanged. A record superseded while the package was being serialised is dropped as before (it
   is now judged and share-locked just before the batch is written, not before the serialising, so a correction's signature waits
@@ -231,8 +244,12 @@ longer open now answers `409` (below). `POST /hope/submissions/assemble` can now
   logs, replicas and backups keep the old bytes until their own retention expires). **A legal hold wins over the delete:** when the organization has an
   active org-wide legal hold, when any record of the batch belongs to a patient a legal hold names, or when the hold list cannot be read
   (it fails closed), the batch is still cancelled but ALL its bytes are kept (the ZIP cannot be partly cleared), and the
-  `hope.submission_cancelled` event says so (`bytesKeptForLegalHold: true`, `packageBytesPurged: false`). Nothing deletes those bytes
-  later; the response and the status flow are the same either way. What stays is the evidence that a package existed: the batch's `packageSha256`,
+  `hope.submission_cancelled` event says why (`bytesKeptReason`: `legal_hold` or `hold_scope_unreadable`, never both; `packageBytesPurged: false`;
+  `bytesKeptForLegalHold` is true only for `legal_hold`). **To delete kept bytes after the hold is released, repeat the cancel
+  (`POST .../cancel` again):** on an already-cancelled batch that still holds bytes, the hold list is read again, and when nothing holds them
+  now they are deleted and a `hope.submission_cancelled` event with `repeatCancel: true` is written (status, reason, time and actor
+  unchanged); otherwise the repeat answers `200` with the batch unchanged and writes nothing. The response and the status flow are the
+  same either way. What stays is the evidence that a package existed: the batch's `packageSha256`,
   `packageSizeBytes` and file name, each record's XML hash and size, and `cancelledAt` / `cancelReasonCode` / who cancelled. Nothing on
   the API returned the bytes of a cancelled batch (the download is `409 M10_SUBMISSION_CANCELLED`), so no response changes shape; the bytes
   of a batch that was marked uploaded, or has a result, are not touched. Cancel, a schedule skip and `regenerate-schedules` each also leave

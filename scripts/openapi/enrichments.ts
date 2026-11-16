@@ -5935,7 +5935,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/hope/assessments/:id/validation": {
     summary:
-      "On-demand pre-submission validation findings for one row; `submissionDate`, when given, must be a real calendar date-time with an explicit offset (else 422)",
+      "On-demand pre-submission validation findings for one row; `submissionDate`, when given, must be a real calendar date-time with an explicit offset (else 422); a final run is stored (the findings are reconciled) only for a caller holding hope.timepoint.write, any other caller gets the same findings computed and nothing is written",
     query: M10ValidationQuerySchema,
     response: M10HopeValidationResponseSchema,
   },
@@ -5978,12 +5978,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeSubmissionResponseSchema,
   },
   "POST /api/v1/hope/submissions/:id/cancel": {
-    summary: `Cancel a generated HOPE package that was never marked uploaded (packaged/exported), freeing its assessments to be packaged again in a NEW batch; 409 once uploaded; replaying a cancel returns the cancelled batch; the package ZIP and every record's XML are deleted with the cancel unless an M4 legal hold applies (org-wide, a held patient among the batch's records, or an unreadable hold scope), in which case the batch is still cancelled but keeps all its bytes; AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
+    summary: `Cancel a generated HOPE package that was never marked uploaded (packaged/exported), freeing its assessments to be packaged again in a NEW batch; 409 once uploaded; replaying a cancel returns the cancelled batch; the package ZIP and every record's XML are deleted with the cancel unless an M4 legal hold applies (org-wide, a held patient among the batch's records, or an unreadable hold scope), in which case the batch is still cancelled but keeps all its bytes (the event says why; repeat the cancel to delete them once the hold is released); AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
     body: M10CancelSubmissionSchema,
     response: M10HopeSubmissionResponseSchema,
   },
   "POST /api/v1/hope/submissions/:id/results": {
-    summary: `Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent; a blank iqiesRecordId is no id and is not stored on the item or the assessment); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); ${M10_RECORD_BUSY_NOTE}; \`reportReference\`, when given, holds only letters, digits and \` . _ : # / -\` (else 422) and is refused when shaped like a Social Security or Medicare number (422 EVIDENCE_LOOKS_LIKE_PHI); if the bulk item update stores fewer items than the report named nothing is kept and the call answers 409`,
+    summary: `Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent; a blank iqiesRecordId is no id and is not stored on the item or the assessment); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); ${M10_RECORD_BUSY_NOTE}; \`reportReference\`, when given, is at most 128 characters of letters, digits and \` . _ : # / -\` (spaces allowed after the first character; else 422) and is refused when shaped like a Social Security or Medicare number (422 EVIDENCE_LOOKS_LIKE_PHI); each row's \`status\`, \`result\`, \`outcome\`, \`severity\`, \`code\`, \`itemCode\` and \`iqiesRecordId\` take the same characters (at most 64, empty allowed) and the same identifier screen (422, field results.<row>.<token>); if the bulk item update stores fewer items than the report named nothing is kept and the call answers 409`,
     body: M10ImportSubmissionResultSchema,
     response: M10HopeSubmissionDetailResponseSchema,
   },
