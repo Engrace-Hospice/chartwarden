@@ -752,22 +752,24 @@ controls:
       owner: engineering
       review_by: 2027-01-31
   - id: CW-AC-43
-    title: Care-plan content flagged 42 CFR Part 2 (SUD) or family violence is withheld from a caller without disclosure on the care-plan read and write results (M7 problems, goals, interventions, version snapshots and proposed changes; M15 goals, interventions anchored to a hidden goal, assessments, version detail, finalize, sign and edit results, and the seam read); redaction fails closed when the viewer is not named, when a snapshot has an unexpected shape or a missing flag, and when the consent lookup errors
+    title: Care-plan content flagged 42 CFR Part 2 (SUD) or family violence is withheld from a caller without disclosure on the care-plan read and write results (M7 problems, goals, interventions, version snapshots and proposed changes; M15 goals, interventions anchored to a hidden goal, assessments, version detail, finalize, sign and edit results, and the seam read), from every rendering and event that has no viewer (the M15 version-signed event and so the plan PDF, the IDG packet cover, the IDG minutes, the ops outbox detail read), and from an IDG decision that flags its own problem; redaction fails closed when the viewer is not named, when a snapshot has an unexpected shape or a missing flag, and when the consent lookup errors
     hipaa: ["164.312(a)(1)", "164.502(b)"]
     soc2: ["CC6.1", "C1.1"]
-    status: partial
+    status: implemented
     evidence:
       - script: test:m7:write:live
       - script: test:m7:read:live
+      # Mounts the real M7 AND M15 routes with no injected disclosure port: route -> seam registry -> the real M39
+      # ConsentEvaluator, with a release, without one, and with the evaluator unbound (fail closed).
       - script: test:m7:consent-wiring:live
       - script: test:m15:idg-decision:live
+      - script: test:m14:write:live
+      - script: test:m14:packet-build:live
+      - script: test:m1:outbox-dispatcher:live
       - file: apps/backend/src/modules/07-care-plan/routes/snapshot-redaction.ts
       - file: apps/backend/src/modules/15-discipline-care-plans/routes/snapshot-redaction.ts
+      - file: apps/backend/src/modules/15-discipline-care-plans/routes/disclosure.ts
       - file: apps/backend/__tests__/discipline-plans-snapshot-redaction.test.ts
-    gap:
-      reason: Four gaps remain. (1) The `m15.plan.version_signed` outbox payload embeds the full sealed snapshot, `sud_related` goals included (Workflow 06 audit D-13). The catalog declares only M22 as a consumer (M14 and M33 read through seams; M28 and M30 are not consumers), so the sinks are the persisted `outbox_event.payload`, which the ops outbox detail read returns whole (that read now leaves an audit event) and the plan PDF M22 renders. (2) The M14 `problem_add` mutation has no SUD flag, so a Part 2 problem added through an IDG decision is stored as not SUD-related and is never redacted (audit D-11). (3) The IDG packet cover reads the first active terminal problem's description and ICD-10 without the SUD filter (audit D-16). (4) The route-to-M39 chain has live proof only for M7 (the consent-wiring suite uses the real consent evaluator); the M15 live tests drive the services with an injected disclosure port, so the M15 route and its seam-resolved port are covered by unit tests and not by a live run.
-      owner: clinical-platform
-      review_by: 2027-02-15
 
   - id: CW-AU-01
     title: Audit controls — PHI reads and writes leave an integrity-checked trail
