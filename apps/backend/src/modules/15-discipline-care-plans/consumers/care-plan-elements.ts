@@ -63,10 +63,10 @@ export async function relevantIpocElements(
   viewer: CarePlanElementsAudience,
 ): Promise<RelevantCarePlanElements | null> {
   const lens = READER_LENS_BY_KIND[kind];
-  // The elements only prove a parent exists (`assertParentElements`); none is returned to a caller. The audience is
-  // the caller's (`elementsAudienceFor`), so this check applies the same per-actor Part 2 rule as the M7 picker:
-  // what the picker offered is what it accepts, and a Part 2 problem a nurse the release does not name holds by
-  // uuid is rejected 422 like any other element she cannot see.
+  // The elements prove a parent exists and supply its Part 2 flag (`assertParentElements`); none is returned to a
+  // caller. The audience is the caller's (`elementsAudienceFor`), so this check applies the same per-actor Part 2
+  // rule as the M7 picker: what the picker offered is what it accepts, and a Part 2 problem a nurse the release does
+  // not name holds by uuid is rejected 422 like any other element she cannot see.
   return getCarePlanReader().relevantElementsForEncounter(
     patientId,
     lens.encounterType,
@@ -97,8 +97,10 @@ export interface ParentElementRefs {
  * FAIL-CLOSED: a patient with no resolvable care plan cannot parent anything — the reader returning null
  * lands on `PARENT_ELEMENT_NOT_FOUND` rather than being waved through.
  *
- * Returns `parentSudRelated`: for a goal, whether the problem named by `parentProblemId` is 42 CFR Part 2
- * flagged (the goal then inherits the flag, whatever the author sent); for an intervention, always false.
+ * Returns `parentSudRelated`: for a goal, whether EITHER the problem named by `parentProblemId` OR the problem the
+ * parent goal (`parentGoalId`) sits under is 42 CFR Part 2 flagged (the goal then inherits the flag, whatever the
+ * author sent: a goal refining a Part 2 goal is Part 2 content even when it names a plain problem, because this check
+ * does not require the parent goal to belong to `parentProblemId`); for an intervention, always false.
  */
 export async function assertParentElements(
   kind: DisciplinePlanKind,
@@ -122,8 +124,13 @@ export async function assertParentElements(
     refs.parentInterventionId,
     interventionIds.has(refs.parentInterventionId ?? ""),
   );
-  const parentProblem = requireProblem
-    ? elements?.problems.find((p) => p.problemId === refs.parentProblemId)
-    : undefined;
-  return { parentSudRelated: parentProblem?.sudRelated === true };
+  if (!requireProblem) return { parentSudRelated: false };
+  const parentGoalProblemId = elements?.goals.find(
+    (g) => g.goalId === refs.parentGoalId,
+  )?.problemId;
+  const isSud = (problemId: string | undefined) =>
+    elements?.problems.some((p) => p.problemId === problemId && p.sudRelated === true) === true;
+  return {
+    parentSudRelated: isSud(refs.parentProblemId ?? undefined) || isSud(parentGoalProblemId),
+  };
 }

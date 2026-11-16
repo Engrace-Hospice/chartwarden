@@ -1107,6 +1107,60 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
         await app.close();
       });
 
+      // The parent check does not require `parentGoalId` to belong to `parentProblemId`, so a goal that refines a
+      // Part 2 IPOC goal while naming a plain problem must still inherit the flag from the goal's own problem.
+      it("a goal refining a Part 2 IPOC goal is stored flagged even when it names a plain problem; a plain IPOC goal flags nothing (control)", async () => {
+        const {
+          planId,
+          problemId: plainProblemId,
+          sudProblemId,
+          carePlanId,
+          pe,
+          loc,
+        } = await seedPlanWithPart2Problem();
+        // The reader returns an IPOC goal only through an ACTIVE msw-tagged intervention on its problem (seams/reader.ts),
+        // so each IPOC goal below gets one on its own problem.
+        const seedIpocGoal = async (problemId: string, text: string) => {
+          await admin.query(
+            `INSERT INTO intervention (organization_id, provider_entity_id, location_id, care_plan_id, problem_id,
+               scope_text, frequency_text, frequency_value, discipline)
+             VALUES ($1,$2,$3,$4,$5,$6,'Weekly','1:visit:week','msw')`,
+            [org, pe, loc, carePlanId, problemId, `${text}-INTERVENTION`],
+          );
+          return (
+            await admin.query(
+              `INSERT INTO goal (organization_id, provider_entity_id, location_id, care_plan_id, problem_id,
+                 original_text, source, status)
+               VALUES ($1,$2,$3,$4,$5,$6,'clinical','in_progress') RETURNING id`,
+              [org, pe, loc, carePlanId, problemId, text],
+            )
+          ).rows[0].id as string;
+        };
+        const part2IpocGoalId = await seedIpocGoal(sudProblemId, "SYNTHETIC-PART2-IPOC-GOAL");
+        const plainIpocGoalId = await seedIpocGoal(plainProblemId, "SYNTHETIC-PLAIN-IPOC-GOAL");
+        const app = await bootWithRealReader(null);
+        const caseManager = { membership: OTHER_MEMBERSHIP, roles: "msw,rn_case_manager" };
+
+        const refinesPart2 = await postGoal(app, planId, plainProblemId, caseManager, {
+          parentGoalId: part2IpocGoalId,
+        });
+        expect(refinesPart2.statusCode).toBe(201);
+        const refinesPlain = await postGoal(app, planId, plainProblemId, caseManager, {
+          parentGoalId: plainIpocGoalId,
+        });
+        expect(refinesPlain.statusCode).toBe(201);
+        const stored = await admin.query(
+          "SELECT id, sud_related FROM discipline_goal WHERE id = ANY($1::uuid[])",
+          [[refinesPart2.json().goalId, refinesPlain.json().goalId]],
+        );
+        const flagOf = (goalId: string) =>
+          stored.rows.find((r: { id: string }) => r.id === goalId)?.sud_related;
+        expect(flagOf(refinesPart2.json().goalId)).toBe(true);
+        expect(flagOf(refinesPlain.json().goalId)).toBe(false);
+        expect(refinesPart2.json().sudRelated).toBe(true);
+        await app.close();
+      });
+
       it("a goal under a plain problem is NOT flagged by inheritance (control)", async () => {
         const { planId, problemId: plainProblemId } = await seedPlanWithPart2Problem();
         const app = await bootWithRealReader(null);

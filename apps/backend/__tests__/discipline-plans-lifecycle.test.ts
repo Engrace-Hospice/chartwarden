@@ -674,6 +674,7 @@ describe("M15-T03 — consuming M7's CarePlanReader (§2.1 / §2.3)", () => {
   const IPOC_PROBLEM = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
   const IPOC_GOAL = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
   const SUD_PROBLEM = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+  const SUD_GOAL = "dddddddd-dddd-dddd-dddd-dddddddddddd";
 
   /** The audience a human caller passes (M15's parent check asks under the actor's own Part 2 rule, R-80). */
   const HUMAN = { actor: { roles: ["msw"], membershipId: "member-1" } } as const;
@@ -701,7 +702,10 @@ describe("M15-T03 — consuming M7's CarePlanReader (§2.1 / §2.3)", () => {
             { problemId: IPOC_PROBLEM, sudRelated: false },
             { problemId: SUD_PROBLEM, sudRelated: true },
           ],
-          goals: [{ goalId: IPOC_GOAL }],
+          goals: [
+            { goalId: IPOC_GOAL, problemId: IPOC_PROBLEM },
+            { goalId: SUD_GOAL, problemId: SUD_PROBLEM },
+          ],
           interventions: [],
           redacted: false,
         };
@@ -758,6 +762,39 @@ describe("M15-T03 — consuming M7's CarePlanReader (§2.1 / §2.3)", () => {
     ).resolves.toEqual({ parentSudRelated: true });
     await expect(
       assertParentElements("msw_plan", PATIENT, { parentProblemId: IPOC_PROBLEM }, true, HUMAN),
+    ).resolves.toEqual({ parentSudRelated: false });
+  });
+
+  it("a goal refining a Part 2 goal inherits the flag even when it names a plain problem (the parent goal need not belong to `parentProblemId`)", async () => {
+    registerReader();
+    await expect(
+      assertParentElements(
+        "msw_plan",
+        PATIENT,
+        { parentProblemId: IPOC_PROBLEM, parentGoalId: SUD_GOAL },
+        true,
+        HUMAN,
+      ),
+    ).resolves.toEqual({ parentSudRelated: true });
+    // Either parent is enough: a Part 2 problem with a plain parent goal is flagged too.
+    await expect(
+      assertParentElements(
+        "msw_plan",
+        PATIENT,
+        { parentProblemId: SUD_PROBLEM, parentGoalId: IPOC_GOAL },
+        true,
+        HUMAN,
+      ),
+    ).resolves.toEqual({ parentSudRelated: true });
+    // Control: a plain problem and a plain parent goal inherit nothing.
+    await expect(
+      assertParentElements(
+        "msw_plan",
+        PATIENT,
+        { parentProblemId: IPOC_PROBLEM, parentGoalId: IPOC_GOAL },
+        true,
+        HUMAN,
+      ),
     ).resolves.toEqual({ parentSudRelated: false });
   });
 
