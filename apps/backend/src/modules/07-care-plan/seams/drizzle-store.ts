@@ -411,6 +411,11 @@ export function activeProblemIdsForOrg(
   });
 }
 
+/** What the IDG packet cover shows for a terminal problem that is Part 2 (the packet cover reads "Primary
+ *  diagnosis: 42 CFR Part 2 (withheld)"). Fixed text: nothing of the problem survives. */
+const PART2_COVER_ICD10 = "withheld";
+const PART2_COVER_LABEL = "42 CFR Part 2";
+
 /**
  * Resolve the §2.4 packet-cover care-plan facts for one patient, org-explicit. `null` when the patient has
  * no `care_plan` row at all (never bootstrapped — M14 reports this as a build failure, never a fabricated
@@ -461,7 +466,11 @@ export function idgPacketCarePlanContextForOrg(
       .limit(1);
 
     const [terminal] = await tx
-      .select({ icd10Code: PROB.icd10Code, description: PROB.description })
+      .select({
+        icd10Code: PROB.icd10Code,
+        description: PROB.description,
+        sudRelated: PROB.sudRelated,
+      })
       .from(PROB)
       .where(
         and(eq(PROB.carePlanId, plan.id), eq(PROB.kind, "terminal"), eq(PROB.status, "active")),
@@ -495,8 +504,20 @@ export function idgPacketCarePlanContextForOrg(
       lastSignedAt: lastSigned?.signedAt?.toISOString() ?? null,
       nextReviewDueAt,
       isReviewOverdue: nextReviewDueAt !== null && new Date(nextReviewDueAt) < asOf,
-      terminalDiagnosisIcd10: terminal?.icd10Code ?? null,
-      terminalDiagnosisLabel: terminal?.description ?? null,
+      // 42 CFR Part 2 (audit D-16): the cover is built once, for every reader, so a terminal problem that is
+      // SUD-related (or whose flag is not the literal `false`) is named by a fixed marker, never its text or
+      // code. The marker is not null, so the packet still builds and the IDG team still sees that a primary
+      // diagnosis exists; the authorised view of it is the care plan itself, behind the disclosure gate.
+      terminalDiagnosisIcd10: terminal
+        ? terminal.sudRelated === false
+          ? (terminal.icd10Code ?? null)
+          : PART2_COVER_ICD10
+        : null,
+      terminalDiagnosisLabel: terminal
+        ? terminal.sudRelated === false
+          ? terminal.description
+          : PART2_COVER_LABEL
+        : null,
       sudFlag: !!sudRow,
     };
   });

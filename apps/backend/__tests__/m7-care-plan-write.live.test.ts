@@ -1505,6 +1505,48 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       expect(elements?.planId).toBe(plan2.id);
     });
 
+    it("the IDG packet cover names a Part 2 terminal problem by a fixed marker, not its text or code (audit D-16)", async () => {
+      const patientId = randomUUID();
+      const boot = (await svc.bootstrapCarePlan(ORG_A, patientId, randomUUID())) as Boot;
+      const terminalText = "SYNTHETIC-PART2-TERMINAL-TEXT";
+      await svc.addProblem(ORG_A, boot.id, {
+        description: terminalText,
+        kind: "terminal",
+        source: "clinical",
+        icd10Code: "F10.20",
+        sudRelated: true,
+      });
+      const cover = await idgPacketCarePlanContextForOrg(
+        handle.db,
+        ORG_A,
+        patientId,
+        "2026-07-02T00:00:00.000Z",
+      );
+      expect(JSON.stringify(cover)).not.toContain(terminalText);
+      expect(JSON.stringify(cover)).not.toContain("F10.20");
+      expect(cover?.terminalDiagnosisLabel).toBe("42 CFR Part 2");
+      expect(cover?.terminalDiagnosisIcd10).toBe("withheld");
+      expect(cover?.sudFlag).toBe(true);
+
+      // A terminal problem that is not Part 2 reads through unchanged.
+      const plainPatient = randomUUID();
+      const plain = (await svc.bootstrapCarePlan(ORG_A, plainPatient, randomUUID())) as Boot;
+      await svc.addProblem(ORG_A, plain.id, {
+        description: "Plain terminal illness",
+        kind: "terminal",
+        source: "clinical",
+        icd10Code: "C34.90",
+      });
+      const plainCover = await idgPacketCarePlanContextForOrg(
+        handle.db,
+        ORG_A,
+        plainPatient,
+        "2026-07-02T00:00:00.000Z",
+      );
+      expect(plainCover?.terminalDiagnosisLabel).toBe("Plain terminal illness");
+      expect(plainCover?.terminalDiagnosisIcd10).toBe("C34.90");
+    });
+
     it("#2 a version's stateSnapshot is redacted of SUD problems and their goals for a caller without Part 2 disclosure", async () => {
       const boot = (await svc.bootstrapCarePlan(ORG_A, randomUUID(), randomUUID())) as Boot & {
         patientId: string;
