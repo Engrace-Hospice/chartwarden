@@ -7,8 +7,12 @@
  */
 import { globMatches, globTokens } from "./glob";
 
-/** Where live environment files sit in this repo (their `.example` templates are tracked beside them). */
-const LIVE_ENV_FILES: readonly string[] = [
+/**
+ * Where live environment files sit when the caller cannot list the tree (a unit test that injects only `exists`): the
+ * usual ones in this repo. In production the classifier is handed the tree's real env files (`live-env-files.ts`, CR5-7)
+ * and they are added to these; this list is no longer the definition.
+ */
+const FALLBACK_LIVE_ENV_FILES: readonly string[] = [
   ".env",
   "apps/backend/.env",
   "apps/web/.env",
@@ -17,6 +21,13 @@ const LIVE_ENV_FILES: readonly string[] = [
   "deploy/production/.env.tenant",
   "deploy/production/.deploy-alert.env",
 ];
+
+let LIVE_ENV_FILES: readonly string[] = FALLBACK_LIVE_ENV_FILES;
+
+/** Add the live env files found in the tree to the fallback list (one classified command's view; `[]` clears it). */
+export function setListedLiveEnvFiles(files: readonly string[]): void {
+  LIVE_ENV_FILES = [...new Set([...FALLBACK_LIVE_ENV_FILES, ...files])];
+}
 
 /**
  * Does a recursive read of the repo-relative directory `dir` (`""` is the root) reach a live environment file that

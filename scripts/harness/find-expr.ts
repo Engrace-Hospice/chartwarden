@@ -64,6 +64,20 @@ function regexAsGlob(regex: string): string | null {
   return glob;
 }
 
+/**
+ * A name pattern that ends in a source-file extension: a `find` limited to one cannot reach a live env file, as
+ * `grep --include=*.ts` cannot (`-name '*.ts'`).
+ */
+export const SAFE_SOURCE_NAME =
+  /\.(ts|tsx|js|jsx|mjs|cjs|json|md|mdx|sql|ya?ml|css|html|py|sh|toml|txt|rs|go)$/i;
+
+/** Does this test ONLY pass source files, which cannot be live env files? (`-name '*.ts'`) */
+export const narrowsToSourceFiles = (test: string, pattern: string): boolean =>
+  /^-i?name$/.test(test) && SAFE_SOURCE_NAME.test(pattern);
+
+/** A test that decides which files an expression passes: does it narrow to files that cannot matter? */
+type Narrowing = (test: string, pattern: string) => boolean;
+
 /** Does this test ONLY pass files that cannot be protected ones? */
 function narrowsTo(test: string, pattern: string): boolean {
   // A listing that missed some protected names cannot say a pattern matches none of them (`protected-names.ts`).
@@ -109,6 +123,7 @@ export interface FindAction {
 export function findActions(
   args: readonly string[],
   execWrites: (words: readonly string[]) => boolean,
+  narrowing: Narrowing = narrowsTo,
 ): FindAction[] {
   let k = 0;
   const open = /^(?:\\?\()$/;
@@ -145,7 +160,7 @@ export function findActions(
     }
     if (ONE_VALUE.test(a)) {
       const value = args[k++] ?? "";
-      return { t: "test", narrows: narrowsTo(a, value) };
+      return { t: "test", narrows: narrowing(a, value) };
     }
     return { t: "test", narrows: false };
   };

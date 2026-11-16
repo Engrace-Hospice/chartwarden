@@ -16,6 +16,17 @@
  * 2,048 alternatives; a name that needs a mix of first and last alternatives is found for any word up to this size.
  */
 const MAX_BRACE_ALTERNATIVES = 4096;
+/** The text one word's alternatives may add up to: a long word keeps a smaller cap, so one word never costs a second. */
+const MAX_WORD_ALTERNATIVE_CHARS = 1024 * 1024;
+const MIN_BRACE_ALTERNATIVES = 256;
+const alternativeCap = (word: string): number =>
+  Math.min(
+    MAX_BRACE_ALTERNATIVES,
+    Math.max(
+      MIN_BRACE_ALTERNATIVES,
+      Math.floor(MAX_WORD_ALTERNATIVE_CHARS / Math.max(word.length, 1)),
+    ),
+  );
 const MAX_BRACE_GROUPS = 16;
 /** Brace alternatives, and the characters they hold, one command may produce. */
 const MAX_COMMAND_BRACE_ALTERNATIVES = 4096;
@@ -245,7 +256,7 @@ export function expandBraces(word: string): string[] {
         next.push(w);
         continue;
       }
-      if (next.length >= MAX_BRACE_ALTERNATIVES) {
+      if (next.length >= alternativeCap(word)) {
         capped = true;
         cut = true; // the cap leaves this group unexpanded: the command asks, and the cheap reading still denies
         next.push(w);

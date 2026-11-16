@@ -63,6 +63,28 @@ export function assignments(words: readonly string[]): Assignment[] {
   return out;
 }
 
+/** A value the guard can substitute: a plain literal, nothing the shell would expand or split. */
+const LITERAL_VALUE = /^[A-Za-z0-9_./~@%+=:,-]+$/;
+
+/** The variables a command line sets to a plain literal (`D=.`, `export S=/tmp/x`), by name; the last assignment wins. */
+export function literalValues(words: readonly string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const { name, value } of assignments(words)) {
+    if (LITERAL_VALUE.test(value)) out.set(name, value);
+  }
+  return out;
+}
+
+/** `text` with each `$NAME` and `${NAME}` the map knows replaced by its value; any other variable is left as written. */
+export function withKnownVariables(text: string, known: ReadonlyMap<string, string>): string {
+  if (known.size === 0 || !text.includes("$")) return text;
+  return text.replace(
+    /\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g,
+    (match, braced: string | undefined, bare: string | undefined) =>
+      known.get(braced ?? bare ?? "") ?? match,
+  );
+}
+
 /**
  * Does one of these assigning words (`export` and kin) have a NAME the guard cannot place: it still holds a brace, a
  * `$` or a backtick once expanded (`export ${X}=v`, an unclosed `{`)? Whatever the name turns out to be at run time, a

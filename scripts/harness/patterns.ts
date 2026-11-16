@@ -24,7 +24,12 @@ import { backupName } from "./backup-names";
 import { hasBareBraceGroup } from "./bare-braces";
 import { clientFindings, clientTexts, isDbClient } from "./db-client-escapes";
 import { assignsHookVariable, isAgentSpawn, loaderEnvReason } from "./env-hazards";
-import { execCommandWrites, findActions } from "./find-expr";
+import {
+  SAFE_SOURCE_NAME,
+  execCommandWrites,
+  findActions,
+  narrowsToSourceFiles,
+} from "./find-expr";
 import { GIT_EXEC_CONFIG, configKey, gitConfigDenial, gitFileWrites } from "./git-config-rules";
 import {
   GIT_CLONE_CONFIG_REASON,
@@ -75,8 +80,10 @@ import {
   globReachesLiveEnv,
   holdsLiveEnvDirectly,
   reachesLiveEnv,
+  setListedLiveEnvFiles,
   storedSecretVerdict,
 } from "./secret-reads";
+import { literalValues, withKnownVariables } from "./shell-assignments";
 import {
   BARE,
   COMMENT,
@@ -436,6 +443,11 @@ export interface BashContext {
   readonly home?: string;
   /** Wall-clock budget for judging one command, in ms (default 1000); past it the answer is ask. A test seam. */
   readonly judgeTimeLimitMs?: number;
+  /**
+   * The live env files that exist in the tree (repo-relative; `live-env-files.ts`), asked for once and only when a
+   * recursive read needs them. Without it the usual ones in `secret-reads.ts` are the whole list.
+   */
+  readonly liveEnvFiles?: () => readonly string[];
 }
 
 /**
@@ -1000,6 +1012,10 @@ let judgeBudget = MAX_JUDGED_COMMAND_LINES;
  * `judgeBudget`).
  */
 let hookVariableInCommand = false;
+/** The variables the command line sets to a plain literal (`D=.`), so a sweep operand `$D` is placed (one-shot state, as above). */
+let knownVariables: ReadonlyMap<string, string> = new Map();
+/** Has this command's view of the live env files been asked of the caller yet? (one-shot state, as above) */
+let liveEnvListed = false;
 const MAX_SUBSTITUTIONS = 32;
 
 /**
@@ -1021,6 +1037,9 @@ export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): Bas
     judgeBudget = MAX_JUDGED_COMMAND_LINES;
     refillWork(ctx.judgeTimeLimitMs ?? MAX_COMMAND_JUDGE_MS);
     hookVariableInCommand = assignsHookVariable(cmd);
+    knownVariables = literalAssignmentsOf(cmd);
+    liveEnvListed = false;
+    setListedLiveEnvFiles([]);
   }
   const start = startingDir(ctx);
   const verdict = judge(cmd, ctx, depth, [start]);
@@ -2417,8 +2436,7 @@ const GREP_VALUE_LONG =
   /^--(regexp|file|max-count|include|exclude|exclude-dir|exclude-from|context|after-context|before-context|label|devices|directories)$/;
 const RG_VALUE_LONG =
   /^--(regexp|file|glob|iglob|type|type-not|type-add|max-count|max-depth|maxdepth|threads|encoding|max-filesize|context|after-context|before-context|sort|sortr|colors|replace|path-separator|pre|pre-glob|ignore-file|engine|max-columns)$/;
-const SAFE_INCLUDE =
-  /\.(ts|tsx|js|jsx|mjs|cjs|json|md|mdx|sql|ya?ml|css|html|py|sh|toml|txt|rs|go)$/i;
+const SAFE_INCLUDE = SAFE_SOURCE_NAME;
 
 /** The path operands of grep/rg: positionals after the pattern (or all of them when -e/-f gave it). */
 function searchPaths(args: readonly string[], shortValue: string, longValue: RegExp): string[] {
@@ -2442,10 +2460,13 @@ function searchPaths(args: readonly string[], shortValue: string, longValue: Reg
 }
 
 /** Does this repo-relative live env file exist here? Without a way to look (a unit test), none does. */
-const liveEnvExists =
-  (ctx: BashContext) =>
-  (file: string): boolean =>
-    ctx.exists?.(ctx.root ? `${trimSlashes(ctx.root)}/${file}` : file) ?? false;
+const liveEnvExists = (ctx: BashContext): ((file: string) => boolean) => {
+  if (!liveEnvListed) {
+    liveEnvListed = true;
+    setListedLiveEnvFiles(ctx.liveEnvFiles?.() ?? []);
+  }
+  return (file) => ctx.exists?.(ctx.root ? `${trimSlashes(ctx.root)}/${file}` : file) ?? false;
+};
 
 const COPY_OUT_REASON =
   "Copying a directory that holds live env files puts them where the guard does not look (and `cp -r` ignores .gitignore). Copy the files you need.";
@@ -2460,16 +2481,10 @@ function copyOutVerdict(
   if (!/^(?:cp|rsync|ditto)$/.test(prog)) return null;
   if (prog !== "ditto" && !args.some(isRecursive)) return null;
   const { srcs } = splitDest(args, fileArgGroups(args), prog !== "rsync");
-  const reaches = srcs.some((src) => {
-    const rel = resolvePath(src, cwd, ctx);
-    return (
-      rel !== null &&
-      !rel.startsWith("/") &&
-      !rel.startsWith("~") &&
-      (rel === "" || reachesLiveEnv(rel, liveEnvExists(ctx)))
-    );
-  });
-  return reaches ? ask(COPY_OUT_REASON) : null;
+  // The same reading of "reaches a live env file" as `grep -r`: wildcards, ancestors, an operand that cannot be placed.
+  return srcs.some((src) => treeOperandReaches(src, cwd, ctx, "tree"))
+    ? ask(COPY_OUT_REASON)
+    : null;
 }
 
 /** `find . -type f -exec cat {} +`: every file under the start paths is read, live env files included. */
@@ -2480,26 +2495,21 @@ function findReadVerdict(
   ctx: BashContext,
 ): BashVerdict | null {
   if (prog !== "find") return null;
-  const readers = findExecCommands(args).filter((run) => {
-    const p = parseSegment(run.command);
-    return FILE_READER.test(p.prog);
-  });
+  // The expression is read as a boolean one (find-expr.ts): a name test for a source-file type limits a reader only when
+  // it is ANDed in front of it, and `-o` narrows nothing (`find . -name '*.ts' -o -type f -exec cat {} +`).
+  const readers = findActions(
+    args,
+    (words) => FILE_READER.test(parseSegment(words.map(shellQuote).join(" ")).prog),
+    narrowsToSourceFiles,
+  ).filter((action) => action.kind === "exec" && !action.narrowed);
   if (readers.length === 0) return null;
-  // A name test for a source-file type limits it, as `--include=*.ts` limits grep.
-  const named = args.some((a, k) => /^-i?name$/.test(a) && SAFE_INCLUDE.test(args[k + 1] ?? ""));
-  if (named) return null;
   let k = 0;
   while (/^-[HLP]$/.test(args[k] ?? "")) k++;
   const starts: string[] = [];
   for (; k < args.length && !/^(-|\\?\(|!)/.test(args[k] ?? ""); k++) starts.push(args[k] ?? "");
-  const reaches = (starts.length > 0 ? starts : ["."]).some((start) => {
-    const rel = resolvePath(start, cwd, ctx);
-    return (
-      rel === null ||
-      rel === "" ||
-      (!rel.startsWith("/") && !rel.startsWith("~") && reachesLiveEnv(rel, liveEnvExists(ctx)))
-    );
-  });
+  const reaches = (starts.length > 0 ? starts : ["."]).some((start) =>
+    treeOperandReaches(start, cwd, ctx, "tree"),
+  );
   return reaches
     ? ask(
         "`find … -exec cat|grep {}` reads every file under it, live env files included. Name the files you need, or limit it with -name '*.ts'.",
@@ -2534,8 +2544,15 @@ function treeOperandReaches(
   pathspec = false,
 ): boolean {
   if (pathspec && isMagicPathspec(raw)) return true;
-  const rel = resolvePath(raw, cwd, ctx);
-  if (rel === null) return depth === "tree";
+  // `{apps,docs}` is two operands: every sweep reads the shell's expansion, not the word.
+  const alternatives = expandBraces(raw);
+  if (alternatives.length > 1) {
+    return alternatives.some((alt) => treeOperandReaches(alt, cwd, ctx, depth, pathspec));
+  }
+  const rel = resolvePath(withKnownVariables(raw, knownVariables), cwd, ctx);
+  // An operand that still holds a variable or a substitution after the placements the guard knows (`$PWD`, `$HOME`,
+  // `$(pwd)`) is unplaceable, like an unresolvable `cd`: `D=.; grep -r x $D` is the repo root.
+  if (rel === null || /[$`]/.test(rel)) return depth === "tree";
   if (hasWildcard(rel)) return wildcardReachesLiveEnv(rel, ctx);
   if (depth === "children") return holdsLiveEnvDirectly(rel, liveEnvExists(ctx));
   // `~` is the whole home directory (`~/.aws`, `~/.ssh` too), whether or not the repo is under it.
@@ -2672,16 +2689,7 @@ function archiveRootVerdict(
   }
   const base = dir === undefined ? cwd : resolvePath(dir, cwd, ctx);
   const names = prog === "zip" ? operands.slice(1) : operands;
-  const root = names.some((o) => {
-    const rel = base === null ? (/^\.\/?$/.test(o) ? "" : undefined) : resolvePath(o, base, ctx);
-    return (
-      rel === "" ||
-      (typeof rel === "string" &&
-        !rel.startsWith("/") &&
-        !rel.startsWith("~") &&
-        reachesLiveEnv(rel, liveEnvExists(ctx)))
-    );
-  });
+  const root = names.some((o) => treeOperandReaches(o, base, ctx, "tree"));
   if (!creating || !root) return null;
   return ask(
     "Archiving the repo root, or a directory that holds live env files, packs them into one blob. Archive the files you need.",
@@ -2713,6 +2721,15 @@ function unmodelledWriterVerdict(
     }
   }
   return null;
+}
+
+/** The variables a whole command line sets to a plain literal (`D=.; …`, `export S=/tmp/x`), read once per command. */
+function literalAssignmentsOf(cmd: string): ReadonlyMap<string, string> {
+  const words = segments(cmd).flatMap((seg) => {
+    const p = parseSegment(seg);
+    return assignmentWords(p.prog, p.args, p.assigns);
+  });
+  return literalValues(words);
 }
 
 function classifySegment(

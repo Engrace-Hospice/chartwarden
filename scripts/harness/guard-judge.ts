@@ -43,6 +43,7 @@ import {
 } from "./codex-patch";
 import type { GuardAnswer } from "./hard-deadline";
 import { type HookInput, appendLedger, loadRegistry, projectDir, relPath, sha256 } from "./io";
+import { listLiveEnvFiles } from "./live-env-files";
 import { claudeMcpFinding } from "./mcp-claude";
 import { LINE_BREAKS, MAX_PATH_CHARS, mcpPathCandidates } from "./mcp-tokens";
 import {
@@ -343,6 +344,8 @@ function judgeBash(cmd: string, root: string, cwd: string, workdir: string): Bas
       root: r,
       cwd: dir,
       exists: (p) => existsSync(isAbsolute(p) ? p : join(dir, p)),
+      // The live env files the tree really holds, listed when a recursive read needs them (`live-env-files.ts`).
+      liveEnvFiles: () => listLiveEnvFiles(r),
     });
   };
   const written = judge(root, cwd);
