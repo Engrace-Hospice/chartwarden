@@ -68,6 +68,7 @@ import {
 import { launchctlReason } from "./launchctl-rules";
 import { type Listed, asListing } from "./listing";
 import { runsLiveSuite } from "./live-suite";
+import { programOptionReason } from "./option-commands";
 import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
 import { isPackageScript, setPackageScriptsReader } from "./package-scripts";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
@@ -2952,6 +2953,8 @@ function classifySegment(
 
   const launchd = launchctlReason(prog, args);
   if (launchd !== null) return ask(launchd);
+  const optionProgram = programOptionReason(prog, args);
+  if (optionProgram !== null) return ask(optionProgram);
 
   // --- The keychain, a CLI's stored token, `printenv SECRET`, `docker inspect`.
   const stored = storedSecretVerdict(prog, args);

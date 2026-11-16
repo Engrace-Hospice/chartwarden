@@ -9,6 +9,8 @@
  * heuristic: a wrapper this table does not know hides its command. Pure.
  */
 
+import { localCommandOfOption, optionCommandStrings, sshLikeCommands } from "./option-commands";
+
 /** Options that take the next word as their value, per wrapper (a word that is none of these is a flag alone). */
 export const WRAPPER_VALUE_FLAG: ReadonlyMap<string, RegExp> = new Map([
   [
@@ -113,8 +115,6 @@ function rshOption(args: readonly string[]): string[] {
 }
 
 const SSH_VALUE_FLAG = /^-[BbcDEeFIiJLlmOopQRSWw]$/;
-/** ssh options that run a program on THIS machine. */
-const SSH_LOCAL_COMMAND = /^(?:ProxyCommand|LocalCommand|KnownHostsCommand)=(.*)$/i;
 
 /** The operands of an `ssh` command line (host, then the remote command), and the programs its options run here. */
 function sshWords(args: readonly string[]): { operands: string[]; local: string[] } {
@@ -123,7 +123,7 @@ function sshWords(args: readonly string[]): { operands: string[]; local: string[
   for (let k = 0; k < args.length; k++) {
     const a = args[k] ?? "";
     const given = a === "-o" ? (args[++k] ?? "") : a.startsWith("-o") ? a.slice(2) : "";
-    const command = SSH_LOCAL_COMMAND.exec(given)?.[1];
+    const command = localCommandOfOption(given);
     if (command !== undefined) local.push(command);
     else if (given !== "") continue;
     else if (SSH_VALUE_FLAG.test(a)) k++;
@@ -183,6 +183,9 @@ export function shellStrings(
     }
     case "ssh":
       return sshCommands(args, isLocalHost);
+    case "scp":
+    case "sftp":
+      return sshLikeCommands(prog, args);
     case "rsync":
       return rshOption(args);
     case "tar":
@@ -191,7 +194,7 @@ export function shellStrings(
     case "bsdtar":
       return tarCommands(args);
     default:
-      return [];
+      return optionCommandStrings(prog, args);
   }
 }
 
