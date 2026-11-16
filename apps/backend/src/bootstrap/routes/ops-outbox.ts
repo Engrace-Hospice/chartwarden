@@ -105,7 +105,13 @@ export function registerOpsOutboxRoutes(app: FastifyInstance, deps: { db?: DbCli
 
   app.get(
     "/api/v1/ops/outbox/:id",
-    { preHandler: [READ], config: { auditRead: { resourceKind: "outbox_event" } } },
+    {
+      preHandler: [READ],
+      // The detail returns the event's full `payload`, which can carry PHI (e.g. `m15.plan.version_signed` seals the
+      // plan's goals). Without a `resourceIdParam` the emitter has nothing to account the read against, returns
+      // early, and the disclosure leaves no trail.
+      config: { auditRead: { resourceKind: "outbox_event", resourceIdParam: "id" } },
+    },
     async (request: FastifyRequest, reply) => {
       if (!deps.db) throw new NotFoundError("outbox event");
       const { id } = request.params as { id: string };
