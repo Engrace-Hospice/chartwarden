@@ -130,6 +130,8 @@ The HOPE data class is erased ONLY through the M4 destruction-cert workflow (M10
 (`HopeRetentionBlockedError`) while a submitted assessment is still inside the CMS 10-year retention horizon (the
 `extended_for_cms` retention class) unless a legal-hold override is supplied. It deletes the assessments, schedules,
 SFVs and validation findings; the `hope_submission` / `hope_submission_item` rows SURVIVE the erase as compliance
-evidence. A manual `db://` package (cancelled ones included) lives in `hope_submission.acceptance_report`, which M4's
-envelope-purge worker never touches; an automated-transport envelope in MinIO is that worker's to purge.
+evidence. A manual `db://` package lives in `hope_submission.acceptance_report`, which M4's envelope-purge worker never
+touches (only a cancel deletes those bytes, together with each item's XML: a cancelled package was never transmitted, so it
+has no CMS 10-year hold; the bytes of every non-cancelled batch outlive a destruction certificate); an automated-transport
+envelope in MinIO is that worker's to purge.
 `scale_license`-equivalent org configuration is not patient data and is never touched.

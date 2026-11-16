@@ -8,9 +8,10 @@
 // assemble packages the same assessments in a NEW batch.
 //
 // Only a batch nobody uploaded can be cancelled: once it is marked uploaded CMS may hold the records, and the
-// only way forward is the result (or a correction). The stored package bytes and per-record XML are evidence of
-// what was generated and are never touched. Shared by the DB backend (hope-submission-cancel-db.ts) and the
-// in-memory slice, so the two cannot drift.
+// only way forward is the result (or a correction). A cancelled package was never transmitted, so the cancel deletes
+// its stored bytes (the ZIP and each record's XML hold PHI and no retention hold covers them) and keeps the evidence
+// that it existed (hashes, sizes, who/when/why; see hope-submission-cancel-db.ts). Shared by the DB backend
+// (hope-submission-cancel-db.ts) and the in-memory slice, so the two cannot drift.
 import { require_ } from "@chartwarden/hope";
 
 /** Batch states that were never marked uploaded to CMS (the only ones a cancel may touch). */

@@ -74,7 +74,7 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // submitted assessments are still inside the CMS 10-year retention horizon (unless a legal-hold override is
   // supplied), then drops/row-deletes the assessment rows and deletes the child rows; hope_submission rows
   // survive as compliance evidence (an object-store envelope is M4's MinIO worker's to purge, but a manual `db://`
-  // package, cancelled ones included, lives in hope_submission.acceptance_report, which that worker never touches).
+  // package lives in hope_submission.acceptance_report, which that worker never touches; only a cancel deletes those bytes).
   // The `subjectId` is the patient.
   "hope_record",
   // M11-T08: a patient's orders record (order_signature/verbal_order/standing_order_instance/

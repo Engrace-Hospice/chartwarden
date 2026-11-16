@@ -21,9 +21,10 @@ const REVIEW = schema.hopeRetentionReviews;
 /**
  * iQIES item outcomes that mean "CMS did not take this record yet" (an unresolved submission error).
  * A `cancelled` item (R-08: its package was never uploaded) is deliberately absent: CMS never saw it, so it is neither
- * an open error nor a transmission anchor (`transmitted_at` stays null). The cancelled batch's ZIP and per-record XML
- * stay in `hope_submission` / `hope_submission_item` as PHI at rest that no scan, eraser or purge job reaches (spec
- * §4.8 "Cancelled packages"); CW-DS-01 needs a human-approved note.
+ * an open error nor a transmission anchor (`transmitted_at` stays null). That is also why the cancel itself deletes the
+ * batch's ZIP and per-record XML (spec §4.8 "Cancelled packages"): no scan, eraser or purge job could ever select them
+ * (`hope_submission` has no patient id), and a cancelled package has no CMS 10-year hold. The bytes of a batch that was NOT
+ * cancelled are not reached by any of them either (CW-DS-01).
  */
 const OPEN_ERROR_ITEM_STATUSES: ReadonlySet<string> = new Set(["rejected", "blocked", "unmatched"]);
 

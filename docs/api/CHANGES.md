@@ -187,7 +187,15 @@ longer open now answers `409` (below). `POST /hope/submissions/assemble` can now
   uploaded** (`packaged` or `exported`) and returns the batch (`status: "cancelled"`). Its assessments are packaged again by the next
   assemble, in a **new** batch. A replay on an already cancelled batch answers `200` with the original reason and time. Any other
   status (marked uploaded, result recorded, queued, rejected, ...) is `409 M10_SUBMISSION_CANCEL_NOT_ALLOWED`; another tenant's batch is `404`.
-  Cancelling is not an outbox event: nothing downstream saw the package leave. The stored package bytes and per-record XML are kept as evidence.
+  Cancelling is not an outbox event: nothing downstream saw the package leave. **The package ZIP and every record's XML are deleted with
+  the cancel** (they hold the patient's name, date of birth and MBI/SSN, a cancelled package was never transmitted so it has no CMS
+  10-year hold, and no retention scan or eraser reaches it). What stays is the evidence that a package existed: the batch's `packageSha256`,
+  `packageSizeBytes` and file name, each record's XML hash and size, and `cancelledAt` / `cancelReasonCode` / who cancelled. Nothing on
+  the API returned the bytes of a cancelled batch (the download is `409 M10_SUBMISSION_CANCELLED`), so no response changes shape; the bytes
+  of a batch that was marked uploaded, or has a result, are not touched. Cancel, a schedule skip and `regenerate-schedules` each also leave
+  an explicit audit event (`hope.submission_cancelled`, `hope.schedule_skipped`, `hope.schedules_regenerated`), and a refused SFV
+  completion that names another admission's triggering assessment leaves a `denied` one (`hope.sfv_completion_denied`); each carries ids
+  and codes only (the acting membership in `context.byMembershipId`, the session user in `actor_user_id`).
 - `status` on a submission is now also `cancelled`, and `status` on a submission item is now also `cancelled` (a rejected item whose
   correction sits only in a cancelled batch reads `correction_in_progress` again, not `resubmitted`). A strict enum decoder breaks on it.
 - The submission view carries two new fields, `cancelledAt` (date-time or `null`) and `cancelReasonCode` (one of the four codes or `null`);
