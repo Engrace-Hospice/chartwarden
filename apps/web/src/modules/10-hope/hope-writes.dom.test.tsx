@@ -18,7 +18,7 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { SESSION } from "./__tests__/workspace-test-kit";
 import { HopeAssessmentDetail } from "./hope-assessment-detail";

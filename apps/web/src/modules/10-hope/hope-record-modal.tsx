@@ -1,10 +1,8 @@
 import {
   Button,
-  CodeSearchInput,
   Modal,
   SelectField,
   StatusPill,
-  TextAreaField,
   TextField,
   isoToLocalInput,
   t,
@@ -65,7 +63,7 @@ import {
   failedResultOutcomeUnknown,
   recordTimepoint,
 } from "./hope-api";
-import { checkRow, errorText, lateBox, meta } from "./hope-dialog-styles";
+import { errorText, lateBox, meta } from "./hope-dialog-styles";
 import { notifyDone } from "./hope-notify-done";
 import { type JustificationRefusal, justificationRefusalOf } from "./hope-override-justification";
 import { HopeOverrideSection, judgeOverride } from "./hope-override-section";
