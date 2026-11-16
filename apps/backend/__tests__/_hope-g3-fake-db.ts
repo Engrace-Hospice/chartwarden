@@ -47,6 +47,17 @@ const CHAIN_METHODS = [
   "onConflictDoNothing",
 ] as const;
 
+/**
+ * The rows a raw `execute` answers: none, except for the bulk item UPDATE of a result import (`... RETURNING i.id`), which
+ * answers one row per VALUES tuple (each tuple carries exactly one `::jsonb`), as the database does when every predicate holds.
+ */
+const returnedRows = (rendered: RenderedSql): readonly { id: string }[] =>
+  rendered.sql.includes("RETURNING i.id")
+    ? Array.from({ length: rendered.sql.match(/::jsonb/g)?.length ?? 0 }, (_, i) => ({
+        id: `returned-${i}`,
+      }))
+    : [];
+
 export function scriptedDb(outcomes: readonly Outcome[]) {
   const statements: RecordedStatement[] = [];
   let call = 0;
@@ -80,7 +91,9 @@ export function scriptedDb(outcomes: readonly Outcome[]) {
 
   const tx = {
     execute: async (statement: unknown) => {
-      statements.push({ kind: "execute", rendered: renderSql(statement) });
+      const rendered = renderSql(statement);
+      statements.push({ kind: "execute", rendered });
+      return { rows: returnedRows(rendered) };
     },
     select: (fields?: unknown) => chain("select", fields),
     update: () => chain("update"),

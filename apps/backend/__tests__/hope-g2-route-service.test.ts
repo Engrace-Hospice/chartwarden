@@ -272,6 +272,6 @@ describe("the provider-entity filter is the database's, on the canonical id", ()
 
     const [where] = filterOf(statements);
     expect(where?.sql).toContain('"provider_entity_id"');
-    expect(where?.params).toEqual([CANONICAL]);
+    expect(where?.params).toEqual([ORG, CANONICAL]); // the tenant first, then the canonical entity id
   });
 });

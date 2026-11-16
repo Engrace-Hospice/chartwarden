@@ -10,6 +10,7 @@
 // assessment update is the named exception to the assessment-row lock (see hope-assessment-lock.ts): it stamps
 // `iqies_record_id` and nothing else, under the submission lock.
 import { type DbClient, schema } from "@chartwarden/db";
+import { ConflictError } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import { SETTLED_ITEM_STATUSES } from "./hope-submission-result";
 
@@ -41,7 +42,10 @@ const chunksOf = <T>(rows: readonly T[]): T[][] => {
 /**
  * Store the verdicts on the items of ONE batch. Both predicates are explicit on top of the row lock and RLS: the item belongs
  * to this organization and batch, and is not settled (a CMS verdict is final: the caller never sends a settled item, and this
- * keeps a settled one from being rewritten whatever the caller sends).
+ * keeps a settled one from being rewritten whatever the caller sends). The statement RETURNS the ids it updated and their count
+ * must equal the outcomes sent: a predicate that misses (an item gone, settled or moved meanwhile) would otherwise leave fewer
+ * items stored than the batch status the caller derives from `finalStatus` assumes. A mismatch throws a 409 that names no id or
+ * value, and the transaction rolls back, so nothing of the import is kept.
  */
 export async function writeItemOutcomes(
   t: DbClient,
@@ -58,7 +62,7 @@ export async function writeItemOutcomes(
       ),
       sql`, `,
     );
-    await t.execute(sql`
+    const updated = await t.execute(sql`
       UPDATE ${SUBITEM} AS i
          SET item_status = v.item_status,
              iqies_record_id = v.iqies_record_id,
@@ -72,7 +76,13 @@ export async function writeItemOutcomes(
          AND i.item_status NOT IN (${sql.join(
            SETTLED_ITEM_STATUSES.map((status) => sql`${status}::hope_submission_item_status`),
            sql`, `,
-         )})`);
+         )})
+       RETURNING i.id`);
+    if (updated.rows.length !== rows.length) {
+      throw new ConflictError(
+        "The batch's items changed while the result was being recorded, so nothing was saved. Reload the batch and record the result again.",
+      );
+    }
   }
 }
 

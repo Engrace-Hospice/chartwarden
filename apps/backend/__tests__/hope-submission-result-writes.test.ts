@@ -27,12 +27,16 @@ const MAX_BINDS = 65_535;
 const uuid = (n: number): string => `90000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
 
 /** A database that records every `execute` (rendered) and every `insert().values(chunk)`. */
-function recordingDb() {
+function recordingDb(updatedRows: (sent: number) => number = (sent) => sent) {
   const executed: { sql: string; params: readonly unknown[] }[] = [];
   const inserted: unknown[][] = [];
   const db = {
+    // the database's answer to `UPDATE ... RETURNING i.id`: one row per tuple sent, unless a test says some did not match
     execute: async (statement: unknown) => {
-      executed.push(renderSql(statement));
+      const rendered = renderSql(statement);
+      executed.push(rendered);
+      const sent = rendered.sql.match(/::jsonb/g)?.length ?? 0;
+      return { rows: Array.from({ length: updatedRows(sent) }, (_, i) => ({ id: i })) };
     },
     insert: () => ({
       values: (chunk: unknown[]) => {
@@ -86,6 +90,43 @@ describe("writeItemOutcomes — one UPDATE per chunk, scoped to the organization
     );
     // the raw report row is the stored result, as JSON
     expect(statement?.params).toContain(JSON.stringify(outcome(1).result));
+  });
+
+  it("returns the ids it updated: the statement ends in RETURNING i.id", async () => {
+    const { db, executed } = recordingDb();
+
+    await writeItemOutcomes(db, ORG, SUBMISSION, [outcome(1)], NOW);
+
+    expect(executed[0]?.sql).toMatch(/RETURNING i\.id\s*$/);
+  });
+
+  it("throws a 409 naming no id or value when fewer rows were updated than outcomes were sent (a predicate missed)", async () => {
+    const { db } = recordingDb((sent) => sent - 1);
+    const failure = await writeItemOutcomes(
+      db,
+      ORG,
+      SUBMISSION,
+      [outcome(1), outcome(2)],
+      NOW,
+    ).then(
+      () => null,
+      (error: { statusCode?: number; message?: string }) => error,
+    );
+
+    expect(failure).toMatchObject({ statusCode: 409 });
+    for (const value of [ORG, SUBMISSION, uuid(1), uuid(2), "REC-1"])
+      expect(failure?.message).not.toContain(value);
+  });
+
+  it("checks each chunk: a miss in the second chunk of a long report still throws", async () => {
+    let call = 0;
+    const { db } = recordingDb((sent) => (++call === 2 ? sent - 1 : sent));
+    const rows = Array.from({ length: BULK_CHUNK_ROWS + 1 }, (_, i) => outcome(i + 1));
+
+    await expect(writeItemOutcomes(db, ORG, SUBMISSION, rows, NOW)).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    expect(call).toBe(2);
   });
 
   it("is no statement for an import that settles no item", async () => {
