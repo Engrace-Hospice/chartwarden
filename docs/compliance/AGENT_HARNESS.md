@@ -146,7 +146,8 @@ through the shell is also bound by the 64 KB command cap below, so a larger one 
   **The price is a lockout:** a broken guard now refuses EVERY Claude tool call, the editing tools and the shell the
   repair would need included. The human repairs it outside Claude Code, in a terminal: `git restore scripts/harness`
   (or `git checkout -- scripts/harness`) and a `bun --version` check that `bun` is on the PATH Claude Code runs hooks
-  with. **Residual:** a corrupted or edited `.claude/settings.json` itself is a different failure that the tail cannot
+  with. **Residual:** a SILENT exit 0 (an empty or no-op guard module, a `bun` that exits 0 earlier on PATH) is not a non-zero exit and reads as allow: wave 8 considered
+  a positive acknowledgement and DECLINED it (see Wave 8, T0b). A corrupted or edited `.claude/settings.json` itself is a different failure that the tail cannot
   close (the tail lives in that file; what Claude Code does with a settings file it cannot parse was not verified
   here); `arch:compliance`, the Stop gate, the pre-commit scan, CI and CODEOWNERS are the lines behind it, and the file
   is a protected path (an Edit of it asks).
@@ -597,7 +598,7 @@ document" at the end.
   ordinary database client; Claude's classifier allowed all of them, because the escape was recognised only by Codex's interactive-shell
   check. The text a client is handed (an argument and the value attached to it, a here-string, a heredoc body, what an `echo`/`printf`
   earlier in the pipeline prints) is now read: a shell escape **asks** whatever it names (sqlite3 `.shell`, `.system`, `.load`, `.excel`,
-  `.www`, `.once -e`, a `|cmd` target of `.output`/`.once`/`.import`/`.read`, with the prefix abbreviations the shell accepts; psql and
+  `.www`, `.once -e`, a `|cmd` target of `.output`/`.once`/`.import`/`.read`, with the abbreviations the shell accepts (wave 7 pinned only `.sys`; wave 8 read every prefix on sqlite 3.51.0: `.sh` and `.sy` ARE `.system`, `.cl` is `.clone`, see Wave 8); psql and
   pgcli `\!`, `\setenv`, `\pager`, a `|cmd` target of `\o`/`\g`/`\gx`/`\w`, `\copy … program`; mysql, mariadb and mycli `system`, `\!`,
   `pager`, `\P`, `--pager=`), also in a container (`docker compose exec db psql …`). A file the client writes (`.output`, `.once`,
   `.backup`, `.save`, `.clone`, `.log`, `.trace`, `.open`, `writefile()`, `VACUUM INTO`, `ATTACH`; `\o`, `\g`, `\gx`, `\w`, `\copy … to`,
@@ -607,12 +608,12 @@ document" at the end.
   `'\w+'` inside SQL. The shared reader is a superset of what Codex's `isInteractiveShell` caught, and Codex turns every ask into a deny, so
   its answers for these stay deny. **Not decided by text:** a script file (`psql -f F`, `sqlite3 db < F`, `mysql < F`: the file is not read),
   a command built at run time (`psql -c "$CMD"`), SQL that makes the SERVER write or run something (`COPY … TO PROGRAM`, `INTO OUTFILE`),
-  and a client the table does not name (`litecli`, `usql`, `pgcli` through an alias). Corpus cost: 1 allow to ask in 124,400 real
-  commands, the round-5 reviewer's own `.shell` demonstration.
+  and a client the table does not name (wave 8 added `litecli`, `usql`, `duckdb`, `cockroach sql`, `sqlcmd`, `sqlplus`, `mongosh`,
+  `clickhouse-client` and `trino`; `iredis`, `mssql-cli`, `harlequin` and a client through an alias remain). Corpus cost: see the wave-8 corpus paragraph.
 - *Siblings of the tree sweeps* (`sibling-sweeps.ts`, `harness-sibling-sweeps.test.ts`, ADV5-3). Each is rewritten into the
   command line it is the sibling of, and that line is judged by the machinery the original already has (operand placement,
   narrowing by a source-file name test, a write onto a protected path): `ack` (recursive, reads no .gitignore) as `grep -r`, `ag`
-  with `-u`, `-U`, `--unrestricted`, `--skip-vcs-ignores` or `--hidden` as `rg -u`, `fd -x`/`--exec` and `-X`/`--exec-batch` as `find
+  with `-u`, `-U`, `--unrestricted`, `--skip-vcs-ignores` or `--hidden` as `rg -u`, `fd -x`/`--exec` and `-X`/`--exec-batch` (wave 8: also the short clusters `-Hx`, `-HIx`, `-Ix`, `-HX`, `-xcat` and `--exec=cat`) as `find
   … -exec` (`-e ts` narrows it, as `-name '*.ts'` does for find; one non-source extension such as `env` does not), `find … | cpio -p
   DEST` and `pax -rw SRC DEST` as `cp -r`, `pax -w` and `find … | cpio -o` as `tar c`. A reason says which sibling it judged and as
   what. **What reproduced and what did not** (checked on this machine, fd 10.4.2 and macOS's cpio and pax): `find . -depth -print |
@@ -642,19 +643,16 @@ document" at the end.
   `symbolic-ref`, `notes` and `update-index` write under `.git`, which is not on the protected list except `config`, `hooks`, `modules`
   and `worktrees`. **The backstop:** the class is unbounded (five rounds, each found more), so a command whose text names a protected
   path (a literal operand, an option value, `key=value`, in any alias spelling and from every directory the command may run in) as
-  an argument of a program that is neither known to only read, nor a writer whose handling of its operands is modelled, **asks**
+  an argument of a program that is not known to only read, **asks** (wave 8 rewrote this: a READER is exempt only until one of its write
+  flags appears, and a modelled program's positional operands are exempt, its attached option values are not; see Wave 8)
   (Codex: denies), naming the program (`sd 's/a/b/' scripts/harness/x.ts`, `prettier --write`, `shfmt -w`, `bunx biome check
   --write scripts/harness/x.ts`, a tool invented next year). The read/check list was chosen from this repo's real Bash commands:
   of 124,735 distinct commands, 5,201 name a protected path and were allowed before, led by `grep`, `git`, `sed`, `ls`, `cat`, `bunx`,
   `wc`, `cmp`, `diff`, `bun`, `awk`, `head`, `rg`; all of those that only read, and the shell keywords (`for`, `do`), are listed. It never
   turns a deny into an ask (a deny is found first), reads a word with whitespace as prose (a commit message), skips a directory it
   cannot resolve (no unknown program asks after `cd $VAR`), and does not read a computed name, a variable path or an encoded name:
-  **the sandbox is the real boundary.** **Corpus cost** (frozen tree against this one, 124,738 real commands): 87 allow to ask, 0.07%,
-  all explained: 67 are `bunx biome check|format --write` of files under `scripts/harness` (an in-place write of a protected file
-  that skips the Edit prompt: the intended catch, and the cost of a fixer formatting harness files from the shell; use the Edit tool
-  or let a human run it), 7 are a variable used as the program name (`$M label scripts/harness/x`), 6 a helper script (`commit.sh`
-  with harness paths), 2 a relative write after an unresolvable `cd`, 1 `$GL dir . --config .gitleaks.toml`, 1 a shell function that
-  wraps `sed -i`, and the two sibling and client findings above.
+  **the sandbox is the real boundary.** (The wave-7 corpus figures that stood here, 87 allow to ask of 124,738, were measured on the
+  wave-7 tree and went stale; the figures are re-measured on the final wave-8 tree below.)
 - *The round-5 code review* (CR5-1 to CR5-11; each item has its own test file `harness-*.test.ts`, named below).
   **CR5-1** (`bare-braces.ts`, `harness-cr5-braces-env.test.ts`): described in the budget paragraph above; `{c,'x y'}` and `x\ y`
   alternatives are read in full inside the cap. **CR5-2** (`env-hazards.ts`): an agent-hook variable assigned anywhere asks when an
@@ -670,8 +668,9 @@ document" at the end.
   five surviving hand mutants are pinned (the five `CODE_DELIMITERS` characters, the Gmail send entry of the not-guarded list,
   `aliasNormalise` in `scriptTextVerdict`) or gone with their code (`MAX_VARIANTS`, the dead `env` entry); wall-clock bounds near
   their typical time were raised to 3 to 5 s. **CR5-9**: this document's eight claims the review found false are corrected in the
-  paragraphs they sat in. **CR5-10**: `braceVariants` and the fifth long-option abbreviation reader (`tree-sweep.ts` `spells`) are
-  gone (they call `expandBraces` and `isLongOption`); follow-ups left: the two `VARIABLE_SETTER` regular expressions
+  paragraphs they sat in. **CR5-10**: `braceVariants` is gone, and `tree-sweep.ts` `spells` now delegates to `isLongOption` (it was the fifth
+  reader); three inline long-option abbreviation readers REMAIN (`git-grep-sweep.ts`, `git-exec-strings.ts`, `harness-switch.ts`; wave 8 did
+  not unify them, see Wave 8); follow-ups left: the two `VARIABLE_SETTER` regular expressions
   (`git-exec-strings.ts`, `harness-switch.ts`), `patterns.ts` at about 3,000 lines against the 800-line ceiling, module-level state
   (`work`, `judgeBudget`, the one-shot caches), and `readStdin` duplicating `io.ts`. **CR5-11** (`live-suite-files.ts`,
   `harness-live-suite-substring.test.ts`): `bunx vitest run care-plan-conformance` runs the live suite beside the unit tests, because
@@ -679,6 +678,152 @@ document" at the end.
   directory filter (`scripts/__tests__`, `apps/backend/__tests__`, `packages/db`) runs every test under it, live suites among
   them, and is not asked (asking was 0.34% of this repo's real commands); the remaining ask costs 0.17% (unit-test stems that also
   name a live twin). A bare `vitest run` with no filter runs everything the config includes, live suites too, and is not asked.
+
+**Wave 8.** Each item has a test file `scripts/__tests__/harness-*.test.ts` (named below; the round-6 reviewers' payloads are in them, and
+the data-driven tests walk every entry of the tables). The finding IDs (ADV6-n from the adversarial review, CR6-n from the code review) are
+mapped in "Finding IDs cited in this document".
+- *Package runners are peeled once* (`runners.ts`, `package-scripts.ts`, `harness-runners.test.ts`, `harness-package-scripts.test.ts`; T1,
+  ADV6-1, CR6-2, CR6-8). `bunx`, `npx`, `pnpx`, `bun x`, `pnpm|yarn|npm exec|dlx`, `npm x` and `bun|yarn run X` start a program, so where the
+  classifier finds a command's program (under `env`, `nice`, `timeout`, `time`, `sudo` or another runner too) the runner is replaced by what it
+  starts, and EVERY rule judges that command: `bunx git push origin main` asks, `bunx git commit --no-verify` is denied, `bunx rm -rf
+  scripts/harness`, `npx rm .claude/settings.json`, `pnpm exec cp x CLAUDE.md` and `bun run cp x CLAUDE.md` ask, as typed. `-c STR`, `--call
+  STR`, `--call=STR` and pnpm's `--shell-mode` hand a string to a shell (`sh -c STR`, judged as a command line). `bun run X`, `yarn run X`,
+  `bun X` and `yarn X` run a package SCRIPT when X is a key of the nearest `package.json` (read once per command, only when a name needs
+  it; a name with a colon such as `arch:fitness` always is one), a file when X looks like one, a builtin subcommand (`bun test`, `yarn install`),
+  and otherwise the PATH program X (`bun run echo hello` ran `echo`: the reviewer checked); `npm run X` and `pnpm run X` only run scripts. The
+  two readers that disagreed (`executed()` and `underRunner()`) are deleted. A runner this table does not name (`corepack`, `volta run`, `mise
+  exec`, `direnv exec`, `cross-env`, `dotenv --`) still hides its command from the rules by name; the backstop below asks when such a program is
+  handed a protected path. Everyday `bunx biome check x.ts`, `bunx tsc --noEmit`, `bunx vitest run <unit test>`, `bun run test`, `bun run
+  arch:fitness`, `npx --version` and `bunx playwright test <spec>` stay allowed.
+- *The backstop, rewritten* (`protected-operands.ts`, `harness-backstop-wave8.test.ts`, `harness-protected-operands.test.ts`; T2, CR6-1, ADV6-2,
+  CR6-4, ADV6-5). Three kinds of program. A READER (`cat`, `grep`, `ls`, `cloc`, `shfmt -d`, `docker`, `bun`, `node`, `python`, `sed`, `awk`, …) is
+  exempt until the command line carries one of its WRITE FLAGS, which are data next to its name, with an example each (`tree -o`, `awk '… >
+  ARGV[1]'` or `-i inplace`/`--include`/`-f`, `plutil -replace|-remove|-insert|-extract|-convert|-create` or `-o`, `python -m json.tool IN OUT` and
+  `-m venv|zipfile|…`, `docker cp|save|export|buildx` or `-o|--output|--iidfile`, `jest --outputFile`, `playwright screenshot|pdf|codegen|--output`,
+  `markdownlint --fix|-o`, `gitleaks -r|--report-path`, `node --redirect-warnings|--cpu-prof-dir|--heap-prof-dir|--report-dir|--trace-event-file-pattern`,
+  `bun --cwd|--reporter-outfile|--coverage-dir`, `deno compile -o|bundle`, `npm|pnpm|yarn --prefix|--cwd|-C`, `cpio -o|-O|-p`, `pax -w`, GNU `sed`
+  `e` and `s///e`, `less -o`, `file -C`, `cloc --out`, `scc -o`, `ruff format|--fix|--output-file`, `semgrep --autofix|-o|--*-output`, `trivy -o`,
+  `redis-cli --rdb`, `code --user-data-dir`, …); a flagged reader is then treated like an unknown program. A MODELLED program (`cp`, `mv`, `rm`,
+  `tee`, `git`, `curl`, `tar`, `zip`, `psql`, … the table lists them) has its own write model, so its POSITIONAL operands are the model's (`cp
+  scripts/harness/x.ts /tmp/y` reads), and a protected path attached to an option (`--out=P`, `-o=P`, `key=P`) is not exempt. Every other
+  program asks for any word that names a protected path, positional or not. `plutil`, `7z`, `strip`, `objcopy`, `go`, `cc`/`gcc`/`rustc`, `cpio`,
+  `pax`, `sftp`, `env` and `sudo` left the modelled list (their models were partial). Words are placed like every other operand: brace
+  alternatives, the variables the command line sets to a literal (`D=scripts; sd a b $D/harness/x.ts`), then the predicate the write rules use
+  (the path, a directory above one such as `scripts` or `.claude`, a wildcard that can match a protected file, or whose directory part can match
+  a directory in which every file is protected: `scripts/h?rness/new.ts`); the REPO ROOT (`.`, `..`, `$PWD`) and a wildcard with no `/` (`*`,
+  `*.ts`) count only when the command line carries a write flag (`bunx biome check --write .`, `prettier --write *.md`, `shfmt -w .`, `gofmt -w .`
+  ask; `ecc-agentshield scan --path .` and a helper script given `"$PWD"` do not). For a program that is neither a reader nor modelled, the names
+  inside a word that holds whitespace or code punctuation (an inline program, an SQL string, a here-string) are read too: a name that looks
+  like a path and is a secret file is **denied** (`duckdb -c "select * from read_csv('<env file>')"`, `Rscript -e`, `julia -e`, `emacs --eval`,
+  `expect -c`, `tclsh <<<`, `mongosh --eval`), a protected one asks; a SQL column (`r.key`), a property chain or a variable-prefixed path is not a
+  file here, and a function the command line defines is called with prose as often as with code, so its arguments are read as words only. An
+  editor's (`ed`, `ex`, `vi`, `vim`, `nvim`) command text (an argument, a here-string, a here-document, what a `printf` pipes in) is read
+  through the client reader: every name in it is a file it may write. `time -o FILE` and `strace -o FILE` are wrapper options: the file is judged
+  like a redirect target. `-o=FILE` (Go, clap) and `-coverprofile=FILE` are read as the file. The data-driven consistency test asks, for every
+  MODELLED name, a write shape that must ask, and for every READER name a read shape that must allow and, where it has write flags, one that
+  must ask. `cloc`, `tokei`, `scc`, `cspell`, `depcruise`, `shfmt -d`, `ruff check`, `eza`, `lsof`, `open`, `make`, `semgrep`, `trivy`, `code` and
+  `redis-cli` joined the readers (they asked before). Most of those tools are NOT installed on the machine the stack was built on: their
+  write flags were read from their documentation, not run. `make` runs recipes the guard cannot read, as `bun run NAME` runs a script.
+- *Database clients under real shell quoting* (`db-client-escapes.ts`, `client-reading.ts`, `sqlite-commands.ts`, `postgres-commands.ts`,
+  `sql-file-functions.ts`, `harness-db-clients-wave8.test.ts`; T3, ADV6-6, CR6-3, ADV6-5). Bash collapses `"\\o X"` to `\o X`, but the lexer kept both
+  backslashes, so `psql -c "\\o CODEOWNERS"`, `psql <<< "\\o |sh"`, `mysql -e "\\! id"` and `sqlite3 :memory: "select writefile(\"X\",'x')"` were
+  never read as the escapes they are: both the lexed text and the text the client receives are read. psql starts a meta-command at ANY
+  unquoted backslash (`select 1 \o X`, `\g`, `\s FILE`, `\cd`), with single and double quotes, dollar quotes and comments skipped, and the
+  arguments of a command ending at `\\`. sqlite3 command abbreviations come from a table of probed minimums (every prefix of every
+  name was run with NO argument on sqlite 3.51.0: `.sh`, `.sy` are `.system`, `.c`, `.cl` are `.clone`, `.o` is output or once or open, `.sa` and
+  `.ba` are unknown commands, `.load` is disabled in this build, `.www` and `.excel` were not run and carry conservative minimums);
+  `harness-db-clients-wave8.test.ts` walks every prefix of every entry. `.cd DIR` moves a later relative `.output`/`.once`/`.backup` file, and
+  `.parameter set @f X` binds the file a later `writefile(@f, …)` or `readfile(@f)` names. `.testcase`, `.restore`, `.ar -c -f`, `\s FILE` and the
+  SQL that names a file in ANY client are read: `readfile`, `writefile`, `read_csv|json|text|parquet`, `pg_read_file`, `lo_import`, `lo_export`,
+  `COPY … TO|FROM 'file'` (server-side), `COPY … PROGRAM`, `INTO OUTFILE|DUMPFILE`, `EXPORT DATABASE`, `LOAD_FILE`, `file()`, `load_extension()`,
+  `xp_cmdshell`. The files a client's own options name (`psql -f`, `mysql --defaults-file`, `sqlite3 -init`, `sqlcmd -i|-o`, `--queries-file`,
+  `trino --file`) are reads or writes of that path. Still not read: a script file's CONTENTS, a command built at run time, a client the table
+  does not name, and a variable (`\set X …` then `\o :X`).
+- *Options that run a command line* (`option-commands.ts`, `harness-option-commands-wave8.test.ts`; T4, ADV6-7). `ssh -o 'ProxyCommand cmd'`
+  (the space form), `-o ProxyCommand=cmd`, `-oProxyCommand=cmd`, `-o 'ProxyCommand = cmd'`, `LocalCommand` and `KnownHostsCommand` (any case
+  of the option name), for `ssh`, `scp` and `sftp`; scp's and sftp's `-S program` and sftp's `-D server` (any program but `ssh` asks: the guard has
+  no command line to judge); `zip -T -TT cmd`; `rg --pre cmd` and `--hostname-bin cmd`; `man -P cmd` and `--pager=cmd`; `less '+!cmd'`. Each value is
+  judged as a command line, so a harmless one answers as typed. `-F config` reads a config file that may hold any of these: judged only as a read
+  of that path. Not covered: a config file's contents.
+- *More shapes of printing the environment* (`env-dump.ts`, `env-shapes.ts`, `harness-env-dump-wave8.test.ts`; T5, ADV6-8, CR6-12). `bun -e
+  'console.log(Bun.env)'`, `typeset -x|-p`, `declare -px`, `export -px`, `jq -n 'env'`/`'$ENV'`/`'env.X_SECRET'`, perl `$ENV{X_SECRET}` and `say for %ENV`,
+  awk `ENVIRON`, `ps eww`, `ps aux -E`, `ps auxe`, `launchctl export|getenv SECRET`, deno `Deno.env.toObject()`, python `os.environ` in any printed shape
+  (`print(*os.environ.items())`, `dict()`, `json.dumps`, a loop), node `JSON.stringify({...process.env})` and `Object.entries`, ruby `ENV.to_h` are
+  **denied**: a sink (a print, a log, a serializer) has to take the whole environment, directly or through up to three wrapping calls, a spread
+  or a splat, and the sink must be a WHOLE word (three TypeScript snippets in a python heredoc were once read as a dump because
+  `partnerAccessAvailability(process.env)` starts with the letter `p`). `connect(process.env)` and `spawn(cmd, {env: process.env})` pass the
+  environment on and are not dumps. `declare -x NAME=value`, `typeset -x NAME=value`, `export NAME=value` and `set -x` ASSIGN or switch an option and
+  are no longer denied (v6 and v7 denied them).
+- *Sweeps* (`sibling-sweeps.ts`, `tar-grammar.ts`, `listing.ts`, `live-env-files.ts`, `live-suite-files.ts`, `harness-sweeps-wave8.test.ts`; T6,
+  CR6-5, ADV6-9, ADV6-10, CR6-6). `fd -Hx`, `-HIx`, `-Ix`, `-HX`, `-xcat`, `--exec=cat` are `find -exec`. `ugrep -r`, `rga`, `pt`, `sift`, `ucg`, `zgrep -r`,
+  `gitleaks detect --no-git|dir`, `trufflehog filesystem`, `semgrep --no-git-ignore`, `scp -r` and `ag -a|--all-types` are siblings of `grep -r`/`cp -r`/`rg
+  -u`; `gitleaks … --redact` (the repo's own pre-commit hook) stays allowed. rga, pt, sift and ucg were treated as recursive by default from their
+  documentation (none is installed here). An unknown program asked to read recursively (`-r`, `-R`, `-a`, `--hidden`, `--recursive`, `--no-ignore`) a PLACED
+  directory (not the root, not a wildcard) that holds a live env file asks. tar is read with its own grammar: clusters whose values come in order
+  (`-cCf apps /tmp/o.tar portal` takes DIR then FILE; `-Capps` attaches), `--directory=`, `--dir=` and any unambiguous abbreviation, `-T` and
+  `--files-from` (an unreadable list: asks when creating), and each `-C` applies to the operands after it; `tar x` unpacks into the last `-C` in any
+  spelling. The tree-sweep operand is matched as the file system folds names (case, NFKC): `grep -r X APPS/PORTAL` asks. The listings of the live env
+  files and the live suites return `{files, complete}`: more directories than the cap, a depth past 16 (it was a silent 8), a symlinked directory and
+  an unreadable one make the listing incomplete, and every rule that asks "could this reach one?" then answers yes (ask), as the protected-names listing
+  does; `.envrc` is a live env file. A symlinked directory under a listed root is therefore a gap, not followed. Not unified (a follow-up): the three
+  inline long-option abbreviation readers named under CR5-10, and the `isOption`/`operands` copies in `writers.ts`, `writers-more.ts` and
+  `sibling-sweeps.ts`.
+- *PATH shadows, persistence, secret names* (`toolchain-paths.ts`, `launchctl-rules.ts`, `secret-names.ts`, `harness-persistence-wave8.test.ts`; T7,
+  ADV6-3, ADV6-12, ADV6-14). A program the pinned commands and the guard call (`bun`, `bunx`, `perl`, `env`, `sh`, `node`, `git`, `python3`) is protected BY
+  NAME in any directory (`cp /usr/bin/true ~/.kimi-code/bin/bun` asks; Codex denies): the fixed list could never name every user-writable PATH directory
+  that comes before `~/.bun/bin`. The cost is an ask for an ordinary write to a file or directory of that name (`echo x >> env`, `rm -rf
+  ~/Library/Caches/bun`, `mkdir sim/bin/bun`): 9 of the 129,020 real commands. **Residual:** the guard runs under whatever `bun` the PATH of the hook
+  resolves; pinning an absolute path in a shared settings file is machine-specific and is not proposed. `~/.gitconfig`, `~/.config/git/*`, `~/.claude.json`,
+  `~/Library/LaunchAgents/**`, `~/.claude/{rules,plugins,hooks,commands,agents,skills}/**` and `~/.codex/{config.toml,hooks.json,AGENTS.md}` are protected
+  (the settings files, every `CLAUDE.md` and the whole `.codex/` already were); `~/.claude/projects/**` (the memory files the Write tool writes every
+  session), caches and history are NOT. `launchctl setenv|unsetenv|load|unload|bootstrap|bootout|enable|disable|kickstart|submit|bsexec|asuser` asks. Corpus
+  cost of these paths: 0 commands wrote any of them. Secret names added: `.envrc`, `secrets.json|yaml|yml`, `application_default_credentials.json`,
+  `.my.cnf`, `.mylogin.cnf`, and a RELATIVE `env.sh` (an absolute path or one behind a variable, `source $S/env.sh`, is the agent's own scratch script: 16
+  such commands in the corpus, so it stays readable); `.env~`, `.env.swp` and `.env.bak` were already read through their original. `git ls-files` shows
+  no tracked file with any of these names.
+- *Assignments* (`variable-rebinding.ts`, `harness-variable-rebinding-wave8.test.ts`; T8, ADV6-13). A variable the command line binds more than once, or by
+  `read`, `printf -v`, `for`, `select`, `while read`, `eval`, `let`, `(( ))`, `+=`, `mapfile`, `readarray`, `getopts` or `${S:=…}`, is dropped from the literal map: an
+  operand that uses it cannot be placed, and a sweep over it asks. `S=apps/portal; cp -r $S /tmp/o` still asks; `D=src; ls $D` still allows. Read as text over the
+  whole command, so a variable rebound to something harmless also asks (an over-reading, never a miss).
+- *The gate, the tests and the structure* (`hook-pin.ts`, `harness-hook-pin.test.ts`, `content-scan.ts`; T9). `arch:compliance` pins the WHOLE hook object of
+  Claude's three pinned hooks: a group holds `matcher` and `hooks`, exactly one hook, and that hook exactly `type` (`"command"`), `command` and `timeout`
+  (the ledger also `async`); `if`, `shell`, `once`, `asyncRewake`, another `type` and a stray hook all fail it (whether this Claude Code honours `if`, `shell` or
+  `once` was not verified; the gate refuses them either way). The surviving hand mutants are pinned (the `.dist` template exclusion, `.live.test.tsx`
+  suites, gawk `--include`/`-iinplace`, `dlx`, the `-c` value), and a corrupted `guard-worker.ts`, `guard-judge.ts` or `patterns.ts` is shown to be the
+  guard's own JSON deny with exit 2 through the real pinned command. The wall-clock bounds of 100 to 1,500 ms became 3 to 5 s with a comment that they guard
+  a super-linear blow-up. `judge` (150 lines) and `mainWrites` (59) are under 50 lines by extraction; the pure secret-path and content rules (about 300
+  lines) moved to `content-scan.ts` and `patterns.ts` re-exports every name, so it is 2,963 lines (3,043 at the wave-7 tip; the ceiling is still 800).
+  `spendIfShellWouldExpand` (always true, with an unused parameter) is gone. **CR6-11:** `ISSUED_SSN` in `scripts/__tests__/_fixtures.ts` is deliberately
+  an issued-looking value (area 524) built from parts; `.claude/rules/phi-and-secrets.md` says every SSN is synthetic or has area 000, 666 or 9xx. The exception
+  is stated in the fixture's comment and in this paragraph; the rule file (and its `.agents` twin, mirrored by `arch:compliance`) should name it too, which needs the
+  owner.
+- **Claude's positive acknowledgement was NOT adopted (T0b declined, ADV6-4).** The wave-7 tail refuses a NON-ZERO exit; an entry module that is empty, only a
+  comment, or `export {};`, a no-op `runGuard` and a `bun` script doing `exit 0` earlier on PATH make the pinned Claude command exit 0 with nothing on stdout,
+  which Claude Code reads as allow (shown on a copy, `harness-claude-fail-closed.test.ts`, "KNOWN RESIDUAL"; Codex is the same). The proposed fix (the guard
+  prints `{}` for an allow and the command refuses an empty stdout) was declined because whether Claude Code accepts `{}` as "no decision" on EVERY tool call
+  could not be verified here, a wrong guess is a lockout of every developer's every Claude tool call, the file that would carry the fix is the file whose
+  editing is gated, and it reaches 85 allow assertions and the real-hook helper of the suite. The lines behind the residual: every write that could empty
+  or replace a guard module is a protected path (an ask; Codex denies), `bun` shadows are now protected by name, CODEOWNERS and `arch:compliance` review the
+  harness, and the Stop gate runs. It needs the owner's decision and a check of Claude Code's behaviour with a real session.
+- **Corpus cost, measured on the final tree.** 129,020 distinct Bash commands recorded in this machine's Claude sessions, classified in process by the
+  wave-7 tip and by this tree (nothing executed; the tool is a scratch script, not committed): 60 allow to ask (0.047%), 1 ask to deny, no
+  throws; the slowest single classification was 248 ms (227 ms for the wave-7 tip in the same run; a real hook call is 40 to 90 ms). The 60: 38
+  `bunx biome check --write .` at the repo root (an in-place write the guard cannot see into: `lint:fix` is `bun run lint:fix`, a package script, and is
+  not asked), 4 `tar cf X -T list`, 4 `$B check --write .` (a variable used as the program name), 3 `echo … >> env` and 2 `rm -rf ~/Library/Caches/bun` and 2
+  `perl -e 'alarm; exec @ARGV' bunx …` and 2 `mkdir sim/bin/bun` (a PATH-shadow name), 2 `bun --bun run vitest run <live suite>` (the live-suite ask
+  now reaches a runner behind `bun --bun run`), 1 `$G` (a variable program handed `scripts`); the 1 ask to deny is an agent's own scratch `env.sh` written
+  by a heredoc beside a `cd $SP`. Removed asks: the real corpus holds no `cloc`, `tokei`, `scc`, `cspell`, `shfmt -d`, `ruff check`, `eza`, `lsof`, `open`,
+  `make -C`, `semgrep` or `trivy` over a harness path (v7 asked about each when the stack was probed; the tip allows all 14, `harness-backstop-wave8.test.ts`),
+  and `declare -x FOO=bar` and `set -x`, denied in v6 and v7, allow.
+- **Residuals, stated plainly.** Computed names (`$VAR/x`, `$(printf …)`, an encoded name) stay unseen. An alias or a function wrapper (`alias c='cp -r'` then
+  `c apps/portal /tmp/o`; `g() { git "$@"; }`) hides its command by name; a function body is judged, its call is not tied to it. A glob target is
+  read only when it has a slash (or a write flag). A symlinked directory is a gap in the listings and a symlink in a sweep operand is not followed.
+  `xargs`-fed and `-T`-listed names are unreadable. A heredoc handed to an unknown program is not read (a here-string is). A package-runner or wrapper this
+  table does not name (`corepack`, `volta run`, `mise exec`, `direnv exec`, `cross-env`) hides its command by name. The guard runs under whatever `bun` the PATH
+  resolves (the PATH-shadow residual above). The positive-acknowledgement residual above (Codex too: it has no acknowledgement at all). The write flags and
+  abbreviations of tools not installed here (`cloc`, `tokei`, `scc`, `cspell`, `depcruise`, `shfmt`, `ruff`, `semgrep`, `trivy`, `code`, `markdownlint`,
+  `jest`, `mocha`, `deno`, `tree`, `7z`, `objcopy`, `ugrep`, `rga`, `pt`, `sift`, `ucg`, `trufflehog`, GNU `sed`, `litecli`, `usql`, `duckdb`, `sqlcmd`,
+  `sqlplus`, `mongosh`, `clickhouse-client`, `trino`) were read from documentation; nothing was run on Linux or with bun 1.3.5.
 
 **Shell lexing.** `scripts/harness/shell-lex.ts` reads a command once, in one linear pass, before any rule
 runs; the line splitter, the redirection reader and the substitution scan all use its result, so a quote, an
@@ -837,4 +982,25 @@ fixed them (`git log --grep '<ID>'`), and in the tests named in the paragraph th
 | ADV5-1 | `sqlite3 .shell`, `psql \!`, `mysql system`, `pgcli \!` ran an operating-system command under Claude; now ask. |
 | ADV5-2 | About twenty ordinary commands wrote to a path the agent names with no rule (`bun build --outfile`, `uniq IN OUT`, …); modelled, plus a generic backstop. |
 | ADV5-3 | Siblings of the tree sweeps (`ack`, `ag -u`, `fd -x`, `cpio -p`, `pax -rw`); judged as the sweeps they are siblings of. |
+| ADV6-1, CR6-2, CR6-8 | Package runners (`bunx`, `npx`, `pnpx`, `bun x`, `pnpm|yarn|npm exec|dlx`, `bun|yarn run X`) hid the program they start from every rule; two runner readers disagreed. Now one reader, applied where the program is found (`runners.ts`). |
+| ADV6-2, CR6-1 | The backstop's hand lists exempted programs that write (`plutil -replace`, `awk '… > ARGV[1]'`, `python -m json.tool IN OUT`, `7z a`, `tree -o`, vim/ed commands, `docker build -o`, `go -coverprofile`, `time -o`, …). A reader has write flags; a modelled program's positional operands are its model's. |
+| ADV6-3 | A copy of `true` named `bun` in a user-writable PATH directory made both hooks silent no-ops. A program the hooks call is protected by name in any directory (residual: the guard runs under whatever `bun` PATH resolves). |
+| ADV6-4 | An empty, comment-only or `export {};` guard module, a no-op `runGuard` or a `bun` doing `exit 0` makes the pinned command exit 0 with nothing (allow). **T0b declined, not fixed**: the residual is pinned by tests and stated above. |
+| ADV6-5 | A secret read through `sqlite3 … readfile()`, `duckdb read_csv`, an unlisted interpreter's inline code. SQL file functions are read in every client; names inside code-like words are read for unknown programs. |
+| ADV6-6, CR6-3 | DB-client escapes under real shell quoting (`"\\o X"`), the abbreviations `.sh`, `.sy`, `.cl`, `.cd` then `.output`, `.parameter` then `writefile(@f)`, and the clients the table did not name. |
+| ADV6-7 | `ssh -o 'ProxyCommand cmd'`, `scp|sftp -o ProxyCommand`, `-S`, `zip -TT`, `rg --pre`, `man -P` ran a local command. |
+| ADV6-8, CR6-12 | New shapes of printing the environment (`Bun.env`, `typeset`, `jq env`, perl, awk, `ps eww`, `launchctl`); and `declare -x NAME=value`, an assignment, was denied as a dump. |
+| ADV6-9 | Secret scanners and unlisted recursive readers (`ugrep -r`, `gitleaks --no-git`, `trufflehog`, `rga`, `scp -r`, `ag -a`) read env-holding directories. |
+| ADV6-10 | tar's directory-option grammar (`-cCf`, `-Capps`, `--directory=`, `--dir=`) and case spellings (`APPS/PORTAL`) slipped past the tree-sweep rule. |
+| ADV6-11 | The compliance gate stayed green after a hook key other than command, timeout or async changed (`if`, `shell`, `once`, `type`, a stray hook). The whole hook object is pinned. |
+| ADV6-12 | Persistence outside the protected set (global git config, `launchctl setenv|load`, launch agents, `~/.claude/{rules,plugins,hooks,…}`). |
+| ADV6-13 | A variable rebound by `read`, `printf -v`, `for`, `eval`, `+=`, `source` stayed its first literal in a sweep operand. |
+| ADV6-14 | Secret-name gaps: `.envrc`, `env.sh`, `secrets.json`, gcloud's ADC, `.my.cnf`. |
+| CR6-4 | The backstop did not place its operands as every other rule does (braces, variables, ancestors, wildcards). |
+| CR6-5 | `fd -Hx`, `-HIx`, `-xcat`, `--exec=cat` were not judged as `find -exec`. |
+| CR6-6 | The live-suite and live-env listings truncated silently instead of answering "may match". |
+| CR6-7 | Five surviving hand mutants and no test that every exempted program is really modelled. |
+| CR6-9 | `spendIfShellWouldExpand` could never be false. |
+| CR6-10 | `judge` (150 lines) and `mainWrites` (58) over 50 lines. |
+| CR6-11 | The `ISSUED_SSN` exception was recorded only in a code comment: now also in the fixture comment and Wave 8 above; the rule file `.claude/rules/phi-and-secrets.md` (and its `.agents` twin) should name it, which needs the owner. |
 | CR5-1 to CR5-11 | The round-5 code review: brace budget and whitespace (1), nested agent variables (2), one assignment grammar (3), wildcard pathspecs (4), per-root names (5), five sweep readings (6), the live env list (7), surviving mutants (8), doc claims (9), structure (10), vitest substring filters (11). |

@@ -8,6 +8,9 @@
  * this is the one named exception, and it is built from parts so that no scanned file (the Stop gate and
  * `harness:phi-scan` read test files too) ever spells it whole. A fixture that only needs an SSN-SHAPED value must use
  * a never-issued one instead, never this.
+ *
+ * The exception lives HERE and in `docs/compliance/AGENT_HARNESS.md` (Wave 8, CR6-11); `.claude/rules/phi-and-secrets.md` (and its
+ * `.agents` twin) does not name it yet, which needs the owner (it is a mirrored change).
  */
 export const ISSUED_SSN_PARTS = ["524", "71", "3388"] as const;
 /** `NNN-NN-NNNN`. */

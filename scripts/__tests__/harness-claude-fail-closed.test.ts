@@ -10,7 +10,7 @@
  * text without the tail, spelled out below) is the negative control: it really answers allow-by-exit-1 on the same
  * corruption, which proves the hazard exists on this machine and that the tail, not the setup, is what refuses.
  */
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import {
@@ -145,6 +145,59 @@ describe("(b2) a corrupted worker-side module is the guard's own deny, exit 2", 
       expect(r.status).toBe(2);
     },
   );
+});
+
+/**
+ * KNOWN RESIDUAL (round-6 ADV6-4, wave 8, T0b DECLINED): the tail refuses a NON-ZERO exit, not a silent exit 0. An entry module
+ * that is empty, only a comment, or `export {};`, a no-op `runGuard`, and a `bun` that is a script doing `exit 0` earlier on PATH
+ * all make the pinned command exit 0 with nothing on stdout, which Claude Code reads as allow. The proposed positive
+ * acknowledgement (the guard prints `{}` for an allow and the command refuses an empty stdout) was not committed: whether Claude
+ * Code accepts `{}` as "no decision" on the critical path of every tool call could not be verified here, a wrong guess locks
+ * every developer out of every Claude tool call, and the change reaches every allow assertion of the suite. These tests pin the
+ * residual so that nobody mistakes it for a closed hole (they flip if it is adopted). The writes that make a module empty are
+ * protected paths (they ask), and CODEOWNERS and `arch:compliance` review the harness.
+ */
+describe("(b3) KNOWN RESIDUAL: a silent exit 0 reads as allow on the pinned command", () => {
+  const stubbed = (file: string, text: string): string => {
+    const dir = guardCopy();
+    writeFileSync(join(dir, "scripts/harness", file), text);
+    return dir;
+  };
+
+  it.each([
+    ["an empty entry module", "pre-tool-guard.ts", ""],
+    ["a comment-only entry module", "pre-tool-guard.ts", "// nothing here\n"],
+    ["an entry module that is `export {};`", "pre-tool-guard.ts", "export {};\n"],
+    [
+      "a no-op runGuard",
+      "hard-deadline.ts",
+      "export const runGuard = async () => {};\nexport const DEADLINE_MS = 6500;\n",
+    ],
+  ])("%s: exit 0, no decision (the guard never ran)", (_name, file, text) => {
+    const r = runClaude(stubbed(file, text), READS_SECRET);
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim()).toBe("");
+    expect(r.decision).toBe("allow");
+  });
+
+  it("a `bun` that is a script doing `exit 0` earlier on PATH: the same", () => {
+    const shadow = scratchDir("cw-shadow-bun-");
+    writeFileSync(join(shadow, "bun"), "#!/bin/sh\nexit 0\n");
+    chmodSync(join(shadow, "bun"), 0o755);
+    const r = runClaude(guardCopy(), READS_SECRET, { PATH: `${shadow}:${process.env.PATH ?? ""}` });
+    expect(r.status).toBe(0);
+    expect(r.decision).toBe("allow");
+  });
+
+  it("the write that would plant such a `bun` is a protected path (wave 8, ADV6-3)", () => {
+    for (const command of [
+      "cp /usr/bin/true ~/.kimi-code/bin/bun",
+      "printf '#!/bin/sh\\nexit 0\\n' > ~/.local/bin/bun",
+      "ln -sf /usr/bin/true /opt/tools/bun",
+    ]) {
+      expect(runClaude(guardCopy(), bashPayload(command)).decision, command).toBe("ask");
+    }
+  });
 });
 
 describe("(c) a PATH without bun", () => {
