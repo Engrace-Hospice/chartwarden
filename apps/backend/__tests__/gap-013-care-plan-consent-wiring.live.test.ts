@@ -26,6 +26,8 @@ import {
 } from "@chartwarden/auth";
 import { type StoredConsent, createInMemoryConsentStore } from "@chartwarden/consent";
 import { createDbClient } from "@chartwarden/db";
+import { runWithRequestContext } from "@chartwarden/tenancy";
+import type { CarePlanElementsAudience } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -440,33 +442,122 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
     });
   });
 
+  const SUD_PROBLEM = "SYNTHETIC-SUD-PROBLEM";
+  const PLAIN_PROBLEM = "SYNTHETIC-PLAIN-PROBLEM";
+  const releaseNaming = (membershipId: string): StoredConsent => ({
+    ...activeConsent("42_cfr_part_2_release"),
+    recipients: [
+      {
+        removedAtMs: null,
+        expiresAtMs: null,
+        recipientResolvedKind: "workforce_member",
+        recipientResolvedId: membershipId,
+      },
+    ],
+  });
+
+  // The workforce member the release names, and one it does not.
+  const NAMED = "member-b";
+  const OTHER = "member-a";
+
+  // A real uuid: the read-audit row casts the acting user to uuid, and the best-effort emitter swallows a failure,
+  // so a non-uuid reader would leave no trail and the audit assertion below would be vacuous.
+  const READER = "55555555-5555-4555-8555-555555555555";
+
+  /**
+   * Seeds a fresh tenant with one plan carrying a SUD problem and a plain problem, each served by an `rn` intervention
+   * and a goal, authored through the real M7 routes. `evaluator: "unbound"` unregisters the M39 evaluator after the
+   * plan is seeded (and re-registers only the CarePlanReader), so the read itself meets the outage. Returns the live
+   * app (the caller closes it) and the two problem ids.
+   */
+  async function seedSudPlan(
+    release: ((membershipId: string) => StoredConsent) | null,
+    opts: { evaluator?: "bound" | "unbound" } = {},
+  ) {
+    await seedTenant();
+    // The audit row's actor is a foreign key to `user`: without this row the insert fails and is swallowed.
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'reader@gap013.test') ON CONFLICT DO NOTHING`,
+      [READER],
+    );
+    const app = bootApp({
+      grants: {
+        author_1: ["care_plan.bootstrap", "care_plan.author", "care_plan.read"],
+        [READER]: ["care_plan.read"],
+      },
+      consents: release ? [release(NAMED)] : [],
+    });
+    registerSeam(
+      "CarePlanReader",
+      createCarePlanReader(createDrizzleCarePlanReaderStore(handle.db)),
+    );
+    const AUTHOR = { "x-test-user": "author_1", "x-test-org": org, "x-test-roles": "rn" };
+    const boot = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${patientId}/care-plan`,
+      headers: AUTHOR,
+      payload: { admissionId: randomUUID() },
+    });
+    const planId = boot.json().id as string;
+    for (const [description, sudRelated] of [
+      [SUD_PROBLEM, true],
+      [PLAIN_PROBLEM, false],
+    ] as const) {
+      await app.inject({
+        method: "POST",
+        url: `/api/v1/care-plans/${planId}/problems`,
+        headers: AUTHOR,
+        payload: { description, kind: "related", source: "clinical", sudRelated },
+      });
+    }
+    const { rows } = await admin.query(
+      "SELECT id, description FROM problem WHERE care_plan_id = $1",
+      [planId],
+    );
+    const problemRows = rows as { id: string; description: string }[];
+    for (const row of problemRows) {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/care-plans/${planId}/interventions`,
+        headers: AUTHOR,
+        payload: {
+          problemId: row.id,
+          scopeText: `visit for ${row.description}`,
+          frequencyText: "weekly",
+          frequencyValue: "1/week",
+          discipline: "rn",
+        },
+      });
+      expect(res.statusCode, row.description).toBe(201);
+      const goal = await app.inject({
+        method: "POST",
+        url: `/api/v1/care-plans/${planId}/goals`,
+        headers: AUTHOR,
+        payload: {
+          problemId: row.id,
+          originalText: `goal for ${row.description}`,
+          source: "clinical",
+        },
+      });
+      expect(goal.statusCode, `goal for ${row.description}`).toBe(201);
+    }
+    if (opts.evaluator === "unbound") {
+      __resetSeamsForTest();
+      registerSeam(
+        "CarePlanReader",
+        createCarePlanReader(createDrizzleCarePlanReaderStore(handle.db)),
+      );
+    }
+    const idOf = (description: string) =>
+      problemRows.find((r) => r.description === description)?.id as string;
+    return { app, planId, sudProblemId: idOf(SUD_PROBLEM), plainProblemId: idOf(PLAIN_PROBLEM) };
+  }
+
   // Compliance review of D-2 (HIGH). The internal relevant-elements read asked the PATIENT-level question ("does the
   // release have any active recipient?"), so a nurse the release does not name still received the SUD problem and the
   // interventions that serve it. It now takes the caller's per-ACTOR verdict, the one every other M7 read redacts by.
   // Real routes, real evaluator (in-memory consent store), real CarePlanReader over the Drizzle store.
   describe("relevant-elements — per-ACTOR Part 2 redaction", () => {
-    const SUD_PROBLEM = "SYNTHETIC-SUD-PROBLEM";
-    const PLAIN_PROBLEM = "SYNTHETIC-PLAIN-PROBLEM";
-    const releaseNaming = (membershipId: string): StoredConsent => ({
-      ...activeConsent("42_cfr_part_2_release"),
-      recipients: [
-        {
-          removedAtMs: null,
-          expiresAtMs: null,
-          recipientResolvedKind: "workforce_member",
-          recipientResolvedId: membershipId,
-        },
-      ],
-    });
-
-    // The workforce member the release names, and one it does not.
-    const NAMED = "member-b";
-    const OTHER = "member-a";
-
-    // A real uuid: the read-audit row casts the acting user to uuid, and the best-effort emitter swallows a failure,
-    // so a non-uuid reader would leave no trail and the audit assertion below would be vacuous.
-    const READER = "55555555-5555-4555-8555-555555555555";
-
     /**
      * A plan with one SUD problem and one plain problem, each served by an `rn` intervention, read as `caller`.
      * `membership: null` sends no membership id; `evaluator: "unbound"` unregisters the M39 evaluator after the
@@ -477,79 +568,7 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
       release: ((membershipId: string) => StoredConsent) | null,
       opts: { evaluator?: "bound" | "unbound" } = {},
     ) {
-      await seedTenant();
-      // The audit row's actor is a foreign key to `user`: without this row the insert fails and is swallowed.
-      await admin.query(
-        `INSERT INTO "user" (id,email) VALUES ($1,'reader@gap013.test') ON CONFLICT DO NOTHING`,
-        [READER],
-      );
-      const app = bootApp({
-        grants: {
-          author_1: ["care_plan.bootstrap", "care_plan.author", "care_plan.read"],
-          [READER]: ["care_plan.read"],
-        },
-        consents: release ? [release(NAMED)] : [],
-      });
-      registerSeam(
-        "CarePlanReader",
-        createCarePlanReader(createDrizzleCarePlanReaderStore(handle.db)),
-      );
-      const AUTHOR = { "x-test-user": "author_1", "x-test-org": org, "x-test-roles": "rn" };
-      const boot = await app.inject({
-        method: "POST",
-        url: `/api/v1/patients/${patientId}/care-plan`,
-        headers: AUTHOR,
-        payload: { admissionId: randomUUID() },
-      });
-      const planId = boot.json().id as string;
-      for (const [description, sudRelated] of [
-        [SUD_PROBLEM, true],
-        [PLAIN_PROBLEM, false],
-      ] as const) {
-        await app.inject({
-          method: "POST",
-          url: `/api/v1/care-plans/${planId}/problems`,
-          headers: AUTHOR,
-          payload: { description, kind: "related", source: "clinical", sudRelated },
-        });
-      }
-      const { rows } = await admin.query(
-        "SELECT id, description FROM problem WHERE care_plan_id = $1",
-        [planId],
-      );
-      for (const row of rows as { id: string; description: string }[]) {
-        const res = await app.inject({
-          method: "POST",
-          url: `/api/v1/care-plans/${planId}/interventions`,
-          headers: AUTHOR,
-          payload: {
-            problemId: row.id,
-            scopeText: `visit for ${row.description}`,
-            frequencyText: "weekly",
-            frequencyValue: "1/week",
-            discipline: "rn",
-          },
-        });
-        expect(res.statusCode, row.description).toBe(201);
-        const goal = await app.inject({
-          method: "POST",
-          url: `/api/v1/care-plans/${planId}/goals`,
-          headers: AUTHOR,
-          payload: {
-            problemId: row.id,
-            originalText: `goal for ${row.description}`,
-            source: "clinical",
-          },
-        });
-        expect(goal.statusCode, `goal for ${row.description}`).toBe(201);
-      }
-      if (opts.evaluator === "unbound") {
-        __resetSeamsForTest();
-        registerSeam(
-          "CarePlanReader",
-          createCarePlanReader(createDrizzleCarePlanReaderStore(handle.db)),
-        );
-      }
+      const { app } = await seedSudPlan(release, opts);
       const res = await app.inject({
         method: "GET",
         url: `/api/v1/internal/care-plan/relevant-elements?patientId=${patientId}&encounterType=routine&discipline=rn`,
@@ -645,6 +664,77 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
       );
       expect(namesOthers.redacted).toBe(true);
       expect(namesOthers.problems.map((p) => p.description)).toEqual([PLAIN_PROBLEM]);
+    });
+  });
+
+  // R-80/R-82. M8's visit-to-problem link check and M15's parent-element check validate the ids the picker offered,
+  // so they must apply the picker's rule. They pass the SESSION identity (`{ actor: { roles, membershipId } }`) and
+  // the store resolves the per-actor verdict itself (M39 `evaluateForInternalAccess` + the §7.6 carve-out). Here the
+  // REAL reader over the Drizzle store is called directly, with the real evaluator, exactly as those callers do; the
+  // `"patient_level"` control in each looser/stricter case proves the assertion can fail.
+  describe("link validation — the actor audience resolves per ACTOR", () => {
+    async function seedAndAsk(
+      release: ((membershipId: string) => StoredConsent) | null,
+      opts: { evaluator?: "bound" | "unbound" } = {},
+    ) {
+      const { app, sudProblemId, plainProblemId } = await seedSudPlan(release, opts);
+      await app.close();
+      const reader = createCarePlanReader(createDrizzleCarePlanReaderStore(handle.db));
+      const ask = async (viewer: CarePlanElementsAudience): Promise<string[]> => {
+        const elements = await runWithRequestContext(
+          { organizationId: org, userId: READER } as never,
+          () =>
+            reader.relevantElementsForEncounter(
+              patientId as never,
+              "routine",
+              "rn",
+              undefined,
+              viewer,
+            ),
+        );
+        return (elements?.problems ?? []).map((p) => p.problemId).sort();
+      };
+      return { ask, both: [sudProblemId, plainProblemId].sort(), plainOnly: [plainProblemId] };
+    }
+
+    it("a nurse the release does NOT name cannot validate the Part 2 problem (patient-level would have allowed it)", async () => {
+      const { ask, both, plainOnly } = await seedAndAsk(releaseNaming);
+      expect(await ask({ actor: { roles: ["rn"], membershipId: OTHER } })).toEqual(plainOnly);
+      // Control: the looser patient-level rule says "a release with an active recipient exists", so it admits her.
+      expect(await ask("patient_level")).toEqual(both);
+    });
+
+    it("the workforce member the release names validates both problems", async () => {
+      const { ask, both } = await seedAndAsk(releaseNaming);
+      expect(await ask({ actor: { roles: ["rn"], membershipId: NAMED } })).toEqual(both);
+    });
+
+    it("the RN case manager validates the Part 2 problem when no release is on file (patient-level used to drop it)", async () => {
+      const { ask, both, plainOnly } = await seedAndAsk(null);
+      expect(
+        await ask({ actor: { roles: ["rn", "rn_case_manager"], membershipId: OTHER } }),
+      ).toEqual(both);
+      // Control: the stricter patient-level rule finds no release and drops it, which is the 422 the picker disagreed with.
+      expect(await ask("patient_level")).toEqual(plainOnly);
+    });
+
+    it("the RN case manager with no membership id is refused against a release that names staff (actor_unidentified)", async () => {
+      const { ask, plainOnly } = await seedAndAsk(releaseNaming);
+      expect(
+        await ask({ actor: { roles: ["rn", "rn_case_manager"], membershipId: null } }),
+      ).toEqual(plainOnly);
+    });
+
+    it("fails closed when the M39 evaluator is unbound, even for a named member who is also the case manager", async () => {
+      const { ask, plainOnly } = await seedAndAsk(releaseNaming, { evaluator: "unbound" });
+      expect(
+        await ask({ actor: { roles: ["rn", "rn_case_manager"], membershipId: NAMED } }),
+      ).toEqual(plainOnly);
+    });
+
+    it("a plain nurse cannot validate the Part 2 problem when there is no release at all", async () => {
+      const { ask, plainOnly } = await seedAndAsk(null);
+      expect(await ask({ actor: { roles: ["rn"], membershipId: OTHER } })).toEqual(plainOnly);
     });
   });
 
@@ -763,7 +853,7 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
            added_by_discipline) VALUES ($1,$2,$3,$4,$5::jsonb,$6,'Weekly','1:visit:week','msw',$7,'msw')`,
         [org, pe, loc, planId, JSON.stringify([sudGoalId]), SUD_IV_TEXT, randomUUID()],
       );
-      return { planId, plainGoalId, sudGoalId, pe, loc };
+      return { planId, plainGoalId, sudGoalId, pe, loc, carePlanId };
     }
 
     const AUTHOR = ["discipline_plan.read", "discipline_plan.author"];
@@ -841,6 +931,102 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
       expect(patched.statusCode).toBe(200);
       expect(patched.body).toContain(SUD_GOAL_TEXT);
       await app.close();
+    });
+
+    // R-80/R-82 through the REAL M15 route: the parent-element check asks M7's reader under the actor's own rule, the
+    // one the picker used. The reader is the real one over the Drizzle store, the evaluator the real in-memory M39.
+    describe("goal parent check — per-ACTOR Part 2 (route `POST /discipline-plans/:planId/goals`)", () => {
+      async function seedPlanWithPart2Problem() {
+        await seedTenant();
+        const seeded = await seedDisciplinePlan();
+        const sudProblemId = (
+          await admin.query(
+            `INSERT INTO problem (organization_id, provider_entity_id, location_id, care_plan_id, description, kind, sud_related)
+             VALUES ($1,$2,$3,$4,'SYNTHETIC-PART2-PROBLEM','related',true) RETURNING id`,
+            [org, seeded.pe, seeded.loc, seeded.carePlanId],
+          )
+        ).rows[0].id as string;
+        return { planId: seeded.planId, sudProblemId };
+      }
+
+      const NAMED_MEMBERSHIP = "33333333-3333-4333-8333-333333333333";
+      const OTHER_MEMBERSHIP = "77777777-7777-4777-8777-777777777777";
+
+      function postGoal(
+        app: ReturnType<typeof bootM15>,
+        planId: string,
+        parentProblemId: string,
+        actor: { membership: string; roles: string },
+      ) {
+        return app.inject({
+          method: "POST",
+          url: `/api/v1/discipline-plans/${planId}/goals`,
+          headers: {
+            ...MSW_AUTH(),
+            "x-test-membership": actor.membership,
+            "x-test-roles": actor.roles,
+          },
+          payload: {
+            parentProblemId,
+            // `patient_stated`: the one source value both the route schema and the DB enum accept for a human-authored goal
+            // (the schema's `clinician_authored` is not a `discipline_goal_source` value, so it would 500 on insert).
+            source: "patient_stated",
+            originalText: "SYNTHETIC-GOAL-UNDER-PART2",
+            addedByDiscipline: "msw",
+          },
+        });
+      }
+
+      async function bootWithRealReader(release: StoredConsent | null) {
+        const app = bootM15({
+          grants: { [MSW_USER]: AUTHOR },
+          consents: release ? [release] : [],
+        });
+        registerSeam(
+          "CarePlanReader",
+          createCarePlanReader(createDrizzleCarePlanReaderStore(handle.db)),
+        );
+        return app;
+      }
+
+      it("422 PARENT_ELEMENT_NOT_FOUND for a nurse the release does not name, 201 for the member it names", async () => {
+        const { planId, sudProblemId } = await seedPlanWithPart2Problem();
+        const app = await bootWithRealReader(releaseNaming(NAMED_MEMBERSHIP));
+
+        const other = await postGoal(app, planId, sudProblemId, {
+          membership: OTHER_MEMBERSHIP,
+          roles: "msw",
+        });
+        expect(other.statusCode).toBe(422);
+        expect(JSON.stringify(other.json())).toContain("PARENT_ELEMENT_NOT_FOUND");
+
+        const named = await postGoal(app, planId, sudProblemId, {
+          membership: NAMED_MEMBERSHIP,
+          roles: "msw",
+        });
+        expect(named.statusCode).toBe(201);
+        expect(named.json().parentProblemId).toBe(sudProblemId);
+        await app.close();
+      });
+
+      it("201 for the RN case manager with no release on file (the picker shows it), 422 for a plain clinician", async () => {
+        const { planId, sudProblemId } = await seedPlanWithPart2Problem();
+        const app = await bootWithRealReader(null);
+
+        const plain = await postGoal(app, planId, sudProblemId, {
+          membership: OTHER_MEMBERSHIP,
+          roles: "msw",
+        });
+        expect(plain.statusCode).toBe(422);
+        expect(JSON.stringify(plain.json())).toContain("PARENT_ELEMENT_NOT_FOUND");
+
+        const caseManager = await postGoal(app, planId, sudProblemId, {
+          membership: OTHER_MEMBERSHIP,
+          roles: "msw,rn_case_manager",
+        });
+        expect(caseManager.statusCode).toBe(201);
+        await app.close();
+      });
     });
 
     it("the version detail and list routes withhold a sealed Part 2 goal without a release and show it with one (real evaluator)", async () => {

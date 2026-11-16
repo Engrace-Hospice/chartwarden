@@ -180,6 +180,29 @@ describe("CarePlanReader.relevantElementsForEncounter (§7.8)", () => {
     expect(allowed?.redacted).toBe(false);
   });
 
+  it("the in-memory store treats an { actor } audience like the seeded value (it cannot resolve a verdict)", async () => {
+    // The Drizzle store resolves the per-actor verdict through M39; this slice has no consent round-trip, so an
+    // actor audience answers with the seed, exactly like "patient_level" (and unlike a hand-built viewer).
+    const actor = { actor: { roles: ["rn_case_manager"], membershipId: "m-1" } } as const;
+    const askAs = async (sudReadAllowed: boolean) =>
+      createCarePlanReader(store({ sudReadAllowed })).relevantElementsForEncounter(
+        PAT,
+        "rn_routine_visit",
+        "rn",
+        undefined,
+        actor,
+      );
+    const seededAllowed = await askAs(true);
+    expect(seededAllowed?.problems.map((p) => p.problemId).sort()).toEqual([
+      "prob-pain",
+      "prob-sud",
+    ]);
+    expect(seededAllowed?.redacted).toBe(false);
+    const seededDenied = await askAs(false);
+    expect(seededDenied?.problems.map((p) => p.problemId)).toEqual(["prob-pain"]);
+    expect(seededDenied?.redacted).toBe(true);
+  });
+
   it("filters by discipline (msw sees only the msw intervention)", async () => {
     const reader = createCarePlanReader(store({ sudReadAllowed: true }));
     const out = await reader.relevantElementsForEncounter(

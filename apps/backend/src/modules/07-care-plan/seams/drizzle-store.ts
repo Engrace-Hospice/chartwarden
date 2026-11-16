@@ -14,23 +14,31 @@
 //     no request scope) — it SELF-SCOPES via `withOrgContext`, with the explicit `organization_id`
 //     predicate as the second wall.
 //
-// SUD (D7, §7.8): `sudReadAllowed` is, by default, the patient-level M39 Part-2 consent fact — resolved
-// through the `ConsentEvaluator` seam at call time (the M16 disclosure-gate precedent), NEVER a
-// caller-asserted scope. The one exception is the per-ACTOR verdict a caller passes as `viewer`: it replaces
-// the patient-level lookup, so it is a TRUST BOUNDARY — only a route that resolved it from the M39 closure
-// (the route's `deps.sudDisclosureAllowed` closure, which wraps `sudDisclosureAllowedForPatient`, the one every
-// other M7 read uses) may pass one. A caller that serves no human passes `"patient_level"` and gets the lookup
-// below. FAIL-CLOSED: while M39 is a deny-stub, throws, or denies, the record reads
-// `sudReadAllowed=false` and the reader drops SUD problems + flags `redacted` — a consent outage
-// narrows what a clinician sees; it never widens it. The picker route calls the closure unconditionally before the
-// reader runs, so every picker load makes one M39 `evaluateForInternalAccess` call; only the `"patient_level"`
-// path's `part2ReleaseAllowed` round-trip is skipped when the plan carries no SUD-flagged problem.
+// SUD (D7, §7.8): `sudReadAllowed` is resolved through the `ConsentEvaluator` seam at call time (the M16
+// disclosure-gate precedent), NEVER from a caller-asserted scope. A caller passes one of three audiences:
+//   • `{ actor: { roles, membershipId } }` — its SESSION identity; this store resolves the per-ACTOR verdict itself
+//     (`actorSudAllowed`: M39 `evaluateForInternalAccess` + the §7.6 RN-case-manager carve-out, the same
+//     `sudDisclosureAllowedForPatient` every other M7 read uses), so the caller can never assert a verdict (M8 link
+//     validation, M15 parent check);
+//   • `{ sudDisclosureAllowed }` — a verdict that replaces the lookup, so it is a TRUST BOUNDARY: only a ROUTE that
+//     resolved it from the M7 closure (the picker's `deps.sudDisclosureAllowed`) may hand-build one;
+//   • `"patient_level"` — a caller with NO human actor (the scheduling worker, M15's system actor): the patient-level
+//     release lookup (`part2ReleaseAllowed`).
+// FAIL-CLOSED on every path: while M39 is a deny-stub, throws, or denies, the record reads `sudReadAllowed=false`
+// and the reader drops SUD problems + flags `redacted` — a consent outage narrows what a clinician sees; it never
+// widens it. The picker route calls its closure unconditionally before the reader runs (one M39
+// `evaluateForInternalAccess` call per load); the `actor` and `"patient_level"` round-trips are skipped when the
+// plan carries no SUD-flagged problem.
 import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 import { getRequestContext, withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
-import type { CarePlanCodeUsageRecord } from "@chartwarden/types";
+import type { CarePlanCodeUsageRecord, CarePlanElementsActor } from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { getSeam } from "../../../bootstrap/index";
+import {
+  defaultInternalSudAccessChecker,
+  sudDisclosureAllowedForPatient,
+} from "../abac-predicates";
 import { effectiveNextReviewDueAt } from "../lifecycle/overdue-gate";
 import { PATIENT_PLAN_ORDER } from "../plan-selection";
 import {
@@ -93,6 +101,34 @@ async function part2ReleaseAllowed(organizationId: string, patientId: string): P
     return verdict.allowed === true;
   } catch {
     return false; // §8.7 — an unbound/erroring M39 REDACTS, never discloses
+  }
+}
+
+/**
+ * The PER-ACTOR Part 2 verdict for a caller that passed its session identity (`{ actor }`): exactly the
+ * resolver the M7 routes' `sudDisclosureAllowed` closure uses (M39 `evaluateForInternalAccess`, then the §7.6
+ * RN-case-manager carve-out where no release names others). FAIL-CLOSED on any throw — redact, never disclose.
+ */
+async function actorSudAllowed(
+  organizationId: string,
+  patientId: string,
+  actor: CarePlanElementsActor["actor"],
+): Promise<boolean> {
+  try {
+    return await sudDisclosureAllowedForPatient(
+      {
+        organizationId,
+        userId: "",
+        roles: actor.roles,
+        providerEntityIds: [],
+        locationIds: [],
+        attributes: { membershipId: actor.membershipId },
+      },
+      patientId,
+      defaultInternalSudAccessChecker(),
+    );
+  } catch {
+    return false; // §8.7 — an erroring resolver REDACTS, never discloses
   }
 }
 
@@ -163,13 +199,17 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
         }));
         // The D7 decision is only observable when SUD content exists — skip the M39 round-trip otherwise.
         const sudPresent = problems.some((p) => p.containsSud);
-        // A human caller's per-ACTOR verdict (the route resolved it) outranks the patient-level release fact: a
-        // release that names other staff redacts this caller even though "a release exists".
+        // A human caller's per-ACTOR verdict outranks the patient-level release fact: a release that names other
+        // staff redacts this caller even though "a release exists", and an RN case manager is let through where no
+        // release names others. The verdict is either the route's own (`sudDisclosureAllowed`) or resolved HERE
+        // from the session identity (`actor`); only a caller with no human actor gets the patient-level lookup.
         const sudReadAllowed = !sudPresent
           ? true
-          : viewer !== "patient_level"
-            ? viewer.sudDisclosureAllowed
-            : await part2ReleaseAllowed(plan.organizationId, patientId);
+          : viewer === "patient_level"
+            ? await part2ReleaseAllowed(plan.organizationId, patientId)
+            : "actor" in viewer
+              ? await actorSudAllowed(plan.organizationId, patientId, viewer.actor)
+              : viewer.sudDisclosureAllowed;
         return {
           planId: plan.id,
           patientId: plan.patientId,

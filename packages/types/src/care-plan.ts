@@ -307,13 +307,36 @@ export interface CarePlanElementsViewer {
 }
 
 /**
- * Who an element read is for. REQUIRED on the seam so that omitting the per-actor verdict is a compile error
- * rather than a silent fall-back to the weaker rule: a caller either supplies the verdict its route resolved
- * (`CarePlanElementsViewer`) or says out loud that it serves no human reading element text
- * (`"patient_level"` — ids-only, existence checks, or a column that is never returned), in which case the
- * store applies the patient-level Part 2 release check. A human-facing read must never pass `"patient_level"`.
+ * The SESSION identity of the human an element read is for, for a caller that holds the session but not a
+ * route-resolved verdict (M8's visit-to-problem link check, M15's parent-element check). The store resolves the
+ * per-actor Part 2 verdict ITSELF through the M39 evaluator (the same closure every M7 read uses: the actor's
+ * role keys and active membership id), so the caller can never assert one.
  */
-export type CarePlanElementsAudience = CarePlanElementsViewer | "patient_level";
+export interface CarePlanElementsActor {
+  readonly actor: {
+    /** The session's role keys (the RN case manager carve-out reads `rn_case_manager` here). */
+    readonly roles: readonly string[];
+    /** The actor's ACTIVE M2 membership id, or `null` when the session carries none (fails closed against a
+     * release that names workforce members). */
+    readonly membershipId: string | null;
+  };
+}
+
+/**
+ * Who an element read is for. REQUIRED on the seam so that omitting the audience is a compile error rather than
+ * a silent fall-back to the weaker rule. There are three honest answers:
+ *   • `CarePlanElementsViewer` — a hand-built `{ sudDisclosureAllowed }` verdict, only for a ROUTE that resolved it
+ *     from the M7 closure (the picker route);
+ *   • `CarePlanElementsActor` — the caller holds the SESSION identity but no route-resolved verdict; the store
+ *     resolves the per-actor verdict itself, so the caller can never assert one;
+ *   • `"patient_level"` — ONLY for a caller with no human actor (the scheduling worker and M15's system actor);
+ *     the store applies the patient-level Part 2 release check (any release with an active recipient). A caller
+ *     that has a human actor must never pass it.
+ */
+export type CarePlanElementsAudience =
+  | CarePlanElementsViewer
+  | CarePlanElementsActor
+  | "patient_level";
 
 /**
  * §7.8 — the read surface M8 (encounter authoring + sign gate), M14 (IDG packet), and M15 (discipline
@@ -325,10 +348,12 @@ export type CarePlanElementsAudience = CarePlanElementsViewer | "patient_level";
  */
 export interface CarePlanReader {
   /** Populate the encounter form's element picker — active problems, the active interventions tagged
-   * with `discipline`, and their parent problems' goals (§7.8). `viewer` is REQUIRED: the caller's PER-ACTOR
-   * 42 CFR Part 2 verdict, resolved by the route that serves a human, decides SUD visibility in place of the
-   * patient-level release check (so a release that names other staff redacts this caller); a caller that serves
-   * no human passes `"patient_level"` on purpose (see `CarePlanElementsAudience`). */
+   * with `discipline`, and their parent problems' goals (§7.8). `viewer` is REQUIRED and the rule is PER-ACTOR for
+   * every human caller: a route that resolved the verdict passes it (`CarePlanElementsViewer`), a caller that
+   * holds only the session identity passes `{ actor: { roles, membershipId } }` and the store resolves the same
+   * verdict itself (so a release that names other staff redacts this caller, and an RN case manager is let through
+   * only where no release names others). `"patient_level"` is only for a caller with no human actor (the
+   * scheduling worker, M15's system actor); see `CarePlanElementsAudience`. */
   relevantElementsForEncounter(
     patientId: PatientId,
     encounterType: string,

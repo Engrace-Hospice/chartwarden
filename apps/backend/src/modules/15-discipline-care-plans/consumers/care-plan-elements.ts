@@ -11,6 +11,7 @@
 // inside M7's reader (D7) — M15 never re-derives it, and `redacted:true` rides through so the caller can
 // render the §7.8 "some content has been redacted" envelope rather than a silently short list.
 import type {
+  CarePlanElementsAudience,
   DisciplinePlanKind,
   EncounterType,
   InterventionDiscipline,
@@ -37,23 +38,40 @@ const READER_LENS_BY_KIND: {
   volunteer_plan: { discipline: "volunteer", encounterType: "volunteer_visit" },
 } as const;
 
+/**
+ * The audience an M15 element read is made for. A HUMAN actor is asked under the PER-ACTOR Part 2 rule (their
+ * role keys and active membership id, so the store resolves the same verdict the M7 picker used: an RN case manager
+ * sees a Part 2 problem where no release names others, a nurse the release does not name does not). The one
+ * exception is the SYSTEM actor (`kind === "system"`, minted only by `systemM15Actor`): it serves no human and has
+ * no membership, so it stays on the patient-level release rule.
+ */
+export function elementsAudienceFor(actor: {
+  readonly kind?: "system";
+  readonly roles: readonly string[];
+  readonly membershipId: string | null;
+}): CarePlanElementsAudience {
+  return actor.kind === "system"
+    ? "patient_level"
+    : { actor: { roles: actor.roles, membershipId: actor.membershipId } };
+}
+
 /** The IPOC elements a discipline plan of `kind` may parent onto (§2.1). Null when the patient has no plan. */
 export async function relevantIpocElements(
   kind: DisciplinePlanKind,
   patientId: PatientId,
+  viewer: CarePlanElementsAudience,
 ): Promise<RelevantCarePlanElements | null> {
   const lens = READER_LENS_BY_KIND[kind];
-  // "patient_level": the elements only prove a parent exists (`assertParentElements`); none is returned to a caller.
-  // That check is NOT the picker's per-actor rule: stricter for an RN case manager (no release on file: the picker
-  // shows a Part 2 problem under the §7.6 carve-out but this drops it, so the id is rejected 422), looser for a nurse
-  // the release does not name (it has an active recipient so it passes; only ids are compared, never element text).
-  // The open decision lives at R-80 in docs/implementation/06-care-plan-current-state-audit.md.
+  // The elements only prove a parent exists (`assertParentElements`); none is returned to a caller. The audience is
+  // the caller's (`elementsAudienceFor`), so this check applies the same per-actor Part 2 rule as the M7 picker:
+  // what the picker offered is what it accepts, and a Part 2 problem a nurse the release does not name holds by
+  // uuid is rejected 422 like any other element she cannot see.
   return getCarePlanReader().relevantElementsForEncounter(
     patientId,
     lens.encounterType,
     lens.discipline,
     undefined,
-    "patient_level",
+    viewer,
   );
 }
 
@@ -83,8 +101,9 @@ export async function assertParentElements(
   patientId: PatientId,
   refs: ParentElementRefs,
   requireProblem: boolean,
+  viewer: CarePlanElementsAudience,
 ): Promise<void> {
-  const elements = await relevantIpocElements(kind, patientId);
+  const elements = await relevantIpocElements(kind, patientId, viewer);
   const problemIds = new Set((elements?.problems ?? []).map((p) => p.problemId));
   const goalIds = new Set((elements?.goals ?? []).map((g) => g.goalId));
   const interventionIds = new Set((elements?.interventions ?? []).map((i) => i.interventionId));

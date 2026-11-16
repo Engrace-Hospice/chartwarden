@@ -547,7 +547,9 @@ describe.skipIf(!DB_URL)(
     it("hop 3 — the LPN note is linked to the visit and the plan's intervention, signed, and routes to the RN case manager", async () => {
       noteId = await inCtx(() => openLpnDraft(visitId));
       const link = await inCtx(() =>
-        m8.addCarePlanLink(ORG, lpnMembership, noteId, { problemId, interventionId } as never),
+        m8.addCarePlanLink(ORG, lpnMembership, noteId, { problemId, interventionId } as never, [
+          "lpn",
+        ]),
       );
       const links = await admin.query(
         "SELECT problem_id, intervention_id FROM encounter_care_plan_link WHERE encounter_id=$1",

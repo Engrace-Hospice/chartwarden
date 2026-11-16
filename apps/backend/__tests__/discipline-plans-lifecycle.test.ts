@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
   assertParentElements,
+  elementsAudienceFor,
   isAssessmentEncounterValid,
   isSupervisoryEncounterValid,
 } from "../src/modules/15-discipline-care-plans/consumers/index";
@@ -673,15 +674,25 @@ describe("M15-T03 — consuming M7's CarePlanReader (§2.1 / §2.3)", () => {
   const IPOC_PROBLEM = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
   const IPOC_GOAL = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 
-  function registerReader(): { calls: Array<{ type: string; discipline: string }> } {
+  /** The audience a human caller passes (M15's parent check asks under the actor's own Part 2 rule, R-80). */
+  const HUMAN = { actor: { roles: ["msw"], membershipId: "member-1" } } as const;
+
+  function registerReader(): {
+    calls: Array<{ type: string; discipline: string }>;
+    viewers: unknown[];
+  } {
     const calls: Array<{ type: string; discipline: string }> = [];
+    const viewers: unknown[] = [];
     registerSeam("CarePlanReader", {
       relevantElementsForEncounter: async (
         _patientId: string,
         encounterType: string,
         discipline: string,
+        _admissionId: unknown,
+        viewer: unknown,
       ) => {
         calls.push({ type: encounterType, discipline });
+        viewers.push(viewer);
         return {
           planId: "plan-1",
           patientId: PATIENT,
@@ -693,7 +704,7 @@ describe("M15-T03 — consuming M7's CarePlanReader (§2.1 / §2.3)", () => {
       },
       isReviewOverdue: async () => null,
     } as never);
-    return { calls };
+    return { calls, viewers };
   }
 
   it("reads the IPOC through the plan kind's own discipline lens", async () => {
@@ -703,18 +714,53 @@ describe("M15-T03 — consuming M7's CarePlanReader (§2.1 / §2.3)", () => {
       PATIENT,
       { parentProblemId: IPOC_PROBLEM, parentGoalId: IPOC_GOAL },
       true,
+      HUMAN,
     );
     expect(calls).toEqual([{ type: "msw_assessment", discipline: "msw" }]);
+  });
+
+  it("hands the caller's audience to the reader unchanged, so the store resolves the per-actor verdict (R-80)", async () => {
+    const { viewers } = registerReader();
+    await assertParentElements("msw_plan", PATIENT, { parentProblemId: IPOC_PROBLEM }, true, HUMAN);
+    await assertParentElements(
+      "msw_plan",
+      PATIENT,
+      { parentProblemId: IPOC_PROBLEM },
+      true,
+      "patient_level",
+    );
+    expect(viewers).toEqual([HUMAN, "patient_level"]);
+  });
+
+  it("elementsAudienceFor: a human actor is asked under its own roles and membership, only the system actor is patient-level", () => {
+    expect(elementsAudienceFor({ roles: ["msw", "rn_case_manager"], membershipId: "m-1" })).toEqual(
+      {
+        actor: { roles: ["msw", "rn_case_manager"], membershipId: "m-1" },
+      },
+    );
+    // A human session with no membership stays a human actor (the store fails it closed), never patient-level.
+    expect(elementsAudienceFor({ roles: ["msw"], membershipId: null })).toEqual({
+      actor: { roles: ["msw"], membershipId: null },
+    });
+    expect(elementsAudienceFor({ kind: "system", roles: [], membershipId: "m-sys" })).toBe(
+      "patient_level",
+    );
   });
 
   it("a discipline goal must reference an ACTIVE IPOC problem (§2.1 — no forked plan)", async () => {
     registerReader();
     await expectRejectCode(
-      assertParentElements("msw_plan", PATIENT, { parentProblemId: null }, true),
+      assertParentElements("msw_plan", PATIENT, { parentProblemId: null }, true, HUMAN),
       "PARENT_PROBLEM_REQUIRED",
     );
     await expectRejectCode(
-      assertParentElements("msw_plan", PATIENT, { parentProblemId: "not-on-the-plan" }, true),
+      assertParentElements(
+        "msw_plan",
+        PATIENT,
+        { parentProblemId: "not-on-the-plan" },
+        true,
+        HUMAN,
+      ),
       "PARENT_ELEMENT_NOT_FOUND",
     );
   });
@@ -727,6 +773,7 @@ describe("M15-T03 — consuming M7's CarePlanReader (§2.1 / §2.3)", () => {
         PATIENT,
         { parentProblemId: IPOC_PROBLEM, parentGoalId: null },
         true,
+        HUMAN,
       ),
     ).resolves.toBeUndefined();
     await expectRejectCode(
@@ -735,6 +782,7 @@ describe("M15-T03 — consuming M7's CarePlanReader (§2.1 / §2.3)", () => {
         PATIENT,
         { parentProblemId: IPOC_PROBLEM, parentGoalId: "ghost" },
         true,
+        HUMAN,
       ),
       "PARENT_ELEMENT_NOT_FOUND",
     );
@@ -746,7 +794,7 @@ describe("M15-T03 — consuming M7's CarePlanReader (§2.1 / §2.3)", () => {
       isReviewOverdue: async () => null,
     } as never);
     await expectRejectCode(
-      assertParentElements("msw_plan", PATIENT, { parentProblemId: IPOC_PROBLEM }, true),
+      assertParentElements("msw_plan", PATIENT, { parentProblemId: IPOC_PROBLEM }, true, HUMAN),
       "PARENT_ELEMENT_NOT_FOUND",
     );
   });

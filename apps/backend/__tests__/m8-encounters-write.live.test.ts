@@ -98,6 +98,9 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   let noCipherSvc: ReturnType<typeof createDbEncounterRouteService>;
   /** What the faked M7 reader answers (see the seam registration in beforeAll). */
   let carePlanOverdue: unknown = null;
+  // The audience the stub reader was last asked under (the F-064 care-plan link check passes the ACTOR, R-80).
+  let lastElementsViewer: unknown = null;
+  const LINK_ACTOR_ROLES = ["rn"] as const;
   /** §2.6 check 3 (#125) — what the faked M9 reader answers `latestBatch` for any scale asked. */
   let latestScales: Set<string> = new Set();
   /** The RN case manager's membership id — what a cosignature must route to (#124). */
@@ -237,19 +240,28 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     registerSeam("CarePlanReader", {
       // F-064 — `addCarePlanLink` validates the refs against the patient's relevant plan elements;
       // these are the PROBLEM/GOAL ids the care-plan-link cases below link.
-      relevantElementsForEncounter: async () => ({
-        planId: "66666666-6666-4666-8666-666666666666",
-        patientId: PATIENT,
-        problems: [{ problemId: "44444444-4444-4444-8444-444444444444" }],
-        goals: [
-          {
-            goalId: "55555555-5555-4555-8555-555555555555",
-            problemId: "44444444-4444-4444-8444-444444444444",
-          },
-        ],
-        interventions: [],
-        redacted: false,
-      }),
+      relevantElementsForEncounter: async (
+        _patientId: unknown,
+        _encounterType: unknown,
+        _discipline: unknown,
+        _admissionId: unknown,
+        viewer: unknown,
+      ) => {
+        lastElementsViewer = viewer;
+        return {
+          planId: "66666666-6666-4666-8666-666666666666",
+          patientId: PATIENT,
+          problems: [{ problemId: "44444444-4444-4444-8444-444444444444" }],
+          goals: [
+            {
+              goalId: "55555555-5555-4555-8555-555555555555",
+              problemId: "44444444-4444-4444-8444-444444444444",
+            },
+          ],
+          interventions: [],
+          redacted: false,
+        };
+      },
       isReviewOverdue: async () => carePlanOverdue,
       fifteenDayCycleCountsForOrg: async () => ({ numerator: 0, denominator: 0 }),
       terminologyCodeUsageForOrg: async () => [],
@@ -1389,10 +1401,13 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
     it("inserts a real row carrying the M7 refs, and returns ITS id", async () => {
       const id = await draft("routine_visit", "rn");
-      const link = await svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {
-        problemId: PROBLEM,
-        goalId: GOAL,
-      });
+      const link = await svc.addCarePlanLink(
+        ORG_A,
+        membershipOf[ORG_A],
+        id,
+        { problemId: PROBLEM, goalId: GOAL },
+        LINK_ACTOR_ROLES,
+      );
       expect(link.id).not.toBe(id); // the old `linkId` was the encounter's own id
       const { rows } = await admin.query(
         "SELECT * FROM encounter_care_plan_link WHERE encounter_id = $1",
@@ -1407,9 +1422,24 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       expect(rows[0].removed_at).toBeNull();
     });
 
+    it("asks the reader under the ACTOR audience (session roles + membership), never patient_level (R-80)", async () => {
+      const id = await draft("routine_visit", "rn");
+      lastElementsViewer = null;
+      await svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, { problemId: PROBLEM }, [
+        "rn_case_manager",
+      ]);
+      // The reader's store resolves the per-actor Part 2 verdict from exactly this identity; the service
+      // never asserts a verdict itself, and never falls back to the patient-level rule.
+      expect(lastElementsViewer).toEqual({
+        actor: { roles: ["rn_case_manager"], membershipId: membershipOf[ORG_A] },
+      });
+    });
+
     it("refuses a link naming no element before the DB CHECK can raise a 23514", async () => {
       const id = await draft("routine_visit", "rn");
-      await expect(svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {})).rejects.toMatchObject({
+      await expect(
+        svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {}, LINK_ACTOR_ROLES),
+      ).rejects.toMatchObject({
         code: "CARE_PLAN_LINK_REF_REQUIRED",
         statusCode: 422,
       });
@@ -1422,9 +1452,13 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
     it("removal is a soft invalidate: the row survives, the link stops listing", async () => {
       const id = await draft("routine_visit", "rn");
-      const link = await svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {
-        problemId: PROBLEM,
-      });
+      const link = await svc.addCarePlanLink(
+        ORG_A,
+        membershipOf[ORG_A],
+        id,
+        { problemId: PROBLEM },
+        LINK_ACTOR_ROLES,
+      );
       await svc.removeCarePlanLink(ORG_A, membershipOf[ORG_A], id, link.id);
       expect((await svc.listCarePlanLinks(ORG_A, id)).links).toEqual([]);
       const { rows } = await admin.query(
@@ -1440,9 +1474,13 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
     it("removing an already-removed link is a 404, not a second success", async () => {
       const id = await draft("routine_visit", "rn");
-      const link = await svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {
-        problemId: PROBLEM,
-      });
+      const link = await svc.addCarePlanLink(
+        ORG_A,
+        membershipOf[ORG_A],
+        id,
+        { problemId: PROBLEM },
+        LINK_ACTOR_ROLES,
+      );
       await svc.removeCarePlanLink(ORG_A, membershipOf[ORG_A], id, link.id);
       await expect(
         svc.removeCarePlanLink(ORG_A, membershipOf[ORG_A], id, link.id),
@@ -1453,9 +1491,13 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       // `encounter_care_plan_link_removal_consistent` — a removal with no actor is unattributable, and
       // an actor with no instant is not a removal. Only the constraint can prove this.
       const id = await draft("routine_visit", "rn");
-      const link = await svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {
-        problemId: PROBLEM,
-      });
+      const link = await svc.addCarePlanLink(
+        ORG_A,
+        membershipOf[ORG_A],
+        id,
+        { problemId: PROBLEM },
+        LINK_ACTOR_ROLES,
+      );
       await expect(
         admin.query("UPDATE encounter_care_plan_link SET removed_at = now() WHERE id = $1", [
           link.id,

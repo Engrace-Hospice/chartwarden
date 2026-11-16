@@ -29,6 +29,7 @@ export {
 } from "./m6-admission-discharged";
 export {
   assertParentElements,
+  elementsAudienceFor,
   relevantIpocElements,
   type ParentElementRefs,
 } from "./care-plan-elements";

@@ -31,6 +31,7 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import {
   assertParentElements,
+  elementsAudienceFor,
   isAssessmentEncounterValid,
   isSupervisoryEncounterValid,
 } from "../consumers/index";
@@ -630,6 +631,7 @@ export function buildDrizzleM15WriteService(
         plan.patientId as never,
         { parentProblemId: input.parentProblemId, parentGoalId: input.parentGoalId },
         true,
+        elementsAudienceFor(actor),
       );
       checkDpoaGoalConsent(
         input.source as DisciplineGoalSource,
@@ -755,6 +757,7 @@ export function buildDrizzleM15WriteService(
         plan.patientId as never,
         { parentInterventionId: input.parentInterventionId },
         false,
+        elementsAudienceFor(actor),
       );
       return withOrgContext(db, scope(actor), async (tx) => {
         const [row] = await tx
