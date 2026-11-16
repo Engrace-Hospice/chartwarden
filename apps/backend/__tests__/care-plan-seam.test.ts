@@ -154,8 +154,8 @@ describe("CarePlanReader.relevantElementsForEncounter (§7.8)", () => {
 
   it("a per-actor viewer verdict decides SUD visibility, not the patient-level release fact", async () => {
     // The store says "a release exists" (patient-level allow), but this caller is not named on it.
-    const named = createCarePlanReader(store({ sudReadAllowed: true }));
-    const denied = await named.relevantElementsForEncounter(
+    const readerOverReleasedStore = createCarePlanReader(store({ sudReadAllowed: true }));
+    const denied = await readerOverReleasedStore.relevantElementsForEncounter(
       PAT,
       "rn_routine_visit",
       "rn",
@@ -168,8 +168,8 @@ describe("CarePlanReader.relevantElementsForEncounter (§7.8)", () => {
     expect(denied?.redacted).toBe(true);
 
     // …and the converse: a caller the release names sees it though the store's fact was "denied".
-    const cleared = createCarePlanReader(store({ sudReadAllowed: false }));
-    const allowed = await cleared.relevantElementsForEncounter(
+    const readerOverUnreleasedStore = createCarePlanReader(store({ sudReadAllowed: false }));
+    const allowed = await readerOverUnreleasedStore.relevantElementsForEncounter(
       PAT,
       "rn_routine_visit",
       "rn",

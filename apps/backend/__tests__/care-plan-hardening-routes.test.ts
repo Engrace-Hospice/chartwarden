@@ -21,15 +21,19 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
-import type { FastifyRequest } from "fastify";
+import type { RelevantCarePlanElements } from "@chartwarden/types";
+import type { FastifyInstance, FastifyRequest, RouteOptions } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { carePlanReaderDenyStub } from "../src/bootstrap/seams/providers";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
+  type CarePlanRouteDeps,
+  type ProblemProposalService,
   buildCarePlanAbacPredicates,
   createInMemoryCarePlanBackend,
   registerCarePlanRoutes,
+  registerProblemProposalRoutes,
 } from "../src/modules/07-care-plan/index";
 import { signatureMethodForFactor } from "../src/modules/07-care-plan/routes/care-plan-routes";
 import {
@@ -98,13 +102,11 @@ const key = (): { "idempotency-key": string } => ({ "idempotency-key": randomUUI
 function makeServer(
   // The §7.6 closure: only a session carrying the (test) `sud_cleared` role may see SUD content.
   // `null` mounts the routes with NO closure bound, so the route's own default (deny) is what is under test.
-  sudDisclosureAllowed:
-    | ((input: {
-        roles: readonly string[];
-        patientId: string;
-        membershipId: string | null;
-      }) => Promise<boolean>)
-    | null = async ({ roles }) => roles.includes("sud_cleared"),
+  sudDisclosureAllowed: CarePlanRouteDeps["sudDisclosureAllowed"] | null = async ({ roles }) =>
+    roles.includes("sud_cleared"),
+  // Runs on the fresh server BEFORE the care-plan routes register, so a test can attach an `onRoute` hook
+  // and mount further M7 registrars (the problem-proposal routes) beside them.
+  beforeRoutes?: (app: FastifyInstance) => void,
 ) {
   const backend = createInMemoryCarePlanBackend();
   registerEffectivePermissionResolver(
@@ -134,6 +136,7 @@ function makeServer(
     [ADMISSION_PENDING, { patientId: PATIENT, status: "pending" }],
   ]);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+  beforeRoutes?.(app);
   registerCarePlanRoutes(app, {
     service: backend.service,
     ...(sudDisclosureAllowed ? { sudDisclosureAllowed } : {}),
@@ -769,9 +772,9 @@ describe("CP-15 — a stale ifVersion sign is rejected and attaches nothing", ()
   });
 });
 
-describe("the internal relevant-elements read redacts per ACTOR (compliance review of D-2)", () => {
+describe("the internal relevant-elements route hands the reader the per-actor closure's verdict (compliance review of D-2)", () => {
   const url = `/api/v1/internal/care-plan/relevant-elements?patientId=${PATIENT}&encounterType=routine`;
-  const picker = {
+  const picker: RelevantCarePlanElements = {
     planId: "cp_x",
     patientId: PATIENT,
     problems: [],
@@ -786,11 +789,16 @@ describe("the internal relevant-elements read redacts per ACTOR (compliance revi
       ...carePlanReaderDenyStub,
       relevantElementsForEncounter: async (_patient, _type, _discipline, _admission, viewer) => {
         viewers.push(viewer);
-        return picker as never;
+        return picker;
       },
     });
-    const asked: { patientId: string; roles: readonly string[]; membershipId: string | null }[] =
-      [];
+    const asked: {
+      organizationId: string;
+      patientId: string;
+      planId: string;
+      roles: readonly string[];
+      membershipId: string | null;
+    }[] = [];
     const { app } = makeServer(async (q) => {
       asked.push(q);
       return q.roles.includes("sud_cleared");
@@ -814,7 +822,7 @@ describe("the internal relevant-elements read redacts per ACTOR (compliance revi
     expect(viewers).toEqual([{ sudDisclosureAllowed: false }]);
   });
 
-  it("passes an allowing verdict through, so only the cleared caller sees Part 2 content", async () => {
+  it("passes an allowing verdict through to the reader when the closure allows this caller", async () => {
     const { viewers } = await readAs(RN_SUD_CLEARED);
     expect(viewers).toEqual([{ sudDisclosureAllowed: true }]);
   });
@@ -825,7 +833,7 @@ describe("the internal relevant-elements read redacts per ACTOR (compliance revi
       ...carePlanReaderDenyStub,
       relevantElementsForEncounter: async (_patient, _type, _discipline, _admission, viewer) => {
         viewers.push(viewer);
-        return picker as never;
+        return picker;
       },
     });
     const { app } = makeServer(null);
@@ -850,8 +858,37 @@ describe("the default care_plan grants at the route edge (CW-AC-44)", () => {
   };
   const problem = { description: "Dyspnea (synthetic)", kind: "related", source: "clinical" };
 
-  it("an LPN holding only the default read keys reads the plan and is refused EVERY M7 write route", async () => {
-    const { app, svc } = makeServer();
+  // Never reached for the LPN: the permission guard refuses before the handler runs. If a guard is ever
+  // removed this stub fails loudly instead of answering as the real service would.
+  const unreachable = async (): Promise<never> => {
+    throw new Error("the problem-proposal service must not be reached by an LPN");
+  };
+  const proposalService: ProblemProposalService = {
+    list: unreachable,
+    accept: unreachable,
+    dismiss: unreachable,
+  };
+  const READ_ONLY_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD", "OPTIONS"]);
+  // Fixed ids for the path params the seeded plan does not supply (`:elementId`, `:proposalId`, ...).
+  const PLACEHOLDER_ID = "00000000-0000-4000-8000-0000000000e1";
+  // The write routes M7 registers today: 13 in care-plan-routes.ts + the 2 problem-proposal accept/dismiss
+  // routes. A new write route changes this number ON PURPOSE: the derived list below picks it up and the
+  // LPN is asserted refused on it, so bump the count in the same change that adds the route.
+  const KNOWN_M7_WRITE_ROUTE_COUNT = 15;
+
+  it("an LPN holding only the default read keys reads the plan and is refused EVERY write route the M7 registrars register", async () => {
+    // The list is DERIVED, not hand-written: an `onRoute` hook on the test server records every non-read
+    // route registered by `registerCarePlanRoutes` and `registerProblemProposalRoutes`, so a write route
+    // added later cannot escape this test.
+    const writes: { method: string; url: string }[] = [];
+    const { app, svc } = makeServer(undefined, (server) => {
+      server.addHook("onRoute", (route: RouteOptions) => {
+        for (const method of [route.method].flat()) {
+          if (!READ_ONLY_METHODS.has(method)) writes.push({ method, url: route.url });
+        }
+      });
+      registerProblemProposalRoutes(server, { service: proposalService });
+    });
     const { planId, versionId } = await seedPlan(svc);
     const read = await app.inject({
       method: "GET",
@@ -859,30 +896,25 @@ describe("the default care_plan grants at the route edge (CW-AC-44)", () => {
       headers: LPN,
     });
     expect(read.statusCode).toBe(200);
-    // Every write route of care-plan-routes.ts (bootstrap, version, finalize, sign, return-to-draft and the three
-    // element kinds' add / revise / close). The permission guard runs before the body is read, so the payload is
-    // a placeholder. A route added later that this list misses is the gap to close here.
-    const plan = `/api/v1/care-plans/${planId}`;
-    const element = "00000000-0000-4000-8000-0000000000e1";
-    const writes: ReadonlyArray<readonly ["POST" | "PATCH", string]> = [
-      ["POST", `/api/v1/patients/${PATIENT}/care-plan`],
-      ["POST", `${plan}/versions`],
-      ["POST", `${plan}/versions/${versionId}/finalize`],
-      ["POST", `${plan}/versions/${versionId}/signatures`],
-      ["POST", `${plan}/versions/${versionId}/return-to-draft`],
-      ["POST", `${plan}/problems`],
-      ["PATCH", `${plan}/problems/${element}`],
-      ["POST", `${plan}/problems/${element}/resolve`],
-      ["POST", `${plan}/goals`],
-      ["PATCH", `${plan}/goals/${element}`],
-      ["POST", `${plan}/interventions`],
-      ["PATCH", `${plan}/interventions/${element}`],
-      ["POST", `${plan}/interventions/${element}/discontinue`],
-    ];
-    for (const [method, url] of writes) {
+    expect(writes.length).toBe(KNOWN_M7_WRITE_ROUTE_COUNT);
+    // The hook must have seen BOTH registrars, not only the care-plan-routes.ts one.
+    expect(writes.map((w) => w.url)).toEqual(
+      expect.arrayContaining([
+        "/api/v1/care-plans/:planId/problem-proposals/:proposalId/accept",
+        "/api/v1/care-plans/:planId/problem-proposals/:proposalId/dismiss",
+      ]),
+    );
+
+    const params: Readonly<Record<string, string>> = { patientId: PATIENT, planId, versionId };
+    for (const { method, url } of writes) {
+      const concrete = url.replace(
+        /:(\w+)/g,
+        (_match, name: string) => params[name] ?? PLACEHOLDER_ID,
+      );
+      // The permission guard runs before the body is read, so the payload is a placeholder.
       const res = await app.inject({
-        method,
-        url,
+        method: method as "POST" | "PATCH" | "PUT" | "DELETE",
+        url: concrete,
         headers: { ...LPN, ...key(), "if-match": "1" },
         payload: problem,
       });
