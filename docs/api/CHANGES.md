@@ -83,27 +83,40 @@ its full description there. Newest first.
   idempotency layer replays this `422` for 24 h on the same key, so send a corrected request with a NEW `Idempotency-Key`. The audit
   trail records both references as `<changed>` (as the other free-text and storage columns of a batch).
 - **The fields of a CMS result row (`POST .../results`) are checked for format and for patient identifiers; the service checks them
-  again.** `code`, `itemCode` and `iqiesRecordId` are stored unscrubbed in audit row images and (the codes) in the
-  `m10.hope.submission_rejected` payload, so each is ONE word: `^(?:[A-Za-z0-9._:#-]{1,64})?$` (letters, digits, `. _ : # -`, a leading
-  `-` allowed as in `-3015`; no space, no slash; empty is a blank cell and names nothing). `severity` is one of `fatal`, `error`,
-  `warning` (any case) or empty: the values the import acts on. `status`, `result` and `outcome` are phrases CMS wrote ("received,
-  pending review") and keep `^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/(),;-]*)?$`, at most 64. Anything else (markup, quotes, line breaks,
-  a space-only value, a severity outside the set) is `422 VALIDATION_FAILED`. A value shaped like a Social Security or Medicare
-  number is `422 EVIDENCE_LOOKS_LIKE_PHI` with the field `results.<row>.<field>`; for `code`, `itemCode` and `iqiesRecordId` so is a
-  calendar date (`YYYY-MM-DD`, `YYYY.MM.DD`, `DD.MM.YYYY`, `MM-DD-YYYY`; years 1800 to 2099) and a US phone number (3-3-4 digits set apart
-  by `-` or `.`, optional leading 1). An `iqiesRecordId` that is a uuid is not screened (its hex digits resemble an MBI about one time
-  in sixty). `assessmentId` is screened when it is not a uuid, and `message` (at most 1000) is screened too: a message that names a
-  patient's number is refused, so remove it before recording the report (the field is named, never the value). A control character
-  (a message may keep tab, line feed and carriage return) or an unpaired surrogate in an `assessmentId` or a `message` is `422` with
-  the code `INVALID_CHARACTERS` (the database cannot store them; they used to answer `500`). Neither 422 echoes the value. Not
-  closeable here: a single-word surname or a hyphenated name still fits a code, and the real iQIES edit-code and record-id formats are
-  unverified, so the code pattern stays permissive within the no-space, no-slash rule.
+  again, and stores only the rows it rebuilt.** `code`, `itemCode` and `iqiesRecordId` are stored unscrubbed in audit row images and
+  (the codes) in the `m10.hope.submission_rejected` payload, so each is ONE word: `^(?:[A-Za-z0-9._:#-]{1,64})?$` (letters, digits,
+  `. _ : # -`, a leading `-` allowed as in `-3015`; no space, no slash; empty is a blank cell and names nothing, and is stored as no
+  code, not as an empty one). `severity` is one of `fatal`, `error`, `warning` (any case) or empty: the values the import acts on, so
+  **a row with any other severity (`Info`, `Informational`) makes the whole import `422`: drop such rows from the report.** The
+  closed set is not yet confirmed against real iQIES output: a human should confirm the severity vocabulary with a CMS sample.
+  `status`, `result` and `outcome` are phrases CMS wrote ("received, pending review") and keep
+  `^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/(),;-]*)?$`, at most 64. `assessmentId` is spelt like an id: `^[\s{}0-9A-Fa-f-]{1,64}$` (hex
+  digits, hyphens, one pair of braces, blanks around it which are trimmed: a trailing carriage return of a CRLF-split CSV is a blank);
+  a name or any other text is `422`, so it is never stored or returned, and a read of an unmatched row returns the assessment id
+  only when it is a uuid. Anything else (markup, quotes, a space-only value, a severity outside the set, a key the row does not
+  have, a value that is not a string) is `422 VALIDATION_FAILED`. A value shaped like a Social Security or Medicare number is
+  `422 EVIDENCE_LOOKS_LIKE_PHI` with the field `results.<row>.<field>`; for `code`, `itemCode` and `iqiesRecordId` so is a calendar date
+  (`YYYY-MM-DD`, `DD.MM.YYYY`, `MM-DD-YYYY` and the like, years 1800 to 2099) and a US phone number (3-3-4 digits, optional leading 1), set
+  apart by any of `- . _ : #` (mixed allowed, `1990-05_17`). Compact digit forms (`YYYYMMDD`, `MMDDYYYY`, ten unbroken digits) and
+  month-name dates such as `12-Mar-1945` remain a documented residual: nothing tells them from a code. An `iqiesRecordId` that is a
+  uuid is not screened (its hex digits resemble an MBI about one time in sixty). `assessmentId` is also screened when it is no uuid, and
+  `message` (at most 1000) is screened for an SSN or MBI shape: a message that names a patient's number is refused, so remove it
+  before recording the report (the field is named, never the value). `status`, `result`, `outcome`, `message` and `reportReference`
+  get that SSN and MBI screen only (and the charset where one exists). NUL and an unpaired surrogate in an `assessmentId` or a
+  `message` are `422` with the code `INVALID_CHARACTERS`: they were a `500`, because Postgres refuses them in text and jsonb. Any other
+  control character (U+0001, U+001B, U+007F to U+009F) is storable and is refused as a policy choice; a message keeps tab, line feed
+  and carriage return. **A report is limited to 2000 rows and to 100,000 characters of `message` and `assessmentId` text in total**
+  (a real row has 100 to 300): a bigger import is `422` with the field `results` and the code `TOO_LARGE`; split it into several
+  imports. Neither 422 echoes the value. Not closeable here: a single-word surname or a hyphenated name still fits a code, and the
+  real iQIES edit-code and record-id formats are unverified, so the code pattern stays permissive within the no-space, no-slash rule.
 - **`GET /hope/assessments/{id}/validation` and `GET .../workspace` store nothing for a caller who does not hold `hope.timepoint.write`.** The
   final-mode validation read used to reconcile the stored validation findings, and the workspace open used to rewrite out-of-date
-  workflow-control answers, both under no actor. A read-only caller now gets the same findings, and the same workspace as a writer for the
-  same draft: the workflow-control items (A0050, A0250) of a draft no writer has opened yet are shown `answered` with their derived
-  values, with the same progress counts, derived in memory and not stored (the response shape is unchanged); a caller who can write
-  persists them as before. A signed or inactivated record is shown as stored, for everyone.
+  workflow-control answers, both under no actor. A read-only caller now gets the same findings, and a workspace that equals a writer's
+  only for the workflow-control items (A0050, A0250) of a draft no writer has opened yet, shown `answered` with their derived values,
+  and the progress counts that follow from them, derived in memory and not stored (the response shape is unchanged); a caller who can
+  write persists them as before. What only a writer's open does (the chart refresh, the SFV self-heal of J2052/J2053, the
+  validation-finding reconcile) is shown as stored to a reader, so a draft that needs one of those reads differently for a reader until
+  a writer opens it. A signed or inactivated record is shown as stored, for everyone.
 - **Assemble now records the batch's items in one statement and re-checks the records after the package is serialised.** The request,
   the response and the codes are unchanged. A record superseded while the package was being serialised is dropped as before (it
   is now judged and share-locked just before the batch is written, not before the serialising, so a correction's signature waits
