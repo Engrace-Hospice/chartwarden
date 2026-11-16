@@ -434,6 +434,29 @@ describe("#91 — the meeting can be conducted", () => {
     expect(payload.mutations[0]?.sudRelated).toBe(true);
   });
 
+  it("the SUD-related box is cleared when the modal is reopened, so the next patient's problem is not flagged (42 CFR Part 2)", async () => {
+    mountLive();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Record decision" })).toBeTruthy(),
+    );
+    const openCarePlanUpdate = async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Record decision" }));
+      fireEvent.change(await waitFor(() => screen.getByLabelText(/^Decision$/i)), {
+        target: { value: "care_plan_update" },
+      });
+    };
+    await openCarePlanUpdate();
+    fireEvent.click(screen.getByRole("checkbox", { name: /SUD-related/i }));
+    expect(
+      (screen.getByRole("checkbox", { name: /SUD-related/i }) as HTMLInputElement).checked,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await openCarePlanUpdate();
+    expect(
+      (screen.getByRole("checkbox", { name: /SUD-related/i }) as HTMLInputElement).checked,
+    ).toBe(false);
+  });
+
   it("Assign follow-up carries the decision it came out of, so the item keeps its provenance", async () => {
     decisions = [
       {

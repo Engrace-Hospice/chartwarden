@@ -141,6 +141,14 @@ export function DecisionModal({
     );
     setRationale("");
     setIcd10("");
+    // The Part 2 flag above all: the modal stays mounted between decisions, so a ticked box would otherwise
+    // flag the NEXT patient's problem as SUD-related. The other pickers go back to their defaults too.
+    setSudRelated(false);
+    setProblemKind("terminal");
+    setLevel("routine");
+    setRiskLevel("low");
+    setMedKind("add");
+    setOrderHint("idg_requested");
     setDrugLabel("");
     setReferralKind("");
     setFamilyMembers("");
@@ -313,21 +321,24 @@ export function DecisionModal({
                 value={icd10}
                 onChange={(code) => setIcd10(code)}
               />
-              <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
                 <input
+                  id="idg-decision-sud-related"
                   type="checkbox"
                   checked={sudRelated}
+                  aria-describedby="idg-decision-sud-related-hint"
                   onChange={(e) => setSudRelated(e.target.checked)}
                 />
-                <span>
-                  <strong>SUD-related (42 CFR Part 2)</strong>
-                  <br />
-                  <span style={meta}>
+                <div>
+                  <label htmlFor="idg-decision-sud-related">
+                    <strong>SUD-related (42 CFR Part 2)</strong>
+                  </label>
+                  <div id="idg-decision-sud-related-hint" style={meta}>
                     Tick only when the problem contains substance-use-disorder information. It is
                     then withheld from anyone without a Part 2 release, here and in the minutes.
-                  </span>
-                </span>
-              </label>
+                  </div>
+                </div>
+              </div>
               <p style={meta}>
                 Adds a PROBLEM to the plan. Updating an existing problem, goal or intervention
                 addresses it by id and needs the care-plan element picker on the M07 surface — not
