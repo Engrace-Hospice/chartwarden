@@ -2,8 +2,9 @@
 // (M10 spec §8.4; M4 destruction-cert workflow, D7/D8).
 //
 // M10 owns the destruction callback for a patient's HOPE record — the timepoint subtree M10 captures around
-// the M5 patient spine / M6 admission anchor. Under an M4 destruction certificate it (1) acquires a
-// per-patient advisory lock so a concurrent write cannot interleave with the destruction (§8.4 #1), (2)
+// the M5 patient spine / M6 admission anchor. Under an M4 destruction certificate it (1) takes a
+// per-patient advisory lock (§8.4 #1; see the CAVEAT on {@link HopeEraseStore.lockPatient}: in the Drizzle store it
+// does NOT keep a concurrent write out of the destruction), (2)
 // validates the CMS 10-year EXTENDED RETENTION on submitted assessments — if any `hope_assessment` was
 // transmitted to iQIES and `beforeDate` falls before `youngest.transmittedAt + 10y`, the erase is REFUSED
 // with {@link HopeRetentionBlockedError} unless a legal-hold override is supplied (§8.4 step 1), (3) erases
@@ -13,7 +14,7 @@
 // `hope_submission` / `hope_submission_item` rows SURVIVE: the envelope SHA-256 is operational/compliance
 // evidence; the per-patient envelope CONTENT in MinIO is purged by M4's envelope-purge worker, not here.
 // Both `signed` AND `superseded` assessments are erased so a correction-supersede chain is removed at both
-// ends and no orphaned half survives. The four sibling clinical erasers are disjoint by table ownership: M5
+// ends and no orphaned half survives. The sibling clinical erasers are disjoint by table ownership: M5
 // destroys the patient demographics subtree, M6 the admission subtree, M7 the care-plan subtree, M8 the
 // encounter subtree, M9 the clinical-scale rows, M10 the HOPE timepoint subtree.
 //
@@ -113,8 +114,13 @@ export function isHopeErasureBlocked(
 /** The narrow data port the HOPE eraseFn composes over (Drizzle deletes in prod, under RLS). */
 export interface HopeEraseStore {
   /**
-   * Acquire a per-patient advisory lock (keyed on patient id) so a concurrent write cannot interleave with
-   * the destruction (§8.4 #1). Released by the surrounding transaction commit in prod; a no-op in the slice.
+   * Take a per-patient advisory lock (keyed on patient id; §8.4 #1). CAVEAT: the Drizzle store takes it in its own
+   * `withOrgContext` transaction, which commits (and so releases the lock) as soon as the statement ran, before
+   * `getSubmittedAssessments` or `eraseHopeSubtree` start in their own transactions. It therefore does NOT keep a
+   * concurrent write out of the destruction, and no HOPE writer takes this key anyway (they take `hashtextextended`
+   * `m10:...` keys). What it does: several other module erasers key the same `hashtext(patientId)`, so one of them queues behind this
+   * lock only while this lock transaction is still open, nothing more. Holding it across the erase, or
+   * making the writers take it, is an open design decision (not made here). A no-op in the slice.
    */
   lockPatient(organizationId: string, patientId: string): Promise<void>;
   /** The patient's submitted (iQIES-transmitted) assessments — the CMS-retention anchors (§8.4 step 1). */
@@ -136,7 +142,8 @@ export interface HopeEraseStore {
 }
 
 /**
- * Erase a patient's HOPE-record subtree under a destruction certificate (D7/D8): lock the patient, enforce
+ * Erase a patient's HOPE-record subtree under a destruction certificate (D7/D8): take the patient lock (see
+ * {@link HopeEraseStore.lockPatient} for what it does not cover), enforce
  * the CMS 10-year extended retention, then delete the assessment rows and child rows and report the total
  * removed. Pure orchestration over the store — no I/O of its own. Throws {@link HopeRetentionBlockedError}
  * when retention blocks the erase (§8.4 step 1).
@@ -241,7 +248,14 @@ export function createDrizzleHopeEraseStore(db: DbClient): HopeEraseStore {
   return {
     async lockPatient(organizationId, patientId) {
       await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        // Advisory lock on the patient key (§8.4 #1), released by the surrounding transaction commit.
+        // Advisory lock on the patient key (§8.4 #1). `db` is the pool handle (index.ts passes `deps.destructionDb ?? db`),
+        // so `withOrgContext` opens its OWN transaction here and the lock is released at ITS commit, i.e. when this
+        // callback returns, not at the end of the erase. See the CAVEAT on `HopeEraseStore.lockPatient`.
+        // KEY SPELLING: `hashtext` hashes the text it is given, so a differently spelled uuid would take a different key.
+        // The only caller of `DataEraser.erase` that I found in apps/backend/src and packages/*/src is the tenant-shred adapter
+        // (34-saas-tenant-platform/shred-eraser-adapter.ts), whose subject ids come from `patients.id` read back from the
+        // database (05-patient/m34-shred-subjects.ts), so the spelling is Postgres's canonical one. Any other caller must pass a
+        // database-read id too; this function does not normalise it (that would also change the key the sibling erasers share).
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${patientId}))`);
       });
     },

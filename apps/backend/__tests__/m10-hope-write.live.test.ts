@@ -34,6 +34,7 @@ import {
   buildM10AdmissionWorkflowConsumer,
   createDbHopeBackend,
 } from "../src/modules/10-hope/index";
+import { busyWithin } from "./_hope-busy-within";
 import { answerHopeForSign } from "./_hope-sign-ready";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
@@ -276,6 +277,45 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     });
   }
 
+  /**
+   * The text of every statement a FRESH app-role backend sends while `run` executes. The spy goes on pg's Client
+   * BEFORE the probe pool opens its connections: `createDbClient` binds each client's `query` when it connects, so a
+   * spy installed after the suite's own pool is warm would never see its statements.
+   */
+  async function statementsDuring<T>(
+    run: (backend: typeof svc) => Promise<T>,
+    /** Runs just BEFORE each statement is sent (it can commit another transaction's write in between two reads). */
+    beforeSend?: (text: string) => Promise<void>,
+    /** Connections in the probe pool: concurrent calls need more than one, or they queue on the single connection. */
+    poolSize = 1,
+  ): Promise<{ out: T; sql: string[] }> {
+    const sql: string[] = [];
+    const original = Client.prototype.query;
+    const spy = vi.spyOn(Client.prototype, "query").mockImplementation(function (
+      this: Client,
+      ...args: unknown[]
+    ) {
+      const first = args[0] as string | { text?: string } | undefined;
+      const text = typeof first === "string" ? first : (first?.text ?? "");
+      sql.push(text);
+      const send = () => (original as (...a: unknown[]) => unknown).apply(this, args);
+      return beforeSend ? beforeSend(text).then(send) : send();
+    } as never);
+    const probe = createDbClient({ connectionString: appRoleUrl(DB_URL as string), max: poolSize });
+    try {
+      const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M10_OUTBOX_EVENTS]));
+      const backend = createDbHopeBackend(
+        probe.db,
+        { publish: (tx, e) => publisher.publish(tx as never, { ...e, callerModule: "m10" }) },
+        () => liveNow,
+      );
+      return { out: await run(backend), sql };
+    } finally {
+      spy.mockRestore();
+      await probe.close();
+    }
+  }
+
   /** Complete a draft until sign-ready — shared helper (_hope-sign-ready.ts), incl. the A1005/A1010 checklists. */
   const answerForSign = (id: string, overrides: Record<string, string> = {}): Promise<void> =>
     answerHopeForSign(
@@ -381,7 +421,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
     expect(draft.status).toBe("draft");
     await answerForSign(draft.id); // J2050A defaults to "0" (no symptom impact) → no trigger
-    const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+    const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id, {
+      attestationConfirmed: true,
+    });
     expect(signed.status).toBe("signed");
     expect((await svc.getAssessment(ORG_A, draft.id)).j2051TriggerFired).toBe(false);
     // The AFTER-UPDATE trigger closed the schedule.
@@ -486,7 +528,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect(ok.wasLate).toBe(false);
     });
 
-    it("an admin override past the deadline writes a CRITICAL hope.late_deadline_override audit with the justification", async () => {
+    it("an admin override past the deadline writes a CRITICAL hope.late_deadline_override audit with the request facts and no free text", async () => {
       const adm = await admitted();
       await seedSchedule(ORG_A, adm, "01_admission", WINDOW);
       liveNow = new Date("2026-06-30T12:00:00.000Z");
@@ -497,17 +539,35 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
         lateCompletionReasonCode: "admin_override",
         adminOverride: true,
         adminOverrideJustification: justification,
+        request: {
+          requestId: "req-override-1",
+          correlationId: "client-trace-1",
+          sourceIp: "203.0.113.9",
+          userAgent: "agent\r\n/2.0",
+        },
       });
       expect(row.wasLate).toBe(true);
       const audits = (
         await admin.query(
-          "SELECT severity, context FROM audit_event WHERE event_type='hope.late_deadline_override' AND resource_id=$1",
+          "SELECT severity, context, correlation_id, request_id, source_ip, user_agent FROM audit_event WHERE event_type='hope.late_deadline_override' AND resource_id=$1",
           [row.id],
         )
       ).rows;
       expect(audits).toHaveLength(1);
       expect(audits[0].severity).toBe("critical");
-      expect(audits[0].context).toMatchObject({ justification });
+      expect(audits[0]).toMatchObject({
+        correlation_id: `hope-late-deadline-override:${row.id}`,
+        request_id: "req-override-1",
+        source_ip: "203.0.113.9",
+        user_agent: "agent/2.0",
+      });
+      // The client's trace hint rides in the context; the typed justification never does (only that one was supplied).
+      expect(audits[0].context).toMatchObject({
+        clientCorrelationId: "client-trace-1",
+        justificationSupplied: true,
+      });
+      expect(audits[0].context).not.toHaveProperty("justification");
+      expect(JSON.stringify(audits[0].context)).not.toContain(justification);
     });
   });
 
@@ -593,7 +653,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     expect(await predicate(context(["np"]), target)).toBe(false);
 
     await answerForSign(draft.id);
-    await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+    await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id, { attestationConfirmed: true });
     const inactivation = await svc.inactivateTimepoint(ORG_A, memberOf[ORG_A], draft.id, {
       reason: "recorded against the wrong chart",
       authorDiscipline: "RN",
@@ -618,7 +678,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       recordArgs(QUIET_DATA),
     );
     await answerForSign(crossDisciplineOriginal.id);
-    await svc.signTimepoint(ORG_A, memberOf[ORG_A], crossDisciplineOriginal.id);
+    await svc.signTimepoint(ORG_A, memberOf[ORG_A], crossDisciplineOriginal.id, {
+      attestationConfirmed: true,
+    });
     const crossDisciplineInactivation = await svc.inactivateTimepoint(
       ORG_A,
       memberOf[ORG_A],
@@ -648,7 +710,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       recordArgs(QUIET_DATA),
     );
     await answerForSign(legacyOriginal.id);
-    await svc.signTimepoint(ORG_A, memberOf[ORG_A], legacyOriginal.id);
+    await svc.signTimepoint(ORG_A, memberOf[ORG_A], legacyOriginal.id, {
+      attestationConfirmed: true,
+    });
     await admin.query("UPDATE hope_assessment SET author_discipline=NULL WHERE id=$1", [
       legacyOriginal.id,
     ]);
@@ -691,6 +755,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       targetDate: new Date().toISOString(),
       authorDiscipline: "RN",
       data: SFV_DATA,
+      attestationConfirmed: true,
     });
     expect(completion.status).toBe("signed");
     // #850 — the ABAC resolver sees the RFA kind of the stored row, so the SFV author rule (LPN/LVN) can
@@ -703,7 +768,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     expect(await eventsFor(sfv!.id)).toContain("m10.hope.sfv_completed");
     // Now the admission record signs, carrying the server-authoritative trigger verdict.
     await answerForSign(draft.id);
-    const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+    const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id, {
+      attestationConfirmed: true,
+    });
     expect(signed.status).toBe("signed");
     const view = await svc.getAssessment(ORG_A, draft.id);
     expect(view.j2051TriggerFired).toBe(true);
@@ -785,7 +852,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       await seedSchedule(ORG_A, adm);
       const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
       await answerForSign(draft.id);
-      await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+      await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id, { attestationConfirmed: true });
       expect((await svc.getAssessment(ORG_A, draft.id)).snapshot).toEqual({ pps: 60, esas_r: 4 });
       expect(await d8Findings(draft.id)).toHaveLength(0);
     });
@@ -798,7 +865,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       await seedSchedule(ORG_A, adm);
       const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
       await answerForSign(draft.id);
-      const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+      const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id, {
+        attestationConfirmed: true,
+      });
       expect(signed.status).toBe("signed"); // §7.13 — never blocking
       expect((await svc.getAssessment(ORG_A, draft.id)).snapshot).toEqual({ pps: null, esas_r: 7 });
       const findings = await d8Findings(draft.id);
@@ -812,7 +881,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       await seedSchedule(ORG_A, adm);
       const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
       await answerForSign(draft.id);
-      const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+      const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id, {
+        attestationConfirmed: true,
+      });
       expect(signed.status).toBe("signed");
       expect((await svc.getAssessment(ORG_A, draft.id)).snapshot).toBeNull();
       expect(await d8Findings(draft.id)).toHaveLength(1);
@@ -828,7 +899,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
       await answerForSign(draft.id);
       __resetSeamsForTest();
-      const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+      const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id, {
+        attestationConfirmed: true,
+      });
       expect(signed.status).toBe("signed");
       expect((await svc.getAssessment(ORG_A, draft.id)).snapshot).toBeNull();
       // The finding row needs the NOT NULL siting the M6 seam supplies, so it cannot be written here —
@@ -842,7 +915,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     await seedSchedule(ORG_A, adm);
     const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
     await answerForSign(draft.id);
-    await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+    await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id, { attestationConfirmed: true });
     const signed = await svc.getAssessment(ORG_A, draft.id);
     const corrected = await svc.correctTimepoint(ORG_A, memberOf[ORG_A], signed.id, {
       correctionReason: "corrected section J after re-review",
@@ -857,7 +930,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     expect((await svc.getAssessment(ORG_A, signed.id)).status).toBe("signed");
     // Sign the correction with a substantive change (sign refuses NO_REGULATORY_CHANGES otherwise).
     await answerForSign(corrected.id, { A1400A: "0", A1400B: "1" }); // payer: Medicare → Medicaid
-    await svc.signTimepoint(ORG_A, memberOf[ORG_A], corrected.id);
+    await svc.signTimepoint(ORG_A, memberOf[ORG_A], corrected.id, { attestationConfirmed: true });
     const original = await svc.getAssessment(ORG_A, signed.id);
     expect(original.status).toBe("superseded");
     expect(original.supersededByAssessmentId).toBe(corrected.id);
@@ -888,10 +961,344 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       }),
     ).rejects.toMatchObject({ statusCode: 409 });
     await answerForSign(draft.id);
-    await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+    await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id, { attestationConfirmed: true });
     await expect(svc.updateDraft(ORG_A, draft.id, { A: { A1: "y" } })).rejects.toMatchObject({
       statusCode: 409,
     });
+  });
+
+  it("recording a timepoint whose target date predates every loaded spec is a typed 422 (M10_SPEC_NOT_IN_FORCE), not a 500, and records no assessment", async () => {
+    const adm = await admitted();
+    await seedSchedule(ORG_A, adm);
+
+    const failure = await svc
+      .recordTimepoint(ORG_A, memberOf[ORG_A], adm, {
+        ...recordArgs(QUIET_DATA),
+        targetDate: "2025-09-30T12:00:00.000Z", // the first loaded spec is in force from 2025-10-01
+      })
+      .catch((e: unknown) => e);
+
+    expect(failure).toMatchObject({ code: "M10_SPEC_NOT_IN_FORCE", statusCode: 422 });
+    expect(String((failure as Error).message)).not.toContain("2025-09-30");
+    expect(
+      (await admin.query("SELECT 1 FROM hope_assessment WHERE admission_id=$1", [adm])).rows,
+    ).toEqual([]);
+  });
+
+  describe("lock discipline — locked re-judging, bounded waits, serialised check-then-insert", () => {
+    const outcome = (p: Promise<unknown>) =>
+      p.then(
+        () => null,
+        (e: { code?: string; statusCode?: number }) => `${e.statusCode}:${e.code ?? "OTHER"}`,
+      );
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    /** A second connection holding the assessment row lock, as a concurrent writer would. */
+    async function holdAssessment(id: string): Promise<Client> {
+      const holder = new Client({ connectionString: DB_URL });
+      await holder.connect();
+      await holder.query("BEGIN");
+      await holder.query("SELECT 1 FROM hope_assessment WHERE id=$1 FOR UPDATE", [id]);
+      return holder;
+    }
+    /** Wait until the statement under test is parked in a lock wait whose SQL names `table` (quoted). */
+    async function awaitBlockedOn(table: string): Promise<void> {
+      for (let i = 0; i < 100; i += 1) {
+        const { rows } = await admin.query(
+          `SELECT 1 FROM pg_stat_activity
+            WHERE datname = current_database() AND pid <> pg_backend_pid()
+              AND wait_event_type = 'Lock' AND query ILIKE $1`,
+          [`%"${table}"%`],
+        );
+        if (rows.length > 0) return;
+        await sleep(50);
+      }
+      throw new Error(`no statement ever became blocked on a ${table} lock`);
+    }
+    async function freshDraft(): Promise<string> {
+      const adm = await admitted();
+      await seedSchedule(ORG_A, adm);
+      return (await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA))).id;
+    }
+    const patchInput = (version: number) => ({
+      ifVersion: version,
+      changes: [
+        { itemCode: "J2050A", action: "set" as const, value: "1" },
+        { itemCode: "J2050B", action: "set" as const, value: today() },
+        { itemCode: "J2051A", action: "set" as const, value: "2" },
+      ],
+    });
+
+    it("updateDraft parked behind a sign refuses on the locked row and never rewrites the signed record", async () => {
+      const id = await freshDraft();
+      const before = (await admin.query("SELECT data FROM hope_assessment WHERE id=$1", [id]))
+        .rows[0].data;
+      const holder = await holdAssessment(id);
+      try {
+        const edit = outcome(svc.updateDraft(ORG_A, id, { A: { A1: "rewritten after sign" } }));
+        await awaitBlockedOn("hope_assessment");
+        await holder.query(
+          "UPDATE hope_assessment SET status='signed', signed_at=now(), signed_by_membership_id=$2, version=version+1 WHERE id=$1",
+          [id, memberOf[ORG_A]],
+        );
+        await holder.query("COMMIT");
+        expect(await edit).toBe("409:M10_CORRECTION_TARGET_NOT_SIGNED");
+        const after = (
+          await admin.query("SELECT data, status FROM hope_assessment WHERE id=$1", [id])
+        ).rows[0];
+        expect(after.status).toBe("signed");
+        expect(after.data).toEqual(before);
+      } finally {
+        await holder.end();
+      }
+    });
+
+    it("updateDraft is scoped to its own organization", async () => {
+      const id = await freshDraft();
+      await expect(svc.updateDraft(ORG_B, id, { A: { A1: "x" } })).rejects.toMatchObject({
+        statusCode: 404,
+      });
+      const row = (await admin.query("SELECT data FROM hope_assessment WHERE id=$1", [id])).rows[0];
+      expect(JSON.stringify(row.data)).not.toContain('"A1":"x"');
+    });
+
+    it("a patch behind a long-held assessment lock answers a retryable 409 instead of waiting for the lock", async () => {
+      const id = await freshDraft();
+      const ws = await svc.getAssessmentWorkspace(ORG_A, id);
+      const holder = await holdAssessment(id);
+      try {
+        // The holder never lets go during the call, so an unbounded wait would hang here; the 409 IS the proof that the wait ended.
+        const result = await outcome(
+          svc.patchAssessmentAnswers(ORG_A, memberOf[ORG_A], id, patchInput(ws.assessment.version)),
+        );
+        expect(result).toBe("409:M10_RECORD_BUSY");
+      } finally {
+        await holder.query("ROLLBACK");
+        await holder.end();
+      }
+      // The refusal left nothing behind and the record is usable again once the lock is free.
+      const reopened = await svc.getAssessmentWorkspace(ORG_A, id);
+      expect(reopened.assessment.version).toBe(ws.assessment.version);
+      await svc.patchAssessmentAnswers(
+        ORG_A,
+        memberOf[ORG_A],
+        id,
+        patchInput(reopened.assessment.version),
+      );
+    }, 30_000);
+
+    it("a patch naming a protected or unknown item is refused BEFORE it queues for any lock", async () => {
+      const id = await freshDraft();
+      const ws = await svc.getAssessmentWorkspace(ORG_A, id);
+      const holder = await holdAssessment(id);
+      try {
+        for (const [itemCode, status] of [
+          ["A0050", 403],
+          ["ZZ9999", 404],
+        ] as const) {
+          const refused = svc.patchAssessmentAnswers(ORG_A, memberOf[ORG_A], id, {
+            ifVersion: ws.assessment.version,
+            changes: [{ itemCode, action: "set", value: "1" }],
+          });
+          // A patch that queued for the held lock would end as the busy 409 after the lock timeout, never as this 403 / 404.
+          await expect(refused).rejects.toMatchObject({ statusCode: status });
+        }
+      } finally {
+        await holder.query("ROLLBACK");
+        await holder.end();
+      }
+    });
+
+    it("opening an already-reconciled draft's workspace takes no assessment lock", async () => {
+      const id = await freshDraft();
+      await svc.getAssessmentWorkspace(ORG_A, id); // reconciles the workflow control answers once
+      const holder = await holdAssessment(id);
+      try {
+        // A workspace read that queued for the held lock would end as the busy 409 after the lock timeout, not resolve.
+        await expect(svc.getAssessmentWorkspace(ORG_A, id)).resolves.toBeTruthy();
+      } finally {
+        await holder.query("ROLLBACK");
+        await holder.end();
+      }
+    });
+
+    it("a lock that waited out a partition move retries on the moved row instead of failing 40001", async () => {
+      const id = await freshDraft();
+      const ws = await svc.getAssessmentWorkspace(ORG_A, id);
+      const holder = await holdAssessment(id);
+      try {
+        const patched = outcome(
+          svc.patchAssessmentAnswers(ORG_A, memberOf[ORG_A], id, patchInput(ws.assessment.version)),
+        );
+        await awaitBlockedOn("hope_assessment");
+        // What setHuvCompletionDate does to the row: a new target month moves it to another partition (delete + insert).
+        await holder.query(
+          "UPDATE hope_assessment SET target_date = target_date + interval '1 month' WHERE id=$1",
+          [id],
+        );
+        await holder.query("COMMIT");
+        expect(await patched).toBeNull();
+        const row = (await admin.query("SELECT version FROM hope_assessment WHERE id=$1", [id]))
+          .rows[0];
+        expect(row.version).toBe(ws.assessment.version + 1);
+      } finally {
+        await holder.end();
+      }
+    }, 30_000);
+
+    it("a legacy spec-less draft's spec initialisation commits BEFORE the workspace prefill starts (its row lock is not held across the seam calls)", async () => {
+      const id = await freshDraft();
+      await admin.query(
+        "UPDATE hope_assessment SET spec_version_id = NULL, isc = NULL WHERE id=$1",
+        [id],
+      );
+
+      const { sql } = await statementsDuring((b) => b.getAssessmentWorkspace(ORG_A, id));
+
+      const init = sql.findIndex((text) => /^update "hope_assessment"/i.test(text.trim()));
+      expect(init).toBeGreaterThanOrEqual(0);
+      // The prefill's first statement reads the spec version's code; the init transaction must have committed before it.
+      const prefill = sql.findIndex(
+        (text, i) => i > init && /from "hope_spec_version"/i.test(text) && /"code"/i.test(text),
+      );
+      const commitBetween = sql.findIndex(
+        (text, i) => i > init && (prefill < 0 || i < prefill) && /^commit/i.test(text.trim()),
+      );
+      expect(prefill).toBeGreaterThan(init);
+      expect(commitBetween).toBeGreaterThan(init);
+    });
+
+    it("a sign behind a long-held assessment lock answers a retryable 409 instead of waiting for the lock and leaves the draft a draft", async () => {
+      const id = await freshDraft();
+      const before = (
+        await admin.query("SELECT status, version FROM hope_assessment WHERE id=$1", [id])
+      ).rows[0];
+      const holder = await holdAssessment(id);
+
+      const result = await busyWithin(
+        svc.signTimepoint(ORG_A, memberOf[ORG_A], id, { attestationConfirmed: true }),
+        holder,
+      );
+
+      expect(result).toBe("409:M10_RECORD_BUSY");
+      const after = (
+        await admin.query("SELECT status, version FROM hope_assessment WHERE id=$1", [id])
+      ).rows[0];
+      expect(after).toEqual(before);
+    }, 30_000);
+
+    it("a sign that was waiting on a row that moved partition (a HUV completion date) retries once on the moved row instead of failing 40001", async () => {
+      // A draft that is NOT sign-ready: a sign that gets past its lock on the moved row then stops at the readiness check
+      // (a typed 422) and rolls back, so this test leaves no signed record behind for the tests that follow it.
+      const id = await freshDraft();
+      const holder = await holdAssessment(id);
+      try {
+        const signing = outcome(
+          svc.signTimepoint(ORG_A, memberOf[ORG_A], id, { attestationConfirmed: true }),
+        );
+        await awaitBlockedOn("hope_assessment");
+        // What setHuvCompletionDate does to the row: a new target month moves it to another partition (delete + insert).
+        await holder.query(
+          "UPDATE hope_assessment SET target_date = target_date + interval '1 month' WHERE id=$1",
+          [id],
+        );
+        await holder.query("COMMIT");
+
+        // Before the retry this was the raw `40001` (no typed code); now the lock finds the moved row and the sign judges it.
+        expect(await signing).toBe("422:VALIDATION_FAILED");
+      } finally {
+        await holder.end();
+      }
+      expect(
+        (await admin.query("SELECT status FROM hope_assessment WHERE id=$1", [id])).rows[0].status,
+      ).toBe("draft");
+    }, 30_000);
+
+    it("opening a legacy spec-less draft behind a long-held assessment lock answers the same retryable 409 (its spec-freezing UPDATE is bounded too)", async () => {
+      const id = await freshDraft();
+      await admin.query(
+        "UPDATE hope_assessment SET spec_version_id = NULL, isc = NULL WHERE id=$1",
+        [id],
+      );
+      const holder = await holdAssessment(id);
+
+      const result = await busyWithin(svc.getAssessmentWorkspace(ORG_A, id), holder);
+
+      expect(result).toBe("409:M10_RECORD_BUSY");
+      const row = (
+        await admin.query("SELECT spec_version_id FROM hope_assessment WHERE id=$1", [id])
+      ).rows[0];
+      expect(row.spec_version_id).toBeNull(); // nothing was frozen: the refusal left the draft as it was
+    }, 30_000);
+
+    it("two concurrent records of the same admission RFA converge on ONE draft", async () => {
+      const adm = await admitted();
+      await seedSchedule(ORG_A, adm);
+      let delayed = false;
+      const slowFirstInsert = async (text: string): Promise<void> => {
+        if (delayed || !/insert into "hope_assessment" /i.test(text)) return;
+        delayed = true;
+        await sleep(600); // the other call's existing-draft read lands in this window
+      };
+      const { out } = await statementsDuring(
+        (b) =>
+          Promise.all([
+            b.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA)),
+            b.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA)),
+          ]),
+        slowFirstInsert,
+        4,
+      );
+      expect(out[0].id).toBe(out[1].id);
+      const { rows } = await admin.query(
+        "SELECT id FROM hope_assessment WHERE admission_id=$1 AND rfa_kind='01_admission' AND status='draft'",
+        [adm],
+      );
+      expect(rows).toHaveLength(1);
+    });
+
+    it("two concurrent corrections of one signed record leave ONE pending correction", async () => {
+      const id = await freshDraft();
+      // The final validator's section-presence check reads `hope_assessment.data` (see seedSignedAssessment below).
+      const sections = Object.fromEntries(
+        ["A", "B", "C", "D", "E", "F", "G", "H", "I", "K", "M", "N", "O", "Q", "X", "Z"].map(
+          (s) => [s, { presentForValidation: true }],
+        ),
+      );
+      await admin.query("UPDATE hope_assessment SET data = data || $2::jsonb WHERE id=$1", [
+        id,
+        JSON.stringify(sections),
+      ]);
+      await answerForSign(id);
+      await svc.signTimepoint(ORG_A, memberOf[ORG_A], id, { attestationConfirmed: true });
+      const correct = (b: typeof svc) =>
+        outcome(
+          b.correctTimepoint(ORG_A, memberOf[ORG_A], id, {
+            correctionReason: "concurrent correction",
+            targetDate: new Date().toISOString(),
+            authorDiscipline: "RN",
+            data: QUIET_DATA,
+          }),
+        );
+      let delayed = false;
+      const slowFirstInsert = async (text: string): Promise<void> => {
+        if (delayed || !/insert into "hope_assessment" /i.test(text)) return;
+        delayed = true;
+        await sleep(600);
+      };
+      const { out } = await statementsDuring(
+        (b) => Promise.all([correct(b), correct(b)]),
+        slowFirstInsert,
+        4,
+      );
+      // One created the correction; the other saw it pending and was refused.
+      expect(out.filter((code) => code === null)).toHaveLength(1);
+      expect(out.filter((code) => code === "409:CONFLICT")).toHaveLength(1);
+      const { rows } = await admin.query(
+        "SELECT id FROM hope_assessment WHERE corrects_assessment_id=$1 AND status='draft'",
+        [id],
+      );
+      expect(rows).toHaveLength(1);
+    }, 30_000);
   });
 
   it("skipSchedule marks the schedule skipped", async () => {
@@ -978,6 +1385,452 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     ).rows[0].id as string;
     const requeued = await svc.retrySubmission(ORG_A, rejected);
     expect(requeued.status).toBe("queued");
+  });
+
+  describe("R-08 — cancel a package that was never uploaded", () => {
+    const stubVendor = (): void => {
+      vi.stubEnv("CHARTWARDEN_SOFTWARE_VENDOR_ID", "12-3456789");
+      vi.stubEnv("CHARTWARDEN_SOFTWARE_VENDOR_NAME", "ChartWarden Test Vendor");
+      vi.stubEnv("CHARTWARDEN_SOFTWARE_VENDOR_EMAIL", "hope@vendor.test");
+      vi.stubEnv("APP_VERSION", "2026.9.26");
+    };
+    const subRow = async (id: string) =>
+      (await admin.query("SELECT * FROM hope_submission WHERE id=$1", [id])).rows[0];
+    const itemRows = async (id: string) =>
+      (
+        await admin.query(
+          "SELECT hope_assessment_id, item_status, xml_sha256, iqies_validation_result FROM hope_submission_item WHERE hope_submission_id=$1 ORDER BY hope_assessment_id",
+          [id],
+        )
+      ).rows;
+    const errorCode = (p: Promise<unknown>) =>
+      p.then(
+        () => null,
+        (e: { code?: string; statusCode?: number }) => `${e.statusCode}:${e.code ?? "OTHER"}`,
+      );
+    /**
+     * A signed, assemble-able admission record of its own (this block must not depend on which earlier tests
+     * managed to sign). The final validator's section-presence check reads `hope_assessment.data`, so the
+     * required sections are presented there before the canonical answers complete the record.
+     */
+    async function seedSignedAssessment(): Promise<string> {
+      const adm = await admitted();
+      await seedSchedule(ORG_A, adm);
+      const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+      const sections = Object.fromEntries(
+        ["A", "B", "C", "D", "E", "F", "G", "H", "I", "K", "M", "N", "O", "Q", "X", "Z"].map(
+          (s) => [s, { presentForValidation: true }],
+        ),
+      );
+      await admin.query("UPDATE hope_assessment SET data = data || $2::jsonb WHERE id=$1", [
+        draft.id,
+        JSON.stringify(sections),
+      ]);
+      await answerForSign(draft.id);
+      await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id, { attestationConfirmed: true }); // R-05: signing needs the attestation
+      return draft.id;
+    }
+    /** Release whatever earlier tests left packaged, then package every signed assessment afresh. */
+    async function freshPackage(): Promise<string> {
+      await seedSignedAssessment();
+      const { rows: live } = await admin.query(
+        "SELECT id FROM hope_submission WHERE organization_id=$1 AND status IN ('packaged','exported')",
+        [ORG_A],
+      );
+      for (const { id } of live)
+        await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id as string, {
+          reasonCode: "generated_in_error",
+        });
+      stubVendor();
+      return (await svc.assembleSubmission(ORG_A, providerOf[ORG_A]!)).id;
+    }
+
+    it("assemble -> cancel -> assemble again re-packages the SAME assessments in a NEW batch, keeping the evidence", async () => {
+      const first = await freshPackage();
+      const before = await subRow(first);
+      const itemsBefore = await itemRows(first);
+      expect(itemsBefore.length).toBeGreaterThan(0);
+      stubVendor();
+      // While the package is live its assessments are locked in it (the partial unique index's job).
+      await expect(svc.assembleSubmission(ORG_A, providerOf[ORG_A]!)).rejects.toMatchObject({
+        statusCode: 409,
+      });
+
+      const cancelled = await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, first, {
+        reasonCode: "package_lost",
+      });
+      expect(cancelled.status).toBe("cancelled");
+      expect(cancelled.cancelReasonCode).toBe("package_lost");
+      const after = await subRow(first);
+      expect(after.status).toBe("cancelled");
+      expect(after.cancel_reason_code).toBe("package_lost");
+      expect(after.cancelled_by_membership_id).toBe(memberOf[ORG_A]);
+      expect(after.cancelled_at).toBeInstanceOf(Date);
+      // The stored evidence is never deleted or rewritten: package bytes + hash, per-record XML + hash.
+      expect(after.acceptance_report.packageContentBase64).toBe(
+        before.acceptance_report.packageContentBase64,
+      );
+      expect(after.package_sha256).toBe(before.package_sha256);
+      const itemsAfter = await itemRows(first);
+      expect(itemsAfter.map((i) => i.item_status)).toEqual(itemsAfter.map(() => "cancelled"));
+      expect(itemsAfter.map((i) => i.xml_sha256)).toEqual(itemsBefore.map((i) => i.xml_sha256));
+      expect(itemsAfter.map((i) => i.iqies_validation_result)).toEqual(
+        itemsBefore.map((i) => i.iqies_validation_result),
+      );
+      // A cancel before upload is not an outbox event: nothing downstream (M30/M33) saw it go out.
+      expect(await eventsFor(first)).toEqual(["m10.hope.submission_queued"]);
+
+      // The cancelled items no longer hold the unique pending slot: a new batch takes the same assessments.
+      stubVendor();
+      const second = await svc.assembleSubmission(ORG_A, providerOf[ORG_A]!);
+      expect(second.id).not.toBe(first);
+      expect(second.status).toBe("packaged");
+      const itemsSecond = await itemRows(second.id);
+      expect(itemsSecond.map((i) => i.hope_assessment_id)).toEqual(
+        itemsBefore.map((i) => i.hope_assessment_id),
+      );
+      expect(itemsSecond.every((i) => i.item_status === "pending")).toBe(true);
+    });
+
+    it("a cancelled batch refuses mark-uploaded, results, download and retry (409), and keeps its bytes", async () => {
+      const id = await freshPackage();
+      await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, { reasonCode: "never_uploaded" });
+      const [item] = await itemRows(id);
+      expect(await errorCode(svc.markSubmissionUploaded(ORG_A, memberOf[ORG_A]!, id, {}))).toBe(
+        "409:M10_SUBMISSION_CANCELLED",
+      );
+      expect(
+        await errorCode(
+          svc.importSubmissionResult(ORG_A, memberOf[ORG_A]!, id, {
+            results: [{ assessmentId: item.hope_assessment_id, status: "accepted" }],
+          }),
+        ),
+      ).toBe("409:M10_SUBMISSION_CANCELLED");
+      expect(await errorCode(svc.downloadSubmissionPackage(ORG_A, id))).toBe(
+        "409:M10_SUBMISSION_CANCELLED",
+      );
+      expect(await errorCode(svc.retrySubmission(ORG_A, id))).toBe(
+        "409:M10_SUBMISSION_RETRY_NOT_REJECTED",
+      );
+      const row = await subRow(id);
+      expect(row.status).toBe("cancelled");
+      expect(row.transmitted_at).toBeNull();
+      expect(row.acceptance_report.packageContentBase64).toEqual(expect.any(String));
+    });
+
+    it("refuses after mark-uploaded (409) and for any non-packaged status; replay and a concurrent double cancel are safe", async () => {
+      const uploaded = await freshPackage();
+      await svc.markSubmissionUploaded(ORG_A, memberOf[ORG_A]!, uploaded, {});
+      expect(
+        await errorCode(
+          svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, uploaded, { reasonCode: "other" }),
+        ),
+      ).toBe("409:M10_SUBMISSION_CANCEL_NOT_ALLOWED");
+      expect((await subRow(uploaded)).status).toBe("submitted_pending_result");
+
+      for (const status of ["rejected", "queued", "accepted", "file_error"]) {
+        const seeded = (
+          await admin.query(
+            `INSERT INTO hope_submission (organization_id, provider_entity_id, submission_period, status, item_count)
+             VALUES ($1,$2,'2026-06',$3,1) RETURNING id`,
+            [ORG_A, providerOf[ORG_A], status],
+          )
+        ).rows[0].id as string;
+        expect(
+          await errorCode(
+            svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, seeded, { reasonCode: "other" }),
+          ),
+        ).toBe("409:M10_SUBMISSION_CANCEL_NOT_ALLOWED");
+      }
+
+      // The uploaded batch is the only live one now; release it for the replay case via a fresh package.
+      await admin.query("UPDATE hope_submission SET status='accepted' WHERE id=$1", [uploaded]);
+      await admin.query(
+        "UPDATE hope_submission_item SET item_status='accepted' WHERE hope_submission_id=$1",
+        [uploaded],
+      );
+      const id = await freshPackage();
+      const [a, b] = await Promise.all([
+        svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, { reasonCode: "package_lost" }),
+        svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, { reasonCode: "other" }),
+      ]);
+      expect([a.status, b.status]).toEqual(["cancelled", "cancelled"]);
+      expect(a.cancelReasonCode).toBe(b.cancelReasonCode); // one winner; the loser replays its view
+      const replay = await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, {
+        reasonCode: "other",
+      });
+      expect(replay).toEqual(a);
+      expect((await subRow(id)).cancel_reason_code).toBe(a.cancelReasonCode);
+    });
+
+    /** A second connection holding the batch row lock, as a concurrent cancel / mark-uploaded would. */
+    async function holdRowLock(id: string): Promise<Client> {
+      const holder = new Client({ connectionString: DB_URL });
+      await holder.connect();
+      await holder.query("BEGIN");
+      await holder.query("SELECT 1 FROM hope_submission WHERE id=$1 FOR UPDATE", [id]);
+      return holder;
+    }
+    /**
+     * Wait until the statement UNDER TEST is parked on a lock: a backend of this database, other than the
+     * polling connection, in a lock wait whose SQL names `hope_submission` (the quoted table, so a wait on
+     * `hope_submission_item` or any unrelated table never satisfies it). A bare "some lock is ungranted"
+     * check would release the test on someone else's wait and let the holder commit before the statement
+     * under test had queued, which silently drops the ordering these tests exist to prove.
+     */
+    async function awaitBlockedStatement(): Promise<void> {
+      for (let i = 0; i < 100; i += 1) {
+        const { rows } = await admin.query(
+          `SELECT 1 FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND pid <> pg_backend_pid()
+              AND wait_event_type = 'Lock'
+              AND query ILIKE '%"hope_submission"%'`,
+        );
+        if (rows.length > 0) return;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error("the statement under test never became blocked on a hope_submission lock");
+    }
+    /** What a committed cancel leaves on the batch (the same columns cancelHopeSubmission writes). */
+    const cancelAsHolder = async (holder: Client, id: string): Promise<void> => {
+      await holder.query(
+        "UPDATE hope_submission_item SET item_status='cancelled' WHERE hope_submission_id=$1",
+        [id],
+      );
+      await holder.query(
+        "UPDATE hope_submission SET status='cancelled', cancelled_at=now(), cancelled_by_membership_id=$2, cancel_reason_code='other' WHERE id=$1",
+        [id, memberOf[ORG_A]],
+      );
+      await holder.query("COMMIT");
+    };
+
+    it("a download parked behind a cancel is refused and never resurrects the cancelled batch", async () => {
+      const id = await freshPackage();
+      const holder = await holdRowLock(id);
+      try {
+        const download = errorCode(svc.downloadSubmissionPackage(ORG_A, id));
+        // The download reads the still-`packaged` row, then its packaged->exported write queues behind the cancel.
+        await awaitBlockedStatement();
+        await cancelAsHolder(holder, id);
+        expect(await download).toBe("409:M10_SUBMISSION_CANCELLED");
+        const row = await subRow(id);
+        expect(row.status).toBe("cancelled");
+        expect(row.exported_at).toBeNull();
+      } finally {
+        await holder.end();
+      }
+    });
+
+    it("mark-uploaded parked behind a cancel is refused as cancelled and never marks the batch uploaded", async () => {
+      const id = await freshPackage();
+      const holder = await holdRowLock(id);
+      try {
+        const marked = errorCode(svc.markSubmissionUploaded(ORG_A, memberOf[ORG_A]!, id, {}));
+        await awaitBlockedStatement();
+        await cancelAsHolder(holder, id);
+        expect(await marked).toBe("409:M10_SUBMISSION_CANCELLED");
+        const row = await subRow(id);
+        expect(row.status).toBe("cancelled");
+        expect(row.transmitted_at).toBeNull();
+      } finally {
+        await holder.end();
+      }
+    });
+
+    it("a download parked behind mark-uploaded still streams, but never writes exported over the uploaded batch", async () => {
+      const id = await freshPackage();
+      const holder = await holdRowLock(id);
+      try {
+        const download = svc.downloadSubmissionPackage(ORG_A, id).then((r) => r.bytes.length);
+        await awaitBlockedStatement();
+        await holder.query(
+          "UPDATE hope_submission SET status='submitted_pending_result', transmitted_at=now(), submitted_at=now() WHERE id=$1",
+          [id],
+        );
+        await holder.query("COMMIT");
+        expect(await download).toBeGreaterThan(0);
+        const row = await subRow(id);
+        expect(row.status).toBe("submitted_pending_result");
+        expect(row.exported_at).toBeNull();
+      } finally {
+        await holder.end();
+      }
+    });
+
+    it.each<readonly [string, (id: string) => Promise<unknown>]>([
+      [
+        "cancel",
+        (id: string) => svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, { reasonCode: "other" }),
+      ],
+      [
+        "mark-uploaded",
+        (id: string) => svc.markSubmissionUploaded(ORG_A, memberOf[ORG_A]!, id, {}),
+      ],
+      [
+        "download (its packaged->exported write)",
+        (id: string) => svc.downloadSubmissionPackage(ORG_A, id),
+      ],
+    ])(
+      "a %s behind a long-held batch lock answers a retryable 409 instead of waiting for the lock and leaves the batch packaged",
+      async (_label, call) => {
+        const id = await freshPackage();
+        const holder = await holdRowLock(id);
+
+        const result = await busyWithin(call(id), holder);
+
+        expect(result).toBe("409:M10_RECORD_BUSY");
+        const row = await subRow(id);
+        expect(row.status).toBe("packaged");
+        expect(row.exported_at).toBeNull();
+        expect(row.transmitted_at).toBeNull();
+        expect(row.cancelled_at).toBeNull();
+      },
+      30_000,
+    );
+
+    it("re-downloading an exported batch does not queue behind a lock on its row (only packaged->exported serialises)", async () => {
+      const id = await freshPackage();
+      await svc.downloadSubmissionPackage(ORG_A, id); // packaged -> exported
+      expect((await subRow(id)).status).toBe("exported");
+      const holder = await holdRowLock(id);
+      try {
+        // A download that queued for the held lock would end as the busy 409 after the lock timeout, not stream.
+        await expect(svc.downloadSubmissionPackage(ORG_A, id)).resolves.toBeTruthy();
+      } finally {
+        await holder.query("ROLLBACK");
+        await holder.end();
+      }
+    });
+
+    it("a download refuses a cancelled batch without reading its package column, and reads it only to stream", async () => {
+      const id = await freshPackage();
+      const streamed = await statementsDuring((b) => b.downloadSubmissionPackage(ORG_A, id));
+      expect(streamed.out.bytes.length).toBeGreaterThan(0);
+      // The package ZIP (multi-MB base64) is read by exactly one statement, the one that streams it.
+      expect(streamed.sql.filter((q) => q.includes('"acceptance_report"'))).toHaveLength(1);
+      await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, { reasonCode: "never_uploaded" });
+      const refused = await statementsDuring((b) =>
+        errorCode(b.downloadSubmissionPackage(ORG_A, id)),
+      );
+      expect(refused.out).toBe("409:M10_SUBMISSION_CANCELLED");
+      // Not vacuous: the spy does see the statements this call sent.
+      expect(refused.sql.some((q) => q.includes('"hope_submission"'))).toBe(true);
+      expect(refused.sql.filter((q) => q.includes('"acceptance_report"'))).toEqual([]);
+    });
+
+    it("a download whose batch is cancelled between its two reads is refused, never streamed (an exported batch has no advance guard)", async () => {
+      const id = await freshPackage();
+      await svc.downloadSubmissionPackage(ORG_A, id); // packaged -> exported: nothing guards a later write
+      expect((await subRow(id)).status).toBe("exported");
+      let cancelledBetweenReads = false;
+      const cancelNow = async (text: string): Promise<void> => {
+        // The package column is read by exactly one statement, AFTER the light status read has already seen `exported`.
+        if (cancelledBetweenReads || !text.includes('"acceptance_report"')) return;
+        cancelledBetweenReads = true;
+        await admin.query(
+          "UPDATE hope_submission_item SET item_status='cancelled' WHERE hope_submission_id=$1",
+          [id],
+        );
+        await admin.query(
+          "UPDATE hope_submission SET status='cancelled', cancelled_at=now(), cancelled_by_membership_id=$2, cancel_reason_code='other' WHERE id=$1",
+          [id, memberOf[ORG_A]],
+        );
+      };
+
+      const racing = await statementsDuring(
+        (b) => errorCode(b.downloadSubmissionPackage(ORG_A, id)),
+        cancelNow,
+      );
+
+      expect(cancelledBetweenReads).toBe(true); // not vacuous: the cancel really landed between the reads
+      expect(racing.out).toBe("409:M10_SUBMISSION_CANCELLED");
+      // The status travels with the bytes in ONE statement, so the bytes only leave with the version that was judged.
+      const packageReads = racing.sql.filter((q) => q.includes('"acceptance_report"'));
+      expect(packageReads).toHaveLength(1);
+      expect(packageReads[0]).toMatch(/"status"/);
+      expect((await subRow(id)).status).toBe("cancelled");
+    });
+
+    it.each([
+      ["a Feb 30 (a JS Date would store March 2)", "2026-02-30T10:00:00Z"],
+      ["a timestamp with no offset (read in the server's local time)", "2026-06-07T10:00:00"],
+    ])(
+      "mark-uploaded refuses submittedAt %s with a 422 and leaves the batch packaged",
+      async (_label, submittedAt) => {
+        const id = await freshPackage();
+
+        const outcome = await errorCode(
+          svc.markSubmissionUploaded(ORG_A, memberOf[ORG_A]!, id, { submittedAt }),
+        );
+
+        expect(outcome).toBe("422:VALIDATION_FAILED");
+        const row = await subRow(id);
+        expect(row.status).toBe("packaged");
+        expect(row.transmitted_at).toBeNull();
+      },
+    );
+
+    it("the validation read refuses a submissionDate that does not exist before it reads anything", async () => {
+      const id = await seedSignedAssessment();
+
+      const outcome = await errorCode(
+        svc.getValidation(ORG_A, id, { mode: "final", submissionDate: "2026-02-30T10:00:00Z" }),
+      );
+
+      expect(outcome).toBe("422:VALIDATION_FAILED");
+    });
+
+    it("the database ties `cancelled` to its who/when/why: all three on a cancelled batch, none on any other", async () => {
+      const id = await freshPackage();
+      const refused = (sql: string, params: unknown[]) =>
+        expect(admin.query(sql, params)).rejects.toThrow(
+          /hope_submission_cancelled_provenance_check/,
+        );
+      await refused("UPDATE hope_submission SET status='cancelled' WHERE id=$1", [id]);
+      await refused(
+        "UPDATE hope_submission SET status='cancelled', cancelled_at=now(), cancel_reason_code='other' WHERE id=$1",
+        [id],
+      ); // no actor
+      await refused(
+        "UPDATE hope_submission SET cancelled_at=now(), cancelled_by_membership_id=$2, cancel_reason_code='other' WHERE id=$1",
+        [id, memberOf[ORG_A]],
+      ); // full provenance on a batch that is not cancelled
+      // Half-filled provenance on a batch that is not cancelled: the rule is all-or-none in BOTH directions.
+      await refused("UPDATE hope_submission SET cancel_reason_code='other' WHERE id=$1", [id]);
+      await refused("UPDATE hope_submission SET cancelled_at=now() WHERE id=$1", [id]);
+      await refused(
+        "UPDATE hope_submission SET cancelled_by_membership_id=$2, cancel_reason_code='other' WHERE id=$1",
+        [id, memberOf[ORG_A]],
+      );
+      const row = await subRow(id);
+      expect(row.status).toBe("packaged");
+      expect([row.cancelled_at, row.cancelled_by_membership_id, row.cancel_reason_code]).toEqual([
+        null,
+        null,
+        null,
+      ]);
+    });
+
+    it("is invisible to another tenant (404) and leaves the batch packaged", async () => {
+      const id = await freshPackage();
+      expect(
+        await errorCode(
+          svc.cancelSubmission(ORG_B, memberOf[ORG_B]!, id, { reasonCode: "package_lost" }),
+        ),
+      ).toBe("404:NOT_FOUND");
+      expect((await subRow(id)).status).toBe("packaged");
+    });
+
+    it("the database refuses a reason outside the fixed list (no free text, so no PHI)", async () => {
+      const id = await freshPackage();
+      await expect(
+        admin.query("UPDATE hope_submission SET cancel_reason_code=$2 WHERE id=$1", [
+          id,
+          "John Doe lost the package",
+        ]),
+      ).rejects.toThrow(/hope_submission_cancel_reason_code_check/);
+    });
   });
 
   it("requestSummaryPdf emits summary_requested for a real assessment", async () => {
@@ -1112,7 +1965,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     const adm = await admitted();
     await seedSchedule(ORG_A, adm);
     const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
-    await expect(svc.signTimepoint(ORG_B, memberOf[ORG_B], draft.id)).rejects.toMatchObject({
+    await expect(
+      svc.signTimepoint(ORG_B, memberOf[ORG_B], draft.id, { attestationConfirmed: true }),
+    ).rejects.toMatchObject({
       statusCode: 404,
     });
     await expect(svc.getAssessment(ORG_B, draft.id)).rejects.toMatchObject({ statusCode: 404 });

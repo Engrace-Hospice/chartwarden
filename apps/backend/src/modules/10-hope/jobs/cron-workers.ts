@@ -1,9 +1,9 @@
 // apps/backend/src/modules/10-hope/jobs/cron-workers.ts — the M10 §4.8 BullMQ cron worker construction
-// (TASK-040D, the M25 `25-remittance/jobs/cron-workers.ts` template). Wires EXACTLY TWO of M10's seven §4.8
-// queues into live Workers + repeatable Queues: `windows` (`hope-window-watchdog`) and `sfv`
-// (`sfv-watchdog`) — the clinical-path regulatory-clock watchdogs (HOPE timepoint window expiry, Symptom
-// Follow-up Visit deadlines). Phase 3 also bridges the transition edges into M36 through an injected
-// AlertEmitter seam; no M36 internals are imported here.
+// (TASK-040D, the M25 `25-remittance/jobs/cron-workers.ts` template). Builds a live Worker for each of the three §4.8
+// queues that are wired: `windows` (`hope-window-watchdog`), `sfv` (`sfv-watchdog`) — the clinical-path regulatory-clock
+// watchdogs (HOPE timepoint window expiry, Symptom Follow-up Visit deadlines) — and `retention` (`hope-retention-scan`,
+// GAP-181). The repeatable schedules for those three are registered in ./cron-schedule.ts. The watchdogs also bridge their
+// alerts into M36 through an injected AlertEmitter seam; no M36 internals are imported here.
 //
 // RECOVERY NOTE (2026-09 merge of the lost Aug 25–30 history). F-058/F-072 (#176/#178/#196) built an
 // automated three-stage §4.10 pipeline here (`assemble-hope-submission` → `iqies-submit-worker` →
@@ -15,14 +15,19 @@
 // manual package path can then never pick up, and the submit stage has no live transport (deny-stub).
 // The stage runners below are kept, exported and unit-tested for when a live iQIES transport exists.
 //
-// Each cron fans out over the active orgs, opens ONE per-org `withOrgContext` RLS envelope, reads via
-// ./cron-store, runs the PURE planner (planHopeWindowWatchdog / planSfvWatchdog from ./index), persists the
-// `changed===true` transitions, and publishes every planned event to the injected transactional-outbox
-// port — all inside that same tx. Unlike M25's crons (which dispatch M36 business alerts), M10's watchdogs
-// publish straight to the outbox; the `outbox` dependency is therefore NOT optional (the composition root
-// always constructs one wherever a DB client exists). Only `activeOrgs` carries the M25 lazy
-// fail-closed-thunk default. `M10_DLQ` is NOT constructed here as separate literal Queues — a later
-// composition-root step attaches DLQ-promotion alerting externally to the Workers this file returns.
+// The two watchdog ticks themselves live in ./watchdog-ticks.ts (the alert planning and delivery they share in
+// ./watchdog-alerts.ts; their header comments say what a tick guarantees and what it does not). Each tick fans out over
+// the active orgs, opens a per-org `withOrgContext` RLS envelope, reads via ./cron-store, runs the PURE planner
+// (planHopeWindowWatchdog / planSfvWatchdog from ./index), persists the transitions keyed on the status they were
+// planned from, and publishes the planned events to the injected transactional-outbox port inside that same tx; the
+// alerts are re-planned from the committed state and emitted AFTER the tx commits. This file wraps them
+// (`runHopeWindowWatchdogCron` / `runSfvWatchdogCron`) and builds the Workers. Unlike M25's crons
+// (which dispatch M36 business alerts), M10's watchdogs publish straight to the outbox; the `outbox` dependency is
+// therefore NOT optional (the composition root always constructs one wherever a DB client exists). `activeOrgs`, `iqies`
+// and `providerEntityCcn` carry the M25 lazy fail-closed default (an unbound-port rejection when a tick first reaches
+// them); `retentionHolds` has no default and the retention scan refuses to run without it (the same unbound-port
+// rejection, at run time). `M10_DLQ` is NOT constructed here as separate literal Queues — a
+// later composition-root step attaches DLQ-promotion alerting externally to the Workers this file returns.
 //
 // Nothing here runs at import (constructing a Worker opens Valkey) — same posture as M25.
 import type { DbClient } from "@chartwarden/db";
@@ -34,28 +39,16 @@ import {
 } from "@chartwarden/iqies-client";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { HopeDischargeReason, HopeRfaKind } from "@chartwarden/types";
-import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import { type ConnectionOptions, Worker } from "bullmq";
+import { lockRecordKey } from "../hope-assessment-lock";
+import { canonicalUuidOrNull, sameUuid } from "../hope-uuid";
 import { runHopeAssessmentValidation } from "../validation/run-validation";
 import { assemblableAssessmentsForOrg, persistAssembledSubmission } from "./assemble-store";
-import {
-  openHopeSchedulesForOrg,
-  openOrOverdueSfvsForOrg,
-  updateHopeScheduleStatus,
-  updateSfvStatus,
-} from "./cron-store";
-import {
-  type HopeScheduleSnapshot,
-  type M10QueueName,
-  M10_JOB_PARAMS,
-  M10_JOB_SCHEDULES,
-  M10_QUEUES,
-  type PlannedHopeEvent,
-  type SfvWatchdogSnapshot,
-  planHopeWindowWatchdog,
-  planSfvWatchdog,
-} from "./index";
+import { DeadlineError, M10_SEAM_READ_TIMEOUT_MS, withinDeadline } from "./deadline";
+import { M10_JOB_PARAMS, M10_QUEUES } from "./index";
 import { evaluateHopeRetention } from "./retention";
 import {
+  type RetentionReviewWrite,
   hopeRetentionFactsForOrg,
   insertRetentionReview,
   retentionReviewsForOrg,
@@ -73,6 +66,7 @@ import {
   applyItemTransition,
   claimSubmissionForTransmit,
   inFlightSubmissionsForOrg,
+  lockInFlightSubmission,
   pendingItemsForSubmission,
   queuedSubmissionsForOrg,
   recordReconcileOutcome,
@@ -80,12 +74,30 @@ import {
   releaseSubmission,
   writeValidationFindings,
 } from "./submission-store";
+import {
+  type HopeAlertEmitPort,
+  type PlannedM10AlertEmission,
+  describeError,
+  planM10AlertEmissions,
+} from "./watchdog-alerts";
+import {
+  type HopeOutboxPublishPort,
+  type WatchdogTickDeps,
+  boundCronLockWait,
+  runSfvWatchdogTick,
+  runWindowWatchdogTick,
+} from "./watchdog-ticks";
 
-/** The system actor id the crons stamp on their per-org `withOrgContext` reads (audit attribution). Chosen
- * to not collide with the other modules' `00000000-0000-0000-0000-0000000000xx` cron system-actor ids
- * (M25 `...e5`, M26 `...e6`, M7 `...07` — grepped the repo first). */
+// The alert planner and its ports live with the watchdog ticks; re-exported so existing importers keep working.
+export {
+  type HopeAlertEmitPort,
+  type HopeOutboxPublishPort,
+  type PlannedM10AlertEmission,
+  planM10AlertEmissions,
+};
+
 /**
- * The `app.user_id` a watchdog tick carries — the EMPTY-STRING system sentinel, which the M4 PHI
+ * The `app.user_id` the crons stamp on their per-org `withOrgContext` reads (audit attribution), and so what a watchdog tick carries — the EMPTY-STRING system sentinel, which the M4 PHI
  * write-audit triggers `NULLIF(...)` to NULL. A cron transition has no acting user.
  *
  * #48 — this was the synthetic uuid `00000000-0000-0000-0000-000000000010`, which has no `user` row.
@@ -99,33 +111,6 @@ import {
  * sentinel with this exact reasoning.
  */
 const M10_WORKER_SYSTEM_USER_ID = "";
-
-/** The two `hope-*-watchdog` job names this file wires (a narrower key set than `M10_JOB_PARAMS`/
- * `M10_JOB_SCHEDULES`, which also carry the five NOT-yet-wired §4.8 jobs). */
-type M10WatchdogJobName =
-  | "hope-retention-scan"
-  | "hope-window-watchdog"
-  | "sfv-watchdog"
-  | "assemble-hope-submission"
-  | "iqies-submit-worker"
-  | "iqies-reconcile-worker";
-
-/** The transactional-outbox port (§2.4) M10's watchdogs publish `m10.hope.*` events through, on the
- * caller's tx — the bound publisher validates every emit against the boot catalog and writes the
- * `outbox_event` row. Mirrors `HopeWriteOutboxPort` in ../hope-route-service-db.ts (kept local here so this
- * file takes no dependency on the route-service module). */
-export interface HopeOutboxPublishPort {
-  publish(
-    tx: DbClient,
-    input: {
-      readonly eventName: string;
-      readonly payload: Record<string, unknown>;
-      readonly organizationId: string;
-      readonly aggregateKind: string;
-      readonly aggregateId: string;
-    },
-  ): Promise<void>;
-}
 
 /** The M2 active-org enumerator the cron fan-out reads (runs under withPlatformContext when bound). */
 export interface ActiveOrgListPort {
@@ -152,25 +137,6 @@ export interface HopeRetentionOverridePort {
   overrideYearsForOrg(organizationId: string): Promise<number | null>;
 }
 
-export interface HopeAlertEmitPort {
-  emit(
-    orgId: string,
-    input: {
-      readonly eventType: string;
-      readonly payload: Record<string, unknown>;
-      readonly severity: "info" | "warn" | "critical";
-      readonly correlationId: string;
-    },
-  ): Promise<{ alertId: string; resolvedRecipientCount: number }>;
-}
-
-export interface PlannedM10AlertEmission {
-  readonly eventType: PlannedHopeEvent["eventName"];
-  readonly severity: "info" | "warn" | "critical";
-  readonly correlationId: string;
-  readonly payload: Record<string, unknown>;
-}
-
 /** The dep bag the composition root injects. `outbox` is required; `activeOrgs` defaults to a fail-closed
  * thunk until the integrator binds it (the M25 pattern). */
 export interface M10WorkerDeps {
@@ -184,9 +150,10 @@ export interface M10WorkerDeps {
   /** GAP-181 — optional tenant/state retention override (lengthen-only). */
   readonly retentionOverride?: HopeRetentionOverridePort;
   /**
-   * F-072 - the D6 iQIES adapter. Optional and fail-closed by default, exactly like `activeOrgs`: an
-   * unbound deployment's submit worker raises here, the job DLQs and the M36 DLQ alert fires. That
-   * visible failure is what lets the assemble cron run at all - a backlog that cannot be sent is loud.
+   * F-072 - the D6 iQIES adapter. Optional and fail-closed by default, exactly like `activeOrgs`: with none bound,
+   * `runIqiesSubmitCron` / `runIqiesReconcileCron` reject. Those stages are NOT registered, scheduled or given a Worker
+   * today (RECOVERY NOTE in the file header), so nothing runs them, no job DLQs and no M36 DLQ alert fires; the
+   * rejection is what a future wiring would surface.
    */
   readonly iqies?: IqiesAdapterPort;
   /** F-072 — the M1-owned CCN read the envelope is keyed on. See {@link ProviderEntityCcnPort}. */
@@ -200,6 +167,39 @@ export interface M10WorkerDeps {
 function unbound<T>(port: string, hint: string): Promise<T> {
   return Promise.reject(new Error(`M10_WORKER_PORT_UNBOUND: ${port} — ${hint}`));
 }
+
+/**
+ * Log one org's (or one batch's) cron failure with ids and the error label only, never the message (a driver message can
+ * carry bound values). The failures are also collected and thrown once at the end of the run, but an `AggregateError`'s
+ * message names no org, so this line is what says WHICH org or batch failed.
+ */
+function logCronFailure(job: string, scope: string, error: unknown): void {
+  // A timed-out port read names the read (our own text, never a driver message).
+  const read = error instanceof DeadlineError ? ` (${error.what})` : "";
+  console.error(`m10: ${job} failed for ${scope}${read}: ${describeError(error)}.`);
+}
+
+/** A reconcile transition met an item that was no longer `pending`. Logged by class (see `describeError`); the warning before it names the ids. */
+class ReconcileItemNotPendingError extends Error {
+  constructor() {
+    super("a reconcile transition met an item that was no longer pending");
+    this.name = "ReconcileItemNotPendingError";
+  }
+}
+
+/**
+ * One READ through a port into another module (M1, M2, M4 or the iQIES adapter), raced against `M10_SEAM_READ_TIMEOUT_MS`.
+ * The jobs below visit orgs and batches one after another, so a read that never answers would otherwise stall every later
+ * org without a log line; a timeout throws a `DeadlineError`, which fails THAT org or batch like any thrown error. Not used
+ * for a write (`iqies.submitBatch`: whether a local timeout may abandon a transmit in flight is a transport decision), nor
+ * for `listActiveOrgs` (it runs once, before any org).
+ */
+const readThroughPort = <T>(what: string, read: () => Promise<T>): Promise<T> =>
+  withinDeadline(
+    read,
+    M10_SEAM_READ_TIMEOUT_MS,
+    () => new DeadlineError(what, M10_SEAM_READ_TIMEOUT_MS),
+  );
 
 function activeOrgsOf(deps: M10WorkerDeps): ActiveOrgListPort {
   return (
@@ -262,186 +262,31 @@ export function buildM10WorkerDeps(deps: {
   };
 }
 
-/** The confirmed §2.4 outbox-catalog aggregate routing for each `PlannedHopeEvent` (events-by-m10.ts):
- * `timepoint_expired` targets the schedule; `sfv_overdue`/`sfv_missed` target the SFV. */
-function outboxTargetFor(event: PlannedHopeEvent): { aggregateKind: string; aggregateId: string } {
-  switch (event.eventName) {
-    case "m10.hope.timepoint_expired":
-      return {
-        aggregateKind: "hope_timepoint_schedule",
-        aggregateId: String(event.payload.scheduleId),
-      };
-    case "m10.hope.sfv_overdue":
-    case "m10.hope.sfv_missed":
-      return { aggregateKind: "symptom_follow_up_visit", aggregateId: String(event.payload.sfvId) };
-  }
-}
-
-export function planM10AlertEmissions(input: {
-  readonly organizationId: string;
-  readonly schedules: readonly HopeScheduleSnapshot[];
-  readonly sfvs: readonly SfvWatchdogSnapshot[];
-  readonly events: readonly PlannedHopeEvent[];
-}): PlannedM10AlertEmission[] {
-  const bySchedule = new Map(input.schedules.map((s) => [s.scheduleId, s]));
-  const bySfv = new Map(input.sfvs.map((s) => [s.sfvId, s]));
-  const emissions: PlannedM10AlertEmission[] = [];
-
-  for (const event of input.events) {
-    if (event.eventName === "m10.hope.timepoint_expired") {
-      const schedule = bySchedule.get(String(event.payload.scheduleId));
-      if (!schedule) continue;
-      emissions.push({
-        eventType: event.eventName,
-        severity: "critical",
-        correlationId: `${input.organizationId}:${event.eventName}:${schedule.scheduleId}:window_expired`,
-        payload: {
-          patientId: schedule.patientId,
-          admissionId: schedule.admissionId,
-          workflowType: schedule.rfaKind,
-          workflowItemId: schedule.scheduleId,
-          attentionState: "window_expired",
-          deadline: schedule.lateDeadlineAt,
-          deepLink: `/admissions/${schedule.admissionId}/hope`,
-          message: "A HOPE assessment timepoint has expired.",
-        },
-      });
-      continue;
-    }
-
-    const sfv = bySfv.get(String(event.payload.sfvId));
-    if (!sfv) continue;
-    const missed = event.eventName === "m10.hope.sfv_missed";
-    emissions.push({
-      eventType: event.eventName,
-      severity: "critical",
-      correlationId: `${input.organizationId}:${event.eventName}:${sfv.sfvId}:${
-        missed ? "missed" : "overdue"
-      }`,
-      payload: {
-        patientId: sfv.patientId,
-        admissionId: sfv.admissionId,
-        workflowType: "04_sfv",
-        workflowItemId: sfv.sfvId,
-        triggeringAssessmentId: sfv.triggeringAssessmentId,
-        attentionState: missed ? "missed" : "overdue",
-        deadline: sfv.dueAt,
-        deepLink: sfv.admissionId
-          ? `/admissions/${sfv.admissionId}/hope/sfv/${sfv.sfvId}`
-          : "/hope/sfv",
-        message: missed
-          ? "A HOPE symptom follow-up visit was missed."
-          : "A HOPE symptom follow-up visit is overdue.",
-      },
-    });
-  }
-
-  return emissions;
-}
-
 // ── the per-org cron runners (fan out over active orgs, RLS-scoped, outbox-publishing) ─────────────────────
 
-/** `hope-window-watchdog` (§4.8, every 15 min) — per org, flip every `open` schedule past its late deadline
- * to `expired` and publish `m10.hope.timepoint_expired` for each transition. */
-export async function runHopeWindowWatchdogCron(deps: M10WorkerDeps): Promise<void> {
-  const now = (deps.now ?? (() => new Date()))();
-  const orgs = await activeOrgsOf(deps).listActiveOrgs();
-  for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M10_WORKER_SYSTEM_USER_ID },
-      async (tx) => {
-        const t = tx as unknown as DbClient;
-        const schedules = await openHopeSchedulesForOrg(t, organizationId);
-        const plan = planHopeWindowWatchdog(schedules, now.toISOString());
-        for (const transition of plan.transitions) {
-          if (transition.changed) {
-            await updateHopeScheduleStatus(t, transition.scheduleId, transition.toStatus);
-          }
-        }
-        for (const event of plan.events) {
-          await deps.outbox.publish(t, {
-            eventName: event.eventName,
-            payload: event.payload,
-            organizationId,
-            ...outboxTargetFor(event),
-          });
-        }
-        if (deps.alerts)
-          for (const alert of planM10AlertEmissions({
-            organizationId,
-            schedules,
-            sfvs: [],
-            events: plan.events,
-          }))
-            await deps.alerts.emit(organizationId, alert);
-      },
-    );
-  }
+/** The per-tick inputs the watchdog ticks (./watchdog-ticks.ts) take: the clock and the active org list are read once. */
+async function watchdogTickDeps(deps: M10WorkerDeps): Promise<WatchdogTickDeps> {
+  return {
+    db: deps.db,
+    outbox: deps.outbox,
+    ...(deps.alerts ? { alerts: deps.alerts } : {}),
+    now: (deps.now ?? (() => new Date()))(),
+    organizationIds: (await activeOrgsOf(deps).listActiveOrgs()).map((org) => org.organizationId),
+    systemUserId: M10_WORKER_SYSTEM_USER_ID,
+  };
 }
 
-/** `sfv-watchdog` (§4.8, every 15 min) — per org, decay every `open`/`overdue` SFV (→ `overdue`/`missed`)
- * and publish `m10.hope.sfv_overdue` / `m10.hope.sfv_missed` only on the transition edge. Only writes the
- * row when `changed===true`. */
+/** `hope-window-watchdog` (§4.8, every 15 min): see `runWindowWatchdogTick`. */
+export async function runHopeWindowWatchdogCron(deps: M10WorkerDeps): Promise<void> {
+  await runWindowWatchdogTick(await watchdogTickDeps(deps));
+}
+
+/** `sfv-watchdog` (§4.8, every 15 min): see `runSfvWatchdogTick`. */
 export async function runSfvWatchdogCron(deps: M10WorkerDeps): Promise<void> {
-  const now = (deps.now ?? (() => new Date()))();
-  const orgs = await activeOrgsOf(deps).listActiveOrgs();
-  for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M10_WORKER_SYSTEM_USER_ID },
-      async (tx) => {
-        const t = tx as unknown as DbClient;
-        const sfvs = await openOrOverdueSfvsForOrg(t, organizationId);
-        const plan = planSfvWatchdog(sfvs, now.toISOString());
-        for (const transition of plan.transitions) {
-          if (transition.changed) {
-            await updateSfvStatus(t, transition.sfvId, transition.toStatus);
-          }
-        }
-        for (const event of plan.events) {
-          await deps.outbox.publish(t, {
-            eventName: event.eventName,
-            payload: event.payload,
-            organizationId,
-            ...outboxTargetFor(event),
-          });
-        }
-        if (deps.alerts)
-          for (const alert of planM10AlertEmissions({
-            organizationId,
-            schedules: [],
-            sfvs,
-            events: plan.events,
-          }))
-            await deps.alerts.emit(organizationId, alert);
-      },
-    );
-  }
+  await runSfvWatchdogTick(await watchdogTickDeps(deps));
 }
 
 // ── BullMQ construction ──────────────────────────────────────────────────────────────────────────────────
-
-/** The §4.8.1 catalog's string-form backoff (e.g. `"exponential 30s"`) parsed into BullMQ's `{type,delay}`
- * shape. Only the base delay is used; neither wired job's catalog entry carries a `, max …` clause. */
-interface ParsedBackoff {
-  readonly type: "exponential" | "fixed";
-  readonly delay: number;
-}
-
-const DURATION_UNIT_MS: Record<"s" | "m" | "h", number> = { s: 1_000, m: 60_000, h: 3_600_000 };
-
-function parseBackoff(spec: string): ParsedBackoff {
-  const [head] = spec.split(",");
-  const [type, duration] = (head ?? "").trim().split(/\s+/);
-  const match = /^(\d+)(s|m|h)$/.exec(duration ?? "");
-  if ((type !== "exponential" && type !== "fixed") || !match) {
-    throw new Error(`M10_WORKER_BACKOFF_UNPARSEABLE: ${spec}`);
-  }
-  const amount = match[1] as string;
-  const unit = match[2] as "s" | "m" | "h";
-  return { type, delay: Number(amount) * DURATION_UNIT_MS[unit] };
-}
 
 /** Construct one BullMQ `Worker` per wired §4.8 cron queue. The caller owns lifecycle (`close()` on shutdown). */
 export function registerM10CronWorkers(deps: M10WorkerDeps): Worker[] {
@@ -488,47 +333,16 @@ export async function runSubmissionJob(jobName: string, deps: M10WorkerDeps): Pr
   }
 }
 
-/** Register the two wired §4.8 repeatable cron schedules on their dedicated queues. Returns the `Queue`s to
- * `close()`. */
-export async function scheduleM10Jobs(connection: ConnectionOptions): Promise<Queue[]> {
-  const jobs: readonly [M10QueueName, M10WatchdogJobName][] = [
-    [M10_QUEUES.windows, "hope-window-watchdog"],
-    [M10_QUEUES.sfv, "sfv-watchdog"],
-    [M10_QUEUES.retention, "hope-retention-scan"],
-    // NOT scheduled: `assemble-hope-submission` / `iqies-submit-worker` / `iqies-reconcile-worker` — see
-    // the RECOVERY NOTE in the file header (they conflict with the manual iQIES package flow).
-  ];
-  const queues: Queue[] = [];
-  for (const [queueName, jobName] of jobs) {
-    const params = M10_JOB_PARAMS[jobName];
-    const queue = new Queue(queueName, { connection });
-    await queue.add(
-      // Kept as the literal "scheduled" (not the job name): renaming it would register a SECOND
-      // repeatable next to the one already in Valkey, double-firing each watchdog. The job name only
-      // matters as a dispatch key on the shared `hope.submission` queue, which is not scheduled here.
-      "scheduled",
-      {},
-      {
-        repeat: { pattern: M10_JOB_SCHEDULES[jobName] },
-        attempts: params.attempts,
-        backoff: parseBackoff(params.backoff),
-        removeOnComplete: true,
-        removeOnFail: false,
-      },
-    );
-    queues.push(queue);
-  }
-  return queues;
-}
-
 // ── F-072 (#177) — §4.10 stage 1 as a cron ────────────────────────────────────────────────────────────
 //
 // F-058 built the assembler and deliberately did NOT register it as a cron, because with no transmit
 // stage a nightly pass would have created batches nothing could send and — through
 // `uniq_hope_sub_item_assessment_active` — permanently excluded their assessments from every future
-// batch, silently. Stages 2 and 3 exist now, so the silence is gone: an unconfigured deployment's
-// batches are picked up by the submit worker within 30 minutes, the deny-stub raises, the job DLQs and
-// the M36 DLQ alert fires. The backlog is loud, which is the condition that decision was waiting on.
+// batch, silently. Stages 2 and 3 exist now as runners, but they are NOT registered, scheduled or given a Worker either
+// (RECOVERY NOTE in the file header), so that silence has NOT gone: nothing picks a batch up, nothing raises, no job
+// DLQs and no M36 DLQ alert fires. What follows describes the pipeline as designed, for when the stages are wired (then
+// an unconfigured deployment's batches would be picked up by the submit worker, the deny-stub would raise, the job would
+// DLQ and the M36 DLQ alert would fire).
 
 /** What one assemble tick did, per org. */
 export interface AssembleTickOutcome {
@@ -538,13 +352,14 @@ export interface AssembleTickOutcome {
 }
 
 /**
- * `assemble-hope-submission` (§4.10, daily 02:00) — batch every eligible signed assessment in every
+ * `assemble-hope-submission` (§4.10, catalog cadence daily 02:00; NOT scheduled today) — batch every eligible signed assessment in every
  * active org into one `hope_submission` per (ProviderEntity, CMS submission period), with its items.
  *
  * Org-wide, unlike the route, which assembles for ONE named provider entity: the cron has no operator
  * naming a CCN, so it groups across all of them, which is what `planAssembleSubmissions` was written to
  * do. Idempotent by the same rule the route relies on — an assessment already on a `pending` item is
- * reported as a skip, never re-included.
+ * reported as a skip, never re-included. Overlapping runs (a second tick, or the manual route) serialise on the same
+ * per-provider-entity advisory key the route takes; the stage must not be registered without that key.
  */
 export async function runAssembleSubmissionCron(deps: M10WorkerDeps): Promise<AssembleTickOutcome> {
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
@@ -560,6 +375,7 @@ export async function runAssembleSubmissionCron(deps: M10WorkerDeps): Promise<As
         { organizationId, userId: M10_WORKER_SYSTEM_USER_ID },
         async (tx) => {
           const t = tx as unknown as DbClient;
+          await boundCronLockWait(t);
           const scan = await assemblableAssessmentsForOrg(t, organizationId);
           skippedUnsited += scan.unsitedAssessmentIds.length;
           if (scan.unsitedAssessmentIds.length > 0) {
@@ -569,26 +385,40 @@ export async function runAssembleSubmissionCron(deps: M10WorkerDeps): Promise<As
               `m10: ${scan.unsitedAssessmentIds.length} signed assessment(s) in organization ${organizationId} have no provider entity and cannot be batched for iQIES.`,
             );
           }
-          const plan = planAssembleSubmissions(scan.eligible);
-          for (const planned of plan.submissions) {
-            const { submission } = await persistAssembledSubmission(t, organizationId, planned);
-            await deps.outbox.publish(t, {
-              eventName: "m10.hope.submission_queued",
-              payload: {
-                submissionId: submission.id,
-                providerEntityId: submission.providerEntityId,
-                itemCount: submission.itemCount,
-              },
-              organizationId,
-              aggregateKind: "hope_submission",
-              aggregateId: submission.id,
-            });
-            submissionsCreated += 1;
-            assessmentsBatched += submission.itemCount;
+          // The read above is unlocked: it only says WHICH provider entities have work. Each is then assembled behind the
+          // advisory key the manual route takes for the same entity (`m10:assemble:<org>`), and its candidates are read
+          // AGAIN behind that key, so a tick that overlaps another tick or `POST /hope/submissions/assemble` waits (at most
+          // `M10_LOCK_TIMEOUT_MS`, then fails this org, logged) and then sees the winner's pending items as skips, instead of
+          // inserting a second item for the same assessment (23505 on `uniq_hope_sub_item_assessment_active`, which would
+          // roll back every batch of this org). Entities in a stable order, so two ticks cannot lock them crosswise.
+          const providerEntityIds = [
+            ...new Set(scan.eligible.map((e) => e.providerEntityId)),
+          ].sort();
+          for (const providerEntityId of providerEntityIds) {
+            await lockRecordKey(t, `m10:assemble:${organizationId}`, providerEntityId);
+            const locked = await assemblableAssessmentsForOrg(t, organizationId, providerEntityId);
+            const plan = planAssembleSubmissions(locked.eligible);
+            for (const planned of plan.submissions) {
+              const { submission } = await persistAssembledSubmission(t, organizationId, planned);
+              await deps.outbox.publish(t, {
+                eventName: "m10.hope.submission_queued",
+                payload: {
+                  submissionId: submission.id,
+                  providerEntityId: submission.providerEntityId,
+                  itemCount: submission.itemCount,
+                },
+                organizationId,
+                aggregateKind: "hope_submission",
+                aggregateId: submission.id,
+              });
+              submissionsCreated += 1;
+              assessmentsBatched += submission.itemCount;
+            }
           }
         },
       );
     } catch (cause) {
+      logCronFailure("assemble-hope-submission", `org ${organizationId}`, cause);
       errors.push(cause);
     }
   }
@@ -613,8 +443,9 @@ export async function runAssembleSubmissionCron(deps: M10WorkerDeps): Promise<As
 // the HOPE submission XML schema are not in this repository, and `CHARTWARDEN_INTEGRATIONS_v0_1.md` §6.7
 // specifies the integration's shape without them. Everything below runs against the typed `IqiesAdapter`
 // port, so binding a real transport means implementing three methods — and until one is bound,
-// `createUnboundIqiesAdapter` denies with `retryable: false`, the job DLQs, and the M36 DLQ alert fires.
-// That visible failure is the point: before this, a batch with no transport sat `queued` in silence.
+// `createUnboundIqiesAdapter` denies with `retryable: false`; once these stages are wired, the job would DLQ and the
+// M36 DLQ alert would fire. Today they are not wired (RECOVERY NOTE in the file header), so that visible failure does not
+// exist yet: a batch with no transport still sits `queued` in silence.
 
 /** The rule id the pre-transmit gate records when it refuses to send a batch (§4.10). */
 export const IQIES_SUBMIT_BLOCKED_RULE = "iqies.submission_blocked";
@@ -675,6 +506,8 @@ export interface ProviderEntityCcnPort {
 /** The per-item validation the submit worker re-runs. Injectable so the orchestration can be tested
  *  without M38's terminology seam; defaults to M10's own production runner. */
 export type SubmissionItemValidator = (item: {
+  /** Carried into the log line of a failed M38 terminology read (an id only). */
+  readonly hopeAssessmentId?: string;
   readonly rfaKind: HopeRfaKind;
   readonly dischargeReason: HopeDischargeReason | null;
   readonly data: unknown;
@@ -683,6 +516,7 @@ export type SubmissionItemValidator = (item: {
 
 const defaultItemValidator: SubmissionItemValidator = (item) =>
   runHopeAssessmentValidation({
+    assessmentId: item.hopeAssessmentId,
     rfaKind: item.rfaKind,
     dischargeReason: item.dischargeReason,
     data: item.data,
@@ -698,7 +532,7 @@ export interface SubmitTickOutcome {
 }
 
 /**
- * `iqies-submit-worker` (§4.10, every 30 min).
+ * `iqies-submit-worker` (§4.10, catalog cadence every 30 min; NOT scheduled today).
  *
  * Per org, per queued batch, in its own transaction:
  *   1. re-run the CMS pre-submission validation for every pending item;
@@ -707,10 +541,24 @@ export interface SubmitTickOutcome {
  *      visible to the clinician who can fix it, not only in a log;
  *   3. otherwise CAS `queued → in_flight` and transmit.
  *
- * ORDER MATTERS. The CAS happens BEFORE the adapter call, so exactly one worker can transmit a batch;
- * a failure afterwards calls `releaseSubmission`, which is guarded on `iqies_batch_id IS NULL` and
- * therefore cannot un-transmit a batch CMS actually received. One transaction PER BATCH, not per tick:
- * a permanent failure on one batch must not roll back the transmit another batch just recorded.
+ * ORDER MATTERS. The CAS happens BEFORE the adapter call, so exactly one worker can transmit a batch.
+ * One transaction PER BATCH, not per tick: a permanent failure on one batch must not roll back the transmit another batch
+ * just recorded.
+ *
+ * THE CLAIM IS A ROW LOCK, NOT A COMMITTED STATUS. The claim, the CCN read, `iqies.submitBatch` and `recordTransmit` all run
+ * in that ONE transaction, so `in_flight` is invisible to other workers until it commits, and the claim's UPDATE holds the
+ * batch's row lock (and a pooled connection) across the external calls (`submitBatch` is not bounded here). An overlapping
+ * tick's claim therefore WAITS on that lock and, past `M10_LOCK_TIMEOUT_MS`, fails that batch with SQLSTATE 55P03 (counted
+ * in `failed`, raised in the AggregateError) instead of returning "CAS lost, skip". So this stage needs a SINGLE-FLIGHT tick
+ * (no two runs overlapping), which `M10_JOB_PARAMS["iqies-submit-worker"].concurrency` (2) does not by itself guarantee:
+ * revisit it when the stage is wired.
+ * Committing the claim first would make the loser skip cleanly, but a crash after that commit would strand the batch
+ * `in_flight` with no `iqies_batch_id` (the reconcile stage only reads batches that have one); with one transaction a crash
+ * rolls the claim back and the next tick retries with the same correlation id. Which of the two to take is a decision for
+ * whoever wires the stage.
+ * `releaseSubmission` is guarded on `iqies_batch_id IS NULL`, so it can never un-transmit a batch CMS actually received;
+ * where the transaction then ROLLS BACK (the catch below) it changes nothing, and where the transaction COMMITS (an
+ * unresolved CCN) it is what un-claims.
  */
 export async function runIqiesSubmitCron(deps: M10WorkerDeps): Promise<SubmitTickOutcome> {
   const now = (deps.now ?? (() => new Date()))();
@@ -726,12 +574,24 @@ export async function runIqiesSubmitCron(deps: M10WorkerDeps): Promise<SubmitTic
   const errors: unknown[] = [];
 
   for (const { organizationId } of orgs) {
-    const batches = await withOrgContext(
-      deps.db,
-      { organizationId, userId: M10_WORKER_SYSTEM_USER_ID },
-      async (tx) =>
-        queuedSubmissionsForOrg(tx as unknown as DbClient, organizationId, IQIES_BATCHES_PER_TICK),
-    );
+    // One org's batch list failing must not stop the orgs after it (the per-batch failures below are isolated the same way).
+    let batches: Awaited<ReturnType<typeof queuedSubmissionsForOrg>>;
+    try {
+      batches = await withOrgContext(
+        deps.db,
+        { organizationId, userId: M10_WORKER_SYSTEM_USER_ID },
+        async (tx) =>
+          queuedSubmissionsForOrg(
+            tx as unknown as DbClient,
+            organizationId,
+            IQIES_BATCHES_PER_TICK,
+          ),
+      );
+    } catch (cause) {
+      logCronFailure("iqies-submit-worker", `org ${organizationId}`, cause);
+      errors.push(cause);
+      continue;
+    }
 
     for (const batch of batches) {
       try {
@@ -740,6 +600,7 @@ export async function runIqiesSubmitCron(deps: M10WorkerDeps): Promise<SubmitTic
           { organizationId, userId: M10_WORKER_SYSTEM_USER_ID },
           async (tx) => {
             const t = tx as unknown as DbClient;
+            await boundCronLockWait(t);
             const items = await pendingItemsForSubmission(t, organizationId, batch.submissionId);
             if (items.length === 0) {
               // A queued batch with no pending items is already fully reconciled; leaving it queued
@@ -815,7 +676,9 @@ export async function runIqiesSubmitCron(deps: M10WorkerDeps): Promise<SubmitTic
               return;
             }
 
-            const ccn = await ccns.ccnFor(organizationId, batch.providerEntityId);
+            const ccn = await readThroughPort("the M1 CCN read", () =>
+              ccns.ccnFor(organizationId, batch.providerEntityId),
+            );
             if (ccn === null) {
               // Never transmit under a CCN nobody confirmed: the envelope's CCN is what CMS matches the
               // submitter credential and `ccn_at_election` against. Put the batch back and say so.
@@ -868,14 +731,20 @@ export async function runIqiesSubmitCron(deps: M10WorkerDeps): Promise<SubmitTic
               });
               transmitted.push(batch.submissionId);
             } catch (cause) {
-              // Put it back so a later tick retries with the SAME correlation id. Guarded on
-              // `iqies_batch_id IS NULL`, so a batch CMS did receive is never un-transmitted.
+              // The rethrow rolls this whole transaction back, claim included, so a later tick retries with the SAME
+              // correlation id; the release is belt and braces. Guarded on `iqies_batch_id IS NULL`, so a batch CMS did
+              // receive is never un-transmitted.
               await releaseSubmission(t, organizationId, batch.submissionId);
               throw cause;
             }
           },
         );
       } catch (cause) {
+        logCronFailure(
+          "iqies-submit-worker",
+          `submission ${batch.submissionId} (org ${organizationId})`,
+          cause,
+        );
         failed.push(batch.submissionId);
         errors.push(cause);
       }
@@ -884,7 +753,7 @@ export async function runIqiesSubmitCron(deps: M10WorkerDeps): Promise<SubmitTic
 
   if (errors.length > 0) {
     // Collected, not first-thrown: one unreachable provider entity must not stop every other org's
-    // batches from being attempted on this tick. BullMQ sees one failure and applies §4.8.1 retry/DLQ.
+    // batches from being attempted on this tick. Once wired, BullMQ sees one failure and applies §4.8.1 retry/DLQ.
     throw new AggregateError(errors, `m10 iqies-submit-worker: ${errors.length} batch(es) failed`);
   }
   return { transmitted, blocked, skipped, failed };
@@ -897,7 +766,7 @@ export interface ReconcileTickOutcome {
 }
 
 /**
- * `iqies-reconcile-worker` (§4.10, hourly).
+ * `iqies-reconcile-worker` (§4.10, catalog cadence hourly; NOT scheduled today).
  *
  * Per org, per `in_flight` batch that carries an `iqies_batch_id`: pull the acceptance report, run
  * `planReconcile`, apply the per-item transitions, write one `hope_validation_finding` per rejected
@@ -917,59 +786,109 @@ export async function runIqiesReconcileCron(deps: M10WorkerDeps): Promise<Reconc
   const errors: unknown[] = [];
 
   for (const { organizationId } of orgs) {
-    const batches = await withOrgContext(
-      deps.db,
-      { organizationId, userId: M10_WORKER_SYSTEM_USER_ID },
-      async (tx) =>
-        inFlightSubmissionsForOrg(
-          tx as unknown as DbClient,
-          organizationId,
-          IQIES_BATCHES_PER_TICK,
-        ),
-    );
+    // One org's batch list failing must not stop the orgs after it (the per-batch failures below are isolated the same way).
+    let batches: Awaited<ReturnType<typeof inFlightSubmissionsForOrg>>;
+    try {
+      batches = await withOrgContext(
+        deps.db,
+        { organizationId, userId: M10_WORKER_SYSTEM_USER_ID },
+        async (tx) =>
+          inFlightSubmissionsForOrg(
+            tx as unknown as DbClient,
+            organizationId,
+            IQIES_BATCHES_PER_TICK,
+          ),
+      );
+    } catch (cause) {
+      logCronFailure("iqies-reconcile-worker", `org ${organizationId}`, cause);
+      errors.push(cause);
+      continue;
+    }
 
     for (const batch of batches) {
       try {
         // The adapter call is OUTSIDE the transaction: an iQIES round-trip must not hold an RLS
         // connection open, and the report is a read — re-fetching it on a retry yields the same plan.
-        const report = await iqies.fetchAcceptanceReport(batch.iqiesBatchId);
+        const report = await readThroughPort("the iQIES acceptance-report read", () =>
+          iqies.fetchAcceptanceReport(batch.iqiesBatchId),
+        );
         await withOrgContext(
           deps.db,
           { organizationId, userId: M10_WORKER_SYSTEM_USER_ID },
           async (tx) => {
             const t = tx as unknown as DbClient;
+            await boundCronLockWait(t);
+            // The batch list was read unlocked: lock the batch and re-judge its status BEFORE reading the pending items, so
+            // a tick that waited behind another one's reconcile does nothing instead of re-applying it and re-publishing.
+            if (!(await lockInFlightSubmission(t, organizationId, batch.submissionId))) {
+              console.warn(
+                `m10: iqies-reconcile-worker found submission ${batch.submissionId} (org ${organizationId}) no longer in flight; another tick reconciled it, so nothing was written or published here.`,
+              );
+              return;
+            }
             const items = await pendingItemsForSubmission(t, organizationId, batch.submissionId);
             if (items.length === 0) {
               reconciled.push(batch.submissionId);
               return;
             }
-            const known = new Set(items.map((i) => i.hopeAssessmentId));
-            const outcomes = report.items
-              .filter((i) => known.has(i.hopeAssessmentId))
-              .map((i) => ({
-                hopeAssessmentId: i.hopeAssessmentId,
-                outcome: i.outcome,
-                iqiesRecordId: i.iqiesRecordId,
-                findings: i.findings,
-              }));
+            // The report is an external payload: it names an item by the id as the adapter spells it, and the item is
+            // matched on the database's id (canonical), never on that spelling. Everything below runs on the database's id.
+            const dbIdByCanonical = new Map(
+              items.map((i) => [
+                canonicalUuidOrNull(i.hopeAssessmentId) ?? i.hopeAssessmentId,
+                i.hopeAssessmentId,
+              ]),
+            );
+            const outcomes = report.items.flatMap((i) => {
+              const hopeAssessmentId = dbIdByCanonical.get(
+                canonicalUuidOrNull(i.hopeAssessmentId) ?? i.hopeAssessmentId,
+              );
+              return hopeAssessmentId === undefined
+                ? []
+                : [
+                    {
+                      hopeAssessmentId,
+                      outcome: i.outcome,
+                      iqiesRecordId: i.iqiesRecordId,
+                      findings: i.findings,
+                    },
+                  ];
+            });
             if (outcomes.length === 0) {
               // The report named none of this batch's pending items. Leave everything alone rather than
-              // folding an empty plan, which `planReconcile` would score as a wholly accepted batch.
+              // folding an empty plan, which `planReconcile` would score as a wholly accepted batch. Said in the log: a
+              // batch that stays in flight for this reason would otherwise look like one that is merely waiting.
+              console.warn(
+                `m10: iqies-reconcile-worker: the acceptance report for submission ${batch.submissionId} (org ${organizationId}) named none of its ${items.length} pending item(s); the batch was left in flight.`,
+              );
               return;
             }
             const plan = planReconcile({ submissionId: batch.submissionId, outcomes });
 
             for (const transition of plan.itemTransitions) {
               const reported = report.items.find(
-                (i) => i.hopeAssessmentId === transition.hopeAssessmentId,
+                (i) =>
+                  i.hopeAssessmentId === transition.hopeAssessmentId ||
+                  sameUuid(i.hopeAssessmentId, transition.hopeAssessmentId),
               );
               // `planReconcile` only emits accepted / rejected / pending; the item-status union was widened
               // by the manual-iQIES phase (accepted_with_warnings, blocked, unmatched) after this was written.
               const itemTransition = transition as Parameters<typeof applyItemTransition>[3];
-              await applyItemTransition(t, organizationId, batch.submissionId, itemTransition, {
-                outcome: reported?.outcome ?? null,
-                findings: reported?.findings ?? [],
-              });
+              const applied = await applyItemTransition(
+                t,
+                organizationId,
+                batch.submissionId,
+                itemTransition,
+                { outcome: reported?.outcome ?? null, findings: reported?.findings ?? [] },
+              );
+              if (applied === false) {
+                // Unreachable behind the batch lock, so a settled item here means something wrote it without the lock. Folding
+                // the batch over it would score an answer nobody recorded: fail this batch (rolled back, logged with ids).
+                console.warn(
+                  `m10: iqies-reconcile-worker found the item of assessment ${transition.hopeAssessmentId} in submission ${batch.submissionId} (org ${organizationId}) no longer pending; the batch was rolled back and left in flight.`,
+                );
+                throw new ReconcileItemNotPendingError();
+              }
             }
 
             if (plan.findings.length > 0) {
@@ -1024,6 +943,11 @@ export async function runIqiesReconcileCron(deps: M10WorkerDeps): Promise<Reconc
           },
         );
       } catch (cause) {
+        logCronFailure(
+          "iqies-reconcile-worker",
+          `submission ${batch.submissionId} (org ${organizationId})`,
+          cause,
+        );
         failed.push(batch.submissionId);
         errors.push(cause);
       }
@@ -1043,11 +967,13 @@ export async function runIqiesReconcileCron(deps: M10WorkerDeps): Promise<Reconc
 //
 // `hope.retention` was a declared queue with no worker, so HOPE retention was documented but never evaluated.
 // Per org, in ONE tx: fold each patient's HOPE assessments + iQIES outcomes into facts, layer the M4 legal-hold
-// scope on, evaluate the retention horizon (`./retention`: 10y from the last transmission for a submitted record,
+// scope on (the hold's patients are compared with the assessments' in SQL, on canonical uuids; an org-wide hold here), evaluate the retention horizon (`./retention`: 10y from the last transmission for a submitted record,
 // else 7y from the last effective date, lengthen-only override) and record the verdict in the M10-owned
 // `hope_retention_review` ledger. A patient newly `eligible` publishes `m10.hope.retention_eligible` ONCE; a
 // `blocked` patient (legal hold / open iQIES error / pending correction) is recorded with its blockers and never
-// flagged. THE SCAN NEVER DELETES a clinical row: destruction is a human-approved M4 destruction certificate
+// flagged. The reads are unlocked, so each ledger UPDATE is keyed on the status its verdict was judged from, and a new row
+// is inserted `ON CONFLICT DO NOTHING` and only while the patient still has a HOPE assessment; a lost race of either kind
+// writes and publishes nothing, and does not abort the org's other patients. THE SCAN NEVER DELETES a clinical row: destruction is a human-approved M4 destruction certificate
 // invoking the registered `hope_record` eraser, which re-checks the CMS 10-year rule itself.
 export async function runHopeRetentionCron(deps: M10WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
@@ -1059,72 +985,117 @@ export async function runHopeRetentionCron(deps: M10WorkerDeps): Promise<void> {
       "bind M4's activeLegalHoldScopeForOrg at the composition root — the retention scan must know about legal holds before it can flag anything",
     );
   }
+  const errors: unknown[] = [];
   for (const { organizationId } of orgs) {
-    const holdScope = await holds.activeLegalHoldScopeForOrg(organizationId);
-    const overrideYears =
-      (await deps.retentionOverride?.overrideYearsForOrg(organizationId)) ?? null;
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M10_WORKER_SYSTEM_USER_ID },
-      async (tx) => {
-        const t = tx as unknown as DbClient;
-        const facts = await hopeRetentionFactsForOrg(t, organizationId);
-        const reviews = new Map(
-          (await retentionReviewsForOrg(t, organizationId)).map((r) => [r.patientId, r]),
-        );
-        for (const f of facts) {
-          const decision = evaluateHopeRetention(
-            { ...f, legalHold: holdScope.orgWide || holdScope.patientIds.has(f.patientId) },
-            now,
-            overrideYears,
+    try {
+      const holdScope = await readThroughPort("the M4 legal-hold read", () =>
+        holds.activeLegalHoldScopeForOrg(organizationId),
+      );
+      const overridePort = deps.retentionOverride;
+      const overrideYears = overridePort
+        ? ((await readThroughPort("the retention-override read", () =>
+            overridePort.overrideYearsForOrg(organizationId),
+          )) ?? null)
+        : null;
+      await withOrgContext(
+        deps.db,
+        { organizationId, userId: M10_WORKER_SYSTEM_USER_ID },
+        async (tx) => {
+          const t = tx as unknown as DbClient;
+          await boundCronLockWait(t);
+          // The hold's patients are compared with the assessments' patients IN SQL (see `heldPatientSql`), not on the
+          // spelling the hold's creator typed; only the org-wide flag is layered on here.
+          const facts = await hopeRetentionFactsForOrg(t, organizationId, holdScope.patientIds);
+          const reviews = new Map(
+            (await retentionReviewsForOrg(t, organizationId)).map((r) => [r.patientId, r]),
           );
-          const prior = reviews.get(f.patientId);
-          // Not due and never flagged: no row (the ledger holds only patients that have reached their horizon).
-          if (!prior && decision.status === "cleared") continue;
-          const becameEligible = decision.status === "eligible" && prior?.status !== "eligible";
-          const write = {
-            basis: decision.basis,
-            anchorAt: decision.anchorAt,
-            retentionYears: decision.retentionYears,
-            eligibleAt: decision.eligibleAt,
-            status: decision.status,
-            blockers: decision.blockers,
-            flaggedAt: becameEligible ? now : null,
-            evaluatedAt: now,
-          } as const;
-          let rowId: string;
-          if (prior) {
-            rowId = prior.id;
-            await updateRetentionReview(t, prior.id, {
-              ...write,
-              // An already-flagged patient keeps its original flag instant.
-              flaggedAt: decision.status === "eligible" ? (becameEligible ? now : null) : null,
-            });
-          } else {
-            rowId = await insertRetentionReview(t, {
-              ...write,
-              organizationId,
-              providerEntityId: f.providerEntityId,
-              locationId: f.locationId,
-              patientId: f.patientId,
-            });
-          }
-          if (becameEligible) {
-            await deps.outbox.publish(t, {
-              eventName: "m10.hope.retention_eligible",
-              payload: {
+          for (const f of facts) {
+            const decision = evaluateHopeRetention(
+              { ...f, legalHold: holdScope.orgWide || f.legalHold },
+              now,
+              overrideYears,
+            );
+            const prior = reviews.get(f.patientId);
+            // Not due and never flagged: no row (the ledger holds only patients that have reached their horizon).
+            if (!prior && decision.status === "cleared") continue;
+            const becameEligible = decision.status === "eligible" && prior?.status !== "eligible";
+            // An already-flagged patient keeps its original flag instant: the column is left OUT of the update (an explicit
+            // null would overwrite it). A status that leaves `eligible` clears it; a new flag stamps it.
+            const flag: Pick<RetentionReviewWrite, "flaggedAt"> = becameEligible
+              ? { flaggedAt: now }
+              : decision.status === "eligible"
+                ? {}
+                : { flaggedAt: null };
+            const write: RetentionReviewWrite = {
+              basis: decision.basis,
+              anchorAt: decision.anchorAt,
+              retentionYears: decision.retentionYears,
+              eligibleAt: decision.eligibleAt,
+              status: decision.status,
+              blockers: decision.blockers,
+              evaluatedAt: now,
+              ...flag,
+            };
+            let rowId: string;
+            if (prior) {
+              rowId = prior.id;
+              const updated = await updateRetentionReview(t, prior.id, prior.status, write);
+              if (!updated) {
+                // The read above is unlocked: another scan moved this row, or a destruction deleted it, since. The verdict
+                // was judged on a stale row, so neither the write nor its event happens; the next monthly scan re-judges.
+                console.warn(
+                  `m10: hope-retention-scan lost the race for review ${prior.id} in org ${organizationId}; it changed after it was read, so its verdict and event were skipped.`,
+                );
+                continue;
+              }
+            } else {
+              const inserted = await insertRetentionReview(t, {
+                ...write,
+                organizationId,
+                providerEntityId: f.providerEntityId,
+                locationId: f.locationId,
                 patientId: f.patientId,
-                basis: decision.basis,
-                retentionYears: decision.retentionYears,
-                eligibleAt: decision.eligibleAt.toISOString(),
-              },
-              organizationId,
-              aggregateKind: "hope_retention_review",
-              aggregateId: rowId,
-            });
+              });
+              if (inserted === null) {
+                // Same unlocked read: another scan inserted this patient's row first, or a destruction removed the patient's
+                // last HOPE assessment since the facts were read. Nothing is written or published; the org's other
+                // patients are unaffected, and the next monthly scan re-judges.
+                console.warn(
+                  `m10: hope-retention-scan lost the race to insert a review for one patient in org ${organizationId}; another scan inserted it, or the patient's HOPE records were destroyed since they were read, so its verdict and event were skipped.`,
+                );
+                continue;
+              }
+              rowId = inserted;
+            }
+            if (becameEligible) {
+              await deps.outbox.publish(t, {
+                eventName: "m10.hope.retention_eligible",
+                payload: {
+                  patientId: f.patientId,
+                  basis: decision.basis,
+                  retentionYears: decision.retentionYears,
+                  eligibleAt: decision.eligibleAt.toISOString(),
+                },
+                organizationId,
+                aggregateKind: "hope_retention_review",
+                aggregateId: rowId,
+              });
+            }
           }
-        }
-      },
+        },
+      );
+    } catch (cause) {
+      // One org failing (its hold read, override read or transaction) must not starve the orgs after it: the next run is a month away.
+      // A port read that never answers is cut off after `M10_SEAM_READ_TIMEOUT_MS` and fails the org like a thrown one; the
+      // log line names the read. NOT bounded: the pooled-connection checkout and a running statement (see ./watchdog-ticks.ts).
+      logCronFailure("hope-retention-scan", `org ${organizationId}`, cause);
+      errors.push(cause);
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(
+      errors,
+      `m10 hope-retention-scan: ${errors.length} organization(s) failed`,
     );
   }
 }

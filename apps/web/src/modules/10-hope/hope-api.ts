@@ -26,7 +26,7 @@
 //   • §2.3 / D9 Section Q, and the whole CMS pre-submission rule set. The client renders the findings
 //     `GET /validation` returns; it computes none of them.
 import type { ApiClient, operations } from "@chartwarden/ui";
-import { freshIdempotencyKeyHeaders } from "@chartwarden/ui";
+import { freshIdempotencyKeyHeaders, nowLocalInput } from "@chartwarden/ui";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 
@@ -56,8 +56,17 @@ export type RecordTimepointBody = ReqBody<
   operations["postApiV1AdmissionsByAdmissionIdHopeTimepoints"]
 >;
 export type RecordSfvBody = ReqBody<operations["postApiV1AdmissionsByAdmissionIdHopeSfv"]>;
+export type SignAssessmentBody = ReqBody<operations["postApiV1HopeAssessmentsByIdSign"]>;
 export type UpdateDraftBody = ReqBody<operations["putApiV1HopeAssessmentsById"]>;
 export type SkipScheduleBody = ReqBody<operations["postApiV1HopeSchedulesByIdSkip"]>;
+/** The amendments of a signed record. Both carry the `authorDiscipline` the server binds to the caller's own roles. */
+export type CorrectAssessmentBody = ReqBody<operations["postApiV1HopeAssessmentsByIdCorrect"]>;
+export type InactivateAssessmentBody = ReqBody<
+  operations["postApiV1HopeAssessmentsByIdInactivations"]
+>;
+export type HuvCompletionDateBody = ReqBody<
+  operations["patchApiV1HopeAssessmentsByIdHuvCompletiondate"]
+>;
 
 /** The five §2.2 Reasons-For-Assessment the server accepts. Derived, so a vocabulary change breaks here. */
 export type RfaKind = RecordTimepointBody["rfaKind"];
@@ -79,46 +88,275 @@ export type HopeData = RecordTimepointBody["data"];
  */
 export type WriteResult<T> =
   | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly status: number | null; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly status: number | null;
+      readonly message: string;
+      /** The server's error code (`M10_TIMEPOINT_EXPIRED`...), for a screen that words a few of them itself; null when it sent none. */
+      readonly code: string | null;
+    };
+
+/**
+ * The server's own words from a parsed error body, or null when it carries none. The platform error envelope
+ * nests the reason as `{ error: { message } }`; a bare `{ message }` is kept as a fallback. A blank message
+ * counts as none. The one parser every HOPE surface shares, so no refusal is shown in two different ways.
+ */
+export function serverMessageOf(body: unknown): string | null {
+  if (body === null || typeof body !== "object") return null;
+  const { error, message } = body as { error?: { message?: unknown } | null; message?: unknown };
+  const usable = (value: unknown): string | null =>
+    typeof value === "string" && value.trim() !== "" ? value : null;
+  return usable(error?.message) ?? usable(message);
+}
+
+/** The error code of a parsed error body (`{ error: { code } }`), or null when it carries none. */
+export function errorCodeOf(body: unknown): string | null {
+  if (body === null || typeof body !== "object") return null;
+  const code = (body as { error?: { code?: unknown } | null }).error?.code;
+  return typeof code === "string" ? code : null;
+}
+
+/**
+ * Refusals whose own message addresses an integrator rather than the person at the screen (M10_SPEC_NOT_IN_FORCE and
+ * M10_ADMISSION_PROJECTION_GAP end in advice about renewing an Idempotency-Key, which a clinician cannot act on and the web
+ * client already does on its own; the second also names an admission id). They are worded here, with the code kept in the
+ * sentence for whoever the clinician reports it to.
+ */
+export const SPEC_NOT_IN_FORCE_MESSAGE =
+  "No HOPE specification is available for this date. Contact your administrator (code M10_SPEC_NOT_IN_FORCE).";
+export const ADMISSION_PROJECTION_GAP_MESSAGE =
+  "The admission record is incomplete or unavailable, so this step could not be completed. Contact your administrator (code M10_ADMISSION_PROJECTION_GAP).";
+const CLINICIAN_WORDS_BY_CODE: ReadonlyMap<string, string> = new Map([
+  ["M10_SPEC_NOT_IN_FORCE", SPEC_NOT_IN_FORCE_MESSAGE],
+  ["M10_ADMISSION_PROJECTION_GAP", ADMISSION_PROJECTION_GAP_MESSAGE],
+]);
+
+/**
+ * The words to show for a refusal body: this module's own sentence for a code whose server text is not the clinician's to
+ * read, else the server's message (`serverMessageOf`), else null. Every screen that shows a refusal goes through here.
+ */
+export function refusalWordsOf(body: unknown): string | null {
+  const code = errorCodeOf(body);
+  return (code === null ? undefined : CLINICIAN_WORDS_BY_CODE.get(code)) ?? serverMessageOf(body);
+}
+
+/**
+ * For a `VALIDATION_FAILED` refusal, the first field the server objected to and why (`{ error: { details: [{ field, message }] } }`),
+ * or null. The envelope's own message is the fixed "request validation failed", which names no field; the field path and the
+ * schema's reason ("Expected string length less or equal to 100") carry no record content. Null too when the envelope's own
+ * message already says it (several server checks use one sentence for both), so the reason is never shown twice.
+ */
+export function validationDetailOf(body: unknown): string | null {
+  if (errorCodeOf(body) !== "VALIDATION_FAILED") return null;
+  const first = (
+    body as { error?: { details?: ReadonlyArray<{ field?: unknown; message?: unknown }> } }
+  ).error?.details?.[0];
+  if (typeof first?.message !== "string" || first.message.trim() === "") return null;
+  if (serverMessageOf(body)?.includes(first.message)) return null;
+  return typeof first.field === "string" && first.field !== ""
+    ? `${first.field}: ${first.message}`
+    : first.message;
+}
+
+/**
+ * The signature or SFV was refused because the attestation wording the signer was shown is no longer the current one
+ * (409). A definite refusal: nothing was written, and the loaded page cannot send the new version, so it must be reloaded.
+ */
+export const ATTESTATION_STALE_CODE = "M10_ATTESTATION_STALE";
+export const ATTESTATION_STALE_MESSAGE =
+  "The attestation wording has changed. Reload the page and review it again.";
+
+/** What a write came back with, as far as success goes (an openapi-fetch result, or a test double of one). */
+interface WriteReply {
+  readonly data?: unknown;
+  readonly error?: unknown;
+  readonly response?: { readonly ok?: boolean; readonly status?: number };
+}
+
+/**
+ * Whether a write succeeded. openapi-fetch leaves `error` undefined for a non-OK reply with no body and sets it to ""
+ * for an empty one, so `error` alone cannot decide it: a success has data, no error, and a response that was OK.
+ */
+export function writeSucceeded(reply: WriteReply): boolean {
+  return reply.error === undefined && Boolean(reply.data) && reply.response?.ok !== false;
+}
+
+/** The same test for a read: data came back, with no error, on a response that was OK. An empty 502 is not an empty list. */
+export const readSucceeded = writeSucceeded;
+
+/** A refusal body the server actually sent (the error envelope), as opposed to no usable answer at all. */
+export function isRefusalBody(error: unknown): boolean {
+  return typeof error === "object" && error !== null;
+}
+
+/**
+ * For a refusal that is the server's fault, not the clinician's: its raw text can carry internals, so it is never shown.
+ * The server may have failed AFTER the write landed, so this never says it was not (nor "try again" as if it were safe):
+ * it says the result is unknown and to check the record first.
+ */
+const SERVER_FAULT_MESSAGE =
+  "The server could not complete the request, so the result could not be confirmed. Check the record before repeating the action.";
+
+/** A failed write whose reply carries no error body, told apart by status: a 4xx is a refusal, anything else leaves it unknown. */
+export function isClientRefusal(status: number | undefined): boolean {
+  return typeof status === "number" && status >= 400 && status < 500;
+}
+
+/** What a 4xx with no error body says: the request was refused, and the server gave no reason. Distinct from "unconfirmed". */
+export const REFUSED_WITHOUT_REASON =
+  "The server refused the request without saying why. Review the details and try again.";
+
+/**
+ * The wording for a server-side fault, or null when the refusal is the clinician's to read in the server's own words.
+ * `DEGRADED` (a dependency is unavailable) keeps a friendly, retryable sentence of the caller's choosing; any other
+ * 5xx gets a generic one.
+ */
+export function serverFaultMessage(
+  error: unknown,
+  status: number | undefined,
+  degradedText: string,
+): string | null {
+  if (errorCodeOf(error) === "DEGRADED") return degradedText;
+  return typeof status === "number" && status >= 500 ? SERVER_FAULT_MESSAGE : null;
+}
+
+/**
+ * The words for a write that did not succeed: the server's own message for a refusal it explained, a generic sentence
+ * for a server fault (its raw text can carry internals), a refusal-without-reason for a 4xx with no body, and
+ * `unconfirmed` (the caller's, naming what may or may not have happened) when there was no usable answer at all.
+ */
+export function failedWriteMessage(
+  reply: WriteReply,
+  unconfirmed: string,
+  fallback: string,
+): string {
+  if (!isRefusalBody(reply.error)) {
+    return isClientRefusal(reply.response?.status) ? REFUSED_WITHOUT_REASON : unconfirmed;
+  }
+  const fault = serverFaultMessage(
+    reply.error,
+    reply.response?.status,
+    "A service this action needs is temporarily unavailable. Try again in a moment.",
+  );
+  if (fault !== null) return fault;
+  const message = refusalWordsOf(reply.error) ?? fallback;
+  const detail = validationDetailOf(reply.error);
+  return detail === null ? message : `${message} (${detail})`;
+}
+
+/**
+ * Whether a failed write may still have been applied: there was no usable answer (a rejection, a timeout, an empty 5xx), or
+ * the server answered with a fault of its own. A 4xx refusal, and a degraded dependency (which `failedWriteMessage` words as
+ * "try again"), are definite. The header of a save and the words of its error must agree on this.
+ */
+export function writeOutcomeUnknown(reply: WriteReply): boolean {
+  const status = reply.response?.status;
+  if (!isRefusalBody(reply.error)) return !isClientRefusal(status);
+  return errorCodeOf(reply.error) !== "DEGRADED" && typeof status === "number" && status >= 500;
+}
+
+/**
+ * `writeOutcomeUnknown` for the `{ ok: false }` result of one of this file's writes, which kept only the reply's status and code:
+ * whether the write may still have been applied (an empty 5xx, a fault of the server's own), so a screen re-reads what it tells the
+ * clinician to check. A 4xx refusal and a degraded dependency are definite.
+ */
+export function failedResultOutcomeUnknown(
+  result: Extract<WriteResult<unknown>, { ok: false }>,
+): boolean {
+  return writeOutcomeUnknown({
+    error: result.code === null ? undefined : { error: { code: result.code } },
+    response: { status: result.status ?? undefined },
+  });
+}
+
+/** A 409 that is not a stale version: a lock wait timed out and the step was NOT applied, so the page is not out of date. */
+export const RECORD_BUSY_CODE = "M10_RECORD_BUSY";
+
+/**
+ * The refusal says the version this page holds is stale (a 409), not that the record was merely busy (send it again as it
+ * is). Decided by status and code only: the wording of a message is not a contract (the real M10_SPEC_NOT_IN_FORCE text
+ * contains "version" and is not a conflict).
+ */
+export function isStaleVersionRefusal(reply: WriteReply): boolean {
+  return reply.response?.status === 409 && errorCodeOf(reply.error) !== RECORD_BUSY_CODE;
+}
+
+/** What a refusal says when the server explained nothing, by status: the next step differs (an unauthorised role is not a stale version). */
+const FALLBACK_BY_STATUS: Readonly<Record<number, string>> = {
+  400: "The server rejected the details supplied.",
+  403: "Your role is not eligible to record or sign this HOPE timepoint.",
+  404: "That HOPE record is no longer available to you.",
+  409: "This timepoint changed before your action was applied. Reload and retry.",
+  422: "The server rejected the details supplied.",
+};
 
 /**
  * Turn an openapi-fetch error into copy a clinician can act on.
  *
- * The statuses are NOT flattened into "something went wrong": each one names a different next step, and
- * M10's 400/409 family is unusually specific — `M10_TIMEPOINT_NOT_OPEN`, `M10_TIMEPOINT_EXPIRED`,
- * `M10_LATE_REASON_REQUIRED`, `M10_RFA_KIND_MISMATCH`, `M10_ADMISSION_NOT_ACTIVE` all arrive as one of
- * those two codes with a precise message. Surfacing the server's own `message` verbatim is therefore
- * strictly better than any generic sentence this layer could write, and the fallbacks below are only
- * for a response that carries none.
+ * The words come from `failedWriteMessage`, the one source every HOPE write shares (so an empty 4xx, a server fault or a
+ * degraded dependency reads the same here as in the workspace); only the fallback for a refusal that carries no message of
+ * its own is chosen by status. M10's 400/409 family is unusually specific — `M10_TIMEPOINT_NOT_OPEN`,
+ * `M10_TIMEPOINT_EXPIRED`, `M10_LATE_REASON_REQUIRED`, `M10_RFA_KIND_MISMATCH`, `M10_ADMISSION_NOT_ACTIVE` all arrive as
+ * one of those two codes with a precise message, so the server's own words beat any sentence written here.
  */
 function failure<T>(status: number | undefined, body: unknown): WriteResult<T> {
   const code = typeof status === "number" ? status : null;
-  // The platform error envelope nests the reason as `{ error: { message } }`; a bare `{ message }` is kept as a fallback.
-  const envelope =
-    body && typeof body === "object" && "error" in body
-      ? (body as { error?: { message?: unknown } }).error
-      : undefined;
-  const detail =
-    typeof envelope?.message === "string"
-      ? envelope.message
-      : body && typeof body === "object" && "message" in body && typeof body.message === "string"
-        ? body.message
-        : null;
-  const message =
-    code === 403
-      ? (detail ?? "Your role is not eligible to record or sign this HOPE timepoint.")
-      : code === 409
-        ? (detail ?? "This timepoint changed before your action was applied. Reload and retry.")
-        : code === 404
-          ? "That HOPE record is no longer available to you."
-          : code === 400 || code === 422
-            ? (detail ?? "The server rejected the details supplied.")
-            : (detail ?? "The action could not be completed.");
-  return { ok: false, status: code, message };
+  const message = failedWriteMessage(
+    { error: body, response: { status } },
+    SERVER_FAULT_MESSAGE,
+    (code !== null && FALLBACK_BY_STATUS[code]) || "The action could not be completed.",
+  );
+  return { ok: false, status: code, message, code: errorCodeOf(body) };
 }
+
+/**
+ * How long a request that a dialog waits on (its write, or the read that settles it) may go unanswered. A stalled
+ * connection has no timeout of its own (the browser may wait for minutes), and every dialog that disables itself while its
+ * request is out would stay shut for as long. Past this the request is aborted: an abort is a rejection like going
+ * offline, which every caller already reports as "could not confirm".
+ *
+ * What a retry then does depends on the write's key. A write that carries none of its own (record, skip, cancel, result, correct,
+ * inactivate, HUV date, sign, SFV) keeps the API client's per-intent Idempotency-Key across the abort, so its retry REPLAYS. The
+ * three that send a fresh key on every call (`requestSummaryPdf`, `regenerateSchedules`, `assembleSubmission`: each means "do it
+ * now, against the records as they are", see `fresh-key-actions.test.ts`) are never tracked by the client, so their retry is a
+ * NEW request and repeats the action if the first one had landed. That is why every unconfirmed message says to check the
+ * record before trying again, and why `assembleSubmission` is not bounded at all.
+ */
+export const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Runs `send` with a signal that aborts after {@link REQUEST_TIMEOUT_MS}, and rejects when it does. The rejection does not
+ * wait for `send` to honour the signal, so a caller that ignores it (or a double that never answers) is freed all the same.
+ */
+export async function withRequestTimeout<T>(send: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timedOut = new Promise<never>((_resolve, reject) => {
+    controller.signal.addEventListener(
+      "abort",
+      () => reject(new DOMException("The request was not answered in time", "TimeoutError")),
+      { once: true },
+    );
+  });
+  try {
+    return await Promise.race([send(controller.signal), timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The request to record a timepoint got no answer (offline, a reset, a timeout): the server may or may not have recorded it. */
+export const RECORD_UNCONFIRMED =
+  "Could not confirm that the timepoint was recorded. Check the timeline before trying again.";
 
 /** ISO instant for a `date-time` field. */
 export const nowIso = (): string => new Date().toISOString();
+
+/**
+ * Today as `YYYY-MM-DD` in the clinician's own zone, for a date-only default or an "as of" date. Never
+ * `toISOString().slice(0, 10)`: that is the UTC day, which a US evening has already rolled into tomorrow.
+ */
+export const localToday = (): string => nowLocalInput().slice(0, 10);
 
 // ── §4.1 the ten M10 writes ────────────────────────────────────────────────────────────────────────────
 
@@ -128,27 +366,20 @@ export async function recordTimepoint(
   admissionId: string,
   body: RecordTimepointBody,
 ): Promise<WriteResult<AssessmentView>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/admissions/{admissionId}/hope/timepoints",
-    { params: { path: { admissionId } }, body },
+  const { data, error, response } = await withRequestTimeout((signal) =>
+    client.POST("/api/v1/admissions/{admissionId}/hope/timepoints", {
+      params: { path: { admissionId } },
+      body,
+      signal,
+    }),
   );
-  if (error || !data) return failure(response?.status, error);
+  if (!writeSucceeded({ data, error, response }) || !data) return failure(response?.status, error);
   return { ok: true, value: data as AssessmentView };
 }
 
-/** §4.1 route 5 — record an SFV completion (RFA-04) against an OPEN follow-up obligation. RN/NP/LPN/LVN. */
-export async function recordSfv(
-  client: ApiClient,
-  admissionId: string,
-  body: RecordSfvBody,
-): Promise<WriteResult<AssessmentView>> {
-  const { data, error, response } = await client.POST("/api/v1/admissions/{admissionId}/hope/sfv", {
-    params: { path: { admissionId } },
-    body,
-  });
-  if (error || !data) return failure(response?.status, error);
-  return { ok: true, value: data as AssessmentView };
-}
+// §4.1 route 5 (SFV completion) is driven by the assessment workspace's "Complete SFV" dialog
+// (`hope-sfv-complete-dialog.tsx`): the server refuses a completion without the J2053 answers only that dialog collects.
+// It builds its body as a `RecordSfvBody`, so the contract is still checked at compile time.
 
 /** §4.1 route 6 — save a draft's section payload. The only write that does not change status. */
 export async function updateDraft(
@@ -156,11 +387,10 @@ export async function updateDraft(
   id: string,
   body: UpdateDraftBody,
 ): Promise<WriteResult<AssessmentView>> {
-  const { data, error, response } = await client.PUT("/api/v1/hope/assessments/{id}", {
-    params: { path: { id } },
-    body,
-  });
-  if (error || !data) return failure(response?.status, error);
+  const { data, error, response } = await withRequestTimeout((signal) =>
+    client.PUT("/api/v1/hope/assessments/{id}", { params: { path: { id } }, body, signal }),
+  );
+  if (!writeSucceeded({ data, error, response }) || !data) return failure(response?.status, error);
   return { ok: true, value: data as AssessmentView };
 }
 
@@ -172,12 +402,15 @@ export async function requestSummaryPdf(
   client: ApiClient,
   id: string,
 ): Promise<WriteResult<{ assessmentId: string; requested: boolean }>> {
-  const { data, error, response } = await client.POST("/api/v1/hope/assessments/{id}/summary-pdf", {
-    params: { path: { id } },
-    body: {},
-    headers: freshIdempotencyKeyHeaders(), // a summary is built from the assessment as it is now: never replay an earlier answer
-  });
-  if (error || !data) return failure(response?.status, error);
+  const { data, error, response } = await withRequestTimeout((signal) =>
+    client.POST("/api/v1/hope/assessments/{id}/summary-pdf", {
+      params: { path: { id } },
+      body: {},
+      headers: freshIdempotencyKeyHeaders(), // a summary is built from the assessment as it is now: never replay an earlier answer
+      signal,
+    }),
+  );
+  if (!writeSucceeded({ data, error, response }) || !data) return failure(response?.status, error);
   return { ok: true, value: data as { assessmentId: string; requested: boolean } };
 }
 
@@ -187,11 +420,10 @@ export async function skipSchedule(
   id: string,
   body: SkipScheduleBody,
 ): Promise<WriteResult<ScheduleView>> {
-  const { data, error, response } = await client.POST("/api/v1/hope/schedules/{id}/skip", {
-    params: { path: { id } },
-    body,
-  });
-  if (error || !data) return failure(response?.status, error);
+  const { data, error, response } = await withRequestTimeout((signal) =>
+    client.POST("/api/v1/hope/schedules/{id}/skip", { params: { path: { id } }, body, signal }),
+  );
+  if (!writeSucceeded({ data, error, response }) || !data) return failure(response?.status, error);
   return { ok: true, value: data as ScheduleView };
 }
 
@@ -202,7 +434,11 @@ export async function skipSchedule(
 // builds the `.zip` of CMS XML records and answers `packaged`, a status the transmit worker (which only
 // takes `queued`) never touches. Retry stays absent — it requeues into a stage that cannot reach iQIES.
 
-/** `POST /hope/submissions/assemble` — build the iQIES upload package for one provider entity. */
+/**
+ * `POST /hope/submissions/assemble` — build the iQIES upload package for one provider entity. NOT bounded by
+ * `withRequestTimeout` (the other writes are): building a large package can legitimately outlast it, and giving up on a
+ * request that is still building would let a retry, on its fresh key, build a second package.
+ */
 export async function assembleSubmission(
   client: ApiClient,
   providerEntityId: string,
@@ -212,7 +448,28 @@ export async function assembleSubmission(
     // The package is built from the records as they are now (after a correction): never replay an earlier (lost-reply) answer.
     headers: freshIdempotencyKeyHeaders(),
   });
-  if (error || !data) return failure(response?.status, error);
+  if (!writeSucceeded({ data, error, response }) || !data) return failure(response?.status, error);
+  return { ok: true, value: data };
+}
+
+/** R-08 — why a package that never reached CMS is cancelled: one of the server's fixed codes, never free text. */
+export type CancelSubmissionBody = ReqBody<operations["postApiV1HopeSubmissionsByIdCancel"]>;
+
+/**
+ * `POST /hope/submissions/:id/cancel` — retire a package that was generated but never marked uploaded, so its
+ * signed assessments can be packaged again in a NEW batch. The server answers 409 (with its own reason) once the
+ * batch was marked uploaded; replaying a cancel returns the cancelled batch. No fresh Idempotency-Key is needed:
+ * a retry after a lost reply is the same request and the same answer.
+ */
+export async function cancelSubmission(
+  client: ApiClient,
+  id: string,
+  body: CancelSubmissionBody,
+): Promise<WriteResult<SubmissionView>> {
+  const { data, error, response } = await withRequestTimeout((signal) =>
+    client.POST("/api/v1/hope/submissions/{id}/cancel", { params: { path: { id } }, body, signal }),
+  );
+  if (!writeSucceeded({ data, error, response }) || !data) return failure(response?.status, error);
   return { ok: true, value: data };
 }
 
@@ -221,11 +478,14 @@ export async function regenerateSchedules(
   client: ApiClient,
   admissionId: string,
 ): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST("/api/v1/hope/admin/regenerate-schedules", {
-    body: { admissionId },
-    headers: freshIdempotencyKeyHeaders(), // regenerated from the admission as it is now: never replay an earlier answer
-  });
-  if (error || !data) return failure(response?.status, error);
+  const { data, error, response } = await withRequestTimeout((signal) =>
+    client.POST("/api/v1/hope/admin/regenerate-schedules", {
+      body: { admissionId },
+      headers: freshIdempotencyKeyHeaders(), // regenerated from the admission as it is now: never replay an earlier answer
+      signal,
+    }),
+  );
+  if (!writeSucceeded({ data, error, response }) || !data) return failure(response?.status, error);
   return { ok: true, value: data };
 }
 
@@ -281,6 +541,14 @@ export function authorDisciplineLabel(discipline: SfvAuthorDiscipline): string {
  */
 export function authorDisciplinesForRoles(
   roles: readonly string[],
+  options?: { readonly sfv?: false },
+): readonly AuthorDiscipline[];
+export function authorDisciplinesForRoles(
+  roles: readonly string[],
+  options: { readonly sfv?: boolean },
+): readonly SfvAuthorDiscipline[];
+export function authorDisciplinesForRoles(
+  roles: readonly string[],
   options: { readonly sfv?: boolean } = {},
 ): readonly SfvAuthorDiscipline[] {
   const permitted: readonly SfvAuthorDiscipline[] =
@@ -299,10 +567,13 @@ export async function recordSubmissionResult(
   submissionId: string,
   body: SubmissionResultBody,
 ): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST("/api/v1/hope/submissions/{id}/results", {
-    params: { path: { id: submissionId } },
-    body,
-  });
-  if (error || !data) return failure(response?.status, error);
+  const { data, error, response } = await withRequestTimeout((signal) =>
+    client.POST("/api/v1/hope/submissions/{id}/results", {
+      params: { path: { id: submissionId } },
+      body,
+      signal,
+    }),
+  );
+  if (!writeSucceeded({ data, error, response }) || !data) return failure(response?.status, error);
   return { ok: true, value: data };
 }

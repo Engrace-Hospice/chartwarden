@@ -8,7 +8,8 @@ import { Button, Modal, TextAreaField, TextField, t, useApiClient } from "@chart
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { type CmsItemOutcome, normalizeOutcome, parseCmsReport } from "./cms-result-parser";
-import { type SubmissionResultBody, recordSubmissionResult } from "./hope-api";
+import { RECORD_BUSY_CODE, type SubmissionResultBody, recordSubmissionResult } from "./hope-api";
+import { notifyDone } from "./hope-notify-done";
 
 export interface ResultItem {
   readonly assessmentId: string;
@@ -187,7 +188,7 @@ export function RecordCmsResultModal({
       // The request may have reached the server: reload so the page reflects a result that did land.
       setError("The result may not have been recorded; refresh to check.");
       setConfirming(false);
-      onConflict?.();
+      notifyDone(() => onConflict?.());
       return;
     } finally {
       submitting.current = false;
@@ -196,12 +197,12 @@ export function RecordCmsResultModal({
     if (!res.ok) {
       setError(res.message);
       setConfirming(false);
-      if (res.status === 409) onConflict?.();
+      // A 409 means the page is out of date, unless the record was only busy (a lock wait timed out: nothing was applied).
+      if (res.status === 409 && res.code !== RECORD_BUSY_CODE) notifyDone(() => onConflict?.());
       return;
     }
     // Outside the try: a throwing callback must not read as "nothing was recorded".
-    onDone();
-    onClose();
+    notifyDone(onDone, onClose);
   }
 
   const statusOf = (id: string): RowState["status"] => rows[id]?.status ?? "";

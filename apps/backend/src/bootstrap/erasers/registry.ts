@@ -73,7 +73,9 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // composition-root hook over this deny-stub — under an M4 destruction certificate (§8.4) it refuses when
   // submitted assessments are still inside the CMS 10-year retention horizon (unless a legal-hold override is
   // supplied), then drops/row-deletes the assessment rows and deletes the child rows; hope_submission rows
-  // survive as compliance evidence (envelope content purged by M4's MinIO worker). The `subjectId` is the patient.
+  // survive as compliance evidence (an object-store envelope is M4's MinIO worker's to purge, but a manual `db://`
+  // package, cancelled ones included, lives in hope_submission.acceptance_report, which that worker never touches).
+  // The `subjectId` is the patient.
   "hope_record",
   // M11-T08: a patient's orders record (order_signature/verbal_order/standing_order_instance/
   // order_discontinuation child rows + the partitioned order_record rows + the patient's standing_order

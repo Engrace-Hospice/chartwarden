@@ -197,6 +197,40 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
     ]);
   });
 
+  it("a lock timeout raised by a LATER statement of the recording (the record-id UPDATE of an assessment another request holds) is the typed retryable 409, and nothing is recorded", async () => {
+    const a = await seedAssessment();
+    const b = await seedBatch("submitted_pending_result", [a]);
+    const holder = new Client({ connectionString: DB_URL });
+    await holder.connect();
+    await holder.query("BEGIN");
+    await holder.query("SELECT 1 FROM hope_assessment WHERE id=$1 FOR UPDATE", [a]);
+    try {
+      const recorded = await svc
+        .importSubmissionResult(ORG_A, member, b, {
+          results: [{ assessmentId: a, status: "accepted", iqiesRecordId: "REC-BUSY-1" }],
+        })
+        .then(
+          () => null,
+          (e: { code?: string; statusCode?: number }) => `${e.statusCode}:${e.code ?? "OTHER"}`,
+        );
+
+      // The batch row lock was free; it is the assessment UPDATE after it that waited, 5 s, then timed out.
+      expect(recorded).toBe("409:M10_RECORD_BUSY");
+    } finally {
+      await holder.query("ROLLBACK");
+      await holder.end();
+    }
+    expect((await row(b)).status).toBe("submitted_pending_result");
+    expect(
+      (
+        await admin.query(
+          "SELECT 1 FROM hope_submission_result_event WHERE hope_submission_id=$1",
+          [b],
+        )
+      ).rows,
+    ).toEqual([]);
+  }, 30_000);
+
   it("keeps the stored ZIP bytes after recording, and a download does not re-open a settled batch", async () => {
     const a = await seedAssessment();
     const b = await seedBatch("submitted_pending_result", [a]);
@@ -269,6 +303,26 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
     });
     item = (await svc.getSubmission(ORG_A, origBatch)).items[0];
     expect(item).toMatchObject({ resolution: "resolved", correctionAssessmentId: second });
+  });
+
+  it("R-08: a correction whose package was cancelled is in progress again, never 'resubmitted'", async () => {
+    const original = await seedAssessment();
+    const origBatch = await seedBatch("submitted_pending_result", [original]);
+    await svc.importSubmissionResult(ORG_A, member, origBatch, {
+      results: [{ assessmentId: original, status: "rejected", code: "-1" }],
+    });
+    const correction = await seedAssessment(original);
+    const correctionBatch = await seedBatch("packaged", [correction]);
+    let item = (await svc.getSubmission(ORG_A, origBatch)).items[0];
+    expect(item).toMatchObject({ resolution: "resubmitted", correctionAssessmentId: correction });
+
+    await svc.cancelSubmission(ORG_A, member, correctionBatch, { reasonCode: "package_lost" });
+    item = (await svc.getSubmission(ORG_A, origBatch)).items[0];
+    expect(item).toMatchObject({
+      resolution: "correction_in_progress",
+      correctionAssessmentId: correction,
+    });
+    expect((await svc.getSubmission(ORG_A, correctionBatch)).items[0]?.status).toBe("cancelled");
   });
 
   it("a later report cannot flip an already-settled item, but its rows are still recorded", async () => {

@@ -19,7 +19,7 @@ import { createHmac, randomBytes } from "node:crypto";
 // A concurrent duplicate uses its own code so a client keeps its key and retries instead of renewing it while the first
 // request is still writing.
 //
-// RETRYABLE FAILURES (a 5xx, or the deadlock/serialization 409 CONCURRENT_UPDATE) are released instead of cached, but ONLY when
+// RETRYABLE FAILURES (a 5xx, or the 409s CONCURRENT_UPDATE and M10_RECORD_BUSY) are released instead of cached, but ONLY when
 // the request provably committed nothing. A response that says "retry" is true only if no write of this request is durable: a
 // handler whose transaction committed and which then failed (a throwing post-commit step, a response the serializer refuses, a
 // second transaction that deadlocks after the first committed) HAS written, and re-running it on a same-key retry would write
@@ -80,15 +80,21 @@ const pendingCaptures = new WeakMap<
   { orgId: string; key: string; requestHash: string }
 >();
 
-/** The error code of the retryable deadlock/serialization 409 (error-handler.ts): "this step was not applied; check, then retry". */
-const RETRYABLE_CONFLICT_CODE = "CONCURRENT_UPDATE";
+/**
+ * The error codes of the retryable 409s: the deadlock/serialization 409 (error-handler.ts) and M10's lock-wait timeout
+ * (`M10_RECORD_BUSY`). Each says "this step was not applied; check, then retry".
+ */
+const RETRYABLE_CONFLICT_CODES: ReadonlySet<unknown> = new Set([
+  "CONCURRENT_UPDATE",
+  "M10_RECORD_BUSY",
+]);
 
 /** The per-request commit trackers: opened in `onRequest` (so the ambient store covers the whole request), read in `onSend`. */
 const commitTrackers = new WeakMap<FastifyRequest, CommitTracker>();
 
 /**
  * A response that SAYS the write did not happen and the client should run it again — any 5xx, and the retryable
- * deadlock/serialization 409. Replaying it for the 24h TTL would turn "retry" into "never" when the write really did not run;
+ * 409s (deadlock/serialization, M10 lock-wait timeout). Replaying it for the 24h TTL would turn "retry" into "never" when the write really did not run;
  * these are released instead of completed, but only if the request also committed nothing (see the header).
  */
 function isRetryableOutcome(statusCode: number, body: unknown): boolean {
@@ -98,7 +104,7 @@ function isRetryableOutcome(statusCode: number, body: unknown): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
-    (error as { code?: unknown }).code === RETRYABLE_CONFLICT_CODE
+    RETRYABLE_CONFLICT_CODES.has((error as { code?: unknown }).code)
   );
 }
 

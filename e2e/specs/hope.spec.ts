@@ -65,10 +65,21 @@
 // RBAC and is refused by ABAC. The same split emar.spec.ts signs in around. Rita holds `rn` and
 // `rn_case_manager`; only the first normalizes into the CMS author vocabulary, so "Recording as" resolves
 // to exactly one option and preselects it.
+//
+// SIGNING IS A CEREMONY (R-05). Completing the SFV (`hope.sfv.record`) and signing the timepoint
+// (`hope.timepoint.sign`) both require a fresh step-up and a ticked attestation, and the route refuses
+// either without them. So the spec enrols a virtual passkey and steps up before the SFV (the step-up
+// window is 300 s, far longer than the seconds between the SFV and the signature), and ticks the
+// attestation in both dialogs — the same shape as `idg.spec.ts`'s adjournment ceremony.
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { RN_ACCOUNT } from "../fixtures/credentials";
-import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
+import {
+  enrolPasskey,
+  expectNoAxeViolations,
+  signInAs,
+  stepUpWithPasskey,
+} from "../fixtures/helpers";
 import { openPatientChartByLastName } from "../fixtures/patients";
 
 /**
@@ -172,6 +183,16 @@ test.describe("HOPE", () => {
     await expect(
       workspace(page).getByText("A moderate or severe symptom impact requires a follow-up visit."),
     ).toBeVisible();
+
+    // Both the SFV and the signature below are step-up gated. A virtual passkey stands in for the
+    // hardware; the step-up returns to this very assessment, whose answers the server already holds, so
+    // the workspace simply reloads and the J section is reopened.
+    const assessmentUrl = new URL(page.url());
+    await enrolPasskey(page);
+    await stepUpWithPasskey(page, `${assessmentUrl.pathname}${assessmentUrl.search}`);
+    await openSection(page, "J");
+    await expect(sfvCard).toBeVisible();
+
     await workspace(page).getByRole("button", { name: "Complete SFV" }).click();
     const sfv = page.getByRole("dialog", { name: "Complete SFV" });
     await expect(sfv).toBeVisible();
@@ -186,6 +207,8 @@ test.describe("HOPE", () => {
         .getByRole("radio", { name: i === 0 ? "Mild" : "None", exact: true })
         .check();
     }
+    // Completing the SFV records a signed record, so the signer attests first.
+    await sfv.getByRole("checkbox", { name: /I attest/ }).check();
     await sfv.getByRole("button", { name: "Complete SFV" }).click();
     await expect(sfv).toBeHidden({ timeout: 15_000 });
 
@@ -197,6 +220,9 @@ test.describe("HOPE", () => {
     await workspace(page).getByRole("button", { name: "Sign & complete" }).first().click();
     const signDialog = page.getByRole("dialog", { name: "Complete Admission" });
     await expect(signDialog).toBeVisible();
+    // The signature needs the attestation first: until it is ticked the commit stays disabled.
+    await expect(signDialog.getByRole("button", { name: "Sign & complete" })).toBeDisabled();
+    await signDialog.getByRole("checkbox", { name: /I attest/ }).check();
     await signDialog.getByRole("button", { name: "Sign & complete" }).click();
     await expect(signDialog).toBeHidden({ timeout: 15_000 });
 

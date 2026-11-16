@@ -5,6 +5,7 @@ import { StatusPill, useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { readSucceeded, withRequestTimeout } from "./hope-api";
 import { SUBMISSION_TONE, stateLabel } from "./hope-status";
 
 interface BatchRef {
@@ -24,12 +25,17 @@ export function IqiesSubmissionPanel({
     setLatest(undefined);
     void (async () => {
       try {
-        const { data, error } = await client.GET("/api/v1/hope/assessments/{id}/submissions", {
-          params: { path: { id: assessmentId } },
-        });
-        if (!active || error || !data) return;
+        // Bounded, and judged by `readSucceeded`: an unanswered request or an empty 5xx is a failed lookup (nothing shown),
+        // never "Not yet packaged".
+        const reply = await withRequestTimeout((signal) =>
+          client.GET("/api/v1/hope/assessments/{id}/submissions", {
+            params: { path: { id: assessmentId } },
+            signal,
+          }),
+        );
+        if (!active || !readSucceeded(reply) || !reply.data) return;
         // Newest first (server contract).
-        setLatest(data.submissions[0] ?? null);
+        setLatest(reply.data.submissions[0] ?? null);
       } catch {
         // degrade quietly
       }

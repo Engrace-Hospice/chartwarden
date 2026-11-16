@@ -10,6 +10,7 @@
  * Unit level over the in-memory store; the Postgres store's `release` is proved in
  * `gap-007-idempotency-claim.live.test.ts`.
  */
+import { HopeStateError } from "@chartwarden/hope";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
@@ -102,6 +103,31 @@ describe("applyIdempotency — a retryable failure is not replayed", () => {
     const retry = await post();
     expect(retry.statusCode).toBe(201);
     expect(retry.json()).toEqual({ saved: true });
+    expect(runs).toBe(2);
+  });
+
+  it("a 409 M10_RECORD_BUSY (lock timeout) frees the key: the same-key retry runs the write", async () => {
+    await build((run, reply) => {
+      if (run === 1) throw new HopeStateError("M10_RECORD_BUSY", "The record is busy.");
+      return reply.code(201).send({ saved: true });
+    });
+    const first = await post();
+    expect(first.statusCode).toBe(409);
+    expect(first.json().error.code).toBe("M10_RECORD_BUSY");
+    const retry = await post();
+    expect(retry.statusCode).toBe(201);
+    expect(retry.json()).toEqual({ saved: true });
+    expect(runs).toBe(2);
+  });
+
+  it("a 422 M10_SPEC_NOT_IN_FORCE stays cached: a same-key retry replays it (use a NEW key after the spec is loaded)", async () => {
+    await build((_run, reply) =>
+      reply.code(422).send({ error: { code: "M10_SPEC_NOT_IN_FORCE" } }),
+    );
+    expect((await post()).statusCode).toBe(422);
+    expect((await post()).statusCode).toBe(422);
+    expect(runs).toBe(1);
+    expect((await post("key-2")).statusCode).toBe(422);
     expect(runs).toBe(2);
   });
 

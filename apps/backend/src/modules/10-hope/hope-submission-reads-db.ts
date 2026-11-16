@@ -12,6 +12,7 @@ import {
 } from "./hope-submission-result";
 import type { HopeSubmissionFindingView, HopeSubmissionItemView } from "./routes/service";
 
+const SUB = schema.hopeSubmissions;
 const SUBITEM = schema.hopeSubmissionItems;
 const RESULT = schema.hopeSubmissionResultEvents;
 const ASSESS = schema.hopeAssessments;
@@ -19,6 +20,11 @@ export type SubmissionItemRow = typeof SUBITEM.$inferSelect;
 // Skip `iqies_validation_result` (the raw XML payload): item reads that only render the view never need it.
 const { iqiesValidationResult: _heavyItem, ...LIGHT_ITEM_COLUMNS } = getTableColumns(SUBITEM);
 export const LIGHT_ITEM = LIGHT_ITEM_COLUMNS;
+// Skip `acceptance_report` (the base64 ZIP + raw CMS results): a read, lock or write that only needs the batch's
+// status/columns must not drag the package bytes through the connection.
+const { acceptanceReport: _heavyReport, ...LIGHT_SUB_COLUMNS_ } = getTableColumns(SUB);
+export const LIGHT_SUB_COLUMNS = LIGHT_SUB_COLUMNS_;
+export type LightSubmissionColumns = Omit<typeof SUB.$inferSelect, "acceptanceReport">;
 
 interface Standing {
   readonly correctionAssessmentId: string | null;

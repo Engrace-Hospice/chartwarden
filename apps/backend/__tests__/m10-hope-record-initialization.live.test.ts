@@ -223,7 +223,9 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2A record initialization — LIVE Postg
   it("initializes an Admission correction as A0050=2, preserving original spec/ISC and target date", async () => {
     const draft = await record("01_admission");
     await answerForSign(draft.id);
-    const { assessmentId } = await svc.signTimepoint(ORG, membershipId, draft.id);
+    const { assessmentId } = await svc.signTimepoint(ORG, membershipId, draft.id, {
+      attestationConfirmed: true,
+    });
     // The sign result is a receipt; the correction is compared against the signed record itself.
     const signed = await svc.getAssessment(ORG, assessmentId);
     const correction = await svc.correctTimepoint(ORG, membershipId, signed.id, {

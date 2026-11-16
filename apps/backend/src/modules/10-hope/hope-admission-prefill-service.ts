@@ -9,6 +9,7 @@ import type {
 import { and, eq, inArray } from "drizzle-orm";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";
+import { lockAssessmentRow } from "./hope-assessment-lock";
 import type { HopeIsc } from "./hope-spec-registry";
 import { createHopeApplicabilityEngine } from "./spec/applicability-registry";
 
@@ -394,6 +395,99 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
     }
   }
 
+  /**
+   * The admission facts the chart holds, as prefill answers: the patient's demographics, residence and the coverage in
+   * force on the admission date (Medicare / Medicaid numbers fall back to coverage that had not ended by then), and the
+   * provider's NPI / CCN. These are seam calls on their own pooled connections, so they run before any lock is taken.
+   * `null` when the patient cannot be read (or belongs to another tenant): there is nothing to prefill.
+   */
+  async function chartPrefillAnswers(
+    tx: DbClient,
+    organizationId: string,
+    assessment: AssessmentRow,
+    admissionDate: string,
+  ) {
+    const patientReader = getSeam(
+      "PatientHopeAdmissionPrefillReader",
+    ) as PatientHopeAdmissionPrefillReader;
+    const addressReader = getSeam("PatientAddressReader") as PatientAddressReader;
+    const coverageReader = getSeam("PatientCoverageReader") as PatientCoverageReader;
+    const patient = await patientReader.factsForHopeAdmissionPrefill({
+      organizationId,
+      patientId: assessment.patientId,
+    });
+    if (!patient || patient.organizationId !== organizationId) return null;
+    const residence = await addressReader.residenceAt(
+      organizationId,
+      assessment.patientId,
+      admissionDate,
+    );
+    const allCoverages = await coverageReader.coveragesForPatient({
+      organizationId,
+      patientId: assessment.patientId,
+    });
+    const coverages = allCoverages.filter((coverage) =>
+      isHopeCoverageInForceOn(coverage, admissionDate),
+    );
+    // Medicare / Medicaid numbers fall back to coverage that had not ended by admission.
+    const numberFallbackCoverages = allCoverages.filter(
+      (coverage) =>
+        !coverages.includes(coverage) &&
+        (!coverage.effectiveTo || coverage.effectiveTo >= admissionDate),
+    );
+    const provider = assessment.providerEntityId
+      ? await foundationSites.providerEntityIdentifiers(
+          tx,
+          organizationId,
+          assessment.providerEntityId,
+        )
+      : null;
+    return buildHopeAdmissionPrefillAnswers({
+      patient,
+      admissionDate,
+      postalCode: residence?.postalCode ?? null,
+      residenceSite: mapHopeResidenceSite(residence?.kind, residence?.facilityId),
+      coverages,
+      numberFallbackCoverages,
+      providerNpi: provider?.npi ?? null,
+      providerCcn: provider?.ccn ?? null,
+    });
+  }
+
+  /** Write one chart value as a prefill answer (an existing prefill / unanswered row is replaced; see `shouldApplyHopeAdmissionPrefill`). */
+  async function writePrefillAnswer(
+    tx: DbClient,
+    assessment: AssessmentRow,
+    item: SpecItemRow,
+    answer: { readonly itemCode: string; readonly value: unknown; readonly source: AnswerSource },
+  ) {
+    await tx
+      .insert(ANSWER)
+      .values({
+        organizationId: assessment.organizationId,
+        providerEntityId: assessment.providerEntityId,
+        locationId: assessment.locationId,
+        hopeAssessmentId: assessment.id,
+        specVersionId: assessment.specVersionId!,
+        specItemId: item.id,
+        state: "answered",
+        value: answer.value,
+        source: answer.source,
+        sourceReference: { reason: "admission_prefill_snapshot" },
+        answeredAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [ANSWER.hopeAssessmentId, ANSWER.specItemId],
+        set: {
+          state: "answered",
+          value: answer.value,
+          source: answer.source,
+          sourceReference: { reason: "admission_prefill_snapshot" },
+          updatedAt: new Date(),
+        },
+      });
+  }
+
   return {
     async prefillAdmission({
       tx,
@@ -406,103 +500,54 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
       if (!assessment.specVersionId || !assessment.isc || assessment.status !== "draft") {
         return { assessmentId: assessment.id, prefilledItemCodes: [] };
       }
-      const patientReader = getSeam(
-        "PatientHopeAdmissionPrefillReader",
-      ) as PatientHopeAdmissionPrefillReader;
-      const addressReader = getSeam("PatientAddressReader") as PatientAddressReader;
-      const coverageReader = getSeam("PatientCoverageReader") as PatientCoverageReader;
-      const patient = await patientReader.factsForHopeAdmissionPrefill({
-        organizationId,
-        patientId: assessment.patientId,
-      });
-      if (!patient || patient.organizationId !== organizationId)
-        return { assessmentId: assessment.id, prefilledItemCodes: [] };
-      const residence = await addressReader.residenceAt(
-        organizationId,
-        assessment.patientId,
-        admissionDate,
-      );
-      const allCoverages = await coverageReader.coveragesForPatient({
-        organizationId,
-        patientId: assessment.patientId,
-      });
-      const coverages = allCoverages.filter((coverage) =>
-        isHopeCoverageInForceOn(coverage, admissionDate),
-      );
-      // Medicare / Medicaid numbers fall back to coverage that had not ended by admission.
-      const numberFallbackCoverages = allCoverages.filter(
-        (coverage) =>
-          !coverages.includes(coverage) &&
-          (!coverage.effectiveTo || coverage.effectiveTo >= admissionDate),
-      );
-      const provider = assessment.providerEntityId
-        ? await foundationSites.providerEntityIdentifiers(
-            tx,
-            organizationId,
-            assessment.providerEntityId,
-          )
-        : null;
-      const answers = buildHopeAdmissionPrefillAnswers({
-        patient,
-        admissionDate,
-        postalCode: residence?.postalCode ?? null,
-        residenceSite: mapHopeResidenceSite(residence?.kind, residence?.facilityId),
-        coverages,
-        numberFallbackCoverages,
-        providerNpi: provider?.npi ?? null,
-        providerCcn: provider?.ccn ?? null,
-      });
+      const answers = await chartPrefillAnswers(tx, organizationId, assessment, admissionDate);
+      if (!answers) return { assessmentId: assessment.id, prefilledItemCodes: [] };
       const items = await specItems(
         tx,
         assessment.specVersionId,
         assessment.isc as HopeIsc,
         answers.map((answer) => answer.itemCode),
       );
-      const existing = await answersByItem(tx, assessment.id, [...items.values()]);
-      const written: string[] = [];
+      // The chart values worth writing: an active item, an allowed value (judged once, it does not depend on locks).
+      const candidates: { item: SpecItemRow; answer: (typeof answers)[number] }[] = [];
       for (const answer of answers) {
         const item = items.get(answer.itemCode);
-        if (!item || !(await validValue(tx, item, answer.value))) continue;
-        const current = existing.get(item.id);
-        if (!shouldApplyHopeAdmissionPrefill(current?.source)) continue;
-        // Already holds this chart value: rewriting it would only churn the PHI audit trail.
-        if (
-          current?.state === "answered" &&
-          current.source === answer.source &&
-          String(current.value) === String(answer.value)
-        )
-          continue;
-        await tx
-          .insert(ANSWER)
-          .values({
-            organizationId,
-            providerEntityId: assessment.providerEntityId,
-            locationId: assessment.locationId,
-            hopeAssessmentId: assessment.id,
-            specVersionId: assessment.specVersionId!,
-            specItemId: item.id,
-            state: "answered",
-            value: answer.value,
-            source: answer.source,
-            sourceReference: { reason: "admission_prefill_snapshot" },
-            answeredAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: [ANSWER.hopeAssessmentId, ANSWER.specItemId],
-            set: {
-              state: "answered",
-              value: answer.value,
-              source: answer.source,
-              sourceReference: { reason: "admission_prefill_snapshot" },
-              updatedAt: new Date(),
-            },
-          });
+        if (item && (await validValue(tx, item, answer.value))) candidates.push({ item, answer });
+      }
+      type Existing = Awaited<ReturnType<typeof answersByItem>>;
+      const pendingOf = (existing: Existing) =>
+        candidates.filter(({ item, answer }) => {
+          const current = existing.get(item.id);
+          if (!shouldApplyHopeAdmissionPrefill(current?.source)) return false;
+          // Already holds this chart value: rewriting it would only churn the PHI audit trail.
+          return !(
+            current?.state === "answered" &&
+            current.source === answer.source &&
+            String(current.value) === String(answer.value)
+          );
+        });
+      const itemList = [...items.values()];
+      // Unlocked read: a workspace open that would write nothing (the common case) takes no lock at all.
+      if (refreshOnly && pendingOf(await answersByItem(tx, assessment.id, itemList)).length === 0) {
+        return { assessmentId: assessment.id, prefilledItemCodes: [] };
+      }
+      // M10's lock order is SFV row, assessment row, answers: the assessment row BEFORE the first answer write (the
+      // review self-heal, a patch and a sign all hold it first), then everything is judged again on the locked row.
+      const locked = await lockAssessmentRow(tx, organizationId, assessment.id);
+      if (locked?.status !== "draft")
+        return { assessmentId: assessment.id, prefilledItemCodes: [] };
+      const written: string[] = [];
+      for (const { item, answer } of pendingOf(await answersByItem(tx, assessment.id, itemList))) {
+        await writePrefillAnswer(tx, assessment, item, answer);
         written.push(answer.itemCode);
       }
       if (refreshOnly && written.length === 0) {
         return { assessmentId: assessment.id, prefilledItemCodes: written };
       }
       await reconcileApplicability({ tx, assessment, specVersionCode });
+      // `updated_at` only, deliberately NOT `version`: prefill (like spec initialisation) has never bumped the version,
+      // and it is not compare-before-write across opens, so bumping here would invalidate every open editor's
+      // `ifVersion` on every workspace open. (Known gap: a signer cannot tell that prefill changed an answer.)
       await tx.update(A).set({ updatedAt: new Date() }).where(eq(A.id, assessment.id));
       return { assessmentId: assessment.id, prefilledItemCodes: written };
     },

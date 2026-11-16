@@ -34,7 +34,7 @@ import { useNavigate } from "react-router-dom";
 import { NameLabel, matchesAllTokens, patientNameOf } from "../../shell/name-display";
 import { usePatientNames } from "../../shell/patient-names";
 import { type HopeAction, HopeActionModal } from "./hope-action-modal";
-import type { RfaKind } from "./hope-api";
+import { type RfaKind, withRequestTimeout } from "./hope-api";
 import { HopeListReadState } from "./hope-read-state";
 import { HopeRecordModal, type RecordWindow } from "./hope-record-modal";
 import { BUCKET_TONE, rfaLabel, stateLabel } from "./hope-status";
@@ -85,9 +85,11 @@ export function HopeDashboard(): JSX.Element {
     // Drop the previous outcome so an old Retry cannot be pressed while this load is in flight.
     setLoading(true);
     setReadStatus("ok");
-    // 404 = deny-as-not-found for a caller who is not org-wide scoped. A rejected request is `failed`.
+    // 404 = deny-as-not-found for a caller who is not org-wide scoped. A rejected or unanswered (bounded) request is `failed`.
     const { status, res } = await settleRead(
-      client.GET("/api/v1/hope/schedules", { params: { query: {} } }),
+      withRequestTimeout((signal) =>
+        client.GET("/api/v1/hope/schedules", { params: { query: {} }, signal }),
+      ),
       "denied",
     );
     if (mine !== latestLoad.current) return;
@@ -471,6 +473,7 @@ export function HopeDashboard(): JSX.Element {
           onDone={() => {
             void load();
           }}
+          onOpenExisting={(draft) => navigate(`/hope/assessments/${draft.id}`)}
         />
       ) : null}
       {acting !== null ? (

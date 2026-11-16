@@ -273,9 +273,9 @@ export {
   runIqiesSubmitCron,
   runSfvWatchdogCron,
   runSubmissionJob,
-  scheduleM10Jobs,
   transmitCorrelationId,
 } from "./jobs/cron-workers";
+export { m10SchedulerId, scheduleM10Jobs } from "./jobs/cron-schedule";
 export { M10_PLATFORM_JOB_ID, wireM10Tenancy } from "./wiring";
 export {
   M10_M6_ADMISSION_WORKFLOW_CONSUMER,

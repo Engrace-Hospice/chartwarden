@@ -2312,7 +2312,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record an SFV completion (RFA-04; RN/NP/LPN/LVN author) */
+        /** Record an SFV completion (RFA-04, inserted signed; RN/NP/LPN/LVN author) — the SFV must belong to the path admission (409 M10_SFV_NO_TRIGGER otherwise); `attestationConfirmed: true` required (422 M10_ATTESTATION_REQUIRED); optional `attestationVersion` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); `targetDate` must be a real calendar date-time with an explicit offset (422); J2053 symptom-follow-up content required and every value CMS-allowed (422 M10_SFV_COMPLETION_INCOMPLETE); the triggering assessment's target date has no HOPE spec to judge the values against (422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; the idempotency layer replays the 422 for 24 h on the same key, so after an operator loads the spec use a NEW Idempotency-Key)); 422 M10_ADMISSION_PROJECTION_GAP (no admission projection is available from the M6 seam; the idempotency layer replays the 422 for 24 h on the same key, so after an operator repairs the admission use a NEW Idempotency-Key); admission read failing after the caseload check passed, retry (503 DEGRADED; a failure inside the caseload check answers 404); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1AdmissionsByAdmissionIdHopeSfv"];
         delete?: never;
         options?: never;
@@ -2329,7 +2329,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record a new HOPE timepoint (draft; RN/NP/MD author) */
+        /** Record a new HOPE timepoint (draft; RN/NP/MD author) — `targetDate` must be a real calendar date-time with an explicit offset (422 otherwise; a date that does not exist is never rolled forward); `rfaKind` `04_sfv` is accepted by the schema but refused before anything is written (422 VALIDATION_FAILED, detail code M10_RFA_KIND_NOT_A_TIMEPOINT: an SFV completion is recorded with POST /admissions/{admissionId}/hope/sfv); 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; the idempotency layer replays the 422 for 24 h on the same key, so after an operator loads the spec use a NEW Idempotency-Key); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1AdmissionsByAdmissionIdHopeTimepoints"];
         delete?: never;
         options?: never;
@@ -12942,7 +12942,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Admin: recompute schedules for an admission */
+        /** Admin: create any missing HOPE schedule windows for an admission (existing rows, in any status, are left untouched, so nothing is recomputed or reopened and a window computed from a wrong date stays as it is); returns the admission's schedule count; an admission the caller cannot see (absent here, or another organization's) answers 404 from the scope guard before anything is written; an admission that is visible but not sited (no provider entity or location) is 422 M10_ADMISSION_PROJECTION_GAP (no admission projection is available from the M6 seam; the idempotency layer replays the 422 for 24 h on the same key, so after an operator repairs the admission use a NEW Idempotency-Key) */
         post: operations["postApiV1HopeAdminRegenerateschedules"];
         delete?: never;
         options?: never;
@@ -12959,7 +12959,7 @@ export interface paths {
         };
         /** One assessment (sections, snapshot, validation findings) */
         get: operations["getApiV1HopeAssessmentsById"];
-        /** Update a draft assessment */
+        /** Update a draft assessment; the draft is judged on the locked row, so an edit that raced a sign is refused (409 M10_CORRECTION_TARGET_NOT_SIGNED) and the signed record is untouched; 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         put: operations["putApiV1HopeAssessmentsById"];
         post?: never;
         delete?: never;
@@ -12981,7 +12981,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Patch canonical HOPE item answers on a draft assessment */
+        /** Patch canonical HOPE item answers on a draft assessment; 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         patch: operations["patchApiV1HopeAssessmentsByIdAnswers"];
         trace?: never;
     };
@@ -12994,7 +12994,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a correction draft for a signed HOPE assessment */
+        /** Create a correction draft for a signed HOPE assessment; the body's `targetDate` is required but IGNORED (the correction reuses the original record's date); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeAssessmentsByIdCorrect"];
         delete?: never;
         options?: never;
@@ -13015,7 +13015,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Set the HUV completion date (Z0350) through the workflow-controlled capture path */
+        /** Set the HUV completion date (Z0350) through the workflow-controlled capture path; 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         patch: operations["patchApiV1HopeAssessmentsByIdHuvCompletiondate"];
         trace?: never;
     };
@@ -13028,7 +13028,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create an inactivation draft for a signed HOPE assessment */
+        /** Create an inactivation draft for a signed HOPE assessment; 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeAssessmentsByIdInactivations"];
         delete?: never;
         options?: never;
@@ -13043,7 +13043,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** HOPE final-review readiness model */
+        /** HOPE final-review readiness model; 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; a GET is never cached by the idempotency layer, so a retry works as soon as an operator has loaded the spec) for a legacy draft whose spec cannot be frozen; 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." A GET is never claimed or cached by the idempotency layer, so it is simply sent again) */
         get: operations["getApiV1HopeAssessmentsByIdReview"];
         put?: never;
         post?: never;
@@ -13062,7 +13062,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Final-validate and sign a draft HOPE assessment */
+        /** Final-validate and sign a draft HOPE assessment — `attestationConfirmed: true` required (422 M10_ATTESTATION_REQUIRED); optional `attestationVersion` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; the idempotency layer replays the 422 for 24 h on the same key, so after an operator loads the spec use a NEW Idempotency-Key) for a legacy draft whose spec cannot be frozen; 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeAssessmentsByIdSign"];
         delete?: never;
         options?: never;
@@ -13111,7 +13111,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** On-demand pre-submission validation findings for one row */
+        /** On-demand pre-submission validation findings for one row; `submissionDate`, when given, must be a real calendar date-time with an explicit offset (else 422) */
         get: operations["getApiV1HopeAssessmentsByIdValidation"];
         put?: never;
         post?: never;
@@ -13128,7 +13128,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Canonical HOPE assessment workspace from frozen spec and current answers */
+        /** Canonical HOPE assessment workspace from frozen spec and current answers; 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; a GET is never cached by the idempotency layer, so a retry works as soon as an operator has loaded the spec) for a legacy draft whose spec cannot be frozen; 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." A GET is never claimed or cached by the idempotency layer, so it is simply sent again) */
         get: operations["getApiV1HopeAssessmentsByIdWorkspace"];
         put?: never;
         post?: never;
@@ -13198,7 +13198,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Skip a schedule (requires reason code) */
+        /** Skip an OPEN schedule (requires reason code); a schedule that is already completed, expired or skipped answers 409 CONFLICT ("only an open schedule can be skipped") and is left unchanged, because the status is checked by the same UPDATE that writes the skip; an unknown schedule is 404 */
         post: operations["postApiV1HopeSchedulesByIdSkip"];
         delete?: never;
         options?: never;
@@ -13213,7 +13213,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2) */
+        /** SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2); optional `triggeringAssessmentId` returns only the SFV that assessment triggered (an unknown id is an empty list) */
         get: operations["getApiV1HopeSfv"];
         put?: never;
         post?: never;
@@ -13274,6 +13274,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hope/submissions/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a generated HOPE package that was never marked uploaded (packaged/exported), freeing its assessments to be packaged again in a NEW batch; 409 once uploaded; replaying a cancel returns the cancelled batch; 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
+        post: operations["postApiV1HopeSubmissionsByIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hope/submissions/{id}/mark-uploaded": {
         parameters: {
             query?: never;
@@ -13283,7 +13300,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark a generated HOPE package as manually uploaded to iQIES */
+        /** Mark a generated HOPE package as manually uploaded to iQIES; `submittedAt`, when given, must be a real calendar date-time with an explicit offset (else 422); a cancelled package cannot be marked uploaded (409 M10_SUBMISSION_CANCELLED); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeSubmissionsByIdMarkuploaded"];
         delete?: never;
         options?: never;
@@ -13298,7 +13315,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Download the generated manual iQIES ZIP package */
+        /** Download the generated manual iQIES ZIP package; a cancelled package cannot be downloaded (409 M10_SUBMISSION_CANCELLED); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." A GET is never claimed or cached by the idempotency layer, so it is simply sent again) */
         get: operations["getApiV1HopeSubmissionsByIdPackage"];
         put?: never;
         post?: never;
@@ -13317,7 +13334,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent) */
+        /** Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeSubmissionsByIdResults"];
         delete?: never;
         options?: never;
@@ -13334,7 +13351,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Deprecated for the UI: requeue a rejected batch. iQIES has no retry; fix a rejected record with a correction assessment and re-package it in a new batch */
+        /** Deprecated for the UI: requeue a rejected batch (status rejected to queued; nothing consumes queued, and it neither re-validates nor re-assembles). iQIES has no retry; fix a rejected record with a correction assessment and re-package it in a new batch */
         post: operations["postApiV1HopeSubmissionsByIdRetry"];
         delete?: never;
         options?: never;
@@ -13351,7 +13368,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Force-assemble a submission outside the cron cadence */
+        /** Assemble and package the eligible signed assessments of a provider entity into a `packaged` manual iQIES ZIP batch (the only assemble path; no cron runs it); 409 CONFLICT when no signed assessment is eligible; 422 when the submission header or an assessment payload cannot be built (the message names what to set); a second assemble of the same provider entity queues behind the first (an advisory lock), so it can answer 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeSubmissionsAssemble"];
         delete?: never;
         options?: never;
@@ -37679,12 +37696,16 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     triggeringAssessmentId: string;
                     /** Format: date-time */
                     targetDate: string;
                     authorDiscipline: "RN" | "NP" | "MD" | "LPN" | "LVN";
                     adminOverride?: boolean;
                     adminOverrideJustification?: string;
+                    /** @constant */
+                    attestationConfirmed: true;
+                    attestationVersion?: string;
                     data: {
                         I?: {
                             primaryDiagnosisIcd10?: string;
@@ -70273,7 +70294,8 @@ export interface operations {
                 "application/json": {
                     ifVersion: number;
                     /** @constant */
-                    attestationConfirmed?: true;
+                    attestationConfirmed: true;
+                    attestationVersion?: string;
                 };
             };
         };
@@ -70324,8 +70346,8 @@ export interface operations {
                     "application/json": {
                         submissions: {
                             submissionId: string;
-                            status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error";
-                            itemStatus: "accepted" | "accepted_with_warnings" | "rejected" | "pending" | "blocked" | "unmatched";
+                            status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error" | "cancelled";
+                            itemStatus: "accepted" | "accepted_with_warnings" | "rejected" | "pending" | "blocked" | "unmatched" | "cancelled";
                             packageFilename: string | null;
                             submittedAt: string | null;
                             resultImportedAt: string | null;
@@ -70660,6 +70682,7 @@ export interface operations {
         parameters: {
             query?: {
                 state?: string;
+                triggeringAssessmentId?: string;
             };
             header?: never;
             path?: never;
@@ -70746,7 +70769,7 @@ export interface operations {
                             id: string;
                             providerEntityId: string;
                             submissionPeriod: string;
-                            status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error";
+                            status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error" | "cancelled";
                             transportMode?: string;
                             validationProfile?: string | null;
                             packageFilename?: string | null;
@@ -70760,6 +70783,8 @@ export interface operations {
                             submittedAt?: string | null;
                             acceptedAt: string | null;
                             iqiesSubmissionReference?: string | null;
+                            cancelledAt?: string | null;
+                            cancelReasonCode?: ("package_lost" | "never_uploaded" | "generated_in_error" | "other") | null;
                             needsCorrectionCount: number;
                             correctionInProgressCount: number;
                             resubmittedCount: number;
@@ -70792,7 +70817,7 @@ export interface operations {
                         id: string;
                         providerEntityId: string;
                         submissionPeriod: string;
-                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error";
+                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error" | "cancelled";
                         transportMode?: string;
                         validationProfile?: string | null;
                         packageFilename?: string | null;
@@ -70806,6 +70831,8 @@ export interface operations {
                         submittedAt?: string | null;
                         acceptedAt: string | null;
                         iqiesSubmissionReference?: string | null;
+                        cancelledAt?: string | null;
+                        cancelReasonCode?: ("package_lost" | "never_uploaded" | "generated_in_error" | "other") | null;
                         needsCorrectionCount: number;
                         correctionInProgressCount: number;
                         resubmittedCount: number;
@@ -70817,7 +70844,7 @@ export interface operations {
                             patientId: string | null;
                             rfaKind: ("01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge") | null;
                             assessmentStatus: "draft" | "signed" | "superseded" | null;
-                            status: "accepted" | "accepted_with_warnings" | "rejected" | "pending" | "blocked" | "unmatched";
+                            status: "accepted" | "accepted_with_warnings" | "rejected" | "pending" | "blocked" | "unmatched" | "cancelled";
                             iqiesRecordId: string | null;
                             processedAt: string | null;
                             resolution: "needs_correction" | "correction_in_progress" | "resubmitted" | "resolved" | null;
@@ -70831,6 +70858,59 @@ export interface operations {
                             itemCode: string | null;
                             message: string | null;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1HopeSubmissionsByIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reasonCode: "package_lost" | "never_uploaded" | "generated_in_error" | "other";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        submissionPeriod: string;
+                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error" | "cancelled";
+                        transportMode?: string;
+                        validationProfile?: string | null;
+                        packageFilename?: string | null;
+                        packageSha256?: string | null;
+                        packageSizeBytes?: number | null;
+                        itemCount: number;
+                        acceptedCount: number;
+                        rejectedCount: number;
+                        transmittedAt: string | null;
+                        exportedAt?: string | null;
+                        submittedAt?: string | null;
+                        acceptedAt: string | null;
+                        iqiesSubmissionReference?: string | null;
+                        cancelledAt?: string | null;
+                        cancelReasonCode?: ("package_lost" | "never_uploaded" | "generated_in_error" | "other") | null;
+                        needsCorrectionCount: number;
+                        correctionInProgressCount: number;
+                        resubmittedCount: number;
                     };
                 };
             };
@@ -70867,7 +70947,7 @@ export interface operations {
                         id: string;
                         providerEntityId: string;
                         submissionPeriod: string;
-                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error";
+                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error" | "cancelled";
                         transportMode?: string;
                         validationProfile?: string | null;
                         packageFilename?: string | null;
@@ -70881,6 +70961,8 @@ export interface operations {
                         submittedAt?: string | null;
                         acceptedAt: string | null;
                         iqiesSubmissionReference?: string | null;
+                        cancelledAt?: string | null;
+                        cancelReasonCode?: ("package_lost" | "never_uploaded" | "generated_in_error" | "other") | null;
                         needsCorrectionCount: number;
                         correctionInProgressCount: number;
                         resubmittedCount: number;
@@ -70951,7 +71033,7 @@ export interface operations {
                         id: string;
                         providerEntityId: string;
                         submissionPeriod: string;
-                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error";
+                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error" | "cancelled";
                         transportMode?: string;
                         validationProfile?: string | null;
                         packageFilename?: string | null;
@@ -70965,6 +71047,8 @@ export interface operations {
                         submittedAt?: string | null;
                         acceptedAt: string | null;
                         iqiesSubmissionReference?: string | null;
+                        cancelledAt?: string | null;
+                        cancelReasonCode?: ("package_lost" | "never_uploaded" | "generated_in_error" | "other") | null;
                         needsCorrectionCount: number;
                         correctionInProgressCount: number;
                         resubmittedCount: number;
@@ -70976,7 +71060,7 @@ export interface operations {
                             patientId: string | null;
                             rfaKind: ("01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge") | null;
                             assessmentStatus: "draft" | "signed" | "superseded" | null;
-                            status: "accepted" | "accepted_with_warnings" | "rejected" | "pending" | "blocked" | "unmatched";
+                            status: "accepted" | "accepted_with_warnings" | "rejected" | "pending" | "blocked" | "unmatched" | "cancelled";
                             iqiesRecordId: string | null;
                             processedAt: string | null;
                             resolution: "needs_correction" | "correction_in_progress" | "resubmitted" | "resolved" | null;
@@ -71022,7 +71106,7 @@ export interface operations {
                         id: string;
                         providerEntityId: string;
                         submissionPeriod: string;
-                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error";
+                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error" | "cancelled";
                         transportMode?: string;
                         validationProfile?: string | null;
                         packageFilename?: string | null;
@@ -71036,6 +71120,8 @@ export interface operations {
                         submittedAt?: string | null;
                         acceptedAt: string | null;
                         iqiesSubmissionReference?: string | null;
+                        cancelledAt?: string | null;
+                        cancelReasonCode?: ("package_lost" | "never_uploaded" | "generated_in_error" | "other") | null;
                         needsCorrectionCount: number;
                         correctionInProgressCount: number;
                         resubmittedCount: number;
@@ -71056,6 +71142,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     providerEntityId: string;
                 };
             };
@@ -71071,7 +71158,7 @@ export interface operations {
                         id: string;
                         providerEntityId: string;
                         submissionPeriod: string;
-                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error";
+                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error" | "cancelled";
                         transportMode?: string;
                         validationProfile?: string | null;
                         packageFilename?: string | null;
@@ -71085,6 +71172,8 @@ export interface operations {
                         submittedAt?: string | null;
                         acceptedAt: string | null;
                         iqiesSubmissionReference?: string | null;
+                        cancelledAt?: string | null;
+                        cancelReasonCode?: ("package_lost" | "never_uploaded" | "generated_in_error" | "other") | null;
                         needsCorrectionCount: number;
                         correctionInProgressCount: number;
                         resubmittedCount: number;

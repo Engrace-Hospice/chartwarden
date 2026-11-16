@@ -2,7 +2,7 @@
 // Shared by the DB backend and the in-memory slice so the two cannot drift. iQIES has no submission API:
 // the user uploads the zip in the CMS portal, then records the outcome here.
 import { createHash } from "node:crypto";
-import { HopeStateError } from "@chartwarden/hope";
+import { HopeStateError, type M10ErrorCode } from "@chartwarden/hope";
 import type { HopeSubmissionItemStatus, HopeSubmissionStatus } from "@chartwarden/types";
 
 /** Batch states a result may be recorded against: the zip was downloaded or marked uploaded. A `packaged`
@@ -15,6 +15,15 @@ export const RESULT_IMPORTABLE_STATUSES: readonly HopeSubmissionStatus[] = [
 
 export const isResultImportable = (status: string): boolean =>
   (RESULT_IMPORTABLE_STATUSES as readonly string[]).includes(status);
+
+/** Why a result cannot be recorded against a batch in `status` (the 409 code): never handed to CMS, cancelled
+ * (R-08: it must never be uploaded or settled), or already settled. */
+export const resultRefusalCode = (status: string): M10ErrorCode =>
+  ["packaged", "queued", "ready"].includes(status)
+    ? "M10_SUBMISSION_RESULT_NOT_UPLOADED"
+    : status === "cancelled"
+      ? "M10_SUBMISSION_CANCELLED"
+      : "M10_SUBMISSION_RESULT_ALREADY_RECORDED";
 
 /** Polarity-safe status text -> outcome: "not accepted" is a rejection, "0 errors" is not an error, anything
  * unrecognised is null (the row stays pending rather than being guessed accepted). The web parser mirrors this. */
@@ -160,6 +169,8 @@ export function resolveRejectedItem(
       return "resolved";
     case "rejected":
       return "needs_correction";
+    case "cancelled": // its package was cancelled before upload: the correction is signed but not in a live batch
+      return "correction_in_progress";
     default:
       return "resubmitted";
   }
@@ -189,11 +200,14 @@ export function terminalCorrection(
  * `transmittedAt` and `envelopeSha256`; a manual upload has no signed envelope, so the package's own
  * SHA-256 is the integrity hash that identifies what was uploaded. Emitting the older
  * `{submittedAt, transportMode}`-only shape failed catalog validation and turned "Mark uploaded" into a 500.
+ * `transmittedAt` is the instant the system recorded the upload (the retention anchor, the server's clock);
+ * `submittedAt` is when the operator says it happened, and is `transmittedAt` when they said nothing.
  */
 export function manualUploadTransmittedPayload(
   submissionId: string,
   packageSha256: string | null | undefined,
-  at: Date,
+  transmittedAt: Date,
+  submittedAt: Date = transmittedAt,
 ): {
   submissionId: string;
   transmittedAt: string;
@@ -206,13 +220,12 @@ export function manualUploadTransmittedPayload(
       "M10_SUBMISSION_PACKAGE_HASH_MISSING",
       `Submission ${submissionId} has no package hash to record; re-package the batch before marking it uploaded.`,
     );
-  const iso = at.toISOString();
   return {
     submissionId,
-    transmittedAt: iso,
+    transmittedAt: transmittedAt.toISOString(),
     envelopeSha256: packageSha256,
     transportMode: "manual_iqies_upload",
-    submittedAt: iso,
+    submittedAt: submittedAt.toISOString(),
   };
 }
 

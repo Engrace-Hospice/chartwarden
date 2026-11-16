@@ -30,7 +30,9 @@ interface RfaDayWindow {
  *   • HUV2      — days 16–30 (`[+15, +29]`)
  * The §7.1 acceptance ("Admission HOPE captured on day 3") falls inside the Admission window. The
  * Discharge RFA is NOT admission-anchored — it is materialized from M6's `admission.discharged` event
- * (D9) via {@link dischargeWindow}; the SFV (RFA 04) is signed-at-anchored (D3) and has no fixed window.
+ * (D9) via {@link dischargeWindow}; the SFV (RFA 04) has no fixed window here: its due date is never
+ * signed-at-anchored (ADR-0018 D1) and is planned by `sfv/sfv.ts` (in-memory) or, in the DB backend,
+ * from J2050B (`hopeSfvDueAtFromJ2050B`; open compliance question, see docs/BUSINESS_LOGIC.md).
  */
 export const ADMISSION_ANCHORED_WINDOWS: {
   readonly "01_admission": RfaDayWindow;

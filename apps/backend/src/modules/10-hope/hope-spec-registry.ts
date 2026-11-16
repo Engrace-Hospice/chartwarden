@@ -1,4 +1,5 @@
 import { type DbClient, schema } from "@chartwarden/db";
+import { HopeStateError } from "@chartwarden/hope";
 import { and, asc, eq, gte, isNull, lte, or } from "drizzle-orm";
 
 export class HopeSpecRegistryError extends Error {
@@ -7,9 +8,21 @@ export class HopeSpecRegistryError extends Error {
     this.name = "HopeSpecRegistryError";
   }
 }
-export class HopeSpecNotFoundForTargetDateError extends HopeSpecRegistryError {
+/**
+ * No spec version is in force on a target date. A `HopeStateError` (422 `M10_SPEC_NOT_IN_FORCE`), not a plain registry
+ * error, so every caller that lets it surface (record a timepoint, open a draft, complete an SFV) answers a typed 4xx
+ * instead of a generic 500. The message names no date: the target date of a patient's record stays out of the response
+ * (`targetDate` stays on the error for the operator reading it in code). It says nothing about what was or was not
+ * saved (a request that runs more than one transaction may have committed an earlier step). It tells a POST, PUT or PATCH
+ * client to use a NEW Idempotency-Key once the spec is loaded (a 422 is not a retryable outcome, so the idempotency layer
+ * replays it for 24 h on the same key); a GET carries no key, so the sentence says so and a plain retry is enough.
+ */
+export class HopeSpecNotFoundForTargetDateError extends HopeStateError {
   constructor(readonly targetDate: string) {
-    super(`No HOPE spec version is effective for ${targetDate}`);
+    super(
+      "M10_SPEC_NOT_IN_FORCE",
+      "No HOPE spec version is in force for this record's target date. An administrator needs to load the spec version that covers it. On POST, PUT and PATCH the idempotency layer replays this 422 for 24 h on the same Idempotency-Key, so after the spec is loaded use a NEW Idempotency-Key; a GET has no key.",
+    );
     this.name = "HopeSpecNotFoundForTargetDateError";
   }
 }
@@ -38,6 +51,26 @@ export class HopeAssessmentSpecNotInitializedError extends HopeSpecRegistryError
   constructor(readonly assessmentId: string) {
     super(`HOPE assessment ${assessmentId} has no frozen spec version / ISC`);
     this.name = "HopeAssessmentSpecNotInitializedError";
+  }
+}
+
+/**
+ * Run `resolve` and, when it fails because no spec version is in force, log ONE line for the operator before the error
+ * goes on. The error is a 4xx, which the error handler logs at info with only its code: without this line a CMS spec
+ * whose effective date nobody has loaded makes every record, workspace, review and sign fail with nothing at warn or
+ * error level naming the org or the record. `subject` names the record by id only (build it with `idForLog`), never by
+ * target date or content. The HopeSpecVersionOverlapError sibling is a plain error, so it is already logged in full as a 500.
+ */
+export async function logSpecNotInForce<T>(subject: string, resolve: () => Promise<T>): Promise<T> {
+  try {
+    return await resolve();
+  } catch (error) {
+    if (error instanceof HopeSpecNotFoundForTargetDateError) {
+      console.warn(
+        `m10: M10_SPEC_NOT_IN_FORCE: no HOPE spec version is in force for the target date of ${subject}; an administrator needs to load the spec version that covers it.`,
+      );
+    }
+    throw error;
   }
 }
 
@@ -77,6 +110,16 @@ export interface HopeSpecRegistry {
   requireAllowedValue(versionId: string, itemCode: string, valueCode: string): Promise<void>;
 }
 
+/**
+ * The SQL condition "this spec version is in force on `date`" (`YYYY-MM-DD`): it started on or before the date and has
+ * not ended before it. One definition for the registry's own lookup and for any caller that must pick a spec version by
+ * the same rule (a future-dated or retired version is never in force).
+ */
+export function specVersionEffectiveOn(date: string) {
+  const V = schema.hopeSpecVersions;
+  return and(lte(V.effectiveFrom, date), or(isNull(V.effectiveTo), gte(V.effectiveTo, date)));
+}
+
 export function createHopeSpecRegistry(db: DbClient): HopeSpecRegistry {
   const V = schema.hopeSpecVersions;
   const I = schema.hopeSpecItems;
@@ -100,7 +143,7 @@ export function createHopeSpecRegistry(db: DbClient): HopeSpecRegistry {
       const rows = await db
         .select()
         .from(V)
-        .where(and(lte(V.effectiveFrom, date), or(isNull(V.effectiveTo), gte(V.effectiveTo, date))))
+        .where(specVersionEffectiveOn(date))
         .orderBy(asc(V.effectiveFrom));
       if (rows.length === 0) {
         throw new HopeSpecNotFoundForTargetDateError(date);

@@ -13,11 +13,13 @@ import {
   normalizeMedicaidNumber,
   normalizeMedicareNumber,
 } from "@chartwarden/types";
-import { Button, useApiClient } from "@chartwarden/ui";
+import { Button, Modal, useApiClient } from "@chartwarden/ui";
 import type { CSSProperties, JSX } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { MdmEntityLookupField } from "../../shell/entity-lookups";
+import { failedWriteMessage, localToday, withRequestTimeout, writeSucceeded } from "./hope-api";
+import { useFocusOnNewError } from "./use-focus-on-new-error";
 
 export interface ChartPayer {
   id: string;
@@ -62,6 +64,24 @@ const COVERAGE_LABEL: Record<string, string> = {
 };
 const coverageLabel = (kind: string) => COVERAGE_LABEL[kind] ?? kind.replace(/_/g, " ");
 
+/** The coverage write got no usable answer (offline, a reset, a timeout, an empty 5xx): it may or may not have landed. */
+const CHART_UNCONFIRMED =
+  "Could not confirm that the chart was updated. Check the patient's coverage before trying again.";
+const CHART_REFUSED = "The chart could not be updated. Check your permission to edit patients.";
+/** The HOPE answer save (the parent's) was rejected or never answered: it may or may not have been applied. */
+const HOPE_UNCONFIRMED =
+  "Could not confirm that the HOPE answer was saved. Check the answer before trying again.";
+/** The coverage was written; only the re-read of the chart numbers behind this dialog failed. */
+const CHART_REFRESH_FAILED =
+  " The chart summary behind this dialog could not be refreshed; reload the page to see it.";
+
+/** What the typed client answers, as far as a write's outcome goes (the client is cast: see `post` below). */
+interface PostReply {
+  data?: unknown;
+  error?: unknown;
+  response?: { ok?: boolean; status?: number };
+}
+
 function normalize(itemCode: ReconcileItem, raw: string): string {
   return itemCode === "A0600B" ? normalizeMedicareNumber(raw) : normalizeMedicaidNumber(raw);
 }
@@ -99,40 +119,62 @@ export function ChartReconcileDialog(props: {
   const [busy, setBusy] = useState<"hope" | "chart" | "both" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const errorRef = useFocusOnNewError<HTMLParagraphElement>(error);
+  const [chartStale, setChartStale] = useState(false);
   const [payerId, setPayerId] = useState("");
   const [coverageKind, setCoverageKind] = useState(meta.kinds[0]!.value);
   const [rank, setRank] = useState(String(currentRanks.length ? Math.max(...currentRanks) + 1 : 1));
-  const [effectiveFrom, setEffectiveFrom] = useState(
-    props.admissionDate ?? new Date().toISOString().slice(0, 10),
-  );
+  // The admission date, else the clinician's own today (not the UTC day, which a US evening has rolled into tomorrow).
+  const [effectiveFrom, setEffectiveFrom] = useState(props.admissionDate ?? localToday());
+  // The button that was pressed goes away with the options it sat in (and a cleared field disables its button): the outcome
+  // takes focus, so Escape and Tab keep working inside the dialog instead of falling to the page behind it.
+  const outcomeRef = useRef<HTMLOutputElement>(null);
+  useEffect(() => {
+    if (done !== null || note !== null) outcomeRef.current?.focus();
+  }, [done, note]);
 
-  const post = client.POST as unknown as (
-    path: string,
-    init: unknown,
-  ) => Promise<{ data?: unknown; error?: unknown }>;
+  const post = client.POST as unknown as (path: string, init: unknown) => Promise<PostReply>;
 
-  async function postCoverage(body: Record<string, unknown>): Promise<boolean> {
-    const result = await post("/api/v1/patients/{id}/payers", {
-      params: { path: { id: props.patientId } },
-      body,
-    });
-    if (result.error) {
-      const message = (result.error as { error?: { message?: string } }).error?.message;
-      setError(
-        message ?? "The chart could not be updated. Check your permission to edit patients.",
+  /**
+   * Files a coverage row: null when it was written, else why it was not (or could not be confirmed). Never rejects, so the
+   * callers' `busy` always clears; the request is bounded, so a stalled connection ends as "could not confirm".
+   */
+  async function postCoverage(body: Record<string, unknown>): Promise<string | null> {
+    let reply: PostReply;
+    try {
+      reply = await withRequestTimeout((signal) =>
+        post("/api/v1/patients/{id}/payers", {
+          params: { path: { id: props.patientId } },
+          body,
+          signal,
+        }),
       );
-      return false;
+    } catch {
+      return CHART_UNCONFIRMED;
     }
-    await props.onChartUpdated();
-    return true;
+    // Not `error` alone: openapi-fetch leaves it undefined (or "") for a non-OK reply with no body.
+    if (!writeSucceeded(reply)) return failedWriteMessage(reply, CHART_UNCONFIRMED, CHART_REFUSED);
+    try {
+      await props.onChartUpdated();
+    } catch {
+      // The coverage is written; only the re-read behind this dialog failed, which the done message says.
+      setChartStale(true);
+    }
+    return null;
   }
+
+  // The parent's save of the HOPE answer, bounded like the chart write: it ignores the signal, but a save nobody
+  // answers must not hold this dialog shut for good.
+  const saveInHope = (value: string): Promise<void> =>
+    withRequestTimeout(() => props.onUseChart(value));
 
   async function fileCoverage(body: Record<string, unknown>, success: string): Promise<void> {
     setBusy("chart");
     setError(null);
-    const ok = await postCoverage(body);
+    const failure = await postCoverage(body);
     setBusy(null);
-    if (ok) setDone(success);
+    if (failure === null) setDone(success);
+    else setError(failure);
   }
 
   async function useChart(): Promise<void> {
@@ -140,10 +182,10 @@ export function ChartReconcileDialog(props: {
     setBusy("hope");
     setError(null);
     try {
-      await props.onUseChart(props.chart.value);
+      await saveInHope(props.chart.value);
       setDone(`HOPE now uses the chart's ${meta.noun}.`);
     } catch {
-      setError("The HOPE answer could not be saved.");
+      setError(HOPE_UNCONFIRMED);
     } finally {
       setBusy(null);
     }
@@ -177,18 +219,22 @@ export function ChartReconcileDialog(props: {
     const wrote: string[] = [];
     if (props.canEditHope && enteredNumber !== hopeNumber) {
       try {
-        await props.onUseChart(enteredNumber);
+        await saveInHope(enteredNumber);
         wrote.push("in HOPE");
       } catch {
-        setError("The HOPE answer could not be saved.");
+        setError(HOPE_UNCONFIRMED);
         setBusy(null);
         return;
       }
     }
     const body = refile(enteredNumber);
     if (body && enteredNumber !== chart?.value) {
-      if (!(await postCoverage(body))) {
+      const failure = await postCoverage(body);
+      if (failure !== null) {
         setBusy(null);
+        // HOPE already holds the number: keep what the dialog shows in step, so a retry sends only the chart write.
+        if (wrote.length > 0) setHopeValue(enteredNumber);
+        setError(wrote.length > 0 ? `Saved in HOPE, but not on the chart. ${failure}` : failure);
         return;
       }
       wrote.push("on the chart");
@@ -213,11 +259,17 @@ export function ChartReconcileDialog(props: {
   ) : null;
 
   return (
-    <div style={backdrop} role="presentation">
-      <dialog style={modal} open aria-modal="true" aria-labelledby="hope-reconcile-title">
-        <h2 id="hope-reconcile-title" style={title}>
-          Reconcile {meta.noun}
-        </h2>
+    // The kit Modal: focus goes in, Tab stays inside, Escape closes (held shut while a write is out: closing would hide its
+    // outcome). The scrim never dismisses, so a number typed from the member card is not lost to a stray click.
+    <Modal
+      open
+      onClose={busy !== null ? undefined : props.onClose}
+      dismissOnScrim={false}
+      ariaLabel={`Reconcile ${meta.noun}`}
+      width="35rem"
+    >
+      <div style={body}>
+        <h2 style={title}>Reconcile {meta.noun}</h2>
         <dl style={compare}>
           <dt>In HOPE ({props.itemCode})</dt>
           <dd>
@@ -244,7 +296,10 @@ export function ChartReconcileDialog(props: {
         </dl>
 
         {done ? (
-          <output style={success}>{done}</output>
+          <output ref={outcomeRef} tabIndex={-1} style={success}>
+            {done}
+            {chartStale ? CHART_REFRESH_FAILED : ""}
+          </output>
         ) : (
           <>
             {chart ? (
@@ -273,7 +328,11 @@ export function ChartReconcileDialog(props: {
               </section>
             ) : null}
 
-            {note ? <output style={success}>{note}</output> : null}
+            {note ? (
+              <output ref={outcomeRef} tabIndex={-1} style={success}>
+                {note}
+              </output>
+            ) : null}
             <section style={option}>
               <h3 style={optionTitle}>
                 {chart ? "The HOPE number is right" : "Add it to the patient's chart"}
@@ -434,41 +493,23 @@ export function ChartReconcileDialog(props: {
         )}
 
         {error ? (
-          <p role="alert" style={warn}>
+          // Focus moves here: the pressed button is disabled while the write is out, which drops focus to the page.
+          <p ref={errorRef} tabIndex={-1} role="alert" style={warn}>
             {error}
           </p>
         ) : null}
         <div style={actions}>
-          <Button tone="secondary" onClick={props.onClose}>
+          {/* Held shut while a write is out (bounded by the request timeout): closing would hide its outcome. */}
+          <Button tone="secondary" disabled={busy !== null} onClick={props.onClose}>
             {done ? "Done" : "Cancel"}
           </Button>
         </div>
-      </dialog>
-    </div>
+      </div>
+    </Modal>
   );
 }
 
-const backdrop: CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "var(--color-scrim)",
-  zIndex: 20,
-};
-const modal: CSSProperties = {
-  position: "fixed",
-  top: "50%",
-  left: "50%",
-  transform: "translate(-50%, -50%)",
-  width: "min(560px, calc(100% - 2rem))",
-  maxHeight: "calc(100% - 2rem)",
-  overflowY: "auto",
-  margin: 0,
-  border: 0,
-  borderRadius: 8,
-  background: "var(--color-surface)",
-  padding: "1.25rem",
-  boxShadow: "var(--shadow-float)",
-};
+const body: CSSProperties = { padding: "1.25rem" };
 const title: CSSProperties = { margin: "0 0 0.75rem", fontSize: "1.2rem" };
 const compare: CSSProperties = {
   display: "grid",

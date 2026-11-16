@@ -139,6 +139,12 @@ export interface PersistedSubmission {
  * 'pending'` guarded nothing. It is the backstop under two concurrent assemblers, where both read the
  * same eligible set before either writes — the second INSERT raises rather than double-batching an
  * assessment.
+ *
+ * The INSERTs carry no lost-race handling of their own, and must not need it: a 23505 here aborts the caller's whole
+ * transaction (every other batch of the org with it), and the loser of the race waits behind the winner's uncommitted
+ * item without a bound of its own. The caller therefore holds the `m10:assemble:<org>` advisory key for
+ * `planned.providerEntityId` (`lockRecordKey`, as `POST /hope/submissions/assemble` and `runAssembleSubmissionCron` do)
+ * and reads the candidates behind it, so the unique index is the backstop for a writer that took no key, not the guard.
  */
 export async function persistAssembledSubmission(
   tx: DbClient,

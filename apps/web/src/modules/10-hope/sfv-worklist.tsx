@@ -8,9 +8,13 @@ import {
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
+  type ReadStatus,
   StatusPill,
   WorkQueueLayout,
+  isoToLocalInput,
+  settleRead,
   useApiClient,
+  useReloadFocus,
 } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — SFV worklist (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/CHARTWARDEN_UI_HOPE_ENGINE.md — "Use Work Queue."
@@ -19,14 +23,18 @@ import {
 // state filter narrows the queue server-side. Reads GET /api/v1/hope/sfv via the typed client; the server
 // enforces every scope (ADR-0030 — no authz on the frontend). Leaves only (@chartwarden/ui).
 //
-// #91 — this is the queue whose reason to exist is COMPLETING the follow-up, and it offered no way to.
-// Each OPEN or OVERDUE row now carries Record, which commits through `POST /admissions/:id/hope/sfv` —
-// a different endpoint from the timepoint capture, with its own RN/NP/LPN/LVN author floor, that matches the
-// OPEN obligation rather than creating a free-standing RFA-04. A missed or completed row offers
-// nothing: `planSfvCompletion` refuses both, and offering a refused control is the F-007 rule.
-import { useCallback, useEffect, useMemo, useState } from "react";
+// #91 — this is the queue whose reason to exist is COMPLETING the follow-up. Each OPEN or OVERDUE row (the two
+// states the capture hub treats as actionable) carries Complete, a link to the TRIGGERING assessment (`?completeSfv=1`
+// opens its completion dialog on arrival, when one can be offered): the follow-up
+// is answered (J2053A-H) in its "Complete SFV" dialog, and the server refuses an SFV completion without those
+// answers, so this queue never records one itself. A missed or completed row offers nothing: `planSfvCompletion`
+// refuses both, and offering a refused control is the F-007 rule.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
-import { HopeRecordModal } from "./hope-record-modal";
+import { Link } from "react-router-dom";
+import { withRequestTimeout } from "./hope-api";
+import { completeSfvPath } from "./hope-paths";
+import { HopeListReadState } from "./hope-read-state";
 import { SFV_TONE, stateLabel } from "./hope-status";
 
 interface SfvRow {
@@ -41,6 +49,9 @@ interface SfvRow {
 
 const PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
+/** The instant the visit was triggered, as the viewer's own `YYYY-MM-DD HH:mm` (never the UTC wall time with no zone on it); the raw value when it cannot be read. */
+const triggeredAtLocal = (iso: string): string => isoToLocalInput(iso).replace("T", " ") || iso;
+
 export function SfvWorklist(): JSX.Element {
   const client = useApiClient();
   const [state, setState] = useState("");
@@ -49,24 +60,29 @@ export function SfvWorklist(): JSX.Element {
   const [pageSize, setPageSize] = useState(10);
   const [items, setItems] = useState<SfvRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [recording, setRecording] = useState<SfvRow | null>(null);
+  const focusRef = useReloadFocus<HTMLDivElement>(loading);
+  const [readStatus, setReadStatus] = useState<ReadStatus>("ok");
+  const unavailable = readStatus !== "ok";
 
+  const latestLoad = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++latestLoad.current;
+    // Drop the previous outcome so an old Retry cannot be pressed while this load is in flight.
     setLoading(true);
-    setError(null);
+    setReadStatus("ok");
     const query: { state?: string } = {};
     if (state) query.state = state;
-    const { data, error: err } = await client.GET("/api/v1/hope/sfv", { params: { query } });
-    if (err) {
-      setError("Could not load the SFV worklist.");
-      setLoading(false);
-      return;
-    }
-    const rows = ((data?.sfvs ?? []) as SfvRow[]).sort(
-      (a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt),
+    // An empty reply from a gateway fault is not an empty queue, and a rejected request is not an exception: both are
+    // `failed` (with Retry), and a refusal is `denied`. A queue that says "nothing to do" when it could not be read hides
+    // the follow-ups that are due.
+    // Bounded: a request nobody answers is `failed` too (with Retry), not a spinner that never ends.
+    const { status, res } = await settleRead(
+      withRequestTimeout((signal) => client.GET("/api/v1/hope/sfv", { params: { query }, signal })),
     );
-    setItems(rows);
+    if (mine !== latestLoad.current) return;
+    setReadStatus(status);
+    const rows = status === "ok" ? ((res?.data?.sfvs ?? []) as SfvRow[]) : [];
+    setItems([...rows].sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt)));
     setLoading(false);
   }, [client, state]);
 
@@ -120,128 +136,133 @@ export function SfvWorklist(): JSX.Element {
   };
 
   return (
-    <>
-      <WorkQueueLayout
-        fullPageScroll
-        header={
-          <PageHeader title="Symptom Follow-Up Visits">
-            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-              Track symptom follow-up visits triggered by HOPE assessments, due dates, missed
-              visits, and overdue risk.
-            </div>
-          </PageHeader>
-        }
-        kpis={
-          <KpiStrip>
-            <KpiCard
-              label="Open"
-              value={loading || error ? "—" : counts.open}
-              detail="Awaiting visit"
-              tone="info"
-              accentColor="var(--color-primary)"
-              selected={state === "open"}
-              onSelect={() => {
-                setState("open");
-                setPage(1);
-              }}
-            />
-            <KpiCard
-              label="Overdue"
-              value={loading || error ? "—" : counts.overdue}
-              detail="Past due"
-              tone={counts.overdue > 0 ? "warning" : "neutral"}
-              accentColor={
-                counts.overdue > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
-              }
-              selected={state === "overdue"}
-              onSelect={() => {
-                setState("overdue");
-                setPage(1);
-              }}
-            />
-            <KpiCard
-              label="Missed"
-              value={loading || error ? "—" : counts.missed}
-              detail="Escalated miss"
-              tone={counts.missed > 0 ? "danger" : "neutral"}
-              accentColor={
-                counts.missed > 0 ? "var(--color-error)" : "var(--color-outline-variant)"
-              }
-              selected={state === "missed"}
-              onSelect={() => {
-                setState("missed");
-                setPage(1);
-              }}
-            />
-            <KpiCard
-              label="Completed"
-              value={loading || error ? "—" : counts.completed}
-              detail="Closed SFVs"
-              tone="success"
-              accentColor="var(--color-success)"
-              selected={state === "completed"}
-              onSelect={() => {
-                setState("completed");
-                setPage(1);
-              }}
-            />
-          </KpiStrip>
-        }
-        filters={
-          <div style={filterPanelStyle}>
-            {error ? (
-              <div role="alert" style={errorBannerStyle}>
-                <Glyph name="alert" size={16} />
-                <span>{error}</span>
-              </div>
-            ) : null}
-            <div style={filterRowStyle}>
-              <label className="wx-search-field">
-                <Glyph name="search" size={16} />
-                <input
-                  type="search"
-                  placeholder="Search patient, assessment, SFV..."
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setPage(1);
-                  }}
-                  aria-label="Search symptom follow-up visits"
-                />
-              </label>
-              <label style={filterLabelStyle}>
-                <span style={mutedStyle}>State</span>
-                <select
-                  aria-label="SFV state"
-                  value={state}
-                  onChange={(e) => {
-                    setState(e.target.value);
-                    setPage(1);
-                  }}
-                  style={selectStyle}
-                >
-                  <option value="">All</option>
-                  <option value="open">Open</option>
-                  <option value="overdue">Overdue</option>
-                  <option value="missed">Missed</option>
-                  <option value="completed">Completed</option>
-                </select>
-              </label>
-              {hasActiveFilters ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
-              ) : null}
-              <span style={mutedStyle}>
-                {filteredItems.length} of {items.length} SFVs
-              </span>
-            </div>
+    <WorkQueueLayout
+      fullPageScroll
+      header={
+        <PageHeader title="Symptom Follow-Up Visits">
+          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Track symptom follow-up visits triggered by HOPE assessments, due dates, missed visits,
+            and overdue risk.
           </div>
-        }
-        table={
-          error ? (
+        </PageHeader>
+      }
+      kpis={
+        <KpiStrip>
+          <KpiCard
+            label="Open"
+            value={loading || unavailable ? "—" : counts.open}
+            detail="Awaiting visit"
+            tone="info"
+            accentColor="var(--color-primary)"
+            selected={state === "open"}
+            onSelect={() => {
+              setState("open");
+              setPage(1);
+            }}
+          />
+          <KpiCard
+            label="Overdue"
+            value={loading || unavailable ? "—" : counts.overdue}
+            detail="Past due"
+            tone={counts.overdue > 0 ? "warning" : "neutral"}
+            accentColor={
+              counts.overdue > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
+            }
+            selected={state === "overdue"}
+            onSelect={() => {
+              setState("overdue");
+              setPage(1);
+            }}
+          />
+          <KpiCard
+            label="Missed"
+            value={loading || unavailable ? "—" : counts.missed}
+            detail="Escalated miss"
+            tone={counts.missed > 0 ? "danger" : "neutral"}
+            accentColor={counts.missed > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
+            selected={state === "missed"}
+            onSelect={() => {
+              setState("missed");
+              setPage(1);
+            }}
+          />
+          <KpiCard
+            label="Completed"
+            value={loading || unavailable ? "—" : counts.completed}
+            detail="Closed SFVs"
+            tone="success"
+            accentColor="var(--color-success)"
+            selected={state === "completed"}
+            onSelect={() => {
+              setState("completed");
+              setPage(1);
+            }}
+          />
+        </KpiStrip>
+      }
+      filters={
+        <div style={filterPanelStyle}>
+          <div style={filterRowStyle}>
+            <label className="wx-search-field">
+              <Glyph name="search" size={16} />
+              <input
+                type="search"
+                placeholder="Search patient, assessment, SFV..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Search symptom follow-up visits"
+              />
+            </label>
+            <label style={filterLabelStyle}>
+              <span style={mutedStyle}>State</span>
+              <select
+                aria-label="SFV state"
+                value={state}
+                onChange={(e) => {
+                  setState(e.target.value);
+                  setPage(1);
+                }}
+                style={selectStyle}
+              >
+                <option value="">All</option>
+                <option value="open">Open</option>
+                <option value="overdue">Overdue</option>
+                <option value="missed">Missed</option>
+                <option value="completed">Completed</option>
+              </select>
+            </label>
+            {hasActiveFilters ? (
+              <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                Clear
+              </Button>
+            ) : null}
+            <span style={mutedStyle}>
+              {unavailable ? "SFVs unavailable" : `${filteredItems.length} of ${items.length} SFVs`}
+            </span>
+          </div>
+        </div>
+      }
+      table={
+        <div
+          ref={focusRef}
+          tabIndex={-1}
+          // biome-ignore lint/a11y/useSemanticElements: a <fieldset> is for form controls; this names a results region.
+          role="group"
+          aria-label="SFV worklist results"
+          aria-busy={loading}
+          style={{ outline: "none" }}
+        >
+          {unavailable ? (
             <div style={{ padding: "2rem 1.5rem" }}>
-              <EmptyState title="Unavailable" description={error} />
+              <HopeListReadState
+                status={readStatus}
+                subject="the symptom follow-up queue"
+                failedTitle="The symptom follow-up queue could not be loaded"
+                onRetry={() => void load()}
+              />
             </div>
           ) : loading && items.length === 0 ? (
             <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
@@ -305,9 +326,7 @@ export function SfvWorklist(): JSX.Element {
                             <span style={monoMutedStyle}>{s.id.slice(0, 8)}</span>
                           </div>
                         </td>
-                        <td className="tabular-nums">
-                          {s.triggeredAt.slice(0, 16).replace("T", " ")}
-                        </td>
+                        <td className="tabular-nums">{triggeredAtLocal(s.triggeredAt)}</td>
                         <td>
                           <CountdownChip
                             dueAt={s.dueAt}
@@ -325,10 +344,14 @@ export function SfvWorklist(): JSX.Element {
                         <td style={monoMutedStyle}>{s.patientId.slice(0, 8)}</td>
                         <td style={monoMutedStyle}>{s.triggeringAssessmentId.slice(0, 8)}</td>
                         <td>
-                          {s.status === "open" ? (
-                            <Button size="sm" onClick={() => setRecording(s)}>
-                              Record
-                            </Button>
+                          {s.status === "open" || s.status === "overdue" ? (
+                            <Link
+                              to={completeSfvPath(s.triggeringAssessmentId)}
+                              className="wx-btn-primary wx-btn-sm"
+                              aria-label={`Complete symptom follow-up ${s.id.slice(0, 8)}`}
+                            >
+                              Complete
+                            </Link>
                           ) : (
                             <span style={mutedStyle}>—</span>
                           )}
@@ -351,21 +374,10 @@ export function SfvWorklist(): JSX.Element {
                 noun="SFVs"
               />
             </>
-          )
-        }
-      />
-      {recording !== null ? (
-        <HopeRecordModal
-          open
-          admissionId={recording.admissionId}
-          triggeringAssessmentId={recording.triggeringAssessmentId}
-          onClose={() => setRecording(null)}
-          onDone={() => {
-            void load();
-          }}
-        />
-      ) : null}
-    </>
+          )}
+        </div>
+      }
+    />
   );
 }
 
@@ -397,19 +409,6 @@ const selectStyle: CSSProperties = {
   border: "1px solid var(--color-surface-container)",
   background: "var(--color-surface)",
   color: "var(--color-on-surface)",
-  fontSize: "0.875rem",
-};
-
-const errorBannerStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  marginBottom: "0.75rem",
-  padding: "0.65rem 0.75rem",
-  borderRadius: "0.5rem",
-  border: "1px solid var(--color-error)",
-  color: "color-mix(in srgb, var(--color-error) 60%, var(--color-on-surface))",
-  background: "color-mix(in srgb, var(--color-error) 8%, var(--color-surface))",
   fontSize: "0.875rem",
 };
 

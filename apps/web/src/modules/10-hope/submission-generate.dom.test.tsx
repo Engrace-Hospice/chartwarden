@@ -166,12 +166,20 @@ describe("HOPE Submissions — generate the iQIES upload package", () => {
     const button = await screen.findByRole("button", { name: generateLabel });
     await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
 
+    const listReadsBefore = calls.filter((c) => c === "GET /api/v1/hope/submissions").length;
+
     fireEvent.click(button);
 
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "Could not generate the iQIES package",
-    );
+    // A request nobody answered may have built the package: never "could not generate", and the list is read again.
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Could not confirm that the iQIES package was generated");
+    expect(alert.textContent).not.toContain("Could not generate");
     await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() =>
+      expect(calls.filter((c) => c === "GET /api/v1/hope/submissions").length).toBe(
+        listReadsBefore + 1,
+      ),
+    );
     expect(screen.queryByText("Submission detail page")).toBeNull();
   });
 

@@ -39,6 +39,11 @@ export const hopeSubmissions = pgTable(
     resultImportedAt: timestamp("result_imported_at", { withTimezone: true }),
     resultImportedByMembershipId: uuid("result_imported_by_membership_id"),
     resultReportHash: text("result_report_hash"),
+    // R-08 — a package cancelled before upload (migration 1495). `cancel_reason_code` is a fixed code list
+    // (HOPE_SUBMISSION_CANCEL_REASON_CODES), never free text, so the audit trigger needs no scrub entry.
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelledByMembershipId: uuid("cancelled_by_membership_id"),
+    cancelReasonCode: text("cancel_reason_code"),
     fileLevelResult: jsonb("file_level_result"),
     // NOT NULL relaxed in mig 0130 (M10L): a `queued` submission has no envelope yet — the transmit
     // worker (§4.10) populates the URI + digest at assembly/transmit time.

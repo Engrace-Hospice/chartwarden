@@ -97,6 +97,9 @@ function headerAuth(request: FastifyRequest): void {
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
   request.context.providerEntityIds = [];
+  // R-05: the SFV route is a signing route (`requireStepUp`); the harness maps a header onto the attribute
+  // `step_up_recent` reads, and `as()` sends it fresh by default.
+  request.context.attributes.stepUpRecent = request.headers["x-test-step-up"] === "true";
 }
 
 describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE Postgres", () => {
@@ -116,6 +119,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
     "x-test-user": m,
     "x-test-uid": userOf[m] as string,
     "x-test-roles": roles,
+    "x-test-step-up": "true",
   });
   const uuid = (prefix: string, n: number): string =>
     `${prefix}-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
@@ -226,14 +230,37 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
     (await admin.query(`SELECT count(*)::int AS n FROM ${table} WHERE admission_id=$1`, [adm]))
       .rows[0].n as number;
   const overrideAudits = async (): Promise<
-    { severity: string; resource_id: string; context: Record<string, unknown> }[]
+    {
+      severity: string;
+      resource_id: string;
+      context: Record<string, unknown>;
+      correlation_id: string;
+      request_id: string | null;
+      actor_user_id: string | null;
+      source_ip: string | null;
+      user_agent: string | null;
+    }[]
   > =>
     (
       await admin.query(
-        "SELECT severity, resource_id, context FROM audit_event WHERE event_type=$1",
+        "SELECT severity, resource_id, context, correlation_id, request_id, actor_user_id, source_ip, user_agent FROM audit_event WHERE event_type=$1",
         [OVERRIDE_AUDIT],
       )
     ).rows;
+  /**
+   * What a deadline-override audit row must and must not carry: the request facts the signature audit carries, the
+   * server's own correlation id, and NO free text (the justification a person typed stays out of the audit context).
+   */
+  const expectRequestFactsWithoutFreeText = (
+    audit: Awaited<ReturnType<typeof overrideAudits>>[number],
+  ): void => {
+    expect(audit.actor_user_id).toBe(userOf[member.admin]);
+    expect(audit.request_id).toBeTruthy();
+    expect(audit.correlation_id).toBe(`hope-late-deadline-override:${audit.resource_id}`);
+    expect(audit.context).toMatchObject({ justificationSupplied: true });
+    expect(audit.context).not.toHaveProperty("justification");
+    expect(JSON.stringify(audit.context)).not.toContain(JUSTIFICATION);
+  };
   const overrideAuditsFor = async (id: string) =>
     (await overrideAudits()).filter((a) => a.resource_id === id);
 
@@ -326,6 +353,10 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       }),
     ))
       registry.register(name, fn);
+    registry.register(
+      "step_up_recent",
+      async (context) => context.attributes.stepUpRecent === true,
+    );
     registerAbacRegistry(registry);
     await app?.close();
     app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
@@ -407,6 +438,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
           targetDate: new Date().toISOString(),
           authorDiscipline: "RN",
           data: SFV_DATA,
+          attestationConfirmed: true,
           adminOverride: true,
           adminOverrideJustification: JUSTIFICATION,
         },
@@ -610,10 +642,10 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       expect(audits).toHaveLength(1);
       expect(audits[0]?.severity).toBe("critical");
       expect(audits[0]?.context).toMatchObject({
-        justification: JUSTIFICATION,
         byMembershipId: member.admin,
         rfaKind: "01_admission",
       });
+      expectRequestFactsWithoutFreeText(audits[0] as (typeof audits)[number]);
       // The app role can only append: it can neither rewrite the reason nor delete the event.
       await expect(
         appClient.query("UPDATE audit_event SET context='{}'::jsonb WHERE event_type=$1", [
@@ -655,6 +687,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
         targetDate: IN_WINDOW_DATE,
         authorDiscipline: "RN",
         data: SFV_DATA,
+        attestationConfirmed: true,
         ...over,
       });
       const post = (headers: Record<string, string>, over: object = {}) =>
@@ -680,10 +713,8 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       const audits = await overrideAuditsFor(ok.json<{ id: string }>().id);
       expect(audits).toHaveLength(1);
       expect(audits[0]?.severity).toBe("critical");
-      expect(audits[0]?.context).toMatchObject({
-        justification: JUSTIFICATION,
-        byMembershipId: member.admin,
-      });
+      expect(audits[0]?.context).toMatchObject({ byMembershipId: member.admin });
+      expectRequestFactsWithoutFreeText(audits[0] as (typeof audits)[number]);
     });
   });
 

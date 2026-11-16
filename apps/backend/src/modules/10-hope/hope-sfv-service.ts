@@ -1,5 +1,5 @@
 import { type DbClient, schema } from "@chartwarden/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { HopeIsc } from "./hope-spec-registry";
 
 type AssessmentRow = typeof schema.hopeAssessments.$inferSelect;
@@ -68,6 +68,25 @@ export function deriveHopeJ2051TriggerState(answers: CanonicalAnswerMap): HopeJ2
   };
 }
 
+/**
+ * The SFV `due_at` the live DB path writes: 23:59:59.999 UTC on the 2nd calendar day AFTER the
+ * recorded J2050B answer (the clinician-entered "date of symptom impact screening", `YYYY-MM-DD`).
+ *
+ * - Anchor: the J2050B answer. Not `signed_at`, and not the assessment `target_date`. Signing time is
+ *   never an input, so a late signature cannot extend the deadline: the invariant ADR-0018 D1 exists
+ *   to protect holds (pinned in `__tests__/hope-sfv-service.test.ts`).
+ * - Basis: UTC, not the organisation's local end of day. For a clinic west of UTC the deadline
+ *   therefore falls earlier than its local end of day (about 7-8 hours for a Pacific clinic).
+ *
+ * OPEN COMPLIANCE QUESTION (CMS-VERIFY, undecided): ADR-0018 D1 anchors to the visit/assessment
+ * date and names no timezone. The in-memory planner (`planSfvCreation`, packages/hope/src/sfv/sfv.ts)
+ * anchors to that date and takes the end of it in the zone it is handed; there is no per-org timezone
+ * seam, so HOPE scheduling falls back to DEFAULT_ORG_TIME_ZONE (America/Los_Angeles,
+ * scheduling/schedule-writer.ts) and the in-memory backend to UTC unless seeded. Whether J2050B or the
+ * visit date is authoritative, and UTC or an org-local end of day, must be settled against CMS
+ * primary materials before this arithmetic changes. Until then it is deliberately unchanged
+ * (docs/BUSINESS_LOGIC.md, M10 SFV bullet).
+ */
 export function hopeSfvDueAtFromJ2050B(symptomImpactDate: string): Date {
   const [year, month, day] = symptomImpactDate.split("-").map((part) => Number(part));
   if (!year || !month || !day) {
@@ -86,7 +105,11 @@ export interface HopeSfvService {
   reconcileTriggeringAssessment(input: {
     readonly tx: DbClient;
     readonly organizationId: string;
-    readonly assessment: AssessmentRow;
+    /** What the reconciliation reads of the triggering assessment (a locked row's columns are enough). */
+    readonly assessment: Pick<
+      AssessmentRow,
+      "id" | "rfaKind" | "providerEntityId" | "locationId" | "patientId" | "admissionId"
+    >;
     readonly isc: HopeIsc;
     readonly answers: CanonicalAnswerMap;
     readonly now?: Date;
@@ -95,6 +118,33 @@ export interface HopeSfvService {
 
 export function createHopeSfvService(): HopeSfvService {
   const SFV = schema.symptomFollowUpVisits;
+  type SfvRow = typeof SFV.$inferSelect;
+
+  /** The statuses an operational edit (withdraw, move the due date) may start from; `completed`/`missed` never. */
+  const OPERATIONAL_STATUSES: readonly SfvRow["status"][] = ["open", "overdue"];
+
+  /**
+   * Update `existing` ONLY while it is still in one of the statuses `from` this write may legitimately start from.
+   * `reconcileTriggeringAssessment`'s only caller is `patchAnswers`, which takes the SFV row lock (`FOR UPDATE`)
+   * before it reads this row, so a clinician's completion cannot interleave. The one writer that does NOT lock is
+   * the cron watchdog, which flips `open` -> `overdue` from an unlocked snapshot; the status-family guard keeps a
+   * legitimate withdraw / due-date change from losing to that benign flip (the SFV would stay overdue and could
+   * decay to `missed`), while still never reverting `completed` or `missed`. Zero rows is a lost race, not an
+   * error: the reconciliation reports no change (the next patch re-derives the state).
+   */
+  async function updateWhileIn(
+    tx: DbClient,
+    existing: SfvRow,
+    from: readonly SfvRow["status"][],
+    patch: Partial<typeof SFV.$inferInsert>,
+  ): Promise<boolean> {
+    const rows = await tx
+      .update(SFV)
+      .set(patch)
+      .where(and(eq(SFV.id, existing.id), inArray(SFV.status, [...from])))
+      .returning({ id: SFV.id });
+    return rows.length > 0;
+  }
 
   return {
     async reconcileTriggeringAssessment({
@@ -126,11 +176,11 @@ export function createHopeSfvService(): HopeSfvService {
 
       if (trigger.state !== "true" || !trigger.symptomImpactDate) {
         if (existing && mutableOperationalStatus && existing.status !== "withdrawn") {
-          await tx
-            .update(SFV)
-            .set({ status: "withdrawn", updatedAt: now })
-            .where(eq(SFV.id, existing.id));
-          return { trigger, sfvId: existing.id, action: "withdrawn" };
+          const won = await updateWhileIn(tx, existing, OPERATIONAL_STATUSES, {
+            status: "withdrawn",
+            updatedAt: now,
+          });
+          return { trigger, sfvId: existing.id, action: won ? "withdrawn" : "none" };
         }
         return { trigger, sfvId: existing?.id ?? null, action: "none" };
       }
@@ -158,15 +208,19 @@ export function createHopeSfvService(): HopeSfvService {
         return { trigger, sfvId: existing.id, action: "none" };
       }
       if (existing.status === "withdrawn") {
-        await tx
-          .update(SFV)
-          .set({ status: "open", dueAt, updatedAt: now })
-          .where(eq(SFV.id, existing.id));
-        return { trigger, sfvId: existing.id, action: "reopened" };
+        const won = await updateWhileIn(tx, existing, ["withdrawn"], {
+          status: "open",
+          dueAt,
+          updatedAt: now,
+        });
+        return { trigger, sfvId: existing.id, action: won ? "reopened" : "none" };
       }
       if (existing.dueAt.getTime() !== dueAt.getTime()) {
-        await tx.update(SFV).set({ dueAt, updatedAt: now }).where(eq(SFV.id, existing.id));
-        return { trigger, sfvId: existing.id, action: "updated_due_at" };
+        const won = await updateWhileIn(tx, existing, OPERATIONAL_STATUSES, {
+          dueAt,
+          updatedAt: now,
+        });
+        return { trigger, sfvId: existing.id, action: won ? "updated_due_at" : "none" };
       }
       return { trigger, sfvId: existing.id, action: "none" };
     },

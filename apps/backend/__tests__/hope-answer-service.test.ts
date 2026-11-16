@@ -50,4 +50,32 @@ describe("normalizeHopeAnswerValue", () => {
       "YYYYMMDD",
     );
   });
+
+  describe("date items accept only real calendar dates", () => {
+    const z0350 = item({ itemCode: "Z0350", cmsItemTypeCode: "Date" });
+    const options = [option("YYYYMMDD")];
+    const normalize = (inputValue: unknown) =>
+      normalizeHopeAnswerValue({ item: z0350, options, inputValue });
+
+    it.each([
+      ["a Feb 30 in dashed form", "2026-02-30"],
+      ["a Feb 30 in compact form", "20260230"],
+      ["month 13", "2026-13-01"],
+      ["day 00", "2026-06-00"],
+      ["Apr 31", "2026-04-31"],
+      ["a Feb 29 in a non-leap year", "2026-02-29"],
+      ["a Feb 29 in a century that is not a leap year", "1900-02-29"],
+    ])("refuses %s (%s)", (_label, value) => {
+      expect(() => normalize(value)).toThrow(HopeInvalidAnswerValueError);
+    });
+
+    it.each([
+      ["a valid leap day", "2028-02-29", "2028-02-29"],
+      ["a leap day in a 400-year century", "2000-02-29", "2000-02-29"],
+      ["the last day of a 31-day month", "2026-01-31", "2026-01-31"],
+      ["a compact valid leap day", "20280229", "2028-02-29"],
+    ])("accepts %s", (_label, value, expected) => {
+      expect(normalize(value)).toBe(expected);
+    });
+  });
 });

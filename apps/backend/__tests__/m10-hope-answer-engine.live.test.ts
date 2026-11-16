@@ -334,7 +334,7 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
       }),
     ).rejects.toThrow(/stale/);
     await answerForSign(a.id);
-    await svc.signTimepoint(ORG, membershipId, a.id);
+    await svc.signTimepoint(ORG, membershipId, a.id, { attestationConfirmed: true });
     await expect(
       answers.patchAnswers(ORG, membershipId, a.id, {
         ifVersion: a.version + 1,
@@ -385,9 +385,12 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
       targetDate: "2025-10-16T12:00:00.000Z", // inside the 2-day SFV window from J2050B
       authorDiscipline: "RN",
       data: SFV_DATA,
+      attestationConfirmed: true,
     });
     await answerForSign(a.id);
-    const { assessmentId } = await svc.signTimepoint(ORG, membershipId, a.id);
+    const { assessmentId } = await svc.signTimepoint(ORG, membershipId, a.id, {
+      attestationConfirmed: true,
+    });
     // The sign result is a receipt; the J2051 derivation lands on the signed record.
     const signed = await svc.getAssessment(ORG, assessmentId);
     expect(signed.j2051MaxSeverity).toBe("severe");
@@ -519,6 +522,74 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
     });
     const withdrawn = await svc.getSfv(ORG, sfv!.id);
     expect(withdrawn.status).toBe("withdrawn");
+  });
+
+  // Lock order: `recordSfv` locks the SFV row FIRST and then upserts the triggering draft's J2052/J2053 answers.
+  // A patch that upserted answers first and only then updated the SFV row (reconcile) would take the same two locks in
+  // the opposite order: an occasional 40P01. Proved here without a race: a second connection holds the SFV row lock,
+  // so the patch must park, and what it holds while parked says whether it has already written an answer.
+  it("patchAnswers locks the triggering SFV row BEFORE it writes any answer (recordSfv's lock order)", async () => {
+    const d = await draft();
+    const first = await answers.patchAnswers(ORG, membershipId, d.id, {
+      ifVersion: d.version,
+      changes: [
+        { itemCode: "J2050A", action: "set", value: "1" },
+        { itemCode: "J2050B", action: "set", value: "2025-10-02" },
+        { itemCode: "J2051A", action: "set", value: "2" },
+      ],
+    });
+    const sfvRows = async () =>
+      (
+        await admin.query<{ id: string; due_at: Date }>(
+          "SELECT id, due_at FROM symptom_follow_up_visit WHERE triggering_assessment_id=$1",
+          [d.id],
+        )
+      ).rows;
+    const [sfv] = await sfvRows();
+    expect(sfv?.due_at.toISOString()).toBe("2025-10-04T23:59:59.999Z");
+
+    const holder = new Client({ connectionString: DB_URL });
+    await holder.connect();
+    try {
+      await holder.query("BEGIN");
+      await holder.query("SELECT 1 FROM symptom_follow_up_visit WHERE id=$1 FOR UPDATE", [sfv!.id]);
+      // Moving J2050B moves the SFV due date, so the reconcile step writes the SFV row too.
+      const patch = answers.patchAnswers(ORG, membershipId, d.id, {
+        ifVersion: first.version,
+        changes: [{ itemCode: "J2050B", action: "set", value: "2025-10-03" }],
+      });
+      let blockedPid: number | null = null;
+      for (let i = 0; i < 200 && blockedPid === null; i += 1) {
+        const { rows } = await admin.query<{ pid: number }>(
+          "SELECT DISTINCT pid FROM pg_locks WHERE NOT granted",
+        );
+        blockedPid = rows[0]?.pid ?? null;
+        if (blockedPid === null) await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(blockedPid, "the patch never parked on the SFV row lock").not.toBeNull();
+
+      const waiting = await admin.query<{ query: string }>(
+        "SELECT query FROM pg_stat_activity WHERE pid=$1",
+        [blockedPid],
+      );
+      expect(waiting.rows[0]?.query).toMatch(/symptom_follow_up_visit/);
+      expect(waiting.rows[0]?.query).toMatch(/for update/i);
+      // A backend that has already inserted/updated/deleted an answer row holds RowExclusiveLock on that table (or a
+      // partition of it) until its transaction ends.
+      const held = await admin.query<{ relname: string }>(
+        `SELECT c.relname FROM pg_locks l JOIN pg_class c ON c.oid = l.relation
+          WHERE l.pid=$1 AND l.locktype='relation' AND l.mode='RowExclusiveLock'`,
+        [blockedPid],
+      );
+      expect(held.rows.filter((r) => r.relname.startsWith("hope_assessment_answer"))).toEqual([]);
+
+      await holder.query("ROLLBACK");
+      const done = await patch;
+      expect(done.version).toBe(first.version + 1);
+      expect((await sfvRows())[0]?.due_at.toISOString()).toBe("2025-10-05T23:59:59.999Z");
+    } finally {
+      await holder.end();
+    }
   });
 
   it("evaluates multiple opioid parent changes from the final patched answer set", async () => {

@@ -29,6 +29,7 @@ import {
 } from "@chartwarden/hope";
 import type { HopeDischargeReason, HopeRfaKind } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
+import { errorClassForLog, idForLog } from "../hope-log-id";
 
 /** The M38 value sets M10 consumes (`PLATFORM_VALUE_SETS` ids). */
 const HOSPICE_DX_VALUE_SET = "hospice_terminal_diagnosis";
@@ -56,19 +57,39 @@ export interface HopeValidationSubject {
   readonly data: unknown;
   /** The assessment's `target_date` — the as-of instant for every M38 lookup. */
   readonly targetDate: Date;
+  /** The assessment's id, for the log line a failed terminology check writes (an id only; omitted, the line says so). */
+  readonly assessmentId?: string;
   /** Sibling target dates for the HUV1/HUV2 cross-RFA temporal rules; omitted when unresolved. */
   readonly admissionTargetDate?: string | null;
   readonly huv1TargetDate?: string | null;
 }
 
+/** Called once per failed M38 seam call, with what was being read (a value-set id, or the seam itself) and the error. */
+type TerminologyFailureLog = (what: string, error: unknown) => void;
+
+/**
+ * A failed M38 call is not an answer, so the check it was for is reported "unavailable" (never a finding the clinician
+ * cannot resolve), but it is not silent either: one error line per failed call, with the assessment id (when the caller
+ * supplied it), the value-set id and the error CLASS only (a seam message can carry values, so it is never logged).
+ */
+function terminologyFailureLogger(assessmentId: string | undefined): TerminologyFailureLog {
+  const subject =
+    assessmentId === undefined ? "an assessment" : `assessment ${idForLog(assessmentId)}`;
+  return (what, error) =>
+    console.error(
+      `m10: pre-submission validation of ${subject}: the M38 terminology read for ${what} failed (${errorClassForLog(error)}); the check it feeds is reported unavailable.`,
+    );
+}
+
 /** Resolve M38 through the seam, or `null` when it is unregistered / a deny-stub / throwing. */
-function terminologyReader(): HopeTerminologyReader | null {
+function terminologyReader(logFailure: TerminologyFailureLog): HopeTerminologyReader | null {
   try {
     const seam = getSeam("TerminologyProvider") as HopeTerminologyReader | undefined;
     return seam && typeof seam.isMemberOf === "function" && typeof seam.expand === "function"
       ? seam
       : null;
-  } catch {
+  } catch (error) {
+    logFailure("the TerminologyProvider seam", error);
     return null;
   }
 }
@@ -78,14 +99,16 @@ async function valueSetHasMembers(
   reader: HopeTerminologyReader,
   valueSetId: string,
   asOf: Date,
+  logFailure: TerminologyFailureLog,
 ): Promise<boolean> {
   try {
     for await (const _member of reader.expand(valueSetId, { asOf })) return true;
     return false;
-  } catch {
+  } catch (error) {
     // An M38 outage is indistinguishable from an uncurated set from the validator's side, and both
     // mean the same thing to it: this check could not run. Fail toward "unavailable", never toward a
     // blocking error the clinician cannot resolve.
+    logFailure(`value set ${valueSetId}`, error);
     return false;
   }
 }
@@ -108,33 +131,41 @@ async function expandAll(
   reader: HopeTerminologyReader,
   valueSetId: string,
   asOf: Date,
+  logFailure: TerminologyFailureLog,
 ): Promise<string[] | null> {
   try {
     const codes: string[] = [];
     for await (const member of reader.expand(valueSetId, { asOf })) codes.push(member.code);
     return codes;
-  } catch {
+  } catch (error) {
+    logFailure(`value set ${valueSetId}`, error);
     return null;
   }
 }
 
-/** Membership for exactly the codes present, as of `asOf`. Unanswerable codes read as non-members —
- * safe only because the caller has already established the set IS available. */
+/**
+ * Membership for exactly the codes present, as of `asOf`, or `null` when M38 could not answer for one of them. A code
+ * M38 could not answer for must NOT read as "not a member": the set is known to exist, so that reading would raise an
+ * error-severity finding (a submission blocker) the clinician cannot resolve, for an outage. The caller marks the set
+ * unavailable on `null`, the same rule {@link valueSetHasMembers} follows. Stops at the first failure (it would only be
+ * repeated, and logged, once per remaining code).
+ */
 async function membersOf(
   reader: HopeTerminologyReader,
   valueSetId: string,
   system: string,
   codes: readonly string[],
   asOf: Date,
-): Promise<string[]> {
+  logFailure: TerminologyFailureLog,
+): Promise<string[] | null> {
   const hits: string[] = [];
   for (const code of codes) {
     try {
       const res = await reader.isMemberOf(valueSetId, system, code, { asOf });
       if (res.isMember) hits.push(code);
-    } catch {
-      // Leave it out: a code M38 could not answer for is reported as not-in-the-set, which is the
-      // conservative reading once the set itself is known to exist.
+    } catch (error) {
+      logFailure(`value set ${valueSetId}`, error);
+      return null;
     }
   }
   return hits;
@@ -155,7 +186,8 @@ export async function runHopeAssessmentValidation(
 ): Promise<readonly HopeValidationFindingDescriptor[]> {
   const sections = projectHopeSections(subject.data);
   const asOf = subject.targetDate;
-  const reader = terminologyReader();
+  const logFailure = terminologyFailureLogger(subject.assessmentId);
+  const reader = terminologyReader(logFailure);
 
   let available: HopeValueSetAvailability = { hospiceTerminalDiagnosis: false, hopeJCodes: false };
   let dxHits: string[] = [];
@@ -163,20 +195,23 @@ export async function runHopeAssessmentValidation(
   if (reader !== null) {
     const dxCode = sections.sectionI.primaryDiagnosisIcd10;
     const [dxAvailable, jMembers] = await Promise.all([
-      valueSetHasMembers(reader, HOSPICE_DX_VALUE_SET, asOf),
-      expandAll(reader, HOPE_J_CODE_VALUE_SET, asOf),
+      valueSetHasMembers(reader, HOSPICE_DX_VALUE_SET, asOf, logFailure),
+      expandAll(reader, HOPE_J_CODE_VALUE_SET, asOf, logFailure),
     ]);
+    // `null` = M38 could not answer the per-code probe: the diagnosis check is unavailable, not "no match".
+    const dxProbe =
+      dxAvailable && dxCode !== null
+        ? await membersOf(reader, HOSPICE_DX_VALUE_SET, ICD10CM, [dxCode], asOf, logFailure)
+        : [];
     // An unreadable set and an EMPTY one are the same answer here — neither can tell us whether an
     // item is a member — so both leave `hopeJCodes` unavailable and the rule records that it could
     // not run rather than warning about every item on the assessment.
     jCodes = jMembers ?? [];
+    dxHits = dxProbe ?? [];
     available = {
-      hospiceTerminalDiagnosis: dxAvailable,
+      hospiceTerminalDiagnosis: dxAvailable && dxProbe !== null,
       hopeJCodes: jCodes.length > 0,
     };
-    if (dxAvailable && dxCode !== null) {
-      dxHits = await membersOf(reader, HOSPICE_DX_VALUE_SET, ICD10CM, [dxCode], asOf);
-    }
   }
 
   return validateHopeAssessment(

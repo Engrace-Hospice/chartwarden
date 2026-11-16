@@ -8,7 +8,11 @@
 // end-to-end. The server IGNORES any client-sent trigger flag (D4); the `data` object is otherwise carried
 // opaquely and narrowed by the per-section validators server-side.
 import "@chartwarden/shared/route-kit";
-import { HOPE_J2051_SYMPTOM_CODES, HOPE_RFA_KINDS } from "@chartwarden/types";
+import {
+  HOPE_J2051_SYMPTOM_CODES,
+  HOPE_RFA_KINDS,
+  HOPE_SUBMISSION_CANCEL_REASON_CODES,
+} from "@chartwarden/types";
 import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
@@ -35,19 +39,11 @@ const AUTHOR_DISCIPLINE = Type.Union([Type.Literal("RN"), Type.Literal("NP"), Ty
 /** SFV (RFA-04) authors additionally allow LPN/LVN (CMS HOPE Guidance Manual v1.03); MD stays accepted at
  *  the boundary so it is refused by the ABAC predicate (403), as before. */
 const SFV_AUTHOR_DISCIPLINE = lit(["RN", "NP", "MD", "LPN", "LVN"] as const);
-const AMENDMENT_AUTHOR_DISCIPLINE = Type.Union(
-  [
-    Type.Literal("RN"),
-    Type.Literal("NP"),
-    Type.Literal("MD"),
-    Type.Literal("LPN"),
-    Type.Literal("LVN"),
-  ],
-  {
-    description:
-      "RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline.",
-  },
-);
+// The same five members as SFV_AUTHOR_DISCIPLINE, with the description the correction routes document.
+const AMENDMENT_AUTHOR_DISCIPLINE = Type.Union(SFV_AUTHOR_DISCIPLINE.anyOf, {
+  description:
+    "RN, NP, or MD for non-SFV assessments; LPN and LVN are accepted only when correcting or inactivating an RFA-04 SFV. The server verifies the stored RFA and the actor's own discipline.",
+});
 /** The §4.3 J2051 per-symptom severity vocabulary. */
 const J2051_SEVERITY = Type.Union([
   Type.Literal("none"),
@@ -201,11 +197,17 @@ export const RecordTimepointSchema = Type.Object({
   data: HopeData,
 });
 export const RecordSfvSchema = Type.Object({
-  triggeringAssessmentId: Type.String({ minLength: 1, maxLength: 64 }),
+  // A uuid on the wire: `symptom_follow_up_visit.triggering_assessment_id` is a uuid column, so a
+  // non-uuid used to reach the cast and surface as a 500 instead of a 422.
+  triggeringAssessmentId: Type.String({ format: "uuid" }),
   targetDate: Type.String({ format: "date-time" }),
   authorDiscipline: SFV_AUTHOR_DISCIPLINE,
   adminOverride: Type.Optional(Type.Boolean()),
   adminOverrideJustification: Type.Optional(Type.String({ minLength: 20, maxLength: 1000 })),
+  // R-05: completing an SFV inserts an already-SIGNED RFA-04, so it carries the sign attestation.
+  attestationConfirmed: Type.Literal(true),
+  // The wording version the signer was shown; optional, and refused (409 M10_ATTESTATION_STALE) when it is not current.
+  attestationVersion: Type.Optional(Type.String({ maxLength: 32 })),
   data: HopeData,
 });
 export const UpdateDraftSchema = Type.Object({ data: HopeData });
@@ -229,7 +231,10 @@ export const PatchAnswersSchema = Type.Object({
 });
 export const SignTimepointSchema = Type.Object({
   ifVersion: Type.Integer({ minimum: 1 }),
-  attestationConfirmed: Type.Optional(Type.Literal(true)),
+  // R-05: REQUIRED. Optional meant the field was accepted and never read, so `{ ifVersion }` signed.
+  attestationConfirmed: Type.Literal(true),
+  // The wording version the signer was shown; optional, and refused (409 M10_ATTESTATION_STALE) when it is not current.
+  attestationVersion: Type.Optional(Type.String({ maxLength: 32 })),
 });
 export const SetHuvCompletionDateSchema = Type.Object({
   ifVersion: Type.Integer({ minimum: 1 }),
@@ -250,8 +255,18 @@ export const InactivateTimepointSchema = Type.Object({
 export const SummaryPdfSchema = Type.Object({});
 export const RetrySubmissionSchema = Type.Object({});
 export const AssembleSubmissionSchema = Type.Object({
-  providerEntityId: Type.String({ minLength: 1, maxLength: 64 }),
+  // A uuid on the wire: assembling reads `provider_entity_id` (a uuid column), so a value that is none used to reach the
+  // cast and answer a 500 instead of a 422. The two list/dashboard query filters stay free text: the service answers
+  // "matches nothing" for a non-uuid there, so a mistyped filter is an empty read, not an error.
+  providerEntityId: Type.String({ format: "uuid" }),
 });
+/** R-08 — the reason is one of a fixed code list: no free text, so no PHI can ride along. */
+export const CancelSubmissionSchema = Type.Object(
+  {
+    reasonCode: lit(HOPE_SUBMISSION_CANCEL_REASON_CODES),
+  },
+  { additionalProperties: false },
+);
 export const MarkSubmissionUploadedSchema = Type.Object({
   submittedAt: Type.Optional(Type.String({ format: "date-time" })),
   iqiesSubmissionReference: Type.Optional(
@@ -292,6 +307,9 @@ export const ScheduleListQuerySchema = Type.Object({
 });
 export const SfvWorklistQuerySchema = Type.Object({
   state: Type.Optional(Type.String({ maxLength: 32 })),
+  // The SFV that one assessment triggered (the capture workspace asks for exactly that one); an unknown id is an
+  // empty list. A uuid on the wire: the column is one.
+  triggeringAssessmentId: Type.Optional(Type.String({ format: "uuid" })),
 });
 export const SubmissionListQuerySchema = Type.Object({
   providerEntityId: Type.Optional(Type.String({ maxLength: 64 })),
@@ -325,6 +343,7 @@ const SUBMISSION_STATUS = lit([
   "partially_accepted",
   "accepted_with_warnings",
   "file_error",
+  "cancelled",
 ] as const);
 const SCHEDULE_GENERATED_BY = lit([
   "auto_admission",
@@ -621,6 +640,11 @@ export const HopeSubmissionResponseSchema = Type.Object({
   submittedAt: Type.Optional(NullableString()),
   acceptedAt: NullableString(),
   iqiesSubmissionReference: Type.Optional(NullableString()),
+  /** R-08 — set only on a package cancelled before upload; the reason is a fixed code, never free text. */
+  cancelledAt: Type.Optional(NullableString()),
+  cancelReasonCode: Type.Optional(
+    Type.Union([lit(HOPE_SUBMISSION_CANCEL_REASON_CODES), Type.Null()]),
+  ),
   /** Rejected items still awaiting a correction assessment. */
   needsCorrectionCount: Type.Integer(),
   /** Rejected items whose correction exists but is not yet in a batch. */
@@ -635,6 +659,7 @@ const SUBMISSION_ITEM_STATUS = Type.Union([
   Type.Literal("pending"),
   Type.Literal("blocked"),
   Type.Literal("unmatched"),
+  Type.Literal("cancelled"),
 ]);
 /** One assessment inside a batch with its CMS outcome (patient NAME is not resolved by M10). */
 export const HopeSubmissionItemResponseSchema = Type.Object({

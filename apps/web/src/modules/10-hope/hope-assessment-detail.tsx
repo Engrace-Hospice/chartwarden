@@ -1,18 +1,19 @@
-import { normalizeSsn, ssnCmsProblem } from "@chartwarden/types";
+import { HOPE_ATTESTATION_VERSION, normalizeSsn, ssnCmsProblem } from "@chartwarden/types";
 import {
   Button,
   CountBadge,
   EmptyState,
+  ErrorState,
   Glyph,
   type GlyphName,
   InfoRows,
-  LoadingSpinner,
+  InlineAlert,
   Panel,
   PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
   ageYears,
-  freshIdempotencyKeyHeaders,
+  settleRead,
   t,
   useApiClient,
 } from "@chartwarden/ui";
@@ -21,12 +22,49 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { AmendmentDialog } from "./hope-amendment-dialog";
+import {
+  ATTESTATION_STALE_CODE,
+  ATTESTATION_STALE_MESSAGE,
+  REFUSED_WITHOUT_REASON,
+  type SignAssessmentBody,
+  errorCodeOf,
+  failedWriteMessage,
+  isClientRefusal,
+  isRefusalBody,
+  isStaleVersionRefusal,
+  localToday,
+  readSucceeded,
+  refusalWordsOf,
+  serverFaultMessage,
+  withRequestTimeout,
+  writeOutcomeUnknown,
+  writeSucceeded,
+} from "./hope-api";
+import { useStepUpRedirect } from "./hope-attestation";
 import {
   type ChartNumber,
   type ChartPayer,
   ChartReconcileDialog,
   type ReconcileItem,
 } from "./hope-chart-reconcile";
+import { actionRow, inputStyle, muted, primaryButton, secondaryButton } from "./hope-dialog-styles";
+import { formatDate, formatInstant, formatTargetDate } from "./hope-format";
+import {
+  NAV_MODE_KEY,
+  type NavMode,
+  readNavMode,
+  readStorage,
+  writeStorage,
+} from "./hope-nav-storage";
+import { LoadingRegion, useRetryFocus } from "./hope-retry-focus";
+import { CONFLICT_FIELD_ERROR, type SaveStatus, withoutConflictErrors } from "./hope-save-status";
+import { CompleteSfvDialog } from "./hope-sfv-complete-dialog";
+import { useSfvFlow } from "./hope-sfv-flow";
+import type { SfvLookup } from "./hope-sfv-lookup";
+import { ReviewSfvDialog } from "./hope-sfv-review-dialog";
+import { SfvWorkflowSection } from "./hope-sfv-section";
+import { SignDialog } from "./hope-sign-dialog";
 import { ASSESSMENT_TONE, rfaLabel, stateLabel } from "./hope-status";
 import {
   CheckboxTiles,
@@ -42,6 +80,9 @@ import {
   SectionNavigator,
 } from "./hope-workspace-ui";
 import { IqiesSubmissionPanel } from "./iqies-submission-panel";
+import { useFocusOnNewError } from "./use-focus-on-new-error";
+import { useHopeRecordActions } from "./use-hope-record-actions";
+import { useWorkspaceScrolling } from "./use-hope-workspace-scrolling";
 
 type AnswerValue = string | number | boolean;
 type AnswerSource =
@@ -59,11 +100,6 @@ type HopeApiResult<T = unknown> = Promise<{
   error?: unknown;
   response?: Response;
 }>;
-type SfvError = {
-  type: "permission" | "validation" | "conflict" | "generic";
-  title: string;
-  message: string;
-};
 
 interface HopeApiCompat {
   GET(path: string, init?: unknown): HopeApiResult;
@@ -235,16 +271,30 @@ interface PatientExtra {
   /** The patient's coverage rows — the reconcile dialog re-files / ranks against them. */
   payers: ChartPayer[];
   address: string | null;
+  /**
+   * Whether the chart numbers above were READ: `loading` until the first read ends, `unavailable` when it failed (the numbers
+   * are then unknown, not absent: the screen must not say a number is "not on the chart"), `known` once a read succeeded.
+   */
+  chartStatus: "loading" | "known" | "unavailable";
 }
 
 type ChartNumbers = Pick<PatientExtra, "medicareOnChart" | "medicaidOnChart" | "payers">;
 
-/** Reads the chart's identifiers + coverage and resolves the Medicare / Medicaid numbers. */
-async function fetchChartNumbers(api: HopeApiCompat, patientId: string): Promise<ChartNumbers> {
+/**
+ * Reads the chart's identifiers + coverage and resolves the Medicare / Medicaid numbers; null when either read did not
+ * succeed. A failed read (an empty 502, a 403) is not an empty chart: callers keep what they had, and never offer to add a
+ * number to a chart whose coverage they could not read.
+ */
+async function fetchChartNumbers(
+  api: HopeApiCompat,
+  patientId: string,
+  signal?: AbortSignal,
+): Promise<ChartNumbers | null> {
   const [ids, pay] = await Promise.all([
-    api.GET("/api/v1/patients/{id}/identifiers", { params: { path: { id: patientId } } }),
-    api.GET("/api/v1/patients/{id}/payers", { params: { path: { id: patientId } } }),
+    api.GET("/api/v1/patients/{id}/identifiers", { params: { path: { id: patientId } }, signal }),
+    api.GET("/api/v1/patients/{id}/payers", { params: { path: { id: patientId } }, signal }),
   ]);
+  if (!readSucceeded(ids) || !readSucceeded(pay)) return null;
   const identifiers =
     (
       ids.data as
@@ -253,14 +303,29 @@ async function fetchChartNumbers(api: HopeApiCompat, patientId: string): Promise
     )?.identifiers ?? [];
   const payers = (pay.data as { payers?: ChartPayer[] } | undefined)?.payers ?? [];
   return {
-    medicareOnChart: chartMedicareNumber(
-      identifiers,
-      payers,
-      new Date().toISOString().slice(0, 10),
-    ),
+    // The clinician's own calendar day, not the UTC day a US evening has already rolled into (the "as of" for coverage in force).
+    medicareOnChart: chartMedicareNumber(identifiers, payers, localToday()),
     medicaidOnChart: chartMedicaidNumber(payers),
     payers,
   };
+}
+
+/** What a chart read changes in `PatientExtra`: the numbers when it succeeded, otherwise nothing (unknown stays unknown). */
+function chartNumbersPatch(
+  chartNumbers: ChartNumbers | null,
+  prev: PatientExtra,
+): Partial<PatientExtra> {
+  if (chartNumbers === null) return chartUnavailableUnlessKnown(prev);
+  return {
+    ...chartNumbers,
+    mbiTail: chartNumbers.medicareOnChart?.value.slice(-4) ?? null,
+    chartStatus: "known",
+  };
+}
+
+/** A failed chart read never un-knows numbers an earlier read gave; it only ends "loading" as "unavailable". */
+function chartUnavailableUnlessKnown(prev: PatientExtra): Partial<PatientExtra> {
+  return prev.chartStatus === "known" ? {} : { chartStatus: "unavailable" };
 }
 
 /**
@@ -353,71 +418,7 @@ const SECTION_ORDER: { id: SectionId; label: string; helper: string }[] = [
   },
 ];
 
-type NavMode = "guided" | "all";
-const NAV_MODE_KEY = "wx.hope.navMode";
 const VISITED_KEY = "wx.hope.visitedGroups";
-
-/**
- * The pane that actually scrolls the workspace content: the body above 1200px, the whole
- * `.wx-patient-workspace` below it (the body grows to its content there). Falls back to the body.
- */
-function workspaceScroller(element: HTMLElement): HTMLElement | null {
-  for (let node = element.parentElement; node; node = node.parentElement) {
-    const { overflowY } = getComputedStyle(node);
-    if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight)
-      return node;
-    if (node.classList.contains("wx-patient-workspace")) break;
-  }
-  return element.closest<HTMLElement>(".wx-patient-workspace-body");
-}
-
-/**
- * Scrolls the workspace pane — not the window — so the app shell (top bar, banner) never shifts.
- * `scrollIntoView` scrolls every scrollable ancestor, including the document.
- */
-function scrollWithinWorkspace(element: HTMLElement, block: "start" | "center"): void {
-  const pane = workspaceScroller(element);
-  if (!pane) {
-    element.scrollIntoView({ behavior: "smooth", block });
-    return;
-  }
-  const paneRect = pane.getBoundingClientRect();
-  const rect = element.getBoundingClientRect();
-  const offset =
-    block === "start"
-      ? rect.top - paneRect.top - 72 // clear the sticky jump bar
-      : rect.top - paneRect.top - (paneRect.height - rect.height) / 2;
-  pane.scrollTo({ top: pane.scrollTop + offset, behavior: "smooth" });
-}
-
-// GAP-191: the nav-mode preference is a harmless UI setting (localStorage). Anything keyed by a
-// record id (the visited groups per assessment) lives in sessionStorage so it dies with the tab
-// instead of outliving sign-out on a shared workstation.
-type StorageKind = "local" | "session";
-
-function storageFor(kind: StorageKind): Storage {
-  return kind === "session" ? window.sessionStorage : window.localStorage;
-}
-
-function readStorage(key: string, kind: StorageKind = "local"): string | null {
-  try {
-    return storageFor(kind).getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeStorage(key: string, value: string, kind: StorageKind = "local"): void {
-  try {
-    storageFor(kind).setItem(key, value);
-  } catch {
-    // Storage unavailable (private mode): the preference just doesn't persist.
-  }
-}
-
-function readNavMode(): NavMode {
-  return readStorage(NAV_MODE_KEY) === "all" ? "all" : "guided";
-}
 
 function readVisited(assessmentId: string | undefined): Set<string> {
   if (!assessmentId) return new Set();
@@ -504,7 +505,28 @@ const payerSource: CSSProperties = {
   fontSize: "0.75rem",
 };
 
+const SIGN_UNCONFIRMED =
+  "Could not confirm that the assessment was signed. Reload the record before trying again.";
+const SIGN_DEGRADED =
+  "The record could not be signed because a service it needs is temporarily unavailable. Try again in a moment.";
+const SIGN_REFRESH_FAILED =
+  "The record was signed, but this page could not refresh. Reload to see it.";
+/** hope.scope answers a record outside the caller's caseload with 404 (deny-as-not-found), a plain refusal with 403: Try again changes neither. */
+const RECORD_NOT_AVAILABLE = "This HOPE assessment was not found, or is not available to you.";
+const WORKSPACE_UNAVAILABLE = "The CMS item workspace could not be loaded for this assessment.";
+/** The answer save got no usable reply (offline, a reset, a timeout, an empty 5xx): it may or may not have been applied. */
+const ANSWER_UNCONFIRMED =
+  "Could not confirm that this answer was saved. Reload to check it before entering it again.";
+/** Thrown to the reconcile dialog when its HOPE answer save did not land (the dialog words it). */
+const HOPE_ANSWER_NOT_SAVED = "The HOPE answer was not saved.";
+
+/** The screen is rebuilt for each record, so nothing one record left behind (a notice, a focus request) reaches the next. */
 export function HopeAssessmentDetail(): JSX.Element {
+  const { id } = useParams<{ id: string }>();
+  return <HopeAssessmentWorkspace key={id} />;
+}
+
+function HopeAssessmentWorkspace(): JSX.Element {
   const client = useApiClient();
   const api = useMemo(() => client as unknown as HopeApiCompat, [client]);
   const navigate = useNavigate();
@@ -521,22 +543,24 @@ export function HopeAssessmentDetail(): JSX.Element {
     medicaidOnChart: null,
     payers: [],
     address: null,
+    chartStatus: "loading",
   });
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("A");
-  const [sfvOpen, setSfvOpen] = useState(false);
+  // Set when the record was signed but the page could not re-read itself afterwards.
+  const [signRefreshNotice, setSignRefreshNotice] = useState<string | null>(null);
   const [sfvReviewOpen, setSfvReviewOpen] = useState(false);
-  const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "failed" | "conflict">("idle");
+  const [saving, setSaving] = useState<SaveStatus>("idle");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // False when the load failed for a refusal: it is final, so no Try again is offered for it.
+  const [retryable, setRetryable] = useState(true);
+  // The record read but its workspace did not: a failure too, so a retry keeps focus like the load error's does.
+  const workspaceFailed = !error && assessment !== null && workspace === null;
+  const retry = useRetryFocus(loading, error ?? (workspaceFailed ? WORKSPACE_UNAVAILABLE : null));
   const [signOpen, setSignOpen] = useState(false);
   const [inactivationOpen, setInactivationOpen] = useState(false);
-  const [inactivating, setInactivating] = useState(false);
-  // #91 (restored) — the §5.2 "Request summary" action: emits `m10.hope.summary_requested`; M22 renders.
-  const [summaryState, setSummaryState] = useState<"idle" | "requesting" | "requested" | "failed">(
-    "idle",
-  );
   const latestVersionRef = useRef<number | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [pendingItemFocus, setPendingItemFocus] = useState<string | null>(null);
@@ -561,6 +585,7 @@ export function HopeAssessmentDetail(): JSX.Element {
     },
     [id],
   );
+  const workspaceRef = useRef<HTMLDivElement>(null);
   // Show-all mode: the group currently at the top of the viewport (scroll-spy).
   const [spy, setSpy] = useState<{ section: string; group: string } | null>(null);
   const [pendingScroll, setPendingScroll] = useState<string | null>(null);
@@ -568,56 +593,18 @@ export function HopeAssessmentDetail(): JSX.Element {
   useEffect(() => {
     if (workspace) latestVersionRef.current = workspace.assessment.version;
   }, [workspace]);
-
-  useEffect(() => {
-    if (!pendingItemFocus) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      // Checkbox tiles are anchored by their 5-char stem ("hope-item-A1005"), not the item code.
-      const element =
-        document.getElementById(`hope-item-${pendingItemFocus}`) ??
-        document.getElementById(`hope-item-${pendingItemFocus.slice(0, 5)}`);
-
-      if (!element) {
-        return;
-      }
-
-      scrollWithinWorkspace(element, "center");
-
-      if (element instanceof HTMLElement) {
-        element.focus({
-          preventScroll: true,
-        });
-      }
-
-      setPendingItemFocus(null);
-    }, 50);
-
-    return () => window.clearTimeout(timeout);
-    // pendingItemFocus alone is the trigger: the issue-link handler sets it in the same batched
-    // update as activeSection, so the target section is already committed when the timer fires.
-  }, [pendingItemFocus]);
-  // A new section starts at its top (unless an issue link is about to scroll to a specific item).
-  const workspaceRef = useRef<HTMLDivElement>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: section/group changes are the intentional trigger.
-  useEffect(() => {
-    if (pendingItemFocus || pendingScroll) return;
-    if (navMode === "all" && activeSection !== "Review") return;
-    if (workspaceRef.current) workspaceScroller(workspaceRef.current)?.scrollTo({ top: 0 });
-  }, [activeSection, groupBySection, navMode]);
-
-  // Show-all: jump to a section/group once it is rendered.
-  useEffect(() => {
-    if (!pendingScroll) return;
-    const timeout = window.setTimeout(() => {
-      const target = document.getElementById(pendingScroll);
-      if (target) scrollWithinWorkspace(target, "start");
-      setPendingScroll(null);
-    }, 30);
-    return () => window.clearTimeout(timeout);
-  }, [pendingScroll]);
+  useWorkspaceScrolling({
+    workspace,
+    workspaceRef,
+    activeSection,
+    groupBySection,
+    navMode,
+    pendingItemFocus,
+    setPendingItemFocus,
+    pendingScroll,
+    setPendingScroll,
+    setSpy,
+  });
 
   // Guided: an issue link to an item opens the group that holds it.
   useEffect(() => {
@@ -633,118 +620,164 @@ export function HopeAssessmentDetail(): JSX.Element {
     if (group) setGroupBySection((prev) => ({ ...prev, [activeSection]: group.key }));
   }, [activeSection, navMode, pendingItemFocus, workspace]);
 
-  // Show-all scroll-spy: track the topmost visible group; groups scrolled past count as visited.
-  useEffect(() => {
-    if (navMode !== "all" || activeSection === "Review" || !workspace) return;
-    const root = workspaceRef.current ? workspaceScroller(workspaceRef.current) : null;
-    const nodes = Array.from(document.querySelectorAll<HTMLElement>("[data-hope-group]"));
-    if (!nodes.length || typeof IntersectionObserver === "undefined") return;
-    const visible = new Set<HTMLElement>();
-    let last: string | null = null;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const el = entry.target as HTMLElement;
-          if (entry.isIntersecting) visible.add(el);
-          else visible.delete(el);
-        }
-        const top = nodes.find((node) => visible.has(node));
-        const value = top?.dataset.hopeGroup;
-        // Passing a group while scrolling does not count as visiting it: marking it would insert
-        // error text above the scroll target mid-scroll and push the target down.
-        if (!value || value === last) return;
-        last = value;
-        const [section, group] = value.split(":");
-        setSpy({ section: section ?? "", group: group ?? "" });
-      },
-      { root, rootMargin: "-120px 0px -55% 0px" },
-    );
-    for (const node of nodes) observer.observe(node);
-    return () => observer.disconnect();
-  }, [activeSection, navMode, workspace]);
   const [signing, setSigning] = useState(false);
-  const [completionDateSaving, setCompletionDateSaving] = useState(false);
+  // A refused sign is shown in the dialog, never swallowed.
+  const [signError, setSignError] = useState<string | null>(null);
+  // The attestation wording this page shows is out of date (the server refused a signature or an SFV for it): nothing
+  // can be signed from this page until it is reloaded, however many times a dialog is closed and reopened.
+  const [wordingChanged, setWordingChanged] = useState(false);
+  const redirectToStepUp = useStepUpRedirect();
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    const [a, w, r] = await Promise.all([
-      api.GET("/api/v1/hope/assessments/{id}", { params: { path: { id } } }),
-      api.GET("/api/v1/hope/assessments/{id}/workspace", {
-        params: { path: { id } },
-      }),
-      api.GET("/api/v1/hope/assessments/{id}/review", {
-        params: { path: { id } },
-      }),
-    ]);
-    if (a.error || !a.data) {
-      setError("Could not load this HOPE assessment.");
-      setLoading(false);
-      return;
-    }
-    const nextAssessment = a.data as unknown as AssessmentDetail;
-    setAssessment(nextAssessment);
-    setWorkspace(w.error || !w.data ? null : (w.data as unknown as Workspace));
-    setReview(r.error || !r.data ? null : (r.data as unknown as ReviewModel));
-    const [tl, pat] = await Promise.all([
-      api.GET("/api/v1/patients/{patientId}/hope/assessments", {
-        params: { path: { patientId: nextAssessment.patientId } },
-      }),
-      api.GET("/api/v1/patients/{id}", {
-        params: { path: { id: nextAssessment.patientId } },
-      }),
-    ]);
-    setTimeline((tl.data as { assessments?: TimepointRow[] } | undefined)?.assessments ?? []);
-    if (pat.data) setPatient(pat.data as unknown as PatientSummary);
-    setLoading(false);
-    // Banner + Patient Summary context — best-effort; a failure only blanks those fields.
-    const pid = nextAssessment.patientId;
-    const [demo, addrs, chartNumbers] = await Promise.all([
-      api.GET("/api/v1/patients/{id}/demographics", {
-        params: { path: { id: pid } },
-      }),
-      api.GET("/api/v1/patients/{id}/addresses", {
-        params: { path: { id: pid } },
-      }),
-      fetchChartNumbers(api, pid),
-    ]);
-    const addresses =
-      (
-        addrs.data as
-          | {
-              addresses?: {
-                line1: string;
-                city: string;
-                state: string | null;
-                postalCode: string;
-                current: boolean;
-                isPrimary: boolean;
-              }[];
-            }
-          | undefined
-      )?.addresses ?? [];
-    const home =
-      addresses.find((a) => a.current && a.isPrimary) ?? addresses.find((a) => a.current);
-    setPatientExtra({
-      sex: (demo.data as { sexAssignedAtBirth?: string } | undefined)?.sexAssignedAtBirth ?? null,
-      mbiTail: chartNumbers.medicareOnChart?.value.slice(-4) ?? null,
-      ...chartNumbers,
-      address: home
-        ? `${home.line1}, ${home.city}${home.state ? `, ${home.state}` : ""} ${home.postalCode}`
-        : null,
-    });
-  }, [api, id]);
+  /**
+   * Reads the record and what the screen shows around it; may throw. False when the record itself could not be read.
+   * "denied" when the record read was refused (403, or 404 as hope.scope's deny-as-not-found): retrying cannot change it.
+   * `onRecordShown` is told whether the workspace and the review were readable too (the best-effort banner reads after them
+   * do not count). One that was not is not an empty one: it never replaces what is already on screen, so a re-read after a
+   * signature that answers with a gateway error leaves the record up instead of turning it into "Workspace unavailable".
+   */
+  const readRecord = useCallback(
+    async (onRecordShown: (complete: boolean) => void): Promise<boolean | "denied"> => {
+      if (!id) return true;
+      // Each phase is bounded (`withRequestTimeout`): a read nobody answers rejects, which `load` reports (with Try again) and
+      // `refreshWorkspaceOnly` turns into false, instead of a spinner, or a save queue behind a re-read, that never moves.
+      const [a, w, r] = await withRequestTimeout((signal) =>
+        Promise.all([
+          api.GET("/api/v1/hope/assessments/{id}", { params: { path: { id } }, signal }),
+          api.GET("/api/v1/hope/assessments/{id}/workspace", { params: { path: { id } }, signal }),
+          api.GET("/api/v1/hope/assessments/{id}/review", { params: { path: { id } }, signal }),
+        ]),
+      );
+      if (a.error || !a.data) {
+        const { status } = await settleRead(Promise.resolve(a), "denied");
+        return status === "denied" ? "denied" : false;
+      }
+      const nextAssessment = a.data as unknown as AssessmentDetail;
+      setAssessment(nextAssessment);
+      const workspaceRead = readSucceeded(w);
+      const reviewRead = readSucceeded(r);
+      if (workspaceRead) setWorkspace(w.data as unknown as Workspace);
+      if (reviewRead) setReview(r.data as unknown as ReviewModel);
+      const [tl, pat] = await withRequestTimeout((signal) =>
+        Promise.all([
+          api.GET("/api/v1/patients/{patientId}/hope/assessments", {
+            params: { path: { patientId: nextAssessment.patientId } },
+            signal,
+          }),
+          api.GET("/api/v1/patients/{id}", {
+            params: { path: { id: nextAssessment.patientId } },
+            signal,
+          }),
+        ]),
+      );
+      // An unreadable answer is not an empty timeline: it must not empty the rows already on screen (they decide between
+      // "Create correction" and "Open correction draft").
+      if (readSucceeded(tl))
+        setTimeline((tl.data as { assessments?: TimepointRow[] }).assessments ?? []);
+      if (pat.data) setPatient(pat.data as unknown as PatientSummary);
+      onRecordShown(workspaceRead && reviewRead);
+      // Banner + Patient Summary context — best-effort; a failure only blanks those fields.
+      const pid = nextAssessment.patientId;
+      try {
+        const [demo, addrs, chartNumbers] = await withRequestTimeout((signal) =>
+          Promise.all([
+            api.GET("/api/v1/patients/{id}/demographics", {
+              params: { path: { id: pid } },
+              signal,
+            }),
+            api.GET("/api/v1/patients/{id}/addresses", { params: { path: { id: pid } }, signal }),
+            fetchChartNumbers(api, pid, signal),
+          ]),
+        );
+        const addresses =
+          (
+            addrs.data as
+              | {
+                  addresses?: {
+                    line1: string;
+                    city: string;
+                    state: string | null;
+                    postalCode: string;
+                    current: boolean;
+                    isPrimary: boolean;
+                  }[];
+                }
+              | undefined
+          )?.addresses ?? [];
+        const home =
+          addresses.find((a) => a.current && a.isPrimary) ?? addresses.find((a) => a.current);
+        setPatientExtra((prev) => ({
+          ...prev,
+          sex:
+            (demo.data as { sexAssignedAtBirth?: string } | undefined)?.sexAssignedAtBirth ?? null,
+          address: home
+            ? `${home.line1}, ${home.city}${home.state ? `, ${home.state}` : ""} ${home.postalCode}`
+            : null,
+          ...chartNumbersPatch(chartNumbers, prev),
+        }));
+      } catch {
+        // Nothing here is the record: a rejected or unanswered banner read leaves the chart numbers unknown, not absent.
+        setPatientExtra((prev) => ({ ...prev, ...chartUnavailableUnlessKnown(prev) }));
+      }
+      return true;
+    },
+    [api, id],
+  );
+
+  /**
+   * Loads the record. Never rejects: a failure to read the record itself is the screen's error state (with Try again),
+   * unless `quiet` (a re-read of a record already on screen), which leaves the screen as it is and only reports whether
+   * the record, its workspace and its review were all read. A best-effort read that fails after the record was shown is
+   * not fatal.
+   */
+  const load = useCallback(
+    async (quiet = false): Promise<boolean> => {
+      if (!id) return true;
+      if (!quiet) {
+        setLoading(true);
+        setError(null);
+        setRetryable(true);
+      }
+      let shown = false;
+      let complete = false;
+      let denied = false;
+      try {
+        denied =
+          (await readRecord((allRead) => {
+            shown = true;
+            complete = allRead;
+            if (!quiet) setLoading(false);
+          })) === "denied";
+      } catch {
+        // Handled below: what matters is whether the record was shown.
+      }
+      if (!quiet) {
+        if (!shown) {
+          setRetryable(!denied);
+          setError(denied ? RECORD_NOT_AVAILABLE : "Could not load this HOPE assessment.");
+        }
+        setLoading(false);
+      }
+      if (shown && complete) {
+        // The page is the latest version now (the clinician pressed "Reload assessment", or the record was signed): nothing
+        // is left to reload, so neither the banner nor an item's "reload" message may keep saying so.
+        setSaving((state) => (state === "conflict" || state === "reloaded" ? "idle" : state));
+        setFieldErrors(withoutConflictErrors);
+      }
+      return quiet ? shown && complete : shown;
+    },
+    [id, readRecord],
+  );
 
   // After a reconcile writes to the chart: re-read just the chart numbers (no page reload).
   const refreshChartNumbers = useCallback(async () => {
     if (!assessment) return;
-    const chartNumbers = await fetchChartNumbers(api, assessment.patientId);
-    setPatientExtra((prev) => ({
-      ...prev,
-      ...chartNumbers,
-      mbiTail: chartNumbers.medicareOnChart?.value.slice(-4) ?? null,
-    }));
+    // Bounded: the reconcile dialog waits on this. A rejection, a timeout, and a read that did not succeed are what it reports as
+    // a stale re-read; none of them replaces the chart numbers already on screen with an empty chart.
+    const chartNumbers = await withRequestTimeout((signal) =>
+      fetchChartNumbers(api, assessment.patientId, signal),
+    );
+    if (chartNumbers === null) throw new Error("The chart numbers could not be re-read.");
+    setPatientExtra((prev) => ({ ...prev, ...chartNumbersPatch(chartNumbers, prev) }));
   }, [api, assessment]);
   const [reconcile, setReconcile] = useState<{ itemCode: ReconcileItem; value: string } | null>(
     null,
@@ -758,25 +791,53 @@ export function HopeAssessmentDetail(): JSX.Element {
     }
   }, []);
 
-  const refreshWorkspaceOnly = useCallback(async () => {
-    if (!id) return;
-    const [w, r, a] = await Promise.all([
-      api.GET("/api/v1/hope/assessments/{id}/workspace", {
-        params: { path: { id } },
-      }),
-      api.GET("/api/v1/hope/assessments/{id}/review", {
-        params: { path: { id } },
-      }),
-      api.GET("/api/v1/hope/assessments/{id}", { params: { path: { id } } }),
-    ]);
-    if (w.data) setWorkspace(w.data as unknown as Workspace);
-    if (r.data) setReview(r.data as unknown as ReviewModel);
-    if (a.data) setAssessment(a.data as unknown as AssessmentDetail);
+  /** Re-reads the workspace, review and assessment; false when any of them could not be read. Never rejects. */
+  const refreshWorkspaceOnly = useCallback(async (): Promise<boolean> => {
+    if (!id) return true;
+    try {
+      const [w, r, a] = await withRequestTimeout((signal) =>
+        Promise.all([
+          api.GET("/api/v1/hope/assessments/{id}/workspace", { params: { path: { id } }, signal }),
+          api.GET("/api/v1/hope/assessments/{id}/review", { params: { path: { id } }, signal }),
+          api.GET("/api/v1/hope/assessments/{id}", { params: { path: { id } }, signal }),
+        ]),
+      );
+      if (w.data) setWorkspace(w.data as unknown as Workspace);
+      if (r.data) setReview(r.data as unknown as ReviewModel);
+      if (a.data) setAssessment(a.data as unknown as AssessmentDetail);
+      const complete = Boolean(w.data && r.data && a.data);
+      if (complete) {
+        // The page re-read itself after a refused save, so "reload the latest version" is no longer an instruction: say what
+        // happened instead (the refused change was not applied) rather than dropping the notice and hiding that.
+        setSaving((state) => (state === "conflict" ? "reloaded" : state));
+        setFieldErrors(withoutConflictErrors);
+      }
+      return complete;
+    } catch {
+      return false;
+    }
   }, [api, id]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // The follow-up card is in section J; in guided mode only the current group renders. Whatever opens or reports a
+  // visit first brings J and the card's group on screen (not goToIssue: its item-focus timer would pull focus out of
+  // the dialog).
+  const revealSfvCard = useCallback(() => {
+    const section = workspace?.sections.find((candidate) => candidate.code === "J");
+    const group = section ? sectionGroups("J", section).find((g) => g.kind === "sfv") : undefined;
+    setActiveSection("J");
+    if (group) setGroupBySection((previous) => ({ ...previous, J: group.key }));
+  }, [workspace]);
+  const sfv = useSfvFlow({
+    routeId: id,
+    assessment,
+    workspace,
+    refresh: refreshWorkspaceOnly,
+    revealCard: revealSfvCard,
+  });
 
   useEffect(() => {
     if (!workspace) return;
@@ -799,7 +860,7 @@ export function HopeAssessmentDetail(): JSX.Element {
     async (
       item: WorkspaceItem | readonly WorkspaceItem[],
       value: AnswerValue | null | ReadonlyMap<string, AnswerValue>,
-    ) => {
+    ): Promise<boolean> => {
       const items = Array.isArray(item) ? item : [item];
       const primary = items[0];
       if (
@@ -809,7 +870,7 @@ export function HopeAssessmentDetail(): JSX.Element {
         !primary ||
         items.some((candidate) => PROTECTED_ITEMS.has(candidate.itemCode))
       )
-        return;
+        return false;
       // Show A1400 conflicts at selection time; the server remains authoritative.
       if (items.some((candidate) => candidate.itemCode.startsWith("A1400"))) {
         setWorkspace((previous) =>
@@ -834,7 +895,7 @@ export function HopeAssessmentDetail(): JSX.Element {
             : previous,
         );
       }
-      const run = async () => {
+      const run = async (): Promise<boolean> => {
         setSaving("saving");
         setFieldErrors((prev) => {
           return Object.fromEntries(
@@ -853,36 +914,54 @@ export function HopeAssessmentDetail(): JSX.Element {
                 value: nextValue,
               };
         });
-        const res = await api.PATCH("/api/v1/hope/assessments/{id}/answers", {
-          params: { path: { id } },
-          body: {
-            ifVersion: latestVersionRef.current ?? workspace.assessment.version,
-            changes,
-          },
-        });
-        if (res.error || !res.data) {
-          const message = String((res.error as { message?: unknown })?.message ?? "");
-          const conflict = /version|conflict|stale/i.test(message);
-          setSaving(conflict ? "conflict" : "failed");
+        // A rejected request is a failed save like any other: shown as "Save failed", never an unhandled rejection. Bounded, so
+        // a save nobody answers ends the same way instead of holding "Saving..." (and every save queued behind it) for good.
+        const res = await withRequestTimeout((signal) =>
+          api.PATCH("/api/v1/hope/assessments/{id}/answers", {
+            params: { path: { id } },
+            body: {
+              ifVersion: latestVersionRef.current ?? workspace.assessment.version,
+              changes,
+            },
+            signal,
+          }),
+        ).catch((): Awaited<HopeApiResult> => ({}));
+        if (!writeSucceeded(res)) {
+          // A stale version is decided by the contract (a 409 that is not M10_RECORD_BUSY), never by the wording of the
+          // server's message: the real M10_SPEC_NOT_IN_FORCE text contains "version" and is not a conflict. A busy record
+          // is a 409 too, but the step was NOT applied and the page is not stale: sending the request again is right, a
+          // reload is not.
+          const conflict = isStaleVersionRefusal(res);
+          setSaving(conflict ? "conflict" : writeOutcomeUnknown(res) ? "unconfirmed" : "failed");
+          // No usable answer (a rejection, a timeout, an empty 5xx) is "could not confirm", never "not saved": the
+          // write may have committed. A refusal is worded by the server's own message.
           setFieldErrors((prev) => ({
             ...prev,
             [primary.itemCode]: conflict
-              ? "This assessment changed elsewhere. Reload the latest version before continuing."
-              : "This answer was not saved. Check the value and try again.",
+              ? CONFLICT_FIELD_ERROR
+              : failedWriteMessage(
+                  res,
+                  ANSWER_UNCONFIRMED,
+                  "This answer was not saved. Check the value and try again.",
+                ),
           }));
           if (items.some((candidate) => candidate.itemCode.startsWith("A1400")))
             await refreshWorkspaceOnly();
-          return;
+          return false;
         }
         latestVersionRef.current =
           (res.data as { version?: number }).version ?? latestVersionRef.current;
         setSaving("saved");
         setLastSavedAt(Date.now());
         await refreshWorkspaceOnly();
+        return true;
       };
       const next = saveQueueRef.current.then(run, run);
-      saveQueueRef.current = next.catch(() => undefined);
-      await next;
+      saveQueueRef.current = next.then(
+        () => undefined,
+        () => undefined,
+      );
+      return await next;
     },
     [api, assessment?.status, id, refreshWorkspaceOnly, workspace],
   );
@@ -890,142 +969,133 @@ export function HopeAssessmentDetail(): JSX.Element {
   const sign = useCallback(async () => {
     if (!id || !workspace) return;
     setSigning(true);
-    const res = await api.POST("/api/v1/hope/assessments/{id}/sign", {
-      params: { path: { id } },
-      body: { ifVersion: workspace.assessment.version },
-    });
+    setSignError(null);
+    let res: Awaited<HopeApiResult>;
+    // `attestationConfirmed` is only ever sent from the dialog, whose Sign button needs the box ticked; the version
+    // names the wording the signer was shown, so the server can refuse a signature on wording that has since changed.
+    const body: SignAssessmentBody = {
+      ifVersion: workspace.assessment.version,
+      attestationConfirmed: true,
+      attestationVersion: HOPE_ATTESTATION_VERSION,
+    };
+    try {
+      // Bounded: the dialog is shut while this is out, and a request nobody answers must end as "could not confirm".
+      res = await withRequestTimeout((signal) =>
+        api.POST("/api/v1/hope/assessments/{id}/sign", { params: { path: { id } }, body, signal }),
+      );
+    } catch {
+      setSigning(false);
+      // No answer at all: the signature may have committed, so the signer is told to reload, not to simply retry.
+      setSignError(SIGN_UNCONFIRMED);
+      return;
+    }
     setSigning(false);
-    if (res.error) {
-      setSignOpen(false);
+    if (!writeSucceeded(res)) {
+      // Not a success and no refusal body to read (an empty or gateway reply): whether it landed is unknown.
+      if (!isRefusalBody(res.error)) {
+        setSignError(
+          isClientRefusal(res.response?.status) ? REFUSED_WITHOUT_REASON : SIGN_UNCONFIRMED,
+        );
+        return;
+      }
+      // A stale session is recoverable: re-verify, then come back to this record and sign again.
+      if (redirectToStepUp(res.error)) return;
+      if (errorCodeOf(res.error) === ATTESTATION_STALE_CODE) {
+        // A definite refusal, nothing written. This page cannot send the new version, so it must be reloaded.
+        setWordingChanged(true);
+        return;
+      }
+      setSignError(
+        serverFaultMessage(res.error, res.response?.status, SIGN_DEGRADED) ??
+          refusalWordsOf(res.error) ??
+          "The record could not be signed. Review it and try again.",
+      );
+      // The version or readiness the dialog acted on may be stale (409, new blocker): re-read before a retry.
       await refreshWorkspaceOnly();
-      setActiveSection("Review");
       return;
     }
     setSignOpen(false);
-    await load();
+    // Signed. A failed re-read must not hide that behind a spinner or an error page: say it, and keep what is shown.
+    const reloaded = await load(true);
+    setSignRefreshNotice(reloaded ? null : SIGN_REFRESH_FAILED);
     setActiveSection("Review");
-  }, [api, id, load, refreshWorkspaceOnly, workspace]);
+  }, [api, id, load, redirectToStepUp, refreshWorkspaceOnly, workspace]);
 
-  const setHuvCompletionDate = useCallback(
-    async (z0350: string) => {
-      if (!id || !workspace || assessment?.status !== "draft") return;
-      setCompletionDateSaving(true);
-      const res = await api.PATCH("/api/v1/hope/assessments/{id}/huv/completion-date", {
-        params: { path: { id } },
-        body: { ifVersion: workspace.assessment.version, z0350 },
-      });
-      setCompletionDateSaving(false);
-      if (res.error) {
-        setSaving("failed");
-        return;
-      }
-      setSaving("saved");
-      await refreshWorkspaceOnly();
-    },
-    [api, assessment?.status, id, refreshWorkspaceOnly, workspace],
-  );
+  const {
+    summaryState,
+    requestSummary,
+    amendmentDisciplines,
+    correctionOpen,
+    correcting,
+    correctionError,
+    openCorrectionId,
+    beginCorrection,
+    closeCorrection,
+    createCorrection,
+    inactivating,
+    inactivationError,
+    clearInactivationError,
+    createInactivation,
+    completionDateSaving,
+    completionDateError,
+    setHuvCompletionDate,
+  } = useHopeRecordActions({
+    api,
+    client,
+    id,
+    assessment,
+    workspaceVersion: workspace?.assessment.version,
+    timeline,
+    setTimeline,
+    refresh: refreshWorkspaceOnly,
+    setSaving,
+    closeInactivation: () => setInactivationOpen(false),
+    navigate,
+  });
 
-  // A signed record with a correction already in progress: open that draft instead of a second one
-  // (the server refuses a second pending correction with 409).
-  const openCorrectionId =
-    assessment?.status === "signed"
-      ? (timeline.find((t) => t.correctsAssessmentId === id && t.status === "draft")?.id ?? null)
-      : null;
-  const [correctionError, setCorrectionError] = useState<string | null>(null);
-  const createCorrection = useCallback(async () => {
-    if (!id || !assessment) return;
-    setCorrectionError(null);
-    if (openCorrectionId) {
-      navigate(`/hope/assessments/${openCorrectionId}`);
-      return;
-    }
-    const reason = window.prompt(
-      "Briefly describe why this completed HOPE record needs a correction.",
+  if (error)
+    return (
+      <div ref={retry.errorRef} tabIndex={-1} style={{ padding: "1.5rem" }}>
+        <InlineAlert tone="error">
+          {error}{" "}
+          {retryable ? (
+            <Button
+              size="sm"
+              tone="secondary"
+              onClick={() => {
+                retry.retried();
+                void load();
+              }}
+            >
+              Try again
+            </Button>
+          ) : null}
+        </InlineAlert>
+      </div>
     );
-    if (!reason?.trim()) return;
-    const res = await api.POST("/api/v1/hope/assessments/{id}/correct", {
-      params: { path: { id } },
-      body: {
-        correctionReason: reason.trim(),
-        ifVersion: assessment.version,
-        targetDate: assessment.targetDate,
-        authorDiscipline: disciplineForCorrection(assessment.authorDiscipline),
-        data: {},
-      },
-    });
-    const correctionId = (res.data as { id?: string } | undefined)?.id;
-    if (correctionId) {
-      navigate(`/hope/assessments/${correctionId}`);
-      return;
-    }
-    // Another session may have started one: look it up before reporting the failure.
-    const tl = await api.GET("/api/v1/patients/{patientId}/hope/assessments", {
-      params: { path: { patientId: assessment.patientId } },
-    });
-    const rows = (tl.data as { assessments?: TimepointRow[] } | undefined)?.assessments ?? [];
-    setTimeline(rows);
-    const existing = rows.find((t) => t.correctsAssessmentId === id && t.status === "draft");
-    if (existing) navigate(`/hope/assessments/${existing.id}`);
-    else
-      setCorrectionError(
-        (res.error as { error?: { message?: string } } | undefined)?.error?.message ??
-          "The correction could not be created.",
-      );
-  }, [api, assessment, id, navigate, openCorrectionId]);
-
-  const requestSummary = useCallback(async () => {
-    if (!id) return;
-    setSummaryState("requesting");
-    const res = await api.POST("/api/v1/hope/assessments/{id}/summary-pdf", {
-      params: { path: { id } },
-      headers: freshIdempotencyKeyHeaders(), // a summary is built from the assessment as it is now: never replay an earlier answer
-    });
-    setSummaryState(res.error ? "failed" : "requested");
-  }, [api, id]);
-
-  const createInactivation = useCallback(
-    async (reason: string) => {
-      if (!id || !assessment) return;
-      setInactivating(true);
-      const res = await api.POST("/api/v1/hope/assessments/{id}/inactivations", {
-        params: { path: { id } },
-        body: { reason: reason.trim(), ifVersion: assessment.version },
-      });
-      setInactivating(false);
-      if (res.error || !res.data) {
-        setSaving("failed");
-        return;
-      }
-      setInactivationOpen(false);
-      const inactivationId = (res.data as { id?: string } | undefined)?.id;
-      if (inactivationId) navigate(`/hope/assessments/${inactivationId}`);
-    },
-    [api, assessment, id, navigate],
-  );
-
-  if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading || !assessment) return <LoadingSpinner label="Loading HOPE workspace..." />;
+  if (loading || !assessment)
+    return <LoadingRegion label="Loading HOPE workspace..." regionRef={retry.loadingRef} />;
   const workspaceRfa =
     assessment.rfaKind === "01_admission" ||
     assessment.rfaKind === "02_huv1" ||
     assessment.rfaKind === "03_huv2" ||
     assessment.rfaKind === "05_discharge";
   if (!workspaceRfa) {
-    return (
-      <LegacyTimepointView
-        assessment={assessment}
-        patient={patient}
-        timeline={timeline}
-        onSign={() => setSignOpen(true)}
-      />
-    );
+    return <LegacyTimepointView assessment={assessment} patient={patient} timeline={timeline} />;
   }
   if (!workspace)
     return (
-      <EmptyState
-        title="Workspace unavailable"
-        description="The CMS item workspace could not be loaded for this assessment."
-      />
+      <div ref={retry.errorRef} tabIndex={-1}>
+        <ErrorState
+          title="Workspace unavailable"
+          description={WORKSPACE_UNAVAILABLE}
+          retryLabel="Try again"
+          onRetry={() => {
+            retry.retried();
+            void load();
+          }}
+        />
+      </div>
     );
 
   const completed = assessment.status === "signed";
@@ -1069,13 +1139,13 @@ export function HopeAssessmentDetail(): JSX.Element {
           <span style={{ color: t.onSurfaceVariant }}>Target date</span>
           <span className="wx-target-date-box">
             <Glyph name="calendar" size={16} strokeWidth={1.75} />
-            {formatDate(assessment.targetDate)}
+            {formatTargetDate(assessment.targetDate)}
           </span>
         </span>
       }
     />
   ) : (
-    <PatientBanner name={recordLabel} meta={`Target ${formatDate(assessment.targetDate)}`} />
+    <PatientBanner name={recordLabel} meta={`Target ${formatTargetDate(assessment.targetDate)}`} />
   );
 
   const activeIndex = visibleSections.findIndex((s) => s.id === activeSection);
@@ -1251,6 +1321,17 @@ export function HopeAssessmentDetail(): JSX.Element {
         : "";
     // CMS special values ("^" blank, "+" pending, "N" not a recipient) are not numbers to compare.
     if (!typed || ["^", "-", "+", "N"].includes(typed)) return;
+    // A chart that could not be read is unknown, not empty: never say "not on the chart", and offer no Reconcile (its
+    // "add it to the chart" would file a coverage row the dialog cannot see the existing ones of).
+    if (patientExtra.chartStatus === "loading") return;
+    if (patientExtra.chartStatus === "unavailable") {
+      itemNotes[itemCode] = (
+        <span className="wx-chart-note">
+          Could not check this against the patient's chart. Reload the page to try again.
+        </span>
+      );
+      return;
+    }
     if (chart && sameMedicareNumber(chart.value, typed)) return;
     itemNotes[itemCode] = (
       <span className={chart ? "wx-chart-note wx-chart-note-warning" : "wx-chart-note"}>
@@ -1280,7 +1361,12 @@ export function HopeAssessmentDetail(): JSX.Element {
       fieldErrors={fieldErrors}
       onSave={saveAnswer}
       notes={itemNotes}
-      onCompleteSfv={() => setSfvOpen(true)}
+      sfvLocked={sfv.locked}
+      sfvLookup={sfv.lookup}
+      onRetrySfvLookup={sfv.retryLookup}
+      sfvFocusKey={sfv.focusKey}
+      sfvReturnFocusKey={sfv.returnFocusKey}
+      onCompleteSfv={sfv.show}
       onReviewSfv={() => setSfvReviewOpen(true)}
     />
   );
@@ -1370,11 +1456,13 @@ export function HopeAssessmentDetail(): JSX.Element {
             <div className="wx-hope-head-side">
               <div className="wx-hope-head-actions">
                 <label className="wx-hope-mode-toggle">
+                  {/* A native checkbox exposes its own checked state, so `aria-checked` would only repeat it; role="switch" stays
+                      for the semantics (and the e2e selector). Biome's rule wants the attribute on every switch. */}
                   <input
                     type="checkbox"
+                    // biome-ignore lint/a11y/useAriaPropsForRole: native checked state; aria-checked would duplicate it
                     role="switch"
                     checked={navMode === "all"}
-                    aria-checked={navMode === "all"}
                     onChange={(event) => switchMode(event.currentTarget.checked ? "all" : "guided")}
                   />
                   <span className="wx-hope-mode-track" aria-hidden />
@@ -1405,14 +1493,9 @@ export function HopeAssessmentDetail(): JSX.Element {
                           ? "Retry summary request"
                           : "Request summary"}
                     </Button>
-                    <Button onClick={() => void createCorrection()}>
+                    <Button onClick={() => void beginCorrection()}>
                       {openCorrectionId ? "Open correction draft" : "Create correction"}
                     </Button>
-                    {correctionError ? (
-                      <p role="alert" className="wx-hope-action-error">
-                        {correctionError}
-                      </p>
-                    ) : null}
                   </>
                 ) : review?.readiness.readyToSign ? (
                   <Button onClick={() => setSignOpen(true)}>Sign &amp; complete</Button>
@@ -1457,7 +1540,14 @@ export function HopeAssessmentDetail(): JSX.Element {
           ) : null}
           {completed ? <IqiesSubmissionPanel assessmentId={assessment.id} /> : null}
           {workspace.huv ? <HuvTimingBanner workspace={workspace} review={review} /> : null}
-          {saving === "conflict" ? <ConflictBanner onReload={() => void load()} /> : null}
+          {saving === "conflict" || saving === "reloaded" ? (
+            <ConflictBanner reloaded={saving === "reloaded"} onReload={() => void load()} />
+          ) : null}
+          {(sfv.notice ?? signRefreshNotice) ? (
+            <p role="alert" className="wx-hope-action-error">
+              {sfv.notice ?? signRefreshNotice}
+            </p>
+          ) : null}
 
           {activeSection === "Review" ? (
             <ReviewPanel
@@ -1468,8 +1558,9 @@ export function HopeAssessmentDetail(): JSX.Element {
               visibleSections={visibleSections}
               onSetCompletionDate={(value) => void setHuvCompletionDate(value)}
               completionDateSaving={completionDateSaving}
+              completionDateError={completionDateError}
               onSign={() => setSignOpen(true)}
-              onCorrection={() => void createCorrection()}
+              onCorrection={() => void beginCorrection()}
               correctionLabel={openCorrectionId ? "Open correction draft" : "Create correction"}
             />
           ) : showAll ? (
@@ -1548,14 +1639,16 @@ export function HopeAssessmentDetail(): JSX.Element {
                   label: openCorrectionId ? "Open correction draft" : "Create correction",
                   onOpen: () => {
                     setReconcile(null);
-                    void createCorrection();
+                    void beginCorrection();
                   },
                 }
               : null
           }
           onUseChart={async (value) => {
             const item = sections.get("A")?.items.find((i) => i.itemCode === reconcile.itemCode);
-            if (item) await saveAnswer(item, value);
+            // The dialog reads a resolved call as "HOPE now has it": a save that was refused, skipped (not a draft, no such
+            // item) or never answered must reject, so the dialog says it could not confirm instead.
+            if (!item || !(await saveAnswer(item, value))) throw new Error(HOPE_ANSWER_NOT_SAVED);
           }}
           onChartUpdated={refreshChartNumbers}
           onClose={() => setReconcile(null)}
@@ -1566,33 +1659,53 @@ export function HopeAssessmentDetail(): JSX.Element {
           review={review}
           title={`Complete ${recordLabel}`}
           signing={signing}
-          onCancel={() => setSignOpen(false)}
+          error={wordingChanged ? ATTESTATION_STALE_MESSAGE : signError}
+          wordingChanged={wordingChanged}
+          onCancel={() => {
+            setSignOpen(false);
+            setSignError(null);
+          }}
           onSign={() => void sign()}
         />
       ) : null}
       {inactivationOpen ? (
-        <InactivationDialog
+        <AmendmentDialog
+          kind="inactivation"
           busy={inactivating}
+          error={inactivationError}
           recordLabel={recordLabel}
-          onCancel={() => setInactivationOpen(false)}
-          onSubmit={(reason) => void createInactivation(reason)}
+          disciplines={amendmentDisciplines}
+          onCancel={() => {
+            clearInactivationError();
+            setInactivationOpen(false);
+          }}
+          onSubmit={(reason, discipline) => void createInactivation(reason, discipline)}
         />
       ) : null}
-      {sfvOpen ? (
+      {correctionOpen ? (
+        <AmendmentDialog
+          kind="correction"
+          busy={correcting}
+          error={correctionError}
+          recordLabel={recordLabel}
+          disciplines={amendmentDisciplines}
+          onCancel={closeCorrection}
+          onSubmit={(reason, discipline) => void createCorrection(reason, discipline)}
+        />
+      ) : null}
+      {sfv.open ? (
         <CompleteSfvDialog
           assessment={assessment}
           api={api}
+          wordingChanged={wordingChanged}
+          onWordingChanged={() => setWordingChanged(true)}
           items={
             workspace.sections
               .find((section) => section.code === "J")
               ?.items.filter((item) => item.itemCode.startsWith("J2053")) ?? []
           }
-          onCancel={() => setSfvOpen(false)}
-          onCompleted={async () => {
-            setSfvOpen(false);
-
-            await refreshWorkspaceOnly();
-          }}
+          onCancel={sfv.close}
+          onCompleted={sfv.complete}
         />
       ) : null}
 
@@ -1612,537 +1725,10 @@ export function HopeAssessmentDetail(): JSX.Element {
   );
 }
 
-const SFV_SEVERITY = [
-  { value: "0", label: "None" },
-  { value: "1", label: "Mild" },
-  { value: "2", label: "Moderate" },
-  { value: "3", label: "Severe" },
-] as const;
-
-function CompleteSfvDialog({
-  assessment,
-  api,
-  items,
-  onCancel,
-  onCompleted,
-}: {
-  assessment: AssessmentDetail;
-  api: HopeApiCompat;
-  items: WorkspaceItem[];
-  onCancel: () => void;
-  onCompleted: () => Promise<void>;
-}): JSX.Element {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-
-  const [discipline, setDiscipline] = useState<"RN" | "NP">("RN");
-
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [sfvError, setSfvError] = useState<SfvError | null>(null);
-
-  const sfvQuestions = items.filter((item) => /^J2053[A-H]$/.test(item.itemCode));
-
-  const codes = sfvQuestions.map((item) => item.itemCode);
-
-  const completedCount = codes.filter((code) => Boolean(answers[code])).length;
-
-  const canSubmit =
-    Boolean(assessment.admissionId) && date !== "" && completedCount === codes.length;
-
-  // Same navigation as the workspace: one question at a time, or "Show all" (shared preference).
-  const [showAll, setShowAll] = useState(() => readNavMode() === "all");
-  const [step, setStep] = useState(0);
-  const stepTimer = useRef<number | null>(null);
-  useEffect(
-    () => () => {
-      if (stepTimer.current) window.clearTimeout(stepTimer.current);
-    },
-    [],
-  );
-  const answer = (itemCode: string, value: string, index: number) => {
-    setAnswers((previous) => ({ ...previous, [itemCode]: value }));
-    if (showAll || index >= sfvQuestions.length - 1) return;
-    // Brief pause so the choice is seen, then move to the next question.
-    if (stepTimer.current) window.clearTimeout(stepTimer.current);
-    stepTimer.current = window.setTimeout(() => setStep(index + 1), 250);
-  };
-  const visibleQuestions = showAll
-    ? sfvQuestions.map((item, index) => ({ item, index }))
-    : sfvQuestions[step]
-      ? [{ item: sfvQuestions[step]!, index: step }]
-      : [];
-
-  async function submit() {
-    if (!assessment.admissionId || !canSubmit || saving) {
-      return;
-    }
-
-    setSaving(true);
-    setError(null);
-
-    const res = await api.POST("/api/v1/admissions/{admissionId}/hope/sfv", {
-      params: {
-        path: {
-          admissionId: assessment.admissionId,
-        },
-      },
-      body: {
-        triggeringAssessmentId: assessment.id,
-        targetDate: `${date}T12:00:00.000Z`,
-        authorDiscipline: discipline,
-        data: {
-          J: {
-            J2053: answers,
-          },
-        },
-      },
-    });
-
-    setSaving(false);
-
-    if (res.error) {
-      const apiError = res.error as {
-        error?: {
-          code?: string;
-          message?: string;
-          details?: Array<{
-            field?: string;
-            code?: string;
-            message?: string;
-          }>;
-        };
-      };
-
-      const code = apiError.error?.code;
-      const message = apiError.error?.message;
-
-      if (
-        code === "FORBIDDEN" ||
-        code === "PERMISSION_DENIED" ||
-        code === "INSUFFICIENT_PERMISSIONS"
-      ) {
-        setSfvError({
-          type: "permission",
-          title: "You don't have permission to complete this SFV",
-          message:
-            message ?? "Your current role does not allow you to record a Symptom Follow-Up Visit.",
-        });
-        return;
-      }
-
-      if (code === "VALIDATION_FAILED") {
-        setSfvError({
-          type: "validation",
-          title: "Some information needs attention",
-          message:
-            apiError.error?.details?.[0]?.message ??
-            message ??
-            "Review the SFV information and try again.",
-        });
-        return;
-      }
-
-      if (code === "CONFLICT") {
-        setSfvError({
-          type: "conflict",
-          title: "The SFV could not be completed",
-          message: message ?? "The assessment has changed. Refresh the assessment and try again.",
-        });
-        return;
-      }
-
-      setSfvError({
-        type: "generic",
-        title: "Unable to complete SFV",
-        message: message ?? "Something went wrong while completing the SFV. Please try again.",
-      });
-
-      return;
-    }
-
-    await onCompleted();
-  }
-
-  return (
-    <div
-      style={sfvModalBackdrop}
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onCancel();
-        }
-      }}
-    >
-      <dialog open style={sfvModal} aria-modal="true" aria-labelledby="sfv-dialog-title">
-        <header style={sfvModalHeader}>
-          <div style={sfvModalHeaderText}>
-            <div style={sfvModalEyebrow}>Symptom Follow-Up Visit</div>
-
-            <h2 id="sfv-dialog-title" style={sfvModalTitle}>
-              Complete SFV
-            </h2>
-
-            <p style={sfvModalDescription}>
-              Record the visit details and complete the symptom impact reassessment.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            aria-label="Close"
-            style={sfvCloseButton}
-            disabled={saving}
-            onClick={onCancel}
-          >
-            ×
-          </button>
-        </header>
-
-        <div style={sfvModalBody}>
-          <section style={sfvSection}>
-            <div style={sfvSectionHeader}>
-              <div>
-                <h3 style={sfvSectionTitle}>Visit details</h3>
-
-                <p style={sfvSectionDescription}>
-                  Confirm when the SFV was completed and by which discipline.
-                </p>
-              </div>
-            </div>
-
-            <div style={sfvDetailsGrid}>
-              <label style={sfvField}>
-                <span style={sfvFieldLabel}>SFV date</span>
-
-                <input
-                  type="date"
-                  value={date}
-                  style={sfvInput}
-                  disabled={saving}
-                  onChange={(event) => setDate(event.target.value)}
-                />
-              </label>
-
-              <label style={sfvField}>
-                <span style={sfvFieldLabel}>Author discipline</span>
-
-                <select
-                  value={discipline}
-                  style={sfvInput}
-                  disabled={saving}
-                  onChange={(event) => setDiscipline(event.target.value as "RN" | "NP")}
-                >
-                  <option value="RN">Registered Nurse (RN)</option>
-
-                  <option value="NP">Nurse Practitioner (NP)</option>
-                </select>
-              </label>
-            </div>
-          </section>
-
-          <section style={sfvSection}>
-            <div style={sfvSectionHeader}>
-              <div>
-                <h3 style={sfvSectionTitle}>Symptom impact reassessment</h3>
-
-                <p style={sfvSectionDescription}>
-                  Complete each required J2053 item based on the follow-up visit.
-                </p>
-              </div>
-
-              <span style={sfvProgressBadge}>
-                {completedCount}/{codes.length} completed
-              </span>
-            </div>
-
-            <div style={sfvProgressTrack}>
-              <div
-                style={{
-                  ...sfvProgressValue,
-                  width: `${(completedCount / codes.length) * 100}%`,
-                }}
-              />
-            </div>
-
-            <div className="wx-sfv-toolbar">
-              {!showAll ? (
-                <ol className="wx-sfv-steps" aria-label="Reassessment questions">
-                  {sfvQuestions.map((item, index) => {
-                    const done = Boolean(answers[item.itemCode]);
-                    const isActive = index === step;
-                    return (
-                      <li key={item.itemCode}>
-                        <button
-                          type="button"
-                          className={isActive ? "active" : done ? "done" : undefined}
-                          aria-current={isActive ? "step" : undefined}
-                          aria-label={`${item.itemCode}${done ? " — answered" : ""}`}
-                          onClick={() => setStep(index)}
-                        >
-                          {done && !isActive ? "✓" : index + 1}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ol>
-              ) : (
-                <span />
-              )}
-              <label className="wx-hope-mode-toggle">
-                <input
-                  type="checkbox"
-                  role="switch"
-                  checked={showAll}
-                  aria-checked={showAll}
-                  onChange={(event) => {
-                    const next = event.currentTarget.checked;
-                    setShowAll(next);
-                    writeStorage(NAV_MODE_KEY, next ? "all" : "guided");
-                  }}
-                />
-                <span className="wx-hope-mode-track" aria-hidden />
-                Show all
-              </label>
-            </div>
-
-            <div className={showAll ? "wx-sfv-questions all" : "wx-sfv-questions"}>
-              {visibleQuestions.map(({ item, index }) => {
-                const value = answers[item.itemCode] ?? "";
-                return (
-                  <fieldset
-                    key={item.itemCode}
-                    className={value ? "wx-sfv-question answered" : "wx-sfv-question"}
-                    disabled={saving}
-                  >
-                    <legend>
-                      <span style={sfvAnswerNumber}>{index + 1}</span>
-                      <strong style={sfvQuestionText}>{item.label}</strong>
-                      <CmsCode code={item.itemCode} />
-                    </legend>
-                    <div className="wx-sfv-severity">
-                      {SFV_SEVERITY.map((option) => (
-                        <label
-                          key={option.value}
-                          className={
-                            value === option.value ? "wx-option-row checked" : "wx-option-row"
-                          }
-                        >
-                          <input
-                            type="radio"
-                            name={`sfv-${item.itemCode}`}
-                            value={option.value}
-                            checked={value === option.value}
-                            onChange={() => answer(item.itemCode, option.value, index)}
-                          />
-                          <span>{option.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </fieldset>
-                );
-              })}
-            </div>
-            {!showAll ? (
-              <div className="wx-sfv-stepnav">
-                <button
-                  type="button"
-                  style={secondaryButton}
-                  disabled={step === 0}
-                  onClick={() => setStep((n) => Math.max(0, n - 1))}
-                >
-                  ← Previous question
-                </button>
-                <span>
-                  Question {step + 1} of {sfvQuestions.length}
-                </span>
-                <button
-                  type="button"
-                  style={secondaryButton}
-                  disabled={step >= sfvQuestions.length - 1}
-                  onClick={() => setStep((n) => Math.min(sfvQuestions.length - 1, n + 1))}
-                >
-                  Next question →
-                </button>
-              </div>
-            ) : null}
-          </section>
-
-          {sfvError ? (
-            <div
-              style={{
-                ...sfvErrorBox,
-                ...(sfvError.type === "permission" ? sfvPermissionErrorBox : null),
-              }}
-              role="alert"
-            >
-              <strong
-                style={{
-                  color: sfvError.type === "permission" ? t.warning : t.error,
-                }}
-              >
-                {sfvError.title}
-              </strong>
-              <span>{sfvError.message}</span>
-            </div>
-          ) : null}
-        </div>
-
-        <footer style={sfvModalFooter}>
-          <div style={sfvFooterStatus}>
-            {completedCount === codes.length ? (
-              <span style={sfvReadyText}>✓ Reassessment complete</span>
-            ) : (
-              <span style={sfvPendingText}>
-                Complete all {codes.length - completedCount} remaining item
-                {codes.length - completedCount === 1 ? "" : "s"}.
-              </span>
-            )}
-          </div>
-
-          <div style={sfvFooterActions}>
-            <button type="button" style={secondaryButton} disabled={saving} onClick={onCancel}>
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              style={{
-                ...primaryButton,
-                ...(!canSubmit ? sfvDisabledButton : null),
-              }}
-              disabled={saving || !canSubmit}
-              onClick={() => void submit()}
-            >
-              {saving ? "Completing..." : "Complete SFV"}
-            </button>
-          </div>
-        </footer>
-      </dialog>
-    </div>
-  );
-}
-
-function ReviewSfvDialog({
-  items,
-  onClose,
-}: {
-  items: WorkspaceItem[];
-  onClose: () => void;
-}): JSX.Element {
-  const completedDate = items.find((item) => item.itemCode === "J2052B")?.value;
-
-  const questions = items.filter((item) => /^J2053[A-H]$/.test(item.itemCode));
-
-  return (
-    <div
-      style={sfvModalBackdrop}
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <dialog open style={sfvModal} aria-modal="true" aria-labelledby="sfv-review-dialog-title">
-        <header style={sfvModalHeader}>
-          <div style={sfvModalHeaderText}>
-            <div style={sfvModalEyebrow}>Symptom Follow-Up Visit</div>
-
-            <h2 id="sfv-review-dialog-title" style={sfvModalTitle}>
-              SFV details
-            </h2>
-
-            <p style={sfvModalDescription}>Review the completed symptom follow-up visit.</p>
-          </div>
-
-          <button type="button" aria-label="Close" style={sfvCloseButton} onClick={onClose}>
-            ×
-          </button>
-        </header>
-
-        <div style={sfvModalBody}>
-          <section style={sfvSection}>
-            <div style={sfvSectionHeader}>
-              <div>
-                <h3 style={sfvSectionTitle}>Visit details</h3>
-
-                <p style={sfvSectionDescription}>Recorded information for this completed SFV.</p>
-              </div>
-
-              <StatusPill label="Completed" tone="success" />
-            </div>
-
-            <div style={sfvDetailsGrid}>
-              <div style={sfvField}>
-                <span style={sfvFieldLabel}>SFV date</span>
-
-                <div style={sfvReadonlyAnswer}>
-                  {completedDate ? formatDate(String(completedDate)) : "—"}
-                </div>
-              </div>
-
-              <div style={sfvField}>
-                <span style={sfvFieldLabel}>Status</span>
-
-                <div style={sfvReadonlyAnswer}>Completed</div>
-              </div>
-            </div>
-          </section>
-
-          <section style={sfvSection}>
-            <div style={sfvSectionHeader}>
-              <div>
-                <h3 style={sfvSectionTitle}>Symptom impact reassessment</h3>
-
-                <p style={sfvSectionDescription}>Responses recorded during the follow-up visit.</p>
-              </div>
-            </div>
-
-            <div style={sfvAnswersGrid}>
-              {questions.map((item, index) => {
-                const value = String(item.value ?? "");
-
-                const option = item.options.find((row) => row.valueCode === value);
-
-                return (
-                  <div key={item.itemCode} style={sfvAnswerCard}>
-                    <div style={sfvAnswerCardHeader}>
-                      <span style={sfvAnswerNumber}>{index + 1}</span>
-
-                      <div style={sfvQuestionContent}>
-                        <strong style={sfvQuestionText}>{item.label}</strong>
-                      </div>
-                      <CmsCode code={item.itemCode} />
-                    </div>
-
-                    <div style={sfvReadonlyAnswer}>{option?.label || value || "—"}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        </div>
-
-        <footer style={sfvModalFooter}>
-          <div />
-
-          <div style={sfvFooterActions}>
-            <button type="button" style={secondaryButton} onClick={onClose}>
-              Close
-            </button>
-          </div>
-        </footer>
-      </dialog>
-    </div>
-  );
-}
-
 type SaveFn = (
   item: WorkspaceItem | readonly WorkspaceItem[],
   value: AnswerValue | null | ReadonlyMap<string, AnswerValue>,
-) => Promise<void>;
+) => Promise<boolean>;
 type Findings = Map<string, ReviewModel["validation"]["findings"]>;
 
 type PayerConsistencyFinding = {
@@ -2528,6 +2114,12 @@ function GroupCard(
   props: ItemRenderProps & {
     group: GroupView;
     sectionId: Exclude<SectionId, "Review">;
+    /** The record is read-only for the follow-up card: signed, or superseded by a correction. */
+    sfvLocked: boolean;
+    sfvLookup: SfvLookup;
+    onRetrySfvLookup: () => void;
+    sfvFocusKey: number;
+    sfvReturnFocusKey: number;
     onCompleteSfv?: () => void;
     onReviewSfv?: () => void;
   },
@@ -2539,9 +2131,13 @@ function GroupCard(
       <div id={domId}>
         <SfvWorkflowSection
           items={group.items}
-          readonly={props.readonly}
-          onComplete={props.onCompleteSfv}
-          onReview={props.onReviewSfv}
+          signed={props.sfvLocked}
+          lookup={props.sfvLookup}
+          onRetryLookup={props.onRetrySfvLookup}
+          focusKey={props.sfvFocusKey}
+          returnFocusKey={props.sfvReturnFocusKey}
+          onComplete={() => props.onCompleteSfv?.()}
+          onReview={() => props.onReviewSfv?.()}
         />
       </div>
     );
@@ -2692,59 +2288,6 @@ function TileGroup(props: ItemRenderProps & { stem: string; items: WorkspaceItem
         </div>
       ))}
     </div>
-  );
-}
-
-function SfvWorkflowSection({
-  items,
-  readonly,
-  onComplete,
-  onReview,
-}: {
-  items: WorkspaceItem[];
-  readonly: boolean;
-  onComplete?: () => void;
-  onReview?: () => void;
-}): JSX.Element {
-  const j2052a = items.find((item) => item.itemCode === "J2052A");
-  const completed = String(j2052a?.value ?? "") === "1";
-  const required = j2052a?.applicability === "applicable";
-  return (
-    <ClinicalSection
-      id="hope-item-J2052A"
-      icon="calendar-check"
-      title="Symptom Follow-Up Visit"
-      description={
-        completed
-          ? "The follow-up visit has been recorded by the SFV workflow."
-          : required
-            ? "A moderate or severe symptom impact requires a follow-up visit."
-            : "The need for a follow-up visit is determined from the symptom impact assessment."
-      }
-      aside={
-        <StatusPill
-          label={completed ? "Completed" : required ? "Required" : "Pending"}
-          tone={completed ? "success" : required ? "warning" : "neutral"}
-        />
-      }
-    >
-      {completed ? (
-        <p style={muted}>
-          J2052 and J2053 are workflow-controlled and were populated from the completed SFV.
-        </p>
-      ) : null}
-      {completed || (!readonly && required) ? (
-        <div style={actionRow}>
-          {completed ? (
-            <Button tone="secondary" onClick={onReview}>
-              View SFV details
-            </Button>
-          ) : (
-            <Button onClick={onComplete}>Complete SFV</Button>
-          )}
-        </div>
-      ) : null}
-    </ClinicalSection>
   );
 }
 
@@ -3418,6 +2961,7 @@ function ReviewPanel(props: {
   onGoTo: (section: SectionId) => void;
   onSetCompletionDate: (z0350: string) => void;
   completionDateSaving: boolean;
+  completionDateError: string | null;
   onSign: () => void;
   onCorrection: () => void;
   correctionLabel: string;
@@ -3460,6 +3004,7 @@ function ReviewPanel(props: {
           workspace={props.workspace}
           readonly={completed}
           saving={props.completionDateSaving}
+          error={props.completionDateError}
           onSave={props.onSetCompletionDate}
         />
       ) : null}
@@ -3599,8 +3144,8 @@ function SfvSummary({ review }: { review: ReviewModel | null }): JSX.Element {
           label={label}
           tone={sfv?.status === "overdue" ? "critical" : sfv?.required ? "warning" : "neutral"}
         />
-        {sfv?.dueAt ? <span>Due {formatDate(sfv.dueAt)}</span> : null}
-        {sfv?.completedAt ? <span>Completed {formatDate(sfv.completedAt)}</span> : null}
+        {sfv?.dueAt ? <span>Due {formatInstant(sfv.dueAt)}</span> : null}
+        {sfv?.completedAt ? <span>Completed {formatInstant(sfv.completedAt)}</span> : null}
       </div>
     </section>
   );
@@ -3628,8 +3173,8 @@ function HuvTimingBanner({
       <div>
         <strong>{stateLabelByCode[workspace.huv.timingState]}</strong>
         <span style={muted}>
-          Recommended completion window {formatDate(workspace.huv.windowStart)} -{" "}
-          {formatDate(workspace.huv.windowEnd)}
+          Recommended completion window {formatInstant(workspace.huv.windowStart)} -{" "}
+          {formatInstant(workspace.huv.windowEnd)}
         </span>
       </div>
       <div style={timingBannerMeta}>
@@ -3651,11 +3196,14 @@ function HuvCompletionDateControl(props: {
   workspace: Workspace;
   readonly: boolean;
   saving: boolean;
+  error: string | null;
   onSave: (z0350: string) => void;
 }): JSX.Element {
   const value = props.review?.z0350 ?? props.workspace.huv?.z0350 ?? "";
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
+  // The confirm button is disabled while the write is out, which drops focus to the page: a failure takes it back.
+  const alertRef = useFocusOnNewError<HTMLParagraphElement>(props.error);
   return (
     <section style={questionGroup}>
       <h3 style={groupTitle}>Assessment Completion Date</h3>
@@ -3688,98 +3236,13 @@ function HuvCompletionDateControl(props: {
             {props.saving ? "Saving..." : "Confirm date"}
           </button>
         </div>
+        {props.error ? (
+          <p ref={alertRef} tabIndex={-1} role="alert" style={completionDateErrorText}>
+            {props.error}
+          </p>
+        ) : null}
       </div>
     </section>
-  );
-}
-
-function SignDialog(props: {
-  review: ReviewModel | null;
-  title: string;
-  signing: boolean;
-  onCancel: () => void;
-  onSign: () => void;
-}): JSX.Element {
-  return (
-    <div style={modalBackdrop} role="presentation">
-      <dialog style={modal} open aria-modal="true" aria-labelledby="hope-sign-title">
-        <h2 id="hope-sign-title" style={modalTitle}>
-          {props.title}
-        </h2>
-        <p style={muted}>
-          By signing, you confirm this HOPE record is complete. After signing, it becomes read-only.
-        </p>
-        <div style={modalStats}>
-          <span>Warnings: {props.review?.validation.warningCount ?? 0}</span>
-          <span>Errors: {props.review?.validation.errorCount ?? 0}</span>
-        </div>
-        <div style={actionRow}>
-          <button type="button" style={secondaryButton} onClick={props.onCancel}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            style={primaryButton}
-            disabled={props.signing || !props.review?.readiness.readyToSign}
-            onClick={props.onSign}
-          >
-            {props.signing ? "Signing..." : "Sign & complete"}
-          </button>
-        </div>
-      </dialog>
-    </div>
-  );
-}
-
-function InactivationDialog(props: {
-  busy: boolean;
-  recordLabel: string;
-  onCancel: () => void;
-  onSubmit: (reason: string) => void;
-}): JSX.Element {
-  const [reason, setReason] = useState("");
-  const reasonRef = useRef<HTMLTextAreaElement>(null);
-  const trimmed = reason.trim();
-  // Move focus into the dialog when it opens (in place of the `autoFocus` attribute).
-  useEffect(() => {
-    reasonRef.current?.focus();
-  }, []);
-  return (
-    <div style={modalBackdrop} role="presentation">
-      <dialog style={modal} open aria-modal="true" aria-labelledby="hope-inactivation-title">
-        <h2 id="hope-inactivation-title" style={modalTitle}>
-          Inactivate {props.recordLabel}
-        </h2>
-        <p style={muted}>
-          This creates a CMS inactivation draft for the selected signed record. The original remains
-          current until the inactivation draft is signed.
-        </p>
-        <label style={fieldLabel}>
-          Reason
-          <textarea
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            rows={4}
-            maxLength={2000}
-            style={textareaField}
-            ref={reasonRef}
-          />
-        </label>
-        <div style={actionRow}>
-          <button type="button" style={secondaryButton} onClick={props.onCancel}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            style={dangerButton}
-            disabled={props.busy || trimmed.length === 0}
-            onClick={() => props.onSubmit(trimmed)}
-          >
-            {props.busy ? "Creating..." : "Create inactivation"}
-          </button>
-        </div>
-      </dialog>
-    </div>
   );
 }
 
@@ -3800,27 +3263,37 @@ function CompletedSummary({
     if (!signerId || !assessment.patientId) return;
     let active = true;
     void (async () => {
-      const patient = await api.GET("/api/v1/patients/{id}", {
-        params: { path: { id: assessment.patientId } },
-      });
-      const organizationId = (patient.data as { organizationId?: string } | undefined)
-        ?.organizationId;
-      if (!organizationId) return;
-      const members = await api.GET("/api/v1/orgs/{id}/members", {
-        params: { path: { id: organizationId }, query: { q: signerId } },
-      });
-      const member = (
-        members.data as
-          | {
-              members?: Array<{
-                membershipId: string;
-                displayName?: string | null;
-                email?: string | null;
-              }>;
-            }
-          | undefined
-      )?.members?.find((candidate) => candidate.membershipId === signerId);
-      if (active && member) setSignerName(member.displayName ?? member.email ?? null);
+      try {
+        const patient = await withRequestTimeout((signal) =>
+          api.GET("/api/v1/patients/{id}", {
+            params: { path: { id: assessment.patientId } },
+            signal,
+          }),
+        );
+        const organizationId = (patient.data as { organizationId?: string } | undefined)
+          ?.organizationId;
+        if (!organizationId) return;
+        const members = await withRequestTimeout((signal) =>
+          api.GET("/api/v1/orgs/{id}/members", {
+            params: { path: { id: organizationId }, query: { q: signerId } },
+            signal,
+          }),
+        );
+        const member = (
+          members.data as
+            | {
+                members?: Array<{
+                  membershipId: string;
+                  displayName?: string | null;
+                  email?: string | null;
+                }>;
+              }
+            | undefined
+        )?.members?.find((candidate) => candidate.membershipId === signerId);
+        if (active && member) setSignerName(member.displayName ?? member.email ?? null);
+      } catch {
+        // The signer's name is a convenience beside the signature: without it the summary shows what it already shows.
+      }
     })();
     return () => {
       active = false;
@@ -3831,15 +3304,11 @@ function CompletedSummary({
     <div style={completedBox}>
       <span aria-hidden="true">✓</span>
       <span>
-        Completed {formatDate(assessment.signedAt)} · Signed by {signerName ?? "the MD"} · Z0500B{" "}
-        {formatDate(review?.z0500b ?? assessment.signedAt)}
+        Completed {formatInstant(assessment.signedAt)} · Signed by {signerName ?? "the MD"} · Z0500B{" "}
+        {review?.z0500b ? formatDate(review.z0500b) : formatInstant(assessment.signedAt)}
       </span>
     </div>
   );
-}
-
-function disciplineForCorrection(value: string): "RN" | "NP" | "MD" {
-  return value === "NP" || value === "MD" ? value : "RN";
 }
 
 const SEX_LABEL: Record<string, string> = {
@@ -4151,16 +3620,16 @@ function HopeRail({
   );
 }
 
+// Only an SFV record (RFA-04) lands here, and it is created already signed, so there is nothing to sign: the
+// view is read-only and has no sign dialog (the one `signOpen` opens belongs to the workspace view).
 function LegacyTimepointView({
   assessment,
   patient,
   timeline,
-  onSign,
 }: {
   assessment: AssessmentDetail;
   patient: PatientSummary | null;
   timeline: TimepointRow[];
-  onSign: () => void;
 }): JSX.Element {
   return (
     <PatientWorkspaceLayout
@@ -4179,44 +3648,18 @@ function LegacyTimepointView({
               HUV and Discharge capture keep their existing workflow until their UI phase.
             </p>
           </div>
-          {assessment.status === "draft" ? (
-            <button type="button" style={primaryButton} onClick={onSign}>
-              Sign
-            </button>
-          ) : (
-            <StatusPill label={stateLabel(assessment.status)} tone="neutral" />
-          )}
+          <StatusPill label={stateLabel(assessment.status)} tone="neutral" />
         </header>
         <div style={questionGroup}>
           <h3 style={groupTitle}>Timeline</h3>
           {timeline.map((tp) => (
             <Link key={tp.id} to={`/hope/assessments/${tp.id}`} style={legacyLink}>
-              {rfaLabel(tp.rfaKind)} · {formatDate(tp.targetDate)}
+              {rfaLabel(tp.rfaKind)} · {formatTargetDate(tp.targetDate)}
             </Link>
           ))}
         </div>
       </div>
     </PatientWorkspaceLayout>
-  );
-}
-
-function SectionHeader({
-  code,
-  title,
-  helper,
-}: {
-  code: string;
-  title: string;
-  helper: string;
-}): JSX.Element {
-  return (
-    <div style={sectionHeader}>
-      <span style={sectionCode}>{code}</span>
-      <div>
-        <h2 style={sectionTitle}>{title}</h2>
-        <p style={muted}>{helper}</p>
-      </div>
-    </div>
   );
 }
 
@@ -4287,7 +3730,7 @@ function SaveState({
   state,
   lastSavedAt,
 }: {
-  state: "idle" | "saving" | "saved" | "failed" | "conflict";
+  state: SaveStatus;
   lastSavedAt: number | null;
 }): JSX.Element {
   const [, tick] = useState(0);
@@ -4307,9 +3750,13 @@ function SaveState({
         ? `Auto-saved ${ago()}`
         : state === "failed"
           ? "Save failed"
-          : state === "conflict"
-            ? "Reload needed"
-            : "Auto-save on";
+          : state === "unconfirmed"
+            ? "Save not confirmed"
+            : state === "conflict"
+              ? "Reload needed"
+              : state === "reloaded"
+                ? "Reloaded"
+                : "Auto-save on";
   return (
     <span style={saveState(state)} aria-live="polite">
       {label}
@@ -4317,10 +3764,25 @@ function SaveState({
   );
 }
 
-function ConflictBanner({ onReload }: { onReload: () => void }): JSX.Element {
+function ConflictBanner({
+  reloaded,
+  onReload,
+}: {
+  reloaded: boolean;
+  onReload: () => void;
+}): JSX.Element {
+  if (reloaded)
+    return (
+      <div style={conflictBanner}>
+        <span>
+          This assessment changed elsewhere and has been reloaded with the latest version. Review
+          it, then repeat your change.
+        </span>
+      </div>
+    );
   return (
     <div style={conflictBanner}>
-      <span>This assessment changed elsewhere. Reload the latest version before continuing.</span>
+      <span>{CONFLICT_FIELD_ERROR}</span>
       <button type="button" style={secondaryButton} onClick={onReload}>
         Reload assessment
       </button>
@@ -4483,26 +3945,6 @@ function asSection(value: string): SectionId {
   return SECTION_ORDER.some((section) => section.id === value) ? (value as SectionId) : "Review";
 }
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) return "Not recorded";
-  const date = value.slice(0, 10);
-  const [year, month, day] = date.split("-").map(Number);
-  if (!year || !month || !day) return value;
-  // A calendar date built at UTC midnight must also be FORMATTED in UTC — formatting it in the
-  // viewer's zone showed the day before everywhere west of Greenwich (DOB, target date).
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(Date.UTC(year, month - 1, day)));
-}
-
-function maskIdentifier(value: string | null | undefined): string {
-  if (!value) return "MRN not recorded";
-  return value.length <= 4 ? value : `MRN ...${value.slice(-4)}`;
-}
-
 function maskCoverageIdentifier(value: string | null | undefined): string {
   if (!value) {
     return "Not recorded";
@@ -4521,27 +3963,10 @@ function maskCoverageIdentifier(value: string | null | undefined): string {
   return `••••${normalized.slice(-4)}`;
 }
 
-function stateDot(kind: "complete" | "progress" | "attention" | "empty"): CSSProperties {
-  const colors = {
-    complete: t.success,
-    progress: t.primary,
-    attention: t.error,
-    empty: t.outlineVariant,
-  };
-  return {
-    width: 10,
-    height: 10,
-    borderRadius: 999,
-    background: colors[kind],
-    flex: "0 0 auto",
-    marginTop: 4,
-  };
-}
-
 function saveState(state: string): CSSProperties {
   return {
     color:
-      state === "failed" || state === "conflict"
+      state === "failed" || state === "unconfirmed" || state === "conflict"
         ? t.error
         : state === "saving"
           ? t.primary
@@ -4592,98 +4017,6 @@ const eyebrow: CSSProperties = {
   fontSize: "0.75rem",
   fontWeight: 500,
 };
-const metaLine: CSSProperties = {
-  display: "flex",
-  gap: "0.75rem",
-  flexWrap: "wrap",
-  color: t.muted,
-  fontSize: "0.85rem",
-  marginTop: "0.25rem",
-};
-const topActions: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.65rem",
-  flexWrap: "wrap",
-  justifyContent: "flex-end",
-};
-const workspaceGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "240px minmax(0, 1fr)",
-  minHeight: 0,
-  flex: 1,
-};
-const rail: CSSProperties = {
-  borderRight: `1px solid ${t.outlineVariant}`,
-  padding: "1rem",
-  overflow: "auto",
-};
-const sectionNav: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.35rem",
-};
-const sectionButton: CSSProperties = {
-  display: "flex",
-  gap: "0.75rem",
-  alignItems: "flex-start",
-  textAlign: "left",
-  border: "1px solid transparent",
-  borderRadius: 8,
-  padding: "0.7rem",
-  background: "transparent",
-  color: t.onSurface,
-  cursor: "pointer",
-};
-const sectionButtonActive: CSSProperties = {
-  background: t.surfaceLow,
-  border: `1px solid ${t.outlineVariant}`,
-};
-const sectionMeta: CSSProperties = {
-  display: "block",
-  color: t.muted,
-  fontWeight: 500,
-  marginTop: 2,
-};
-const mainPanel: CSSProperties = {
-  overflow: "auto",
-  padding: "1.5rem",
-  minWidth: 0,
-};
-const sectionHeader: CSSProperties = {
-  display: "flex",
-  gap: "0.8rem",
-  alignItems: "flex-start",
-  marginBottom: "1rem",
-};
-const sectionCode: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: 36,
-  height: 36,
-  borderRadius: 8,
-  background: t.surfaceLow,
-  color: t.onSurface,
-  fontWeight: 800,
-};
-const sectionTitle: CSSProperties = {
-  margin: 0,
-  fontFamily: t.fontDisplay,
-  fontSize: "1.25rem",
-  fontWeight: 600,
-};
-const muted: CSSProperties = {
-  margin: 0,
-  color: t.muted,
-  fontSize: "0.9rem",
-  lineHeight: 1.45,
-};
-const groupStack: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "1rem",
-};
 const questionGroup: CSSProperties = {
   border: `1px solid ${t.outlineVariant}`,
   borderRadius: 8,
@@ -4701,653 +4034,12 @@ const questionList: CSSProperties = {
   flexDirection: "column",
   gap: "0.75rem",
 };
-const cardGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-  gap: "0.75rem",
-};
-const twoColumn: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-  gap: "0.75rem",
-};
 const questionCard: CSSProperties = {
   border: `1px solid ${t.outlineVariant}`,
   borderRadius: 8,
   padding: "0.9rem",
   background: t.surfaceLow,
 };
-const compactQuestion: CSSProperties = { ...questionCard, padding: "0.75rem" };
-const questionHead: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "0.75rem",
-  alignItems: "flex-start",
-};
-const questionLabel: CSSProperties = {
-  fontWeight: 650,
-  color: t.onSurface,
-  lineHeight: 1.35,
-};
-const codePill: CSSProperties = {
-  fontSize: "0.72rem",
-  color: t.muted,
-  border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 6,
-  padding: "0.1rem 0.3rem",
-  whiteSpace: "nowrap",
-};
-const hintLine: CSSProperties = {
-  display: "flex",
-  gap: "0.5rem",
-  alignItems: "center",
-  minHeight: 20,
-  margin: "0.35rem 0",
-  color: t.muted,
-  fontSize: "0.78rem",
-};
-const inputStyle: CSSProperties = {
-  width: "100%",
-  border: `1px solid ${t.outline}`,
-  borderRadius: 8,
-  padding: "0.55rem 0.65rem",
-  font: "inherit",
-  background: t.surface,
-};
-const radioSet: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "0.45rem",
-  padding: 0,
-  margin: 0,
-  border: 0,
-};
-const radioChoice: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "0.35rem",
-  border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 8,
-  padding: "0.45rem 0.55rem",
-  background: t.surface,
-  color: t.onSurface,
-  cursor: "pointer",
-};
-const radioChoiceSelected: CSSProperties = {
-  border: `1px solid ${t.primary}`,
-  background: t.primaryTint,
-  color: t.primary,
-};
-const errorText: CSSProperties = {
-  marginTop: "0.45rem",
-  color: t.error,
-  fontSize: "0.82rem",
-  lineHeight: 1.35,
-};
-const warningText: CSSProperties = {
-  marginTop: "0.45rem",
-  color: t.warning,
-  fontSize: "0.82rem",
-  lineHeight: 1.35,
-};
-const skippedRow: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "1rem",
-  alignItems: "center",
-  padding: "0.65rem 0.75rem",
-  borderRadius: 8,
-  background: t.surfaceLow,
-  color: t.muted,
-};
-const pendingRow: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.2rem",
-  padding: "0.65rem 0.75rem",
-  borderRadius: 8,
-  border: `1px dashed ${t.outline}`,
-  color: t.muted,
-};
-const pendingMeta: CSSProperties = {
-  color: t.muted,
-  fontSize: "0.78rem",
-  fontWeight: 600,
-};
-const reviewHero: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: "1rem",
-  alignItems: "center",
-  border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 8,
-  padding: "1rem",
-  marginBottom: "1rem",
-  background: t.surfaceLow,
-};
-const progressRing: CSSProperties = {
-  width: 76,
-  height: 76,
-  borderRadius: 999,
-  display: "grid",
-  placeItems: "center",
-  border: `6px solid ${t.primary}`,
-  fontWeight: 800,
-  color: t.onSurface,
-};
-const reviewGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-  gap: "0.6rem",
-  marginBottom: "1rem",
-};
-const timingBanner: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "1rem",
-  border: `1px solid ${t.outlineVariant}`,
-  background: t.surfaceLow,
-  borderRadius: 8,
-  padding: "0.85rem 1rem",
-  marginBottom: "1rem",
-};
-const timingBannerMeta: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "flex-end",
-  gap: "0.75rem",
-  flexWrap: "wrap",
-};
-const reviewRow: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "0.75rem",
-  textAlign: "left",
-  border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 8,
-  padding: "0.75rem",
-  background: t.surface,
-  color: t.onSurface,
-  cursor: "pointer",
-};
-const reviewStateText: CSSProperties = { color: t.muted, fontSize: "0.82rem" };
-const sfvBox: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.75rem",
-  flexWrap: "wrap",
-  color: t.muted,
-};
-const successBox: CSSProperties = {
-  border: `1px solid ${t.success}`,
-  borderRadius: 8,
-  padding: "0.85rem",
-  color: t.success,
-  background: "color-mix(in srgb, var(--color-success) 10%, var(--color-surface-lowest))",
-  marginBottom: "1rem",
-};
-const completedBox: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.6rem",
-  padding: "0.75rem 1.25rem",
-  borderBottom: `1px solid ${t.outlineVariant}`,
-  color: t.success,
-  background: "color-mix(in srgb, var(--color-success) 10%, var(--color-surface-lowest))",
-};
-const conflictBanner: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "1rem",
-  padding: "0.75rem 1.25rem",
-  borderBottom: `1px solid ${t.warning}`,
-  color: t.onSurface,
-  background: "color-mix(in srgb, var(--color-warning) 10%, var(--color-surface-lowest))",
-};
-const bottomNav: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "1rem",
-  marginTop: "1.25rem",
-  paddingTop: "1rem",
-  borderTop: `1px solid ${t.outlineVariant}`,
-};
-const actionRow: CSSProperties = {
-  display: "flex",
-  justifyContent: "flex-end",
-  gap: "0.75rem",
-  marginTop: "1rem",
-};
-const inlineEditor: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.75rem",
-  flexWrap: "wrap",
-};
-const primaryButton: CSSProperties = {
-  border: 0,
-  borderRadius: 8,
-  padding: "0.6rem 0.85rem",
-  background: t.primary,
-  color: t.onPrimary,
-  fontWeight: 700,
-  cursor: "pointer",
-};
-const secondaryButton: CSSProperties = {
-  border: `1px solid ${t.outline}`,
-  borderRadius: 8,
-  padding: "0.55rem 0.8rem",
-  background: t.surface,
-  color: t.onSurface,
-  fontWeight: 650,
-  cursor: "pointer",
-};
-const dangerButton: CSSProperties = {
-  border: 0,
-  borderRadius: 8,
-  padding: "0.6rem 0.85rem",
-  background: t.error,
-  color: "var(--color-on-primary)",
-  fontWeight: 700,
-  cursor: "pointer",
-};
-const fieldLabel: CSSProperties = {
-  display: "grid",
-  gap: "0.45rem",
-  marginTop: "1rem",
-  fontWeight: 700,
-  color: t.onSurface,
-};
-const textareaField: CSSProperties = {
-  ...inputStyle,
-  minHeight: "7rem",
-  resize: "vertical",
-};
-const modalBackdrop: CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "var(--color-scrim)",
-  display: "grid",
-  placeItems: "center",
-  zIndex: 20,
-  padding: "1rem",
-};
-const modal: CSSProperties = {
-  position: "fixed",
-  top: "50%",
-  left: "50%",
-  transform: "translate(-50%, -50%)",
-  width: "min(440px, 100%)",
-  margin: 0,
-  borderRadius: 8,
-  background: t.surface,
-  padding: "1.25rem",
-  boxShadow: "var(--shadow-float)",
-};
-const modalTitle: CSSProperties = {
-  margin: "0 0 0.5rem",
-  fontFamily: t.fontDisplay,
-  fontSize: "1.2rem",
-};
-const modalStats: CSSProperties = {
-  display: "flex",
-  gap: "0.75rem",
-  color: t.muted,
-  marginTop: "1rem",
-};
-const mobileSectionSelect: CSSProperties = {
-  display: "none",
-  width: "100%",
-  marginBottom: "0.75rem",
-  ...inputStyle,
-};
-const legacyLink: CSSProperties = {
-  display: "block",
-  padding: "0.5rem 0",
-  color: t.primary,
-};
-const MonoChip = ({ children }: { children: ReactNode }): JSX.Element => (
-  <span style={{ fontFamily: t.fontMono, fontSize: "0.8rem" }}>{children}</span>
-);
-const srOnly: CSSProperties = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  padding: 0,
-  margin: -1,
-  overflow: "hidden",
-  clip: "rect(0, 0, 0, 0)",
-  whiteSpace: "nowrap",
-  border: 0,
-};
-
-const sfvModalBackdrop: CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  zIndex: 1000,
-
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-
-  padding: "24px",
-  background: "var(--color-scrim)",
-  backdropFilter: "blur(2px)",
-};
-
-const sfvModal: CSSProperties = {
-  position: "relative",
-  margin: 0,
-
-  width: "min(820px, calc(100vw - 48px))",
-  maxHeight: "calc(100vh - 48px)",
-
-  display: "flex",
-  flexDirection: "column",
-
-  padding: 0,
-  border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 16,
-  background: t.surface,
-  color: t.onSurface,
-  boxShadow: "var(--shadow-float)",
-  overflow: "hidden",
-};
-
-const sfvModalHeader: CSSProperties = {
-  flex: "0 0 auto",
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "1rem",
-  padding: "1.25rem 1.35rem 1rem",
-  borderBottom: `1px solid ${t.outlineVariant}`,
-  background: t.surface,
-};
-
-const sfvModalHeaderText: CSSProperties = {
-  minWidth: 0,
-};
-
-const sfvModalEyebrow: CSSProperties = {
-  marginBottom: "0.2rem",
-  color: t.primary,
-  fontSize: "0.8125rem",
-  fontWeight: 500,
-};
-
-const sfvModalTitle: CSSProperties = {
-  margin: 0,
-  color: t.onSurface,
-  fontFamily: t.fontDisplay,
-  fontSize: "1.3rem",
-  fontWeight: 700,
-};
-
-const sfvModalDescription: CSSProperties = {
-  margin: "0.3rem 0 0",
-  color: t.muted,
-  fontSize: "0.88rem",
-  lineHeight: 1.45,
-};
-
-const sfvCloseButton: CSSProperties = {
-  display: "grid",
-  flex: "0 0 auto",
-  width: 34,
-  height: 34,
-  placeItems: "center",
-  border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 8,
-  background: t.surface,
-  color: t.muted,
-  fontSize: "1.35rem",
-  lineHeight: 1,
-  cursor: "pointer",
-};
-
-const sfvModalBody: CSSProperties = {
-  padding: "24px",
-  overflowY: "auto",
-  flex: 1,
-  minHeight: 0,
-};
-
-const sfvPermissionErrorBox: CSSProperties = {
-  borderColor: t.warning,
-  background: `color-mix(in srgb, ${t.warning} 10%, ${t.surface})`,
-  color: t.onSurface,
-};
-
-const sfvSection: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.9rem",
-  padding: "1rem",
-  border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 10,
-  background: t.surfaceLow,
-  marginBottom: "1rem",
-};
-
-const sfvSectionHeader: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "1rem",
-};
-
-const sfvSectionTitle: CSSProperties = {
-  margin: 0,
-  color: t.onSurface,
-  fontSize: "0.98rem",
-  fontWeight: 750,
-};
-
-const sfvSectionDescription: CSSProperties = {
-  margin: "0.2rem 0 0",
-  color: t.muted,
-  fontSize: "0.82rem",
-  lineHeight: 1.4,
-};
-
-const sfvDetailsGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: "16px",
-};
-
-const sfvField: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.4rem",
-};
-
-const sfvFieldLabel: CSSProperties = {
-  color: t.onSurface,
-  fontSize: "0.8rem",
-  fontWeight: 700,
-};
-
-const sfvInput: CSSProperties = {
-  width: "100%",
-  minHeight: 42,
-  boxSizing: "border-box",
-  border: `1px solid ${t.outline}`,
-  borderRadius: 8,
-  padding: "0.55rem 0.65rem",
-  background: t.surface,
-  color: t.onSurface,
-  font: "inherit",
-};
-
-const sfvProgressBadge: CSSProperties = {
-  flex: "0 0 auto",
-  border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 999,
-  padding: "0.2rem 0.55rem",
-  background: t.surface,
-  color: t.muted,
-  fontSize: "0.75rem",
-  fontWeight: 700,
-  whiteSpace: "nowrap",
-};
-
-const sfvProgressTrack: CSSProperties = {
-  width: "100%",
-  height: 5,
-  overflow: "hidden",
-  borderRadius: 999,
-  background: t.outlineVariant,
-};
-
-const sfvProgressValue: CSSProperties = {
-  height: "100%",
-  borderRadius: 999,
-  background: t.primary,
-  transition: "width 180ms ease",
-};
-
-const sfvAnswersGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr",
-  gap: "12px",
-};
-
-const sfvAnswerCard: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) 220px",
-  alignItems: "center",
-  gap: "20px",
-
-  padding: "16px",
-  border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 12,
-  background: t.surface,
-  color: t.onSurface,
-};
-
-const sfvAnswerCardHeader: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.6rem",
-};
-
-const sfvQuestionContent: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.3rem",
-  minWidth: 0,
-};
-
-const sfvQuestionText: CSSProperties = {
-  color: t.onSurface,
-  fontSize: "0.88rem",
-  fontWeight: 650,
-  lineHeight: 1.4,
-};
-
-const sfvAnswerNumber: CSSProperties = {
-  display: "grid",
-  flex: "0 0 auto",
-  width: 28,
-  height: 28,
-  placeItems: "center",
-  borderRadius: 7,
-  background: t.surfaceLow,
-  color: t.muted,
-  fontSize: "0.75rem",
-  fontWeight: 800,
-};
-
-const sfvAnswerTitle: CSSProperties = {
-  display: "block",
-  color: t.onSurface,
-  fontSize: "0.83rem",
-};
-
-const sfvAnswerHint: CSSProperties = {
-  display: "block",
-  marginTop: 1,
-  color: t.muted,
-  fontSize: "0.72rem",
-};
-
-const sfvErrorBox: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.25rem",
-  padding: "0.75rem 0.85rem",
-  border: `1px solid ${t.error}`,
-  borderRadius: 8,
-  background: `color-mix(in srgb, ${t.error} 10%, ${t.surface})`,
-  color: t.onSurface,
-  fontSize: "0.82rem",
-};
-
-const sfvModalFooter: CSSProperties = {
-  flex: "0 0 auto",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "1rem",
-  padding: "0.85rem 1.35rem",
-  borderTop: `1px solid ${t.outlineVariant}`,
-  background: t.surface,
-};
-
-const sfvFooterStatus: CSSProperties = {
-  minWidth: 0,
-  fontSize: "0.8rem",
-};
-
-const sfvReadyText: CSSProperties = {
-  color: t.success,
-  fontWeight: 700,
-};
-
-const sfvPendingText: CSSProperties = {
-  color: t.muted,
-};
-
-const sfvFooterActions: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "flex-end",
-  gap: "0.65rem",
-  flex: "0 0 auto",
-};
-
-const sfvDisabledButton: CSSProperties = {
-  opacity: 0.5,
-  cursor: "not-allowed",
-};
-
-const optionalLabel: CSSProperties = {
-  marginLeft: 8,
-  fontSize: 12,
-  fontWeight: 500,
-  opacity: 0.65,
-};
-
-const sfvReadonlyAnswer: CSSProperties = {
-  minHeight: 42,
-  display: "flex",
-  alignItems: "center",
-  boxSizing: "border-box",
-  padding: "0.55rem 0.65rem",
-  border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 8,
-  background: t.surface,
-  color: t.onSurface,
-  fontSize: "0.85rem",
-  fontWeight: 600,
-};
-
 const reviewSubsectionHeader: CSSProperties = {
   display: "flex",
   alignItems: "flex-start",
@@ -5439,4 +4131,155 @@ const payerIdentifierValue: CSSProperties = {
   color: t.onSurface,
   fontSize: "0.9rem",
   fontWeight: 700,
+};
+
+const codePill: CSSProperties = {
+  fontSize: "0.72rem",
+  color: t.muted,
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 6,
+  padding: "0.1rem 0.3rem",
+  whiteSpace: "nowrap",
+};
+const completedBox: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.6rem",
+  padding: "0.75rem 1.25rem",
+  borderBottom: `1px solid ${t.outlineVariant}`,
+  color: t.success,
+  background: "color-mix(in srgb, var(--color-success) 10%, var(--color-surface-lowest))",
+};
+const conflictBanner: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "1rem",
+  padding: "0.75rem 1.25rem",
+  borderBottom: `1px solid ${t.warning}`,
+  color: t.onSurface,
+  background: "color-mix(in srgb, var(--color-warning) 10%, var(--color-surface-lowest))",
+};
+const hintLine: CSSProperties = {
+  display: "flex",
+  gap: "0.5rem",
+  alignItems: "center",
+  minHeight: 20,
+  margin: "0.35rem 0",
+  color: t.muted,
+  fontSize: "0.78rem",
+};
+const inlineEditor: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.75rem",
+  flexWrap: "wrap",
+};
+const legacyLink: CSSProperties = {
+  display: "block",
+  padding: "0.5rem 0",
+  color: t.primary,
+};
+const mobileSectionSelect: CSSProperties = {
+  display: "none",
+  width: "100%",
+  marginBottom: "0.75rem",
+  ...inputStyle,
+};
+const progressRing: CSSProperties = {
+  width: 76,
+  height: 76,
+  borderRadius: 999,
+  display: "grid",
+  placeItems: "center",
+  border: `6px solid ${t.primary}`,
+  fontWeight: 800,
+  color: t.onSurface,
+};
+const questionHead: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+  alignItems: "flex-start",
+};
+const questionLabel: CSSProperties = {
+  fontWeight: 650,
+  color: t.onSurface,
+  lineHeight: 1.35,
+};
+const reviewGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: "0.6rem",
+  marginBottom: "1rem",
+};
+const reviewHero: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "1rem",
+  alignItems: "center",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 8,
+  padding: "1rem",
+  marginBottom: "1rem",
+  background: t.surfaceLow,
+};
+const reviewRow: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "0.75rem",
+  textAlign: "left",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 8,
+  padding: "0.75rem",
+  background: t.surface,
+  color: t.onSurface,
+  cursor: "pointer",
+};
+const reviewStateText: CSSProperties = { color: t.muted, fontSize: "0.82rem" };
+const sfvBox: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.75rem",
+  flexWrap: "wrap",
+  color: t.muted,
+};
+const successBox: CSSProperties = {
+  border: `1px solid ${t.success}`,
+  borderRadius: 8,
+  padding: "0.85rem",
+  color: t.success,
+  background: "color-mix(in srgb, var(--color-success) 10%, var(--color-surface-lowest))",
+  marginBottom: "1rem",
+};
+const timingBanner: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+  border: `1px solid ${t.outlineVariant}`,
+  background: t.surfaceLow,
+  borderRadius: 8,
+  padding: "0.85rem 1rem",
+  marginBottom: "1rem",
+};
+const timingBannerMeta: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  gap: "0.75rem",
+  flexWrap: "wrap",
+};
+const warningText: CSSProperties = {
+  marginTop: "0.45rem",
+  color: t.warning,
+  fontSize: "0.82rem",
+  lineHeight: 1.35,
+};
+const completionDateErrorText: CSSProperties = {
+  margin: "0.45rem 0 0",
+  color: t.error,
+  fontSize: "0.82rem",
+  lineHeight: 1.35,
 };

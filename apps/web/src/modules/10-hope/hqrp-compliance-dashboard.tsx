@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { useSession } from "../../shell/session";
+import { withRequestTimeout } from "./hope-api";
 import { HopeListReadState } from "./hope-read-state";
 
 interface RateCounts {
@@ -63,7 +64,9 @@ export function HqrpComplianceDashboard(): JSX.Element {
     setLoading(true);
     setReadStatus("ok");
     const { status, res } = await settleRead(
-      client.GET("/api/v1/hope/dashboard/compliance", { params: { query: {} } }),
+      withRequestTimeout((signal) =>
+        client.GET("/api/v1/hope/dashboard/compliance", { params: { query: {} }, signal }),
+      ),
       "denied",
     );
     if (mine !== latestLoad.current) return;

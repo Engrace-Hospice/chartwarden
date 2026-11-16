@@ -2215,6 +2215,7 @@ import {
 } from "../../apps/backend/src/modules/09-assessments/routes/assessments-typebox";
 import {
   AssembleSubmissionSchema as M10AssembleSubmissionSchema,
+  CancelSubmissionSchema as M10CancelSubmissionSchema,
   CorrectTimepointSchema as M10CorrectTimepointSchema,
   DashboardQuerySchema as M10DashboardQuerySchema,
   HopeAnswerPatchResponseSchema as M10HopeAnswerPatchResponseSchema,
@@ -5829,7 +5830,25 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
 });
 
-// ── M10 HOPE Engine (22 routes) ───────────────────────────────────────────────────────────────────
+// ── M10 HOPE Engine ───────────────────────────────────────────────────────────────────────────────
+// The wording the M10 summaries share for two refusals, kept in ONE place so the summaries cannot drift from
+// docs/api/CHANGES.md and the module spec §4.4. A lock wait that times out is retryable and releases the Idempotency-Key
+// (the idempotency middleware keeps the 409 instead when an earlier step of the request already committed); a spec that
+// is not in force is a 422 the idempotency layer replays, so the retry needs a new key. The Idempotency-Key sentences
+// belong only to the POST/PUT/PATCH routes: the idempotency middleware skips GET and HEAD (it never claims, releases or
+// caches them), so the GET summaries (`*_READ_NOTE`) carry the same code and message and say a GET is simply sent again.
+const M10_RECORD_BUSY_CORE =
+  '409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again."';
+const M10_RECORD_BUSY_NOTE = `${M10_RECORD_BUSY_CORE} The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)`;
+const M10_RECORD_BUSY_READ_NOTE = `${M10_RECORD_BUSY_CORE} A GET is never claimed or cached by the idempotency layer, so it is simply sent again)`;
+const M10_SPEC_NOT_IN_FORCE_CORE =
+  "422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date;";
+const M10_SPEC_NOT_IN_FORCE_NOTE = `${M10_SPEC_NOT_IN_FORCE_CORE} the idempotency layer replays the 422 for 24 h on the same key, so after an operator loads the spec use a NEW Idempotency-Key)`;
+const M10_SPEC_NOT_IN_FORCE_READ_NOTE = `${M10_SPEC_NOT_IN_FORCE_CORE} a GET is never cached by the idempotency layer, so a retry works as soon as an operator has loaded the spec)`;
+// An admission the M6 seam cannot project is the same kind of refusal as a missing spec: a 422 the idempotency layer replays
+// for 24 h on the same key. Both routes that raise it are POSTs, so only the key sentence applies (no GET form).
+const M10_ADMISSION_PROJECTION_GAP_NOTE =
+  "422 M10_ADMISSION_PROJECTION_GAP (no admission projection is available from the M6 seam; the idempotency layer replays the 422 for 24 h on the same key, so after an operator repairs the admission use a NEW Idempotency-Key)";
 Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/admissions/:admissionId/hope": {
     summary: "Admission-scoped HOPE workflow summary",
@@ -5845,40 +5864,41 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeScheduleResponseSchema,
   },
   "POST /api/v1/hope/schedules/:id/skip": {
-    summary: "Skip a schedule (requires reason code)",
+    summary:
+      'Skip an OPEN schedule (requires reason code); a schedule that is already completed, expired or skipped answers 409 CONFLICT ("only an open schedule can be skipped") and is left unchanged, because the status is checked by the same UPDATE that writes the skip; an unknown schedule is 404',
     body: M10SkipScheduleSchema,
     response: M10HopeScheduleResponseSchema,
   },
   "POST /api/v1/admissions/:admissionId/hope/timepoints": {
-    summary: "Record a new HOPE timepoint (draft; RN/NP/MD author)",
+    summary: `Record a new HOPE timepoint (draft; RN/NP/MD author) — \`targetDate\` must be a real calendar date-time with an explicit offset (422 otherwise; a date that does not exist is never rolled forward); \`rfaKind\` \`04_sfv\` is accepted by the schema but refused before anything is written (422 VALIDATION_FAILED, detail code M10_RFA_KIND_NOT_A_TIMEPOINT: an SFV completion is recorded with POST /admissions/{admissionId}/hope/sfv); ${M10_SPEC_NOT_IN_FORCE_NOTE}; ${M10_RECORD_BUSY_NOTE}`,
     body: M10RecordTimepointSchema,
     status: 201,
     response: M10HopeAssessmentResponseSchema,
   },
   "POST /api/v1/admissions/:admissionId/hope/sfv": {
-    summary: "Record an SFV completion (RFA-04; RN/NP/LPN/LVN author)",
+    summary: `Record an SFV completion (RFA-04, inserted signed; RN/NP/LPN/LVN author) — the SFV must belong to the path admission (409 M10_SFV_NO_TRIGGER otherwise); \`attestationConfirmed: true\` required (422 M10_ATTESTATION_REQUIRED); optional \`attestationVersion\` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); \`targetDate\` must be a real calendar date-time with an explicit offset (422); J2053 symptom-follow-up content required and every value CMS-allowed (422 M10_SFV_COMPLETION_INCOMPLETE); the triggering assessment's target date has no HOPE spec to judge the values against (${M10_SPEC_NOT_IN_FORCE_NOTE}); ${M10_ADMISSION_PROJECTION_GAP_NOTE}; admission read failing after the caseload check passed, retry (503 DEGRADED; a failure inside the caseload check answers 404); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); ${M10_RECORD_BUSY_NOTE}`,
     body: M10RecordSfvSchema,
     status: 201,
     response: M10HopeAssessmentResponseSchema,
   },
   "PUT /api/v1/hope/assessments/:id": {
-    summary: "Update a draft assessment",
+    summary: `Update a draft assessment; the draft is judged on the locked row, so an edit that raced a sign is refused (409 M10_CORRECTION_TARGET_NOT_SIGNED) and the signed record is untouched; ${M10_RECORD_BUSY_NOTE}`,
     body: M10UpdateDraftSchema,
     response: M10HopeAssessmentResponseSchema,
   },
   "POST /api/v1/hope/assessments/:id/sign": {
-    summary: "Final-validate and sign a draft HOPE assessment",
+    summary: `Final-validate and sign a draft HOPE assessment — \`attestationConfirmed: true\` required (422 M10_ATTESTATION_REQUIRED); optional \`attestationVersion\` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); ${M10_SPEC_NOT_IN_FORCE_NOTE} for a legacy draft whose spec cannot be frozen; ${M10_RECORD_BUSY_NOTE}`,
     body: M10SignTimepointSchema,
     response: M10HopeSignResponseSchema,
   },
   "POST /api/v1/hope/assessments/:id/correct": {
-    summary: "Create a correction draft for a signed HOPE assessment",
+    summary: `Create a correction draft for a signed HOPE assessment; the body's \`targetDate\` is required but IGNORED (the correction reuses the original record's date); ${M10_RECORD_BUSY_NOTE}`,
     body: M10CorrectTimepointSchema,
     status: 201,
     response: M10HopeAssessmentResponseSchema,
   },
   "POST /api/v1/hope/assessments/:id/inactivations": {
-    summary: "Create an inactivation draft for a signed HOPE assessment",
+    summary: `Create an inactivation draft for a signed HOPE assessment; ${M10_RECORD_BUSY_NOTE}`,
     body: M10InactivateTimepointSchema,
     response: M10HopeAssessmentResponseSchema,
   },
@@ -5887,20 +5907,20 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeAssessmentResponseSchema,
   },
   "GET /api/v1/hope/assessments/:id/workspace": {
-    summary: "Canonical HOPE assessment workspace from frozen spec and current answers",
+    summary: `Canonical HOPE assessment workspace from frozen spec and current answers; ${M10_SPEC_NOT_IN_FORCE_READ_NOTE} for a legacy draft whose spec cannot be frozen; ${M10_RECORD_BUSY_READ_NOTE}`,
     response: M10HopeAssessmentWorkspaceResponseSchema,
   },
   "GET /api/v1/hope/assessments/:id/review": {
-    summary: "HOPE final-review readiness model",
+    summary: `HOPE final-review readiness model; ${M10_SPEC_NOT_IN_FORCE_READ_NOTE} for a legacy draft whose spec cannot be frozen; ${M10_RECORD_BUSY_READ_NOTE}`,
     response: M10HopeAssessmentReviewResponseSchema,
   },
   "PATCH /api/v1/hope/assessments/:id/answers": {
-    summary: "Patch canonical HOPE item answers on a draft assessment",
+    summary: `Patch canonical HOPE item answers on a draft assessment; ${M10_RECORD_BUSY_NOTE}`,
     body: M10PatchAnswersSchema,
     response: M10HopeAnswerPatchResponseSchema,
   },
   "PATCH /api/v1/hope/assessments/:id/huv/completion-date": {
-    summary: "Set the HUV completion date (Z0350) through the workflow-controlled capture path",
+    summary: `Set the HUV completion date (Z0350) through the workflow-controlled capture path; ${M10_RECORD_BUSY_NOTE}`,
     body: M10SetHuvCompletionDateSchema,
     response: M10HopeAnswerPatchResponseSchema,
   },
@@ -5915,13 +5935,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeSummaryRequestedResponseSchema,
   },
   "GET /api/v1/hope/assessments/:id/validation": {
-    summary: "On-demand pre-submission validation findings for one row",
+    summary:
+      "On-demand pre-submission validation findings for one row; `submissionDate`, when given, must be a real calendar date-time with an explicit offset (else 422)",
     query: M10ValidationQuerySchema,
     response: M10HopeValidationResponseSchema,
   },
   "GET /api/v1/hope/sfv": {
     summary:
-      "SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2)",
+      "SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2); optional `triggeringAssessmentId` returns only the SFV that assessment triggered (an unknown id is an empty list)",
     query: M10SfvWorklistQuerySchema,
     response: M10HopeSfvListResponseSchema,
   },
@@ -5945,26 +5966,30 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/hope/submissions/:id/retry": {
     summary:
-      "Deprecated for the UI: requeue a rejected batch. iQIES has no retry; fix a rejected record with a correction assessment and re-package it in a new batch",
+      "Deprecated for the UI: requeue a rejected batch (status rejected to queued; nothing consumes queued, and it neither re-validates nor re-assembles). iQIES has no retry; fix a rejected record with a correction assessment and re-package it in a new batch",
     body: M10RetrySubmissionSchema,
     response: M10HopeSubmissionResponseSchema,
   },
   "GET /api/v1/hope/submissions/:id/package": {
-    summary: "Download the generated manual iQIES ZIP package",
+    summary: `Download the generated manual iQIES ZIP package; a cancelled package cannot be downloaded (409 M10_SUBMISSION_CANCELLED); ${M10_RECORD_BUSY_READ_NOTE}`,
   },
   "POST /api/v1/hope/submissions/:id/mark-uploaded": {
-    summary: "Mark a generated HOPE package as manually uploaded to iQIES",
+    summary: `Mark a generated HOPE package as manually uploaded to iQIES; \`submittedAt\`, when given, must be a real calendar date-time with an explicit offset (else 422); a cancelled package cannot be marked uploaded (409 M10_SUBMISSION_CANCELLED); ${M10_RECORD_BUSY_NOTE}`,
     body: M10MarkSubmissionUploadedSchema,
     response: M10HopeSubmissionResponseSchema,
   },
+  "POST /api/v1/hope/submissions/:id/cancel": {
+    summary: `Cancel a generated HOPE package that was never marked uploaded (packaged/exported), freeing its assessments to be packaged again in a NEW batch; 409 once uploaded; replaying a cancel returns the cancelled batch; ${M10_RECORD_BUSY_NOTE}`,
+    body: M10CancelSubmissionSchema,
+    response: M10HopeSubmissionResponseSchema,
+  },
   "POST /api/v1/hope/submissions/:id/results": {
-    summary:
-      "Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent)",
+    summary: `Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); ${M10_RECORD_BUSY_NOTE}`,
     body: M10ImportSubmissionResultSchema,
     response: M10HopeSubmissionDetailResponseSchema,
   },
   "POST /api/v1/hope/submissions/assemble": {
-    summary: "Force-assemble a submission outside the cron cadence",
+    summary: `Assemble and package the eligible signed assessments of a provider entity into a \`packaged\` manual iQIES ZIP batch (the only assemble path; no cron runs it); 409 CONFLICT when no signed assessment is eligible; 422 when the submission header or an assessment payload cannot be built (the message names what to set); a second assemble of the same provider entity queues behind the first (an advisory lock), so it can answer ${M10_RECORD_BUSY_NOTE}`,
     body: M10AssembleSubmissionSchema,
     response: M10HopeSubmissionResponseSchema,
   },
@@ -5974,7 +5999,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeComplianceResponseSchema,
   },
   "POST /api/v1/hope/admin/regenerate-schedules": {
-    summary: "Admin: recompute schedules for an admission",
+    summary: `Admin: create any missing HOPE schedule windows for an admission (existing rows, in any status, are left untouched, so nothing is recomputed or reopened and a window computed from a wrong date stays as it is); returns the admission's schedule count; an admission the caller cannot see (absent here, or another organization's) answers 404 from the scope guard before anything is written; an admission that is visible but not sited (no provider entity or location) is ${M10_ADMISSION_PROJECTION_GAP_NOTE}`,
     body: M10RegenerateSchedulesSchema,
     response: M10HopeRegenerateResponseSchema,
   },

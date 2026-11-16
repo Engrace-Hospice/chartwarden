@@ -1,18 +1,24 @@
 // apps/backend/src/modules/10-hope/jobs — M10 background jobs (M10-T06, §4.8 / §4.8.1). Pure,
 // deterministic scan processors over the §4.8 queue catalog (NO BullMQ import — the worker construction
-// binds at app boot, same pattern as M9-T06 / M6-T10). T06 ships the clinical-path watchdog + alert-
-// dispatch bodies whose logic is pure today:
+// lives in ./cron-workers.ts, the schedule registration in ./cron-schedule.ts; both bind at app boot).
 //   • `hope-window-watchdog` (cron 15m)  — flip open schedules past `late_deadline_at` to expired; emit
-//                                           `m10.hope.timepoint_expired`.
+//                                           `m10.hope.timepoint_expired`.  WIRED (Worker + schedule).
 //   • `sfv-watchdog`        (cron 15m)   — flip open SFVs past `due_at` to overdue, past 7d to missed;
-//                                           emit `m10.hope.sfv_overdue` / `m10.hope.sfv_missed`.
+//                                           emit `m10.hope.sfv_overdue` / `m10.hope.sfv_missed`.  WIRED.
+//   • `hope-retention-scan` (cron monthly) — GAP-181; the pure decision is ./retention.ts, the runner is
+//                                           `runHopeRetentionCron` in ./cron-workers.ts.  WIRED.
 //   • `hope-alert-dispatcher` (cron 5m)  — read `alert_cadence` on open schedules/SFVs; plan the M36
 //                                           timepoint-window / SFV alerts at threshold (dedup by cadence).
+//                                           The planner below is pure and has NO Worker or schedule.
 // Every body is idempotent: a re-run after the runner persists the transitions is a no-op (the input no
-// longer matches the trigger predicate; the §4.8.1 DLQ triage relies on this). The §4.8 submission queues
-// (`assemble-hope-submission` / `iqies-submit-worker` / `iqies-reconcile-worker` / `submit-correction-rfa`)
-// + the `revalidate-on-terminology-update` + `hope-partition-rotation` queues are declared in the catalog;
-// their bodies bind with their drivers in M10-T07 (the iQIES submission worker loop, §4.10).
+// longer matches the trigger predicate; the §4.8.1 DLQ triage relies on this).
+// NOT wired, by the state of this tree (each is only a catalog row, a pure planner, or an unregistered runner):
+//   • `assemble-hope-submission` / `iqies-submit-worker` / `iqies-reconcile-worker` — runners exist in ./cron-workers.ts
+//     but are not registered, scheduled or given a Worker (the manual iQIES package flow is the transport; see the
+//     RECOVERY NOTE in that file's header). `submit-correction-rfa` has a pure planner in ./submission.ts and no Worker.
+//   • `hope-partition-rotation` and `revalidate-on-terminology-update` — catalog rows only (queue name, cadence, params);
+//     no Worker or body is bound to either. Partition rotation is done by the PLATFORM job `partition.rotate`
+//     (apps/backend/src/bootstrap/jobs/partition-rotation.ts), not by this queue.
 import {
   buildSfvAlert,
   buildTimepointWindowAlert,
@@ -86,8 +92,11 @@ export const M10_JOB_PARAMS = {
     backoff: "exponential 30s, max 5m",
     concurrency: 4,
   },
-  "hope-window-watchdog": { priority: 1, attempts: 5, backoff: "exponential 30s", concurrency: 2 },
-  "sfv-watchdog": { priority: 1, attempts: 5, backoff: "exponential 30s", concurrency: 2 },
+  // The two watchdogs run with `attempts: 1`: a failed tick still fails the job (the DLQ alert fires), the next firing 15
+  // minutes later is the retry, and the alert replay (./watchdog-ticks.ts) already recovers anything a tick missed.
+  // BullMQ re-running the whole all-org tick up to 5 times would only multiply the work of one poisoned org.
+  "hope-window-watchdog": { priority: 1, attempts: 1, backoff: "exponential 30s", concurrency: 2 },
+  "sfv-watchdog": { priority: 1, attempts: 1, backoff: "exponential 30s", concurrency: 2 },
   "hope-alert-dispatcher": { priority: 2, attempts: 3, backoff: "fixed 15s", concurrency: 8 },
   "revalidate-on-terminology-update": {
     priority: 3,

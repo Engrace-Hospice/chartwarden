@@ -1,11 +1,6 @@
-import {
-  type AbacTarget,
-  hasOrgWideScope,
-  requireAbac,
-  requirePermission,
-} from "@chartwarden/auth";
+import { type AbacTarget, requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import { assertAuthorBoundToActor } from "@chartwarden/hope";
-// apps/backend/src/modules/10-hope/routes/hope-routes.ts — M10-T06 the §4.1 route inventory (22 routes)
+// apps/backend/src/modules/10-hope/routes/hope-routes.ts — M10-T06 the §4.1 route inventory
 // behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @chartwarden/auth, M3) on the
 // §4.6 keys M10 registers into M3's catalog (M10_CONTRIBUTED_PERMISSIONS). Org binding is server-side
 // (`request.context`, never the body). Handlers compose over the injected HopeRouteService (in-memory
@@ -19,22 +14,34 @@ import { assertAuthorBoundToActor } from "@chartwarden/hope";
 // GAP-018 (2026-08-09): the §4.1 `caseload` / `provider_entity` columns used to be claimed here as "bound
 // by the §4.6 default ABAC on each key, enforced by M3's authorization middleware" — no such middleware
 // exists (`requirePermission` never reads a permission's `defaultAbac` catalog column), so this file wired
-// ZERO caseload/provider-entity guards. The 14 caseload-scoped + 5 provider-entity-scoped routes now bind
+// ZERO caseload/provider-entity guards. The caseload-scoped and provider-entity-scoped routes now bind
 // the new M10-owned `hope.scope` predicate (abac-predicates.ts) via `SCOPE`/`SCOPE_*` below — one predicate
 // covering every id shape M10's routes name (patientId/admissionId/scheduleId/sfvId/assessmentId/
 // providerEntityId/submissionId), since none of those shapes (besides bare `patientId`/`providerEntityId`)
 // resolve through the shared `caseload_or_scope` (M7-owned) or `provider_entity_scope` (M3-intrinsic)
-// predicates by name. `GET /hope/sfv` (pure org-wide worklist, no id/filter to scope by) and `POST
-// /hope/admin/regenerate-schedules` (§4.1 ABAC = `platform_admin`, a role check, not caseload/PE — out of
-// this GAP's scope) are deliberately left unwired, per the M6/M7/M8/M9 list-route precedent.
-import { type PreHandler, membershipActorOf } from "@chartwarden/shared/route-kit";
-import { type HopeRfaKind, UnauthorizedError, ValidationError } from "@chartwarden/types";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+// predicates by name. `GET /hope/sfv` (an org-wide worklist: its one id-shaped input, the optional `triggeringAssessmentId`,
+// is a result FILTER the caller does not address a resource by, and an unknown id is an empty list, never a 404, so there is
+// nothing for `hope.scope` to guard) is deliberately left unwired, per the M6/M7/M8/M9 list-route precedent (the caseload is
+// applied as a query narrowing instead, GAP-182). `POST /hope/admin/regenerate-schedules` (§4.1 ABAC = `platform_admin`, a role
+// check) was left out of GAP-018 but now binds `hope.scope` on the body's admissionId (`SCOPE_BODY_ADMISSION`, GAP-124).
+import { type PreHandler, membershipActorOf, rejectAiActor } from "@chartwarden/shared/route-kit";
+import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
+import { HOPE_SFV_STEP_UP_OPERATION, HOPE_SIGN_STEP_UP_OPERATION } from "../hope-signature-audit";
+import {
+  type CaseloadLookup,
+  adminOverrideRequested,
+  assertAmendmentAttribution,
+  listScopeOf,
+  requireOverrideJustification,
+  requireStrictAttestation,
+  signatureRequestFacts,
+} from "./hope-route-guards";
 import {
   AdmissionParamsSchema,
   AssembleSubmissionSchema,
   AssessmentParamsSchema,
+  CancelSubmissionSchema,
   CorrectTimepointSchema,
   DashboardQuerySchema,
   HopeAnswerPatchResponseSchema,
@@ -73,50 +80,7 @@ export interface HopeRouteDeps {
    * The patients on a clinician's caseload (GAP-182) — defaults to M5's published `CaseloadProvider` seam.
    * `userId` is the M2 USER id (what `patient_assignment.clinician_user_id` keys on).
    */
-  caseloadPatientIds?: (q: { organizationId: string; userId: string }) => Promise<
-    readonly string[]
-  >;
-}
-
-/**
- * GAP-182 — the caseload narrowing the org-wide HOPE SFV worklist applies. Org-wide scope
- * roles are unrestricted (`null`); everyone else sees their caseload plus the one patient a pinned
- * session names. Fail-CLOSED: a caseload that cannot be resolved narrows to the session patient (or nothing).
- */
-async function listScopeOf(
-  request: FastifyRequest,
-  lookup: NonNullable<HopeRouteDeps["caseloadPatientIds"]>,
-): Promise<readonly string[] | null> {
-  const ctx = request.context;
-  if (hasOrgWideScope(ctx.roles)) return null;
-  const pinned = ctx.attributes?.sessionPatientId;
-  const sessionIds = typeof pinned === "string" && pinned.length > 0 ? [pinned] : [];
-  if (!ctx.userId) return sessionIds;
-  try {
-    const caseload = await lookup({ organizationId: ctx.organizationId, userId: ctx.userId });
-    return [...new Set([...caseload, ...sessionIds])];
-  } catch (err) {
-    request.log.warn({ err }, "HOPE caseload lookup failed — narrowing to the session patient");
-    return sessionIds;
-  }
-}
-
-/**
- * #850: the correct body accepts the SFV author union (RN/NP/MD/LPN/LVN) because the record's RFA kind is
- * only known server-side. The claimed attribution must clear the per-RFA floor AND be one of the ACTOR's own
- * role-derived disciplines, for every RFA kind and every claimed value (never the body's word). An
- * unresolvable id falls to the strict (non-SFV) floor.
- */
-async function assertAmendmentAttribution(
-  service: HopeRouteService,
-  request: FastifyRequest,
-  organizationId: string,
-  assessmentId: string,
-  claimed: string,
-): Promise<void> {
-  const facts = await service.loadAssessment(organizationId, assessmentId);
-  const rfaKind = (facts?.rfaKind ?? "02_huv1") as HopeRfaKind;
-  assertAuthorBoundToActor(rfaKind, claimed, request.context?.roles ?? []);
+  caseloadPatientIds?: CaseloadLookup;
 }
 
 // Static permission guards (§4.6).
@@ -134,36 +98,10 @@ const DASHBOARD_READ = P("hope.dashboard.read");
 const ADMIN_REGEN = P("hope.admin.regenerate_schedules");
 const ADMIN_LATE_OVERRIDE = P("hope.admin.late_deadline_override");
 
-// GAP-015 — `adminOverride` used to be a body boolean any `hope.timepoint.write` holder could set, and it
-// lifts the HQRP hard cutoff (`M10_TIMEPOINT_EXPIRED` / `M10_SFV_PAST_DUE`). The catalog defined the gating
-// permission `hope.admin.late_deadline_override` and nothing referenced it. Now a request that asks for the
-// override must hold that permission (403 otherwise) AND state a justification (422) — which the service
-// records on a critical audit event when the override is actually used. The flag only ever ADDS a gate.
-// Fail closed on the RAW value: the handler's `parse()` runs `Value.Convert`, which coerces "true"/1 to
-// `true` AFTER this gate has run, so a strict `=== true` here let `adminOverride: "true"` skip the permission.
-const adminOverrideRequested = (body: unknown): boolean => {
-  const raw = (body as { adminOverride?: unknown } | null | undefined)?.adminOverride;
-  return raw !== undefined && raw !== null && raw !== false;
-};
 const LATE_OVERRIDE_GATE: PreHandler = async (request, reply) => {
   if (!adminOverrideRequested(request.body)) return;
   await ADMIN_LATE_OVERRIDE(request, reply);
 };
-function requireOverrideJustification(body: {
-  readonly adminOverride?: boolean;
-  readonly adminOverrideJustification?: string;
-}): void {
-  if (body.adminOverride === true && !body.adminOverrideJustification) {
-    throw new ValidationError("an admin deadline override needs a justification", [
-      {
-        field: "adminOverrideJustification",
-        code: "REQUIRED",
-        message: "adminOverrideJustification is required with adminOverride",
-      },
-    ]);
-  }
-}
-
 // §4.7 — the three ABAC predicates M10 owns (discipline is read from session context, not the body).
 const noTarget = (): AbacTarget => ({});
 const ABAC_AUTHOR = requireAbac("hope.timepoint.write", "hope.authorDisciplineAllowed", {
@@ -183,6 +121,15 @@ const ABAC_CORRECT = requireAbac(
   "hope.timepoint.correct",
   "hope.correctionAuthorAllowed",
 ) as PreHandler; // target = :id
+
+// R-05 — a HOPE record signature is a legal clinical act, so it takes the M8/M9 signing ceremony: an AI
+// principal is refused (§D13), and a FRESH step-up is demanded. `STEP_UP_*` must be the LAST preHandler on
+// its route: a caller already denied by permission/scope/discipline is never asked to re-authenticate, and
+// `requireStepUp` is not satisfiable by an active break-glass grant. The attestation itself is the required
+// `attestationConfirmed: true` in the request schema.
+const REJECT_AI = rejectAiActor("AI principals cannot sign a HOPE record") as PreHandler;
+const STEP_UP_SIGN = requireStepUp(HOPE_SIGN_STEP_UP_OPERATION) as PreHandler;
+const STEP_UP_SFV = requireStepUp(HOPE_SFV_STEP_UP_OPERATION) as PreHandler;
 
 // GAP-018 — the M10-owned `hope.scope` guard. `SCOPE` covers every route whose default target
 // (`request.params`) already names a field `hope.scope` recognizes as-is: `patientId` (route 10),
@@ -344,18 +291,31 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
         adminOverride: body.adminOverride,
         adminOverrideJustification: body.adminOverrideJustification,
         scheduleId: body.scheduleId,
+        request: signatureRequestFacts(request),
       });
       return reply.code(201).send(res);
     },
   );
 
-  // 5 — record an SFV completion (RFA 04); RN/NP/LPN/LVN author (§4.7); matches an open SFV row.
+  // 5 — record an SFV completion (RFA 04); RN/NP/LPN/LVN author (§4.7); matches an open SFV row OF THE URL
+  // ADMISSION (R-01: the service binds the SFV to `:admissionId`, which `hope.scope` has verified). It inserts
+  // an already-SIGNED RFA-04, so it is a signing route (R-05): attestation + fresh step-up + no AI actor.
   app.post(
     "/api/v1/admissions/:admissionId/hope/sfv",
-    { preHandler: [WRITE, LATE_OVERRIDE_GATE, SCOPE("hope.timepoint.write"), ABAC_SFV] },
+    {
+      preHandler: [
+        WRITE,
+        REJECT_AI,
+        LATE_OVERRIDE_GATE,
+        SCOPE("hope.timepoint.write"),
+        ABAC_SFV,
+        STEP_UP_SFV,
+      ],
+    },
     async (request, reply) => {
       const { organizationId, userId } = membershipActorOf(request);
       const { admissionId } = parse(AdmissionParamsSchema, request.params);
+      requireStrictAttestation(request.body);
       const body = parse(RecordSfvSchema, request.body);
       requireOverrideJustification(body);
       // #850: the body's CMS attribution must be the actor's own discipline (an LPN cannot sign as RN).
@@ -367,6 +327,9 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
         data: body.data,
         adminOverride: body.adminOverride,
         adminOverrideJustification: body.adminOverrideJustification,
+        attestationConfirmed: body.attestationConfirmed,
+        attestationVersion: body.attestationVersion,
+        request: signatureRequestFacts(request),
       });
       return reply.code(201).send(res);
     },
@@ -384,17 +347,22 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     },
   );
 
-  // 7 — sign a draft (→ signed; runs the D4 J2051 trigger; snapshots PPS/ESAS-r); RN/NP/MD-only.
+  // 7 — sign a draft (→ signed; runs the D4 J2051 trigger; snapshots PPS/ESAS-r); RN/NP/MD-only. R-05: the
+  // body must carry `attestationConfirmed: true` (the `parse` below), and a fresh step-up is the last guard.
   app.post(
     "/api/v1/hope/assessments/:id/sign",
-    { preHandler: [SIGN, SCOPE("hope.timepoint.sign"), ABAC_SIGN] },
+    { preHandler: [SIGN, REJECT_AI, SCOPE("hope.timepoint.sign"), ABAC_SIGN, STEP_UP_SIGN] },
     async (request) => {
       const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
+      requireStrictAttestation(request.body);
       const body = parse(SignTimepointSchema, request.body);
       return parse(
         HopeSignResponseSchema,
-        await service.signTimepoint(organizationId, userId, id, body),
+        await service.signTimepoint(organizationId, userId, id, {
+          ...body,
+          request: signatureRequestFacts(request),
+        }),
       );
     },
   );
@@ -477,7 +445,11 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     },
   );
 
-  // 9C — final-review/readiness model. Read-only; opening review never mutates answers/signature state.
+  // 9C — final-review/readiness model. Opening it never touches signature state. Its writes, each in a transaction of its
+  // own that commits before the next starts, are (1) the spec-freezing step of a legacy spec-less draft (an assessment UPDATE
+  // plus its control answers; nothing for a draft that already has a spec) and (2) the self-heal of a completed SFV's
+  // J2052/J2053 answers on a still-draft triggering assessment (see hope-sfv-completion-answers.ts). The readiness read that
+  // follows writes no assessment data (the read-audit event of `auditRead` is the platform's, not this handler's).
   app.get(
     "/api/v1/hope/assessments/:id/review",
     {
@@ -552,10 +524,11 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     },
   );
 
-  // 12 — open / overdue / missed SFV worklist. §4.1 ABAC = "caseload", but this route names no patient
-  // filter at all (state-only query), so there is no id for `hope.scope` to guard. GAP-182: the caseload is
-  // applied as a QUERY narrowing instead (`listScopeOf`) — org-wide scope roles see the whole worklist,
-  // everyone else only their caseload's rows.
+  // 12 — open / overdue / missed SFV worklist. §4.1 ABAC = "caseload", but this route names no patient and
+  // addresses no resource (a state filter and an optional `triggeringAssessmentId` filter, whose unknown value is an
+  // empty list), so there is no id for `hope.scope` to guard. GAP-182: the caseload is applied as a QUERY narrowing
+  // instead (`listScopeOf`) — org-wide scope roles see the whole worklist, everyone else only their caseload's rows,
+  // with or without the filter.
   app.get(
     "/api/v1/hope/sfv",
     {
@@ -569,6 +542,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
         organizationId,
         q.state,
         (await listScopeOf(request, caseloadPatientIds)) ?? undefined,
+        q.triggeringAssessmentId,
       );
     },
   );
@@ -696,6 +670,20 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { id } = parse(SubmissionParamsSchema, request.params);
       const body = parse(MarkSubmissionUploadedSchema, request.body);
       return service.markSubmissionUploaded(organizationId, userId, id, body);
+    },
+  );
+
+  // R-08 — cancel a package that was generated but never marked uploaded, so its signed assessments can be
+  // packaged again in a NEW batch (a lost/never-uploaded package used to lock them forever). 409 once the batch was
+  // marked uploaded; the reason is a fixed code list (no free text, so no PHI). Replaying a cancel returns 200.
+  app.post(
+    "/api/v1/hope/submissions/:id/cancel",
+    { preHandler: [SUBMISSION_MANAGE, SCOPE_SUBMISSION("hope.submission.manage")] },
+    async (request) => {
+      const { organizationId, userId } = membershipActorOf(request);
+      const { id } = parse(SubmissionParamsSchema, request.params);
+      const body = parse(CancelSubmissionSchema, request.body);
+      return service.cancelSubmission(organizationId, userId, id, body);
     },
   );
 

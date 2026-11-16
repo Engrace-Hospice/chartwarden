@@ -1,3 +1,4 @@
+import { HOPE_ATTESTATION_VERSION } from "@chartwarden/types";
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/10-hope — #91: the M10 write controls must not be inert.
 //
@@ -16,9 +17,10 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/
 // `11-orders/orders-writes.dom.test.tsx` and `13-emar/emar-writes.dom.test.tsx`.)
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { JSX } from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
+import { SESSION } from "./__tests__/workspace-test-kit";
 import { HopeAssessmentDetail } from "./hope-assessment-detail";
 import { HopeDashboard } from "./hope-dashboard";
 import { PatientHopeTimeline } from "./patient-hope-timeline";
@@ -161,13 +163,18 @@ function reviewBody(): Record<string, unknown> {
 /** Overridden per test to put the row in the state whose control is under examination. */
 let detailRow: Record<string, unknown> = { ...assessmentRow };
 let scheduleStatus = "open";
+let sfvStatus = "open";
 
 let calls: string[] = [];
 let bodies: Record<string, unknown>[] = [];
+/** The Idempotency-Key of each non-GET call, in order. */
+let writeKeys: (string | null)[] = [];
 /** The body of the Nth non-GET call, asserted non-empty by the `writes()` expectation above it. */
 const sentBody = (n = 0): Record<string, unknown> => bodies[n] as Record<string, unknown>;
 /** The api client captures `stubFetch` at construction, so a re-stubbed global never reaches it. */
 let writeFailure: { status: number; body: unknown } | null = null;
+/** When set, every write is a request that never gets an answer (offline, a reset, a timeout). */
+let writesRejected = false;
 
 // openapi-fetch calls `fetch(new Request(url, init))` — the method rides on the Request, NOT on a
 // separate `init`, so reading `init.method` alone records every call as a GET.
@@ -183,7 +190,7 @@ function bodyFor(method: string, path: string): unknown {
   if (method !== "GET") return { ...assessmentRow, status: "signed" };
   if (path === "/api/v1/hope/schedules")
     return { schedules: [{ ...scheduleRow, status: scheduleStatus }] };
-  if (path === "/api/v1/hope/sfv") return { sfvs: [sfvRow] };
+  if (path === "/api/v1/hope/sfv") return { sfvs: [{ ...sfvRow, status: sfvStatus }] };
   if (path.endsWith("/validation")) return { assessmentId: ASSESSMENT, findings: [] };
   // The admission/HUV/discharge detail is the CMS item WORKSPACE (#235): it reads `/workspace` and
   // `/review` beside the row, and signs/corrects/requests the summary from that surface.
@@ -207,6 +214,9 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   const path = new URL(url, "http://localhost").pathname;
   calls.push(`${method} ${path}`);
   if (method !== "GET") {
+    writeKeys.push(
+      typeof input === "object" && "headers" in input ? input.headers.get("Idempotency-Key") : null,
+    );
     const raw =
       typeof input === "object" && "clone" in input
         ? await (input as Request).clone().text()
@@ -221,6 +231,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       }
     }
   }
+  if (method !== "GET" && writesRejected) throw new TypeError("Failed to fetch");
   if (method !== "GET" && writeFailure) {
     return new Response(JSON.stringify(writeFailure.body), {
       status: writeFailure.status,
@@ -233,14 +244,27 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   });
 }
 
-/** An RN session — ONE author role, so the modal needs no discipline prompt to be submittable. */
-const SESSION = {
-  userId: "user-1",
-  organizationId: "org-1",
-  membershipId: "membership-1",
-  roles: ["rn"],
-  permissions: [],
-  isAdmin: false,
+/** Where a navigation landed, for a control that moves the user instead of writing. */
+function LocationProbe(): JSX.Element {
+  const { pathname } = useLocation();
+  return <output aria-label="location">{pathname}</output>;
+}
+
+/** Stands in for the /step-up page so a redirect is observable as the location it lands on. */
+function StepUpProbe(): JSX.Element {
+  const { pathname, search } = useLocation();
+  return <output aria-label="step-up location">{`${pathname}${search}`}</output>;
+}
+
+/** The refusal `requireStepUp` sends when the session's last re-authentication is stale. */
+const STEP_UP_REFUSAL = {
+  status: 403,
+  body: {
+    error: {
+      code: "STEP_UP_REQUIRED",
+      message: "A recent re-authentication is required for this operation",
+    },
+  },
 };
 
 function mount(path: string, pattern: string, element: JSX.Element, session = SESSION) {
@@ -251,6 +275,8 @@ function mount(path: string, pattern: string, element: JSX.Element, session = SE
           <MemoryRouter initialEntries={[path]}>
             <Routes>
               <Route path={pattern} element={element} />
+              <Route path="/hope/assessments/:id" element={<LocationProbe />} />
+              <Route path="/step-up" element={<StepUpProbe />} />
             </Routes>
           </MemoryRouter>
         </ToastProvider>
@@ -264,8 +290,11 @@ const writes = () => calls.filter((c) => !c.startsWith("GET "));
 beforeEach(() => {
   calls = [];
   bodies = [];
+  writeKeys = [];
   writeFailure = null;
+  writesRejected = false;
   scheduleStatus = "open";
+  sfvStatus = "open";
   detailRow = { ...assessmentRow };
 });
 afterEach(() => {
@@ -299,10 +328,11 @@ describe("#91 — the timepoint worklist can record and skip the window it displ
     await waitFor(() => expect(screen.getByRole("button", { name: "Skip" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Skip" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Skip window" })).toBeTruthy());
+    // The clinician chooses the reason: none is preselected.
+    fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: "transferred_out" } });
     fireEvent.click(screen.getByRole("button", { name: "Skip window" }));
     await waitFor(() => expect(writes()).toContain(`POST /api/v1/hope/schedules/${SCHEDULE}/skip`));
-    expect(typeof sentBody().reasonCode).toBe("string");
-    expect((sentBody().reasonCode as string).length).toBeGreaterThan(0);
+    expect(sentBody().reasonCode).toBe("transferred_out");
   });
 
   it("a terminal window offers neither control — the server refuses both (F-007)", async () => {
@@ -314,21 +344,69 @@ describe("#91 — the timepoint worklist can record and skip the window it displ
   });
 });
 
-describe("#91 — the SFV queue can complete the follow-up it lists", () => {
-  it("Record POSTs to the SFV route, naming the obligation it completes", async () => {
+describe("a write whose request never gets an answer frees its dialog and says so", () => {
+  it("Record timepoint: the dialog shows it, Cancel works, and the dialog can be left", async () => {
+    writesRejected = true;
+    mount("/hope", "/hope", <HopeDashboard />);
+    fireEvent.click(await screen.findByRole("button", { name: "Record" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Record draft" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Could not confirm that the timepoint was recorded.");
+    expect(
+      (screen.getByRole("button", { name: "Record draft" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Record draft" })).toBeNull());
+  });
+
+  it("Skip window: the dialog shows it and can be left", async () => {
+    writesRejected = true;
+    mount("/hope", "/hope", <HopeDashboard />);
+    fireEvent.click(await screen.findByRole("button", { name: "Skip" }));
+    fireEvent.change(await screen.findByLabelText(/Reason/), { target: { value: "other" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Skip window" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Could not confirm that the action was applied.");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Skip window" })).toBeNull());
+  });
+});
+
+describe("#91 — the SFV queue takes the clinician to where the follow-up is completed", () => {
+  // The follow-up is answered (J2053A–H) in the triggering assessment's "Complete SFV" dialog. The queue used to
+  // open a modal that recorded the visit WITHOUT those answers, which the server now refuses, so the control
+  // navigates instead of writing. It is a link (navigation is not a button) named for its row.
+  const completeName = `Complete symptom follow-up ${SFV.slice(0, 8)}`;
+
+  it("Complete is a link to the triggering assessment and sends no write", async () => {
     mount("/hope/sfv", "/hope/sfv", <SfvWorklist />);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Record" })).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Record" }));
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Record follow-up" })).toBeTruthy(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Record follow-up" }));
-    // A DIFFERENT endpoint from the timepoint capture — it matches the OPEN obligation rather than
-    // creating a free-standing RFA-04, and carries its own RN/NP author floor.
-    await waitFor(() =>
-      expect(writes()).toContain(`POST /api/v1/admissions/${ADMISSION}/hope/sfv`),
-    );
-    expect(sentBody().triggeringAssessmentId).toBe(ASSESSMENT);
+    const complete = await screen.findByRole("link", { name: completeName });
+    // ?completeSfv=1 opens the completion dialog on arrival, so the clinician lands where the action is.
+    expect(complete.getAttribute("href")).toBe(`/hope/assessments/${ASSESSMENT}?completeSfv=1`);
+    expect(screen.queryByRole("button", { name: "Record" })).toBeNull();
+    fireEvent.click(complete);
+    const where = await screen.findByLabelText("location");
+    expect(where.textContent).toBe(`/hope/assessments/${ASSESSMENT}`);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(writes()).toEqual([]);
+  });
+
+  it.each(["open", "overdue"])(
+    "offers Complete on a follow-up that is %s, the states the capture hub treats as actionable",
+    async (status) => {
+      sfvStatus = status;
+      mount("/hope/sfv", "/hope/sfv", <SfvWorklist />);
+      expect(await screen.findByRole("link", { name: completeName })).toBeTruthy();
+    },
+  );
+
+  it.each(["missed", "completed"])("offers nothing on a follow-up that is %s", async (status) => {
+    sfvStatus = status;
+    mount("/hope/sfv", "/hope/sfv", <SfvWorklist />);
+    await screen.findByText("Symptom follow-up");
+    expect(screen.queryByRole("link", { name: completeName })).toBeNull();
   });
 });
 
@@ -339,18 +417,152 @@ describe("#91 — the assessment detail can sign, correct and request its summar
   const detail = () =>
     mount(`/hope/assessments/${ASSESSMENT}`, "/hope/assessments/:id", <HopeAssessmentDetail />);
 
-  it("Sign POSTs the signature on a DRAFT, pinned to the version it read", async () => {
-    detailRow = { ...assessmentRow, version: 3 };
-    detail();
+  const openSignDialog = async () => {
     const open = await screen.findAllByRole("button", { name: "Sign & complete" });
     fireEvent.click(open[0] as HTMLElement);
     const dialog = await screen.findByRole("dialog", { name: "Complete Admission" });
     expect(writes()).toEqual([]);
+    return dialog;
+  };
+  const attestSign = (dialog: HTMLElement) =>
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /I attest/ }));
+
+  it("Sign POSTs the signature on a DRAFT, pinned to the version it read", async () => {
+    detailRow = { ...assessmentRow, version: 3 };
+    detail();
+    const dialog = await openSignDialog();
+    attestSign(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: "Sign & complete" }));
     await waitFor(() =>
       expect(writes()).toContain(`POST /api/v1/hope/assessments/${ASSESSMENT}/sign`),
     );
     expect(sentBody().ifVersion).toBe(3);
+  });
+
+  it("R-05 — Sign is disabled until the signer ticks the attestation, and the request carries it", async () => {
+    detailRow = { ...assessmentRow, version: 3 };
+    detail();
+    const dialog = await openSignDialog();
+    const sign = within(dialog).getByRole("button", {
+      name: "Sign & complete",
+    }) as HTMLButtonElement;
+    expect(sign.disabled).toBe(true);
+    fireEvent.click(sign);
+    expect(writes()).toEqual([]);
+    attestSign(dialog);
+    expect(sign.disabled).toBe(false);
+    fireEvent.click(sign);
+    await waitFor(() =>
+      expect(writes()).toContain(`POST /api/v1/hope/assessments/${ASSESSMENT}/sign`),
+    );
+    expect(sentBody()).toEqual({
+      ifVersion: 3,
+      attestationConfirmed: true,
+      attestationVersion: HOPE_ATTESTATION_VERSION,
+    });
+  });
+
+  it("a changed attestation wording is a definite refusal that holds for the whole page, however often the dialog is reopened", async () => {
+    detailRow = { ...assessmentRow, version: 3 };
+    writeFailure = {
+      status: 409,
+      body: {
+        error: {
+          code: "M10_ATTESTATION_STALE",
+          message: "Attestation version 2020-01-01.1 is not current.",
+        },
+      },
+    };
+    detail();
+    let dialog = await openSignDialog();
+    attestSign(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sign & complete" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toBe(
+      "The attestation wording has changed. Reload the page and review it again.",
+    );
+    expect(
+      (within(dialog).getByRole("button", { name: "Sign & complete" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+
+    // Reopening does not forget: this page cannot send the new wording's version, so it stays refused until reloaded.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Sign & complete" }))[0] as HTMLElement,
+    );
+    dialog = await screen.findByRole("dialog", { name: "Complete Admission" });
+    expect(within(dialog).getByRole("alert").textContent).toBe(
+      "The attestation wording has changed. Reload the page and review it again.",
+    );
+    attestSign(dialog);
+    expect(
+      (within(dialog).getByRole("button", { name: "Sign & complete" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(writes()).toHaveLength(1);
+  });
+
+  it("starts the next sign attempt after an answered refusal on a new Idempotency-Key", async () => {
+    detailRow = { ...assessmentRow, version: 3 };
+    writeFailure = {
+      status: 409,
+      body: {
+        error: { code: "CONFLICT", message: "This assessment changed since you opened it." },
+      },
+    };
+    detail();
+    const dialog = await openSignDialog();
+    attestSign(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sign & complete" }));
+    await within(dialog).findByRole("alert");
+
+    writeFailure = null;
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sign & complete" }));
+    await waitFor(() => expect(writes()).toHaveLength(2));
+    expect(writeKeys[0]).toBeTruthy();
+    expect(writeKeys[1]).toBeTruthy();
+    expect(writeKeys[1]).not.toBe(writeKeys[0]);
+  });
+
+  it("R-05 — a stale step-up on Sign sends the signer to /step-up?returnTo= this record", async () => {
+    detailRow = { ...assessmentRow, version: 3 };
+    writeFailure = STEP_UP_REFUSAL;
+    detail();
+    const dialog = await openSignDialog();
+    attestSign(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sign & complete" }));
+    const where = await screen.findByLabelText("step-up location");
+    expect(where.textContent).toBe(
+      `/step-up?returnTo=${encodeURIComponent(`/hope/assessments/${ASSESSMENT}`)}`,
+    );
+  });
+
+  it.each([
+    [409, "CONFLICT", "This assessment changed since you opened it."],
+    [403, "FORBIDDEN", "Your role is not eligible to sign this HOPE record."],
+  ])(
+    "shows a %i (%s) refusal on Sign in the dialog, not swallowed",
+    async (status, code, message) => {
+      detailRow = { ...assessmentRow, version: 3 };
+      writeFailure = { status, body: { error: { code, message } } };
+      detail();
+      const dialog = await openSignDialog();
+      attestSign(dialog);
+      fireEvent.click(within(dialog).getByRole("button", { name: "Sign & complete" }));
+      const alert = await within(dialog).findByRole("alert");
+      expect(alert.textContent).toContain(message);
+      expect(screen.queryByLabelText("step-up location")).toBeNull();
+    },
+  );
+
+  it("an SFV record (RFA-04, never a draft) shows its state and offers no Sign that opens nothing", async () => {
+    // RFA-04 is only ever created signed; the legacy view has no sign dialog, so a Sign button here was inert.
+    detailRow = { ...assessmentRow, rfaKind: "04_sfv", status: "draft" };
+    detail();
+    await screen.findByRole("heading", { name: "SFV" });
+    expect(screen.queryByRole("button", { name: "Sign" })).toBeNull();
+    expect(writes()).toEqual([]);
   });
 
   it("a DRAFT offers no correction — a correction supersedes a SIGNED row (D7)", async () => {
@@ -366,38 +578,40 @@ describe("#91 — the assessment detail can sign, correct and request its summar
       signedAt: "2026-08-21T10:00:00.000Z",
       version: 2,
     };
-    const prompt = vi.spyOn(window, "prompt").mockReturnValue("transcription error in Section J");
-    try {
-      detail();
-      const correct = await screen.findAllByRole("button", { name: "Create correction" });
-      expect(screen.queryByRole("button", { name: "Sign & complete" })).toBeNull();
-      fireEvent.click(correct[0] as HTMLElement);
-      await waitFor(() =>
-        expect(writes()).toContain(`POST /api/v1/hope/assessments/${ASSESSMENT}/correct`),
-      );
-      expect(prompt).toHaveBeenCalled();
-      expect(sentBody().correctionReason).toBe("transcription error in Section J");
-      expect(sentBody().ifVersion).toBe(2);
-      // F-074 — the read projection carries no author discipline (""), so the client must send a
-      // value the route accepts rather than echoing the blank.
-      expect(sentBody().authorDiscipline).toBe("RN");
-    } finally {
-      prompt.mockRestore();
-    }
+    detail();
+    const correct = await screen.findAllByRole("button", { name: "Create correction" });
+    expect(screen.queryByRole("button", { name: "Sign & complete" })).toBeNull();
+    fireEvent.click(correct[0] as HTMLElement);
+    const dialog = await screen.findByRole("dialog", { name: /^Correct / });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Reason" }), {
+      target: { value: "transcription error in Section J" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create correction draft" }));
+    await waitFor(() =>
+      expect(writes()).toContain(`POST /api/v1/hope/assessments/${ASSESSMENT}/correct`),
+    );
+    expect(sentBody().correctionReason).toBe("transcription error in Section J");
+    expect(sentBody().ifVersion).toBe(2);
+    // F-074 — the read projection carries no author discipline (""), so the client sends the ACTING user's own
+    // (the session is an RN) rather than echoing the blank, and never a role key.
+    expect(sentBody().authorDiscipline).toBe("RN");
   });
 
   it("a correction with no reason given sends nothing", async () => {
     detailRow = { ...assessmentRow, status: "signed", signedAt: "2026-08-21T10:00:00.000Z" };
-    const prompt = vi.spyOn(window, "prompt").mockReturnValue("   ");
-    try {
-      detail();
-      const correct = await screen.findAllByRole("button", { name: "Create correction" });
-      fireEvent.click(correct[0] as HTMLElement);
-      await waitFor(() => expect(prompt).toHaveBeenCalled());
-      expect(writes()).toEqual([]);
-    } finally {
-      prompt.mockRestore();
-    }
+    detail();
+    const correct = await screen.findAllByRole("button", { name: "Create correction" });
+    fireEvent.click(correct[0] as HTMLElement);
+    const dialog = await screen.findByRole("dialog", { name: /^Correct / });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Reason" }), {
+      target: { value: "   " },
+    });
+    const create = within(dialog).getByRole("button", {
+      name: "Create correction draft",
+    }) as HTMLButtonElement;
+    expect(create.disabled).toBe(true);
+    fireEvent.click(create);
+    expect(writes()).toEqual([]);
   });
 
   it("Request summary on a signed record POSTs the out-of-band render request", async () => {
@@ -412,6 +626,16 @@ describe("#91 — the assessment detail can sign, correct and request its summar
 });
 
 describe("#91 — the patient timeline can record and recompute", () => {
+  it("keeps the patient's chart banner and summary rail, like every other chart tab", async () => {
+    mount(`/patients/${PATIENT}/hope`, "/patients/:patientId/hope", <PatientHopeTimeline />);
+    // The rail's Patient Summary and the banner both show who the chart belongs to ...
+    await waitFor(() => expect(screen.getByText("Patient Summary")).toBeTruthy());
+    expect((await screen.findAllByText(/Ada Vance/)).length).toBeGreaterThanOrEqual(2);
+    // ... and the page's own title sits in the content pane, as the one level-one heading.
+    expect(screen.getByRole("heading", { level: 1, name: "HOPE Timeline" })).toBeTruthy();
+    expect(calls).toContain(`GET /api/v1/patients/${PATIENT}`);
+  });
+
   it("Record timepoint POSTs an unscheduled capture against the patient's admission", async () => {
     mount(`/patients/${PATIENT}/hope`, "/patients/:patientId/hope", <PatientHopeTimeline />);
     await waitFor(() =>

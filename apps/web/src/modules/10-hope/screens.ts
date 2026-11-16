@@ -111,7 +111,7 @@ export const hopeScreens: ScreenRegistryModule<ComponentType> = {
       screen: HopeTimepointCapture,
     },
     {
-      // Contextual SFV capture through the real recordSfv workflow.
+      // Contextual SFV hub: the open follow-up's facts, and the way to the triggering assessment where it is completed.
       id: "hope.sfv-capture",
       path: "/admissions/:admissionId/hope/sfv/:sfvId",
       title: "SFV Capture",

@@ -6,6 +6,214 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-15 — HOPE: record writes wait at most 5 seconds for a lock (`409 M10_RECORD_BUSY`); drafts can no longer be rewritten after signing
+
+**Additive; no request or response shape changes.** A client that already retries a `409` needs nothing, except that, on a POST, PUT or
+PATCH, a retry under the SAME `Idempotency-Key` is released only when nothing of the request had committed (see "Retrying a
+`409 M10_RECORD_BUSY`" below); a GET carries no key. Requests that used to answer a generic `500` now answer a typed `422`
+(`M10_SPEC_NOT_IN_FORCE`, and `POST .../hope/timepoints` with `rfaKind: "04_sfv"`; both below), and skipping a schedule that is no
+longer open now answers `409` (below). `POST /hope/submissions/assemble` can now answer `409 M10_RECORD_BUSY` (below).
+
+- **New retryable `409 M10_RECORD_BUSY`.** A HOPE write that has to take a record's row lock (patching answers, opening a draft's
+  workspace when its control answers are out of date, the HUV completion date, the review repair, the SFV completion, ...) now waits at
+  most **5 seconds** for another request that holds it, then answers this code instead of queueing until the other request finishes.
+  The message reads:
+  "The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again."
+  An earlier step may have been applied because some requests run more than one
+  transaction (opening a legacy draft's workspace, signing it, or reading its review first freezes the draft's spec in a transaction of
+  its own, which stays committed if a later lock times out). Before, a stuck request made the other requests that needed the same lock wait
+  without limit. The routes covered take their locks through the HOPE record-lock helpers, and each wait is bounded: the assessment, SFV and
+  submission-batch rows (patching answers, updating a draft, the HUV completion date, signing with its own sign lock, the SFV completion's
+  SFV and draft locks, cancelling a package, marking it uploaded, recording its CMS result), the advisory keys that serialise recording
+  a timepoint, a correction or an inactivation and assembling a package (`POST /hope/submissions/assemble`, one key per provider
+  entity, taken as its first statement), the write that freezes a legacy draft's spec when its workspace is opened, and the download's
+  `packaged` to `exported` write. The bound stays in force for the rest of the transaction that set it, so a lock timeout raised by any
+  LATER statement of that same transaction answers the same code, not a `500` (signing a correction or an inactivation also updates the
+  corrected original through a trigger; a wait on that row answers it too). **Not covered**: a route that takes none of these locks
+  keeps PostgreSQL's default of no timeout, namely `POST /hope/schedules/{id}/skip`, `POST /hope/submissions/{id}/retry`,
+  `POST /hope/admin/regenerate-schedules` and the validation-finding writes. The destruction eraser takes its own per-patient
+  advisory lock with no timeout. The background jobs have their own bound (below).
+- **Retrying a `409 M10_RECORD_BUSY` with an `Idempotency-Key` (POST, PUT and PATCH only).** On those routes the same Idempotency-Key
+  may be reused because the key is released (before this change the 409 was cached for 24 hours and a same-key retry replayed it
+  without running the write). The key is released only when nothing of the request had committed; if an earlier step of the request had
+  already committed (the spec freeze above), the 409 is kept and replayed on the same key, so check the current state and send the
+  request again with a NEW Idempotency-Key. A GET (`.../workspace`, `.../review`, the package download) carries no Idempotency-Key and is
+  never claimed or cached, so it is simply sent again.
+- **Signing no longer fails when the draft moved partition under it.** A sign that was waiting for a draft whose HUV completion date
+  was changed meanwhile used to fail with the raw serialization error (`409 CONCURRENT_UPDATE`); like the other record locks it now
+  retries once on the moved row and then judges that row (status, `ifVersion`).
+- **New `422 M10_SPEC_NOT_IN_FORCE`.** No HOPE spec is in force for that target date (the record's: before every loaded spec, or in a
+  gap between two). `POST .../hope/timepoints`, opening a legacy draft (`GET .../workspace`, `GET .../review`, `POST .../sign`) and
+  `POST .../hope/sfv` (judging the J2052/J2053 values against the triggering assessment's spec) answered a generic `500 INTERNAL_ERROR`
+  for this; they now answer this typed `422`, the message names no date and no value, and an administrator fixes it by loading the
+  spec version that covers the date. A retry does not help until then. On POST, PUT and PATCH the idempotency layer replays the 422
+  for 24 h on the same key, so after an operator loads the spec use a NEW Idempotency-Key. A GET (`.../workspace`, `.../review`)
+  carries no key and is never cached, so it is simply sent again once the spec is loaded.
+- **`POST /api/v1/hope/schedules/{id}/skip` skips only an `open` schedule.** The write now judges the row it waits for: a schedule a
+  sign completed (or the watchdog expired) in the meantime is no longer overwritten with `skipped`, and a schedule that is already
+  `completed`, `expired` or `skipped` is no longer rewritten (a second skip of the same schedule included). Each of those answers
+  `409 CONFLICT` ("HOPE schedule {id} is {status}; only an open schedule can be skipped"; not the retryable `M10_RECORD_BUSY`, and the
+  route stays in the "not covered" list above); an unknown id is still `404`. A skip that succeeded and is sent again under a NEW
+  Idempotency-Key answers this `409`; read the schedule for its current status instead.
+- **`POST /api/v1/admissions/{admissionId}/hope/timepoints` with `rfaKind: "04_sfv"` is now `422 VALIDATION_FAILED`** (detail
+  `field: "rfaKind"`, `code: "M10_RFA_KIND_NOT_A_TIMEPOINT"`; it used to answer a generic `500`). An SFV completion is inserted signed
+  against an open SFV and is recorded with `POST /api/v1/admissions/{admissionId}/hope/sfv`, never as a draft timepoint. The request
+  schema still lists `04_sfv` among the `rfaKind` values, so the refusal comes from the service, after the route's permission and
+  author checks, not from schema validation.
+- **`POST /api/v1/hope/submissions/assemble` can answer `409 M10_RECORD_BUSY`.** It takes an advisory key per provider entity as its
+  FIRST statement, before it reads the signed records, so two parallel assembles for one provider entity serialise: the loser waits at
+  most 5 seconds and then answers the retryable `409 M10_RECORD_BUSY`, or, once the winner has committed, finds the winner's records
+  already packaged (the ordinary `409 CONFLICT`, "No signed HOPE assessments are eligible for iQIES package generation", when that was
+  all of them). The lock is taken before anything of the request has committed, so a timeout on it releases the Idempotency-Key and the
+  same key may be reused (POST). No assemble cron is scheduled in this build (the runner exists but has no schedule or Worker), so this
+  route is the only way a package is assembled.
+- **`POST /api/v1/hope/admin/regenerate-schedules` creates only the schedule windows an admission is missing** (stated here because
+  its OpenAPI summary used to say "recompute"). An RFA that already has a schedule row in any status (`open`, `completed`, `expired`
+  or `skipped`) is left exactly as it is: nothing is recomputed, moved or reopened, so correcting an admission's start-of-care date does
+  not move a window that was already written. `scheduleCount` is the admission's total number of schedule rows after the call; it does
+  not say how many were created.
+- **`422 M10_ADMISSION_PROJECTION_GAP` is raised by two routes:** `POST /admissions/{admissionId}/hope/sfv` (the M6 seam answers but
+  cannot say whose admission the path names; third entry below) and `POST /hope/admin/regenerate-schedules` (the admission is
+  visible but not sited: no provider entity or location; an admission the caller cannot see, absent or another organization's,
+  answers `404` from the scope guard first). A data fault an operator repairs; a plain retry does
+  not help. On POST, PUT and PATCH the idempotency layer replays the 422 for 24 h on the same key, so use a NEW Idempotency-Key after an
+  operator repairs the admission projection; a GET carries no key (neither route is a GET).
+- `GET .../workspace` no longer takes the record's lock when nothing needs writing (it used to lock on every open), so reading a draft
+  no longer queues behind, or blocks, the author's autosave or the sign call.
+- `PATCH .../answers` now refuses a protected item (`403`), an unknown item (`404`) and an invalid value or an item that is inactive for
+  the record's ISC (`422 VALIDATION_FAILED`) **before** it takes any lock (the same codes as before, only
+  sooner). An item that is not applicable under the proposed answers is refused **after** the locks, on the locked row (`422
+  VALIDATION_FAILED`, details code `HOPE_ITEM_NOT_APPLICABLE` or `HOPE_ITEM_APPLICABILITY_PENDING`): that check needs the locked row's
+  answers, so the request can wait for a lock (and answer `M10_RECORD_BUSY`) before it is refused.
+- `PUT /api/v1/hope/assessments/{id}` (update a draft) now judges "is it still a draft" on the locked row and writes only a draft:
+  an edit that raced a sign used to overwrite the **signed** record's payload (and its version). It now answers
+  `409 M10_CORRECTION_TARGET_NOT_SIGNED` and the signed record is untouched.
+- Two parallel `POST .../hope/timepoints` for the same admission and RFA now return the **same** draft (they used to create two), and two
+  parallel corrections or inactivations of one signed record yield one `201` and one `409` (they used to fork the chain).
+- `PATCH .../huv/completion-date` changes the record's `target_date`, which can move it to another partition of `hope_assessment`. A
+  request that was waiting on that row used to fail `40001`; it now retries once on the moved row. **For audit consumers:** such a move
+  is recorded as a `hope_assessment` **delete followed by an insert** with the same record id and no `update` row event; read that pair,
+  within one transaction, as one update.
+- Audit rows: the deadline-override event (`hope.late_deadline_override`) now carries the same request facts as the signature events
+  (`actor_user_id`, `request_id`, `source_ip`, sanitised `user_agent`, a server-generated `correlation_id`, the client's own id only in
+  `context.clientCorrelationId`). It no longer carries the typed justification text: the context records only whether one was
+  supplied (`justificationSupplied`). User agents also lose lone surrogates, private-use and unassigned code points.
+- **First tick after deploy.** The first watchdog run after this release pages once for every Symptom Follow-Up Visit that is already
+  overdue, and for every SFV missed or schedule expired in the last 7 days, whose alert was never recorded (the alert used to be
+  emitted on the status change only, and a failed emit was lost). That one-time burst is expected; each such alert is then recorded and not
+  repeated. An alert whose emit resolves **no recipient** under the organization's current alert rules is recorded once and **not
+  retried** (a repeated emit is deduped, so a rule fixed later does not deliver an alert recorded earlier); the tick logs it at error
+  level, with the alert id, while the rules still resolve nobody. That count is today's rules, not a record of who the stored alert
+  reached. A failed or hung alert emit is now bounded and cannot hide the organization's later alerts while the emitter still answers: each
+  emit gets at most 10 seconds, and after three failures in a row the organization's last alert is tried once as a probe. If the probe
+  answers, the failures were per alert and every remaining alert is attempted; if it fails too, the organization stops for that tick and
+  the alerts not yet tried are planned again by the next tick (for as long as they are inside their 7-day window). A poisoned LAST
+  alert defeats the probe: the alerts between wait for the next tick even though the emitter answers. Six timed-out emits of one
+  organization still running stop that organization's alert emitting (30 across the whole process stop every organization's) until some
+  settle; the cap is checked before every emit, not only at the start, and the tick then reports the organization as failed. The background jobs also bound their database
+  lock waits to the same 5 seconds, so one blocked write fails that organization and the run continues with the next. The monthly
+  retention scan likewise continues past a failing organization and reports all failures at the end. The two watchdog jobs now run
+  with `attempts: 1` (the next 15-minute firing is the
+  retry). The repeatable schedules are now registered with `upsertJobScheduler` under one scheduler id per queue, and a repeatable an
+  earlier deploy stored under the old registration (with its old attempts) is removed, so `attempts: 1` takes effect at the first boot
+  of the new release, with no manual re-registration. During a rolling deploy an old replica can re-create the old repeatable until a new
+  replica next boots: a transient double tick, which the watchdogs absorb.
+
+---
+
+## 2026-11-15 — HOPE: a package that was never uploaded to iQIES can be cancelled; new `cancelled` status (breaking for strict status decoders)
+
+**Breaking for a client that decodes a HOPE submission or item `status` with a closed enum.**
+
+- New `POST /api/v1/hope/submissions/{id}/cancel` (`hope.submission.manage`, the same permission and provider-entity scope as `mark-uploaded`). Body
+  `{ "reasonCode": "package_lost" | "never_uploaded" | "generated_in_error" | "other" }` and nothing else (a free-text field, an unknown
+  code or an empty body is `422`; the reason is a fixed code list so no PHI can ride along). It cancels a batch that was **never marked
+  uploaded** (`packaged` or `exported`) and returns the batch (`status: "cancelled"`). Its assessments are packaged again by the next
+  assemble, in a **new** batch. A replay on an already cancelled batch answers `200` with the original reason and time. Any other
+  status (marked uploaded, result recorded, queued, rejected, ...) is `409 M10_SUBMISSION_CANCEL_NOT_ALLOWED`; another tenant's batch is `404`.
+  Cancelling is not an outbox event: nothing downstream saw the package leave. The stored package bytes and per-record XML are kept as evidence.
+- `status` on a submission is now also `cancelled`, and `status` on a submission item is now also `cancelled` (a rejected item whose
+  correction sits only in a cancelled batch reads `correction_in_progress` again, not `resubmitted`). A strict enum decoder breaks on it.
+- The submission view carries two new fields, `cancelledAt` (date-time or `null`) and `cancelReasonCode` (one of the four codes or `null`);
+  the reading of `submittedAt` and the counts is unchanged.
+- A cancelled batch cannot be handed onward: downloading its package (`GET /hope/submissions/{id}/package`), marking it uploaded and
+  recording a CMS result against it are all `409 M10_SUBMISSION_CANCELLED` (mark-uploaded and results used to answer a generic `409
+  CONFLICT` / `M10_SUBMISSION_RESULT_ALREADY_RECORDED`); retry stays `409 M10_SUBMISSION_RETRY_NOT_REJECTED`.
+- **Deploy order.** Run migration `1495_m10_hope_submission_cancel` before the new image takes traffic (two enum values, three nullable
+  columns and two CHECK constraints on `hope_submission`: `cancel_reason_code` must be one of the four reason codes, and
+  `cancelled_at` / `cancelled_by_membership_id` / `cancel_reason_code` are all set on a `cancelled` batch and all null on every other one;
+  and two plain, non-concurrent index builds that serve the watchdog alert replay described in the first entry:
+  `idx_sfv_org_status_updated` on `symptom_follow_up_visit` and `idx_hope_sched_org_status_updated` on `hope_timepoint_schedule`, each on
+  `(organization_id, status, updated_at)`, during which writes to that table wait; additive, `-- compat: expand`). The previous image keeps working on the new schema but does not know the
+  cancelled guards above, so do not roll back to it while a cancelled batch exists.
+
+---
+
+## 2026-11-15 — HOPE: signing needs an attestation and a fresh step-up; an SFV completion is bound to its admission (breaking)
+
+**Breaking for any client that signs a HOPE record or completes an SFV.**
+
+- `POST /api/v1/hope/assessments/{id}/sign` — `attestationConfirmed` is now **required** and must be `true` (it was optional and never
+  read). It must be the JSON boolean `true`: absent, `false`, `"true"` or `1` is `422 M10_ATTESTATION_REQUIRED` (the service layer refuses
+  an unattested signature too), and the draft keeps its status and version. The route also needs a **fresh step-up**
+  (`403 STEP_UP_REQUIRED` otherwise; an emergency break-glass grant does not satisfy it) and refuses an AI principal (`403`). A caller
+  denied by permission, caseload or discipline gets that denial (`403`/`404`), never a step-up prompt.
+- `POST /api/v1/admissions/{admissionId}/hope/sfv` — it inserts an already-signed RFA-04, so it takes the same three requirements
+  (`attestationConfirmed: true` required, fresh step-up, no AI principal). `triggeringAssessmentId` is now a **uuid** (a non-uuid is
+  `422`, it used to reach the database cast). The completion must also carry the full J2053A-J2053H follow-up content in `data.J.J2053`:
+  without it the answer is `422 M10_SFV_COMPLETION_INCOMPLETE`, no record is inserted and the SFV stays open (it used to close the SFV and
+  insert the signed RFA-04 with no J2053 behind it). Each J2053 value must also be a code the CMS spec allows for that item (`0`-`3`, `9`;
+  the skip-pattern caret and any other string or number are refused with the same `422`, naming the item codes and never the values). If
+  the M6 admission seam answers but cannot say whose admission the path names (no summary, another tenant's admission, no patient), the
+  answer is `422 M10_ADMISSION_PROJECTION_GAP` (on POST, PUT and PATCH the idempotency layer replays the 422 for 24 h on the same key,
+  so use a NEW Idempotency-Key after an operator repairs the admission projection; a GET carries no key, and this route is not a GET).
+  If the service's own seam read **fails**, the answer is a retryable `503 DEGRADED` (the
+  idempotency layer releases a 5xx key, where a 422 would be replayed for 24 hours). That is the request's SECOND read of the seam: the
+  caseload check (`hope.scope`) reads it first and turns a failure there into `404`, so a real outage usually answers `404` before the
+  service runs, and the `503` is for a read that fails after the check passed. Neither is any longer `409 M10_SFV_NO_TRIGGER`.
+- **A real calendar date-time with an explicit offset** (`YYYY-MM-DDTHH:MM[:SS[.fff]]Z` or `±HH:MM`, the instant's UTC year between 1900
+  and 2200) is now required of exactly these four inputs, and nowhere else: `targetDate` on recording a timepoint
+  (`POST .../hope/timepoints`) and on completing an SFV (`POST .../hope/sfv`), `submittedAt` on
+  `POST /hope/submissions/{id}/mark-uploaded`, and `submissionDate` on `GET /hope/assessments/{id}/validation`. A Feb 30, an Apr 31 or a
+  Feb 29 in a common year is `422` (it used to be stored as the next valid date, March 2 / May 1, while J2052B said Feb 30), as are hour
+  24, a timestamp with no offset (a server read it in its own local time), a date with no time and a year outside the range.
+  `targetDate` on `POST /hope/assessments/{id}/correct` is **required but ignored** (the correction reuses the original record's
+  date), so it keeps the route's plain `date-time` format and is not checked more strictly. J2052B is the date as the clinician wrote it in
+  their own offset (a `2026-06-01T20:00:00-07:00` visit is June 1); it is written once and a later review never rewrites it, and the
+  server now records that as-written date on the completed RFA-04 itself, so even a repair that has to rebuild a missing J2052B uses
+  June 1, not the stored instant's UTC day.
+- **Additive: the attestation wording version.** Both signing bodies accept an optional `attestationVersion` (string, at most 32
+  characters), the wording version the signer was shown. When present and not the current version the answer is
+  `409 M10_ATTESTATION_STALE` (the wording changed: reload and review it again), checked before anything is written. A client that sends
+  none keeps working unchanged, and its signature is accepted against the server's current wording **without the client having
+  named a version**. The audit rows say exactly that: `serverCurrentAttestationVersion` and `serverCurrentAttestationStatementSha256` (the
+  SHA-256, hex, of the exact statement text the server held) record the wording at the moment of signing, `attestationVersionSupplied`
+  records whether the client named a version, and `suppliedAttestationVersion` is that version when it did. `attestationVersionSupplied: true`
+  means the client **named** the current version; a script can send that string, so it proves naming, not that a person read the text.
+- **Additive: `GET /api/v1/hope/sfv?triggeringAssessmentId={uuid}`** returns only the SFV that assessment triggered (scope, caseload
+  narrowing and read audit are unchanged). An unknown id is an empty list, never a `404`; a non-uuid is `422`.
+- Date answers must be real calendar dates wherever the answer engine validates them (`PATCH .../answers`, workflow dates): `2026-02-30`
+  and `2026-13-01` are refused with `HOPE_INVALID_ANSWER_VALUE`; a leap day such as `2028-02-29` is accepted.
+- **The SFV must belong to the admission in the path.** A `triggeringAssessmentId` that names an SFV of another admission, another
+  patient or another organization answers `409 M10_SFV_NO_TRIGGER`, exactly like an id that does not exist (the response carries no
+  patient id and never says the SFV is already completed). The signed RFA-04 is written with the SFV's own patient and admission.
+  Completing one SFV twice in parallel yields one `201` and one `409 M10_SFV_ALREADY_COMPLETED`. Signing one draft twice in parallel
+  yields one `200` and one `409 M10_CORRECTION_TARGET_NOT_SIGNED` (the loser used to get a misleading `404`).
+- `GET /api/v1/admissions/{admissionId}/hope` (workflow state): `sfvs` now lists only the SFVs of **that admission**. It used to list every
+  SFV of the patient across all admissions, so a re-admitted patient's capture workspace was handed a previous admission's SFV, which the
+  binding above refuses (`409 M10_SFV_NO_TRIGGER`). `summary` counts follow the same scope.
+- Both signatures now leave an explicit audit event (`hope.timepoint_signed`, `hope.sfv_completed`) naming the signing membership,
+  the attestation (`attestationConfirmed`, always `true`; the wording version and statement hash the server held, and whether the client
+  named a version: see above) and the step-up operation the route **required** (`stepUpRequiredOperation`: `hope.timepoint.sign`, `hope.sfv.record`; the row does not claim
+  what the session proved), with the HTTP request id, the caller's address and user agent (control characters removed, at most 256
+  characters, control, format and line-separator characters removed) in the row's `request_id` / `source_ip` / `user_agent` columns, the
+  signing session user in `actor_user_id`, a **server-generated** `correlation_id` (`hope-signature:<assessment id>`; the request's own
+  `x-correlation-id`, which a client can choose, is kept only as `context.clientCorrelationId`, a trace hint and not evidence) and
+  `actor_kind = user`; the audit resource id and
+  the outbox aggregate and payload ids are the stored row id; ids and enums only.
+
+---
+
 ## 2026-11-10 — Support-session commands are idempotent and the go-live review shows commercial choices
 
 `POST /api/v1/platform/support-sessions`, `POST /api/v1/platform/support-sessions/{id}/elevate`, and

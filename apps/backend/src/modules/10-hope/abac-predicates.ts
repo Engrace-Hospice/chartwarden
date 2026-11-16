@@ -24,9 +24,9 @@ import {
 //        enforced by M3's authorization middleware" — no such middleware exists anywhere in the codebase
 //        (`requirePermission` only checks `granted.has(key)`; it never reads a permission's `defaultAbac`
 //        catalog column). hope-routes.ts wired ZERO caseload/provider-entity guards as a result. M10's
-//        routes name FIVE distinct id shapes across the 14 caseload-scoped + 5 provider-entity-scoped
-//        routes (patientId / admissionId / scheduleId / sfvId / assessmentId, and providerEntityId /
-//        submissionId) — none of which the shared `caseload_or_scope` (M7-owned; patientId/planId/`{}`)
+//        routes name seven distinct id shapes (the route table in hope-routes.ts is the route count): patientId /
+//        admissionId / scheduleId / sfvId / assessmentId on the caseload-scoped routes and providerEntityId /
+//        submissionId on the provider-entity-scoped ones — none of which the shared `caseload_or_scope` (M7-owned; patientId/planId/`{}`)
 //        or `provider_entity_scope` (M3-intrinsic; providerEntityId only, no absent-target fallback for
 //        the optional-filter list/dashboard routes) can resolve by name, and `requireAbac`'s `getTarget`
 //        is synchronous so none of the non-`patientId`/non-`providerEntityId` ids can resolve inline. One
@@ -43,6 +43,8 @@ import {
 // idempotent via `registerPredicateIdempotent`.
 import { isHopeAuthorDisciplineAllowed, isSfvAuthorDisciplineAllowed } from "@chartwarden/hope";
 import { getSeam } from "../../bootstrap/index";
+import { errorClassForLog, idForLog } from "./hope-log-id";
+import { sameUuid } from "./hope-uuid";
 
 /** The predicate names M10 owns (registered into M3). Single-owner across the platform registry. */
 export const M10_ABAC_PREDICATES = [
@@ -145,8 +147,18 @@ const defaultResolveAdmissionPatient = async (
     );
     if (summary.organizationId !== organizationId) return null; // cross-tenant — fail closed
     return { patientId: summary.patientId };
-  } catch {
-    return null; // seam absent/denying/gapped or admission unknown — fail closed (deny)
+  } catch (error) {
+    // Fail closed (deny): the seam is absent/denying/gapped or the admission is unknown. The caller answers 404 either
+    // way, so during an M6 outage every admission-scoped HOPE route looks "not found"; the line below is the only trace of
+    // why. An admission the seam simply does not know (a stale link, a typo, another tenant's id: M6 throws
+    // `AdmissionNotFoundError` for an unknown or RLS-hidden id) is an ordinary 404 and logs nothing, so it cannot bury
+    // the outage signal; M10 may not import M6's class, so it is recognised by name. Ids and the error CLASS only: a seam
+    // failure's message can carry arbitrary text.
+    if (error instanceof Error && error.name === "AdmissionNotFoundError") return null;
+    console.warn(
+      `m10: hope.scope denied: the M6 admission seam threw ${errorClassForLog(error)} resolving admission ${idForLog(admissionId)} (org ${idForLog(organizationId)}).`,
+    );
+    return null;
   }
 };
 
@@ -154,10 +166,10 @@ const defaultResolveAdmissionPatient = async (
  * Build M10's four predicate resolvers over injected deps (pure factory — unit-tested with a fresh
  * registry; the boot path registers them via {@link registerHopeAbacPredicates}). The author/SFV routes
  * read the actor's discipline set from session context; `hope.correctionAuthorAllowed`'s target carries
- * the `:id` route param. `hope.scope`'s target reads exactly one of `patientId` / `admissionId` /
- * `scheduleId` / `sfvId` / (`assessmentId` or bare `id`, the default when a route names none of the
- * others) / `providerEntityId` / `submissionId` — every route wires exactly one shape via `getTarget`
- * (hope-routes.ts); an empty target (`{}`) is the optional-filter list/dashboard routes' "no filter
+ * the `:id` route param. `hope.scope` resolves the FIRST of `patientId` / `admissionId` / `scheduleId` / `sfvId` /
+ * (`assessmentId` or bare `id`, the default when a route names none of the others) / `providerEntityId` /
+ * `submissionId` that its target carries, in that order; a route's `getTarget` (hope-routes.ts) names the shape it
+ * guards. An empty target (`{}`) is the optional-filter list/dashboard routes' "no filter
  * given" case and is an ORG-WIDE read, allowed only for the org-wide scope roles — the services apply
  * no PE/caseload narrowing when the filter is absent, so for everyone else the filter param IS the
  * scope claim and must be present (2026-08-14 review: an optional filter is not a scope).
@@ -179,8 +191,14 @@ export function buildHopeAbacPredicates(
     });
   };
 
+  // The id named by the caller is compared with the actor's granted ids as the database reads a uuid, not on the
+  // caller's spelling: an upper-case or braced spelling of the actor's own entity is the same entity. The exact match
+  // stays for an id that is no uuid (it grants nothing the strings did not already).
   const peOrScopeFor = (context: AbacContext, providerEntityId: string): boolean =>
-    hasOrgWideScope(context.roles) || context.providerEntityIds.includes(providerEntityId);
+    hasOrgWideScope(context.roles) ||
+    context.providerEntityIds.some(
+      (granted) => granted === providerEntityId || sameUuid(granted, providerEntityId),
+    );
 
   return {
     "hope.authorDisciplineAllowed": async (context, target) => {

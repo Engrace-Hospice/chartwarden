@@ -426,6 +426,8 @@
     "test:m10:retention:live": "vitest run apps/backend/__tests__/m10-hope-retention.live.test.ts",
     "test:m10:submission-result:live": "vitest run apps/backend/__tests__/m10-hope-submission-result.live.test.ts",
     "test:m10:s04-override:live": "vitest run apps/backend/__tests__/m10-s04-hope-override.live.test.ts",
+    "test:m10:sfv-sign-binding:live": "vitest run apps/backend/__tests__/m10-hope-sfv-sign-binding.live.test.ts",
+    "test:m10:g3:live": "vitest run apps/backend/__tests__/m10-hope-g3-lock-canonical.live.test.ts",
     "test:fk-indexes:live": "vitest run packages/db/migrations/__tests__/fk-index-coverage.live.test.ts",
     "test:rls:live:m11": "vitest run packages/db/migrations/__tests__/m11-rls-isolation.live.test.ts",
     "test:rls:live:m12": "vitest run packages/db/migrations/__tests__/m12-rls-isolation.live.test.ts",

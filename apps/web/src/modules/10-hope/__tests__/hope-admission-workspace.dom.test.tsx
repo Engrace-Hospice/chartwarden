@@ -1,323 +1,21 @@
-import { ApiClientProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { HopeAssessmentDetail } from "../hope-assessment-detail";
-
-const assessment = {
-  id: "hope-1",
-  admissionId: "adm-1",
-  patientId: "patient-1",
-  rfaKind: "01_admission",
-  status: "draft",
-  targetDate: "2026-09-08T00:00:00.000Z",
-  authorDiscipline: "RN",
-  j2051MaxSeverity: null,
-  j2051TriggerFired: false,
-  wasLate: false,
-  signedAt: null,
-  signedBy: null,
-  correctsAssessmentId: null,
-  supersededByAssessmentId: null,
-  snapshot: null,
-  regulatory: { specVersionId: "spec-1", isc: "HA" },
-  version: 4,
-};
-
-const patient = {
-  mrn: "MRN-123456",
-  firstName: "Ada",
-  lastName: "Lovelace",
-  dob: "1950-01-01",
-  status: "active",
-};
-
-function item(overrides: Record<string, unknown>) {
-  return {
-    itemCode: "A0500A",
-    label: "First name",
-    section: "A",
-    group: null,
-    kind: "assessment",
-    active: true,
-    state: "unanswered",
-    value: null,
-    source: null,
-    answeredAt: null,
-    answeredByMembershipId: null,
-    applicability: "applicable",
-    skipReason: null,
-    options: [],
-    ...overrides,
-  };
-}
-
-function workspace(overrides: Record<string, unknown> = {}) {
-  return {
-    assessment: {
-      id: "hope-1",
-      status: "draft",
-      rfaKind: "01_admission",
-      targetDate: "2026-09-08T00:00:00.000Z",
-      isc: "HA",
-      specVersionId: "spec-1",
-      specVersion: "1.00.1",
-      version: 4,
-    },
-    sections: [
-      {
-        code: "A",
-        label: "Administrative",
-        items: [
-          item({
-            itemCode: "A0220",
-            label: "Admission date",
-            value: "2026-09-08",
-            source: "admission_prefill",
-          }),
-          item({
-            itemCode: "A0500A",
-            label: "First name",
-            value: "Ada",
-            source: "patient_prefill",
-            state: "answered",
-          }),
-          item({
-            itemCode: "A0500B",
-            label: "Patient middle initial",
-            cmsItemTypeCode: "Text",
-            maxLength: 1,
-            options: [
-              { valueCode: "Text", label: "Patient middle initial", sortOrder: 1 },
-              { valueCode: "^", label: "Blank", sortOrder: 2 },
-            ],
-          }),
-        ],
-      },
-      {
-        code: "F",
-        label: "Preferences",
-        items: [
-          item({
-            itemCode: "F2000A",
-            label: "Was CPR discussed?",
-            section: "F",
-            options: [
-              { valueCode: "0", label: "No", sortOrder: 1 },
-              {
-                valueCode: "1",
-                label: "Yes, discussion occurred",
-                sortOrder: 2,
-              },
-            ],
-          }),
-          item({
-            itemCode: "F2000B",
-            label: "CPR discussion date",
-            section: "F",
-            applicability: "not_applicable",
-          }),
-        ],
-      },
-      {
-        code: "J",
-        label: "Health Conditions",
-        items: [
-          item({
-            itemCode: "J2051A",
-            label: "Pain impact",
-            section: "J",
-            group: "Symptom impact",
-            applicability: "pending",
-          }),
-        ],
-      },
-    ],
-    progress: {
-      active: 4,
-      applicable: 3,
-      notApplicable: 1,
-      pending: 1,
-      answered: 1,
-      skipped: 1,
-      unanswered: 2,
-    },
-    ...overrides,
-  };
-}
-
-function review(overrides: Record<string, unknown> = {}) {
-  return {
-    assessmentId: "hope-1",
-    version: 4,
-    specVersion: "1.00.1",
-    isc: "HA",
-    status: "draft",
-    signedAt: null,
-    signedByMembershipId: null,
-    z0500b: null,
-    sections: [
-      {
-        code: "A",
-        active: 2,
-        applicable: 2,
-        answered: 2,
-        skipped: 0,
-        pending: 0,
-        unanswered: 0,
-        errors: 0,
-        warnings: 0,
-        state: "complete",
-      },
-      {
-        code: "F",
-        active: 2,
-        applicable: 1,
-        answered: 0,
-        skipped: 1,
-        pending: 0,
-        unanswered: 1,
-        errors: 1,
-        warnings: 0,
-        state: "blocked",
-      },
-      {
-        code: "J",
-        active: 1,
-        applicable: 0,
-        answered: 0,
-        skipped: 0,
-        pending: 1,
-        unanswered: 0,
-        errors: 0,
-        warnings: 0,
-        state: "blocked",
-      },
-    ],
-    progress: {
-      active: 5,
-      applicable: 3,
-      answered: 2,
-      skipped: 1,
-      pending: 1,
-      unanswered: 2,
-    },
-    validation: {
-      errorCount: 1,
-      warningCount: 1,
-      hasBlockingErrors: true,
-      findings: [
-        {
-          ruleId: "-3060",
-          severity: "error",
-          section: "F",
-          itemCode: "F2000A",
-          message: "CPR discussion response is required.",
-        },
-      ],
-    },
-    sfv: { required: null },
-    readiness: {
-      readyToSign: false,
-      blockers: [
-        {
-          code: "PENDING_APPLICABILITY",
-          section: "J",
-          itemCode: "J2051A",
-          message: "J2051 branch is incomplete.",
-        },
-      ],
-    },
-    ...overrides,
-  };
-}
-
-function ok(data: unknown) {
-  return {
-    data,
-    error: undefined,
-    response: new Response(null, { status: 200 }),
-  };
-}
-
-function err(message: string) {
-  return {
-    data: undefined,
-    error: { message },
-    response: new Response(null, { status: 409 }),
-  };
-}
-
-function clientFor(
-  input: {
-    workspace?: unknown;
-    review?: unknown;
-    assessment?: unknown;
-    patchError?: string;
-    identifiers?: unknown[];
-    payers?: unknown[];
-    timeline?: unknown[];
-  } = {},
-): ApiClient {
-  return {
-    GET: vi.fn(async (path: string) => {
-      if (path.includes("/workspace")) return ok(input.workspace ?? workspace());
-      if (path.endsWith("/identifiers")) return ok({ identifiers: input.identifiers ?? [] });
-      if (path.endsWith("/payers")) return ok({ payers: input.payers ?? [] });
-      if (path.includes("/review")) return ok(input.review ?? review());
-      if (path.includes("/patients/{patientId}/hope/assessments"))
-        return ok({ assessments: input.timeline ?? [assessment] });
-      if (path.includes("/patients/{id}")) return ok(patient);
-      return ok(input.assessment ?? assessment);
-    }),
-    PATCH: vi.fn(async () =>
-      input.patchError
-        ? err(input.patchError)
-        : ok({ assessmentId: "hope-1", version: 5, answers: [] }),
-    ),
-    POST: vi.fn(async () =>
-      ok({
-        assessmentId: "hope-1",
-        status: "signed",
-        version: 5,
-        signedAt: "2026-09-08T14:00:00.000Z",
-        signedByMembershipId: "rn-1",
-        z0500b: "2026-09-08",
-        validation: {
-          errorCount: 0,
-          warningCount: 1,
-          hasBlockingErrors: false,
-        },
-      }),
-    ),
-  } as unknown as ApiClient;
-}
-
-function renderWorkspace(client: ApiClient): void {
-  render(
-    <MemoryRouter initialEntries={["/hope/assessments/hope-1"]}>
-      <ApiClientProvider client={client}>
-        <Routes>
-          <Route path="/hope/assessments/:id" element={<HopeAssessmentDetail />} />
-        </Routes>
-      </ApiClientProvider>
-    </MemoryRouter>,
-  );
-}
+import { HOPE_ATTESTATION_VERSION } from "@chartwarden/types";
+import type { ApiClient } from "@chartwarden/ui";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, type vi } from "vitest";
+import {
+  STEP_UP_REFUSAL,
+  assessment,
+  clientFor,
+  item,
+  renderWorkspace,
+  review,
+  useStubbedLocalStorage,
+  workspace,
+} from "./workspace-test-kit";
 
 describe("Admission HOPE workspace", () => {
-  beforeEach(() => {
-    // In-memory storage: the nav-mode choice and visited groups persist through localStorage.
-    const store = new Map<string, string>();
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => void store.set(key, value),
-      removeItem: (key: string) => void store.delete(key),
-      clear: () => store.clear(),
-    });
-  });
+  useStubbedLocalStorage();
 
   it("renders backend-driven section navigation, prefill badges, and applicability states", async () => {
     renderWorkspace(clientFor());
@@ -435,36 +133,290 @@ describe("Admission HOPE workspace", () => {
     expect(screen.getByRole("button", { name: "Reload assessment" })).toBeTruthy();
   });
 
-  it("uses backend readiness for Review and Sign", async () => {
-    const client = clientFor({
-      review: review({
-        validation: {
-          errorCount: 0,
-          warningCount: 1,
-          hasBlockingErrors: false,
-          findings: [],
+  it.each([
+    [
+      "a stale version (the envelope the platform really sends)",
+      409,
+      {
+        error: {
+          code: "CONFLICT",
+          message: "HOPE assessment hope-1 version is stale; reload and retry",
         },
-        readiness: { readyToSign: true, blockers: [] },
-      }),
+      },
+      true,
+    ],
+    [
+      "a concurrent update",
+      409,
+      {
+        error: {
+          code: "CONCURRENT_UPDATE",
+          message: "This step conflicted with another change in progress and was not applied.",
+        },
+      },
+      true,
+    ],
+    [
+      "a record that is no longer a draft",
+      409,
+      {
+        error: {
+          code: "CONFLICT",
+          message: "HOPE assessment hope-1 is signed; only draft assessments can be edited",
+        },
+      },
+      true,
+    ],
+    [
+      "a value the server rejected",
+      422,
+      { error: { code: "VALIDATION_ERROR", message: "HOPE item is inactive for this ISC" } },
+      false,
+    ],
+  ])(
+    "tells %s apart: the conflict banner only for a conflict",
+    async (_name, status, body, conflict) => {
+      const client = clientFor();
+      (client.PATCH as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        data: undefined,
+        error: body,
+        response: new Response(null, { status }),
+      });
+      renderWorkspace(client);
+      await screen.findByRole("heading", { name: "Admission Workspace" });
+      fireEvent.click(screen.getByRole("button", { name: /F Preferences/ }));
+      fireEvent.click(screen.getByLabelText("Yes, discussion occurred"));
+
+      const conflictText =
+        "This assessment changed elsewhere. Reload the latest version before continuing.";
+      // A refusal that is not a conflict shows the server's own words (the fixed "check the value" blamed the value for refusals that
+      // were not about it).
+      const plainText = "HOPE item is inactive for this ISC";
+      await waitFor(() =>
+        expect(screen.getAllByText(conflict ? conflictText : plainText).length).toBeGreaterThan(0),
+      );
+      expect(screen.queryAllByText(conflict ? plainText : conflictText)).toHaveLength(0);
+      expect(Boolean(screen.queryByRole("button", { name: "Reload assessment" }))).toBe(conflict);
+    },
+  );
+
+  const readyToSignReview = () =>
+    review({
+      validation: {
+        errorCount: 0,
+        warningCount: 1,
+        hasBlockingErrors: false,
+        findings: [],
+      },
+      readiness: { readyToSign: true, blockers: [] },
     });
+
+  /** Open the Sign dialog of a ready-to-sign draft. */
+  async function openSignDialog(client: ApiClient): Promise<HTMLElement> {
     renderWorkspace(client);
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
     );
-
     fireEvent.click(screen.getAllByRole("button", { name: "Sign & complete" })[0]!);
-    const dialog = screen.getByRole("dialog", {
-      name: "Complete Admission",
-    });
+    return screen.getByRole("dialog", { name: "Complete Admission" });
+  }
+
+  const attestSign = (dialog: HTMLElement) =>
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /I attest/ }));
+
+  it("uses backend readiness for Review and Sign", async () => {
+    const client = clientFor({ review: readyToSignReview() });
+    const dialog = await openSignDialog(client);
     expect(dialog).toBeTruthy();
+    attestSign(dialog);
     fireEvent.click(within(dialog).getByRole("button", { name: "Sign & complete" }));
 
     await waitFor(() =>
       expect(client.POST).toHaveBeenCalledWith(
         "/api/v1/hope/assessments/{id}/sign",
-        expect.objectContaining({ body: { ifVersion: 4 } }),
+        expect.objectContaining({
+          body: {
+            ifVersion: 4,
+            attestationConfirmed: true,
+            attestationVersion: HOPE_ATTESTATION_VERSION,
+          },
+        }),
       ),
     );
+  });
+
+  it("R-05 — Sign cannot be sent until the attestation is ticked", async () => {
+    const client = clientFor({ review: readyToSignReview() });
+    const dialog = await openSignDialog(client);
+    const sign = within(dialog).getByRole("button", {
+      name: "Sign & complete",
+    }) as HTMLButtonElement;
+    expect(sign.disabled).toBe(true);
+    fireEvent.click(sign);
+    expect(client.POST).not.toHaveBeenCalled();
+    attestSign(dialog);
+    expect(sign.disabled).toBe(false);
+  });
+
+  it("R-05 — a stale step-up on Sign redirects to /step-up with this record as returnTo", async () => {
+    const client = clientFor({ review: readyToSignReview(), postError: STEP_UP_REFUSAL });
+    const dialog = await openSignDialog(client);
+    attestSign(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sign & complete" }));
+
+    const where = await screen.findByLabelText("step-up location");
+    expect(where.textContent).toBe(
+      `/step-up?returnTo=${encodeURIComponent("/hope/assessments/hope-1")}`,
+    );
+  });
+
+  it("refuses a changed attestation wording outright, and claims nothing was signed", async () => {
+    const client = clientFor({
+      review: readyToSignReview(),
+      postError: {
+        error: {
+          code: "M10_ATTESTATION_STALE",
+          message: "Attestation version 2020-01-01.1 is not current.",
+        },
+      },
+    });
+    const dialog = await openSignDialog(client);
+    attestSign(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sign & complete" }));
+
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toBe(
+      "The attestation wording has changed. Reload the page and review it again.",
+    );
+    expect(within(dialog).queryByRole("button", { name: /retry|try again/i })).toBeNull();
+    const sign = within(dialog).getByRole("button", {
+      name: "Sign & complete",
+    }) as HTMLButtonElement;
+    expect(sign.disabled).toBe(true);
+    fireEvent.click(sign);
+    expect(client.POST).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText("step-up location")).toBeNull();
+  });
+
+  describe("a Sign that fails for a reason the server did not give", () => {
+    const SIGN_UNCONFIRMED =
+      "Could not confirm that the assessment was signed. Reload the record before trying again.";
+    const reply = (status: number, error?: unknown) => ({
+      data: undefined,
+      error,
+      response: new Response(null, { status }),
+    });
+
+    async function signWith(answer: unknown): Promise<HTMLElement> {
+      const client = clientFor({ review: readyToSignReview() });
+      (client.POST as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(answer);
+      const dialog = await openSignDialog(client);
+      attestSign(dialog);
+      fireEvent.click(within(dialog).getByRole("button", { name: "Sign & complete" }));
+      return within(dialog).findByRole("alert");
+    }
+
+    it("says a 503 DEGRADED is a service that is temporarily unavailable, in the dialog's own words", async () => {
+      const alert = await signWith(
+        reply(503, { error: { code: "DEGRADED", message: "admission-seam: connection refused" } }),
+      );
+      expect(alert.textContent).toBe(
+        "The record could not be signed because a service it needs is temporarily unavailable. Try again in a moment.",
+      );
+    });
+
+    it("does not show a server fault's raw text, and does not say nothing was signed", async () => {
+      const alert = await signWith(
+        reply(500, { error: { code: "INTERNAL", message: "ECONNREFUSED 10.0.0.5:5432 pg_pool" } }),
+      );
+      expect(alert.textContent).toBe(
+        "The server could not complete the request, so the result could not be confirmed. Check the record before repeating the action.",
+      );
+    });
+
+    it.each([
+      ["no error at all", undefined],
+      ["an empty error body", ""],
+    ])("calls a 4xx with %s a refusal, not an unconfirmed signature", async (_name, error) => {
+      const alert = await signWith(reply(403, error));
+      expect(alert.textContent).toContain("The server refused the request without saying why.");
+      expect(alert.textContent).not.toMatch(/could not confirm/i);
+    });
+
+    it.each([
+      ["a gateway error with no body", reply(502)],
+      ["an empty body that carries no status", { data: undefined, error: undefined }],
+    ])("keeps %s as an unconfirmed result", async (_name, answer) => {
+      expect((await signWith(answer)).textContent).toBe(SIGN_UNCONFIRMED);
+    });
+  });
+
+  it("shows any other Sign failure in the dialog instead of silently closing it", async () => {
+    const client = clientFor({
+      review: readyToSignReview(),
+      postError: { error: { code: "FORBIDDEN", message: "Your role cannot sign this record." } },
+    });
+    const dialog = await openSignDialog(client);
+    attestSign(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sign & complete" }));
+
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toContain("Your role cannot sign this record.");
+    expect(screen.queryByLabelText("step-up location")).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Complete Admission" })).toBeTruthy();
+  });
+
+  it("says the signature may have gone through when the request never gets an answer", async () => {
+    const client = clientFor({ review: readyToSignReview() });
+    (client.POST as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new TypeError("Failed to fetch"),
+    );
+    const dialog = await openSignDialog(client);
+    attestSign(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sign & complete" }));
+
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toBe(
+      "Could not confirm that the assessment was signed. Reload the record before trying again.",
+    );
+    // Not stuck on "Signing...", and focus is on the alert so Escape and Tab still work inside the dialog.
+    expect(
+      (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    await waitFor(() => expect(document.activeElement).toBe(alert));
+  });
+
+  it("keeps the Sign dialog open while the signature is in flight, so the refusal that follows is shown", async () => {
+    const client = clientFor({ review: readyToSignReview() });
+    let refuse: (reply: unknown) => void = () => undefined;
+    // The client's generic signature is too deep for `vi.mocked`; it is a plain `vi.fn` here.
+    (client.POST as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          refuse = resolve;
+        }),
+    );
+    const dialog = await openSignDialog(client);
+    attestSign(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sign & complete" }));
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement;
+    expect(cancel.disabled).toBe(true);
+    fireEvent.click(cancel);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Complete Admission" })).toBeTruthy();
+
+    refuse({
+      data: undefined,
+      error: { error: { code: "FORBIDDEN", message: "Your role cannot sign this record." } },
+      response: new Response(null, { status: 403 }),
+    });
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toContain("Your role cannot sign this record.");
+    expect(
+      (within(dialog).getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   it("marks Review complete for a completed HOPE assessment", async () => {
@@ -498,6 +450,16 @@ describe("Admission HOPE workspace", () => {
     expect(screen.getByRole("heading", { name: "F. Preferences & Goals" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Back: A\. Administrative/ }));
     expect(screen.getByLabelText(/^Patient middle initial/)).toBeTruthy();
+  });
+
+  it("offers Show all as a switch that reports its state once, through the native checkbox", async () => {
+    renderWorkspace(clientFor());
+    const toggle = (await screen.findByRole("switch", { name: /Show all/ })) as HTMLInputElement;
+    expect(toggle.type).toBe("checkbox");
+    expect(toggle.hasAttribute("aria-checked")).toBe(false);
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(true);
   });
 
   it("Show all renders every section on one page and remembers the choice", async () => {
@@ -626,46 +588,7 @@ describe("Admission HOPE workspace", () => {
       }),
     );
   });
-  it("steps through the SFV reassessment one question at a time", async () => {
-    const sfvItem = (itemCode: string, label: string) =>
-      item({ itemCode, label, section: "J", group: "Symptom Follow-Up Visit" });
-    const client = clientFor({
-      workspace: workspace({
-        sections: [
-          {
-            code: "J",
-            label: "Health Conditions",
-            items: [
-              item({
-                itemCode: "J2052A",
-                label: "SFV completed",
-                section: "J",
-                group: "Symptom Follow-Up Visit",
-              }),
-              sfvItem("J2053A", "Impact of pain"),
-              sfvItem("J2053B", "Impact of shortness of breath"),
-            ],
-          },
-        ],
-      }),
-    });
-    renderWorkspace(client);
-    await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Complete SFV" }));
-    const dialog = screen.getByRole("dialog", { name: "Complete SFV" });
-    expect(within(dialog).getByText("Question 1 of 2")).toBeTruthy();
-    expect(within(dialog).queryByText("Impact of shortness of breath")).toBeNull();
 
-    fireEvent.click(within(dialog).getByRole("radio", { name: "Mild" }));
-    await waitFor(() => expect(within(dialog).getByText("Question 2 of 2")).toBeTruthy());
-    expect(within(dialog).getByText("Impact of shortness of breath")).toBeTruthy();
-
-    fireEvent.click(within(dialog).getByRole("switch", { name: /Show all/ }));
-    expect(within(dialog).getByText("Impact of pain")).toBeTruthy();
-    expect(within(dialog).getByText("Impact of shortness of breath")).toBeTruthy();
-  });
   it("renders CMS check-all items with a skip-pattern value as checkboxes, labels without the shared prefix", async () => {
     const painItem = (itemCode: string, label: string) =>
       item({

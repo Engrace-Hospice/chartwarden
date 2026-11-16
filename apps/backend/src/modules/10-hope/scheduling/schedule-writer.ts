@@ -57,6 +57,15 @@ function gap(message: string): never {
 }
 
 /**
+ * What the regenerate route's client is told after an admission that cannot be projected: the idempotency layer replays
+ * a 422 for 24 h on the same key, so the retry needs a new one. The SFV completion route's gap message ends the same way
+ * (hope-sfv-completion-guards.ts); keep the two sentences identical. A consumer delivery has no key and dead-letters the
+ * message as it stands.
+ */
+const ADMISSION_REPAIRED_RETRY_NOTE =
+  "Once the admission is repaired, send the request again with a NEW Idempotency-Key (the idempotency layer replays this 422 for 24 h on the same key).";
+
+/**
  * The raw admission projection this module sites a schedule from, BEFORE the non-null demands below.
  * Nullable throughout: whoever resolves it does not decide what a missing fact means.
  */
@@ -122,12 +131,14 @@ export async function schedulingSitingFor(
 ): Promise<SchedulingSiting> {
   const facts = await resolve(organizationId, admissionId);
   if (!facts) {
-    gap(`Admission ${admissionId} is not visible in this organization.`);
+    gap(
+      `Admission ${admissionId} is not visible in this organization. ${ADMISSION_REPAIRED_RETRY_NOTE}`,
+    );
   }
   const { patientId, providerEntityId, locationId } = facts;
   if (!providerEntityId || !locationId) {
     gap(
-      `Admission ${admissionId} is not sited (provider_entity_id=${providerEntityId ?? "null"}, location_id=${locationId ?? "null"}) — refusing to create a HOPE timepoint schedule with a guessed provider entity or location.`,
+      `Admission ${admissionId} is not sited (provider_entity_id=${providerEntityId ?? "null"}, location_id=${locationId ?? "null"}) — refusing to create a HOPE timepoint schedule with a guessed provider entity or location. ${ADMISSION_REPAIRED_RETRY_NOTE}`,
     );
   }
   return {
