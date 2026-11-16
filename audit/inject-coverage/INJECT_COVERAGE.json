@@ -4,7 +4,7 @@
     "covered": 40,
     "routes": 2078,
     "coveredRoutes": 2078,
-    "directRoutesReferenced": 1884
+    "directRoutesReferenced": 1885
   },
   "modules": [
     {
@@ -226,7 +226,7 @@
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
-      "directRoutesReferenced": 30
+      "directRoutesReferenced": 31
     },
     {
       "module": "11-orders",

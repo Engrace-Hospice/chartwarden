@@ -12942,7 +12942,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Admin: create any missing HOPE schedule windows for an admission (existing rows, in any status, are left untouched, so nothing is recomputed or reopened and a window computed from a wrong date stays as it is); returns the admission's schedule count; an admission the caller cannot see (absent here, or another organization's) answers 404 from the scope guard before anything is written; an admission that is visible but not sited (no provider entity or location) is 422 M10_ADMISSION_PROJECTION_GAP (no admission projection is available from the M6 seam; the idempotency layer replays the 422 for 24 h on the same key, so after an operator repairs the admission use a NEW Idempotency-Key) */
+        /** Admin: create any missing HOPE schedule windows for an admission (existing rows, in any status, are left untouched, so nothing is recomputed or reopened and a window computed from a wrong date stays as it is); returns the admission's schedule count; AI principals refused (403); a concurrent regenerate of the same admission is waited for at most 5 seconds, then 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one); an admission the caller cannot see (absent here, or another organization's) answers 404 from the scope guard before anything is written; an admission that is visible but not sited (no provider entity or location) is 422 M10_ADMISSION_PROJECTION_GAP (no admission projection is available from the M6 seam; the idempotency layer replays the 422 for 24 h on the same key, so after an operator repairs the admission use a NEW Idempotency-Key) */
         post: operations["postApiV1HopeAdminRegenerateschedules"];
         delete?: never;
         options?: never;
@@ -13198,7 +13198,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Skip an OPEN schedule (requires reason code); a schedule that is already completed, expired or skipped answers 409 CONFLICT ("only an open schedule can be skipped") and is left unchanged, because the status is checked by the same UPDATE that writes the skip; an unknown schedule is 404 */
+        /** Skip an OPEN schedule; `reasonCode` is one of a closed list (patient_deceased, patient_revoked, patient_hospitalized, transferred_out, admission_discharged, duplicate_window, other) and nothing else is accepted, a note included (422 VALIDATION_FAILED, which never echoes what was sent); a schedule that is already completed, expired or skipped answers 409 CONFLICT ("only an open schedule can be skipped") and is left unchanged, because the status is checked by the same UPDATE that writes the skip; an unknown schedule is 404; AI principals refused (403); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeSchedulesByIdSkip"];
         delete?: never;
         options?: never;
@@ -13283,7 +13283,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel a generated HOPE package that was never marked uploaded (packaged/exported), freeing its assessments to be packaged again in a NEW batch; 409 once uploaded; replaying a cancel returns the cancelled batch; 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
+        /** Cancel a generated HOPE package that was never marked uploaded (packaged/exported), freeing its assessments to be packaged again in a NEW batch; 409 once uploaded; replaying a cancel returns the cancelled batch; AI principals refused (403); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeSubmissionsByIdCancel"];
         delete?: never;
         options?: never;
@@ -13300,7 +13300,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark a generated HOPE package as manually uploaded to iQIES; `submittedAt`, when given, must be a real calendar date-time with an explicit offset (else 422); a cancelled package cannot be marked uploaded (409 M10_SUBMISSION_CANCELLED); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
+        /** Mark a generated HOPE package as manually uploaded to iQIES; `submittedAt`, when given, must be a real calendar date-time with an explicit offset (else 422); a cancelled package cannot be marked uploaded (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeSubmissionsByIdMarkuploaded"];
         delete?: never;
         options?: never;
@@ -13334,7 +13334,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent; a blank iqiesRecordId is no id and is not stored on the item or the assessment); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
+        /** Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent; a blank iqiesRecordId is no id and is not stored on the item or the assessment); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeSubmissionsByIdResults"];
         delete?: never;
         options?: never;
@@ -13351,7 +13351,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Deprecated for the UI: requeue a rejected batch (status rejected to queued; nothing consumes queued, and it neither re-validates nor re-assembles). iQIES has no retry; fix a rejected record with a correction assessment and re-package it in a new batch */
+        /** Deprecated for the UI: requeue a rejected batch (status rejected to queued; nothing consumes queued, and it neither re-validates nor re-assembles). iQIES has no retry; fix a rejected record with a correction assessment and re-package it in a new batch; AI principals refused (403); 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeSubmissionsByIdRetry"];
         delete?: never;
         options?: never;
@@ -13368,7 +13368,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Assemble and package the eligible signed assessments of a provider entity into a `packaged` manual iQIES ZIP batch (the only assemble path; no cron runs it); one call looks at no more than 200 eligible records, oldest signed first, so a package holds at most 200 items and a second call packages the rest (the 409 says none are left); a record with no location is skipped, not an error; 409 CONFLICT when no signed assessment is eligible; 422 when the submission header or an assessment payload cannot be built (the message names what to set); a second assemble of the same provider entity queues behind the first (an advisory lock), so it can answer 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
+        /** Assemble and package the eligible signed assessments of a provider entity into a `packaged` manual iQIES ZIP batch (the only assemble path; no cron runs it); one call looks at no more than 200 eligible records, oldest signed first, so a package holds at most 200 items and a second call packages the rest (the 409 says none are left); a record with no location is skipped, not an error; 409 CONFLICT when no signed assessment is eligible; 422 when the submission header or an assessment payload cannot be built (the message names what to set); AI principals refused (403); a second assemble of the same provider entity queues behind the first (an advisory lock), so it can answer 409 M10_RECORD_BUSY ("The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again." The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one) */
         post: operations["postApiV1HopeSubmissionsAssemble"];
         delete?: never;
         options?: never;
@@ -70648,8 +70648,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    reasonCode: string;
-                    note?: string;
+                    reasonCode: "patient_deceased" | "patient_revoked" | "patient_hospitalized" | "transferred_out" | "admission_discharged" | "duplicate_window" | "other";
                 };
             };
         };
