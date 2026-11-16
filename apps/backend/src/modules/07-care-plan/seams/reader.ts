@@ -5,7 +5,7 @@
 // the two derived rules with one home each: the §7.8 encounter-relevance filter and the §2.6 overdue
 // gate (delegated to the pure lifecycle/overdue-gate helper).
 import type {
-  CarePlanElementsViewer,
+  CarePlanElementsAudience,
   CarePlanReader,
   InterventionDiscipline,
   PatientId,
@@ -35,8 +35,8 @@ export function createCarePlanReader(
       patientId: PatientId,
       _encounterType: string,
       discipline: InterventionDiscipline,
-      admissionId?: string,
-      viewer?: CarePlanElementsViewer,
+      admissionId: string | undefined,
+      viewer: CarePlanElementsAudience,
     ): Promise<RelevantCarePlanElements | null> {
       const record = await store.activeCarePlanElements(patientId, admissionId, viewer);
       if (record === null) return null;

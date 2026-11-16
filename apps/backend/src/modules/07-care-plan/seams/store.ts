@@ -5,12 +5,15 @@
 // `app.org_id`, §7.8). Mirrors the M6 seams/store.ts precedent.
 //
 // SUD redaction (D7): the store resolves `sudReadAllowed` SQL-side — joining the patient's
-// privacy-flag snapshot / the M39 Part-2 consent fact — and tags each problem `containsSud`. It does
-// NOT trust a caller-asserted scope (§7.8). The in-memory slice seeds the decision directly so reader
+// privacy-flag snapshot / the M39 Part-2 consent fact — and tags each problem `containsSud`. It never
+// trusts a caller-asserted SCOPE (§7.8). The one thing a caller may supply is a per-ACTOR verdict
+// (`CarePlanElementsAudience`): that is a boolean the caller's ROUTE resolved from the same M39 closure
+// every other M7 read uses, and it can only be trusted from such a route — a module that hand-builds
+// `{ sudDisclosureAllowed: true }` would bypass M39. The in-memory slice seeds the decision directly so reader
 // tests can exercise both the entitled and the redacted paths.
 import type {
   CarePlanCodeUsageRecord,
-  CarePlanElementsViewer,
+  CarePlanElementsAudience,
   CarePlanId,
   ClinicalLinkSummary,
   IsoInstant,
@@ -64,9 +67,10 @@ export interface CarePlanReaderStore {
   /** The active care plan's problems/goals/interventions for a patient + the D7 redaction decision. */
   activeCarePlanElements(
     patientId: PatientId,
-    admissionId?: string,
-    /** The caller's per-actor Part 2 verdict; when given it replaces the patient-level release check. */
-    viewer?: CarePlanElementsViewer,
+    admissionId: string | undefined,
+    /** REQUIRED: a per-actor Part 2 verdict replaces the patient-level release check; `"patient_level"` is the
+     * explicit choice of the patient-level check, for a caller that serves no human reading element text. */
+    viewer: CarePlanElementsAudience,
   ): Promise<CarePlanElementsRecord | null>;
   /** The active care plan's overdue-gate clock facts for a patient (initial/review due columns). */
   activeCarePlanClock(patientId: PatientId): Promise<CarePlanClockRecord | null>;
@@ -119,7 +123,7 @@ export function createInMemoryCarePlanReaderStore(seed: CarePlanReaderSeed = {})
       async activeCarePlanElements(patientId, _admissionId, viewer) {
         const record = elements.find((e) => e.patientId === patientId) ?? null;
         // Same rule as the Drizzle store: a per-actor verdict, when given, decides SUD visibility.
-        return record && viewer
+        return record && viewer !== "patient_level"
           ? { ...record, sudReadAllowed: viewer.sudDisclosureAllowed }
           : record;
       },

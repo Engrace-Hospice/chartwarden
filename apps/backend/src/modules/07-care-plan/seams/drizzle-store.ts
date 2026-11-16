@@ -14,9 +14,12 @@
 //     no request scope) — it SELF-SCOPES via `withOrgContext`, with the explicit `organization_id`
 //     predicate as the second wall.
 //
-// SUD (D7, §7.8): `sudReadAllowed` is the patient-level M39 Part-2 consent fact — resolved through the
-// `ConsentEvaluator` seam at call time (the M16 disclosure-gate precedent), NEVER a caller-asserted
-// scope. FAIL-CLOSED: while M39 is a deny-stub, throws, or denies, the record reads
+// SUD (D7, §7.8): `sudReadAllowed` is, by default, the patient-level M39 Part-2 consent fact — resolved
+// through the `ConsentEvaluator` seam at call time (the M16 disclosure-gate precedent), NEVER a
+// caller-asserted scope. The one exception is the per-ACTOR verdict a caller passes as `viewer`: it replaces
+// the patient-level lookup, so it is a TRUST BOUNDARY — only a route that resolved it from the M39 closure
+// (`sudDisclosureAllowedForPatient`, the closure every other M7 read uses) may pass one. A caller that serves no
+// human passes `"patient_level"` and gets the lookup below. FAIL-CLOSED: while M39 is a deny-stub, throws, or denies, the record reads
 // `sudReadAllowed=false` and the reader drops SUD problems + flags `redacted` — a consent outage
 // narrows what a clinician sees; it never widens it. The consent round-trip is skipped entirely when
 // the plan carries no SUD-flagged problem (the verdict would be unobservable).
@@ -162,7 +165,7 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
         // release that names other staff redacts this caller even though "a release exists".
         const sudReadAllowed = !sudPresent
           ? true
-          : viewer
+          : viewer !== "patient_level"
             ? viewer.sudDisclosureAllowed
             : await part2ReleaseAllowed(plan.organizationId, patientId);
         return {

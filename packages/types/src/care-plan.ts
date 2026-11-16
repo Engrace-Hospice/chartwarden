@@ -307,6 +307,15 @@ export interface CarePlanElementsViewer {
 }
 
 /**
+ * Who an element read is for. REQUIRED on the seam so that omitting the per-actor verdict is a compile error
+ * rather than a silent fall-back to the weaker rule: a caller either supplies the verdict its route resolved
+ * (`CarePlanElementsViewer`) or says out loud that it serves no human reading element text
+ * (`"patient_level"` — ids-only, existence checks, or a column that is never returned), in which case the
+ * store applies the patient-level Part 2 release check. A human-facing read must never pass `"patient_level"`.
+ */
+export type CarePlanElementsAudience = CarePlanElementsViewer | "patient_level";
+
+/**
  * §7.8 — the read surface M8 (encounter authoring + sign gate), M14 (IDG packet), and M15 (discipline
  * care plans) consume. Resolved within the consumer's tenant context (the reader does not switch
  * tenants); SUD redaction is applied SQL-side, not trusting the caller's scope assertion (D7). The
@@ -314,15 +323,16 @@ export interface CarePlanElementsViewer {
  */
 export interface CarePlanReader {
   /** Populate the encounter form's element picker — active problems, the active interventions tagged
-   * with `discipline`, and their parent problems' goals (§7.8). `viewer` is the caller's PER-ACTOR 42 CFR
-   * Part 2 verdict, resolved by the route that serves a human; when given it decides SUD visibility in
-   * place of the patient-level release check, so a release that names other staff redacts this caller. */
+   * with `discipline`, and their parent problems' goals (§7.8). `viewer` is REQUIRED: the caller's PER-ACTOR
+   * 42 CFR Part 2 verdict, resolved by the route that serves a human, decides SUD visibility in place of the
+   * patient-level release check (so a release that names other staff redacts this caller); a caller that serves
+   * no human passes `"patient_level"` on purpose (see `CarePlanElementsAudience`). */
   relevantElementsForEncounter(
     patientId: PatientId,
     encounterType: string,
     discipline: InterventionDiscipline,
-    admissionId?: string,
-    viewer?: CarePlanElementsViewer,
+    admissionId: string | undefined,
+    viewer: CarePlanElementsAudience,
   ): Promise<RelevantCarePlanElements | null>;
 
   /** Whether the patient's active care plan is past a CoP 418.56 gate (5-day initial / 15-day review).

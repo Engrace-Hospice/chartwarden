@@ -1510,7 +1510,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       // The §7.8 reader store (ambient request context, as the M8/M15 callers run it).
       const store = createDrizzleCarePlanReaderStore(handle.db);
       const elements = await runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
-        store.activeCarePlanElements(patientId),
+        store.activeCarePlanElements(patientId, undefined, "patient_level"),
       );
       expect(elements?.planId).toBe(plan2.id);
     });

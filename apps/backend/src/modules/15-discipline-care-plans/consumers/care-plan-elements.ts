@@ -43,10 +43,13 @@ export async function relevantIpocElements(
   patientId: PatientId,
 ): Promise<RelevantCarePlanElements | null> {
   const lens = READER_LENS_BY_KIND[kind];
+  // "patient_level": the elements only prove a parent exists (`assertParentElements`); none is returned to a caller.
   return getCarePlanReader().relevantElementsForEncounter(
     patientId,
     lens.encounterType,
     lens.discipline,
+    undefined,
+    "patient_level",
   );
 }
 

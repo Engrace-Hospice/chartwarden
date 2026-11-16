@@ -1686,11 +1686,14 @@ export function createDbEncounterRouteService(
         // The refs must name elements of THIS patient's active plan, relevant to this encounter's
         // (type × discipline), and a goal/intervention must hang off the problem it is linked with —
         // otherwise a link could claim a visit addressed a problem on some other patient's plan.
+        // "patient_level": this path returns ids only (`toCarePlanLinkView`) and uses the elements to validate
+        // the refs, never to show element text, so it takes the patient-level Part 2 check (R-75 in the audit).
         const elements = await getCarePlanReader().relevantElementsForEncounter(
           r.patientId as PatientId,
           r.encounterType,
           r.discipline as never,
           r.admissionId,
+          "patient_level",
         );
         if (!elements || elements.patientId !== r.patientId) {
           throw new ValidationError(

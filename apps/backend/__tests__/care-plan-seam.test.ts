@@ -119,7 +119,13 @@ function store(
 describe("CarePlanReader.relevantElementsForEncounter (§7.8)", () => {
   it("returns active interventions of the requested discipline and their parent problems' goals", async () => {
     const reader = createCarePlanReader(store({ sudReadAllowed: true }));
-    const out = await reader.relevantElementsForEncounter(PAT, "rn_routine_visit", "rn");
+    const out = await reader.relevantElementsForEncounter(
+      PAT,
+      "rn_routine_visit",
+      "rn",
+      undefined,
+      "patient_level",
+    );
     // rn interventions: active iv-rn + iv-rn-sud (sud allowed); the discontinued iv-rn-dc is dropped.
     expect(out?.interventions.map((i) => i.interventionId).sort()).toEqual(["iv-rn", "iv-rn-sud"]);
     // goals: only those of the parent problems of the included interventions (pain + sud), not orphan.
@@ -133,7 +139,13 @@ describe("CarePlanReader.relevantElementsForEncounter (§7.8)", () => {
 
   it("redacts SUD problems (and their goals/interventions) when the caller is not entitled (D7)", async () => {
     const reader = createCarePlanReader(store({ sudReadAllowed: false }));
-    const out = await reader.relevantElementsForEncounter(PAT, "rn_routine_visit", "rn");
+    const out = await reader.relevantElementsForEncounter(
+      PAT,
+      "rn_routine_visit",
+      "rn",
+      undefined,
+      "patient_level",
+    );
     expect(out?.problems.map((p) => p.problemId)).toEqual(["prob-pain"]);
     expect(out?.interventions.map((i) => i.interventionId)).toEqual(["iv-rn"]);
     expect(out?.goals.map((g) => g.goalId)).toEqual(["goal-pain"]);
@@ -170,7 +182,13 @@ describe("CarePlanReader.relevantElementsForEncounter (§7.8)", () => {
 
   it("filters by discipline (msw sees only the msw intervention)", async () => {
     const reader = createCarePlanReader(store({ sudReadAllowed: true }));
-    const out = await reader.relevantElementsForEncounter(PAT, "msw_visit", "msw");
+    const out = await reader.relevantElementsForEncounter(
+      PAT,
+      "msw_visit",
+      "msw",
+      undefined,
+      "patient_level",
+    );
     expect(out?.interventions.map((i) => i.interventionId)).toEqual(["iv-msw"]);
     expect(out?.goals.map((g) => g.goalId)).toEqual(["goal-pain"]);
   });
@@ -178,7 +196,13 @@ describe("CarePlanReader.relevantElementsForEncounter (§7.8)", () => {
   it("returns null when the patient has no active care plan", async () => {
     const reader = createCarePlanReader(createInMemoryCarePlanReaderStore().store);
     expect(
-      await reader.relevantElementsForEncounter("nobody", "rn_routine_visit", "rn"),
+      await reader.relevantElementsForEncounter(
+        "nobody",
+        "rn_routine_visit",
+        "rn",
+        undefined,
+        "patient_level",
+      ),
     ).toBeNull();
   });
 });
@@ -246,7 +270,13 @@ describe("boot wiring (registerCarePlanSeams)", () => {
     registerCarePlanSeams({ store: store({ sudReadAllowed: true }) });
     expect(() => validateSeams()).not.toThrow();
     const reader = getSeam("CarePlanReader");
-    const out = await reader.relevantElementsForEncounter(PAT, "rn_routine_visit", "rn");
+    const out = await reader.relevantElementsForEncounter(
+      PAT,
+      "rn_routine_visit",
+      "rn",
+      undefined,
+      "patient_level",
+    );
     expect(out?.planId).toBe(PLAN);
   });
 

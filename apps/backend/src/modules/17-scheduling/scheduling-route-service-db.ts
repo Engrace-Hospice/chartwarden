@@ -1867,10 +1867,14 @@ export function createDbSchedulingBackend(
       await runWithRequestContext({ organizationId: orgId, userId }, async () => {
         const reader = getSeam("CarePlanReader");
         for (const discipline of proposalDisciplines) {
+          // "patient_level": `frequencyText` lands in `visit_proposal.source_payload`, a denylisted column the
+          // proposal list read never projects, so no element text reaches a human from this path.
           const elements = await reader.relevantElementsForEncounter(
             input.patientId,
             "routine_visit",
             discipline,
+            undefined,
+            "patient_level",
           );
           if (!elements || elements.planId !== input.planId) continue;
           for (const intervention of elements.interventions) {
