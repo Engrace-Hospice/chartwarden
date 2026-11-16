@@ -20,7 +20,6 @@
  */
 import { userInfo } from "node:os";
 
-import { backupName } from "./backup-names";
 import { hasBareBraceGroup } from "./bare-braces";
 import { clientFindings, clientTexts, isDbClient } from "./db-client-escapes";
 import { environmentDumpReason } from "./env-dump";
@@ -85,7 +84,6 @@ import {
   protectedPathPattern,
 } from "./protected-paths";
 import { peelRunner } from "./runners";
-import { EXTRA_SECRET_RULES } from "./secret-names";
 import {
   environmentLeak,
   globReachesLiveEnv,
@@ -137,302 +135,22 @@ import { extraOutputFiles, localPath } from "./writers";
 import { moreGitWrites, moreWriterTargets } from "./writers-more";
 import { fileRuns, heredocCount, isScriptText, writtenTexts } from "./written-scripts";
 
-export interface SyntheticRegistry {
-  readonly ssn: ReadonlySet<string>;
-  readonly mbi: ReadonlySet<string>;
-}
-
-export function registryFrom(json: {
-  ssn?: readonly string[];
-  mbi?: readonly string[];
-}): SyntheticRegistry {
-  return {
-    ssn: new Set((json.ssn ?? []).map((s) => s.replace(/-/g, ""))),
-    mbi: new Set((json.mbi ?? []).map((s) => s.replace(/-/g, "").toUpperCase())),
-  };
-}
-
-export const EMPTY_REGISTRY: SyntheticRegistry = { ssn: new Set(), mbi: new Set() };
-
-// ---------------------------------------------------------------------------------------------------
-// 1. Secret paths
-// ---------------------------------------------------------------------------------------------------
-
-/** Committed templates that merely LOOK like secret files. */
-const TEMPLATE_SUFFIX = /\.(example|sample|template|dist)$/i;
-
-const SECRET_PATH_RULES: ReadonlyArray<readonly [RegExp, string]> = [
-  [
-    /(^|\/)\.env(\.[^/]*)?$/i,
-    "a live environment file (database URLs, BETTER_AUTH_SECRET, vendor keys)",
-  ],
-  // `deploy/production/backend.env`-style files; not `env.ts`.
-  [
-    /(^|\/)[^/]+\.env(\.(local|development|staging|production|tenant))?$/i,
-    "a live environment file",
-  ],
-  [/\.(pem|key|p12|pfx|jks|keystore)$/i, "a private key or keystore"],
-  [/(^|\/)id_(rsa|ecdsa|ed25519|dsa)(\.pub)?$/i, "an SSH key"],
-  [/(^|\/)\.(pgpass|netrc|npmrc|pypirc)$/i, "a credentials file"],
-  // `/i`: macOS and Windows resolve `.SSH/config` and `.AWS/credentials` to the same files.
-  [/(^|\/)\.ssh\//i, "the SSH configuration directory"],
-  [/(^|\/)\.aws\/credentials$/i, "cloud credentials"],
-  [/(^|\/)\.gnupg\//i, "the GnuPG key directory"],
-  [/(^|\/)\.docker\/config\.json$/i, "registry credentials"],
-  [
-    /(^|\/)(\.codex\/auth\.json|\.claude\/\.credentials\.json|\.config\/gh\/hosts\.yml|\.git-credentials|\.kube\/config)$/i,
-    "a coding-agent, GitHub, git or cluster credentials file",
-  ],
-  // A secrets/ directory — but source files that merely live under a `secrets/` module are code.
-  [/(^|\/)\.?secrets?\/(?!.*\.(ts|tsx|js|mjs|cjs|md)$)/i, "a secrets directory"],
-  // `.bak` and the other copy suffixes are judged by the file they copy (`backup-names.ts`).
-  [/\.(dump|sql\.gz|sql\.zst|backup)$/i, "a database dump or backup (may hold PHI)"],
-  [/(^|\/)(pgbackrest|backups?)\/.*\.(gz|zst|lz4|tar)$/i, "a backup archive (may hold PHI)"],
-  [
-    /(^|\/)[^/]*backups?[^/]*\.(tar(\.[a-z0-9]+)?|tgz|zip|gz|zst|lz4)$/i,
-    "a backup archive (may hold PHI)",
-  ],
-  [/\.env\.bak(\.|$)/i, "a backup of a live environment file"],
-  ...EXTRA_SECRET_RULES,
-];
-
-/** Returns why `path` is off-limits to an agent, or null when it is fine. */
-export function secretPathReason(path: string): string | null {
-  const p = aliasNormalise(path).replace(/\\/g, "/");
-  if (TEMPLATE_SUFFIX.test(p)) return null;
-  const copy = backupName(p);
-  // A copy of a template is a template.
-  if (copy.isCopy && TEMPLATE_SUFFIX.test(copy.original)) return null;
-  const named = (name: string): string | null =>
-    SECRET_PATH_RULES.find(([re]) => re.test(name))?.[1] ?? null;
-  const why = named(p) ?? (copy.isCopy ? named(copy.original) : null);
-  if (why !== null) return why;
-  // A copy of a source file is not a database backup; a `.bak` of something unnamed may be one.
-  return copy.mayBeDatabaseBackup ? "a database dump or backup (may hold PHI)" : null;
-}
-
-// ---------------------------------------------------------------------------------------------------
-// 2. Content: PHI-shaped identifiers and credentials
-// ---------------------------------------------------------------------------------------------------
-
-export type FindingKind =
-  | "ssn"
-  | "mbi"
-  | "private-key"
-  | "cloud-key"
-  | "vendor-token"
-  | "db-url-password"
-  | "high-entropy-secret"
-  /** Larger than {@link MAX_SCAN_CHARS}: not scanned, so it is not vouched for either. */
-  | "unscannable";
-
-export interface Finding {
-  readonly kind: FindingKind;
-  readonly line: number;
-  /** Length only — no characters of the value, not even a prefix (an SSN's last four are the sensitive part). */
-  readonly sample: string;
-}
-
-const redact = (v: string): string => `${v.length} chars`;
-
-const SSN_DASHED = /\b(\d{3})-(\d{2})-(\d{4})\b/g;
-const SSN_KEYED = /\bssn\b[^0-9\n]{0,6}(\d{3}[- ]?\d{2}[- ]?\d{4})\b/gi;
-// CMS MBI format: C A AN N A AN N A A N N — letters exclude S L O I B Z. Upper-case only (MBIs are
-// upper-case by spec, and a case-insensitive match would trip on hex hashes).
-const MBI_L = "[AC-HJKMNP-RT-Y]";
-const MBI_AN = "[AC-HJKMNP-RT-Y0-9]";
-const MBI = new RegExp(
-  `(?<![A-Za-z0-9])[1-9]${MBI_L}${MBI_AN}[0-9]-?${MBI_L}${MBI_AN}[0-9]-?${MBI_L}${MBI_L}[0-9]{2}(?![A-Za-z0-9])`,
-  "g",
-);
-
-/** SSA never issues area 000, 666 or 900-999, group 00 or serial 0000 — those are synthetic by definition. */
-export function ssnNeverIssued(area: string, group: string, serial: string): boolean {
-  return (
-    area === "000" || area === "666" || area.startsWith("9") || group === "00" || serial === "0000"
-  );
-}
-
-const CREDENTIAL_RULES: ReadonlyArray<readonly [RegExp, FindingKind]> = [
-  // A real key body is hundreds of base64 characters; a test's `-----BEGIN PRIVATE KEY-----\nMIIB\n-----END`
-  // stub is not a credential.
-  [
-    /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY(?: BLOCK)?-----[A-Za-z0-9+/=\s\\n]{200,}/g,
-    "private-key",
-  ],
-  // AWS's own documentation key (…EXAMPLE) is excluded.
-  [/\b(?:AKIA|ASIA)(?![0-9A-Z]{9}EXAMPLE)[0-9A-Z]{16}\b/g, "cloud-key"],
-  [/\bgh[pousr]_[A-Za-z0-9]{36,}\b/g, "vendor-token"],
-  [/\bgithub_pat_[A-Za-z0-9_]{60,}\b/g, "vendor-token"],
-  [/\bxox[abprs]-[A-Za-z0-9-]{20,}\b/g, "vendor-token"],
-  [/\b(?:sk|rk)_live_[A-Za-z0-9]{20,}\b/g, "vendor-token"],
-  [/\bsk-ant-[A-Za-z0-9_-]{30,}\b/g, "vendor-token"],
-  [/\bsk-(?:proj-)?[A-Za-z0-9_-]{40,}\b/g, "vendor-token"],
-];
-
-/** A postgres URL carrying an inline password for a host that is not local/compose-internal. */
-// Every quantifier is bounded: an unbounded `[^@\s]+` backtracks to the end of the text from each
-// `postgres://x:` start (quadratic), and a guard that runs out of time refuses the call.
-const DB_URL = /\bpostgres(?:ql)?:\/\/[^:\s/@]{1,64}:([^@\s]{1,256})@([^/:\s?#'"`]{1,255})/g;
-// Local means loopback, the Docker host alias, or a service this repo's docker-compose.yml names. A bare
-// single-label name or a `*.internal` suffix is NOT local: production hosts look exactly like that.
-const LOCAL_HOST_RE =
-  /^(localhost|127(\.\d{1,3}){3}|\[?::1\]?|0\.0\.0\.0|host\.docker\.internal|[a-z0-9-]+\.localhost|\/.*)$/i;
-/** Service names in docker-compose.yml (reachable only on the private compose network). */
-export const COMPOSE_SERVICES: ReadonlySet<string> = new Set([
-  "postgres",
-  "redis",
-  "minio",
-  "clamav",
-  "migrate",
-  "api",
-  "worker",
-  "docling-worker",
-  "provision-gateway",
-]);
-const LOCAL_HOST = {
-  test: (h: string): boolean => LOCAL_HOST_RE.test(h) || COMPOSE_SERVICES.has(h.toLowerCase()),
-};
-const PLACEHOLDER =
-  /^(\$\{?[A-Z_]+\}?|<[^>]+>|\*+|x+|\.{1,3}|\u2026|.{1,3}|password|postgres|changeme|secret|pass|chartwarden(-(local|dev|test|ci|e2e)[A-Za-z0-9_-]*)?)$/i;
-
-/** `SECRET=...`-style assignment with a long, high-entropy literal. Applied to non-test paths only. */
-const KEYED_SECRET =
-  /\b[A-Z0-9_]{0,64}(?:SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY)[A-Z0-9_]{0,64}\s{0,8}[:=]\s{0,8}["'`]?([A-Za-z0-9+/=_.-]{32,})["'`]?/g;
-
-export function shannonEntropy(s: string): number {
-  const counts = new Map<string, number>();
-  for (const c of s) counts.set(c, (counts.get(c) ?? 0) + 1);
-  let h = 0;
-  for (const n of counts.values()) {
-    const p = n / s.length;
-    h -= p * Math.log2(p);
-  }
-  return h;
-}
-
-/** Paths whose content is never scanned (lockfiles, binary-ish corpora, the registry itself). */
-const UNSCANNED =
-  /(^|\/)(bun\.lock|package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$|\.(pdf|png|jpe?g|gif|webp|ico|woff2?|ttf|zip|gz|pen)$|^HOPE Data Spec|(^|\/)compliance\/synthetic-identifiers\.json$/i;
-const TESTISH =
-  /(__tests__|__fixtures__|\.test\.|\.spec\.|\/fixtures?\/|\.stories\.|\.example$|^e2e\/)/;
-
-export function isScannable(path: string): boolean {
-  return !UNSCANNED.test(path.replace(/\\/g, "/"));
-}
-
-// ponytail: one memo for the text being scanned; the hook is a one-shot process. Counting newlines from the
-// start for every finding made a 1 MB patch of findings take 14 s, and a guard that runs out of time refuses the call.
-let lineStarts: { readonly text: string; readonly starts: readonly number[] } | undefined;
-function lineOf(text: string, index: number): number {
-  if (lineStarts?.text !== text) {
-    const starts = [0];
-    for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) starts.push(i + 1);
-    lineStarts = { text, starts };
-  }
-  const { starts } = lineStarts;
-  let lo = 0;
-  let hi = starts.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if ((starts[mid] ?? 0) <= index) lo = mid;
-    else hi = mid - 1;
-  }
-  return lo + 1;
-}
-
-/**
- * Largest text one scan will take. Every rule here is linear in the input (the keyed-secret rule bounds
- * its prefix and suffix), so this is a second line, not the first: content past it is REFUSED by the
- * callers that write (the guard) and reported as skipped by the ones that read (phi-scan, Stop gate).
- */
-export const MAX_SCAN_CHARS = 8_000_000;
-
-export function scanContent(text: string, registry: SyntheticRegistry, path = ""): Finding[] {
-  if (path && !isScannable(path)) return [];
-  if (text.length > MAX_SCAN_CHARS) {
-    return [{ kind: "unscannable", line: 1, sample: redact(text) }];
-  }
-  const out: Finding[] = [];
-  const push = (kind: FindingKind, index: number, value: string) =>
-    out.push({ kind, line: lineOf(text, index), sample: redact(value) });
-
-  for (const m of text.matchAll(SSN_DASHED)) {
-    const [whole, a = "", g = "", s = ""] = m;
-    if (ssnNeverIssued(a, g, s) || registry.ssn.has(a + g + s)) continue;
-    push("ssn", m.index ?? 0, whole);
-  }
-  for (const m of text.matchAll(SSN_KEYED)) {
-    if (/^\d{3}-\d{2}-\d{4}$/.test(m[1] ?? "")) continue; // the dashed rule above already judged it
-    const v = (m[1] ?? "").replace(/\D/g, "");
-    if (ssnNeverIssued(v.slice(0, 3), v.slice(3, 5), v.slice(5)) || registry.ssn.has(v)) continue;
-    push("ssn", m.index ?? 0, v);
-  }
-  for (const m of text.matchAll(MBI)) {
-    const v = m[0].replace(/-/g, "");
-    if (registry.mbi.has(v)) continue;
-    push("mbi", m.index ?? 0, v);
-  }
-  for (const [re, kind] of CREDENTIAL_RULES)
-    for (const m of text.matchAll(re)) push(kind, m.index ?? 0, m[0]);
-  for (const m of text.matchAll(DB_URL)) {
-    const pw = m[1] ?? "";
-    const host = m[2] ?? "";
-    if (LOCAL_HOST.test(host) || PLACEHOLDER.test(pw)) continue;
-    // A short dummy in a test file (`p@ss`) is a fixture; a real-length password is flagged everywhere.
-    if (TESTISH.test(path) && pw.length < 8) continue;
-    push("db-url-password", m.index ?? 0, pw);
-  }
-  if (!TESTISH.test(path)) {
-    for (const m of text.matchAll(KEYED_SECRET)) {
-      const v = m[1] ?? "";
-      if (PLACEHOLDER.test(v) || shannonEntropy(v) < 4.0) continue;
-      push("high-entropy-secret", m.index ?? 0, v);
-    }
-  }
-  return out;
-}
-
-const CHUNK_CHARS = 4_000_000;
-
-/**
- * {@link scanContent} for FILES that may exceed one scan's limit (a generated 12 MB OpenAPI document):
- * scanned in line-aligned chunks so size alone never exempts a file. A single line past the limit is
- * still reported as `unscannable`.
- */
-export function scanLarge(text: string, registry: SyntheticRegistry, path = ""): Finding[] {
-  if (text.length <= MAX_SCAN_CHARS) return scanContent(text, registry, path);
-  const out: Finding[] = [];
-  let start = 0;
-  let lineBase = 0;
-  while (start < text.length) {
-    let end = Math.min(start + CHUNK_CHARS, text.length);
-    if (end < text.length) {
-      const nl = text.indexOf("\n", end);
-      end = nl < 0 ? text.length : nl + 1;
-    }
-    const chunk = text.slice(start, end);
-    for (const f of scanContent(chunk, registry, path)) out.push({ ...f, line: f.line + lineBase });
-    for (let i = chunk.indexOf("\n"); i >= 0; i = chunk.indexOf("\n", i + 1)) lineBase++;
-    start = end;
-  }
-  return out;
-}
-
-export function describeFindings(path: string, findings: readonly Finding[]): string {
-  const kinds = [...new Set(findings.map((f) => f.kind))];
-  const where = findings
-    .slice(0, 5)
-    .map((f) => `${path}:${f.line} (${f.kind}, ${f.sample})`)
-    .join("; ");
-  const phi = kinds.some((k) => k === "ssn" || k === "mbi");
-  const advice = phi
-    ? "Use a value from compliance/synthetic-identifiers.json, or an SSN with area 000/666/9xx. Adding a new synthetic value to that file is a human decision."
-    : kinds.includes("unscannable")
-      ? "This content is too large to scan, so it cannot be vouched for. Write it in smaller pieces, or keep it out of the repo."
-      : "Credentials never go in the repo: read them from the environment (OpenBao in production) and put a placeholder in the .example template.";
-  return `${kinds.join(", ")} found — ${where}. ${advice}`;
-}
+// Re-exported from `content-scan.ts`: the names this file used to define.
+export type { Finding, FindingKind, SyntheticRegistry } from "./content-scan";
+export {
+  registryFrom,
+  EMPTY_REGISTRY,
+  secretPathReason,
+  ssnNeverIssued,
+  COMPOSE_SERVICES,
+  shannonEntropy,
+  isScannable,
+  MAX_SCAN_CHARS,
+  scanContent,
+  scanLarge,
+  describeFindings,
+} from "./content-scan";
+import { LOCAL_HOST, MBI, scanContent, secretPathReason } from "./content-scan";
 
 // ---------------------------------------------------------------------------------------------------
 // 3. Shell commands
@@ -1329,20 +1047,137 @@ function writeThenRun(
   return out;
 }
 
-function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd[]): BashVerdict {
-  const c = cmd.trim();
-  if (depth > MAX_NESTING || --judgeBudget < 0) {
-    return ask(
-      "Command substitutions or `bash -c` nested too deeply, or too many to check; a human decides.",
-    );
+/** The commands a simple command runs INSIDE itself: `bash -c '…'`, `eval …`, `find -exec …`, a wrapper's string, git's, a container's. */
+function nestedCommandVerdicts(
+  parsed: Parsed,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const verdicts: BashVerdict[] = [];
+  if (parsed.prog === "eval") {
+    verdicts.push(judge(parsed.args.join(" "), ctx, depth + 1, here));
+  } else if (NESTED_SHELL.test(parsed.prog)) {
+    const k = parsed.args.findIndex((a) => /^-[a-z]*c$/.test(a));
+    if (k >= 0) verdicts.push(judge(parsed.args[k + 1] ?? "", ctx, depth + 1, here));
+  } else if (parsed.prog === "find") {
+    for (const run of findExecCommands(parsed.args))
+      verdicts.push(judge(run.command, ctx, depth + 1, run.inFileDir ? [null] : here));
   }
-  // Every nested text is judged whole, and one that holds the next level holds nearly the whole command again, so
-  // the TEXT judged is budgeted, not only the number of judgings.
-  spendJudgedChars(c.length);
-  if (halted()) return ask(WORK_BUDGET_REASON);
-  const { parts, incomplete } = splitSegments(c);
-  const parsedParts = parts.map((part) => parseSegment(part.text));
+  // A command line a wrapper hands to a shell (`watch 'x'`, `su -c 'x'`, `ssh h 'x'`, `rsync -e 'x'`), and a
+  // command run in a container that mounts the repo (its paths read as the host's).
+  for (const text of shellStrings(parsed.prog, parsed.args, isLocalHost)) {
+    if (text.trim() !== "") verdicts.push(judge(text, ctx, depth + 1, here));
+  }
+  verdicts.push(...gitExecVerdicts(parsed, ctx, depth, here));
+  const inContainer = containerExec(parsed.prog, parsed.args);
+  if (inContainer !== null) verdicts.push(judge(inContainer, ctx, depth + 1, here));
+  const container = containerRun(parsed.prog, parsed.args);
+  if (container) {
+    const inside = container.workdir === undefined ? here : runIn(here, container.workdir, ctx);
+    verdicts.push(judge(container.command, ctx, depth + 1, inside));
+  }
+  return verdicts;
+}
 
+/**
+ * `$(true)git push --no-verify`: the program's name is built at run time, so it is a command the guard cannot name. The
+ * literal rest of the word is judged as the program it would be (a deny stands), and a human decides. A word that is one
+ * substitution and nothing else is the `eval "$(ssh-agent -s)"` idiom (no arguments) or an array run as a command
+ * (`"${DC[@]}" build`); only a lone `$( )` or backtick with arguments is a command. A `{a,b}` or `{a..b}` group in the
+ * program word builds the name too (`env GIT_TRACE{2..2}=x git status`).
+ */
+function dynamicProgramVerdicts(
+  text: string,
+  parsed: Parsed,
+  ctx: BashContext,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const verdicts: BashVerdict[] = [];
+  const guess = dynamicName(parsed.prog) ? withoutExpansions(parsed.prog) : null;
+  if (
+    guess !== null &&
+    (guess !== "" || (parsed.args.length > 0 && /^[$`][(`]|^`/.test(parsed.prog)))
+  ) {
+    const named =
+      guess === "" ? null : classifySegment(text, { ...parsed, prog: guess }, ctx, here);
+    verdicts.push(named ?? ask(DYNAMIC_PROGRAM_REASON));
+  }
+  if (BRACE_GROUP_WORD.test(parsed.word)) verdicts.push(ask(DYNAMIC_PROGRAM_REASON));
+  return verdicts;
+}
+
+/** What one `judge` call walks: where the next command runs, and what it has found so far. */
+interface Walk {
+  after: readonly Cwd[]; // where the next command runs when the one before it succeeded
+  anywhere: readonly Cwd[]; // everywhere any later command could run
+  readonly verdicts: BashVerdict[];
+  readonly scriptTexts: string[]; // what an interpreter or a shell is handed on stdin
+  readonly written: WrittenScripts;
+}
+
+/** The parts of one `judge` call that do not change while it walks. */
+interface WalkInput {
+  readonly parts: readonly Segment[];
+  readonly parsedParts: readonly Parsed[];
+  readonly bodiesByPart: readonly string[][];
+  /** `CDPATH` makes `cd harness` land in a directory the guard cannot see, so no `cd` is trusted once it is named. */
+  readonly cdpath: boolean;
+  readonly ctx: BashContext;
+  readonly depth: number;
+}
+
+/** Judge the simple command at `index`, in the directories the ones before it may have left the shell in. */
+function judgePart(index: number, walk: Walk, input: WalkInput): void {
+  const { parts, parsedParts, bodiesByPart, cdpath, ctx, depth } = input;
+  const part = parts[index] as Segment;
+  if (halted()) return;
+  // A word the brace budget cuts asks only if THIS command holds a group the shell would expand (the lexer's reading).
+  setBareBraces(hasBareBraceGroup(part.text));
+  const parsed = parsedParts[index] as Parsed;
+  // `a && b` runs b only where a succeeded; after `;`, `||`, a newline, a pipe or `&` it may not have.
+  const shellIn = part.chained && part.joiner === "&&" ? walk.after : walk.anywhere;
+  // `env -C DIR cmd` runs `cmd` in DIR, not the shell around it.
+  const here = parsed.chdir === undefined ? shellIn : runIn(shellIn, parsed.chdir, ctx);
+  const v = classifySegment(part.text, parsed, ctx, here);
+  if (v) walk.verdicts.push(v);
+  // A SQL client's own shell escapes and file commands (`sqlite3 .shell`, `psql \\!`, `mysql system`).
+  walk.verdicts.push(
+    ...dbClientVerdicts(parts, parsedParts, index, bodiesByPart[index] ?? [], here, ctx),
+    ...siblingSweepVerdicts(parts, parsedParts, index, ctx, depth, here),
+    ...dynamicProgramVerdicts(part.text, parsed, ctx, here),
+    ...nestedCommandVerdicts(parsed, ctx, depth, here),
+  );
+  if (readsScriptFromStdin(parsed, index)) walk.scriptTexts.push(...pipelineTexts(parts, index));
+  // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a command
+  // line; a script piped in from anything else cannot be read. A script this line wrote (a heredoc, `echo '…' > F`) and
+  // runs: the text is judged as the script it is.
+  walk.verdicts.push(
+    ...handedScriptVerdicts(parts, parsedParts, index, ctx, depth, here),
+    ...writeThenRun(
+      parts,
+      parsedParts,
+      index,
+      bodiesByPart[index] ?? [],
+      walk.written,
+      ctx,
+      depth,
+      here,
+    ),
+  );
+  const moved = nextDirs(shellIn, parsed, part.text, ctx, cdpath);
+  // `A || cd X && W`: the `cd` runs only when A failed. When A succeeds W runs where A did, so after a `cd`
+  // that follows `||` the next `&&` command may be in the old directory as well as in X.
+  walk.after = moved ? (part.joiner === "||" ? joinDirs(shellIn, moved) : moved) : shellIn;
+  if (moved) walk.anywhere = joinDirs(walk.anywhere, moved);
+}
+
+/** A command the guard refuses before it reads any of it: a gate bypass, or a switch of the harness itself. */
+function refusedOutright(
+  c: string,
+  parts: readonly Segment[],
+  parsedParts: readonly Parsed[],
+): BashVerdict | null {
   // --- Gate bypasses: always refused. The pre-push hook and CI are the change-management control.
   if (/\b(SKIP_FITNESS=(1|true|yes)|CW_SKIP_PHI_SCAN=(1|true|yes))\b/.test(c)) {
     return deny("Skipping the fitness gate or PHI scan is a human decision, not an agent one.");
@@ -1355,9 +1190,14 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
       "That variable switches off or re-points part of the agent harness (Stop gate, ledger, guard fail-closed, its project root, an ECC hook, or the hook configuration an agent loads). A human decides.",
     );
   }
+  return null;
+}
 
-  // Every simple command is judged, in order; any deny wins, else the first ask, else allow. Writes are
-  // judged against every directory the command could be running in (see `Cwd`), and so are the whole-tree reads.
+/** What a command line asks before any simple command is read: a loader variable, and a text that ends inside a quote. */
+function preambleVerdicts(
+  parsedParts: readonly Parsed[],
+  incomplete: string | null,
+): BashVerdict[] {
   const verdicts: BashVerdict[] = [];
   // A variable bun or perl reads at start (`BUN_OPTIONS=--preload=…`, `PERL5OPT`, `LD_PRELOAD`), or one that picks a
   // nested agent's hook binary: set anywhere in this command line, so a later or earlier statement counts too.
@@ -1378,102 +1218,63 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
       ),
     );
   }
-  let after = start; // where the next command runs when the one before it succeeded
-  let anywhere = start; // everywhere any later command could run
-  const scriptTexts: string[] = []; // what an interpreter or a shell is handed on stdin
-  const bodiesByPart = heredocBodiesByPart(c, parsedParts);
-  const written: WrittenScripts = new Map();
-  // `CDPATH` makes `cd harness` land in a directory the guard cannot see, so no `cd` is trusted once it is named.
-  const cdpath = /\bCDPATH\b/.test(c);
-  parts.forEach((part, index) => {
-    if (halted()) return;
-    // A word the brace budget cuts asks only if THIS command holds a group the shell would expand (the lexer's reading).
-    setBareBraces(hasBareBraceGroup(part.text));
-    const parsed = parsedParts[index] as Parsed;
-    // `a && b` runs b only where a succeeded; after `;`, `||`, a newline, a pipe or `&` it may not have.
-    const shellIn = part.chained && part.joiner === "&&" ? after : anywhere;
-    // `env -C DIR cmd` runs `cmd` in DIR, not the shell around it.
-    const here = parsed.chdir === undefined ? shellIn : runIn(shellIn, parsed.chdir, ctx);
-    const v = classifySegment(part.text, parsed, ctx, here);
-    if (v) verdicts.push(v);
-    // A SQL client's own shell escapes and file commands (`sqlite3 .shell`, `psql \\!`, `mysql system`).
-    verdicts.push(
-      ...dbClientVerdicts(parts, parsedParts, index, bodiesByPart[index] ?? [], here, ctx),
-    );
-    verdicts.push(...siblingSweepVerdicts(parts, parsedParts, index, ctx, depth, here));
-    // `$(true)git push --no-verify`: the program's name is built at run time, so it is a command the guard cannot
-    // name. The literal rest of the word is judged as the program it would be (a deny stands), and a human decides.
-    // A word that is one substitution and nothing else is the `eval "$(ssh-agent -s)"` idiom (no arguments) or an
-    // array run as a command (`"${DC[@]}" build`); only a lone `$( )` or backtick with arguments is a command.
-    const guess = dynamicName(parsed.prog) ? withoutExpansions(parsed.prog) : null;
-    if (
-      guess !== null &&
-      (guess !== "" || (parsed.args.length > 0 && /^[$`][(`]|^`/.test(parsed.prog)))
-    ) {
-      const named =
-        guess === "" ? null : classifySegment(part.text, { ...parsed, prog: guess }, ctx, here);
-      verdicts.push(named ?? ask(DYNAMIC_PROGRAM_REASON));
-    }
-    // `env GIT_TRACE{2..2}=x git status`: a brace group in the program word builds the name (here an assignment `env` reads).
-    if (BRACE_GROUP_WORD.test(parsed.word)) verdicts.push(ask(DYNAMIC_PROGRAM_REASON));
-    // Commands the shell runs INSIDE this one: `bash -c '…'`, `eval …`, `find -exec …`.
-    if (parsed.prog === "eval") {
-      verdicts.push(judge(parsed.args.join(" "), ctx, depth + 1, here));
-    } else if (NESTED_SHELL.test(parsed.prog)) {
-      const k = parsed.args.findIndex((a) => /^-[a-z]*c$/.test(a));
-      if (k >= 0) verdicts.push(judge(parsed.args[k + 1] ?? "", ctx, depth + 1, here));
-    } else if (parsed.prog === "find") {
-      for (const run of findExecCommands(parsed.args))
-        verdicts.push(judge(run.command, ctx, depth + 1, run.inFileDir ? [null] : here));
-    }
-    // A command line a wrapper hands to a shell (`watch 'x'`, `su -c 'x'`, `ssh h 'x'`, `rsync -e 'x'`), and a
-    // command run in a container that mounts the repo (its paths read as the host's).
-    for (const text of shellStrings(parsed.prog, parsed.args, isLocalHost)) {
-      if (text.trim() !== "") verdicts.push(judge(text, ctx, depth + 1, here));
-    }
-    verdicts.push(...gitExecVerdicts(parsed, ctx, depth, here));
-    const inContainer = containerExec(parsed.prog, parsed.args);
-    if (inContainer !== null) verdicts.push(judge(inContainer, ctx, depth + 1, here));
-    const container = containerRun(parsed.prog, parsed.args);
-    if (container) {
-      const inside = container.workdir === undefined ? here : runIn(here, container.workdir, ctx);
-      verdicts.push(judge(container.command, ctx, depth + 1, inside));
-    }
-    if (readsScriptFromStdin(parsed, index)) scriptTexts.push(...pipelineTexts(parts, index));
-    // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a
-    // command line; a script piped in from anything else cannot be read.
-    verdicts.push(...handedScriptVerdicts(parts, parsedParts, index, ctx, depth, here));
-    // A script this line wrote (a heredoc, `echo '…' > F`) and runs: the text is judged as the script it is.
-    verdicts.push(
-      ...writeThenRun(
-        parts,
-        parsedParts,
-        index,
-        bodiesByPart[index] ?? [],
-        written,
-        ctx,
-        depth,
-        here,
-      ),
-    );
-    const moved = nextDirs(shellIn, parsed, part.text, ctx, cdpath);
-    // `A || cd X && W`: the `cd` runs only when A failed. When A succeeds W runs where A did, so after a `cd`
-    // that follows `||` the next `&&` command may be in the old directory as well as in X.
-    after = moved ? (part.joiner === "||" ? joinDirs(shellIn, moved) : moved) : shellIn;
-    if (moved) anywhere = joinDirs(anywhere, moved);
-  });
+  return verdicts;
+}
+
+/** What the whole command line holds beyond its simple commands: `$( )` and backtick bodies, and a script fed to an interpreter. */
+function trailingVerdicts(c: string, walk: Walk, ctx: BashContext, depth: number): BashVerdict[] {
+  const verdicts: BashVerdict[] = [];
   setBareBraces(true); // outside a simple command nothing says which braces are quoted: the conservative reading
   // `$( … )` and backticks run wherever the command around them runs.
   const inners = substitutions(c);
   if (inners.length > MAX_SUBSTITUTIONS) {
     verdicts.push(ask("Too many command substitutions to check; a human decides."));
-  } else for (const inner of inners) verdicts.push(judge(inner, ctx, depth + 1, anywhere));
+  } else for (const inner of inners) verdicts.push(judge(inner, ctx, depth + 1, walk.anywhere));
   // A script fed to an interpreter on stdin is only text to us: judge all of it (heredoc body included).
-  if (scriptTexts.length > 0) {
+  if (walk.scriptTexts.length > 0) {
     const bodies = scanShell(c).docs.map((doc) => doc.body);
-    const v = scriptTextVerdict([...scriptTexts, ...bodies].join("\n"));
+    const v = scriptTextVerdict([...walk.scriptTexts, ...bodies].join("\n"));
     if (v) verdicts.push(v);
   }
+  return verdicts;
+}
+
+function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd[]): BashVerdict {
+  const c = cmd.trim();
+  if (depth > MAX_NESTING || --judgeBudget < 0) {
+    return ask(
+      "Command substitutions or `bash -c` nested too deeply, or too many to check; a human decides.",
+    );
+  }
+  // Every nested text is judged whole, and one that holds the next level holds nearly the whole command again, so
+  // the TEXT judged is budgeted, not only the number of judgings.
+  spendJudgedChars(c.length);
+  if (halted()) return ask(WORK_BUDGET_REASON);
+  const { parts, incomplete } = splitSegments(c);
+  const parsedParts = parts.map((part) => parseSegment(part.text));
+  const refused = refusedOutright(c, parts, parsedParts);
+  if (refused) return refused;
+
+  // Every simple command is judged, in order; any deny wins, else the first ask, else allow. Writes are
+  // judged against every directory the command could be running in (see `Cwd`), and so are the whole-tree reads.
+  const verdicts = preambleVerdicts(parsedParts, incomplete);
+  const walk: Walk = {
+    after: start,
+    anywhere: start,
+    verdicts,
+    scriptTexts: [],
+    written: new Map(),
+  };
+  const input: WalkInput = {
+    parts,
+    parsedParts,
+    bodiesByPart: heredocBodiesByPart(c, parsedParts),
+    cdpath: /\bCDPATH\b/.test(c),
+    ctx,
+    depth,
+  };
+  parts.forEach((_part, index) => judgePart(index, walk, input));
+  verdicts.push(...trailingVerdicts(c, walk, ctx, depth));
   return (
     verdicts.find((v) => v.decision === "deny") ??
     verdicts.find((v) => v.decision === "ask") ?? { decision: "allow", reason: "" }
@@ -2068,6 +1869,15 @@ function mainWrites(prog: string, args: readonly string[]): WriteTarget[] {
     const inPlace = args.some(isInPlace) ? files.map((f) => wt(f)) : [];
     return prog === "sed" ? [...inPlace, ...sedWriteTargets(args)] : inPlace;
   }
+  return toolWrites(prog, args, files);
+}
+
+/** The files the named tools write: curl, dd, git, the output-option programs, openssl, compressors, find, unpackers. */
+function toolWrites(
+  prog: string,
+  args: readonly string[],
+  files: readonly string[],
+): WriteTarget[] {
   if (prog === "curl") return curlWrites(args);
   if (prog === "dd") return args.filter((a) => a.startsWith("of=")).map((a) => wt(a.slice(3)));
   if (prog === "git") {
