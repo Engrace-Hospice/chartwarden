@@ -109,6 +109,7 @@ import { siblingCommands } from "./sibling-sweeps";
 import { readTar } from "./tar-grammar";
 import { isToolchainPath } from "./toolchain-paths";
 import { type SweepDepth, diffSweepOperands, gitDiffSweepOperands } from "./tree-sweep";
+import { reboundNames } from "./variable-rebinding";
 import {
   MAX_COMMAND_JUDGE_MS,
   baseName,
@@ -2846,7 +2847,9 @@ function literalAssignmentsOf(cmd: string): ReadonlyMap<string, string> {
     const p = parseSegment(seg);
     return assignmentWords(p.prog, p.args, p.assigns);
   });
-  return literalValues(words);
+  // A variable the command binds more than once, or by `read`, `printf -v`, `for`, `eval`, `+=`, … is no longer its first literal.
+  const rebound = reboundNames(cmd);
+  return new Map([...literalValues(words)].filter(([name]) => !rebound.has(name)));
 }
 
 function classifySegment(
