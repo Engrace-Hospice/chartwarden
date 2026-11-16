@@ -9,12 +9,13 @@ import {
   StatusPill,
   cardSurface,
   ghostBorder,
+  stepUpPath,
   t,
   useApiClient,
 } from "@chartwarden/ui";
-import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties, JSX, ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { CSSProperties, JSX, KeyboardEvent, ReactNode } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
 import {
   ChartBanner,
@@ -24,23 +25,52 @@ import {
 } from "../../shell/patient-context";
 import { useSession } from "../../shell/session";
 import {
+  clearStepUpDraft,
+  findStepUpDraftResourceId,
+  peekStepUpDraft,
+  stashStepUpDraft,
+  stepUpDraftKey,
+  stepUpRedirectFor,
+} from "../../shell/step-up-redirect";
+import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
+import {
   type CarePlan,
   type ClinicalSnapshot,
   type Goal,
+  type GoalSource,
+  type GoalStatus,
   type Intervention,
+  type InterventionDiscipline,
   type PatientSummary,
   type Problem,
+  type ProblemKind,
+  type ProblemSource,
   type ProposedChanges,
   type Readiness,
   type ReviewStatus,
+  type SignerRole,
   type SignerSlot,
   type Version,
+  type WriteResult,
   bootstrapCarePlan,
+  createGoal,
+  createIntervention,
+  createProblem,
+  createVersion,
+  discontinueIntervention,
   errorMessage,
+  fieldErrorsOf,
+  finalizeVersion,
   getCarePlanWorkspace,
   getProposedChanges,
+  isStaleVersion,
   loadPatientAdmissions,
-  writeHeaders,
+  patchGoal,
+  patchIntervention,
+  patchProblem,
+  resolveProblem,
+  returnToDraft,
+  signVersion,
 } from "./care-plan-api";
 import {
   CarePlanRail,
@@ -48,9 +78,10 @@ import {
   InterventionsList,
   PlanHeader,
   PlanStats,
+  RestrictedContentNote,
   disciplineLabel,
 } from "./care-plan-overview";
-import { cap, toneFor } from "./care-plan-status";
+import { cap, isGoalEditable, isInterventionEditable, toneFor } from "./care-plan-status";
 
 type Tab = "goals" | "interventions" | "problems" | "revision" | "history";
 type ModalState =
@@ -68,18 +99,50 @@ const KIND_ORDER: Record<string, number> = {
   related: 1,
   unrelated: 2,
 };
-const PROBLEM_KINDS = ["terminal", "related", "unrelated"] as const;
-const PROBLEM_SOURCES = ["clinical", "assessment", "idg", "patient_family"] as const;
-const GOAL_SOURCES = ["clinical", "patient_stated", "family_stated", "agent_stated"] as const;
-const GOAL_STATUSES = [
+// Every vocabulary below is typed against the published contract (care-plan-api.ts derives each union from
+// the request body), so a value the server no longer accepts is a compile error here, not a 400 at runtime.
+const PROBLEM_KINDS: readonly ProblemKind[] = ["terminal", "related", "unrelated"];
+/** Exhaustive over the contract's `source` union: adding or dropping a server value breaks this literal. */
+const PROBLEM_SOURCE_LABELS: Record<ProblemSource, string> = {
+  clinical: "Clinical assessment",
+  patient_reported: "Patient reported",
+  family_reported: "Family reported",
+  history: "Chart history",
+  intake_extraction: "Intake extraction",
+};
+export const PROBLEM_SOURCE_OPTIONS: readonly { value: ProblemSource; label: string }[] = (
+  Object.keys(PROBLEM_SOURCE_LABELS) as ProblemSource[]
+).map((value) => ({ value, label: PROBLEM_SOURCE_LABELS[value] }));
+const GOAL_SOURCES: readonly GoalSource[] = [
+  "clinical",
+  "patient_stated",
+  "family_stated",
+  "agent_stated",
+];
+const GOAL_STATUSES: readonly GoalStatus[] = [
   "not_started",
   "in_progress",
   "met",
   "not_met",
   "revised",
   "discontinued",
-] as const;
-const DISCIPLINES = [
+];
+// The goal lifecycle graph (lifecycle/elements.ts GOAL_GRAPH): a goal may only move along these edges;
+// met / not_met / discontinued are terminal. The server answers 409 ILLEGAL_TRANSITION for any other
+// move, so the edit form offers the current status plus its legal targets and nothing else.
+const GOAL_NEXT_STATUSES: Readonly<Record<GoalStatus, readonly GoalStatus[]>> = {
+  not_started: ["in_progress"],
+  in_progress: ["met", "not_met", "revised", "discontinued"],
+  revised: ["in_progress"],
+  met: [],
+  not_met: [],
+  discontinued: [],
+};
+const goalStatusOptions = (current: GoalStatus): readonly GoalStatus[] => [
+  current,
+  ...GOAL_NEXT_STATUSES[current],
+];
+const DISCIPLINES: readonly InterventionDiscipline[] = [
   "rn",
   "lpn",
   "chha",
@@ -93,7 +156,42 @@ const DISCIPLINES = [
   "st",
   "music_therapy",
   "dietitian",
-] as const;
+];
+
+/** The option `value` when it is one of `options`, else `fallback` (a state value read off the wire is a bare string). */
+function pick<T extends string>(
+  options: readonly T[],
+  value: string | null | undefined,
+  fallback: T,
+): T {
+  return options.find((option) => option === value) ?? fallback;
+}
+
+/** Shown when a request got no answer at all. The client keeps the idempotency key, so retrying is safe. */
+const NO_RESPONSE_MESSAGE = "No response — your change may not have saved. Retry.";
+const LOAD_NO_RESPONSE_MESSAGE =
+  "No response — the Care Plan workspace could not be loaded. Try again.";
+/** The write succeeded but the re-read did not: say so, or the stale screen invites a repeat that 409s. */
+const SAVED_REFRESH_NO_RESPONSE_MESSAGE =
+  "Your change was saved, but the workspace could not be refreshed (no response). Reload the page before making another change.";
+const SAVED_REFRESH_FAILED_MESSAGE =
+  "Your change was saved, but the workspace could not be refreshed. Reload the page before making another change.";
+const STALE_MESSAGE =
+  "This record changed while you were working. The latest version is loaded; check your entry and save again.";
+const STALE_RELOAD_FAILED_MESSAGE =
+  "This record changed while you were working, and the latest version could not be loaded. Try saving again.";
+const SIGN_ACTION = "care-plan-sign";
+const STEP_UP_ACTIONS: readonly string[] = [SIGN_ACTION];
+
+type WriteAction = () => Promise<WriteResult<unknown>>;
+/** What to keep through a step-up round trip: typed text survives, in memory only (see step-up-redirect.ts). */
+interface StepUpDraft {
+  readonly key: string | null;
+  readonly value: unknown;
+}
+/** Resolves true when the write was accepted. */
+type SubmitWrite = (action: WriteAction, success: string, draft?: StepUpDraft) => Promise<boolean>;
+type FieldErrors = Readonly<Record<string, string>>;
 
 function hasPerm(perms: string[] | undefined, key: string): boolean {
   return perms?.includes(key) ?? false;
@@ -113,67 +211,260 @@ function formatDate(value: string | null | undefined): string {
       });
 }
 
+/**
+ * A goal's `targetAt` is a calendar day carried as a UTC date-time ("2026-12-01T00:00:00.000Z"): it is read
+ * in UTC, because local fields would show a US clinician's Dec 1 as Nov 30.
+ */
+function formatCalendarDate(value: string | null | undefined): string {
+  if (!value) return "Not set";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime())
+    ? value
+    : d.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      });
+}
+
 function blockerLabel(code: string, message?: string): string {
-  if (message) return message;
+  if (message) return message.charAt(0).toUpperCase() + message.slice(1);
   if (code === "TERMINAL_PROBLEM_REQUIRED") return "Active terminal problem required";
   if (code === "OPEN_VERSION_REQUIRED") return "Open draft or review version required";
   return cap(code);
 }
+
+const TERMINAL_BLOCKER = "TERMINAL_PROBLEM_REQUIRED";
+const IDG_PROPOSAL_BLOCKER = "IDG_PROPOSAL_REQUIRED";
+const OPEN_VERSION_BLOCKER = "OPEN_VERSION_REQUIRED";
+const PROPOSAL_CONFLICT_LABEL =
+  "A proposed IDG change conflicts with newer Care Plan content. Resolve it before sending";
+
+function hasBlocker(readiness: Readiness | null, code: string): boolean {
+  return readiness?.blockers.some((blocker) => blocker.code === code) ?? false;
+}
+
+/** An applied IDG proposal the plan has moved out from under: the server marks it `conflict` with a reason. */
+function conflictedProposals(proposed: ProposedChanges | null): ProposedChanges["proposals"] {
+  return (proposed?.proposals ?? []).filter((p) => p.status === "conflict" || p.conflictReason);
+}
+
+const CONFLICT_REASONS: Record<string, string> = {
+  baseline_changed: "the Care Plan changed after the IDG decision was recorded",
+};
+const conflictReasonText = (reason: string | null): string =>
+  reason ? (CONFLICT_REASONS[reason] ?? cap(reason)) : "the Care Plan changed";
 
 function snapshotOf(version: Version | null): ClinicalSnapshot | null {
   if (!version?.stateSnapshot || typeof version.stateSnapshot !== "object") return null;
   return version.stateSnapshot as ClinicalSnapshot;
 }
 
-function uniqueBlockers(readiness: Readiness | null, activeTerminal?: Problem): string[] {
+/**
+ * What needs attention, from the server's verdict alone (`readiness.blockers`) plus an IDG proposal in
+ * conflict. The server owns which blockers apply to which version kind (a terminal problem is only demanded of
+ * the initial version), so the client adds none of its own. `OPEN_VERSION_REQUIRED` is the server stating
+ * "no draft is open": on a healthy active plan that is the normal resting state, not something to fix.
+ */
+function attentionBlockers(
+  readiness: Readiness | null,
+  proposed: ProposedChanges | null,
+  planHasActiveVersion: boolean,
+): string[] {
   const labels = new Set<string>();
-  if (!activeTerminal) labels.add("Active terminal problem required");
   for (const blocker of readiness?.blockers ?? []) {
+    if (blocker.code === OPEN_VERSION_BLOCKER && planHasActiveVersion) continue;
     labels.add(blockerLabel(blocker.code, blocker.message).replace(/[.]$/, ""));
   }
+  if (conflictedProposals(proposed).length) labels.add(PROPOSAL_CONFLICT_LABEL);
   return [...labels];
 }
 
-/** A successful signature response is authoritative even if the following workspace read is stale. */
-function signedVersionFromMutation(response: unknown): Version | null {
-  const data = (response as { data?: unknown } | null)?.data;
-  if (!data || typeof data !== "object") return null;
-  const version = data as Partial<Version>;
+/** The signature roles a version asks for: the server's readiness set when it sent one, else the version's own. */
+function requiredSlots(version: Version | null, readiness: Readiness | null): SignerSlot[] {
+  return readiness?.signatures.required.length
+    ? readiness.signatures.required
+    : (version?.requiredSignerSet ?? []);
+}
+
+const TEAM_ROLES = ["msw", "chaplain"];
+const PHYSICIAN_ROLES = ["hospice_physician", "medical_director"];
+
+/**
+ * An IDG review is signed by the whole team (RN + MSW + chaplain + MD/DO), so it is not a "hospice physician"
+ * step; the wording follows the version's kind and required signer set rather than asserting one signer.
+ */
+function isTeamReview(version: Version | null, readiness: Readiness | null): boolean {
+  if (version?.kind === "idg_review") return true;
+  return requiredSlots(version, readiness).some((slot) =>
+    slot.role.split("|").some((role) => TEAM_ROLES.includes(role)),
+  );
+}
+
+/** True when everything still outstanding can only be signed by a physician. */
+function onlyPhysicianOutstanding(readiness: Readiness | null): boolean {
+  const missing = readiness?.signatures.missing ?? [];
+  return (
+    missing.length > 0 &&
+    missing.every((slot) => slot.role.split("|").some((role) => PHYSICIAN_ROLES.includes(role)))
+  );
+}
+
+interface ReviewWording {
+  readonly readyHeading: string;
+  readonly readyDescription: string;
+  readonly sendFromGuide: string;
+  readonly sendFromPanel: string;
+  readonly frozenHeading: string;
+  readonly frozenDescription: string;
+  readonly sendDescription: string;
+  readonly pendingHeading: string;
+  /** The stepper label for the signature step. */
+  signatureStep: string;
+}
+const PHYSICIAN_WORDING: ReviewWording = {
+  readyHeading: "Ready for physician review",
+  readyDescription:
+    "The clinical plan is complete. Sending it freezes this version for hospice physician review and signature.",
+  sendFromGuide: "Send for physician review",
+  sendFromPanel: "Send to hospice physician",
+  frozenHeading: "Hospice physician review & signature",
+  frozenDescription:
+    "Candidate content is frozen while the hospice physician reviews it. Return to draft only when clinical edits are required before physician signature.",
+  sendDescription:
+    "The current draft passes readiness checks. Sending it freezes the candidate version for hospice physician review and signature.",
+  pendingHeading: "Hospice physician review pending",
+  signatureStep: "Physician signature",
+};
+const TEAM_WORDING: ReviewWording = {
+  readyHeading: "Ready for team signatures",
+  readyDescription:
+    "The clinical plan is complete. Sending it freezes this version for the IDG team's review and signatures.",
+  sendFromGuide: "Send for team signatures",
+  sendFromPanel: "Send to IDG team",
+  frozenHeading: "Team review & signatures",
+  frozenDescription:
+    "Candidate content is frozen while the IDG team signs it. Return to draft only when clinical edits are required before signature.",
+  sendDescription:
+    "The current draft passes readiness checks. Sending it freezes the candidate version for the IDG team's review and signatures.",
+  pendingHeading: "Team signatures pending",
+  signatureStep: "Team signatures",
+};
+const reviewWording = (team: boolean): ReviewWording => (team ? TEAM_WORDING : PHYSICIAN_WORDING);
+
+/** The version the response says was signed, if it says so (used only to select it in the history view). */
+function signedVersionOf(value: unknown): Version | null {
+  if (!value || typeof value !== "object") return null;
+  const version = value as Partial<Version>;
   return version.status === "signed" && typeof version.id === "string"
     ? (version as Version)
     : null;
 }
 
+/** The re-read row for the thing a dialog is editing, so a retry after a stale refusal quotes the current version. */
+function reseeded(state: NonNullable<ModalState>, plan: CarePlan): NonNullable<ModalState> {
+  switch (state.kind) {
+    case "problem": {
+      const fresh = state.problem && plan.problems.find((p) => p.id === state.problem?.id);
+      return fresh ? { ...state, problem: fresh } : state;
+    }
+    case "resolve_problem": {
+      const fresh = plan.problems.find((p) => p.id === state.problem.id);
+      return fresh ? { ...state, problem: fresh } : state;
+    }
+    case "goal": {
+      const fresh = state.goal && plan.goals.find((g) => g.id === state.goal?.id);
+      return fresh ? { ...state, goal: fresh } : state;
+    }
+    case "intervention": {
+      const fresh =
+        state.intervention && plan.interventions.find((i) => i.id === state.intervention?.id);
+      return fresh ? { ...state, intervention: fresh } : state;
+    }
+    case "discontinue_intervention": {
+      const fresh = plan.interventions.find((i) => i.id === state.intervention.id);
+      return fresh ? { ...state, intervention: fresh } : state;
+    }
+    case "sign":
+    case "return_to_draft": {
+      const fresh = plan.versions.find((v) => v.id === state.version.id);
+      return fresh ? { ...state, version: fresh } : state;
+    }
+  }
+}
+
+/** What identifies a dialog (not its row version): a re-seed keeps it, opening another one changes it. */
+function modalIdentity(state: ModalState): string {
+  if (!state) return "";
+  const subject =
+    state.kind === "problem" || state.kind === "resolve_problem"
+      ? state.problem?.id
+      : state.kind === "goal"
+        ? state.goal?.id
+        : state.kind === "intervention" || state.kind === "discontinue_intervention"
+          ? state.intervention?.id
+          : state.version.id;
+  return `${state.kind}:${subject ?? "new"}`;
+}
+
+/**
+ * Keyed by patient: moving to another chart remounts the workspace, so a write, dialog, notice or plan from the
+ * previous patient can never land under the next patient's URL.
+ */
 export function CarePlanView(): JSX.Element {
+  const { patientId } = useParams<{ patientId: string }>();
+  return <CarePlanWorkspace key={patientId} />;
+}
+
+function CarePlanWorkspace(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const session = useSession();
   const { patientId } = useParams<{ patientId: string }>();
   const identity = useChartIdentity(patientId);
+  const stepUpOwner = useStepUpOwner();
+  const returningFromStepUp = useStepUpReturn(stepUpOwner, STEP_UP_ACTIONS);
   const [plan, setPlan] = useState<CarePlan | null>(null);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [review, setReview] = useState<ReviewStatus | null>(null);
   const [proposed, setProposed] = useState<ProposedChanges | null>(null);
+  // The proposed-changes read can fail on its own: that is shown, never read as "there are none".
+  const [proposedError, setProposedError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("goals");
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
+  // `loading` is the FIRST read only (full-page spinner). Every later read refreshes in place: unmounting
+  // the workspace on each write would drop focus to <body>, reset scroll and remount the status notice.
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [notice, setNotice] = useState<string | null>(null);
   // F-066 (#161) — the open admission `POST /patients/:id/care-plan` is keyed by, resolved only when no
   // plan exists. Automatic bootstrap on activation is the normal path; this is the recovery control when
   // it did not happen. `null` while unresolved or when the patient has no OPEN admission (a patient with
   // only discharged admissions is not under care, and bootstrapping a plan into one would be wrong).
   const [openAdmissionId, setOpenAdmissionId] = useState<string | null>(null);
+  const [admissionsError, setAdmissionsError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const hasLoaded = useRef(false);
+  const reloadSeq = useRef(0);
+  const modalRef = useRef<ModalState>(null);
+  /** Identity of the dialog open when the current write started ("" for a page-level write). */
+  const writeOrigin = useRef("");
+  const resumedSign = useRef(false);
 
   const canAuthor = hasPerm(session?.permissions, "care_plan.author");
   const canFinalize = hasPerm(session?.permissions, "care_plan.finalize");
   const canSign = hasPerm(session?.permissions, "care_plan.sign");
+  const canBootstrap = hasPerm(session?.permissions, "care_plan.bootstrap");
+  const pending = busy || refreshing;
 
   const openVersion = useMemo(
     () => plan?.versions.find((v) => v.status === "draft" || v.status === "in_review") ?? null,
@@ -186,146 +477,236 @@ export function CarePlanView(): JSX.Element {
   const selectedVersion =
     plan?.versions.find((v) => v.id === selectedVersionId) ?? activeVersion ?? openVersion ?? null;
 
-  async function reload(message?: string): Promise<void> {
-    if (!patientId) return;
-    setLoading(true);
+  /** Re-read the workspace. Never rejects: a read that got no answer becomes the page error, not a stuck spinner. */
+  async function reload(message?: string): Promise<CarePlan | null> {
+    if (!patientId) return null;
+    const seq = ++reloadSeq.current;
+    const first = !hasLoaded.current;
+    if (first) setLoading(true);
+    else setRefreshing(true);
     setError(null);
-    const res = await getCarePlanWorkspace(client, patientId);
-    if (res.error) setError(errorMessage(res.error, "Could not load the Care Plan workspace."));
-    setPlan(res.plan);
-    setPatient(res.patient);
-    if (!res.plan && !res.error) {
-      // No plan yet — resolve the admission a bootstrap would hang off, so the empty state can offer
-      // the create rather than assert that admission activation already did it (#161).
-      const admissions = await loadPatientAdmissions(client, patientId);
-      setOpenAdmissionId(admissions.find((a) => a.dischargedAt == null)?.id ?? null);
-    }
-    setReadiness(res.readiness);
-    setReview(res.review);
-    const open = res.plan?.versions.find((v) => v.status === "draft" || v.status === "in_review");
-    setSelectedVersionId((current) => current ?? res.plan?.activeVersionId ?? open?.id ?? null);
-    if (open?.kind === "idg_review") {
-      const proposedRes = await getProposedChanges(client, res.plan!.id, open.id);
-      setProposed(proposedRes.proposed);
-    } else {
+    // `message` reports a write that already succeeded: say so before the re-read, so a refresh that fails
+    // cannot leave the screen silent about it (and the old state inviting a repeat that 409s).
+    if (message) setNotice(message);
+    try {
+      const res = await getCarePlanWorkspace(client, patientId);
+      if (seq !== reloadSeq.current) return null;
+      const loadError = res.error
+        ? errorMessage(res.error, "Could not load the Care Plan workspace.")
+        : null;
+      if (loadError) setError(message ? SAVED_REFRESH_FAILED_MESSAGE : loadError);
+      // A refresh that could not read the plan keeps the workspace on screen (with the error) rather than blanking it.
+      if (loadError && !res.plan && !first) return null;
+      setPlan(res.plan);
+      setPatient(res.patient);
+      setOpenAdmissionId(null);
+      setAdmissionsError(null);
+      if (!res.plan && !res.error) {
+        // No plan yet — resolve the admission a bootstrap would hang off, so the empty state can offer
+        // the create rather than assert that admission activation already did it (#161).
+        const found = await loadPatientAdmissions(client, patientId);
+        if (seq !== reloadSeq.current) return null;
+        if (found.error) {
+          setAdmissionsError(
+            errorMessage(found.error, "Could not look up this patient's admissions."),
+          );
+        } else {
+          setOpenAdmissionId(found.admissions.find((a) => a.dischargedAt == null)?.id ?? null);
+        }
+      }
+      setReadiness(res.readiness);
+      setReview(res.review);
+      const open = res.plan?.versions.find((v) => v.status === "draft" || v.status === "in_review");
+      setSelectedVersionId((current) => current ?? res.plan?.activeVersionId ?? open?.id ?? null);
       setProposed(null);
+      setProposedError(null);
+      if (res.plan && open?.kind === "idg_review") {
+        const proposedRes = await getProposedChanges(client, res.plan.id, open.id);
+        if (seq !== reloadSeq.current) return null;
+        if (proposedRes.error) {
+          setProposedError(
+            errorMessage(proposedRes.error, "Could not load the IDG proposed changes."),
+          );
+        } else {
+          setProposed(proposedRes.proposed);
+        }
+      }
+      setNotice(message ?? null);
+      hasLoaded.current = true;
+      return res.plan;
+    } catch {
+      if (seq === reloadSeq.current) {
+        setError(message ? SAVED_REFRESH_NO_RESPONSE_MESSAGE : LOAD_NO_RESPONSE_MESSAGE);
+      }
+      return null;
+    } finally {
+      if (seq === reloadSeq.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-    setNotice(message ?? null);
-    setLoading(false);
   }
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: route patientId is the reload boundary.
   useEffect(() => {
+    hasLoaded.current = false;
+    setSelectedVersionId(null);
     void reload();
   }, [patientId]);
 
+  useEffect(() => {
+    modalRef.current = modal;
+  }, [modal]);
+
   // A dialog shows the error of ITS action; opening or closing one starts from a clean slate so an
-  // earlier refusal is not replayed inside an unrelated dialog.
+  // earlier refusal is not replayed inside an unrelated dialog. Keyed on WHICH dialog is open, not its row
+  // version, so re-seeding a dialog with the re-read row keeps the refusal that explains the re-seed.
+  const dialogIdentity = modalIdentity(modal);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the dialog identity is the boundary.
   useEffect(() => {
     setModalError(null);
-  }, [modal]);
+    setFieldErrors({});
+  }, [dialogIdentity]);
 
-  async function mutate(
-    action: () => Promise<{ data?: unknown; error?: unknown }>,
-    success: string,
-  ): Promise<void> {
-    setBusy(true);
-    if (modal) setModalError(null);
-    else setError(null);
-
-    const res = await action();
-    setBusy(false);
-
-    if (res.error) {
-      const response = (res as { response?: Response }).response;
-
-      const payload = res.error as {
-        code?: string;
-        message?: string;
-        error?: {
-          code?: string;
-          message?: string;
-        };
-      };
-
-      const code = payload.error?.code ?? payload.code;
-      const message = payload.error?.message ?? payload.message ?? "";
-
-      const requiresStepUp =
-        response?.status === 403 &&
-        (code === "STEP_UP_REQUIRED" || message.includes("step_up_recent"));
-
-      if (requiresStepUp) {
-        const returnTo = `${window.location.pathname}${window.location.search}`;
-
-        navigate(`/step-up?returnTo=${encodeURIComponent(returnTo)}`);
-
-        return;
-      }
-
-      const userMessage = carePlanErrorMessage(
-        res.error,
-        "The Care Plan action could not be completed. Please try again.",
-      );
-      if (modal) setModalError(userMessage);
-      else setError(userMessage);
-
-      return;
+  // Back from /step-up after a refused signature: reopen that version's sign dialog (its stashed role and
+  // understanding note restore themselves). Only on a verified return: an abandoned draft is discarded.
+  useEffect(() => {
+    if (!returningFromStepUp || resumedSign.current || !plan) return;
+    const versionId = findStepUpDraftResourceId(stepUpOwner, SIGN_ACTION);
+    if (!versionId) return;
+    const match = plan.versions.find((v) => v.id === versionId && v.status === "in_review");
+    if (match) {
+      resumedSign.current = true;
+      setTab("revision");
+      setModal({ kind: "sign", version: match });
+    } else {
+      clearStepUpDraft(stepUpDraftKey(stepUpOwner, SIGN_ACTION, versionId));
     }
+  }, [returningFromStepUp, stepUpOwner, plan]);
 
-    const signedVersion = signedVersionFromMutation(res);
+  function closeModal(): void {
+    if (modal?.kind === "sign") {
+      clearStepUpDraft(stepUpDraftKey(stepUpOwner, SIGN_ACTION, modal.version.id));
+    }
     setModal(null);
-    await reload(success);
-    if (signedVersion) {
-      setPlan((current) =>
-        current
-          ? {
-              ...current,
-              status: "active",
-              activeVersionId: signedVersion.id,
-              versions: current.versions.map((version) =>
-                version.id === signedVersion.id ? signedVersion : version,
-              ),
-            }
-          : current,
-      );
-      setReadiness({
-        planId: signedVersion.planId,
-        openVersionId: null,
-        canFinalize: false,
-        canSign: false,
-        blockers: [],
-        signatures: { required: [], collected: [], missing: [] },
-      });
-      setSelectedVersionId(signedVersion.id);
+  }
+
+  /** True while the dialog that started the in-flight write is still the open one (a page-level write has none). */
+  function writeOriginStillOpen(): boolean {
+    return modalIdentity(modalRef.current) === writeOrigin.current;
+  }
+
+  /**
+   * A failure goes where the write came from: its own dialog, else the page. A dialog the user opened while a
+   * page-level write was in flight (or after it moved on) is not that write's to report into.
+   */
+  function reportFailure(message: string, fields: FieldErrors = {}): void {
+    if (modalRef.current && writeOriginStillOpen()) {
+      setModalError(message);
+      setFieldErrors(fields);
+    } else {
+      setError(message);
     }
   }
 
+  async function refused(
+    res: Extract<WriteResult<unknown>, { ok: false }>,
+    draft?: StepUpDraft,
+  ): Promise<false> {
+    const returnTo = `${location.pathname}${location.search}`;
+    const stepUp =
+      stepUpRedirectFor(res.body, returnTo) ??
+      (res.status === 403 && /step_up_recent/.test(res.message) ? stepUpPath(returnTo) : null);
+    if (stepUp) {
+      stashStepUpDraft(draft?.key ?? null, draft?.value);
+      navigate(stepUp);
+      return false;
+    }
+    if (isStaleVersion(res.body)) {
+      // Someone else moved the plan. Re-read it and hand the open dialog the current rows, so the retry
+      // quotes the current version while the text already typed stays where it is.
+      const fresh = await reload();
+      const current = modalRef.current;
+      if (fresh && current && writeOriginStillOpen()) setModal(reseeded(current, fresh));
+      // A re-read that failed (offline, superseded) left the dialog on the old version: do not claim the latest is loaded.
+      reportFailure(fresh ? STALE_MESSAGE : STALE_RELOAD_FAILED_MESSAGE);
+      return false;
+    }
+    reportFailure(
+      carePlanErrorMessage(
+        res.body,
+        "The Care Plan action could not be completed. Please try again.",
+      ),
+      fieldErrorsOf(res.body),
+    );
+    return false;
+  }
+
+  const mutate: SubmitWrite = async (action, success, draft) => {
+    writeOrigin.current = modalIdentity(modalRef.current);
+    setBusy(true);
+    if (modalRef.current) {
+      setModalError(null);
+      setFieldErrors({});
+    } else {
+      setError(null);
+    }
+    let res: WriteResult<unknown>;
+    try {
+      res = await action();
+    } catch {
+      // No answer at all (offline, a reset, an abort). The API client holds the idempotency key, so a
+      // retry replays the same write instead of duplicating it.
+      reportFailure(NO_RESPONSE_MESSAGE);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+    if (!res.ok) return refused(res, draft);
+
+    clearStepUpDraft(draft?.key ?? null);
+    // Close only the dialog that made this write; one the user opened meanwhile keeps what they typed.
+    if (writeOriginStillOpen()) setModal(null);
+    await reload(success);
+    const signed = signedVersionOf(res.value);
+    if (signed) setSelectedVersionId(signed.id);
+    return true;
+  };
+
   async function startVersion(kind: "interim_revision" | "idg_review"): Promise<void> {
     if (!plan) return;
-    await mutate(
-      async () =>
-        client.POST("/api/v1/care-plans/{planId}/versions", {
-          params: { path: { planId: plan.id } },
-          body: { kind },
-        } as never),
+    const accepted = await mutate(
+      () => createVersion(client, plan.id, { kind }),
       kind === "idg_review" ? "Review draft opened." : "Condition-change revision opened.",
     );
-    setTab("revision");
+    if (accepted) setTab("revision");
   }
 
   async function finalize(version: Version): Promise<void> {
     if (!plan) return;
-    await mutate(
-      async () =>
-        client.POST("/api/v1/care-plans/{planId}/versions/{versionId}/finalize", {
-          params: { path: { planId: plan.id, versionId: version.id } },
-          body: { ifVersion: version.version },
-        } as never),
+    const accepted = await mutate(
+      () => finalizeVersion(client, plan.id, version.id, { ifVersion: version.version }),
       "Version sent for signatures.",
     );
-    setTab("revision");
+    if (accepted) setTab("revision");
+  }
+
+  async function startCarePlan(): Promise<void> {
+    if (!patientId || !openAdmissionId || starting) return;
+    setStarting(true);
+    setStartError(null);
+    try {
+      const res = await bootstrapCarePlan(client, patientId, openAdmissionId);
+      if (!res.ok) {
+        setStartError(`Could not start the care plan. ${res.message}`);
+        return;
+      }
+      await reload("Care plan started.");
+    } catch {
+      setStartError(`Could not start the care plan. ${NO_RESPONSE_MESSAGE}`);
+    } finally {
+      setStarting(false);
+    }
   }
 
   const bailBanner = <ChartPatientBanner patientId={patientId} />;
@@ -341,39 +722,35 @@ export function CarePlanView(): JSX.Element {
   if (error && !plan) {
     return (
       <PatientChartBail banner={bailBanner} patientId={patientId} current="care-plan">
-        <EmptyState title="Plan of Care unavailable" description={error} />
+        <EmptyState
+          title="Plan of Care unavailable"
+          description={error}
+          action={<Button onClick={() => void reload()}>Try again</Button>}
+        />
       </PatientChartBail>
     );
   }
 
   if (!plan) {
+    const canStart = Boolean(openAdmissionId) && canBootstrap;
     return (
       <PatientChartBail banner={bailBanner} patientId={patientId} current="care-plan">
         <EmptyState
-          title="No care plan yet"
+          title={admissionsError ? "Could not check admissions" : "No care plan yet"}
           description={
-            openAdmissionId
-              ? "Start the individualised plan of care for this admission (42 CFR 418.56(b)). Problems, goals, and interventions are added to it here."
-              : "This patient has no open admission, so there is no admission to hang a plan of care on. Admit the patient first."
+            admissionsError
+              ? admissionsError
+              : openAdmissionId
+                ? canBootstrap
+                  ? "Start the individualised plan of care for this admission (42 CFR 418.56(b)). Problems, goals, and interventions are added to it here."
+                  : "No plan of care has been started for this admission, and your role cannot start one. Ask a user who can set up care plans."
+                : "This patient has no open admission, so there is no admission to hang a plan of care on. Admit the patient first."
           }
           action={
-            openAdmissionId ? (
-              <Button
-                onClick={() => {
-                  if (!patientId || !openAdmissionId || starting) return;
-                  setStarting(true);
-                  setStartError(null);
-                  void bootstrapCarePlan(client, patientId, openAdmissionId).then((res) => {
-                    setStarting(false);
-                    if (!res.ok) {
-                      setStartError("Could not start the care plan.");
-                      return;
-                    }
-                    void reload("Care plan started.");
-                  });
-                }}
-                disabled={starting}
-              >
+            admissionsError ? (
+              <Button onClick={() => void reload()}>Try again</Button>
+            ) : canStart ? (
+              <Button onClick={() => void startCarePlan()} disabled={starting}>
                 {starting ? "Starting…" : "Start the care plan"}
               </Button>
             ) : undefined
@@ -389,7 +766,7 @@ export function CarePlanView(): JSX.Element {
   }
 
   const activeTerminal = plan.problems.find((p) => p.kind === "terminal" && p.status === "active");
-  const blockers = uniqueBlockers(readiness, activeTerminal);
+  const blockers = attentionBlockers(readiness, proposed, Boolean(activeVersion));
   const editable =
     canAuthor &&
     plan.status !== "discharged" &&
@@ -414,9 +791,11 @@ export function CarePlanView(): JSX.Element {
                     <Glyph name="lock" size={12} /> restricted content omitted
                   </span>
                 ) : null}
-                <Link to={`/patients/${patientId}/idg-history`} className="wx-btn-primary">
-                  IDG History
-                </Link>
+                {hasPerm(session?.permissions, "idg.read") ? (
+                  <Link to={`/patients/${patientId}/idg-history`} className="wx-btn-primary">
+                    IDG History
+                  </Link>
+                ) : null}
               </>
             }
           />
@@ -436,7 +815,7 @@ export function CarePlanView(): JSX.Element {
     >
       <div style={workspace}>
         <ChartModuleRail patientId={patientId ?? ""} current="care-plan" />
-        <main style={mainPane}>
+        <main style={mainPane} aria-busy={refreshing}>
           <PlanHeader
             plan={plan}
             activeVersion={activeVersion}
@@ -457,6 +836,7 @@ export function CarePlanView(): JSX.Element {
           {/* While a dialog is open its own copy of the error is shown inside it (the page one would sit
               behind the modal scrim, unseen and outside the aria-modal tree). */}
           {error && !modal ? <Notice tone="error">{error}</Notice> : null}
+          {proposedError ? <Notice tone="error">{proposedError}</Notice> : null}
           {notice ? <Notice tone="success">{notice}</Notice> : null}
 
           <WorkflowGuide
@@ -470,7 +850,7 @@ export function CarePlanView(): JSX.Element {
             canAuthor={canAuthor}
             canFinalize={canFinalize}
             canSign={canSign}
-            busy={busy}
+            busy={pending}
             onAddTerminal={() => setModal({ kind: "problem", defaultKind: "terminal" })}
             onContinue={() => setTab(openVersion?.status === "in_review" ? "revision" : "problems")}
             onOpenRevision={() => setTab("revision")}
@@ -484,116 +864,128 @@ export function CarePlanView(): JSX.Element {
             }}
           />
 
-          <div className="wx-subtabs" role="tablist" aria-label="Care Plan workspace views">
-            <TabButton active={tab === "goals"} onClick={() => setTab("goals")}>
+          <div
+            className="wx-subtabs"
+            role="tablist"
+            aria-label="Care Plan workspace views"
+            onKeyDown={(e) => moveTab(e, tab, setTab)}
+          >
+            <TabButton id="goals" active={tab === "goals"} onSelect={setTab}>
               Goals
               <span className="wx-seg-count wx-nums">{plan.goals.length}</span>
             </TabButton>
-            <TabButton active={tab === "interventions"} onClick={() => setTab("interventions")}>
+            <TabButton id="interventions" active={tab === "interventions"} onSelect={setTab}>
               Interventions
             </TabButton>
-            <TabButton active={tab === "problems"} onClick={() => setTab("problems")}>
+            <TabButton id="problems" active={tab === "problems"} onSelect={setTab}>
               Problems
             </TabButton>
-            <TabButton active={tab === "revision"} onClick={() => setTab("revision")}>
+            <TabButton id="revision" active={tab === "revision"} onSelect={setTab}>
               Review & Sign
               {openVersion ? <span className="wx-seg-count wx-nums">1</span> : null}
             </TabButton>
-            <TabButton active={tab === "history"} onClick={() => setTab("history")}>
+            <TabButton id="history" active={tab === "history"} onSelect={setTab}>
               Revisions
             </TabButton>
           </div>
 
-          {tab === "goals" ? (
-            <GoalsList
-              plan={plan}
-              editable={editable && plan.problems.length > 0}
-              onEdit={(goal) => setModal({ kind: "goal", goal, problemId: goal.problemId })}
-              onAdd={addGoal}
-            />
-          ) : null}
+          <div
+            role="tabpanel"
+            id={tabPanelId(tab)}
+            aria-labelledby={tabId(tab)}
+            style={tabPanelStyle}
+          >
+            {tab === "goals" ? (
+              <GoalsList
+                plan={plan}
+                editable={editable && plan.problems.length > 0}
+                onEdit={(goal) => setModal({ kind: "goal", goal, problemId: goal.problemId })}
+                onAdd={addGoal}
+              />
+            ) : null}
 
-          {tab === "interventions" ? (
-            <InterventionsList
-              plan={plan}
-              editable={editable && plan.problems.length > 0}
-              onEdit={(intervention) =>
-                setModal({
-                  kind: "intervention",
-                  intervention,
-                  problemId: intervention.problemId,
-                })
-              }
-              onDiscontinue={(intervention) =>
-                setModal({ kind: "discontinue_intervention", intervention })
-              }
-              onAdd={() =>
-                setModal({
-                  kind: "intervention",
-                  problemId: activeTerminal?.id ?? plan.problems[0]?.id,
-                })
-              }
-            />
-          ) : null}
+            {tab === "interventions" ? (
+              <InterventionsList
+                plan={plan}
+                editable={editable && plan.problems.length > 0}
+                onEdit={(intervention) =>
+                  setModal({
+                    kind: "intervention",
+                    intervention,
+                    problemId: intervention.problemId,
+                  })
+                }
+                onDiscontinue={(intervention) =>
+                  setModal({ kind: "discontinue_intervention", intervention })
+                }
+                onAdd={() =>
+                  setModal({
+                    kind: "intervention",
+                    problemId: activeTerminal?.id ?? plan.problems[0]?.id,
+                  })
+                }
+              />
+            ) : null}
 
-          {tab === "problems" ? (
-            <ClinicalContent
-              title="Problems"
-              readonly={
-                plan.status === "discharged" || !openVersion || openVersion.status === "in_review"
-              }
-              plan={plan}
-              problems={plan.problems}
-              goals={plan.goals}
-              interventions={plan.interventions}
-              canAuthor={editable}
-              onProblem={(problem) => setModal({ kind: "problem", problem })}
-              onGoal={(goal, problemId) => setModal({ kind: "goal", goal, problemId })}
-              onIntervention={(intervention, problemId) =>
-                setModal({ kind: "intervention", intervention, problemId })
-              }
-              onResolveProblem={(problem) => setModal({ kind: "resolve_problem", problem })}
-              onDiscontinueIntervention={(intervention) =>
-                setModal({ kind: "discontinue_intervention", intervention })
-              }
-            />
-          ) : null}
+            {tab === "problems" ? (
+              <ClinicalContent
+                title="Problems"
+                readonly={
+                  plan.status === "discharged" || !openVersion || openVersion.status === "in_review"
+                }
+                plan={plan}
+                problems={plan.problems}
+                goals={plan.goals}
+                interventions={plan.interventions}
+                canAuthor={editable}
+                onProblem={(problem) => setModal({ kind: "problem", problem })}
+                onGoal={(goal, problemId) => setModal({ kind: "goal", goal, problemId })}
+                onIntervention={(intervention, problemId) =>
+                  setModal({ kind: "intervention", intervention, problemId })
+                }
+                onResolveProblem={(problem) => setModal({ kind: "resolve_problem", problem })}
+                onDiscontinueIntervention={(intervention) =>
+                  setModal({ kind: "discontinue_intervention", intervention })
+                }
+              />
+            ) : null}
 
-          {tab === "revision" ? (
-            <RevisionPanel
-              plan={plan}
-              version={openVersion}
-              readiness={readiness}
-              proposed={proposed}
-              review={review}
-              canAuthor={canAuthor}
-              canFinalize={canFinalize}
-              canSign={canSign}
-              busy={busy}
-              onFinalize={finalize}
-              onSign={(version) => setModal({ kind: "sign", version })}
-              onReturn={(version) => setModal({ kind: "return_to_draft", version })}
-              onStartRevision={() => void startVersion("interim_revision")}
-              onStartReview={() => void startVersion("idg_review")}
-              onProblem={(problem) => setModal({ kind: "problem", problem })}
-              onGoal={(goal, problemId) => setModal({ kind: "goal", goal, problemId })}
-              onIntervention={(intervention, problemId) =>
-                setModal({ kind: "intervention", intervention, problemId })
-              }
-              onResolveProblem={(problem) => setModal({ kind: "resolve_problem", problem })}
-              onDiscontinueIntervention={(intervention) =>
-                setModal({ kind: "discontinue_intervention", intervention })
-              }
-            />
-          ) : null}
+            {tab === "revision" ? (
+              <RevisionPanel
+                plan={plan}
+                version={openVersion}
+                readiness={readiness}
+                proposed={proposed}
+                review={review}
+                canAuthor={canAuthor}
+                canFinalize={canFinalize}
+                canSign={canSign}
+                busy={pending}
+                onFinalize={finalize}
+                onSign={(version) => setModal({ kind: "sign", version })}
+                onReturn={(version) => setModal({ kind: "return_to_draft", version })}
+                onStartRevision={() => void startVersion("interim_revision")}
+                onStartReview={() => void startVersion("idg_review")}
+                onProblem={(problem) => setModal({ kind: "problem", problem })}
+                onGoal={(goal, problemId) => setModal({ kind: "goal", goal, problemId })}
+                onIntervention={(intervention, problemId) =>
+                  setModal({ kind: "intervention", intervention, problemId })
+                }
+                onResolveProblem={(problem) => setModal({ kind: "resolve_problem", problem })}
+                onDiscontinueIntervention={(intervention) =>
+                  setModal({ kind: "discontinue_intervention", intervention })
+                }
+              />
+            ) : null}
 
-          {tab === "history" ? (
-            <HistoryPanel
-              plan={plan}
-              selectedVersion={selectedVersion}
-              onSelect={(id) => setSelectedVersionId(id)}
-            />
-          ) : null}
+            {tab === "history" ? (
+              <HistoryPanel
+                plan={plan}
+                selectedVersion={selectedVersion}
+                onSelect={(id) => setSelectedVersionId(id)}
+              />
+            ) : null}
+          </div>
         </main>
       </div>
 
@@ -603,9 +995,10 @@ export function CarePlanView(): JSX.Element {
           plan={plan}
           goals={plan.goals}
           problems={plan.problems}
-          busy={busy}
+          busy={pending}
           error={modalError}
-          onClose={() => setModal(null)}
+          fieldErrors={fieldErrors}
+          onClose={closeModal}
           onSubmit={mutate}
         />
       ) : null}
@@ -657,6 +1050,7 @@ function WorkflowGuide({
   const isDischarged = plan.status === "discharged";
   const reviewDue = review?.status === "due" || review?.status === "overdue";
   const missingSignatures = readiness?.signatures.missing.length ?? 0;
+  const wording = reviewWording(isTeamReview(openVersion, readiness));
 
   let heading = "Complete the Care Plan";
   let description =
@@ -670,7 +1064,11 @@ function WorkflowGuide({
     description = "This admission is discharged. Historical Care Plan content remains available.";
   } else if (inReview) {
     heading =
-      missingSignatures > 0 ? "Hospice physician review pending" : "Review version in progress";
+      missingSignatures === 0
+        ? "Review version in progress"
+        : onlyPhysicianOutstanding(readiness)
+          ? PHYSICIAN_WORDING.pendingHeading
+          : wording.pendingHeading;
     description =
       missingSignatures > 0
         ? `${missingSignatures} required signer slot${missingSignatures === 1 ? "" : "s"} remain before this version can become the active Care Plan.`
@@ -682,7 +1080,7 @@ function WorkflowGuide({
           Review & sign
         </button>
       ) : (
-        <button type="button" style={primaryBtn} onClick={onOpenRevision}>
+        <button type="button" style={primaryBtn} disabled={busy} onClick={onOpenRevision}>
           View signature status
         </button>
       );
@@ -693,28 +1091,26 @@ function WorkflowGuide({
         : "Care Plan needs attention";
     description = blockers[0] as string;
     state = "attention";
-    const terminalMissing = blockers.some((b) => b.toLowerCase().includes("terminal problem"));
     action =
-      terminalMissing && canAuthor ? (
-        <button type="button" style={primaryBtn} onClick={onAddTerminal}>
+      hasBlocker(readiness, TERMINAL_BLOCKER) && canAuthor ? (
+        <button type="button" style={primaryBtn} disabled={busy} onClick={onAddTerminal}>
           Add terminal problem
         </button>
       ) : (
-        <button type="button" style={primaryBtn} onClick={onContinue}>
+        <button type="button" style={primaryBtn} disabled={busy} onClick={onContinue}>
           Continue Plan of Care
         </button>
       );
   } else if (hasOpenDraft && readiness?.canFinalize) {
-    heading = "Ready for physician review";
-    description =
-      "The clinical plan is complete. Sending it freezes this version for hospice physician review and signature.";
+    heading = wording.readyHeading;
+    description = wording.readyDescription;
     state = "success";
     action = canFinalize ? (
       <button type="button" style={primaryBtn} disabled={busy} onClick={onFinalize}>
-        Send for physician review
+        {wording.sendFromGuide}
       </button>
     ) : (
-      <button type="button" style={primaryBtn} onClick={onOpenRevision}>
+      <button type="button" style={primaryBtn} disabled={busy} onClick={onOpenRevision}>
         Review version
       </button>
     );
@@ -727,12 +1123,12 @@ function WorkflowGuide({
         : "Review the active plan and document any clinically meaningful changes.";
     state = "attention";
     action = (
-      <button type="button" style={primaryBtn} onClick={onStartReview}>
+      <button type="button" style={primaryBtn} disabled={busy} onClick={onStartReview}>
         Start review
       </button>
     );
   } else if (!openVersion && activeVersion) {
-    // An active plan can still carry readiness blockers (e.g. no active terminal problem); never
+    // An active plan can still carry readiness blockers (e.g. an IDG proposal in conflict); never
     // report "no action required" over them.
     heading = blockers.length ? "Care Plan needs attention" : "Care Plan is active";
     description = blockers.length
@@ -742,7 +1138,7 @@ function WorkflowGuide({
         : "No action is required now. Open a revision when the patient's condition or plan changes.";
     state = blockers.length ? "attention" : "success";
     action = canAuthor ? (
-      <button type="button" style={ghostBtn} onClick={onStartRevision}>
+      <button type="button" style={ghostBtn} disabled={busy} onClick={onStartRevision}>
         Document condition change
       </button>
     ) : null;
@@ -750,7 +1146,7 @@ function WorkflowGuide({
     heading = "Start the Care Plan";
     description = "Open the initial draft to begin documenting problems, goals, and interventions.";
     action = (
-      <button type="button" style={primaryBtn} onClick={onStartRevision}>
+      <button type="button" style={primaryBtn} disabled={busy} onClick={onStartRevision}>
         Start initial draft
       </button>
     );
@@ -821,8 +1217,14 @@ function WorkflowGuide({
   );
 }
 
-function WorkflowSteps({ current }: { current: 0 | 1 | 2 | 3 }): JSX.Element {
-  const steps = ["Build plan", "Send for review", "Physician signature", "Active"] as const;
+function WorkflowSteps({
+  current,
+  signatureStep,
+}: {
+  current: 0 | 1 | 2 | 3;
+  signatureStep: string;
+}): JSX.Element {
+  const steps = ["Build plan", "Send for review", signatureStep, "Active"] as const;
   return (
     <ol style={stepper} aria-label="Care Plan workflow">
       {steps.map((label, index) => {
@@ -947,25 +1349,34 @@ function ClinicalContent({
                   </div>
 
                   {canAuthor && !readonly ? (
-                    <details style={menuWrap}>
-                      <summary style={menuButton} aria-label={`Actions for ${problem.description}`}>
-                        <span aria-hidden="true">⋯</span>
-                      </summary>
-                      <div style={menuPopover}>
-                        <button type="button" style={menuItem} onClick={() => onProblem(problem)}>
-                          Edit problem
-                        </button>
-                        {problem.status === "active" ? (
+                    <RowMenu label={`Actions for ${problem.description}`} buttonStyle={menuButton}>
+                      {(done) => (
+                        <>
                           <button
                             type="button"
                             style={menuItem}
-                            onClick={() => onResolveProblem(problem)}
+                            onClick={() => {
+                              done();
+                              onProblem(problem);
+                            }}
                           >
-                            Resolve problem
+                            Edit problem
                           </button>
-                        ) : null}
-                      </div>
-                    </details>
+                          {problem.status === "active" ? (
+                            <button
+                              type="button"
+                              style={menuItem}
+                              onClick={() => {
+                                done();
+                                onResolveProblem(problem);
+                              }}
+                            >
+                              Resolve problem
+                            </button>
+                          ) : null}
+                        </>
+                      )}
+                    </RowMenu>
                   ) : null}
                 </div>
 
@@ -1159,12 +1570,12 @@ function RevisionPanel({
           </div>
           <div style={actionsRow}>
             {canAuthor ? (
-              <button type="button" style={ghostBtn} onClick={onStartRevision}>
+              <button type="button" style={ghostBtn} disabled={busy} onClick={onStartRevision}>
                 Document condition change
               </button>
             ) : null}
             {canAuthor && review?.canStartReview ? (
-              <button type="button" style={primaryBtn} onClick={onStartReview}>
+              <button type="button" style={primaryBtn} disabled={busy} onClick={onStartReview}>
                 Start scheduled review
               </button>
             ) : null}
@@ -1176,11 +1587,12 @@ function RevisionPanel({
 
   const candidate = snapshotOf(version);
   const readonly = version.status === "in_review";
-  const idgProposalRequired = version.kind === "idg_review" && !proposed?.changes.length;
-  const blockers = uniqueBlockers(
-    readiness,
-    plan.problems.find((p) => p.kind === "terminal" && p.status === "active"),
-  );
+  // The server's verdict, not an inference from a read that may have failed: an absent `proposed` is "unknown".
+  const idgProposalRequired = hasBlocker(readiness, IDG_PROPOSAL_BLOCKER);
+  const proposalConflict = conflictedProposals(proposed).length > 0;
+  const blockers = attentionBlockers(readiness, proposed, Boolean(plan.activeVersionId));
+  const wording = reviewWording(isTeamReview(version, readiness));
+  const sendReady = Boolean(readiness?.canFinalize) && !idgProposalRequired && !proposalConflict;
 
   return (
     <section style={panel}>
@@ -1202,6 +1614,7 @@ function RevisionPanel({
       <div style={revisionProgress}>
         <WorkflowSteps
           current={version.status === "in_review" ? 2 : readiness?.canFinalize ? 1 : 0}
+          signatureStep={wording.signatureStep}
         />
       </div>
 
@@ -1212,15 +1625,15 @@ function RevisionPanel({
               <h3 style={smallTitle}>
                 {idgProposalRequired
                   ? "Record IDG proposed changes"
-                  : readiness?.canFinalize
-                    ? "Ready for physician review"
+                  : sendReady
+                    ? wording.readyHeading
                     : "Before you can send this version"}
               </h3>
               <p style={muted}>
                 {idgProposalRequired
                   ? "An IDG review must contain at least one proposed Care Plan change. Record the IDG decision first, then send this version for signature."
-                  : readiness?.canFinalize
-                    ? "The current draft passes readiness checks. Sending it freezes the candidate version for hospice physician review and signature."
+                  : sendReady
+                    ? wording.sendDescription
                     : "Resolve the remaining requirements, then review the candidate version."}
               </p>
             </div>
@@ -1228,11 +1641,11 @@ function RevisionPanel({
             {canFinalize ? (
               <button
                 type="button"
-                style={readiness?.canFinalize && !idgProposalRequired ? primaryBtn : disabledBtn}
-                disabled={!readiness?.canFinalize || idgProposalRequired || busy}
+                style={sendReady ? primaryBtn : disabledBtn}
+                disabled={!sendReady || busy}
                 onClick={() => void onFinalize(version)}
               >
-                Send to hospice physician
+                {wording.sendFromPanel}
               </button>
             ) : null}
           </div>
@@ -1261,20 +1674,27 @@ function RevisionPanel({
         <section style={subPanel}>
           <div style={sectionHeader}>
             <div>
-              <h3 style={smallTitle}>Hospice physician review & signature</h3>
-              <p style={muted}>
-                Candidate content is frozen while the hospice physician reviews it. Return to draft
-                only when clinical edits are required before physician signature.
-              </p>
+              <h3 style={smallTitle}>{wording.frozenHeading}</h3>
+              <p style={muted}>{wording.frozenDescription}</p>
             </div>
             <div style={actionsRow}>
               {canAuthor ? (
-                <button type="button" style={ghostBtn} onClick={() => onReturn(version)}>
+                <button
+                  type="button"
+                  style={ghostBtn}
+                  disabled={busy}
+                  onClick={() => onReturn(version)}
+                >
                   Return to draft
                 </button>
               ) : null}
               {canSign && readiness?.canSign ? (
-                <button type="button" style={primaryBtn} onClick={() => onSign(version)}>
+                <button
+                  type="button"
+                  style={primaryBtn}
+                  disabled={busy}
+                  onClick={() => onSign(version)}
+                >
                   Review & sign
                 </button>
               ) : null}
@@ -1284,7 +1704,9 @@ function RevisionPanel({
         </section>
       ) : null}
 
-      {proposed?.changes.length ? <IdgProposal proposed={proposed} /> : null}
+      {proposed && (proposed.changes.length || proposalConflict) ? (
+        <IdgProposal proposed={proposed} />
+      ) : null}
 
       {version.status === "in_review" && candidate ? (
         <SnapshotContent snapshot={candidate} />
@@ -1317,6 +1739,11 @@ function IdgProposal({ proposed }: { proposed: ProposedChanges }): JSX.Element {
           These changes remain proposed until the governed review version is signed and published.
         </p>
       </div>
+      {conflictedProposals(proposed).map((proposal) => (
+        <Notice key={proposal.id} tone="warning">
+          {`This proposal conflicts with newer Care Plan content (${conflictReasonText(proposal.conflictReason)}). It cannot be sent for signature until it is resolved.`}
+        </Notice>
+      ))}
       <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>
         {proposed.changes.map((change) => (
           <div key={change.id} style={diffRow}>
@@ -1421,9 +1848,7 @@ function VersionSnapshot({
       {snapshot ? (
         <SnapshotLists snapshot={snapshot} />
       ) : (
-        <Notice tone="warning">
-          Detailed historical snapshot unavailable for this legacy version.
-        </Notice>
+        <Notice tone="warning">No snapshot was recorded for this version.</Notice>
       )}
     </article>
   );
@@ -1439,6 +1864,7 @@ function SnapshotLists({
   const interventions = snapshot.interventions ?? [];
   return (
     <div style={{ display: "grid", gap: t.space3 }}>
+      {snapshot.redacted === true ? <RestrictedContentNote /> : null}
       <SnapshotGroup
         title="Problems"
         items={problems.map((p) => `${p.description} · ${cap(p.kind)} · ${cap(p.status)}`)}
@@ -1489,8 +1915,16 @@ function roleSatisfiesSlot(slotRole: string, signerRole: string): boolean {
   return slotRole.split("|").includes(signerRole);
 }
 
+// Same wording as version-history.tsx: acronym roles keep their casing ("RN Case Manager", "MSW").
+const ROLE_LABEL: Readonly<Record<string, string>> = {
+  rn_case_manager: "RN Case Manager",
+  msw: "MSW",
+};
 function roleLabel(role: string): string {
-  return role.split("|").map(cap).join(" or ");
+  return role
+    .split("|")
+    .map((r) => ROLE_LABEL[r] ?? cap(r))
+    .join(" or ");
 }
 
 function preferredSigningRole(slotRole: string): string {
@@ -1529,6 +1963,45 @@ function SignatureList({
   );
 }
 
+/**
+ * The ⋯ actions menu of a row. A bare `<details>` stays open after an item is chosen and ignores Escape, so
+ * this closes it on selection (`done`) and on Escape (returning focus to the toggle).
+ */
+function RowMenu({
+  label,
+  buttonStyle,
+  children,
+}: {
+  label: string;
+  buttonStyle: CSSProperties;
+  /** Receives `done`: call it when an item is chosen so the menu folds away. */
+  children: (done: () => void) => ReactNode;
+}): JSX.Element {
+  const menu = useRef<HTMLDetailsElement>(null);
+  const close = (restoreFocus: boolean): void => {
+    const el = menu.current;
+    if (!el?.open) return;
+    el.open = false;
+    if (restoreFocus) el.querySelector("summary")?.focus();
+  };
+  return (
+    <details
+      ref={menu}
+      style={menuWrap}
+      onKeyDown={(e) => {
+        if (e.key !== "Escape" || !menu.current?.open) return;
+        e.stopPropagation();
+        close(true);
+      }}
+    >
+      <summary style={buttonStyle} aria-label={label}>
+        <span aria-hidden="true">⋯</span>
+      </summary>
+      <div style={menuPopover}>{children(() => close(false))}</div>
+    </details>
+  );
+}
+
 function GoalRow({
   goal,
   editable,
@@ -1543,12 +2016,13 @@ function GoalRow({
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={rowTitle}>{goal.revisedText ?? goal.originalText}</p>
         <p style={muted}>
-          {goal.measurableOutcome ?? "No measurable outcome"} · target {formatDate(goal.targetAt)}
+          {goal.measurableOutcome ?? "No measurable outcome"} · target{" "}
+          {formatCalendarDate(goal.targetAt)}
           {goal.statusNote ? ` · ${goal.statusNote}` : ""}
         </p>
       </div>
       <StatusPill label={cap(goal.status)} tone={toneFor(goal.status)} />
-      {editable ? (
+      {editable && isGoalEditable(goal.status) ? (
         <button type="button" style={iconTextBtn} onClick={onEdit}>
           Edit
         </button>
@@ -1588,22 +2062,35 @@ function InterventionRow({
         ) : null}
       </div>
       <StatusPill label={cap(intervention.status)} tone={toneFor(intervention.status)} />
-      {editable ? (
-        <details style={menuWrap}>
-          <summary style={rowMenuButton} aria-label="Intervention actions">
-            <span aria-hidden="true">⋯</span>
-          </summary>
-          <div style={menuPopover}>
-            <button type="button" style={menuItem} onClick={onEdit}>
-              Edit intervention
-            </button>
-            {intervention.status === "active" ? (
-              <button type="button" style={menuItem} onClick={onDiscontinue}>
-                Discontinue
+      {editable && isInterventionEditable(intervention.status) ? (
+        <RowMenu label="Intervention actions" buttonStyle={rowMenuButton}>
+          {(done) => (
+            <>
+              <button
+                type="button"
+                style={menuItem}
+                onClick={() => {
+                  done();
+                  onEdit();
+                }}
+              >
+                Edit intervention
               </button>
-            ) : null}
-          </div>
-        </details>
+              {intervention.status === "active" ? (
+                <button
+                  type="button"
+                  style={menuItem}
+                  onClick={() => {
+                    done();
+                    onDiscontinue();
+                  }}
+                >
+                  Discontinue
+                </button>
+              ) : null}
+            </>
+          )}
+        </RowMenu>
       ) : null}
     </div>
   );
@@ -1616,6 +2103,7 @@ function CarePlanModal({
   problems,
   busy,
   error,
+  fieldErrors,
   onClose,
   onSubmit,
 }: {
@@ -1625,8 +2113,9 @@ function CarePlanModal({
   problems: Problem[];
   busy: boolean;
   error: string | null;
+  fieldErrors: FieldErrors;
   onClose: () => void;
-  onSubmit: (action: () => Promise<{ error?: unknown }>, success: string) => Promise<void>;
+  onSubmit: SubmitWrite;
 }): JSX.Element {
   const client = useApiClient();
   const title =
@@ -1650,12 +2139,26 @@ function CarePlanModal({
                 ? "Sign Care Plan version"
                 : "Return to draft";
   return (
-    <Modal open onClose={onClose} ariaLabel={title} width="40rem">
+    // The dialog holds typed clinical text, so a stray scrim click must not discard it; and while a write is in
+    // flight neither Escape nor Close may abandon it (its answer would land in a dialog that is gone).
+    <Modal
+      open
+      onClose={busy ? undefined : onClose}
+      dismissOnScrim={false}
+      ariaLabel={title}
+      width="40rem"
+    >
       <div style={modalBody}>
         <h2 style={sectionTitle}>{title}</h2>
         {error ? <Notice tone="error">{error}</Notice> : null}
         {state.kind === "problem" ? (
-          <ProblemForm state={state} plan={plan} busy={busy} error={error} onSubmit={onSubmit} />
+          <ProblemForm
+            state={state}
+            plan={plan}
+            busy={busy}
+            fieldErrors={fieldErrors}
+            onSubmit={onSubmit}
+          />
         ) : null}
         {state.kind === "resolve_problem" ? (
           <NoteForm
@@ -1664,16 +2167,8 @@ function CarePlanModal({
             submitLabel="Resolve"
             onSubmit={(note) =>
               onSubmit(
-                async () =>
-                  client.POST("/api/v1/care-plans/{planId}/problems/{elementId}/resolve", {
-                    params: {
-                      path: { planId: plan.id, elementId: state.problem.id },
-                    },
-                    body: {
-                      ifVersion: state.problem.version,
-                      resolutionNote: note,
-                    },
-                  } as never),
+                () =>
+                  resolveProblem(client, plan.id, state.problem.id, state.problem.version, note),
                 "Problem resolved.",
               )
             }
@@ -1685,7 +2180,7 @@ function CarePlanModal({
             plan={plan}
             problems={problems}
             busy={busy}
-            error={error}
+            fieldErrors={fieldErrors}
             onSubmit={onSubmit}
           />
         ) : null}
@@ -1696,7 +2191,7 @@ function CarePlanModal({
             problems={problems}
             goals={goals}
             busy={busy}
-            error={error}
+            fieldErrors={fieldErrors}
             onSubmit={onSubmit}
           />
         ) : null}
@@ -1707,23 +2202,27 @@ function CarePlanModal({
             submitLabel="Discontinue"
             onSubmit={(reason) =>
               onSubmit(
-                async () =>
-                  client.POST("/api/v1/care-plans/{planId}/interventions/{elementId}/discontinue", {
-                    params: {
-                      path: {
-                        planId: plan.id,
-                        elementId: state.intervention.id,
-                      },
-                    },
-                    body: { ifVersion: state.intervention.version, reason },
-                  } as never),
+                () =>
+                  discontinueIntervention(
+                    client,
+                    plan.id,
+                    state.intervention.id,
+                    state.intervention.version,
+                    reason,
+                  ),
                 "Intervention discontinued.",
               )
             }
           />
         ) : null}
         {state.kind === "sign" ? (
-          <SignForm state={state} plan={plan} busy={busy} error={error} onSubmit={onSubmit} />
+          <SignForm
+            state={state}
+            plan={plan}
+            busy={busy}
+            fieldErrors={fieldErrors}
+            onSubmit={onSubmit}
+          />
         ) : null}
         {state.kind === "return_to_draft" ? (
           <ConfirmPanel
@@ -1732,20 +2231,14 @@ function CarePlanModal({
             label="Return to draft"
             onConfirm={() =>
               onSubmit(
-                async () =>
-                  client.POST("/api/v1/care-plans/{planId}/versions/{versionId}/return-to-draft", {
-                    params: {
-                      path: { planId: plan.id, versionId: state.version.id },
-                    },
-                    body: { ifVersion: state.version.version },
-                  } as never),
+                () => returnToDraft(client, plan.id, state.version.id, state.version.version),
                 "Version returned to draft.",
               )
             }
           />
         ) : null}
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button type="button" style={ghostBtn} onClick={onClose}>
+          <button type="button" style={ghostBtn} disabled={busy} onClick={onClose}>
             Close
           </button>
         </div>
@@ -1754,26 +2247,64 @@ function CarePlanModal({
   );
 }
 
+/** The update contract carries no nulls, so a value that was recorded can be replaced but not blanked. */
+const CANNOT_CLEAR = "A recorded value can be changed but not cleared. Enter a replacement.";
+const wasCleared = (recorded: string | null | undefined, entered: string): boolean =>
+  Boolean(recorded) && !entered.trim();
+
+/**
+ * A form field seeded from a row. Until the user touches it, it follows a re-read of the row, so a retry after
+ * a stale-version refusal neither shows nor writes back text that someone else has since changed. `dirty` is
+ * "differs from the row as last read": an update sends only the dirty fields, so it cannot revert a field the
+ * user never edited.
+ */
+function useSeededField<T>(seed: T): readonly [T, (value: T) => void, boolean] {
+  const [value, setValue] = useState<T>(seed);
+  const previousSeed = useRef(seed);
+  useEffect(() => {
+    const previous = previousSeed.current;
+    previousSeed.current = seed;
+    if (Object.is(previous, seed)) return;
+    setValue((current) => (Object.is(current, previous) ? seed : current));
+  }, [seed]);
+  return [value, setValue, !Object.is(value, seed)] as const;
+}
+
 function ProblemForm({
   state,
   plan,
   busy,
-  error,
+  fieldErrors,
   onSubmit,
 }: {
   state: Extract<NonNullable<ModalState>, { kind: "problem" }>;
   plan: CarePlan;
   busy: boolean;
-  error: string | null;
-  onSubmit: (action: () => Promise<{ error?: unknown }>, success: string) => Promise<void>;
+  fieldErrors: FieldErrors;
+  onSubmit: SubmitWrite;
 }): JSX.Element {
   const client = useApiClient();
-  const [description, setDescription] = useState(state.problem?.description ?? "");
-  const [kind, setKind] = useState(state.problem?.kind ?? state.defaultKind ?? "related");
-  const [source, setSource] = useState(state.problem?.source ?? "clinical");
-  const [icd10Code, setIcd10Code] = useState(state.problem?.icd10Code ?? "");
-  const [snomedCode, setSnomedCode] = useState(state.problem?.snomedCode ?? "");
-  const [sudRelated, setSudRelated] = useState(state.problem?.sudRelated ?? false);
+  const editing = state.problem;
+  const [description, setDescription, descriptionDirty] = useSeededField(
+    editing?.description ?? "",
+  );
+  const [kind, setKind, kindDirty] = useSeededField<ProblemKind>(
+    pick(PROBLEM_KINDS, editing?.kind ?? state.defaultKind, "related"),
+  );
+  const [source, setSource] = useState<ProblemSource>(
+    pick(
+      PROBLEM_SOURCE_OPTIONS.map((o) => o.value),
+      editing?.source,
+      "clinical",
+    ),
+  );
+  const [icd10Code, setIcd10Code, icd10Dirty] = useSeededField(editing?.icd10Code ?? "");
+  const [snomedCode, setSnomedCode, snomedDirty] = useSeededField(editing?.snomedCode ?? "");
+  const [sudRelated, setSudRelated] = useState(editing?.sudRelated ?? false);
+  const clearedIcd10 = wasCleared(editing?.icd10Code, icd10Code);
+  const clearedSnomed = wasCleared(editing?.snomedCode, snomedCode);
+  const unchanged =
+    Boolean(editing) && !(descriptionDirty || kindDirty || icd10Dirty || snomedDirty);
 
   return (
     <form
@@ -1781,32 +2312,24 @@ function ProblemForm({
       onSubmit={(e) => {
         e.preventDefault();
         void onSubmit(
-          async () =>
-            state.problem
-              ? client.PATCH("/api/v1/care-plans/{planId}/problems/{elementId}", {
-                  params: {
-                    path: { planId: plan.id, elementId: state.problem.id },
-                    header: writeHeaders(state.problem.version),
-                  },
-                  body: {
-                    description,
-                    kind,
-                    icd10Code: icd10Code || undefined,
-                    snomedCode: snomedCode || undefined,
-                  },
-                } as never)
-              : client.POST("/api/v1/care-plans/{planId}/problems", {
-                  params: { path: { planId: plan.id } },
-                  body: {
-                    description,
-                    kind,
-                    source,
-                    icd10Code: icd10Code || undefined,
-                    snomedCode: snomedCode || undefined,
-                    sudRelated,
-                  },
-                } as never),
-          state.problem ? "Problem updated." : "Problem added.",
+          () =>
+            editing
+              ? // Only what the user changed: a field they never touched must not overwrite a newer value.
+                patchProblem(client, plan.id, editing.id, editing.version, {
+                  ...(descriptionDirty ? { description } : {}),
+                  ...(kindDirty ? { kind } : {}),
+                  ...(icd10Dirty ? { icd10Code: icd10Code || undefined } : {}),
+                  ...(snomedDirty ? { snomedCode: snomedCode || undefined } : {}),
+                })
+              : createProblem(client, plan.id, {
+                  description,
+                  kind,
+                  source,
+                  icd10Code: icd10Code || undefined,
+                  snomedCode: snomedCode || undefined,
+                  sudRelated,
+                }),
+          editing ? "Problem updated." : "Problem added.",
         );
       }}
     >
@@ -1820,24 +2343,32 @@ function ProblemForm({
           onChange={setDescription}
           placeholder="e.g. End-stage heart failure with dyspnea"
           required
-          error={fieldError(error, "description")}
+          error={fieldErrors.description}
         />
         <div style={fieldGrid2}>
           <Select
             label="Problem type"
             value={kind}
-            onChange={setKind}
+            onChange={(v) => setKind(pick(PROBLEM_KINDS, v, kind))}
             options={PROBLEM_KINDS}
             hint="Terminal problems anchor the hospice plan of care."
-            error={fieldError(error, "kind")}
+            error={fieldErrors.kind}
           />
-          {!state.problem ? (
+          {!editing ? (
             <Select
               label="Source"
               value={source}
-              onChange={setSource}
-              options={PROBLEM_SOURCES}
-              error={fieldError(error, "source")}
+              onChange={(v) =>
+                setSource(
+                  pick(
+                    PROBLEM_SOURCE_OPTIONS.map((o) => o.value),
+                    v,
+                    source,
+                  ),
+                )
+              }
+              options={PROBLEM_SOURCE_OPTIONS}
+              error={fieldErrors.source}
             />
           ) : null}
         </div>
@@ -1854,7 +2385,7 @@ function ProblemForm({
             value={icd10Code}
             onChange={(code) => setIcd10Code(code)}
             placeholder="Search ICD-10-CM, e.g. I50.84 or heart failure"
-            error={fieldError(error, "icd10Code")}
+            error={fieldErrors.icd10Code ?? (clearedIcd10 ? CANNOT_CLEAR : undefined)}
           />
           <CodeSearchInput
             label="SNOMED code"
@@ -1862,12 +2393,12 @@ function ProblemForm({
             value={snomedCode}
             onChange={(code) => setSnomedCode(code)}
             placeholder="Optional. Search SNOMED CT by code or description"
-            error={fieldError(error, "snomedCode")}
+            error={fieldErrors.snomedCode ?? (clearedSnomed ? CANNOT_CLEAR : undefined)}
           />
         </div>
       </FormSection>
 
-      {!state.problem ? (
+      {!editing ? (
         <FormSection title="Sensitive-content flag">
           <label
             style={checkCard}
@@ -1890,7 +2421,11 @@ function ProblemForm({
       ) : null}
 
       <div style={formActions}>
-        <button type="submit" style={primaryBtn} disabled={busy || !description.trim()}>
+        <button
+          type="submit"
+          style={primaryBtn}
+          disabled={busy || unchanged || !description.trim() || clearedIcd10 || clearedSnomed}
+        >
           {busy ? "Saving..." : "Save problem"}
         </button>
       </div>
@@ -1903,56 +2438,68 @@ function GoalForm({
   plan,
   problems,
   busy,
-  error,
+  fieldErrors,
   onSubmit,
 }: {
   state: Extract<NonNullable<ModalState>, { kind: "goal" }>;
   plan: CarePlan;
   problems: Problem[];
   busy: boolean;
-  error: string | null;
-  onSubmit: (action: () => Promise<{ error?: unknown }>, success: string) => Promise<void>;
+  fieldErrors: FieldErrors;
+  onSubmit: SubmitWrite;
 }): JSX.Element {
   const client = useApiClient();
+  const editing = state.goal;
   const [problemId, setProblemId] = useState(
-    state.goal?.problemId ?? state.problemId ?? problems[0]?.id ?? "",
+    editing?.problemId ?? state.problemId ?? problems[0]?.id ?? "",
   );
-  const [text, setText] = useState(state.goal?.revisedText ?? state.goal?.originalText ?? "");
-  const [source, setSource] = useState(state.goal?.source ?? "clinical");
-  const [outcome, setOutcome] = useState(state.goal?.measurableOutcome ?? "");
-  const [targetAt, setTargetAt] = useState(state.goal?.targetAt?.slice(0, 10) ?? "");
-  const [status, setStatus] = useState(state.goal?.status ?? "not_started");
+  const [text, setText, textDirty] = useSeededField(
+    editing?.revisedText ?? editing?.originalText ?? "",
+  );
+  const [source, setSource] = useState<GoalSource>(pick(GOAL_SOURCES, editing?.source, "clinical"));
+  const [outcome, setOutcome, outcomeDirty] = useSeededField(editing?.measurableOutcome ?? "");
+  const [targetAt, setTargetAt, targetDirty] = useSeededField(
+    editing?.targetAt?.slice(0, 10) ?? "",
+  );
+  const statusSeed = pick(GOAL_STATUSES, editing?.status, "not_started");
+  const [pickedStatus, setStatus] = useSeededField<GoalStatus>(statusSeed);
+  const statusOptions = editing ? goalStatusOptions(statusSeed) : GOAL_STATUSES;
+  // After a stale re-read the row may have moved on (e.g. to a terminal status), leaving the user's pick illegal:
+  // fall back to the row's status rather than keep a value the select no longer offers.
+  const status: GoalStatus = statusOptions.includes(pickedStatus) ? pickedStatus : statusSeed;
+  const statusDirty = status !== statusSeed;
+  const clearedOutcome = wasCleared(editing?.measurableOutcome, outcome);
+  const clearedTarget = wasCleared(editing?.targetAt, targetAt);
+  // A date input can hold a year `new Date` cannot read (a 5-digit year); say so instead of throwing on submit.
+  const targetInvalid = Boolean(targetAt) && Number.isNaN(Date.parse(targetAt));
+  const unchanged = Boolean(editing) && !(textDirty || outcomeDirty || targetDirty || statusDirty);
   return (
     <form
       style={form}
       onSubmit={(e) => {
         e.preventDefault();
+        if (targetInvalid) return;
+        // A date input yields a calendar day; the contract wants a date-time, sent as that day at UTC midnight.
+        const targetIso = targetAt ? new Date(targetAt).toISOString() : undefined;
         void onSubmit(
-          async () =>
-            state.goal
-              ? client.PATCH("/api/v1/care-plans/{planId}/goals/{elementId}", {
-                  params: {
-                    path: { planId: plan.id, elementId: state.goal.id },
-                    header: writeHeaders(state.goal.version),
-                  },
-                  body: {
-                    revisedText: text,
-                    measurableOutcome: outcome || undefined,
-                    status,
-                    targetAt: targetAt ? new Date(targetAt).toISOString() : undefined,
-                  },
-                } as never)
-              : client.POST("/api/v1/care-plans/{planId}/goals", {
-                  params: { path: { planId: plan.id } },
-                  body: {
-                    problemId,
-                    originalText: text,
-                    source,
-                    measurableOutcome: outcome || undefined,
-                    targetAt: targetAt ? new Date(targetAt).toISOString() : undefined,
-                  },
-                } as never),
-          state.goal ? "Goal updated." : "Goal added.",
+          () =>
+            editing
+              ? // Only what the user changed: a field they never touched must not overwrite a newer value
+                // (and an unedited statement must not be recorded as a revision of the patient's own words).
+                patchGoal(client, plan.id, editing.id, editing.version, {
+                  ...(textDirty ? { revisedText: text } : {}),
+                  ...(outcomeDirty ? { measurableOutcome: outcome || undefined } : {}),
+                  ...(statusDirty ? { status } : {}),
+                  ...(targetDirty ? { targetAt: targetIso } : {}),
+                })
+              : createGoal(client, plan.id, {
+                  problemId,
+                  originalText: text,
+                  source,
+                  measurableOutcome: outcome || undefined,
+                  targetAt: targetIso,
+                }),
+          editing ? "Goal updated." : "Goal added.",
         );
       }}
     >
@@ -1960,7 +2507,7 @@ function GoalForm({
         title="Goal"
         description="Describe the patient-centered result the team is working toward."
       >
-        {!state.goal ? (
+        {!editing ? (
           <Select
             label="Linked problem"
             value={problemId}
@@ -1969,6 +2516,7 @@ function GoalForm({
               value: p.id,
               label: p.description,
             }))}
+            error={fieldErrors.problemId}
           />
         ) : null}
         <TextArea
@@ -1977,7 +2525,7 @@ function GoalForm({
           onChange={setText}
           placeholder="e.g. Patient will report dyspnea is manageable at rest"
           required
-          error={fieldError(error, "originalText") ?? fieldError(error, "revisedText")}
+          error={fieldErrors.originalText ?? fieldErrors.revisedText}
         />
       </FormSection>
 
@@ -1987,20 +2535,53 @@ function GoalForm({
           value={outcome}
           onChange={setOutcome}
           placeholder="e.g. Dyspnea rated 3/10 or less at rest"
-          error={fieldError(error, "measurableOutcome")}
+          error={fieldErrors.measurableOutcome ?? (clearedOutcome ? CANNOT_CLEAR : undefined)}
         />
         <div style={fieldGrid2}>
-          <TextField label="Target date" value={targetAt} onChange={setTargetAt} type="date" />
-          {state.goal ? (
-            <Select label="Status" value={status} onChange={setStatus} options={GOAL_STATUSES} />
-          ) : !state.goal ? (
-            <Select label="Source" value={source} onChange={setSource} options={GOAL_SOURCES} />
-          ) : null}
+          <TextField
+            label="Target date"
+            value={targetAt}
+            onChange={setTargetAt}
+            type="date"
+            error={
+              fieldErrors.targetAt ??
+              (clearedTarget ? CANNOT_CLEAR : targetInvalid ? "Enter a valid date." : undefined)
+            }
+          />
+          {editing ? (
+            <Select
+              label="Status"
+              value={status}
+              onChange={(v) => setStatus(pick(statusOptions, v, status))}
+              options={statusOptions}
+              error={fieldErrors.status}
+            />
+          ) : (
+            <Select
+              label="Source"
+              value={source}
+              onChange={(v) => setSource(pick(GOAL_SOURCES, v, source))}
+              options={GOAL_SOURCES}
+              error={fieldErrors.source}
+            />
+          )}
         </div>
       </FormSection>
 
       <div style={formActions}>
-        <button type="submit" style={primaryBtn} disabled={busy || !text.trim() || !problemId}>
+        <button
+          type="submit"
+          style={primaryBtn}
+          disabled={
+            busy ||
+            unchanged ||
+            !text.trim() ||
+            !problemId ||
+            clearedOutcome ||
+            clearedTarget ||
+            targetInvalid
+          }
+        >
           {busy ? "Saving..." : "Save goal"}
         </button>
       </div>
@@ -2014,7 +2595,7 @@ function InterventionForm({
   problems,
   goals,
   busy,
-  error,
+  fieldErrors,
   onSubmit,
 }: {
   state: Extract<NonNullable<ModalState>, { kind: "intervention" }>;
@@ -2022,19 +2603,31 @@ function InterventionForm({
   problems: Problem[];
   goals: Goal[];
   busy: boolean;
-  error: string | null;
-  onSubmit: (action: () => Promise<{ error?: unknown }>, success: string) => Promise<void>;
+  fieldErrors: FieldErrors;
+  onSubmit: SubmitWrite;
 }): JSX.Element {
   const client = useApiClient();
+  const editing = state.intervention;
   const [problemId, setProblemId] = useState(
-    state.intervention?.problemId ?? state.problemId ?? problems[0]?.id ?? "",
+    editing?.problemId ?? state.problemId ?? problems[0]?.id ?? "",
   );
-  const [scopeText, setScopeText] = useState(state.intervention?.scopeText ?? "");
-  const [frequencyText, setFrequencyText] = useState(state.intervention?.frequencyText ?? "");
-  const [frequencyValue, setFrequencyValue] = useState(state.intervention?.frequencyValue ?? "");
-  const [discipline, setDiscipline] = useState(state.intervention?.discipline ?? "rn");
-  const [responsibleRole, setResponsibleRole] = useState(state.intervention?.responsibleRole ?? "");
-  const [goalRef, setGoalRef] = useState(state.intervention?.goalRefs[0] ?? "");
+  const [scopeText, setScopeText, scopeDirty] = useSeededField(editing?.scopeText ?? "");
+  const [frequencyText, setFrequencyText, frequencyTextDirty] = useSeededField(
+    editing?.frequencyText ?? "",
+  );
+  const [frequencyValue, setFrequencyValue, frequencyValueDirty] = useSeededField(
+    editing?.frequencyValue ?? "",
+  );
+  const [discipline, setDiscipline] = useState<InterventionDiscipline>(
+    pick(DISCIPLINES, editing?.discipline, "rn"),
+  );
+  const [responsibleRole, setResponsibleRole, roleDirty] = useSeededField(
+    editing?.responsibleRole ?? "",
+  );
+  const [goalRef, setGoalRef] = useState(editing?.goalRefs[0] ?? "");
+  const clearedRole = wasCleared(editing?.responsibleRole, responsibleRole);
+  const unchanged =
+    Boolean(editing) && !(scopeDirty || frequencyTextDirty || frequencyValueDirty || roleDirty);
   const goalOptions = goals
     .filter((g) => g.problemId === problemId)
     .map((g) => ({ value: g.id, label: g.revisedText ?? g.originalText }));
@@ -2044,36 +2637,25 @@ function InterventionForm({
       onSubmit={(e) => {
         e.preventDefault();
         void onSubmit(
-          async () =>
-            state.intervention
-              ? client.PATCH("/api/v1/care-plans/{planId}/interventions/{elementId}", {
-                  params: {
-                    path: {
-                      planId: plan.id,
-                      elementId: state.intervention.id,
-                    },
-                    header: writeHeaders(state.intervention.version),
-                  },
-                  body: {
-                    scopeText,
-                    frequencyText,
-                    frequencyValue,
-                    responsibleRole: responsibleRole || undefined,
-                  },
-                } as never)
-              : client.POST("/api/v1/care-plans/{planId}/interventions", {
-                  params: { path: { planId: plan.id } },
-                  body: {
-                    problemId,
-                    goalRefs: goalRef ? [goalRef] : [],
-                    scopeText,
-                    frequencyText,
-                    frequencyValue,
-                    discipline,
-                    responsibleRole: responsibleRole || undefined,
-                  },
-                } as never),
-          state.intervention ? "Intervention updated." : "Intervention added.",
+          () =>
+            editing
+              ? // Only what the user changed: a field they never touched must not overwrite a newer value.
+                patchIntervention(client, plan.id, editing.id, editing.version, {
+                  ...(scopeDirty ? { scopeText } : {}),
+                  ...(frequencyTextDirty ? { frequencyText } : {}),
+                  ...(frequencyValueDirty ? { frequencyValue } : {}),
+                  ...(roleDirty ? { responsibleRole: responsibleRole || undefined } : {}),
+                })
+              : createIntervention(client, plan.id, {
+                  problemId,
+                  goalRefs: goalRef ? [goalRef] : [],
+                  scopeText,
+                  frequencyText,
+                  frequencyValue,
+                  discipline,
+                  responsibleRole: responsibleRole || undefined,
+                }),
+          editing ? "Intervention updated." : "Intervention added.",
         );
       }}
     >
@@ -2081,15 +2663,20 @@ function InterventionForm({
         title="Intervention"
         description="Describe what the care team should do for this problem."
       >
-        {!state.intervention ? (
+        {!editing ? (
           <Select
             label="Linked problem"
             value={problemId}
-            onChange={setProblemId}
+            onChange={(v) => {
+              setProblemId(v);
+              // The linked goal is chosen from THIS problem's goals; a goal of the previous problem is no longer offered.
+              setGoalRef("");
+            }}
             options={problems.map((p) => ({
               value: p.id,
               label: p.description,
             }))}
+            error={fieldErrors.problemId}
           />
         ) : null}
         <TextArea
@@ -2098,7 +2685,7 @@ function InterventionForm({
           onChange={setScopeText}
           placeholder="e.g. Assess respiratory status and reinforce comfort measures"
           required
-          error={fieldError(error, "scopeText")}
+          error={fieldErrors.scopeText}
         />
       </FormSection>
 
@@ -2113,7 +2700,7 @@ function InterventionForm({
             onChange={setFrequencyText}
             placeholder="e.g. Twice weekly"
             required
-            error={fieldError(error, "frequencyText")}
+            error={fieldErrors.frequencyText}
           />
           <TextField
             label="Frequency value"
@@ -2121,19 +2708,20 @@ function InterventionForm({
             onChange={setFrequencyValue}
             placeholder="e.g. 2"
             required
-            error={fieldError(error, "frequencyValue")}
+            error={fieldErrors.frequencyValue}
           />
         </div>
       </FormSection>
 
       <FormSection title="Assignment & relationship">
         <div style={fieldGrid2}>
-          {!state.intervention ? (
+          {!editing ? (
             <Select
               label="Discipline"
               value={discipline}
-              onChange={setDiscipline}
+              onChange={(v) => setDiscipline(pick(DISCIPLINES, v, discipline))}
               options={DISCIPLINES}
+              error={fieldErrors.discipline}
             />
           ) : null}
           <TextField
@@ -2141,15 +2729,17 @@ function InterventionForm({
             value={responsibleRole}
             onChange={setResponsibleRole}
             placeholder="e.g. Primary RN"
+            error={fieldErrors.responsibleRole ?? (clearedRole ? CANNOT_CLEAR : undefined)}
           />
         </div>
-        {!state.intervention ? (
+        {!editing ? (
           <Select
             label="Linked goal"
             value={goalRef}
             onChange={setGoalRef}
             options={[{ value: "", label: "No linked goal" }, ...goalOptions]}
             hint="Optional. Link the intervention to the goal it supports."
+            error={fieldErrors.goalRefs}
           />
         ) : null}
       </FormSection>
@@ -2158,7 +2748,14 @@ function InterventionForm({
         <button
           type="submit"
           style={primaryBtn}
-          disabled={busy || !scopeText.trim() || !frequencyText.trim() || !frequencyValue.trim()}
+          disabled={
+            busy ||
+            unchanged ||
+            !scopeText.trim() ||
+            !frequencyText.trim() ||
+            !frequencyValue.trim() ||
+            clearedRole
+          }
         >
           {busy ? "Saving..." : "Save intervention"}
         </button>
@@ -2171,46 +2768,71 @@ function SignForm({
   state,
   plan,
   busy,
-  error,
+  fieldErrors,
   onSubmit,
 }: {
   state: Extract<NonNullable<ModalState>, { kind: "sign" }>;
   plan: CarePlan;
   busy: boolean;
-  error: string | null;
-  onSubmit: (action: () => Promise<{ error?: unknown }>, success: string) => Promise<void>;
+  fieldErrors: FieldErrors;
+  onSubmit: SubmitWrite;
 }): JSX.Element {
   const client = useApiClient();
+  const owner = useStepUpOwner();
+  const draftKey = stepUpDraftKey(owner, SIGN_ACTION, state.version.id);
+  // Back from a step-up round trip the chosen role and the typed note come back from memory (never Web Storage).
+  const [restored] = useState(() =>
+    peekStepUpDraft<{ role?: unknown; understanding?: unknown }>(draftKey),
+  );
   const openSlot = state.version.requiredSignerSet.find(
     (slot) =>
       state.version.signatures.filter((s) => roleSatisfiesSlot(slot.role, s.signerRole)).length <
       slot.count,
   );
   const [role, setRole] = useState(
-    preferredSigningRole(openSlot?.role ?? state.version.requiredSignerSet[0]?.role ?? ""),
+    typeof restored?.role === "string"
+      ? restored.role
+      : preferredSigningRole(openSlot?.role ?? state.version.requiredSignerSet[0]?.role ?? ""),
   );
-  const [understanding, setUnderstanding] = useState("");
+  const [understanding, setUnderstanding] = useState(
+    typeof restored?.understanding === "string" ? restored.understanding : "",
+  );
+  const snapshot = snapshotOf(state.version);
   return (
     <form
       style={form}
       onSubmit={(e) => {
         e.preventDefault();
         void onSubmit(
-          async () =>
-            client.POST("/api/v1/care-plans/{planId}/versions/{versionId}/signatures", {
-              params: {
-                path: { planId: plan.id, versionId: state.version.id },
-              },
-              body: {
-                ifVersion: state.version.version,
-                signerRole: role,
-                patientUnderstandingText: understanding || undefined,
-              },
-            } as never),
+          () =>
+            signVersion(client, plan.id, state.version.id, {
+              ifVersion: state.version.version,
+              // Which slot the caller is filling; the server matches it against the caller's own grants.
+              signerRole: role as SignerRole,
+              patientUnderstandingText: understanding || undefined,
+            }),
           "Signature recorded.",
+          { key: draftKey, value: { role, understanding } },
         );
       }}
     >
+      <section aria-label="Version being signed" style={subPanel}>
+        <h3 style={smallTitle}>
+          v{state.version.sequence} · {cap(state.version.kind)}
+        </h3>
+        {snapshot ? (
+          <>
+            <div style={summaryStrip}>
+              <SummaryFact label="Problems" value={snapshot.problems?.length ?? 0} />
+              <SummaryFact label="Goals" value={snapshot.goals?.length ?? 0} />
+              <SummaryFact label="Interventions" value={snapshot.interventions?.length ?? 0} />
+            </div>
+            {snapshot.redacted === true ? <RestrictedContentNote /> : null}
+          </>
+        ) : (
+          <p style={muted}>The frozen content counts are unavailable for this version.</p>
+        )}
+      </section>
       <SignatureList
         slots={state.version.requiredSignerSet}
         signatures={state.version.signatures}
@@ -2220,12 +2842,13 @@ function SignForm({
         value={role}
         onChange={setRole}
         options={signingRoleOptions(state.version.requiredSignerSet)}
+        error={fieldErrors.signerRole}
       />
       <TextArea
         label="Patient/family understanding note"
         value={understanding}
         onChange={setUnderstanding}
-        error={fieldError(error, "patientUnderstandingText")}
+        error={fieldErrors.patientUnderstandingText}
       />
       <Notice tone="info">
         The backend validates permission, signer role, caseload, authenticated membership, and
@@ -2247,7 +2870,7 @@ function NoteForm({
   label: string;
   submitLabel: string;
   busy: boolean;
-  onSubmit: (note: string) => Promise<void>;
+  onSubmit: (note: string) => Promise<unknown>;
 }): JSX.Element {
   const [note, setNote] = useState("");
   return (
@@ -2275,7 +2898,7 @@ function ConfirmPanel({
   text: string;
   label: string;
   busy: boolean;
-  onConfirm: () => Promise<void>;
+  onConfirm: () => Promise<unknown>;
 }): JSX.Element {
   return (
     <div style={form}>
@@ -2331,11 +2954,16 @@ function carePlanErrorMessage(error: unknown, fallback: string): string {
     .join(" ")}`;
 }
 
-/** Fastify schema errors name the rejected body property; keep that feedback by its input. */
-function fieldError(message: string | null, property: string): string | null {
-  if (!message) return null;
-  const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?:body[/.]|\\b)${escaped}\\b`, "i").test(message) ? message : null;
+/** `aria-describedby` / `aria-invalid` wiring for a field's error and hint text. */
+function useFieldDescription(
+  error: string | null | undefined,
+  hint: string | undefined,
+): { errorId: string; hintId: string; describedBy: string | undefined; invalid: true | undefined } {
+  const base = useId();
+  const errorId = `${base}-error`;
+  const hintId = `${base}-hint`;
+  const ids = [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(" ");
+  return { errorId, hintId, describedBy: ids || undefined, invalid: error ? true : undefined };
 }
 
 function TextField({
@@ -2357,6 +2985,7 @@ function TextField({
   hint?: string;
   error?: string | null;
 }): JSX.Element {
+  const described = useFieldDescription(error, hint);
   return (
     <label style={field}>
       <span style={fieldLabel}>
@@ -2365,6 +2994,8 @@ function TextField({
       </span>
       <input
         aria-label={label}
+        aria-invalid={described.invalid}
+        aria-describedby={described.describedBy}
         value={value}
         type={type}
         required={required}
@@ -2372,8 +3003,16 @@ function TextField({
         onChange={(e) => onChange(e.target.value)}
         style={input}
       />
-      {error ? <span style={fieldErrorText}>{error}</span> : null}
-      {hint ? <span style={fieldHint}>{hint}</span> : null}
+      {error ? (
+        <span id={described.errorId} style={fieldErrorText}>
+          {error}
+        </span>
+      ) : null}
+      {hint ? (
+        <span id={described.hintId} style={fieldHint}>
+          {hint}
+        </span>
+      ) : null}
     </label>
   );
 }
@@ -2395,6 +3034,7 @@ function TextArea({
   hint?: string;
   error?: string | null;
 }): JSX.Element {
+  const described = useFieldDescription(error, hint);
   return (
     <label style={field}>
       <span style={fieldLabel}>
@@ -2403,6 +3043,8 @@ function TextArea({
       </span>
       <textarea
         aria-label={label}
+        aria-invalid={described.invalid}
+        aria-describedby={described.describedBy}
         value={value}
         required={required}
         placeholder={placeholder}
@@ -2410,8 +3052,16 @@ function TextArea({
         rows={4}
         style={textarea}
       />
-      {error ? <span style={fieldErrorText}>{error}</span> : null}
-      {hint ? <span style={fieldHint}>{hint}</span> : null}
+      {error ? (
+        <span id={described.errorId} style={fieldErrorText}>
+          {error}
+        </span>
+      ) : null}
+      {hint ? (
+        <span id={described.hintId} style={fieldHint}>
+          {hint}
+        </span>
+      ) : null}
     </label>
   );
 }
@@ -2431,11 +3081,14 @@ function Select({
   hint?: string;
   error?: string | null;
 }): JSX.Element {
+  const described = useFieldDescription(error, hint);
   return (
     <label style={field}>
       <span style={fieldLabel}>{label}</span>
       <select
         aria-label={label}
+        aria-invalid={described.invalid}
+        aria-describedby={described.describedBy}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         style={input}
@@ -2449,8 +3102,16 @@ function Select({
           );
         })}
       </select>
-      {error ? <span style={fieldErrorText}>{error}</span> : null}
-      {hint ? <span style={fieldHint}>{hint}</span> : null}
+      {error ? (
+        <span id={described.errorId} style={fieldErrorText}>
+          {error}
+        </span>
+      ) : null}
+      {hint ? (
+        <span id={described.hintId} style={fieldHint}>
+          {hint}
+        </span>
+      ) : null}
     </label>
   );
 }
@@ -2516,22 +3177,50 @@ function DiffValue({
   );
 }
 
+const TAB_ORDER: readonly Tab[] = ["goals", "interventions", "problems", "revision", "history"];
+const tabId = (tab: Tab): string => `care-plan-tab-${tab}`;
+const tabPanelId = (tab: Tab): string => `care-plan-tabpanel-${tab}`;
+
+/** Arrow keys / Home / End move between tabs (the tablist is one tab stop; the active tab is it). */
+function moveTab(e: KeyboardEvent, current: Tab, select: (tab: Tab) => void): void {
+  const index = TAB_ORDER.indexOf(current);
+  const next =
+    e.key === "ArrowRight"
+      ? TAB_ORDER[(index + 1) % TAB_ORDER.length]
+      : e.key === "ArrowLeft"
+        ? TAB_ORDER[(index - 1 + TAB_ORDER.length) % TAB_ORDER.length]
+        : e.key === "Home"
+          ? TAB_ORDER[0]
+          : e.key === "End"
+            ? TAB_ORDER[TAB_ORDER.length - 1]
+            : undefined;
+  if (!next) return;
+  e.preventDefault();
+  select(next);
+  document.getElementById(tabId(next))?.focus();
+}
+
 function TabButton({
+  id,
   active,
-  onClick,
+  onSelect,
   children,
 }: {
+  id: Tab;
   active: boolean;
-  onClick: () => void;
+  onSelect: (tab: Tab) => void;
   children: ReactNode;
 }): JSX.Element {
   return (
     <button
       type="button"
       role="tab"
+      id={tabId(id)}
       aria-selected={active}
+      aria-controls={active ? tabPanelId(id) : undefined}
+      tabIndex={active ? 0 : -1}
       style={active ? activeTab : tabBtn}
-      onClick={onClick}
+      onClick={() => onSelect(id)}
     >
       {children}
     </button>
@@ -2573,6 +3262,12 @@ const mainPane: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: t.space4,
+};
+const tabPanelStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: t.space4,
+  minWidth: 0,
 };
 const sectionTitle: CSSProperties = {
   margin: 0,

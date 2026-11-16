@@ -23,6 +23,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
+import { useSession } from "../../shell/session";
 import {
   type PlanDetail,
   type RequiredSignerSlot,
@@ -47,6 +48,7 @@ import {
   redactionLabel,
   shortDate,
   toneOf,
+  versionRowActions,
 } from "./discipline-status";
 import {
   Card,
@@ -92,6 +94,7 @@ export function DisciplinePlanWorkspace({
 }: PlanWorkspaceProps): JSX.Element {
   const client = useApiClient();
   const { patientId } = useParams<{ patientId: string }>();
+  const permissions = useSession()?.permissions;
   const [plan, setPlan] = useState<PlanDetail | null>(null);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -448,23 +451,47 @@ export function DisciplinePlanWorkspace({
                     <th style={th}>Finalized</th>
                     <th style={th}>Signed</th>
                     <th style={th}>Status</th>
+                    <th style={th}>&nbsp;</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {plan.versions.map((v) => (
-                    <tr key={v.versionId} style={rowLine}>
-                      <td style={td}>v{v.sequence}</td>
-                      <td style={td}>{humanize(v.kind)}</td>
-                      <td style={td}>{dateTime(v.finalizedAt)}</td>
-                      <td style={td}>{dateTime(v.signedAt)}</td>
-                      <td style={td}>
-                        <StatusPill
-                          label={humanize(v.status)}
-                          tone={toneOf(VERSION_STATUS_TONE, v.status)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
+                  {plan.versions.map((v) => {
+                    const actions = versionRowActions(kind, v, permissions);
+                    return (
+                      <tr key={v.versionId} style={rowLine}>
+                        <td style={td}>v{v.sequence}</td>
+                        <td style={td}>{humanize(v.kind)}</td>
+                        <td style={td}>{dateTime(v.finalizedAt)}</td>
+                        <td style={td}>{dateTime(v.signedAt)}</td>
+                        <td style={td}>
+                          <StatusPill
+                            label={humanize(v.status)}
+                            tone={toneOf(VERSION_STATUS_TONE, v.status)}
+                          />
+                        </td>
+                        <td style={td}>
+                          <div style={{ display: "flex", gap: t.space3 }}>
+                            {actions.edit ? (
+                              <Link
+                                to={`/patients/${patientId}/discipline-plans/aide-poc/${v.versionId}/edit`}
+                                style={linkStyle}
+                              >
+                                Edit v{v.sequence}
+                              </Link>
+                            ) : null}
+                            {actions.review ? (
+                              <Link
+                                to={`/patients/${patientId}/discipline-plans/${kind}/idg-revisions/${v.versionId}`}
+                                style={linkStyle}
+                              >
+                                Review v{v.sequence}
+                              </Link>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

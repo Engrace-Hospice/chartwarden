@@ -277,21 +277,40 @@ export async function getPlan(
 }
 
 /**
+ * Which row of the patient's plans of one kind the screens open. There is one plan per admission, so after a
+ * readmission there are several: when the caller knows the admission, only that admission's plans are
+ * considered; a live plan beats a discharged one; and among equals the NEWEST admission wins (its anchor,
+ * `initialAssessmentClockStartedAt`, then the last touch) — never "whatever the list returned first", which
+ * could be an old admission's plan that something recently updated.
+ */
+export function pickPlanRow(
+  rows: readonly PlanListItem[],
+  admissionId?: string,
+): PlanListItem | null {
+  const anchor = (p: PlanListItem): number =>
+    p.initialAssessmentClockStartedAt ? Date.parse(p.initialAssessmentClockStartedAt) : 0;
+  const scoped = admissionId ? rows.filter((p) => p.admissionId === admissionId) : rows;
+  const newestFirst = [...scoped].sort(
+    (a, b) => anchor(b) - anchor(a) || Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
+  );
+  return newestFirst.find((p) => p.status !== "discharged") ?? newestFirst[0] ?? null;
+}
+
+/**
  * The kind-scoped read every discipline screen opens with: resolve the patient's plan of `kind` from the
- * worklist, then read it in full. A patient with no plan of that kind is `plan: null` with no error — the
- * bootstrap worker creates the three CoP plans on `m6.admission.activated` and the volunteer plan on the
- * first assignment, so "not yet" is an ordinary state, not a failure.
+ * worklist ({@link pickPlanRow}), then read it in full. A patient with no plan of that kind is `plan: null`
+ * with no error — the bootstrap worker creates the three CoP plans on `m6.admission.activated` and the
+ * volunteer plan on the first assignment, so "not yet" is an ordinary state, not a failure.
  */
 export async function getPlanByKind(
   client: ApiClient,
   patientId: string,
   kind: string,
+  admissionId?: string,
 ): Promise<{ plan: PlanDetail | null; error: unknown }> {
   const { page, error } = await listPlans(client, { patientId, kind, limit: 5 });
   if (error) return { plan: null, error };
-  // Prefer the live plan over a discharged one when an admission has been re-opened.
-  const rows = page?.data ?? [];
-  const row = rows.find((p) => p.status !== "discharged") ?? rows[0];
+  const row = pickPlanRow(page?.data ?? [], admissionId);
   if (!row) return { plan: null, error: null };
   return getPlan(client, row.planId);
 }

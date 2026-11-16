@@ -114,6 +114,8 @@ let calls: string[] = [];
 let bodies: Record<string, unknown>[] = [];
 let headers: Record<string, string>[] = [];
 let writeFailure: { status: number; body: unknown } | null = null;
+/** How many of the next writes get no answer at all (the request was recorded, the reply is lost). */
+let writeDrops = 0;
 
 function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string; method: string } {
   if (typeof input === "string")
@@ -205,6 +207,10 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       }
     }
   }
+  if (method !== "GET" && writeDrops > 0) {
+    writeDrops -= 1;
+    throw new TypeError("network down");
+  }
   if (method !== "GET" && writeFailure) {
     return new Response(JSON.stringify(writeFailure.body), {
       status: writeFailure.status,
@@ -217,13 +223,19 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   });
 }
 
-/** An RN case manager who may author, finalize and sign — the controls render per permission. */
+/** An RN case manager who may author, finalize, sign and start a plan — the controls render per permission. */
 const SESSION = {
   userId: "user-1",
   organizationId: "org-1",
   membershipId: "membership-1",
   roles: ["rn_case_manager"],
-  permissions: ["care_plan.read", "care_plan.author", "care_plan.finalize", "care_plan.sign"],
+  permissions: [
+    "care_plan.read",
+    "care_plan.author",
+    "care_plan.finalize",
+    "care_plan.sign",
+    "care_plan.bootstrap",
+  ],
   isAdmin: false,
 };
 
@@ -281,6 +293,7 @@ beforeEach(() => {
   bodies = [];
   headers = [];
   writeFailure = null;
+  writeDrops = 0;
   versions = [draftVersion];
   activeVersionId = null;
   readiness = readinessFor({});
@@ -498,6 +511,8 @@ describe("#91 — the version lifecycle can be advanced", () => {
   });
 
   it("a draft offers no signing, and a pending version offers no send-for-signature (F-007)", async () => {
+    // An interim revision is a physician-signed step, so its send control says so (an IDG review's does not).
+    versions = [{ ...draftVersion, kind: "interim_revision" }];
     readiness = readinessFor({ canFinalize: true });
     const first = mount();
     fireEvent.click(await screen.findByRole("tab", { name: /^Review & Sign/ }));
@@ -521,7 +536,13 @@ describe("#91 — the version lifecycle can be advanced", () => {
   it("with no open version and a review due, the plan offers Start review", async () => {
     versions = [{ ...draftVersion, status: "signed", signedAt: "2026-08-01T00:00:00.000Z" }];
     activeVersionId = DRAFT_V;
-    readiness = readinessFor({ openVersionId: undefined as unknown as string });
+    // The server's real answer when nothing is open reports OPEN_VERSION_REQUIRED (care-plan-route-service-db.ts).
+    readiness = {
+      ...readinessFor({ openVersionId: undefined as unknown as string }),
+      blockers: [
+        { code: "OPEN_VERSION_REQUIRED", message: "no draft or in-review version is open" },
+      ],
+    };
     reviewStatus = { ...reviewStatus, status: "due", canStartReview: true };
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Start review" }));
@@ -547,9 +568,9 @@ describe("#91 — the quorum is reported from the server's slots, not a fixed st
     fireEvent.click(screen.getByRole("tab", { name: /^Review & Sign/ }));
     // …and the signature panel names them, with the multi-signature RN slot counted (1 of 2).
     const missing = screen.getByText(/^Missing:/).textContent ?? "";
-    expect(missing).toContain("Rn Case Manager (1)");
+    expect(missing).toContain("RN Case Manager (1)");
     expect(missing).toContain("Medical Director (1)");
-    expect(screen.getByText(/Rn Case Manager · 1 of 2/)).toBeTruthy();
+    expect(screen.getByText(/RN Case Manager · 1 of 2/)).toBeTruthy();
   });
 });
 
@@ -637,5 +658,56 @@ describe("F-066 — the care plan can be STARTED, not only displayed", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Start the care plan" }));
     await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/Could not start/i));
     expect(screen.getByRole("button", { name: "Start the care plan" })).toBeTruthy();
+  });
+});
+
+// The retry-safety contract at the VIEW: a signature whose reply was lost must be retried under the SAME
+// Idempotency-Key (so the server replays it instead of signing twice), and any real answer must start the
+// next attempt on a NEW key. The client middleware has its own tests; this proves the screen goes through it.
+describe("Idempotency-Key across a retried sign", () => {
+  async function openSignDialog(): Promise<HTMLElement> {
+    versions = [pendingVersion];
+    readiness = readinessFor(
+      { openVersionId: PENDING_V, openVersionStatus: "in_review", canSign: true },
+      [{ role: "rn_case_manager", count: 1 }],
+    );
+    mount();
+    fireEvent.click(await screen.findByRole("tab", { name: /^Review & Sign/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Review & sign" })[0] as HTMLElement);
+    return screen.findByRole("dialog", { name: "Sign Care Plan version" });
+  }
+  const keyOf = (n: number): string | undefined => headers[n]?.["idempotency-key"];
+  /** Click Sign once the previous attempt has settled (the button is disabled while a write or refresh runs). */
+  async function clickSign(dialog: HTMLElement): Promise<void> {
+    const button = within(dialog).getByRole("button", { name: "Sign care plan" });
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(button);
+  }
+
+  it("retries a sign whose reply was lost under the same key", async () => {
+    writeDrops = 1;
+    const dialog = await openSignDialog();
+    await clickSign(dialog);
+    await within(dialog).findByText(/No response/);
+    await clickSign(dialog);
+    await waitFor(() => expect(writes()).toHaveLength(2));
+    expect(keyOf(0)).toBeTruthy();
+    expect(keyOf(1)).toBe(keyOf(0));
+  });
+
+  it("renews the key once the server has answered (a stale 409), so the retry is a new attempt", async () => {
+    writeFailure = {
+      status: 409,
+      body: { error: { code: "STALE_VERSION", message: "version 12 is stale" } },
+    };
+    const dialog = await openSignDialog();
+    await clickSign(dialog);
+    await within(dialog).findByText(/changed while you were working/);
+    writeFailure = null;
+    await clickSign(dialog);
+    await waitFor(() => expect(writes()).toHaveLength(2));
+    expect(keyOf(0)).toBeTruthy();
+    expect(keyOf(1)).toBeTruthy();
+    expect(keyOf(1)).not.toBe(keyOf(0));
   });
 });

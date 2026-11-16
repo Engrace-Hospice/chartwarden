@@ -213,12 +213,16 @@ function clientFor(
       if (path === "/api/v1/patients/{id}") return ok(patient);
       if (path === "/api/v1/care-plans/{planId}/readiness")
         return ok(
+          // The server's real answer when nothing is open (care-plan-route-service-db.ts getReadiness): it
+          // reports OPEN_VERSION_REQUIRED, which must not read as "needs attention" on a healthy active plan.
           input.readiness ?? {
             planId: "plan-1",
             openVersionId: null,
             canFinalize: false,
             canSign: false,
-            blockers: [],
+            blockers: [
+              { code: "OPEN_VERSION_REQUIRED", message: "no draft or in-review version is open" },
+            ],
             signatures: { required: [], collected: [], missing: [] },
           },
         );
@@ -510,10 +514,49 @@ describe("M7 Care Plan version history", () => {
 
     await screen.findByRole("heading", { name: "Care Plan Version History" });
     fireEvent.click(screen.getByRole("button", { name: /v0/ }));
+    // A null snapshot cannot be told apart from a legacy one, so the label claims no more than "none recorded".
     await waitFor(() =>
-      expect(
-        screen.getByText("Detailed historical snapshot unavailable for this legacy version."),
-      ).toBeTruthy(),
+      expect(screen.getByText("No snapshot was recorded for this version.")).toBeTruthy(),
     );
+  });
+
+  describe("a snapshot the server redacted for this caller", () => {
+    const openHistory = async (version: Version): Promise<void> => {
+      const client = clientFor({ versions: [version], version });
+      render(
+        <MemoryRouter initialEntries={[`/care-plans/plan-1/versions/${version.id}`]}>
+          <ApiClientProvider client={client}>
+            <ToastProvider>
+              <SessionProvider session={session}>
+                <Routes>
+                  <Route
+                    path="/care-plans/:planId/versions/:versionId"
+                    element={<CarePlanVersionHistory />}
+                  />
+                </Routes>
+              </SessionProvider>
+            </ToastProvider>
+          </ApiClientProvider>
+        </MemoryRouter>,
+      );
+      await screen.findByRole("heading", { name: "Care Plan Version History" });
+      await screen.findByText("Problems at signing");
+    };
+    const withRedacted = (redacted: boolean): Version => ({
+      ...signedInitial,
+      stateSnapshot: { ...(signedInitial.stateSnapshot as object), redacted },
+    });
+
+    it("says restricted content was omitted instead of presenting the lists as the whole plan", async () => {
+      await openHistory(withRedacted(true));
+      expect(screen.getByRole("note").textContent).toMatch(/Restricted content omitted/);
+      // What the caller may see is still listed.
+      expect(screen.getByText(/Terminal cancer/)).toBeTruthy();
+    });
+
+    it("shows no omission notice when nothing was withheld", async () => {
+      await openHistory(withRedacted(false));
+      expect(screen.queryByRole("note")).toBeNull();
+    });
   });
 });

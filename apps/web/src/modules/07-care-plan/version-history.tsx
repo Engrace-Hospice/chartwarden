@@ -7,12 +7,13 @@ import {
   StatusPill,
   cardSurface,
   ghostBorder,
+  humanizeIdentifier,
   t,
   useApiClient,
 } from "@chartwarden/ui";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   type ClinicalSnapshot,
   type SignatureView,
@@ -22,6 +23,7 @@ import {
   getVersion,
   normalizeSignerSet,
 } from "./care-plan-api";
+import { RestrictedContentNote, disciplineLabel } from "./care-plan-overview";
 import { cap, toneFor } from "./care-plan-status";
 
 function formatDate(value: string | null | undefined): string {
@@ -39,12 +41,13 @@ function snapshotOf(version: Version | null): ClinicalSnapshot | null {
 
 export function CarePlanVersionHistory(): JSX.Element {
   const client = useApiClient();
+  const navigate = useNavigate();
   const { planId, versionId } = useParams<{ planId: string; versionId?: string }>();
   const [items, setItems] = useState<Version[]>([]);
-  const [selected, setSelected] = useState<Version | null>(null);
+  const [fetched, setFetched] = useState<Version | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<{ id: string; message: string } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -52,45 +55,75 @@ export function CarePlanVersionHistory(): JSX.Element {
       if (!planId) return;
       setLoading(true);
       setError(null);
-      const { data, error: err } = await client.GET("/api/v1/care-plans/{planId}/versions", {
-        params: { path: { planId } },
-      });
-      if (!active) return;
-      if (err) {
-        setError(errorMessage(err, "Could not load the version history."));
-        setLoading(false);
-        return;
+      setItems([]);
+      try {
+        const { data, error: err } = await client.GET("/api/v1/care-plans/{planId}/versions", {
+          params: { path: { planId } },
+        });
+        if (!active) return;
+        if (err) {
+          setError(errorMessage(err, "Could not load the version history."));
+        } else {
+          setItems(
+            ((data?.items ?? []) as unknown as Version[]).map((v) => ({
+              ...v,
+              requiredSignerSet: normalizeSignerSet(v.requiredSignerSet),
+            })),
+          );
+        }
+      } catch {
+        if (!active) return;
+        setError("Could not load the version history.");
       }
-      const rows = ((data?.items ?? []) as unknown as Version[]).map((v) => ({
-        ...v,
-        requiredSignerSet: normalizeSignerSet(v.requiredSignerSet),
-      }));
-      setItems(rows);
-      const initial =
-        rows.find((v) => v.id === versionId) ??
-        [...rows].sort((a, b) => b.sequence - a.sequence)[0] ??
-        null;
-      setSelected(initial);
       setLoading(false);
     })();
     return () => {
       active = false;
     };
-  }, [client, planId, versionId]);
-
-  async function selectVersion(versionId: string): Promise<void> {
-    if (!planId) return;
-    setLoadingDetail(true);
-    const res = await getVersion(client, planId, versionId);
-    setLoadingDetail(false);
-    if (res.error) {
-      setError(errorMessage(res.error, "Could not load that historical version."));
-      return;
-    }
-    setSelected(res.version);
-  }
+  }, [client, planId]);
 
   const sorted = useMemo(() => [...items].sort((a, b) => b.sequence - a.sequence), [items]);
+  // The URL is the selection: a :versionId that names no version is "not found", never a silent
+  // fallback to the latest one. Only an absent :versionId means "the latest".
+  const selectedId = versionId ?? sorted[0]?.id ?? null;
+  const listItem = sorted.find((v) => v.id === selectedId) ?? null;
+  // The list already carries a version's snapshot when the API includes it; fetch only when it does not.
+  const needsFetch = listItem !== null && snapshotOf(listItem) === null;
+
+  useEffect(() => {
+    if (!planId || !selectedId || !needsFetch) return;
+    let active = true; // a later selection (rapid clicks) cancels this one's result
+    setDetailError(null);
+    (async () => {
+      try {
+        const res = await getVersion(client, planId, selectedId);
+        if (!active) return;
+        if (res.error) {
+          setDetailError({
+            id: selectedId,
+            message: errorMessage(res.error, "Could not load that historical version."),
+          });
+        } else {
+          setFetched(res.version);
+        }
+      } catch {
+        if (!active) return;
+        setDetailError({ id: selectedId, message: "Could not load that historical version." });
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [client, planId, selectedId, needsFetch]);
+
+  const fetchedForSelected = fetched?.id === selectedId ? fetched : null;
+  const shown = needsFetch ? fetchedForSelected : listItem;
+  const shownError = detailError?.id === selectedId ? detailError.message : null;
+  const detailLoading = needsFetch && !fetchedForSelected && !shownError;
+
+  function selectVersion(id: string): void {
+    if (planId && id !== selectedId) navigate(`/care-plans/${planId}/versions/${id}`);
+  }
 
   return (
     <DetailPageLayout header={<PageHeader title="Care Plan Version History" />}>
@@ -106,17 +139,13 @@ export function CarePlanVersionHistory(): JSX.Element {
       ) : (
         <div style={layout}>
           <section style={listPanel} aria-label="Care Plan versions">
-            {error ? (
-              <p role="alert" style={alert}>
-                {error}
-              </p>
-            ) : null}
             {sorted.map((v) => (
               <button
                 type="button"
                 key={v.id}
-                onClick={() => void selectVersion(v.id)}
-                style={selected?.id === v.id ? selectedBtn : versionBtn}
+                onClick={() => selectVersion(v.id)}
+                aria-current={selectedId === v.id ? "true" : undefined}
+                style={selectedId === v.id ? selectedBtn : versionBtn}
               >
                 <span style={{ fontWeight: 700 }}>
                   v{v.sequence} · {cap(v.kind)}
@@ -131,7 +160,20 @@ export function CarePlanVersionHistory(): JSX.Element {
             ))}
           </section>
           <section style={detailPanel}>
-            {loadingDetail ? <LoadingSpinner /> : <VersionDetail version={selected} />}
+            {!listItem ? (
+              <EmptyState
+                title="Version not found"
+                description="That version does not exist on this Care Plan. Choose one from the list."
+              />
+            ) : shownError ? (
+              <p role="alert" style={alert}>
+                {shownError}
+              </p>
+            ) : detailLoading ? (
+              <LoadingSpinner />
+            ) : (
+              <VersionDetail version={shown} />
+            )}
           </section>
         </div>
       )}
@@ -163,7 +205,7 @@ function VersionDetail({ version }: { version: Version | null }): JSX.Element {
       ) : (
         <div style={legacyNotice}>
           <Glyph name="clock" size={16} />
-          Detailed historical snapshot unavailable for this legacy version.
+          No snapshot was recorded for this version.
         </div>
       )}
     </article>
@@ -183,7 +225,7 @@ function SignatureSummary({
           return (
             <span key={slot.role} style={chip}>
               <Glyph name={count >= slot.count ? "check-circle" : "clock"} size={14} />
-              {cap(slot.role)} · {count} of {slot.count}
+              {roleLabel(slot.role)} · {count} of {slot.count}
             </span>
           );
         })}
@@ -196,9 +238,22 @@ function roleSatisfiesSlot(slotRole: string, signerRole: string): boolean {
   return slotRole.split("|").includes(signerRole);
 }
 
+// A signer slot's role is a `|`-joined union ("rn_case_manager|msw"); each member reads as a role name.
+const ROLE_LABEL: Readonly<Record<string, string>> = {
+  rn_case_manager: "RN Case Manager",
+  msw: "MSW",
+};
+function roleLabel(role: string): string {
+  return role
+    .split("|")
+    .map((r) => ROLE_LABEL[r] ?? humanizeIdentifier(r))
+    .join(" or ");
+}
+
 function Snapshot({ snapshot }: { snapshot: ClinicalSnapshot }): JSX.Element {
   return (
     <div style={{ display: "grid", gap: t.space3 }}>
+      {snapshot.redacted === true ? <RestrictedContentNote /> : null}
       <SnapshotGroup
         title="Problems at signing"
         items={(snapshot.problems ?? []).map(
@@ -214,7 +269,8 @@ function Snapshot({ snapshot }: { snapshot: ClinicalSnapshot }): JSX.Element {
       <SnapshotGroup
         title="Interventions at signing"
         items={(snapshot.interventions ?? []).map(
-          (i) => `${i.scopeText} · ${cap(i.discipline)} · ${i.frequencyText} · ${cap(i.status)}`,
+          (i) =>
+            `${i.scopeText} · ${disciplineLabel(i.discipline)} · ${i.frequencyText} · ${cap(i.status)}`,
         )}
       />
     </div>
