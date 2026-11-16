@@ -2535,18 +2535,6 @@ export function createDbHopeBackend(
           "M10_SUBMISSION_RESULT_NO_MATCH",
           `None of the ${results.length} report rows names an assessment in submission ${id}.`,
         );
-        // The batch's report history is bounded (see MAX_RESULT_EVENTS_PER_SUBMISSION). Counted under the batch row lock this
-        // transaction holds, so two imports cannot both pass the check.
-        const [recordedEvents] = await t
-          .select({ n: count() })
-          .from(RESULT)
-          .where(and(eq(RESULT.organizationId, organizationId), eq(RESULT.hopeSubmissionId, id)));
-        const recorded = Number(recordedEvents?.n ?? 0);
-        if (recorded + results.length > MAX_RESULT_EVENTS_PER_SUBMISSION) {
-          throw new ConflictError(
-            `This batch already holds ${recorded} recorded report rows and takes at most ${MAX_RESULT_EVENTS_PER_SUBMISSION}; this report would add ${results.length}. Nothing was saved. Send only the rows that still need recording: an item CMS has settled needs no further rows.`,
-          );
-        }
         const now = new Date();
         const finalStatus = new Map<string, string>(items.map((i) => [i.id, i.itemStatus]));
         // One report row per finding: merge per assessment, worst outcome wins, independent of row order.
@@ -2565,6 +2553,23 @@ export function createDbHopeBackend(
             (!prev || worstOutcome(prev.status, status) === status)
           )
             worst.set(item.id, { status, raw: prev?.status === status ? prev.raw : raw });
+        }
+        // The batch's report history is bounded (see MAX_RESULT_EVENTS_PER_SUBMISSION), but a report that settles an item is
+        // always recorded: a CMS verdict must not be refused for the count (the rows are append-only, so nothing could lower it).
+        // Such a report is bounded by the batch's finite items (each is settled once, a verdict being final) times 2000 rows.
+        // Counted only for a report that settles none, under the batch row lock this transaction holds, so two imports cannot
+        // both pass the check.
+        if (worst.size === 0) {
+          const [recordedEvents] = await t
+            .select({ n: count() })
+            .from(RESULT)
+            .where(and(eq(RESULT.organizationId, organizationId), eq(RESULT.hopeSubmissionId, id)));
+          const recorded = Number(recordedEvents?.n ?? 0);
+          if (recorded + results.length > MAX_RESULT_EVENTS_PER_SUBMISSION) {
+            throw new ConflictError(
+              `This batch already holds ${recorded} recorded report rows, the most it keeps without a verdict (${MAX_RESULT_EVENTS_PER_SUBMISSION}), and this report settles no item, so its ${results.length} rows would pass that. Nothing was saved. Send a report that carries a CMS verdict for an item still pending: that is always recorded.`,
+            );
+          }
         }
         // The verdicts and the stamps are collected first and written in bulk (see ./hope-submission-result-writes.ts): the
         // submission row lock is held for these statements, not for one per item, per assessment and per report row.

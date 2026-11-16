@@ -141,9 +141,12 @@ export function reportHashes(results: readonly Record<string, unknown>[]): {
 export const MAX_RETAINED_RESULTS = 2000;
 
 /**
- * The most `hope_submission_result_event` rows one batch may hold. The rows are append-only audit evidence, and every import whose
- * report differs by a character (a new report hash) adds up to 2000 more while the batch is still `submitted_pending_result`, so the
- * total is bounded: an import that would pass it is a 409 and records nothing. The batch's findings read is limited to the same number.
+ * The most `hope_submission_result_event` rows one batch may hold for reports that settle no item. The rows are append-only audit
+ * evidence, and every import whose report differs by a character (a new report hash) adds up to 2000 more while the batch is still
+ * `submitted_pending_result`, so the total is bounded: an import that settles no pending item and would pass it is a 409 and records
+ * nothing. An import that settles an item is always recorded (a CMS verdict is final and nothing could lower the count afterwards);
+ * it is bounded by the batch's finite items, each settled once, times 2000 rows. The batch's findings read returns the newest rows,
+ * up to this number.
  */
 export const MAX_RESULT_EVENTS_PER_SUBMISSION = 20_000;
 

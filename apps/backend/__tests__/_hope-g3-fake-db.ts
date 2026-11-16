@@ -28,6 +28,8 @@ export interface RecordedStatement {
   readonly columns?: readonly string[];
   /** The number a chain's `limit(n)` was given, so a test can assert a read is bounded. */
   readonly limit?: number;
+  /** The SQL each `orderBy` argument rendered to, in order, so a test can assert which rows a bounded read keeps. */
+  readonly orderBy?: readonly string[];
 }
 
 /** The point a scripted run stops at: every statement past the script. */
@@ -79,7 +81,11 @@ export function scriptedDb(outcomes: readonly Outcome[]) {
         outcome instanceof Error ? reject(outcome) : resolve(outcome),
     };
     for (const name of CHAIN_METHODS) {
-      link[name] = (argument?: unknown) => {
+      link[name] = (argument?: unknown, ...rest: unknown[]) => {
+        if (name === "orderBy")
+          slot.orderBy = [argument, ...rest]
+            .filter((part) => part !== undefined)
+            .map((part) => renderSql(part).sql);
         if (name === "where" && argument !== undefined) slot.rendered = renderSql(argument);
         if (name === "limit" && typeof argument === "number") slot.limit = argument;
         if (name === "returning") {

@@ -604,15 +604,16 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
     ]);
   });
 
-  it("a batch holds at most MAX_RESULT_EVENTS_PER_SUBMISSION report rows: the import that would pass it is a static 409 and records nothing, the one that reaches it lands, a replay still answers, and the findings read is bounded", async () => {
+  it("a batch holds at most MAX_RESULT_EVENTS_PER_SUBMISSION report rows unless the report settles an item: a report that settles none and would pass it is a static 409 that records nothing, a verdict always lands, a replay still answers, and the findings read keeps the newest rows", async () => {
     const a = await seedAssessment();
     const b = await seedBatch("submitted_pending_result", [a]);
     const seeded = MAX_RESULT_EVENTS_PER_SUBMISSION - 10;
-    // Earlier imports' rows, written straight (a code-less row is not a unique key).
+    // Earlier imports' rows, written straight (a code-less row is not a unique key), all older than anything imported below.
     await admin.query(
       `INSERT INTO hope_submission_result_event
          (organization_id, hope_submission_id, report_hash, result_status, message, created_at)
-       SELECT $1, $2, 'seeded', 'pending', 'seeded note', now() + (g || ' milliseconds')::interval
+       SELECT $1, $2, 'seeded', 'pending', 'seeded note',
+              now() - interval '1 day' + (g || ' milliseconds')::interval
          FROM generate_series(1, $3::int) g`,
       [ORG_A, b, seeded],
     );
@@ -647,22 +648,24 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
       id: b,
     });
     expect(await stored()).toBe(MAX_RESULT_EVENTS_PER_SUBMISSION);
-    // one more row of a different report is over the cap
+    // one more row that settles nothing is over the cap
     await expect(
       svc.importSubmissionResult(ORG_A, member, b, report(500, 1)),
     ).rejects.toMatchObject({ statusCode: 409, code: "CONFLICT" });
     expect(await stored()).toBe(MAX_RESULT_EVENTS_PER_SUBMISSION);
 
-    // rows past the cap that a direct write left behind are never read back
-    await admin.query(
-      `INSERT INTO hope_submission_result_event
-         (organization_id, hope_submission_id, report_hash, result_status, message, created_at)
-       SELECT $1, $2, 'extra', 'pending', 'extra note', now() + interval '1 hour'
-         FROM generate_series(1, 5)`,
-      [ORG_A, b],
-    );
+    // a CMS verdict for the pending item is recorded whatever the count: nothing could lower it afterwards
+    const settled = await svc.importSubmissionResult(ORG_A, member, b, {
+      results: [{ assessmentId: a, status: "rejected", code: "-9999", message: "the verdict" }],
+    });
+    expect(settled.status).toBe("rejected");
+    expect(await stored()).toBe(MAX_RESULT_EVENTS_PER_SUBMISSION + 1);
+
+    // the findings read is bounded, and what it drops is the OLDEST: the latest report (the verdict) is the last finding
     const detail = await svc.getSubmission(ORG_A, b);
     expect(detail.findings).toHaveLength(MAX_RESULT_EVENTS_PER_SUBMISSION);
+    expect(detail.findings.at(-1)).toMatchObject({ code: "-9999", message: "the verdict" });
+    expect(detail.findings.filter((f) => f.message === "seeded note")).toHaveLength(seeded - 1);
   }, 120_000);
 
   it("the report reference is its own column: written with the import, kept in the jsonb too, and the light reads never touch acceptance_report", async () => {

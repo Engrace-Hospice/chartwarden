@@ -493,13 +493,14 @@ describe("the in-memory twin refuses what the database backend refuses", () => {
 });
 
 describe("the read API returns an assessment id only when it is one", () => {
-  const readWith = async (rawAssessmentId: unknown) => {
+  /** `raw` is what the report named; the read gets it as `raw_result->>'assessmentId'` (text, or null when there is none). */
+  const readWith = async (raw: unknown) => {
     const fake = scriptedDb([
       [
         {
           id: "r1",
           hopeSubmissionItemId: null,
-          rawResult: { assessmentId: rawAssessmentId },
+          rawAssessmentId: raw === undefined || raw === null ? null : String(raw),
           cmsEditCode: "-3015",
           itemCode: null,
           message: "m",
@@ -520,12 +521,33 @@ describe("the read API returns an assessment id only when it is one", () => {
     expect(await readWith(undefined)).toBeNull();
   });
 
-  it("the read is bounded to the most rows a batch may hold", async () => {
-    const fake = scriptedDb([[], []]);
+  it("the read keeps the NEWEST rows of a batch past the cap (the verdict), oldest first in the answer, and reads only the columns it shows", async () => {
+    const row = (id: string) => ({
+      id,
+      hopeSubmissionItemId: null,
+      rawAssessmentId: null,
+      cmsEditCode: "-3015",
+      itemCode: null,
+      message: null,
+      resultStatus: "rejected",
+      cmsSeverity: null,
+    });
+    // what the database answers for "newest first, limited": the latest report's row first
+    const fake = scriptedDb([[row("verdict"), row("middle"), row("oldest-kept")], []]);
 
-    await loadSubmissionFindings(fake.tx, ORG, SUB);
+    const findings = await loadSubmissionFindings(fake.tx, ORG, SUB);
 
-    expect(fake.statements[0]?.limit).toBe(MAX_RESULT_EVENTS_PER_SUBMISSION);
+    const statement = fake.statements[0];
+    expect(statement?.limit).toBe(MAX_RESULT_EVENTS_PER_SUBMISSION);
+    expect(statement?.orderBy).toEqual([
+      expect.stringMatching(/"created_at" desc$/),
+      expect.stringMatching(/"id" desc$/),
+    ]);
+    expect(findings.map((f) => f.id)).toEqual(["oldest-kept", "middle", "verdict"]);
+    expect(statement?.columns).toEqual(
+      expect.arrayContaining(["id", "rawAssessmentId", "message"]),
+    );
+    expect(statement?.columns).not.toContain("rawResult");
   });
 
   it("the item of each row is looked up once, not scanned for: a full batch resolves in well under a second", async () => {
@@ -538,7 +560,7 @@ describe("the read API returns an assessment id only when it is one", () => {
     const rows = Array.from({ length: MAX_RESULT_EVENTS_PER_SUBMISSION }, (_, i) => ({
       id: `r${i}`,
       hopeSubmissionItemId: `item-${itemCount - 1}`,
-      rawResult: {},
+      rawAssessmentId: null,
       cmsEditCode: "-3015",
       itemCode: null,
       message: null,

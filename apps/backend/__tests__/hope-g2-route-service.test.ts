@@ -288,23 +288,32 @@ describe("importSubmissionResult — a report row's assessment id matches its it
     ]);
   });
 
-  describe("a batch holds at most MAX_RESULT_EVENTS_PER_SUBMISSION recorded report rows", () => {
-    const rows = (count: number) =>
+  describe("a batch holds at most MAX_RESULT_EVENTS_PER_SUBMISSION recorded report rows, unless the report settles an item", () => {
+    /** Rows that settle nothing (no status: pending). */
+    const pendingRows = (count: number) =>
       Array.from({ length: count }, (_, i) => ({
         assessmentId: CANONICAL,
-        status: "rejected",
         code: `-${3000 + i}`,
-        message: "bad",
+        message: "a note",
       }));
-    const withRecorded = (n: number) => [[submission], [], [item], [{ n }]];
+    /** Rows that carry a CMS verdict for the item. */
+    const verdictRows = (count: number) =>
+      pendingRows(count).map((row) => ({ ...row, status: "rejected" }));
+    const withRecorded = (n: number, theItem: typeof item = item) => [
+      [submission],
+      [],
+      [theItem],
+      [{ n }],
+    ];
+    const settledItem = { ...item, itemStatus: "accepted" };
 
-    it("an import that would pass the cap is a static 409 under the batch lock, and nothing is written", async () => {
+    it("a report that settles no item and would pass the cap is a static 409 under the batch lock, and nothing is written", async () => {
       const { svc, statements, written } = backend(
         withRecorded(MAX_RESULT_EVENTS_PER_SUBMISSION - 1),
       );
 
       const failure = await outcome(
-        svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, { results: rows(2) }),
+        svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, { results: pendingRows(2) }),
       );
 
       expect(failure).toMatchObject({ code: "CONFLICT", statusCode: 409 });
@@ -322,11 +331,39 @@ describe("importSubmissionResult — a report row's assessment id matches its it
       expect(count).toBeGreaterThan(lock);
     });
 
-    it("an import that lands exactly on the cap goes on to the writes (the script ends it there)", async () => {
+    it("a report that settles a pending item is recorded whatever the count: the count is not even read, and the writes follow", async () => {
+      const { svc, statements, written } = backend([[submission], [], [item]]);
+
+      const failure = await outcome(
+        svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, { results: verdictRows(1) }),
+      );
+
+      expect(failure?.message).toBe(SCRIPT_EXHAUSTED); // not the 409: it went on to the writes, where the script ends it
+      expect(statements.some((s) => s.columns?.join() === "n")).toBe(false);
+      expect(itemUpdateOf(statements)?.params).toEqual(
+        expect.arrayContaining([item.id, "rejected", submission.id, ORG]),
+      );
+      expect(written.some((w) => Array.isArray(w))).toBe(true);
+    });
+
+    it("a verdict for an item CMS already settled settles nothing, so it is counted like any other report", async () => {
+      const { svc, written } = backend(
+        withRecorded(MAX_RESULT_EVENTS_PER_SUBMISSION - 1, settledItem),
+      );
+
+      const failure = await outcome(
+        svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, { results: verdictRows(2) }),
+      );
+
+      expect(failure).toMatchObject({ code: "CONFLICT", statusCode: 409 });
+      expect(written).toEqual([]);
+    });
+
+    it("a report that settles nothing and lands exactly on the cap goes on to the writes (the script ends it there)", async () => {
       const { svc, written } = backend(withRecorded(MAX_RESULT_EVENTS_PER_SUBMISSION - 2));
 
       const failure = await outcome(
-        svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, { results: rows(2) }),
+        svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, { results: pendingRows(2) }),
       );
 
       expect(failure?.message).toBe(SCRIPT_EXHAUSTED);
@@ -337,7 +374,7 @@ describe("importSubmissionResult — a report row's assessment id matches its it
       const { svc, statements } = backend(withRecorded(0));
 
       await outcome(
-        svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, { results: rows(1) }),
+        svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, { results: pendingRows(1) }),
       );
 
       const counted = statements.find((s) => s.columns?.join() === "n");

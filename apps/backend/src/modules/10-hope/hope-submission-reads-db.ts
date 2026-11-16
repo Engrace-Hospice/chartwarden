@@ -3,7 +3,7 @@
 // assessment's correction stands. All run inside the caller's `withOrgContext` transaction (RLS-scoped).
 import { type DbClient, schema } from "@chartwarden/db";
 import type { HopeSubmissionItemStatus } from "@chartwarden/types";
-import { and, asc, desc, eq, getTableColumns, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import {
   MAX_CORRECTION_CHAIN,
   MAX_RESULT_EVENTS_PER_SUBMISSION,
@@ -184,15 +184,29 @@ export async function loadSubmissionFindings(
   organizationId: string,
   submissionId: string,
 ): Promise<HopeSubmissionFindingView[]> {
-  const rows = await t
-    .select()
+  // The NEWEST rows, newest first, so that a batch past the cap (an import that settles an item is recorded whatever the count)
+  // still shows its latest report, the verdict; they are put back in oldest-first order below. Only the columns the view reads:
+  // the cap bounds the rows, not their bytes, so the stored `raw_result` is not pulled through the connection (its
+  // `assessmentId`, which names an unmatched row, is the one field read from it).
+  const newestFirst = await t
+    .select({
+      id: RESULT.id,
+      hopeSubmissionItemId: RESULT.hopeSubmissionItemId,
+      rawAssessmentId: sql<string | null>`${RESULT.rawResult}->>'assessmentId'`,
+      cmsEditCode: RESULT.cmsEditCode,
+      itemCode: RESULT.itemCode,
+      message: RESULT.message,
+      resultStatus: RESULT.resultStatus,
+      cmsSeverity: RESULT.cmsSeverity,
+    })
     .from(RESULT)
     .where(
       and(eq(RESULT.organizationId, organizationId), eq(RESULT.hopeSubmissionId, submissionId)),
     )
-    .orderBy(asc(RESULT.createdAt), asc(RESULT.id))
-    // A batch holds at most this many rows (the import refuses to add more): the read is bounded to match.
+    .orderBy(desc(RESULT.createdAt), desc(RESULT.id))
+    // A batch's findings are read to this many rows, the same number the import's cap names.
     .limit(MAX_RESULT_EVENTS_PER_SUBMISSION);
+  const rows = newestFirst.reverse();
   const items = await t
     .select({ id: SUBITEM.id, assessmentId: SUBITEM.hopeAssessmentId })
     .from(SUBITEM)
@@ -203,21 +217,18 @@ export async function loadSubmissionFindings(
   const assessmentOfItem = new Map(items.map((i) => [i.id, i.assessmentId]));
   return rows
     .filter((r) => r.cmsEditCode || r.itemCode || r.message)
-    .map((r) => {
-      const raw = (r.rawResult ?? {}) as { assessmentId?: unknown };
-      return {
-        id: r.id,
-        // The matched item's assessment, else the id the report named, but only when it IS an id (a uuid, read as Postgres reads
-        // one): what an operator typed into an unmatched row is not returned to every `hope.submission.read` caller.
-        assessmentId:
-          (r.hopeSubmissionItemId ? assessmentOfItem.get(r.hopeSubmissionItemId) : undefined) ??
-          (typeof raw.assessmentId === "string"
-            ? canonicalUuidOrNull(raw.assessmentId.trim())
-            : null),
-        severity: findingSeverity(r),
-        code: r.cmsEditCode ?? null,
-        itemCode: r.itemCode ?? null,
-        message: r.message ?? null,
-      };
-    });
+    .map((r) => ({
+      id: r.id,
+      // The matched item's assessment, else the id the report named, but only when it IS an id (a uuid, read as Postgres reads
+      // one): what an operator typed into an unmatched row is not returned to every `hope.submission.read` caller.
+      assessmentId:
+        (r.hopeSubmissionItemId ? assessmentOfItem.get(r.hopeSubmissionItemId) : undefined) ??
+        (typeof r.rawAssessmentId === "string"
+          ? canonicalUuidOrNull(r.rawAssessmentId.trim())
+          : null),
+      severity: findingSeverity(r),
+      code: r.cmsEditCode ?? null,
+      itemCode: r.itemCode ?? null,
+      message: r.message ?? null,
+    }));
 }

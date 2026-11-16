@@ -283,13 +283,12 @@ describe("the result import and the batch reads name the tenant beside every id 
   };
 
   it("importSubmissionResult: the row lock, the replay read, the items, the final UPDATE and the detail it returns", async () => {
-    // lock, replay read, items, the count of the batch's recorded report rows, (the bulk item write is an `execute`), the event
-    // insert, the UPDATE, then the detail: items, assessments, events, items.
+    // lock, replay read, items, (the bulk item write is an `execute`), the event insert, the UPDATE, then the detail: items,
+    // assessments, events, items. A report that settles an item does not count the batch's rows (see the next test).
     const { fake, svc } = backend([
       [submission],
       [],
       [pending],
-      [{ n: 0 }],
       [],
       [{ ...submission, status: "accepted", acceptedCount: 1 }],
       [settledItem],
@@ -306,7 +305,6 @@ describe("the result import and the batch reads name the tenant beside every id 
       "select", // the row lock
       "select", // the replay read of the stored report rows
       "select", // the batch's items
-      "select", // the count of the batch's recorded report rows (the cap)
       "insert", // the report rows
       "update", // the batch row
       "select", // detail: items
@@ -314,6 +312,24 @@ describe("the result import and the batch reads name the tenant beside every id 
       "select", // detail: report rows
       "select", // detail: items (the findings' item ids)
     ]);
+    expectEveryWhereNamesTenant(fake);
+  });
+
+  it("importSubmissionResult: a report that settles no item also counts the batch's report rows, naming the tenant", async () => {
+    // lock, replay read, items, the count (the cap), then the script ends at the event insert
+    const { fake, svc } = backend([[submission], [], [pending], [{ n: 0 }]]);
+
+    await svc
+      .importSubmissionResult(ORG, USER, SUBMISSION, {
+        results: [{ assessmentId: ASSESSMENT, code: "-3015" }],
+      } as never)
+      .catch(() => undefined);
+
+    expect(
+      dataStatements(fake)
+        .slice(0, 4)
+        .map((s) => s.kind),
+    ).toEqual(["select", "select", "select", "select"]);
     expectEveryWhereNamesTenant(fake);
   });
 
