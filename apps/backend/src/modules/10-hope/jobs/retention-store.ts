@@ -37,8 +37,10 @@ export interface HopePatientRetentionFacts extends HopeRetentionFacts {
  * Whether the row's patient is one the M4 legal hold names, decided by the DATABASE on canonical uuids. The hold's patient
  * ids are whatever spelling its creator typed (the uuid format check accepts upper case, and `legalHoldScopeOf` keeps the
  * raw string): compared in JavaScript with `Set.has` against the lower-case `patient_id`, an upper-case id would match
- * nothing and a held patient would be flagged eligible for destruction. A value that is no uuid names no patient, so it is
- * left out instead of reaching a `::uuid` cast that would fail the whole org's scan; the caller is told how many.
+ * nothing and a held patient would be flagged eligible for destruction. A value that is no uuid is never sent to a `::uuid`
+ * cast (that would 500 the whole read), and is counted for the caller, which FAILS CLOSED on any (see
+ * {@link HopeLegalHoldUnreadableError}): what that hold meant to protect is unknown, so no patient of the organisation is
+ * judged against it.
  *
  * ponytail: one bound parameter per held patient; a hold list long enough to reach the driver's parameter limit
  * (65 535) needs a `= any($1::uuid[])` array parameter or a chunked read. Legal holds name patients one by one.
@@ -58,6 +60,20 @@ export function heldPatientSql(heldPatientIds: ReadonlySet<string>): {
   return { predicate: sql<boolean>`${inArray(A.patientId, [...canonical])}`, ignored };
 }
 
+/**
+ * A legal hold of the organisation names a patient with something that is no uuid, so WHO is held cannot be decided.
+ * Raised before anything is read or written: dropping the value would compare that patient against nothing and flag
+ * them `eligible` for destruction (and publish `m10.hope.retention_eligible`), the unsafe direction for a hold. The
+ * cron's per-org loop catches it, logs the organisation and the error class, and carries on with the other
+ * organisations; the run still fails at the end so the corrupt hold is seen and repaired in M4.
+ */
+export class HopeLegalHoldUnreadableError extends Error {
+  constructor() {
+    super("a legal hold names a patient id that is no uuid; the organisation's scan failed closed");
+    this.name = "HopeLegalHoldUnreadableError";
+  }
+}
+
 /** Fold every HOPE assessment + submission outcome for the org into one {@link HopePatientRetentionFacts} per
  * patient. `legalHold` is true for a patient named in `heldPatientIds` (the M4 hold's patients, in any spelling of the
  * uuid); the caller layers the org-wide hold on top. `heldPatientIds` has NO default on purpose: it is a safety input, and
@@ -69,9 +85,11 @@ export async function hopeRetentionFactsForOrg(
 ): Promise<HopePatientRetentionFacts[]> {
   const held = heldPatientSql(heldPatientIds);
   if (held.ignored > 0) {
+    // The count and the organisation only: the unreadable values are corrupt data and are never logged.
     console.warn(
-      `m10: hope-retention-scan: ${held.ignored} legal-hold patient id(s) in organization ${organizationId} are no uuid and name no patient; they were left out of the hold comparison.`,
+      `m10: hope-retention-scan: ${held.ignored} legal-hold patient id(s) in organization ${organizationId} are no uuid; who is held cannot be decided, so this organization's scan flags and publishes nothing this run.`,
     );
+    throw new HopeLegalHoldUnreadableError();
   }
   const assessments = await tx
     .select({

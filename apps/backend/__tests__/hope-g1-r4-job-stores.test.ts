@@ -1,5 +1,6 @@
 import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  HopeLegalHoldUnreadableError,
   heldPatientSql,
   hopeRetentionFactsForOrg,
 } from "../src/modules/10-hope/jobs/retention-store";
@@ -110,11 +111,14 @@ describe("hopeRetentionFactsForOrg — legalHold is what the database answered",
     expect(facts.map((f) => f.legalHold)).toEqual([false]);
   });
 
-  it("says how many hold ids it could not read, with the organisation and no value", async () => {
-    const { tx } = scriptedDb([[], []]);
+  it("fails the organisation closed on a hold id it cannot read, saying how many, with the organisation and no value", async () => {
+    const { tx, statements } = scriptedDb([[], []]);
 
-    await hopeRetentionFactsForOrg(tx, ORG, new Set(["not-a-uuid", "SECRET-HOLD-VALUE", PATIENT]));
+    await expect(
+      hopeRetentionFactsForOrg(tx, ORG, new Set(["not-a-uuid", "SECRET-HOLD-VALUE", PATIENT])),
+    ).rejects.toBeInstanceOf(HopeLegalHoldUnreadableError);
 
+    expect(statements).toEqual([]); // nothing was read, so nothing can be flagged
     expect(warned()).toContain("2 legal-hold patient id(s)");
     expect(warned()).toContain(ORG);
     expect(warned()).not.toContain("SECRET-HOLD-VALUE");
