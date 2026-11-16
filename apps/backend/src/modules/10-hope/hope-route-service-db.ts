@@ -131,6 +131,10 @@ import {
 } from "./hope-validation-service";
 import type { HopeRetentionHoldPort } from "./jobs/cron-workers";
 import type { HopeWriteOutboxPort } from "./outbox-port";
+import {
+  assertReferenceHasNoPatientIdentifier,
+  assertResultRowsHaveNoPatientIdentifier,
+} from "./routes/hope-reference-screen";
 import type {
   CorrectTimepointArgs,
   HopeAssessmentView,
@@ -2407,6 +2411,8 @@ export function createDbHopeBackend(
     async markSubmissionUploaded(organizationId, userId, urlId, args) {
       // A date that does not exist (or has no explicit offset) is refused, never stored as the next valid one.
       if (args.submittedAt !== undefined) requireCalendarDateTime(args.submittedAt, "submittedAt");
+      // The route screened the reference already; the service screens it again, so a second caller cannot store an identifier.
+      assertReferenceHasNoPatientIdentifier("iqiesSubmissionReference", args.iqiesSubmissionReference);
       const id = uuidOrNotFound(urlId, `HOPE submission ${urlId} not found`);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
@@ -2463,6 +2469,9 @@ export function createDbHopeBackend(
     },
     async importSubmissionResult(organizationId, userId, urlId, args) {
       const id = uuidOrNotFound(urlId, `HOPE submission ${urlId} not found`);
+      // Screened by the route too; here so a second caller of the service cannot store an identifier in a reference or token.
+      assertReferenceHasNoPatientIdentifier("reportReference", args.reportReference);
+      assertResultRowsHaveNoPatientIdentifier(args.results);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         // Row lock: serialises concurrent recordings of one batch (waits at most `M10_LOCK_TIMEOUT_MS`, then `M10_RECORD_BUSY`).

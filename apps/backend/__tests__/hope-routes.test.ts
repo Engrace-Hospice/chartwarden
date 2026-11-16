@@ -2661,6 +2661,103 @@ describe("the operator-typed submission references: a charset in the schema, pat
     expect(res.statusCode).toBe(200);
     await ctx.app.close();
   });
+
+  it.each([
+    ["only spaces", "      "],
+    ["a leading space", " UP-1"],
+    ["129 characters", "a".repeat(129)],
+  ])(
+    "a reference that is %s is refused by the schema (422) on both routes",
+    async (_label, reference) => {
+      const ctx = makeServer({ packagedSubmission: true });
+
+      expect((await markUploaded(ctx, { iqiesSubmissionReference: reference })).statusCode).toBe(
+        422,
+      );
+      expect((await importResult(ctx, reference)).statusCode).toBe(422);
+      await ctx.app.close();
+    },
+  );
+
+  it("a 128-character reference is the longest accepted", async () => {
+    const ctx = makeServer({ packagedSubmission: true });
+
+    const res = await markUploaded(ctx, { iqiesSubmissionReference: "a".repeat(128) });
+
+    expect(res.statusCode).toBe(200);
+    await ctx.app.close();
+  });
+});
+
+describe("the CMS result-row tokens: a charset in the schema, patient identifiers refused by the route", () => {
+  const SYNTHETIC_SSN = "900-12-3456";
+  const SYNTHETIC_MBI = "1EG4TE5MK73";
+  const importRows = (ctx: ReturnType<typeof makeServer>, results: Record<string, unknown>[]) =>
+    ctx.app.inject({
+      method: "POST",
+      url: `/api/v1/hope/submissions/${SUB_PACKAGED}/results`,
+      headers: RN,
+      payload: { results },
+    });
+  const row = (token: Record<string, unknown>) => ({ assessmentId: SIGNED_A, ...token });
+
+  it.each([
+    ["status", { status: SYNTHETIC_SSN }],
+    ["outcome", { outcome: `Run ${SYNTHETIC_SSN}` }],
+    ["severity", { severity: SYNTHETIC_MBI }],
+    ["code", { code: SYNTHETIC_SSN }],
+    ["itemCode", { itemCode: SYNTHETIC_MBI }],
+    ["iqiesRecordId", { iqiesRecordId: SYNTHETIC_SSN }],
+  ])(
+    "an identifier-shaped %s is refused with a static 422 that names the token, never the value",
+    async (key, token) => {
+      const ctx = makeServer({ packagedSubmission: true });
+
+      const res = await importRows(ctx, [row({ status: "accepted" }), row(token)]);
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+      expect(res.json().error.details).toEqual([
+        expect.objectContaining({ field: `results.1.${key}` }),
+      ]);
+      expect(res.body).not.toContain(SYNTHETIC_SSN);
+      expect(res.body).not.toContain(SYNTHETIC_MBI);
+      await ctx.app.close();
+    },
+  );
+
+  it.each([
+    ["markup", "<b>x</b>"],
+    ["a quote", `E"1`],
+    ["a line break", "E1\nE2"],
+    ["only spaces", "   "],
+    ["a leading space", " E1"],
+    ["65 characters", "E".repeat(65)],
+  ])("a code that is %s is refused by the schema (422)", async (_label, code) => {
+    const ctx = makeServer({ packagedSubmission: true });
+
+    expect((await importRows(ctx, [row({ code })])).statusCode).toBe(422);
+    await ctx.app.close();
+  });
+
+  it("the codes, severities and ids CMS sends still pass (letters, digits, dashes, dots, underscores, colons, slashes, inner spaces)", async () => {
+    const ctx = makeServer({ packagedSubmission: true });
+
+    const res = await importRows(ctx, [
+      row({
+        status: "Accepted with warnings",
+        severity: "ERROR",
+        code: "-3010",
+        itemCode: "J2051A",
+        iqiesRecordId: "REC-2026.06:a/b#3",
+      }),
+      { assessmentId: SIGNED_A, iqiesRecordId: "" },
+    ]);
+
+    // Past both screens: the batch is only `packaged`, so the import is refused for its status (409), not its tokens.
+    expect(res.statusCode).toBe(409);
+    await ctx.app.close();
+  });
 });
 
 describe("an SFV completion needs a real calendar date", () => {

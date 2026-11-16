@@ -34,7 +34,10 @@ import { type PreHandler, membershipActorOf, rejectAiActor } from "@chartwarden/
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { HOPE_SFV_STEP_UP_OPERATION, HOPE_SIGN_STEP_UP_OPERATION } from "../hope-signature-audit";
-import { assertReferenceHasNoPatientIdentifier } from "./hope-reference-screen";
+import {
+  assertReferenceHasNoPatientIdentifier,
+  assertResultRowsHaveNoPatientIdentifier,
+} from "./hope-reference-screen";
 import {
   type CaseloadLookup,
   REGENERATE_SCHEDULES_GUARDS,
@@ -721,6 +724,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { id } = parse(SubmissionParamsSchema, request.params);
       const body = parse(ImportSubmissionResultSchema, request.body);
       assertReferenceHasNoPatientIdentifier("reportReference", body.reportReference);
+      assertResultRowsHaveNoPatientIdentifier(body.results);
       return service.importSubmissionResult(organizationId, userId, id, body);
     },
   );

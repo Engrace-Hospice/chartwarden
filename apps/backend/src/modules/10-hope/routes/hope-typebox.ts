@@ -285,36 +285,54 @@ export const CancelSubmissionSchema = Type.Object(
   { additionalProperties: false },
 );
 /**
- * The characters an operator-typed submission reference may hold (an iQIES upload id, a CMS report reference): letters, digits and
- * ` . _ : # / -`, so markup, control characters and quotes never reach a stored row or an audit image. The schema does not echo the
- * value in its 422. A patient identifier shaped from these characters is refused by the route (hope-reference-screen.ts).
+ * The characters an operator-typed submission reference or CMS result token may hold (an iQIES upload id, a CMS report reference,
+ * an edit code): letters, digits and ` . _ : # / -`, the FIRST of them never a space (a whitespace-only value is no value), so
+ * markup, control characters and quotes never reach a stored row or an audit image. The schema does not echo the value in its
+ * 422. A patient identifier shaped from these characters is refused by the route AND the service (hope-reference-screen.ts).
+ * The web client's copy (apps/web hope-report-reference.ts) must use the same pattern and limits.
  */
-const REFERENCE_CHARSET = "[A-Za-z0-9 ._:#/-]";
-const referenceString = (maxLength: number) =>
+export const HOPE_TOKEN_PATTERN = "^[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/-]*$";
+/** A submission reference (`reportReference`, `iqiesSubmissionReference`): at most this many characters. */
+export const HOPE_REFERENCE_MAX_LENGTH = 128;
+/** One CMS result-row token (`status`, `result`, `outcome`, `severity`, `code`, `itemCode`, `iqiesRecordId`): at most this many. */
+export const HOPE_RESULT_TOKEN_MAX_LENGTH = 64;
+const referenceString = () =>
   Type.Union([
-    Type.String({ minLength: 1, maxLength, pattern: `^${REFERENCE_CHARSET}+$` }),
+    Type.String({
+      minLength: 1,
+      maxLength: HOPE_REFERENCE_MAX_LENGTH,
+      pattern: HOPE_TOKEN_PATTERN,
+    }),
     Type.Null(),
   ]);
 export const MarkSubmissionUploadedSchema = Type.Object({
   submittedAt: Type.Optional(Type.String({ format: "date-time" })),
-  iqiesSubmissionReference: Type.Optional(referenceString(200)),
+  iqiesSubmissionReference: Type.Optional(referenceString()),
 });
-const CMS_TOKEN = { maxLength: 64 };
+/**
+ * A result-row token is the same charset, or EMPTY (a blank cell of a pasted report names nothing, as an absent key does: a blank
+ * `iqiesRecordId` is never stored). A value of only spaces is refused like a reference is.
+ */
+export const HOPE_RESULT_TOKEN_PATTERN = "^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/-]*)?$";
+const resultToken = () =>
+  Type.Optional(
+    Type.String({ maxLength: HOPE_RESULT_TOKEN_MAX_LENGTH, pattern: HOPE_RESULT_TOKEN_PATTERN }),
+  );
 export const ImportSubmissionResultSchema = Type.Object({
-  reportReference: Type.Optional(referenceString(500)),
+  reportReference: Type.Optional(referenceString()),
   // Bounded: every row is stored (report, item result, finding), so an unbounded body is a write amplifier.
   results: Type.Array(
     Type.Object(
       {
         assessmentId: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
-        status: Type.Optional(Type.String(CMS_TOKEN)),
-        result: Type.Optional(Type.String(CMS_TOKEN)),
-        outcome: Type.Optional(Type.String(CMS_TOKEN)),
-        severity: Type.Optional(Type.String(CMS_TOKEN)),
-        code: Type.Optional(Type.String(CMS_TOKEN)),
-        itemCode: Type.Optional(Type.String(CMS_TOKEN)),
+        status: resultToken(),
+        result: resultToken(),
+        outcome: resultToken(),
+        severity: resultToken(),
+        code: resultToken(),
+        itemCode: resultToken(),
         message: Type.Optional(Type.String({ maxLength: 1000 })),
-        iqiesRecordId: Type.Optional(Type.String(CMS_TOKEN)),
+        iqiesRecordId: resultToken(),
       },
       { additionalProperties: false },
     ),
