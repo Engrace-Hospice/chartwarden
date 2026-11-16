@@ -508,7 +508,7 @@ export function createDbCarePlanRouteService(
           guardProblemStatusChange(
             target.status,
             stringOrUndefined(proposed.status),
-            IDG_NO_RESOLUTION_NOTE,
+            stringOrUndefined(proposed.resolutionNote) ?? IDG_NO_RESOLUTION_NOTE,
           );
           Object.assign(target, proposed);
           target.version += 1;
@@ -700,11 +700,17 @@ export function createDbCarePlanRouteService(
           guardProblemStatusChange(
             row.status,
             stringOrUndefined(proposed.status),
-            IDG_NO_RESOLUTION_NOTE,
+            stringOrUndefined(proposed.resolutionNote) ?? IDG_NO_RESOLUTION_NOTE,
           );
           await tx
             .update(PROB)
-            .set({ ...proposed, updatedAt: input.at, version: sql`${PROB.version} + 1` })
+            .set({
+              ...proposed,
+              // The REST resolve stamps the resolution time as well as the note; an IDG resolve does the same.
+              ...(proposed.status === "resolved" ? { resolvedAt: input.at } : {}),
+              updatedAt: input.at,
+              version: sql`${PROB.version} + 1`,
+            })
             .where(and(eq(PROB.carePlanId, input.plan.id), eq(PROB.id, row.id)));
           break;
         }

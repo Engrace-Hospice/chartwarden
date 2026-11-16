@@ -71423,6 +71423,7 @@ export interface operations {
                             snomedCode: string | null;
                             description: string;
                             problemKind: "terminal" | "related" | "unrelated";
+                            sudRelated?: boolean;
                         } | {
                             /** @constant */
                             op: "problem_update";
@@ -71431,6 +71432,7 @@ export interface operations {
                             updates: {
                                 status?: "active" | "resolved" | "inactive";
                                 description?: string;
+                                resolutionNote?: string;
                             };
                         } | {
                             /** @constant */
@@ -72370,6 +72372,7 @@ export interface operations {
                             snomedCode: string | null;
                             description: string;
                             problemKind: "terminal" | "related" | "unrelated";
+                            sudRelated?: boolean;
                         } | {
                             /** @constant */
                             op: "problem_update";
@@ -72378,6 +72381,7 @@ export interface operations {
                             updates: {
                                 status?: "active" | "resolved" | "inactive";
                                 description?: string;
+                                resolutionNote?: string;
                             };
                         } | {
                             /** @constant */

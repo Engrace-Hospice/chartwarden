@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -31,6 +32,7 @@ import {
   buildM14WorkerDeps,
   runReviewClockSweepCron,
 } from "../src/modules/14-idg/index";
+import { patientsNeedingRelease } from "../src/modules/14-idg/minutes-render-context";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -503,6 +505,66 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     await expect(svc.adjournMeeting(ORG_A, MEMBER, m, false)).rejects.toMatchObject({
       code: "STEP_UP_REQUIRED",
     });
+  });
+
+  it("a decision that flags its own problem as Part 2 puts the patient in the release-needed set even before the packet says so (audit D-11)", async () => {
+    const m = await seedMeeting(ORG_A, "live");
+    await svc.addAgendaItem(ORG_A, MEMBER, m, { kind: "patient_review", patientId: PATIENT });
+    // The packet predates the problem: it vouches for "no SUD".
+    await admin.query(
+      `INSERT INTO idg_patient_packet
+         (organization_id, provider_entity_id, location_id, idg_meeting_id, patient_id, admission_id,
+          since_cursor_iso, built_snapshot, discipline_views, cover_summary_layer1)
+       VALUES ($1,$2,$3,$4,$5,$6, now(), $7::jsonb,'{}'::jsonb,'seed')`,
+      [
+        ORG_A,
+        peOf[ORG_A],
+        locationOf[ORG_A],
+        m,
+        PATIENT,
+        ADMISSION,
+        JSON.stringify({ patientCover: { activeSudFlag: false } }),
+      ],
+    );
+    const needing = () =>
+      withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        patientsNeedingRelease(tx, m, [PATIENT]),
+      );
+    await svc.recordDecision(ORG_A, MEMBER, m, {
+      patientId: PATIENT,
+      decisionKind: "care_plan_update",
+      payload: {
+        kind: "care_plan_update",
+        mutations: [
+          {
+            op: "problem_add",
+            icd10Code: null,
+            snomedCode: null,
+            description: "Synthetic ordinary problem",
+            problemKind: "related",
+          },
+        ],
+      },
+    });
+    expect([...(await needing())]).toEqual([]);
+    await svc.recordDecision(ORG_A, MEMBER, m, {
+      patientId: PATIENT,
+      decisionKind: "care_plan_update",
+      payload: {
+        kind: "care_plan_update",
+        mutations: [
+          {
+            op: "problem_add",
+            icd10Code: null,
+            snomedCode: null,
+            description: "Synthetic Part 2 problem",
+            problemKind: "related",
+            sudRelated: true,
+          },
+        ],
+      },
+    });
+    expect([...(await needing())]).toEqual([PATIENT]);
   });
 
   it("recordDecision guards: MEETING_NOT_LIVE (scheduled) + INCLUSION_CRITERIA_FAILED (patient off caseload)", async () => {

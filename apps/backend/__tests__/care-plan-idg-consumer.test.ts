@@ -98,6 +98,24 @@ describe("M7 IDG proposal builder — additions are proposals", () => {
     expect(row).not.toHaveProperty("status");
   });
 
+  it("problem_add carries the Part 2 flag only when it is the literal true (audit D-11)", async () => {
+    const proposedFor = async (extra: Record<string, unknown>) =>
+      (
+        await build({
+          op: "problem_add",
+          icd10Code: null,
+          snomedCode: null,
+          description: "Alcohol use disorder",
+          problemKind: "related",
+          ...extra,
+        })
+      ).proposed as { sudRelated: boolean };
+    expect((await proposedFor({ sudRelated: true })).sudRelated).toBe(true);
+    expect((await proposedFor({})).sudRelated).toBe(false);
+    expect((await proposedFor({ sudRelated: false })).sudRelated).toBe(false);
+    expect((await proposedFor({ sudRelated: "true" })).sudRelated).toBe(false);
+  });
+
   it("intervention_add maps md/np to md_np and refuses an unknown discipline (M14 accepts any string)", async () => {
     const add = (discipline: string) => ({
       op: "intervention_add",
@@ -142,12 +160,39 @@ describe("M7 IDG proposal builder — T4 terminal-problem guard", () => {
 // ── element machines (lifecycle/elements.ts) ──────────────────────────────────────────────────────────
 
 describe("M7 IDG proposal builder — element transitions follow the lifecycle machines", () => {
-  it("refuses resolving a problem: M14's update carries no resolution note, which the machine requires", async () => {
+  it("refuses resolving a problem without a resolution note, which the machine requires", async () => {
     const refusal = await refusalOf(
       { op: "problem_update", problemId: PROBLEM, updates: { status: "resolved" } },
       [problemRow()],
     );
     expect(refusal.code).toBe("resolution_note_required");
+  });
+
+  it("resolves a non-terminal problem when the decision carries the resolution note, and refuses a note on any other change", async () => {
+    const row = await build(
+      {
+        op: "problem_update",
+        problemId: PROBLEM,
+        updates: {
+          status: "resolved",
+          resolutionNote: "  Dyspnea controlled on the current regimen  ",
+        },
+      },
+      [problemRow()],
+    );
+    expect(row.proposed).toEqual({
+      status: "resolved",
+      resolutionNote: "Dyspnea controlled on the current regimen",
+    });
+    const refusal = await refusalOf(
+      {
+        op: "problem_update",
+        problemId: PROBLEM,
+        updates: { status: "inactive", resolutionNote: "Not a resolve" },
+      },
+      [problemRow()],
+    );
+    expect(refusal.code).toBe("resolution_note_without_resolve");
   });
 
   it("allows deactivating an active non-terminal problem", async () => {

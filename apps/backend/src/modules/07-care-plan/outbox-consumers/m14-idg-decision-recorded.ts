@@ -297,7 +297,9 @@ export async function buildProposedChange(
         description: stringOf(mutation, "description"),
         kind: problemKindOf(mutation.problemKind),
         source: "clinical",
-        sudRelated: false,
+        // 42 CFR Part 2: only the literal `true` flags it, so a decision recorded before the field existed
+        // (or a mangled value) stays what it always was, and a flagged one is withheld like any SUD problem.
+        sudRelated: mutation.sudRelated === true,
         status: "active",
       };
       return {
@@ -311,7 +313,7 @@ export async function buildProposedChange(
     case "problem_update": {
       const id = stringOf(mutation, "problemId");
       const updates = recordOf(mutation.updates, "problem updates");
-      requireNonEmptyPatch(updates, ["status", "description"], "problem updates");
+      requireNonEmptyPatch(updates, ["status", "description", "resolutionNote"], "problem updates");
       const [before] = await tx
         .select()
         .from(PROBLEM)
@@ -321,8 +323,11 @@ export async function buildProposedChange(
       const proposed: Record<string, unknown> = {};
       const toStatus = updates.status !== undefined ? problemStatusOf(updates.status) : undefined;
       // Always guard: a resolved/inactive problem refuses every edit, not only a status change.
-      guardProblemStatus(before, toStatus);
+      const resolutionNote =
+        updates.resolutionNote !== undefined ? stringOf(updates, "resolutionNote").trim() : "";
+      guardProblemStatus(before, toStatus, resolutionNote);
       if (toStatus !== undefined) proposed.status = toStatus;
+      if (resolutionNote !== "") proposed.resolutionNote = resolutionNote;
       if (updates.description !== undefined)
         proposed.description = stringOf(updates, "description");
       return { ...common, entityType: "problem", targetEntityId: id, before, proposed };

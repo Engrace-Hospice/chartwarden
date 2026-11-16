@@ -409,6 +409,29 @@ describe("#91 — the meeting can be conducted", () => {
     expect(payload.mutations[0]?.op).toBe("problem_add");
     expect(payload.mutations[0]?.description).toBe("Increased dyspnea at rest");
     expect(payload.mutations[0]?.problemKind).toBe("terminal");
+    // Not ticked: the wire carries no Part 2 flag at all.
+    expect(payload.mutations[0]).not.toHaveProperty("sudRelated");
+  });
+
+  it("a care-plan update flagged SUD-related sends sudRelated: true (42 CFR Part 2)", async () => {
+    mountLive();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Record decision" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Record decision" }));
+    fireEvent.change(await waitFor(() => screen.getByLabelText(/^Decision$/i)), {
+      target: { value: "care_plan_update" },
+    });
+    fireEvent.change(screen.getByLabelText(/Problem description/i), {
+      target: { value: "Synthetic substance use problem" },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: /SUD-related/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Record decision" })[1] as HTMLElement);
+    await waitFor(() =>
+      expect(writes()).toContain(`POST /api/v1/idg/meetings/${MEETING}/decisions`),
+    );
+    const payload = bodies[0]?.payload as { mutations: Record<string, unknown>[] };
+    expect(payload.mutations[0]?.sudRelated).toBe(true);
   });
 
   it("Assign follow-up carries the decision it came out of, so the item keeps its provenance", async () => {

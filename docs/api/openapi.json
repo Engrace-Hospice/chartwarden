@@ -167490,6 +167490,9 @@
                                           "type": "string"
                                         }
                                       ]
+                                    },
+                                    "sudRelated": {
+                                      "type": "boolean"
                                     }
                                   }
                                 },
@@ -167529,6 +167532,11 @@
                                           ]
                                         },
                                         "description": {
+                                          "minLength": 1,
+                                          "maxLength": 4000,
+                                          "type": "string"
+                                        },
+                                        "resolutionNote": {
                                           "minLength": 1,
                                           "maxLength": 4000,
                                           "type": "string"
@@ -171133,6 +171141,9 @@
                                           "type": "string"
                                         }
                                       ]
+                                    },
+                                    "sudRelated": {
+                                      "type": "boolean"
                                     }
                                   }
                                 },
@@ -171172,6 +171183,11 @@
                                           ]
                                         },
                                         "description": {
+                                          "minLength": 1,
+                                          "maxLength": 4000,
+                                          "type": "string"
+                                        },
+                                        "resolutionNote": {
                                           "minLength": 1,
                                           "maxLength": 4000,
                                           "type": "string"

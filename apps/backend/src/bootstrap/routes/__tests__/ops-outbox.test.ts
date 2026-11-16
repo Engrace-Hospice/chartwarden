@@ -12,6 +12,7 @@ import {
 import type { DbClient } from "@chartwarden/db";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../../index";
+import { payloadForOps } from "../ops-outbox";
 
 const ORG_ID = "11111111-1111-1111-1111-111111111111";
 const USER_ID = "22222222-2222-2222-2222-222222222222";
@@ -139,5 +140,48 @@ describe("ops-outbox routes — GET /api/v1/ops/outbox/:id", () => {
     expect(audited).toContainEqual(
       expect.objectContaining({ resourceKind: "outbox_event", resourceId: eventId }),
     );
+  });
+});
+
+describe("payloadForOps — Part 2 text never reaches an operator (audit D-11)", () => {
+  const decision = (mutations: unknown[]) => ({
+    decisionId: "d1",
+    payload: { kind: "care_plan_update", mutations },
+  });
+
+  it("withholds the description and codes of a problem the decision flags SUD-related, and leaves the rest", () => {
+    const out = payloadForOps(
+      "idg.decision_recorded",
+      decision([
+        {
+          op: "problem_add",
+          description: "SYNTHETIC-PART2-TEXT",
+          icd10Code: "F10.20",
+          snomedCode: null,
+          problemKind: "related",
+          sudRelated: true,
+        },
+        {
+          op: "problem_add",
+          description: "Ordinary problem",
+          icd10Code: "R06.02",
+          snomedCode: null,
+          problemKind: "related",
+        },
+      ]),
+    );
+    const text = JSON.stringify(out);
+    expect(text).not.toContain("SYNTHETIC-PART2-TEXT");
+    expect(text).not.toContain("F10.20");
+    expect(text).toContain("Ordinary problem");
+    expect(text).toContain("R06.02");
+    expect(text).toContain("problem_add");
+  });
+
+  it("returns every other event, and an unrecognised decision shape, exactly as stored", () => {
+    const other = { planId: "p1", snapshot: { goals: [] } };
+    expect(payloadForOps("m15.plan.version_signed", other)).toBe(other);
+    const odd = { payload: { kind: "team_note", noteText: "x" } };
+    expect(payloadForOps("idg.decision_recorded", odd)).toBe(odd);
   });
 });

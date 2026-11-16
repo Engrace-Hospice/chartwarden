@@ -54,13 +54,14 @@ export function guardTransition(run: () => unknown): void {
  * Guard an IDG `problem_update` against the SAME rules apply/finalize enforce (routes/element-transitions.ts), so a
  * proposal this accepts can always be applied: a resolved/inactive problem is read-only history (any edit is
  * refused), an unchanged or absent status is a no-op, and a change runs the §2.2.3 machine. T4 (M7 spec §Threat
- * model): IDG automation never resolves/deactivates a `terminal`-kind problem. M14's `problem_update` has no
- * resolution-note field, so the machine's note guard (RESOLUTION_NOTE_REQUIRED) refuses every IDG resolve, and
- * nothing re-activates a resolved/inactive problem.
+ * model): IDG automation never resolves/deactivates a `terminal`-kind problem. A resolve needs the machine's
+ * resolution note (RESOLUTION_NOTE_REQUIRED), which M14's `problem_update` carries as `resolutionNote`; a note
+ * on any other change is refused, and nothing re-activates a resolved/inactive problem.
  */
 export function guardProblemStatus(
   before: { readonly kind: string; readonly status: ProblemLifecycleState },
   to: ProblemLifecycleState | undefined,
+  resolutionNote = "",
 ): void {
   guardTransition(() => assertProblemEditable(before.status));
   if (to !== undefined && to !== before.status && before.kind === "terminal") {
@@ -69,7 +70,13 @@ export function guardProblemStatus(
       "an IDG decision cannot resolve or deactivate a terminal problem (needs the RN + physician co-sign path)",
     );
   }
-  guardTransition(() => guardProblemStatusChange(before.status, to, ""));
+  if (resolutionNote !== "" && to !== "resolved") {
+    throw new IdgProposalRefusal(
+      "resolution_note_without_resolve",
+      "a resolution note only goes with a status change to resolved",
+    );
+  }
+  guardTransition(() => guardProblemStatusChange(before.status, to, resolutionNote));
 }
 
 /**

@@ -44,6 +44,33 @@ interface OutboxRowSummary {
   nextAttemptAt: string | null;
 }
 
+/** What an operator reads in place of a Part 2 problem's text and codes. */
+const PART2_WITHHELD = "[withheld: 42 CFR Part 2]";
+
+/**
+ * The stored payload as an operator may read it. An `idg.decision_recorded` care-plan decision carries the
+ * decision's own text so M7 can apply it, including a problem the decision flags SUD-related (`sudRelated: true`).
+ * The row stays whole (the consumer needs it), but the ops detail read, which has no disclosure verdict for the
+ * patient, names such a problem by its kind and withholds its text and codes (audit D-11). Every other event type
+ * is returned as stored (`m15.plan.version_signed` is already redacted at emit, audit D-13).
+ */
+export function payloadForOps(eventType: string, payload: unknown): unknown {
+  if (eventType !== "idg.decision_recorded") return payload;
+  const decision = (payload as { payload?: { mutations?: unknown } } | null)?.payload;
+  if (!decision || !Array.isArray(decision.mutations)) return payload;
+  const mutations = decision.mutations.map((m: unknown) =>
+    (m as { sudRelated?: unknown } | null)?.sudRelated === true
+      ? {
+          ...(m as object),
+          description: PART2_WITHHELD,
+          icd10Code: PART2_WITHHELD,
+          snomedCode: PART2_WITHHELD,
+        }
+      : m,
+  );
+  return { ...(payload as object), payload: { ...decision, mutations } };
+}
+
 export function registerOpsOutboxRoutes(app: FastifyInstance, deps: { db?: DbClient }): void {
   app.get(
     "/api/v1/ops/outbox",
@@ -129,7 +156,7 @@ export function registerOpsOutboxRoutes(app: FastifyInstance, deps: { db?: DbCli
         status: row.status,
         attemptCount: row.attemptCount,
         lastError: row.lastError,
-        payload: row.payload,
+        payload: payloadForOps(row.eventType, row.payload),
         createdAt: row.createdAt.toISOString(),
         dispatchedAt: row.dispatchedAt ? row.dispatchedAt.toISOString() : null,
         nextAttemptAt: row.nextAttemptAt ? row.nextAttemptAt.toISOString() : null,

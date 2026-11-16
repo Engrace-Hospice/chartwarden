@@ -13,6 +13,9 @@ const carePlanMutation = Type.Union([
       Type.Literal("related"),
       Type.Literal("unrelated"),
     ]),
+    // 42 CFR Part 2: the problem is SUD-related. Absent means not (the M7 consumer reads only the literal
+    // `true`), so decisions recorded before this field existed keep their meaning.
+    sudRelated: Type.Optional(Type.Boolean()),
   }),
   Type.Object({
     op: Type.Literal("problem_update"),
@@ -25,6 +28,8 @@ const carePlanMutation = Type.Union([
           Type.Literal("inactive"),
         ]),
         description: Type.String({ minLength: 1, maxLength: 4000 }),
+        // Required by M7 when `status` is `resolved` (the same rule as the REST resolve), refused otherwise.
+        resolutionNote: Type.String({ minLength: 1, maxLength: 4000 }),
       }),
     ),
   }),

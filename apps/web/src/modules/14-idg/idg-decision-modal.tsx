@@ -118,6 +118,7 @@ export function DecisionModal({
   const [periodIndex, setPeriodIndex] = useState("1");
   const [problemKind, setProblemKind] = useState<(typeof PROBLEM_KINDS)[number]>("terminal");
   const [icd10, setIcd10] = useState("");
+  const [sudRelated, setSudRelated] = useState(false);
   const [riskLevel, setRiskLevel] = useState<(typeof RISK_LEVELS)[number]>("low");
   const [medKind, setMedKind] = useState<(typeof MED_KINDS)[number]>("add");
   const [drugLabel, setDrugLabel] = useState("");
@@ -172,6 +173,8 @@ export function DecisionModal({
               snomedCode: null,
               description: narrative,
               problemKind,
+              // 42 CFR Part 2: sent only when ticked, so an ordinary decision is unchanged on the wire.
+              ...(sudRelated ? { sudRelated: true } : {}),
             },
           ],
         };
@@ -310,6 +313,21 @@ export function DecisionModal({
                 value={icd10}
                 onChange={(code) => setIcd10(code)}
               />
+              <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start" }}>
+                <input
+                  type="checkbox"
+                  checked={sudRelated}
+                  onChange={(e) => setSudRelated(e.target.checked)}
+                />
+                <span>
+                  <strong>SUD-related (42 CFR Part 2)</strong>
+                  <br />
+                  <span style={meta}>
+                    Tick only when the problem contains substance-use-disorder information. It is
+                    then withheld from anyone without a Part 2 release, here and in the minutes.
+                  </span>
+                </span>
+              </label>
               <p style={meta}>
                 Adds a PROBLEM to the plan. Updating an existing problem, goal or intervention
                 addresses it by id and needs the care-plan element picker on the M07 surface — not

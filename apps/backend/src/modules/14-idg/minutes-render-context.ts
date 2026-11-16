@@ -8,7 +8,7 @@
 // Part 2: a patient label is display metadata of the meeting's own packet; the PDF builder never prints a
 // label for an entry whose text is withheld.
 import { type DbClient, schema } from "@chartwarden/db";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { type DecisionRenderEntry, buildDecisionContent } from "./minutes-decision-content";
 
 const MTG = schema.idgMeeting;
@@ -41,6 +41,20 @@ export async function patientsNeedingRelease(
       ?.patientCover;
     if (cover?.activeSudFlag === false) needs.delete(p.patientId);
   }
+  // A decision that itself flags a care-plan problem as SUD-related needs the release even while the packet
+  // still reads `activeSudFlag: false` (the care plan only carries the problem after the IDG review is signed,
+  // and the packet only reflects it once rebuilt). Audit D-11.
+  const flagged = await tx
+    .select({ patientId: DEC.patientId })
+    .from(DEC)
+    .where(
+      and(
+        eq(DEC.idgMeetingId, meetingId),
+        inArray(DEC.patientId, [...patientIds]),
+        sql`${DEC.payload} @> '{"mutations":[{"sudRelated":true}]}'::jsonb`,
+      ),
+    );
+  for (const row of flagged) if (row.patientId) needs.add(row.patientId);
   return needs;
 }
 
