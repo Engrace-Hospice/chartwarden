@@ -1,12 +1,13 @@
 // apps/backend/src/modules/10-hope/routes/hope-route-guards.ts — the small request-side helpers the M10 route
 // registrar (`hope-routes.ts`) composes: the caseload narrowing of the org-wide SFV worklist, the amendment
-// attribution check, the late-deadline override body rules, the raw-body attestation check and the request facts a
-// signature audit row records. Split out so the registrar stays a route inventory. No helper here reads a header:
-// the request facts come off `request.context`, which the platform fills at the edge.
-import { hasOrgWideScope } from "@chartwarden/auth";
+// attribution check, the late-deadline override body rules, the raw-body attestation check, the request facts a
+// signature audit row records and the guard lists the submission-lifecycle and regenerate routes share. Split out so the
+// registrar stays a route inventory. No helper here reads a header: the request facts come off `request.context`, which the
+// platform fills at the edge.
+import { hasOrgWideScope, requireAbac, requirePermission } from "@chartwarden/auth";
 import { assertAuthorBoundToActor, requireAttestation } from "@chartwarden/hope";
 import { assertNoPatientIdentifier } from "@chartwarden/shared";
-import { ROUTE_FORMATS } from "@chartwarden/shared/route-kit";
+import { type PreHandler, ROUTE_FORMATS, rejectAiActor } from "@chartwarden/shared/route-kit";
 import { type HopeRfaKind, ValidationError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import type { HopeRouteService, HopeSignatureRequestFacts } from "./service";
@@ -164,3 +165,66 @@ export const signatureRequestFacts = (request: FastifyRequest): HopeSignatureReq
   ...(request.context?.ip ? { sourceIp: request.context.ip } : {}),
   ...(request.context?.userAgent ? { userAgent: request.context.userAgent } : {}),
 });
+
+// ── The guard lists the operator routes share (extracted from the route registrar, which listed the same three guards seven times).
+// Each list is the permission, then the AI-principal refusal, then the `hope.scope` guard for the entity the route names, in
+// the order the registrar used to spell out. The registrar spreads a list into its own array per route.
+
+// §D13 — the compliance-affecting operator writes that are NOT signatures (skipping a window closes an HQRP deadline and
+// counts against the on-time rate; cancel, mark-uploaded, results, retry, assemble and the package download move a CMS package
+// through its states; regenerate creates the windows an admission is held to) refuse an `ai_*` principal too, even one granted
+// the permission. No step-up: these are not signing ceremonies. It sits right after the permission guard, as REJECT_AI does on sign.
+export const REJECT_AI_OPERATIONS = rejectAiActor(
+  "AI principals cannot skip schedules, regenerate them or change a HOPE submission",
+) as PreHandler;
+
+/** `hope.scope` on the submission the URL's `:id` names (the `:id` of these routes is a SUBMISSION id, never an assessment's). */
+export const SCOPE_SUBMISSION = (action: string): PreHandler =>
+  requireAbac(action, "hope.scope", {
+    notFoundOnDeny: true,
+    getTarget: (request) => ({
+      submissionId: (request.params as { id?: unknown } | null)?.id,
+    }),
+  }) as PreHandler;
+
+/** `hope.scope` on the provider entity the BODY names (assemble). */
+const SCOPE_BODY_PE = (action: string): PreHandler =>
+  requireAbac(action, "hope.scope", {
+    notFoundOnDeny: true,
+    getTarget: (request) => ({
+      providerEntityId: (request.body as { providerEntityId?: unknown } | null)?.providerEntityId,
+    }),
+  }) as PreHandler;
+
+/** GAP-124 — the regenerate-schedules body names the admission; scope it like the other admissionId routes. */
+const SCOPE_BODY_ADMISSION = (action: string): PreHandler =>
+  requireAbac(action, "hope.scope", {
+    notFoundOnDeny: true,
+    getTarget: (request) => ({
+      admissionId: (request.body as { admissionId?: unknown } | null)?.admissionId,
+    }),
+  }) as PreHandler;
+
+const SUBMISSION_MANAGE = requirePermission("hope.submission.manage") as PreHandler;
+const ADMIN_REGEN = requirePermission("hope.admin.regenerate_schedules") as PreHandler;
+
+/** Retry, package download, mark-uploaded, cancel and results: one submission, by the URL's `:id`. */
+export const SUBMISSION_OPERATION_GUARDS: readonly PreHandler[] = [
+  SUBMISSION_MANAGE,
+  REJECT_AI_OPERATIONS,
+  SCOPE_SUBMISSION("hope.submission.manage"),
+];
+
+/** Assemble: the provider entity the body names. */
+export const SUBMISSION_ASSEMBLE_GUARDS: readonly PreHandler[] = [
+  SUBMISSION_MANAGE,
+  REJECT_AI_OPERATIONS,
+  SCOPE_BODY_PE("hope.submission.manage"),
+];
+
+/** Regenerate schedules: the admission the body names. */
+export const REGENERATE_SCHEDULES_GUARDS: readonly PreHandler[] = [
+  ADMIN_REGEN,
+  REJECT_AI_OPERATIONS,
+  SCOPE_BODY_ADMISSION("hope.admin.regenerate_schedules"),
+];
