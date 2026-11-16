@@ -21,6 +21,7 @@
 import { userInfo } from "node:os";
 
 import { hasBareBraceGroup } from "./bare-braces";
+import { containerCommand } from "./container-run";
 import { clientFindings, clientTexts, isDbClient } from "./db-client-escapes";
 import { environmentDumpReason } from "./env-dump";
 import { assignsHookVariable, isAgentSpawn, loaderEnvReason } from "./env-hazards";
@@ -1050,6 +1051,14 @@ function nestedCommandVerdicts(
   verdicts.push(...gitExecVerdicts(parsed, ctx, depth, here));
   const inContainer = containerExec(prog, args);
   if (inContainer !== null) verdicts.push(judge(inContainer, ctx, depth + 1, here));
+  // A command run in a fresh container (`docker run IMG psql -h HOST`): its paths are the image's, but a client, a push or a
+  // secret read is the same wherever it runs.
+  const fresh = containerCommand(prog, args);
+  if (fresh !== null) {
+    verdicts.push(judge(fresh.command, ctx, depth + 1, here));
+    if (fresh.unplaced !== undefined)
+      verdicts.push(ask(UNPLACED_WRAPPER_REASON(`${prog} run ${fresh.unplaced}`)));
+  }
   const container = containerRun(prog, args);
   if (container) {
     const inside = container.workdir === undefined ? here : runIn(here, container.workdir, ctx);
