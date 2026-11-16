@@ -1,6 +1,7 @@
 import { type MockInstance, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetSeamsForTest } from "../src/bootstrap/index";
 import { createDbHopeBackend } from "../src/modules/10-hope/hope-route-service-db";
+import { MAX_RESULT_EVENTS_PER_SUBMISSION } from "../src/modules/10-hope/hope-submission-result";
 import type { HopeWriteOutboxPort } from "../src/modules/10-hope/outbox-port";
 import { SCRIPT_EXHAUSTED, scriptedDb } from "./_hope-g3-fake-db";
 
@@ -285,6 +286,65 @@ describe("importSubmissionResult — a report row's assessment id matches its it
       [null, null, "first"],
       [null, null, "second"],
     ]);
+  });
+
+  describe("a batch holds at most MAX_RESULT_EVENTS_PER_SUBMISSION recorded report rows", () => {
+    const rows = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({
+        assessmentId: CANONICAL,
+        status: "rejected",
+        code: `-${3000 + i}`,
+        message: "bad",
+      }));
+    const withRecorded = (n: number) => [[submission], [], [item], [{ n }]];
+
+    it("an import that would pass the cap is a static 409 under the batch lock, and nothing is written", async () => {
+      const { svc, statements, written } = backend(
+        withRecorded(MAX_RESULT_EVENTS_PER_SUBMISSION - 1),
+      );
+
+      const failure = await outcome(
+        svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, { results: rows(2) }),
+      );
+
+      expect(failure).toMatchObject({ code: "CONFLICT", statusCode: 409 });
+      expect(failure?.message).toContain(
+        `${MAX_RESULT_EVENTS_PER_SUBMISSION - 1} recorded report rows`,
+      );
+      expect(failure?.message).not.toContain(CANONICAL);
+      expect(written).toEqual([]);
+      expect(itemUpdateOf(statements)).toBeUndefined();
+      expect(statements.some((s) => s.kind === "insert" || s.kind === "update")).toBe(false);
+      // the count is made after the batch row lock (the first select) and before any write
+      const lock = statements.findIndex((s) => s.kind === "select");
+      const count = statements.findIndex((s) => s.columns?.join() === "n");
+      expect(statements[lock]?.rendered?.sql).toContain("hope_submission");
+      expect(count).toBeGreaterThan(lock);
+    });
+
+    it("an import that lands exactly on the cap goes on to the writes (the script ends it there)", async () => {
+      const { svc, written } = backend(withRecorded(MAX_RESULT_EVENTS_PER_SUBMISSION - 2));
+
+      const failure = await outcome(
+        svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, { results: rows(2) }),
+      );
+
+      expect(failure?.message).toBe(SCRIPT_EXHAUSTED);
+      expect(written.some((w) => Array.isArray(w))).toBe(true);
+    });
+
+    it("the count is a COUNT over this batch and this tenant, not a read of the rows", async () => {
+      const { svc, statements } = backend(withRecorded(0));
+
+      await outcome(
+        svc.importSubmissionResult(ORG, MEMBERSHIP, submission.id, { results: rows(1) }),
+      );
+
+      const counted = statements.find((s) => s.columns?.join() === "n");
+      expect(counted?.kind).toBe("select");
+      expect(counted?.rendered?.sql).toContain("hope_submission_result_event");
+      expect(counted?.rendered?.params).toEqual(expect.arrayContaining([ORG, submission.id]));
+    });
   });
 
   it("stores the REBUILT row, never the caller's object: a key the schema has not is refused, a value that is no string is refused", async () => {

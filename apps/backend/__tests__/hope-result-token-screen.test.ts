@@ -2,6 +2,7 @@ import { looksLikeMbi } from "@chartwarden/shared";
 import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import { loadSubmissionFindings } from "../src/modules/10-hope/hope-submission-reads-db";
+import { MAX_RESULT_EVENTS_PER_SUBMISSION } from "../src/modules/10-hope/hope-submission-result";
 import { createDbHopeBackend, createInMemoryHopeBackend } from "../src/modules/10-hope/index";
 import {
   RESULT_ROW_TOKENS,
@@ -517,5 +518,41 @@ describe("the read API returns an assessment id only when it is one", () => {
     expect(await readWith("abc123")).toBeNull();
     expect(await readWith(7)).toBeNull();
     expect(await readWith(undefined)).toBeNull();
+  });
+
+  it("the read is bounded to the most rows a batch may hold", async () => {
+    const fake = scriptedDb([[], []]);
+
+    await loadSubmissionFindings(fake.tx, ORG, SUB);
+
+    expect(fake.statements[0]?.limit).toBe(MAX_RESULT_EVENTS_PER_SUBMISSION);
+  });
+
+  it("the item of each row is looked up once, not scanned for: a full batch resolves in well under a second", async () => {
+    const itemCount = 5000;
+    const items = Array.from({ length: itemCount }, (_, i) => ({
+      id: `item-${i}`,
+      assessmentId: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    }));
+    // Every row names the LAST item, the worst case of a linear scan.
+    const rows = Array.from({ length: MAX_RESULT_EVENTS_PER_SUBMISSION }, (_, i) => ({
+      id: `r${i}`,
+      hopeSubmissionItemId: `item-${itemCount - 1}`,
+      rawResult: {},
+      cmsEditCode: "-3015",
+      itemCode: null,
+      message: null,
+      resultStatus: "rejected",
+      cmsSeverity: null,
+    }));
+    const fake = scriptedDb([rows, items]);
+
+    const started = performance.now();
+    const findings = await loadSubmissionFindings(fake.tx, ORG, SUB);
+    const elapsedMs = performance.now() - started;
+
+    expect(findings).toHaveLength(MAX_RESULT_EVENTS_PER_SUBMISSION);
+    expect(findings[0]?.assessmentId).toBe(items[itemCount - 1]?.assessmentId);
+    expect(elapsedMs).toBeLessThan(150);
   });
 });

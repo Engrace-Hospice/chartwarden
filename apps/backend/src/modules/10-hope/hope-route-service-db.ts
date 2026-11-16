@@ -106,6 +106,7 @@ import {
   ACCEPTED_BATCH_STATUSES,
   ANSWERED_BATCH_STATUSES,
   CLOSED_BATCH_STATUSES,
+  MAX_RESULT_EVENTS_PER_SUBMISSION,
   appendReportResults,
   classifyCmsResult,
   deriveBatchOutcome,
@@ -1837,7 +1838,7 @@ export function createDbHopeBackend(
       // here, before the write transaction, and the assessment is re-read inside it so the draft guard
       // and the UPDATE still see one consistent row.
       const pre = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
-        // The sign route needs `hope.timepoint.sign` and the write guard of the chain: a writer.
+        // Signing is itself a write, so the spec may be frozen here (`mayWrite` true).
         ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id, true),
       );
       const snapshot = pre.status === "draft" ? await d8Snapshot(pre.patientId) : null;
@@ -2535,6 +2536,18 @@ export function createDbHopeBackend(
           "M10_SUBMISSION_RESULT_NO_MATCH",
           `None of the ${results.length} report rows names an assessment in submission ${id}.`,
         );
+        // The batch's report history is bounded (see MAX_RESULT_EVENTS_PER_SUBMISSION). Counted under the batch row lock this
+        // transaction holds, so two imports cannot both pass the check.
+        const [recordedEvents] = await t
+          .select({ n: count() })
+          .from(RESULT)
+          .where(and(eq(RESULT.organizationId, organizationId), eq(RESULT.hopeSubmissionId, id)));
+        const recorded = Number(recordedEvents?.n ?? 0);
+        if (recorded + results.length > MAX_RESULT_EVENTS_PER_SUBMISSION) {
+          throw new ConflictError(
+            `This batch already holds ${recorded} recorded report rows and takes at most ${MAX_RESULT_EVENTS_PER_SUBMISSION}; this report would add ${results.length}. Nothing was saved. Send only the rows that still need recording: an item CMS has settled needs no further rows.`,
+          );
+        }
         const now = new Date();
         const finalStatus = new Map<string, string>(items.map((i) => [i.id, i.itemStatus]));
         // One report row per finding: merge per assessment, worst outcome wins, independent of row order.

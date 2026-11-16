@@ -26,6 +26,8 @@ export interface RecordedStatement {
    * `returning()`), so a test can assert that a statement did NOT read or return a heavy column.
    */
   readonly columns?: readonly string[];
+  /** The number a chain's `limit(n)` was given, so a test can assert a read is bounded. */
+  readonly limit?: number;
 }
 
 /** The point a scripted run stops at: every statement past the script. */
@@ -79,6 +81,7 @@ export function scriptedDb(outcomes: readonly Outcome[]) {
     for (const name of CHAIN_METHODS) {
       link[name] = (argument?: unknown) => {
         if (name === "where" && argument !== undefined) slot.rendered = renderSql(argument);
+        if (name === "limit" && typeof argument === "number") slot.limit = argument;
         if (name === "returning") {
           const returned = fieldKeys(argument);
           if (returned) slot.columns = returned;

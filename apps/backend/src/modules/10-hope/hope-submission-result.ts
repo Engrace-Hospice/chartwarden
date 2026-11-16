@@ -140,6 +140,13 @@ export function reportHashes(results: readonly Record<string, unknown>[]): {
 /** Matches the route schema's `maxItems` for `results`. */
 export const MAX_RETAINED_RESULTS = 2000;
 
+/**
+ * The most `hope_submission_result_event` rows one batch may hold. The rows are append-only audit evidence, and every import whose
+ * report differs by a character (a new report hash) adds up to 2000 more while the batch is still `submitted_pending_result`, so the
+ * total is bounded: an import that would pass it is a 409 and records nothing. The batch's findings read is limited to the same number.
+ */
+export const MAX_RESULT_EVENTS_PER_SUBMISSION = 20_000;
+
 /** Append a later report's raw rows to those already stored on the batch, keeping the newest `MAX_RETAINED_RESULTS`. */
 export function appendReportResults(
   previous: unknown,

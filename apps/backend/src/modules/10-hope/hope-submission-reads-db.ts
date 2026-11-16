@@ -6,6 +6,7 @@ import type { HopeSubmissionItemStatus } from "@chartwarden/types";
 import { and, asc, desc, eq, getTableColumns, inArray } from "drizzle-orm";
 import {
   MAX_CORRECTION_CHAIN,
+  MAX_RESULT_EVENTS_PER_SUBMISSION,
   findingSeverity,
   resolveRejectedItem,
   terminalCorrection,
@@ -189,13 +190,17 @@ export async function loadSubmissionFindings(
     .where(
       and(eq(RESULT.organizationId, organizationId), eq(RESULT.hopeSubmissionId, submissionId)),
     )
-    .orderBy(asc(RESULT.createdAt), asc(RESULT.id));
+    .orderBy(asc(RESULT.createdAt), asc(RESULT.id))
+    // A batch holds at most this many rows (the import refuses to add more): the read is bounded to match.
+    .limit(MAX_RESULT_EVENTS_PER_SUBMISSION);
   const items = await t
     .select({ id: SUBITEM.id, assessmentId: SUBITEM.hopeAssessmentId })
     .from(SUBITEM)
     .where(
       and(eq(SUBITEM.organizationId, organizationId), eq(SUBITEM.hopeSubmissionId, submissionId)),
     );
+  // One lookup for the whole read, not a scan of the items per row.
+  const assessmentOfItem = new Map(items.map((i) => [i.id, i.assessmentId]));
   return rows
     .filter((r) => r.cmsEditCode || r.itemCode || r.message)
     .map((r) => {
@@ -205,7 +210,7 @@ export async function loadSubmissionFindings(
         // The matched item's assessment, else the id the report named, but only when it IS an id (a uuid, read as Postgres reads
         // one): what an operator typed into an unmatched row is not returned to every `hope.submission.read` caller.
         assessmentId:
-          items.find((i) => i.id === r.hopeSubmissionItemId)?.assessmentId ??
+          (r.hopeSubmissionItemId ? assessmentOfItem.get(r.hopeSubmissionItemId) : undefined) ??
           (typeof raw.assessmentId === "string"
             ? canonicalUuidOrNull(raw.assessmentId.trim())
             : null),

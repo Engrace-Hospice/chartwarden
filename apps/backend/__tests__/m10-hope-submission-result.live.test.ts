@@ -23,6 +23,7 @@ import {
   lockPackageableRecords,
   readAssembleCandidateIds,
 } from "../src/modules/10-hope/hope-assemble-candidates";
+import { MAX_RESULT_EVENTS_PER_SUBMISSION } from "../src/modules/10-hope/hope-submission-result";
 import {
   type HopeWriteOutboxPort,
   M10_OUTBOX_EVENTS,
@@ -602,6 +603,67 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
       { message: "second finding", cms_edit_code: null, item_code: null },
     ]);
   });
+
+  it("a batch holds at most MAX_RESULT_EVENTS_PER_SUBMISSION report rows: the import that would pass it is a static 409 and records nothing, the one that reaches it lands, a replay still answers, and the findings read is bounded", async () => {
+    const a = await seedAssessment();
+    const b = await seedBatch("submitted_pending_result", [a]);
+    const seeded = MAX_RESULT_EVENTS_PER_SUBMISSION - 10;
+    // Earlier imports' rows, written straight (a code-less row is not a unique key).
+    await admin.query(
+      `INSERT INTO hope_submission_result_event
+         (organization_id, hope_submission_id, report_hash, result_status, message, created_at)
+       SELECT $1, $2, 'seeded', 'pending', 'seeded note', now() + (g || ' milliseconds')::interval
+         FROM generate_series(1, $3::int) g`,
+      [ORG_A, b, seeded],
+    );
+    const report = (from: number, count: number) => ({
+      results: Array.from({ length: count }, (_, i) => ({
+        assessmentId: a,
+        code: `-${from + i}`,
+        message: "a pending note",
+      })),
+    });
+    const stored = async () =>
+      Number(
+        (
+          await admin.query(
+            "SELECT count(*) AS n FROM hope_submission_result_event WHERE hope_submission_id=$1",
+            [b],
+          )
+        ).rows[0].n,
+      );
+
+    await expect(svc.importSubmissionResult(ORG_A, member, b, report(1, 11))).rejects.toMatchObject(
+      { statusCode: 409, code: "CONFLICT" },
+    );
+    expect(await stored()).toBe(seeded);
+    expect((await row(b)).result_report_hash).toBeNull();
+
+    const landed = report(100, 10);
+    await svc.importSubmissionResult(ORG_A, member, b, landed);
+    expect(await stored()).toBe(MAX_RESULT_EVENTS_PER_SUBMISSION);
+    // the same report again is the idempotent replay, which the cap does not refuse
+    await expect(svc.importSubmissionResult(ORG_A, member, b, landed)).resolves.toMatchObject({
+      id: b,
+    });
+    expect(await stored()).toBe(MAX_RESULT_EVENTS_PER_SUBMISSION);
+    // one more row of a different report is over the cap
+    await expect(
+      svc.importSubmissionResult(ORG_A, member, b, report(500, 1)),
+    ).rejects.toMatchObject({ statusCode: 409, code: "CONFLICT" });
+    expect(await stored()).toBe(MAX_RESULT_EVENTS_PER_SUBMISSION);
+
+    // rows past the cap that a direct write left behind are never read back
+    await admin.query(
+      `INSERT INTO hope_submission_result_event
+         (organization_id, hope_submission_id, report_hash, result_status, message, created_at)
+       SELECT $1, $2, 'extra', 'pending', 'extra note', now() + interval '1 hour'
+         FROM generate_series(1, 5)`,
+      [ORG_A, b],
+    );
+    const detail = await svc.getSubmission(ORG_A, b);
+    expect(detail.findings).toHaveLength(MAX_RESULT_EVENTS_PER_SUBMISSION);
+  }, 120_000);
 
   it("the report reference is its own column: written with the import, kept in the jsonb too, and the light reads never touch acceptance_report", async () => {
     const a = await seedAssessment();
