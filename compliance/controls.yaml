@@ -757,15 +757,20 @@ controls:
     soc2: ["CC6.1", "C1.1"]
     status: implemented
     evidence:
+      # M7 reads and writes, version snapshots, proposals, the IDG packet cover marker and the Part 2 anchor.
       - script: test:m7:write:live
       - script: test:m7:read:live
       # Mounts the real M7 AND M15 routes with no injected disclosure port: route -> seam registry -> the real M39
-      # ConsentEvaluator, with a release, without one, and with the evaluator unbound (fail closed).
+      # ConsentEvaluator, with a release, without one, and with the evaluator unbound (fail closed). Covers the M15
+      # plan read, the goal edit, the version detail and list routes, and the ops outbox detail read (a decision's
+      # text withheld, the read attributed to the patient, the audit event landing).
       - script: test:m7:consent-wiring:live
+      # M15 write results and reads against real rows, the version-signed event payload and the Part 2 goal
+      # inheritance of an IDG-applied goal.
       - script: test:m15:idg-decision:live
+      # The minutes release-needed set, which a decision that flags its own problem joins.
       - script: test:m14:write:live
-      - script: test:m14:packet-build:live
-      - script: test:m1:outbox-dispatcher:live
+      - file: apps/backend/src/bootstrap/routes/__tests__/ops-outbox.test.ts
       - file: apps/backend/src/modules/07-care-plan/routes/snapshot-redaction.ts
       - file: apps/backend/src/modules/15-discipline-care-plans/routes/snapshot-redaction.ts
       - file: apps/backend/src/modules/15-discipline-care-plans/routes/disclosure.ts

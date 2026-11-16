@@ -553,7 +553,7 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
            added_by_discipline) VALUES ($1,$2,$3,$4,$5::jsonb,$6,'Weekly','1:visit:week','msw',$7,'msw')`,
         [org, pe, loc, planId, JSON.stringify([sudGoalId]), SUD_IV_TEXT, randomUUID()],
       );
-      return { planId, plainGoalId, sudGoalId };
+      return { planId, plainGoalId, sudGoalId, pe, loc };
     }
 
     const AUTHOR = ["discipline_plan.read", "discipline_plan.author"];
@@ -630,6 +630,114 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
       });
       expect(patched.statusCode).toBe(200);
       expect(patched.body).toContain(SUD_GOAL_TEXT);
+      await app.close();
+    });
+
+    it("the version detail and list routes withhold a sealed Part 2 goal without a release and show it with one (real evaluator)", async () => {
+      await seedTenant();
+      const { planId, pe, loc } = await seedDisciplinePlan();
+      const versionId = (
+        await admin.query(
+          `INSERT INTO discipline_care_plan_version (organization_id, provider_entity_id, location_id, plan_id,
+             sequence, status, kind, state_snapshot, required_signer_set, finalized_at, signed_at)
+           VALUES ($1,$2,$3,$4,1,'signed','initial',$5::jsonb,'[]'::jsonb, now(), now()) RETURNING id`,
+          [
+            org,
+            pe,
+            loc,
+            planId,
+            JSON.stringify({
+              goals: [
+                { goalId: randomUUID(), sudRelated: true, originalText: SUD_GOAL_TEXT },
+                { goalId: randomUUID(), sudRelated: false, originalText: "Plain sealed goal" },
+              ],
+              interventions: [],
+            }),
+          ],
+        )
+      ).rows[0].id as string;
+      const urls = [
+        `/api/v1/discipline-plans/${planId}/versions/${versionId}`,
+        `/api/v1/discipline-plans/${planId}/versions`,
+      ];
+      const without = bootM15({ grants: { [MSW_USER]: AUTHOR } });
+      for (const url of urls) {
+        const res = await without.inject({
+          method: "GET",
+          url,
+          headers: { ...MSW_AUTH(), "x-test-roles": "msw" },
+        });
+        expect(res.statusCode).toBe(200);
+        // Only the detail carries the sealed snapshot; the list is metadata and must not leak either way.
+        if (url.endsWith(versionId)) expect(res.body).toContain("Plain sealed goal");
+        expect(res.body).not.toContain(SUD_GOAL_TEXT);
+      }
+      await without.close();
+      const withRelease = bootM15({
+        grants: { [MSW_USER]: AUTHOR },
+        consents: [activeConsent("42_cfr_part_2_release")],
+      });
+      for (const url of urls) {
+        const res = await withRelease.inject({
+          method: "GET",
+          url,
+          headers: { ...MSW_AUTH(), "x-test-roles": "msw" },
+        });
+        expect(res.statusCode).toBe(200);
+        if (url.endsWith(versionId)) expect(res.body).toContain(SUD_GOAL_TEXT);
+      }
+      await withRelease.close();
+    });
+
+    it("the ops outbox detail read withholds a decision's text, names the patient in the read audit, and the audit event lands", async () => {
+      await seedTenant();
+      await admin.query(
+        `INSERT INTO "user" (id,email) VALUES ($1,'m15-chain@x.test') ON CONFLICT DO NOTHING`,
+        [MSW_USER],
+      );
+      const eventId = (
+        await admin.query(
+          `INSERT INTO outbox_event (organization_id, event_type, aggregate_kind, aggregate_id, payload)
+           VALUES ($1,'idg.decision_recorded','idg_decision',$2,$3::jsonb) RETURNING id`,
+          [
+            org,
+            randomUUID(),
+            JSON.stringify({
+              decisionId: randomUUID(),
+              patientId,
+              payload: {
+                kind: "care_plan_update",
+                mutations: [
+                  {
+                    op: "problem_add",
+                    description: "SYNTHETIC-PART2-TEXT",
+                    icd10Code: "F10.20",
+                    problemKind: "related",
+                    sudRelated: true,
+                  },
+                ],
+              },
+            }),
+          ],
+        )
+      ).rows[0].id as string;
+      const app = bootM15({ grants: { [MSW_USER]: ["member.manage"] } });
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/ops/outbox/${eventId}`,
+        headers: MSW_AUTH(),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).not.toContain("SYNTHETIC-PART2-TEXT");
+      expect(res.body).not.toContain("F10.20");
+      expect(res.body).toContain("problem_add");
+      const audit = await admin.query(
+        `SELECT event_type, context FROM audit_event WHERE resource_kind='outbox_event' AND resource_id=$1`,
+        [eventId],
+      );
+      expect(audit.rows.length).toBeGreaterThan(0);
+      expect(audit.rows[0].event_type).toBe("outbox_event.viewed");
+      expect(JSON.stringify(audit.rows[0].context)).toContain(patientId);
       await app.close();
     });
 
