@@ -4,8 +4,12 @@
  * file name is never read as a host), which of them name the host, which carry a whole connection string (a URI, or a
  * libpq `key=value` string), which name an alias or a file that holds the host (a service, a login path, a DSN alias),
  * what a positional word means, and which environment variables name the host. A client option this table does not list
- * is read as a flag: its value, if it is a host, is not seen (a stated limit of the guard).
+ * is read as a flag, but a host option (`-h`, `--host`, `--uri`, ...) is also looked for in every word, whatever value
+ * the reader skipped before it (wave 10, B4), so a wrong flag/value entry cannot hide a later host. The PostgreSQL and
+ * redis-cli entries are widened by the options the real programs report (`db-target-flags.ts`). The other clients' tables
+ * are from their documentation and unverified: none of them is installed on the machine this was written on.
  */
+import { VERIFIED_OPTIONS } from "./db-target-flags";
 
 /** How a client's non-option words are read. */
 export type PositionalMode =
@@ -49,6 +53,14 @@ export interface TargetClient {
   readonly commaIsPort?: boolean;
   /** `redis-cli --cluster check HOST:PORT`: a `host:port` word after `--cluster` is a host. */
   readonly clusterWords?: boolean;
+  /** Long options (exact names) that take no value. An exact flag wins over a prefix of a longer value option (`--tls`). */
+  readonly flagLong?: readonly string[];
+  /** The client reads a long option by its exact name only (no getopt abbreviation): `--tls` is never `--tls-ciphers`. */
+  readonly exactLong?: boolean;
+  /** `rs0/host1,host2`: a replica-set name and a slash precede the host list (MongoDB tools only). */
+  readonly replicaSet?: boolean;
+  /** A `$VAR` or substitution word in a positional place may be a connection string: it cannot be placed, so a human decides. */
+  readonly positionalVariable?: boolean;
 }
 
 const LIBPQ_ENV: Pick<TargetClient, "hostEnv" | "indirectEnv"> = {
@@ -114,6 +126,7 @@ const redisTool: TargetClient = {
   hostEnv: [],
   indirectEnv: [],
   clusterWords: true,
+  exactLong: true,
 };
 
 const MONGO_VALUE_LONG = [
@@ -148,6 +161,9 @@ const mongoShell: TargetClient = {
   positional: "address",
   hostEnv: [],
   indirectEnv: [],
+  exactLong: true,
+  replicaSet: true,
+  positionalVariable: true,
 };
 
 const mongoTool: TargetClient = {
@@ -155,7 +171,6 @@ const mongoTool: TargetClient = {
   valueLong: [
     "host",
     "uri",
-    "password",
     "db",
     "collection",
     "out",
@@ -176,6 +191,8 @@ const mongoTool: TargetClient = {
   positional: "none",
   hostEnv: [],
   indirectEnv: [],
+  exactLong: true,
+  replicaSet: true,
 };
 
 const clickhouseClient: TargetClient = {
@@ -184,7 +201,6 @@ const clickhouseClient: TargetClient = {
     "host",
     "port",
     "user",
-    "password",
     "database",
     "query",
     "config-file",
@@ -201,6 +217,20 @@ const clickhouseClient: TargetClient = {
   positional: "uri",
   hostEnv: ["CLICKHOUSE_HOST"],
   indirectEnv: [],
+  // `--password` takes its value only when attached (boost implicit value): it never eats the next word.
+  flagLong: [
+    "password",
+    "secure",
+    "multiline",
+    "multiquery",
+    "verbose",
+    "time",
+    "stacktrace",
+    "echo",
+    "progress",
+    "version",
+    "vertical",
+  ],
 };
 
 const cockroach: TargetClient = {
@@ -223,6 +253,7 @@ const cockroach: TargetClient = {
   hostEnv: ["COCKROACH_HOST"],
   urlEnv: ["COCKROACH_URL"],
   indirectEnv: [],
+  exactLong: true,
 };
 
 const PG_BASEBACKUP = libpq({
@@ -247,11 +278,15 @@ const PG_BASEBACKUP = libpq({
   ],
 });
 
-/** Keyed by the program name, directory dropped. */
-export const TARGET_CLIENTS: ReadonlyMap<string, TargetClient> = new Map<string, TargetClient>([
+/** A libpq client whose positional word is a database name that may itself be a connection string. */
+const libpqDatabase = (
+  spec: Partial<TargetClient> & Pick<TargetClient, "valueShort">,
+): TargetClient => libpq({ positionalVariable: true, ...spec });
+
+const CLIENT_SPECS: ReadonlyArray<readonly [string, TargetClient]> = [
   [
     "psql",
-    libpq({
+    libpqDatabase({
       valueShort: "cdfhLoPpRTUvF",
       valueLong: [
         "command",
@@ -273,7 +308,7 @@ export const TARGET_CLIENTS: ReadonlyMap<string, TargetClient> = new Map<string,
   ],
   [
     "pg_dump",
-    libpq({
+    libpqDatabase({
       valueShort: "dfFhjnNpSTtUZE",
       valueLong: [
         "dbname",
@@ -346,8 +381,31 @@ export const TARGET_CLIENTS: ReadonlyMap<string, TargetClient> = new Map<string,
     }),
   ],
   ["pg_basebackup", PG_BASEBACKUP],
-  ["pg_receivewal", PG_BASEBACKUP],
-  ["pg_recvlogical", PG_BASEBACKUP],
+  ["pg_receivewal", libpq({ valueShort: "" })],
+  ["pg_recvlogical", libpq({ valueShort: "" })],
+  // createuser/dropuser name a role, not a database: no connection string, only the host options.
+  [
+    "createuser",
+    libpq({ valueShort: "", stringShort: undefined, stringLong: [], positional: "none" }),
+  ],
+  [
+    "dropuser",
+    libpq({ valueShort: "", stringShort: undefined, stringLong: [], positional: "none" }),
+  ],
+  ["clusterdb", libpqDatabase({ valueShort: "" })],
+  ["pg_amcheck", libpqDatabase({ valueShort: "" })],
+  // pg_upgrade has no host option (it talks to its own servers on a socket directory) but reads the libpq variables.
+  [
+    "pg_upgrade",
+    libpq({
+      valueShort: "",
+      hostShort: undefined,
+      hostLong: [],
+      stringShort: undefined,
+      stringLong: [],
+      positional: "none",
+    }),
+  ],
   [
     "createdb",
     libpq({
@@ -387,7 +445,7 @@ export const TARGET_CLIENTS: ReadonlyMap<string, TargetClient> = new Map<string,
   ],
   [
     "vacuumdb",
-    libpq({
+    libpqDatabase({
       valueShort: "dhpUtnNj",
       valueLong: [
         "dbname",
@@ -406,7 +464,7 @@ export const TARGET_CLIENTS: ReadonlyMap<string, TargetClient> = new Map<string,
   ],
   [
     "reindexdb",
-    libpq({
+    libpqDatabase({
       valueShort: "dhpUtiSj",
       valueLong: [
         "dbname",
@@ -424,7 +482,7 @@ export const TARGET_CLIENTS: ReadonlyMap<string, TargetClient> = new Map<string,
   ],
   [
     "pgbench",
-    libpq({
+    libpqDatabase({
       valueShort: "hpUcjTtfDMPRLbIsF",
       stringShort: undefined,
       stringLong: [],
@@ -453,7 +511,7 @@ export const TARGET_CLIENTS: ReadonlyMap<string, TargetClient> = new Map<string,
   ],
   [
     "pgcli",
-    libpq({
+    libpqDatabase({
       valueShort: "hpUudD",
       valueLong: [
         "host",
@@ -504,10 +562,20 @@ export const TARGET_CLIENTS: ReadonlyMap<string, TargetClient> = new Map<string,
       stringLong: ["uri"],
       bareStringIsHost: true,
       positional: "address",
+      positionalVariable: true,
     },
   ],
   ["redis-cli", redisTool],
   ["valkey-cli", redisTool],
+  // redis-benchmark's `--cluster` is a flag (redis-cli's takes a command word), and it has no `--cluster check HOST:PORT`.
+  [
+    "redis-benchmark",
+    {
+      ...redisTool,
+      valueLong: redisTool.valueLong.filter((n) => n !== "cluster"),
+      clusterWords: false,
+    },
+  ],
   ["mongosh", mongoShell],
   ["mongo", mongoShell],
   ["mongodump", mongoTool],
@@ -531,12 +599,14 @@ export const TARGET_CLIENTS: ReadonlyMap<string, TargetClient> = new Map<string,
       positional: "uri",
       hostEnv: [],
       indirectEnv: [],
+      exactLong: true,
+      positionalVariable: true,
     },
   ],
   [
     "sqlcmd",
     {
-      valueShort: "SUPdQqiohHsvwWlK",
+      valueShort: "SUPdQqiohHsvwlK",
       valueLong: [
         "server",
         "user-name",
@@ -553,19 +623,21 @@ export const TARGET_CLIENTS: ReadonlyMap<string, TargetClient> = new Map<string,
       hostEnv: ["SQLCMDSERVER"],
       indirectEnv: [],
       commaIsPort: true,
+      exactLong: true,
     },
   ],
   [
     "trino",
     {
       valueShort: "",
-      valueLong: ["server", "user", "password", "catalog", "schema", "execute", "file", "config"],
+      valueLong: ["server", "user", "catalog", "schema", "execute", "file", "config"],
       hostLong: [],
       stringLong: ["server"],
       bareStringIsHost: true,
       positional: "none",
       hostEnv: [],
       indirectEnv: [],
+      exactLong: true,
     },
   ],
   [
@@ -590,8 +662,29 @@ export const TARGET_CLIENTS: ReadonlyMap<string, TargetClient> = new Map<string,
       hostLong: [],
       stringLong: [],
       positional: "host",
-      hostEnv: [],
+      // cqlsh reads CQLSH_HOST (unverified: the client is not installed here); read it as a host.
+      hostEnv: ["CQLSH_HOST"],
       indirectEnv: [],
+      positionalVariable: true,
     },
   ],
-]);
+];
+
+const unique = (text: string): string => [...new Set(text)].join("");
+
+/** The hand-kept table, widened by the options the real program reports (`db-target-flags.ts`) where it is known. */
+function verified(name: string, spec: TargetClient): TargetClient {
+  const real = VERIFIED_OPTIONS.get(name);
+  if (real === undefined) return spec;
+  return {
+    ...spec,
+    valueShort: unique(spec.valueShort + real.valueShort),
+    valueLong: [...new Set([...spec.valueLong, ...real.valueLong])],
+    flagLong: [...new Set([...(spec.flagLong ?? []), ...real.flagLong])],
+  };
+}
+
+/** Keyed by the program name, directory dropped. */
+export const TARGET_CLIENTS: ReadonlyMap<string, TargetClient> = new Map(
+  CLIENT_SPECS.map(([name, spec]): [string, TargetClient] => [name, verified(name, spec)]),
+);

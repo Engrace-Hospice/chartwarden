@@ -153,6 +153,7 @@ export {
 } from "./content-scan";
 import { LOCAL_HOST, MBI, scanContent, secretPathReason } from "./content-scan";
 import { databaseTarget, databaseTargetReason } from "./db-target";
+import { variableStatementWords } from "./db-variables";
 
 // ---------------------------------------------------------------------------------------------------
 // 3. Shell commands
@@ -769,6 +770,11 @@ let judgeBudget = MAX_JUDGED_COMMAND_LINES;
 let hookVariableInCommand = false;
 /** The variables the command line sets to a plain literal (`D=.`), so a sweep operand `$D` is placed (one-shot state, as above). */
 let knownVariables: ReadonlyMap<string, string> = new Map();
+/**
+ * The `NAME=value` words the variable statements of the text being judged, and of the texts around it, assign: every one,
+ * a rebound name included (`db-variables.ts`). Set by `judge` for each text and restored after it (one-shot state, as above).
+ */
+let variableStatements: readonly string[] = [];
 /** The functions the command line defines (`mk() { … }`): called with prose as often as with code (one-shot state, as above). */
 let localFunctions: ReadonlySet<string> = new Set();
 /** Has this command's view of the live env files been asked of the caller yet? (one-shot state, as above) */
@@ -801,6 +807,7 @@ export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): Bas
     refillWork(ctx.judgeTimeLimitMs ?? MAX_COMMAND_JUDGE_MS);
     hookVariableInCommand = assignsHookVariable(cmd);
     knownVariables = literalAssignmentsOf(cmd);
+    variableStatements = [];
     localFunctions = localFunctionNames(cmd);
     liveEnvListed = false;
     setListedLiveEnvFiles([]);
@@ -1087,6 +1094,20 @@ function nestedCommandVerdicts(
   return verdicts;
 }
 
+/** The commands a simple command runs inside itself, with the variables it was started with in scope (`PGHOST=H bash -c 'psql'`). */
+function nestedWithInlineVariables(
+  parsed: Parsed,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const outer = variableStatements;
+  variableStatements = [...outer, ...parsed.assigns];
+  const verdicts = nestedCommandVerdicts(parsed, ctx, depth, here);
+  variableStatements = outer;
+  return verdicts;
+}
+
 /**
  * `$(true)git push --no-verify`: the program's name is built at run time, so it is a command the guard cannot name. The
  * literal rest of the word is judged as the program it would be (a deny stands), and a human decides. A word that is one
@@ -1153,7 +1174,7 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
     ...dbClientVerdicts(parts, parsedParts, index, bodiesByPart[index] ?? [], here, ctx),
     ...siblingSweepVerdicts(parts, parsedParts, index, ctx, depth, here),
     ...dynamicProgramVerdicts(part.text, parsed, ctx, here),
-    ...nestedCommandVerdicts(parsed, ctx, depth, here),
+    ...nestedWithInlineVariables(parsed, ctx, depth, here),
   );
   if (readsScriptFromStdin(parsed, index)) walk.scriptTexts.push(...pipelineTexts(parts, index));
   // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a command
@@ -1280,8 +1301,12 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     ctx,
     depth,
   };
+  // The variables this text sets are in scope for the commands in it and for every text nested in it.
+  const outerStatements = variableStatements;
+  variableStatements = [...outerStatements, ...variableStatementWords(parsedParts)];
   parts.forEach((_part, index) => judgePart(index, walk, input));
   verdicts.push(...trailingVerdicts(c, walk, ctx, depth));
+  variableStatements = outerStatements;
   return (
     verdicts.find((v) => v.decision === "deny") ??
     verdicts.find((v) => v.decision === "ask") ?? { decision: "allow", reason: "" }
@@ -2876,8 +2901,7 @@ function classifySegment(
   }
 
   // --- Production data access. An agent session connecting to a non-local database is PHI access (`db-target.ts`).
-  const shellEnvironment = [...knownVariables].map(([name, value]) => `${name}=${value}`);
-  const dbTarget = databaseTarget(prog, args.map(unescapeWord), [...assigns, ...shellEnvironment]);
+  const dbTarget = databaseTarget(prog, args, [...assigns, ...variableStatements]);
   if (dbTarget) {
     const reason = databaseTargetReason(dbTarget, echo);
     return dbTarget.kind === "remote" || dbTarget.kind === "unparsed" ? deny(reason) : ask(reason);
