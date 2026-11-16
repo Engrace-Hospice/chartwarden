@@ -322,11 +322,11 @@ describe("a patient-identifier refusal of a result row's token", () => {
   });
 });
 
-// The server takes a row's `code` and `itemCode` in the same charset as the reference (empty allowed, 64 characters:
-// HOPE_RESULT_TOKEN_PATTERN), and the dialog says so before the Review step instead of sending what is refused.
+// The server takes a row's `code` and `itemCode` as ONE word (letters, digits and `. _ : # -`, a leading `-` allowed, no space, no slash;
+// empty allowed, 64 characters: HOPE_RESULT_CODE_PATTERN), and the dialog says so before the Review step instead of sending what is refused.
 describe.each([["CMS code"], ["Item"]])("the %s of a result row", (label) => {
   const TOKEN_WORDS =
-    "A code or item has a character that is not allowed. Use only letters, digits, spaces and . _ : # / -, up to 64 characters.";
+    "A CMS code or item is one word: letters, digits and . _ : # - only, up to 64 characters, with no spaces or slashes.";
   const tokenField = (dialog: HTMLElement) =>
     within(dialog).getByLabelText(`${label} for ${ITEM.label}, row 1`) as HTMLInputElement;
   const typeToken = (dialog: HTMLElement, value: string) =>
@@ -338,6 +338,9 @@ describe.each([["CMS code"], ["Item"]])("the %s of a result row", (label) => {
     ["a quote", 'E"1'],
     ["an accented letter", "réf"],
     ["a zero-width space", "E\u200b1"],
+    ["a space inside the word", "E 12"],
+    ["a slash", "E/12"],
+    ["a tab inside", "E\t12"],
     ["more than 64 characters", "a".repeat(65)],
   ])("refuses %s with a static sentence, marks the field, and blocks the review", (_n, value) => {
     const { dialog, review, POST } = mount(async () => ({}));
@@ -354,7 +357,8 @@ describe.each([["CMS code"], ["Item"]])("the %s of a result row", (label) => {
   });
 
   it.each([
-    ["a code", "E-123 a.b_c:d#e/f"],
+    ["a code", "E-123.a_b:c#d"],
+    ["a CMS edit code with a leading dash", "-3015"],
     ["exactly 64 characters", "a".repeat(64)],
     ["nothing", ""],
     ["spaces only (no value once trimmed)", "   "],
@@ -380,6 +384,163 @@ describe.each([["CMS code"], ["Item"]])("the %s of a result row", (label) => {
     expect(within(dialog).queryByRole("alert")).toBeNull();
     expect(review().disabled).toBe(false);
   });
+});
+
+// A message is prose, but the server refuses what the database cannot store in it (a control character other than tab, line feed and
+// carriage return, a lone surrogate): the dialog refuses it first, with a static sentence that never echoes the text.
+describe("the message of a result row", () => {
+  const MESSAGE_WORDS =
+    "A message has a character that cannot be recorded (a control character or a broken emoji). Retype that message.";
+  const messageField = (dialog: HTMLElement) =>
+    within(dialog).getByLabelText(`Message for ${ITEM.label}, row 1`) as HTMLInputElement;
+  const typeMessage = (dialog: HTMLElement, value: string) =>
+    fireEvent.change(messageField(dialog), { target: { value } });
+
+  it.each([
+    ["a control character", "bad\u0001text"],
+    ["a NUL", "bad\u0000text"],
+    ["a lone surrogate", "bad\ud800text"],
+    ["an escape", "bad\u001btext"],
+  ])("refuses %s with a static sentence, marks the field, and blocks the review", (_n, value) => {
+    const { dialog, review, POST } = mount(async () => ({}));
+
+    typeMessage(dialog, value);
+
+    expect(messageField(dialog).getAttribute("aria-invalid")).toBe("true");
+    const alert = within(dialog).getByRole("alert");
+    expect(alert.textContent).toBe(MESSAGE_WORDS);
+    expect(messageField(dialog).getAttribute("aria-describedby")).toContain(alert.id);
+    expect(review().disabled).toBe(true);
+    fireEvent.click(review());
+    expect(POST).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["prose with punctuation and accents", "Réf. 12: reçu (2 avertissements); voir « note »."],
+    ["a tab and a carriage return", "line one\tcolumn\r"],
+    ["an emoji (a surrogate PAIR)", "done \u{1F44D}"],
+    ["nothing", ""],
+  ])("takes %s", (_n, value) => {
+    const { dialog, review } = mount(async () => ({}));
+
+    typeMessage(dialog, value);
+
+    expect(messageField(dialog).getAttribute("aria-invalid")).toBeNull();
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    expect(review().disabled).toBe(false);
+  });
+
+  it("is refused too when a pasted report fills it with such a character", () => {
+    const { dialog, review } = mount(async () => ({}));
+    const report = JSON.stringify([
+      { assessmentId: ITEM.assessmentId, status: "rejected", message: "bad\u0000text" },
+    ]);
+
+    fireEvent.change(within(dialog).getByLabelText(/Paste CMS report/), {
+      target: { value: report },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Import pasted report" }));
+
+    expect(messageField(dialog).getAttribute("aria-invalid")).toBe("true");
+    expect(review().disabled).toBe(true);
+  });
+});
+
+// The server also refuses a row's message and assessment id for control characters (422 INVALID_CHARACTERS) and screens both for a
+// patient identifier (422 EVIDENCE_LOOKS_LIKE_PHI), naming `results.<row>.<field>` and never the value. Those are the server's own
+// words, in the dialog's alert: never put on the report reference.
+describe("a server refusal that names a result row's message", () => {
+  const rowRefusal =
+    (code: string, top: string, field: string, detailCode: string, text: string) => (): Reply => ({
+      data: undefined,
+      error: {
+        error: { code, message: top, details: [{ field, code: detailCode, message: text }] },
+      },
+      response: new Response(null, { status: 422 }),
+    });
+
+  it.each([
+    [
+      "control characters (INVALID_CHARACTERS)",
+      rowRefusal(
+        "VALIDATION_FAILED",
+        "request validation failed",
+        "results.0.message",
+        "INVALID_CHARACTERS",
+        "results.0.message must not contain control characters or unpaired surrogates",
+      ),
+      "request validation failed (results.0.message: results.0.message must not contain control characters or unpaired surrogates)",
+    ],
+    [
+      "a patient identifier (EVIDENCE_LOOKS_LIKE_PHI)",
+      rowRefusal(
+        "EVIDENCE_LOOKS_LIKE_PHI",
+        "A result row's message looks like it contains a patient identifier (a Social Security or Medicare number). Remove the patient's number from the message before recording the report.",
+        "results.0.message",
+        "EVIDENCE_LOOKS_LIKE_PHI",
+        "x",
+      ),
+      "A result row's message looks like it contains a patient identifier (a Social Security or Medicare number). Remove the patient's number from the message before recording the report.",
+    ],
+    [
+      "a patient identifier in the assessment id",
+      rowRefusal(
+        "EVIDENCE_LOOKS_LIKE_PHI",
+        "A result row's assessmentId is not an assessment id, and looks like it contains a patient identifier (a Social Security or Medicare number). Use the assessment id from the package, never a patient's number.",
+        "results.0.assessmentId",
+        "EVIDENCE_LOOKS_LIKE_PHI",
+        "x",
+      ),
+      "A result row's assessmentId is not an assessment id, and looks like it contains a patient identifier (a Social Security or Medicare number). Use the assessment id from the package, never a patient's number.",
+    ],
+  ])(
+    "is the server's words in the alert for %s, and not the report reference's",
+    async (_n, refusal, words) => {
+      const { dialog, field, review } = mount(async () => refusal());
+      typeReference(field(), "REF 123");
+
+      await reviewAndConfirm(dialog);
+
+      expect((await within(dialog).findByRole("alert")).textContent).toBe(words);
+      expect(within(dialog).getAllByRole("alert")).toHaveLength(1);
+      expect(field().getAttribute("aria-invalid")).toBeNull();
+      expect(dialog.textContent).not.toContain("Enter the reference CMS gave");
+      expect(review().disabled).toBe(false);
+      expect(document.activeElement).not.toBe(field());
+    },
+  );
+});
+
+// The web sends a row's outcome (a closed choice), code, item code and message, and nothing else: a pasted report's `severity` (the
+// server takes only fatal, error, warning or empty: anything else, `info`, is a 422) and `iqiesRecordId` never leave the dialog.
+it("sends no severity and no record id, whatever a pasted report carries", async () => {
+  const { dialog, POST } = mount(async () => ({ data: { ok: true } }));
+  const report = JSON.stringify([
+    {
+      assessmentId: ITEM.assessmentId,
+      status: "rejected",
+      severity: "Info",
+      iqiesRecordId: "not a word",
+      code: "-3015",
+    },
+  ]);
+  fireEvent.change(within(dialog).getByLabelText(/Paste CMS report/), {
+    target: { value: report },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Import pasted report" }));
+
+  await reviewAndConfirm(dialog);
+
+  await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
+  const [, init] = POST.mock.calls[0] as unknown as [
+    string,
+    { body: { results: Array<Record<string, unknown>> } },
+  ];
+  expect(Object.keys(init.body.results[0] ?? {}).sort()).toEqual([
+    "assessmentId",
+    "code",
+    "status",
+  ]);
 });
 
 it("checks a pasted report's codes the same way: an import that fills a refused value blocks the review", () => {

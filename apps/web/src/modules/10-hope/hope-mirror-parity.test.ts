@@ -11,7 +11,8 @@ import {
   MAX_REFERENCE,
   MAX_RESULT_TOKEN,
   REFERENCE_PATTERN,
-  RESULT_TOKEN_PATTERN,
+  RESULT_CODE_PATTERN,
+  UNSTORABLE_MESSAGE,
 } from "./hope-report-reference";
 
 // Drift gate for the web client's mirrors of the server's input rules. The dialogs refuse what the server would refuse (so a clinician
@@ -24,6 +25,8 @@ const ROUTES = join(__dirname, "../../../../backend/src/modules/10-hope/routes")
 const read = (file: string): string => readFileSync(join(ROUTES, file), "utf8");
 const GUARDS = read("hope-route-guards.ts");
 const TYPEBOX = read("hope-typebox.ts");
+const SCREEN = read("hope-reference-screen.ts");
+const WEB = (file: string): string => readFileSync(join(__dirname, file), "utf8");
 
 /** What a source file must say about `name`, or a failure that says which constant to look at. */
 function found<T>(file: string, name: string, match: T | null | undefined): T {
@@ -101,10 +104,33 @@ describe("the CMS result dialog's mirrors of hope-typebox.ts", () => {
     );
   });
 
-  it("takes a row's code and item in the server's charset (empty allowed)", () => {
-    expect(RESULT_TOKEN_PATTERN.source).toBe(
-      stringConst(TYPEBOX, "hope-typebox.ts", "HOPE_RESULT_TOKEN_PATTERN"),
+  it("takes a row's code and item as the server's one word (empty allowed)", () => {
+    expect(RESULT_CODE_PATTERN.source).toBe(
+      stringConst(TYPEBOX, "hope-typebox.ts", "HOPE_RESULT_CODE_PATTERN"),
     );
+  });
+
+  it("refuses in a row's message what the server refuses to store", () => {
+    const server = regexLiteral(SCREEN, "hope-reference-screen.ts", "UNSTORABLE_MESSAGE");
+
+    expect({ text: UNSTORABLE_MESSAGE.source, flags: UNSTORABLE_MESSAGE.flags }).toEqual(server);
+  });
+
+  // The web sends a row's outcome (a closed choice), code, item code and message. `severity` takes only the server's closed set and
+  // `iqiesRecordId` the code pattern: if the dialog or the pasted-report parser ever carries either, it must mirror them, and this
+  // fails until it does.
+  it("does not carry a severity or an iQIES record id, which it would have to mirror", () => {
+    for (const file of ["cms-result-parser.ts", "record-cms-result-modal.tsx"]) {
+      expect(WEB(file), file).not.toMatch(/severity|iqiesRecordId/i);
+    }
+    // And the closed set it would have to mirror is still the one this test was written against.
+    const severity = new RegExp(
+      stringConst(TYPEBOX, "hope-typebox.ts", "HOPE_RESULT_SEVERITY_PATTERN"),
+    );
+    for (const accepted of ["", "fatal", "Error", "WARNING"])
+      expect(severity.test(accepted)).toBe(true);
+    for (const refused of ["info", "warn", "fatal error", " error"])
+      expect(severity.test(refused)).toBe(false);
   });
 
   it("limits a reference and a row token to the server's lengths", () => {

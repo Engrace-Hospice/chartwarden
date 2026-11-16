@@ -23,20 +23,38 @@ export const hasForbiddenReferenceCharacter = (trimmedText: string): boolean =>
   trimmedText !== "" &&
   (trimmedText.length > MAX_REFERENCE || !REFERENCE_PATTERN.test(trimmedText));
 
-/** The server's limit on one result-row token (`HOPE_RESULT_TOKEN_MAX_LENGTH`): the CMS code and the item code. */
+/** The server's limit on one result-row code (`HOPE_RESULT_TOKEN_MAX_LENGTH`): the CMS code and the item code. */
 export const MAX_RESULT_TOKEN = 64;
 
 /**
- * Mirror of `HOPE_RESULT_TOKEN_PATTERN` (hope-typebox.ts): the reference's charset, or EMPTY (a blank cell names nothing, as an absent
- * key does). The dialog trims first, so spaces alone are an empty cell, never sent.
+ * Mirror of `HOPE_RESULT_CODE_PATTERN` (hope-typebox.ts): a CMS edit code or item code is ONE word of letters, digits and `. _ : # -`
+ * (a leading `-` is allowed: edit codes look like `-3015`), with NO space and NO slash, or EMPTY (a blank cell names nothing). The
+ * dialog trims first, so spaces alone are an empty cell, never sent. The web sends no severity and no iQIES record id, so it mirrors
+ * neither `HOPE_RESULT_SEVERITY_PATTERN` nor the record id's use of this pattern.
  */
-export const RESULT_TOKEN_PATTERN = /^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/-]*)?$/;
+export const RESULT_CODE_PATTERN = /^(?:[A-Za-z0-9._:#-]{1,64})?$/;
 
-/** Whether a (trimmed) CMS code or item code is one the server refuses: a character outside the pattern, or more than {@link MAX_RESULT_TOKEN}. */
-export const hasForbiddenResultToken = (trimmedText: string): boolean =>
-  trimmedText.length > MAX_RESULT_TOKEN || !RESULT_TOKEN_PATTERN.test(trimmedText);
+/** Whether a (trimmed) CMS code or item code is one the server refuses: not one word of that charset, or more than {@link MAX_RESULT_TOKEN}. */
+export const hasForbiddenResultCode = (trimmedText: string): boolean =>
+  trimmedText.length > MAX_RESULT_TOKEN || !RESULT_CODE_PATTERN.test(trimmedText);
 
-export const RESULT_TOKEN_WORDS = `A code or item has a character that is not allowed. Use only letters, digits, spaces and . _ : # / -, up to ${MAX_RESULT_TOKEN} characters.`;
+export const RESULT_CODE_WORDS = `A CMS code or item is one word: letters, digits and . _ : # - only, up to ${MAX_RESULT_TOKEN} characters, with no spaces or slashes.`;
+
+/**
+ * Mirror of `UNSTORABLE_MESSAGE` in hope-reference-screen.ts: a control character other than tab, line feed and carriage return, or a
+ * lone surrogate (the database cannot store them: the server refuses with a 422 INVALID_CHARACTERS). A pasted report or a truncation
+ * at the length limit can leave one. The server's patient-identifier screen of the message is its own, and its refusal is shown as
+ * the server's words (it names the row and the field, never the text).
+ */
+export const UNSTORABLE_MESSAGE =
+  /(?![\t\n\r])\p{Cc}|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
+
+/** Whether a (trimmed) result message holds a character the server refuses to store. */
+export const hasUnstorableMessage = (trimmedText: string): boolean =>
+  UNSTORABLE_MESSAGE.test(trimmedText);
+
+export const MESSAGE_WORDS =
+  "A message has a character that cannot be recorded (a control character or a broken emoji). Retype that message.";
 
 export const REFERENCE_HINT = `Letters, digits, spaces and . _ : # / - only, up to ${MAX_REFERENCE} characters.`;
 

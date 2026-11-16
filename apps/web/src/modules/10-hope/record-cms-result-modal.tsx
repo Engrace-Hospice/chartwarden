@@ -18,12 +18,14 @@ import { notifyDone } from "./hope-notify-done";
 import {
   MAX_REFERENCE,
   MAX_RESULT_TOKEN,
+  MESSAGE_WORDS,
   REFERENCE_HINT,
   REFERENCE_REFUSAL_WORDS,
-  RESULT_TOKEN_WORDS,
+  RESULT_CODE_WORDS,
   type ReferenceRefusal,
   hasForbiddenReferenceCharacter,
-  hasForbiddenResultToken,
+  hasForbiddenResultCode,
+  hasUnstorableMessage,
   referenceRefusalOf,
 } from "./hope-report-reference";
 
@@ -109,7 +111,8 @@ export function RecordCmsResultModal({
   // What the server's last refusal said about the report reference: said on the field, which the clinician is taken back to.
   const [referenceRefusal, setReferenceRefusal] = useState<ReferenceRefusal | null>(null);
   const referenceId = useId();
-  const tokenErrorId = useId();
+  const codeErrorId = useId();
+  const messageErrorId = useId();
   // Synchronous guard: `busy` only lands on the next render, and this is a final, non-editable write.
   const submitting = useRef(false);
   // Focus targets: the step heading (confirm / discard) when a step opens, the dialog title when it closes.
@@ -201,7 +204,7 @@ export function RecordCmsResultModal({
   }
 
   async function submit(): Promise<void> {
-    if (!allSet || referenceInvalid || tokensInvalid || submitting.current) return;
+    if (!allSet || referenceInvalid || rowsInvalid || submitting.current) return;
     submitting.current = true;
     setBusy(true);
     setError(null);
@@ -246,12 +249,16 @@ export function RecordCmsResultModal({
   }
 
   const referenceInvalid = hasForbiddenReferenceCharacter(reference.trim());
-  // A row's CMS code and item code are sent trimmed, in the charset the server takes (nothing at all is fine).
-  const tokenInvalid = (value: string): boolean => hasForbiddenResultToken(value.trim());
-  const tokensInvalid = items.some((item) => {
-    const row = rows[item.assessmentId] ?? BLANK_ROW;
-    return tokenInvalid(row.code) || tokenInvalid(row.itemCode);
-  });
+  // A row's CMS code, item code and message are sent trimmed: refused here first when the server would refuse them (a code is one
+  // word of a fixed charset; a message holds nothing the database cannot store). Nothing at all is fine.
+  const codeInvalid = (value: string): boolean => hasForbiddenResultCode(value.trim());
+  const messageInvalid = (value: string): boolean => hasUnstorableMessage(value.trim());
+  const rowOf = (item: ResultItem): RowState => rows[item.assessmentId] ?? BLANK_ROW;
+  const codesInvalid = items.some(
+    (item) => codeInvalid(rowOf(item).code) || codeInvalid(rowOf(item).itemCode),
+  );
+  const messagesInvalid = items.some((item) => messageInvalid(rowOf(item).message));
+  const rowsInvalid = codesInvalid || messagesInvalid;
   const referenceError =
     referenceRefusal !== null
       ? REFERENCE_REFUSAL_WORDS[referenceRefusal]
@@ -381,8 +388,8 @@ export function RecordCmsResultModal({
                           <input
                             className="wx-select"
                             aria-label={`CMS code for ${name}`}
-                            aria-invalid={tokenInvalid(r.code) || undefined}
-                            aria-describedby={tokenInvalid(r.code) ? tokenErrorId : undefined}
+                            aria-invalid={codeInvalid(r.code) || undefined}
+                            aria-describedby={codeInvalid(r.code) ? codeErrorId : undefined}
                             value={r.code}
                             maxLength={MAX_RESULT_TOKEN}
                             onChange={(e) => patchRow(item.assessmentId, { code: e.target.value })}
@@ -392,8 +399,8 @@ export function RecordCmsResultModal({
                           <input
                             className="wx-select"
                             aria-label={`Item for ${name}`}
-                            aria-invalid={tokenInvalid(r.itemCode) || undefined}
-                            aria-describedby={tokenInvalid(r.itemCode) ? tokenErrorId : undefined}
+                            aria-invalid={codeInvalid(r.itemCode) || undefined}
+                            aria-describedby={codeInvalid(r.itemCode) ? codeErrorId : undefined}
                             value={r.itemCode}
                             maxLength={MAX_RESULT_TOKEN}
                             onChange={(e) =>
@@ -405,6 +412,10 @@ export function RecordCmsResultModal({
                           <input
                             className="wx-select"
                             aria-label={`Message for ${name}`}
+                            aria-invalid={messageInvalid(r.message) || undefined}
+                            aria-describedby={
+                              messageInvalid(r.message) ? messageErrorId : undefined
+                            }
                             value={r.message}
                             maxLength={1000}
                             onChange={(e) =>
@@ -418,9 +429,14 @@ export function RecordCmsResultModal({
                 </tbody>
               </table>
             </div>
-            {tokensInvalid ? (
-              <p id={tokenErrorId} role="alert" style={errorText}>
-                {RESULT_TOKEN_WORDS}
+            {codesInvalid ? (
+              <p id={codeErrorId} role="alert" style={errorText}>
+                {RESULT_CODE_WORDS}
+              </p>
+            ) : null}
+            {messagesInvalid ? (
+              <p id={messageErrorId} role="alert" style={errorText}>
+                {MESSAGE_WORDS}
               </p>
             ) : null}
           </>
@@ -467,7 +483,7 @@ export function RecordCmsResultModal({
                 setError(null);
                 setConfirming(true);
               }}
-              disabled={!allSet || referenceInvalid || tokensInvalid}
+              disabled={!allSet || referenceInvalid || rowsInvalid}
             >
               Review and record
             </Button>

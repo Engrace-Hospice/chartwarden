@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_REFERENCE,
   hasForbiddenReferenceCharacter,
+  hasForbiddenResultCode,
+  hasUnstorableMessage,
   referenceRefusalOf,
 } from "./hope-report-reference";
 
@@ -76,5 +78,51 @@ describe("referenceRefusalOf", () => {
     ["any other refusal", failed("CONFLICT")],
   ])("leaves %s to the server's words", (_name, refusal) => {
     expect(referenceRefusalOf(refusal)).toBeNull();
+  });
+});
+
+// A row's CMS code and item code: ONE word of letters, digits and `. _ : # -`, up to 64, or empty (HOPE_RESULT_CODE_PATTERN).
+describe("hasForbiddenResultCode", () => {
+  it.each([
+    ["a word", "E123"],
+    ["punctuation the server takes", "a.b_c:d#e-f"],
+    ["a leading dash (a CMS edit code)", "-3015"],
+    ["exactly 64 characters", "a".repeat(64)],
+    ["nothing", ""],
+  ])("takes %s", (_name, value) => {
+    expect(hasForbiddenResultCode(value)).toBe(false);
+  });
+
+  it.each([
+    ["a space inside", "E 12"],
+    ["a slash", "E/12"],
+    ["a comma", "E,12"],
+    ["a tab", "E\t12"],
+    ["a zero-width space", "E\u200b1"],
+    ["one over the limit", "a".repeat(65)],
+  ])("refuses %s", (_name, value) => {
+    expect(hasForbiddenResultCode(value)).toBe(true);
+  });
+});
+
+// A row's message: prose, but nothing the database cannot store (UNSTORABLE_MESSAGE in hope-reference-screen.ts).
+describe("hasUnstorableMessage", () => {
+  it.each([
+    ["prose", "Reçu (2 avertissements); voir « note »."],
+    ["tab, line feed and carriage return", "a\tb\nc\r"],
+    ["a surrogate pair", "ok \u{1F44D}"],
+    ["nothing", ""],
+  ])("takes %s", (_name, value) => {
+    expect(hasUnstorableMessage(value)).toBe(false);
+  });
+
+  it.each([
+    ["a control character", "a\u0001b"],
+    ["a NUL", "a\u0000b"],
+    ["an escape", "a\u001bb"],
+    ["a high surrogate alone", "a\ud83db"],
+    ["a low surrogate alone", "a\udc4db"],
+  ])("refuses %s", (_name, value) => {
+    expect(hasUnstorableMessage(value)).toBe(true);
   });
 });
