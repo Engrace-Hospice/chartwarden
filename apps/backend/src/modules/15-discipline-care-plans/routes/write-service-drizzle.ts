@@ -626,7 +626,7 @@ export function buildDrizzleM15WriteService(
         mutatingOriginalText: false,
       });
       // §2.1 / §2.3 — resolved through M7's CarePlanReader; an unbound seam throws and nothing is written.
-      await assertParentElements(
+      const { parentSudRelated } = await assertParentElements(
         plan.kind as DisciplinePlanKind,
         plan.patientId as never,
         { parentProblemId: input.parentProblemId, parentGoalId: input.parentGoalId },
@@ -660,7 +660,9 @@ export function buildDrizzleM15WriteService(
             frequencyText: input.frequencyText ?? null,
             frequencyValue: input.frequencyValue ?? null,
             modalityText: input.modalityText ?? null,
-            sudRelated: input.sudRelated ?? false,
+            // Part 2 inheritance (the IDG-apply path does the same): a goal under a Part 2 problem is Part 2 content
+            // whatever the author sent, or M15 readers who cannot see the problem in M7 would see the goal's text.
+            sudRelated: (input.sudRelated ?? false) || parentSudRelated,
             actingConsentId: input.actingConsentId ?? null,
             addedByMembershipId: actor.membershipId,
             addedByDiscipline: input.addedByDiscipline,

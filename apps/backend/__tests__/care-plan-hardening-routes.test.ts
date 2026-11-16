@@ -783,13 +783,13 @@ describe("the internal relevant-elements route hands the reader the per-actor cl
     redacted: false,
   };
 
-  async function readAs(headers: Record<string, string>) {
+  async function readAs(headers: Record<string, string>, elements = picker) {
     const viewers: unknown[] = [];
     registerSeam("CarePlanReader", {
       ...carePlanReaderDenyStub,
       relevantElementsForEncounter: async (_patient, _type, _discipline, _admission, viewer) => {
         viewers.push(viewer);
-        return picker;
+        return elements;
       },
     });
     const asked: {
@@ -825,6 +825,22 @@ describe("the internal relevant-elements route hands the reader the per-actor cl
   it("passes an allowing verdict through to the reader when the closure allows this caller", async () => {
     const { viewers } = await readAs(RN_SUD_CLEARED);
     expect(viewers).toEqual([{ sudDisclosureAllowed: true }]);
+  });
+
+  it("keeps the in-process `sudRelated` flag out of the HTTP response", async () => {
+    const sudProblem = {
+      problemId: "prob_sud",
+      icd10Code: null,
+      snomedCode: null,
+      description: "synthetic problem",
+      kind: "related",
+      status: "active",
+      sudRelated: true,
+    } as const;
+    const { res } = await readAs(RN_SUD_CLEARED, { ...picker, problems: [sudProblem] });
+    expect(res.statusCode).toBe(200);
+    const { sudRelated: _omitted, ...served } = sudProblem;
+    expect(res.json().problems).toEqual([served]);
   });
 
   it("fails closed when no per-actor closure is bound: even a caller holding the cleared role is handed a denying verdict", async () => {

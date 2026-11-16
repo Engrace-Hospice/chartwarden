@@ -736,6 +736,17 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
       const { ask, plainOnly } = await seedAndAsk(null);
       expect(await ask({ actor: { roles: ["rn"], membershipId: OTHER } })).toEqual(plainOnly);
     });
+
+    it("an IDENTIFIED RN case manager the release does not name is refused: release_names_others outranks the carve-out", async () => {
+      const { ask, both, plainOnly } = await seedAndAsk(releaseNaming);
+      expect(
+        await ask({ actor: { roles: ["rn", "rn_case_manager"], membershipId: OTHER } }),
+      ).toEqual(plainOnly);
+      // Control: the same actor with the release naming HER is admitted, so the refusal above is the release's doing.
+      expect(
+        await ask({ actor: { roles: ["rn", "rn_case_manager"], membershipId: NAMED } }),
+      ).toEqual(both);
+    });
   });
 
   // The audit's CW-AC-43 gap 4: M15's own live tests drive the services with an INJECTED disclosure port, so
@@ -853,7 +864,7 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
            added_by_discipline) VALUES ($1,$2,$3,$4,$5::jsonb,$6,'Weekly','1:visit:week','msw',$7,'msw')`,
         [org, pe, loc, planId, JSON.stringify([sudGoalId]), SUD_IV_TEXT, randomUUID()],
       );
-      return { planId, plainGoalId, sudGoalId, pe, loc, carePlanId };
+      return { planId, plainGoalId, sudGoalId, pe, loc, carePlanId, problemId };
     }
 
     const AUTHOR = ["discipline_plan.read", "discipline_plan.author"];
@@ -946,17 +957,19 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
             [org, seeded.pe, seeded.loc, seeded.carePlanId],
           )
         ).rows[0].id as string;
-        return { planId: seeded.planId, sudProblemId };
+        return { ...seeded, sudProblemId };
       }
 
       const NAMED_MEMBERSHIP = "33333333-3333-4333-8333-333333333333";
       const OTHER_MEMBERSHIP = "77777777-7777-4777-8777-777777777777";
+      const GOAL_TEXT = "SYNTHETIC-GOAL-UNDER-PART2";
 
       function postGoal(
         app: ReturnType<typeof bootM15>,
         planId: string,
         parentProblemId: string,
         actor: { membership: string; roles: string },
+        extra: Record<string, unknown> = {},
       ) {
         return app.inject({
           method: "POST",
@@ -969,7 +982,33 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
           payload: {
             parentProblemId,
             source: "clinical",
-            originalText: "SYNTHETIC-GOAL-UNDER-PART2",
+            originalText: GOAL_TEXT,
+            addedByDiscipline: "msw",
+            ...extra,
+          },
+        });
+      }
+
+      function postIntervention(
+        app: ReturnType<typeof bootM15>,
+        planId: string,
+        parentInterventionId: string,
+        actor: { membership: string; roles: string },
+      ) {
+        return app.inject({
+          method: "POST",
+          url: `/api/v1/discipline-plans/${planId}/interventions`,
+          headers: {
+            ...MSW_AUTH(),
+            "x-test-membership": actor.membership,
+            "x-test-roles": actor.roles,
+          },
+          payload: {
+            parentInterventionId,
+            scopeText: "SYNTHETIC-INTERVENTION-UNDER-PART2",
+            frequencyText: "Weekly",
+            frequencyValue: "1:visit:week",
+            discipline: "msw",
             addedByDiscipline: "msw",
           },
         });
@@ -1023,6 +1062,88 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
           roles: "msw,rn_case_manager",
         });
         expect(caseManager.statusCode).toBe(201);
+        await app.close();
+      });
+
+      // Part 2 inheritance: a goal under a Part 2 problem is Part 2 content whatever the author sent. The RN case
+      // manager (no release on file) may parent onto the problem since R-82, so the goal she authors without
+      // `sudRelated` must not be visible to M15 readers who cannot see the problem in M7.
+      it("a goal authored under a Part 2 problem WITHOUT `sudRelated` is stored flagged, like an explicit one, and hidden from a plain read", async () => {
+        const { planId, sudProblemId } = await seedPlanWithPart2Problem();
+        const app = await bootWithRealReader(null);
+        const caseManager = { membership: OTHER_MEMBERSHIP, roles: "msw,rn_case_manager" };
+
+        const inherited = await postGoal(app, planId, sudProblemId, caseManager);
+        expect(inherited.statusCode).toBe(201);
+        const explicit = await postGoal(app, planId, sudProblemId, caseManager, {
+          sudRelated: true,
+        });
+        expect(explicit.statusCode).toBe(201);
+        // The goal's own result is shaped the same either way (the author wrote the text and may see the problem).
+        expect(inherited.json().sudRelated).toBe(true);
+        expect(Object.keys(inherited.json()).sort()).toEqual(Object.keys(explicit.json()).sort());
+        const stored = await admin.query(
+          "SELECT sud_related FROM discipline_goal WHERE id = ANY($1::uuid[])",
+          [[inherited.json().goalId, explicit.json().goalId]],
+        );
+        expect(stored.rows).toEqual([{ sud_related: true }, { sud_related: true }]);
+
+        // The plain M15 read, without disclosure, does not show the text; the case manager's read does (control).
+        const readAs = (roles: string) =>
+          app.inject({
+            method: "GET",
+            url: `/api/v1/discipline-plans/${planId}`,
+            headers: {
+              ...MSW_AUTH(),
+              "x-test-membership": OTHER_MEMBERSHIP,
+              "x-test-roles": roles,
+            },
+          });
+        const plain = await readAs("msw");
+        expect(plain.statusCode).toBe(200);
+        expect(plain.body).not.toContain(GOAL_TEXT);
+        expect(plain.json().redacted_categories).toContain("sud");
+        expect((await readAs("msw,rn_case_manager")).body).toContain(GOAL_TEXT);
+        await app.close();
+      });
+
+      it("a goal under a plain problem is NOT flagged by inheritance (control)", async () => {
+        const { planId, problemId: plainProblemId } = await seedPlanWithPart2Problem();
+        const app = await bootWithRealReader(null);
+        const res = await postGoal(app, planId, plainProblemId, {
+          membership: OTHER_MEMBERSHIP,
+          roles: "msw,rn_case_manager",
+        });
+        expect(res.statusCode).toBe(201);
+        expect(res.json().sudRelated).toBe(false);
+        await app.close();
+      });
+
+      it("createIntervention under a Part 2 parent intervention: 422 PARENT_ELEMENT_NOT_FOUND for a nurse the release does not name, 201 for the member it names", async () => {
+        const { planId, sudProblemId, carePlanId, pe, loc } = await seedPlanWithPart2Problem();
+        const parentInterventionId = (
+          await admin.query(
+            `INSERT INTO intervention (organization_id, provider_entity_id, location_id, care_plan_id, problem_id,
+               scope_text, frequency_text, frequency_value, discipline)
+             VALUES ($1,$2,$3,$4,$5,'SYNTHETIC-PART2-IPOC-INTERVENTION','Weekly','1:visit:week','msw') RETURNING id`,
+            [org, pe, loc, carePlanId, sudProblemId],
+          )
+        ).rows[0].id as string;
+        const app = await bootWithRealReader(releaseNaming(NAMED_MEMBERSHIP));
+
+        const other = await postIntervention(app, planId, parentInterventionId, {
+          membership: OTHER_MEMBERSHIP,
+          roles: "msw",
+        });
+        expect(other.statusCode).toBe(422);
+        expect(JSON.stringify(other.json())).toContain("PARENT_ELEMENT_NOT_FOUND");
+
+        const named = await postIntervention(app, planId, parentInterventionId, {
+          membership: NAMED_MEMBERSHIP,
+          roles: "msw",
+        });
+        expect(named.statusCode).toBe(201);
+        expect(named.json().parentInterventionId).toBe(parentInterventionId);
         await app.close();
       });
     });

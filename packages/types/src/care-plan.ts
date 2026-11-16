@@ -234,6 +234,12 @@ export interface RelevantProblem {
   readonly description: string;
   readonly kind: ProblemKind;
   readonly status: ProblemStatus;
+  /**
+   * True when the problem is 42 CFR Part 2 flagged. The reader only returns an SUD problem to an entitled
+   * audience, so a visible `true` discloses nothing new; it lets an in-process consumer (M15's goal authoring)
+   * make content it parents onto the problem inherit the flag. Not part of the picker's HTTP response.
+   */
+  readonly sudRelated: boolean;
 }
 
 /** A care-plan goal projection for the encounter-relevance picker (§7.8). */

@@ -1,6 +1,10 @@
 import { pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
-import type { CarePlanOverdueStatus, RelevantCarePlanElements } from "@chartwarden/types";
+import type {
+  CarePlanOverdueStatus,
+  RelevantCarePlanElements,
+  RelevantProblem,
+} from "@chartwarden/types";
 // apps/backend/src/modules/07-care-plan/routes/care-plan-typebox.ts — M7-T05 TypeBox route schemas
 // (§4.3). Named `care-plan-typebox` (NOT `*schema*`) so the table-ownership import heuristic never
 // mistakes a TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's
@@ -414,7 +418,13 @@ export const RelevantElementsResponseSchema = Type.Object({
 // Compile-time pins: the two seam DTOs must stay assignable to the §7.8 contract they serialize.
 type Conforms<T extends V, V> = T;
 type _Overdue = Conforms<Static<typeof OverdueStatusResponseSchema>, CarePlanOverdueStatus>;
-type _Relevant = Conforms<Static<typeof RelevantElementsResponseSchema>, RelevantCarePlanElements>;
+// The picker response omits `RelevantProblem.sudRelated` (an in-process flag, stripped by the route).
+type _Relevant = Conforms<
+  Static<typeof RelevantElementsResponseSchema>,
+  Omit<RelevantCarePlanElements, "problems"> & {
+    readonly problems: ReadonlyArray<Omit<RelevantProblem, "sudRelated">>;
+  }
+>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

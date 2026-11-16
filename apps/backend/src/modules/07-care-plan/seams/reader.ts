@@ -62,7 +62,10 @@ export function createCarePlanReader(
       return {
         planId: record.planId,
         patientId: record.patientId,
-        problems: visibleProblems.map(({ containsSud: _containsSud, ...p }) => p),
+        problems: visibleProblems.map(({ containsSud, ...p }) => ({
+          ...p,
+          sudRelated: containsSud,
+        })),
         goals,
         interventions,
         redacted: !record.sudReadAllowed && sudPresent,

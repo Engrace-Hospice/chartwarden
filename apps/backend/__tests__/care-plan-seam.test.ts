@@ -135,6 +135,11 @@ describe("CarePlanReader.relevantElementsForEncounter (§7.8)", () => {
     expect(out?.redacted).toBe(false);
     // the store-side containsSud flag never leaks into the seam DTO.
     expect(out?.problems.every((p) => !("containsSud" in p))).toBe(true);
+    // …but the kept problem's Part 2 flag rides through as `sudRelated`, so M15 can make a goal under it inherit.
+    expect(out?.problems.map((p) => [p.problemId, p.sudRelated]).sort()).toEqual([
+      ["prob-pain", false],
+      ["prob-sud", true],
+    ]);
   });
 
   it("redacts SUD problems (and their goals/interventions) when the caller is not entitled (D7)", async () => {

@@ -673,6 +673,7 @@ describe("M15-T03 — consuming M7's CarePlanReader (§2.1 / §2.3)", () => {
 
   const IPOC_PROBLEM = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
   const IPOC_GOAL = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+  const SUD_PROBLEM = "cccccccc-cccc-cccc-cccc-cccccccccccc";
 
   /** The audience a human caller passes (M15's parent check asks under the actor's own Part 2 rule, R-80). */
   const HUMAN = { actor: { roles: ["msw"], membershipId: "member-1" } } as const;
@@ -696,7 +697,10 @@ describe("M15-T03 — consuming M7's CarePlanReader (§2.1 / §2.3)", () => {
         return {
           planId: "plan-1",
           patientId: PATIENT,
-          problems: [{ problemId: IPOC_PROBLEM }],
+          problems: [
+            { problemId: IPOC_PROBLEM, sudRelated: false },
+            { problemId: SUD_PROBLEM, sudRelated: true },
+          ],
           goals: [{ goalId: IPOC_GOAL }],
           interventions: [],
           redacted: false,
@@ -747,6 +751,23 @@ describe("M15-T03 — consuming M7's CarePlanReader (§2.1 / §2.3)", () => {
     );
   });
 
+  it("returns the parent problem's Part 2 flag, so a goal under a Part 2 problem inherits it", async () => {
+    registerReader();
+    await expect(
+      assertParentElements("msw_plan", PATIENT, { parentProblemId: SUD_PROBLEM }, true, HUMAN),
+    ).resolves.toEqual({ parentSudRelated: true });
+    await expect(
+      assertParentElements("msw_plan", PATIENT, { parentProblemId: IPOC_PROBLEM }, true, HUMAN),
+    ).resolves.toEqual({ parentSudRelated: false });
+  });
+
+  it("an intervention parent check never reports a Part 2 parent (no problem column on a discipline intervention)", async () => {
+    registerReader();
+    await expect(
+      assertParentElements("msw_plan", PATIENT, { parentProblemId: SUD_PROBLEM }, false, HUMAN),
+    ).resolves.toEqual({ parentSudRelated: false });
+  });
+
   it("a discipline goal must reference an ACTIVE IPOC problem (§2.1 — no forked plan)", async () => {
     registerReader();
     await expectRejectCode(
@@ -775,7 +796,7 @@ describe("M15-T03 — consuming M7's CarePlanReader (§2.1 / §2.3)", () => {
         true,
         HUMAN,
       ),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ parentSudRelated: false });
     await expectRejectCode(
       assertParentElements(
         "spiritual_plan",

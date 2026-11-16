@@ -688,13 +688,20 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
           membershipId: membershipIdOf(request.context),
         }),
       };
-      return getSeam("CarePlanReader").relevantElementsForEncounter(
+      const elements = await getSeam("CarePlanReader").relevantElementsForEncounter(
         q.patientId,
         q.encounterType ?? "routine",
         (q.discipline ?? "rn") as InterventionDiscipline,
         q.admissionId,
         viewer,
       );
+      // `sudRelated` is for in-process consumers (M15 inheritance); the picker's HTTP contract does not carry it.
+      return elements === null
+        ? null
+        : {
+            ...elements,
+            problems: elements.problems.map(({ sudRelated: _sudRelated, ...p }) => p),
+          };
     },
   );
 }

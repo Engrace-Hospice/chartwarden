@@ -96,6 +96,9 @@ export interface ParentElementRefs {
  *
  * FAIL-CLOSED: a patient with no resolvable care plan cannot parent anything — the reader returning null
  * lands on `PARENT_ELEMENT_NOT_FOUND` rather than being waved through.
+ *
+ * Returns `parentSudRelated`: for a goal, whether the problem named by `parentProblemId` is 42 CFR Part 2
+ * flagged (the goal then inherits the flag, whatever the author sent); for an intervention, always false.
  */
 export async function assertParentElements(
   kind: DisciplinePlanKind,
@@ -103,7 +106,7 @@ export async function assertParentElements(
   refs: ParentElementRefs,
   requireProblem: boolean,
   viewer: CarePlanElementsAudience,
-): Promise<void> {
+): Promise<{ readonly parentSudRelated: boolean }> {
   const elements = await relevantIpocElements(kind, patientId, viewer);
   const problemIds = new Set((elements?.problems ?? []).map((p) => p.problemId));
   const goalIds = new Set((elements?.goals ?? []).map((g) => g.goalId));
@@ -119,4 +122,8 @@ export async function assertParentElements(
     refs.parentInterventionId,
     interventionIds.has(refs.parentInterventionId ?? ""),
   );
+  const parentProblem = requireProblem
+    ? elements?.problems.find((p) => p.problemId === refs.parentProblemId)
+    : undefined;
+  return { parentSudRelated: parentProblem?.sudRelated === true };
 }

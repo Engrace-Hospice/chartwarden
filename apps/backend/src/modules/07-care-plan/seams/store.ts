@@ -24,8 +24,9 @@ import type {
 } from "@chartwarden/types";
 
 /** A care-plan problem the store hands the reader, carrying the row's own `containsSud` flag (D7). */
-export interface StoredRelevantProblem extends RelevantProblem {
-  /** True when this problem is a 42 CFR Part 2 SUD problem — dropped by the reader unless entitled. */
+export interface StoredRelevantProblem extends Omit<RelevantProblem, "sudRelated"> {
+  /** True when this problem is a 42 CFR Part 2 SUD problem — dropped by the reader unless entitled, and handed on
+   * as `RelevantProblem.sudRelated` when it is kept. */
   readonly containsSud: boolean;
 }
 
