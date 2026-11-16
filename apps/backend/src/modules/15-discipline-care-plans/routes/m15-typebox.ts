@@ -74,11 +74,10 @@ export const PlanKind = Type.Union([
 
 /** `discipline_goal_source` (§3.2). */
 export const GoalSource = Type.Union([
-  Type.Literal("clinician_authored"),
+  Type.Literal("clinical"),
   Type.Literal("patient_stated"),
   Type.Literal("family_stated"),
   Type.Literal("agent_stated"),
-  Type.Literal("idg_directed"),
 ]);
 
 /** `volunteer_gate_kind` (§3.2 / §4.2). */

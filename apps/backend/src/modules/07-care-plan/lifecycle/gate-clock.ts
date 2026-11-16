@@ -5,8 +5,10 @@
 //     is processed and the `care_plan` row is created.
 //   • §7.2 — the 15-day review interval: `care_plan.next_review_due_at` = the last signed version's
 //     `signed_at` day + 15 calendar days at end-of-day org-TZ (§418.56(d)).
-// PURE & deterministic — every fact (the activation/sign instant, the org timezone) is injected; no IO and
-// no `Date.now()`. The day math is calendar-day in the ORG's timezone then persisted as a UTC instant at
+// PURE & deterministic — every fact (the activation/sign instant, optionally the org timezone) is injected;
+// no IO and no `Date.now()`. The timezone parameter defaults to `DEFAULT_ORG_TIME_ZONE` when omitted, and
+// today's callers omit it (no per-org timezone is plumbed in yet), so the default IS the org timezone. The
+// day math is calendar-day in the ORG's timezone then persisted as a UTC instant at
 // the end-of-day boundary, exactly mirroring M6's certification window-math (D8) so the two compliance
 // clocks in Wave D agree across timezones and DST boundaries. This file OWNS the column values; the cron
 // scans in `../jobs` and the gate decision in `./overdue-gate` only READ them.
@@ -78,9 +80,27 @@ export function endOfOrgDayInstant(date: LocalDate, timeZone: string): IsoInstan
 }
 
 /**
+ * `instant` plus `days` CALENDAR days in `timeZone`: the same org-local wall-clock time `days` days later.
+ * A due column is stored at end-of-day org-tz, so a grace of N days is the end of the day N later — a flat
+ * `+ N × 24h` lands an hour off across a DST change. Exact for any wall time outside the ~1h DST gap/overlap
+ * around the 02:00 transition (end-of-day dues are nowhere near it).
+ */
+export function addOrgCalendarDays(
+  instant: IsoInstant,
+  days: number,
+  timeZone: string = DEFAULT_ORG_TIME_ZONE,
+): IsoInstant {
+  const fromMs = Date.parse(instant);
+  const flatMs = fromMs + days * 86_400_000;
+  const dstShiftMs = tzOffsetMs(flatMs, timeZone) - tzOffsetMs(fromMs, timeZone);
+  return new Date(flatMs - dstShiftMs).toISOString();
+}
+
+/**
  * §7.1 — compute `care_plan.initial_due_at` from the admission-activation instant: the org-local
  * activation day + 5 calendar days, at end-of-day org-TZ. The 5-day clock is a calendar-day clock, so
- * the time-of-day of activation never shortens the window.
+ * the time-of-day of activation never shortens the window. `timeZone` is the org's; when omitted it is
+ * `DEFAULT_ORG_TIME_ZONE` (every caller omits it today, so stored values are America/Los_Angeles end-of-day).
  */
 export function computeInitialDueAt(
   admissionActivatedAt: IsoInstant,
@@ -93,7 +113,8 @@ export function computeInitialDueAt(
 /**
  * §7.2 — compute `care_plan.next_review_due_at` from a version's `signed_at` instant: the org-local
  * sign day + 15 calendar days, at end-of-day org-TZ. Called on every `version_signed` (initial and each
- * IDG review) so the review clock re-arms from the most recent signature.
+ * IDG review) so the review clock re-arms from the most recent signature. `timeZone` defaults exactly as
+ * in `computeInitialDueAt`; the gate (`overdue-gate`) and the cron scan must read it with the same zone.
  */
 export function computeNextReviewDueAt(
   signedAt: IsoInstant,

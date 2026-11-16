@@ -141,6 +141,23 @@ describe("caps", () => {
     expect(capText("short")).toBe("short");
     expect(capText("   ")).toBeUndefined();
   });
+  it("names a problem the decision flags as Part 2 by its kind only (audit D-11)", () => {
+    const lines = summarizeDecisionPayload("care_plan_update", {
+      kind: "care_plan_update",
+      mutations: [
+        {
+          op: "problem_add",
+          icd10Code: "F10.20",
+          snomedCode: null,
+          description: "SYNTHETIC-PART2-PROBLEM-TEXT",
+          problemKind: "related",
+          sudRelated: true,
+        },
+      ],
+    });
+    expect(lines).toEqual(["Add problem (Related) - 42 CFR Part 2 content withheld"]);
+  });
+
   it("caps the item count and says how many were not shown", () => {
     const mutations = Array.from({ length: DECISION_ITEM_CAP + 5 }, (_, i) => ({
       op: "problem_add",

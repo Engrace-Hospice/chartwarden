@@ -23,7 +23,7 @@ import {
 } from "@chartwarden/auth";
 import { STEP_UP_POLICY } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { __resetSeamsForTest, getSeam, registerSeam } from "../src/bootstrap/seams/registry";
 import { buildEncounterAbacPredicates } from "../src/modules/08-encounters/index";
@@ -737,6 +737,26 @@ describe("M8 §2.6 — the HearthNote selection tree round-trips (#114)", () => 
     expect(body.problemId).toBe(PROBLEM);
     expect(body.interventionId).toBe(INTERVENTION);
     expect(body.goalId).toBeNull();
+    await app.close();
+  });
+
+  it("hands the SESSION's roles and membership to the link service, so the check is per-actor (R-80)", async () => {
+    const { app, backend } = makeServer();
+    const id = await draft(app);
+    const spy = vi.spyOn(backend.service, "addCarePlanLink");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${id}/care-plan-links`,
+      headers: { ...RN, "x-test-roles": "rn,rn_case_manager", "x-test-membership": "mem_rn_1" },
+      payload: { problemId: PROBLEM },
+    });
+    expect(res.statusCode).toBe(201);
+    // Actor = the membership id (not the user id), and the trailing argument is the session's role keys:
+    // the DB service builds `{ actor: { roles, membershipId } }` from these, never `"patient_level"`.
+    expect(spy).toHaveBeenCalledWith(ORG, "mem_rn_1", id, { problemId: PROBLEM }, [
+      "rn",
+      "rn_case_manager",
+    ]);
     await app.close();
   });
 

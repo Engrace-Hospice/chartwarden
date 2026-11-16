@@ -62,6 +62,7 @@ export {
   hasAdmittingClinicianRole,
 } from "./admitting-clinician-grants";
 export { CODE_STATUS_EDITOR_ROLE_KEYS } from "./code-status-grants";
+export { CARE_PLAN_DEFAULT_GRANTS, CARE_PLAN_GRANTEE_ROLE_KEYS } from "./care-plan-grants";
 export {
   PLATFORM_ALERT_AUDIENCE_ROLE_KEY,
   PLATFORM_OPS_ROLE_KEY,

@@ -10,17 +10,17 @@ const SITES: readonly WriteSite[] = [
   [
     "patchProblem",
     (c, changed) =>
-      patchProblem(c, PLAN, ELEMENT, changed ? 5 : 4, { description: "Dyspnea at rest" } as never),
+      patchProblem(c, PLAN, ELEMENT, changed ? 5 : 4, { description: "Dyspnea at rest" }),
   ],
   [
     "patchGoal",
     (c, changed) =>
-      patchGoal(c, PLAN, ELEMENT, changed ? 3 : 2, { revisedText: "Sit on the porch" } as never),
+      patchGoal(c, PLAN, ELEMENT, changed ? 3 : 2, { revisedText: "Sit on the porch" }),
   ],
   [
     "patchIntervention",
     (c, changed) =>
-      patchIntervention(c, PLAN, ELEMENT, changed ? 2 : 1, { description: "Oxygen 2 L" } as never),
+      patchIntervention(c, PLAN, ELEMENT, changed ? 2 : 1, { scopeText: "Oxygen 2 L" }),
   ],
 ];
 

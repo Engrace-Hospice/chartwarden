@@ -162,6 +162,7 @@
         "apps/backend/__tests__/admission-routes.test.ts",
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/care-plan-conformance.live.test.ts",
+        "apps/backend/__tests__/care-plan-hardening-routes.test.ts",
         "apps/backend/__tests__/care-plan-routes.test.ts",
         "apps/backend/__tests__/consent-routes-abac.test.ts",
         "apps/backend/__tests__/discipline-plans-caseload-scope.test.ts",
@@ -303,6 +304,8 @@
       "suiteFiles": [
         "apps/backend/__tests__/discipline-plans-caseload-scope.test.ts",
         "apps/backend/__tests__/discipline-plans-inject.test.ts",
+        "apps/backend/__tests__/discipline-plans-snapshot-redaction.test.ts",
+        "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 28

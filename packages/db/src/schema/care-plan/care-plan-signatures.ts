@@ -31,7 +31,7 @@ export const carePlanSignatures = pgTable(
     // the CarePlanRouteService does not thread the acting membership yet (mig 0127).
     membershipId: uuid("membership_id").references(() => memberships.id, { onDelete: "restrict" }),
     signerRole: carePlanSignerRole("signer_role").notNull(),
-    signatureMethod: text("signature_method").notNull().default("password_step_up"), // 'passkey' | 'password_step_up'
+    signatureMethod: text("signature_method").notNull().default("password_step_up"), // 'passkey' | 'totp_step_up' | 'sms_step_up' | 'step_up_unverified' (+ the historic 'password_step_up')
     signedAt: timestamp("signed_at", { withTimezone: true }).notNull().defaultNow(),
     attestationText: text("attestation_text"),
     // D8: a return-to-draft INVALIDATES (never deletes) the collected signatures — chartwarden_app has no

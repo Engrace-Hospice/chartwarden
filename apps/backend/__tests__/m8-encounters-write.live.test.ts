@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createInMemorySessionContextStore, createSessionContextResolver } from "@chartwarden/auth";
+import { type StoredConsent, createInMemoryConsentStore } from "@chartwarden/consent";
 import { createDbClient } from "@chartwarden/db";
 import {
   VOCAB_VERSION,
@@ -27,13 +28,18 @@ import { runWithRequestContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { registerSeam } from "../src/bootstrap/seams/registry";
+import { consentEvaluatorDenyStub } from "../src/bootstrap/seams/providers";
+import { getSeam, registerSeam } from "../src/bootstrap/seams/registry";
 import { createCareTeamProvider } from "../src/modules/05-patient/seams/care-team-provider";
 import { createDrizzleCareTeamStore } from "../src/modules/05-patient/seams/drizzle-stores";
 import {
   createAdmissionStatusReader,
   createDrizzleAdmissionReaderStore,
 } from "../src/modules/06-admission/index";
+import {
+  createCarePlanReader,
+  createDrizzleCarePlanReaderStore,
+} from "../src/modules/07-care-plan/index";
 import { createDrizzleEncounterEraseStore } from "../src/modules/08-encounters/erasers/encounter-eraser";
 import {
   type EncounterWriteOutboxPort,
@@ -42,6 +48,7 @@ import {
   createHearthnoteCiphers,
 } from "../src/modules/08-encounters/index";
 import { createDrizzleEncounterReaderStore } from "../src/modules/08-encounters/seams/drizzle-store";
+import { registerConsentSeams } from "../src/modules/39-consent/index";
 import { requiredSectionSelections, requiredVitalsCapture } from "./_hearthnote-fixtures";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
@@ -98,6 +105,9 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   let noCipherSvc: ReturnType<typeof createDbEncounterRouteService>;
   /** What the faked M7 reader answers (see the seam registration in beforeAll). */
   let carePlanOverdue: unknown = null;
+  // The audience the stub reader was last asked under (the F-064 care-plan link check passes the ACTOR, R-80).
+  let lastElementsViewer: unknown = null;
+  const LINK_ACTOR_ROLES = ["rn"] as const;
   /** §2.6 check 3 (#125) — what the faked M9 reader answers `latestBatch` for any scale asked. */
   let latestScales: Set<string> = new Set();
   /** The RN case manager's membership id — what a cosignature must route to (#124). */
@@ -237,19 +247,28 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     registerSeam("CarePlanReader", {
       // F-064 — `addCarePlanLink` validates the refs against the patient's relevant plan elements;
       // these are the PROBLEM/GOAL ids the care-plan-link cases below link.
-      relevantElementsForEncounter: async () => ({
-        planId: "66666666-6666-4666-8666-666666666666",
-        patientId: PATIENT,
-        problems: [{ problemId: "44444444-4444-4444-8444-444444444444" }],
-        goals: [
-          {
-            goalId: "55555555-5555-4555-8555-555555555555",
-            problemId: "44444444-4444-4444-8444-444444444444",
-          },
-        ],
-        interventions: [],
-        redacted: false,
-      }),
+      relevantElementsForEncounter: async (
+        _patientId: unknown,
+        _encounterType: unknown,
+        _discipline: unknown,
+        _admissionId: unknown,
+        viewer: unknown,
+      ) => {
+        lastElementsViewer = viewer;
+        return {
+          planId: "66666666-6666-4666-8666-666666666666",
+          patientId: PATIENT,
+          problems: [{ problemId: "44444444-4444-4444-8444-444444444444", sudRelated: false }],
+          goals: [
+            {
+              goalId: "55555555-5555-4555-8555-555555555555",
+              problemId: "44444444-4444-4444-8444-444444444444",
+            },
+          ],
+          interventions: [],
+          redacted: false,
+        };
+      },
       isReviewOverdue: async () => carePlanOverdue,
       fifteenDayCycleCountsForOrg: async () => ({ numerator: 0, denominator: 0 }),
       terminologyCodeUsageForOrg: async () => [],
@@ -1389,10 +1408,13 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
     it("inserts a real row carrying the M7 refs, and returns ITS id", async () => {
       const id = await draft("routine_visit", "rn");
-      const link = await svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {
-        problemId: PROBLEM,
-        goalId: GOAL,
-      });
+      const link = await svc.addCarePlanLink(
+        ORG_A,
+        membershipOf[ORG_A],
+        id,
+        { problemId: PROBLEM, goalId: GOAL },
+        LINK_ACTOR_ROLES,
+      );
       expect(link.id).not.toBe(id); // the old `linkId` was the encounter's own id
       const { rows } = await admin.query(
         "SELECT * FROM encounter_care_plan_link WHERE encounter_id = $1",
@@ -1407,9 +1429,24 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       expect(rows[0].removed_at).toBeNull();
     });
 
+    it("asks the reader under the ACTOR audience (session roles + membership), never patient_level (R-80)", async () => {
+      const id = await draft("routine_visit", "rn");
+      lastElementsViewer = null;
+      await svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, { problemId: PROBLEM }, [
+        "rn_case_manager",
+      ]);
+      // The reader's store resolves the per-actor Part 2 verdict from exactly this identity; the service
+      // never asserts a verdict itself, and never falls back to the patient-level rule.
+      expect(lastElementsViewer).toEqual({
+        actor: { roles: ["rn_case_manager"], membershipId: membershipOf[ORG_A] },
+      });
+    });
+
     it("refuses a link naming no element before the DB CHECK can raise a 23514", async () => {
       const id = await draft("routine_visit", "rn");
-      await expect(svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {})).rejects.toMatchObject({
+      await expect(
+        svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {}, LINK_ACTOR_ROLES),
+      ).rejects.toMatchObject({
         code: "CARE_PLAN_LINK_REF_REQUIRED",
         statusCode: 422,
       });
@@ -1422,9 +1459,13 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
     it("removal is a soft invalidate: the row survives, the link stops listing", async () => {
       const id = await draft("routine_visit", "rn");
-      const link = await svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {
-        problemId: PROBLEM,
-      });
+      const link = await svc.addCarePlanLink(
+        ORG_A,
+        membershipOf[ORG_A],
+        id,
+        { problemId: PROBLEM },
+        LINK_ACTOR_ROLES,
+      );
       await svc.removeCarePlanLink(ORG_A, membershipOf[ORG_A], id, link.id);
       expect((await svc.listCarePlanLinks(ORG_A, id)).links).toEqual([]);
       const { rows } = await admin.query(
@@ -1440,9 +1481,13 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
 
     it("removing an already-removed link is a 404, not a second success", async () => {
       const id = await draft("routine_visit", "rn");
-      const link = await svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {
-        problemId: PROBLEM,
-      });
+      const link = await svc.addCarePlanLink(
+        ORG_A,
+        membershipOf[ORG_A],
+        id,
+        { problemId: PROBLEM },
+        LINK_ACTOR_ROLES,
+      );
       await svc.removeCarePlanLink(ORG_A, membershipOf[ORG_A], id, link.id);
       await expect(
         svc.removeCarePlanLink(ORG_A, membershipOf[ORG_A], id, link.id),
@@ -1453,9 +1498,13 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       // `encounter_care_plan_link_removal_consistent` — a removal with no actor is unattributable, and
       // an actor with no instant is not a removal. Only the constraint can prove this.
       const id = await draft("routine_visit", "rn");
-      const link = await svc.addCarePlanLink(ORG_A, membershipOf[ORG_A], id, {
-        problemId: PROBLEM,
-      });
+      const link = await svc.addCarePlanLink(
+        ORG_A,
+        membershipOf[ORG_A],
+        id,
+        { problemId: PROBLEM },
+        LINK_ACTOR_ROLES,
+      );
       await expect(
         admin.query("UPDATE encounter_care_plan_link SET removed_at = now() WHERE id = $1", [
           link.id,
@@ -1628,6 +1677,151 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       expect(digests.find((x) => x.encounterId === id)?.evvBracketState).toBe(
         "evv_missing_documented",
       );
+    });
+  });
+
+  // R-80/R-82, end to end. Every other M8 link test above runs against a stub reader, so none of them proves that the
+  // service's actor audience reaches the REAL reader and the REAL evaluator. Here `addCarePlanLink` runs over the real
+  // `CarePlanReader` (Drizzle store, RLS as `chartwarden_app`) and the real in-memory M39 evaluator, against an active
+  // care plan holding a Part 2 problem for the encounter's patient and admission. Placed last: it swaps the
+  // CarePlanReader stub (restored in `finally`) and binds an evaluator the earlier tests never needed.
+  describe("R-82 — addCarePlanLink applies the per-ACTOR Part 2 rule through the real reader and evaluator", () => {
+    const NAMED_MEMBERSHIP = () => membershipOf[ORG_A];
+    const OTHER_MEMBERSHIP = "99999999-9999-4999-8999-999999999999";
+    const PART2_PROBLEM_TEXT = "SYNTHETIC-PART2-PROBLEM";
+
+    const releaseNaming = (membershipId: string): StoredConsent => ({
+      id: randomUUID(),
+      organizationId: ORG_A,
+      patientId: PATIENT,
+      typeKey: "42_cfr_part_2_release",
+      status: "active",
+      version: 1,
+      effectiveAtMs: Date.parse("2020-01-01T00:00:00Z"),
+      expiresAtMs: null,
+      survivesDeath: false,
+      scopeDescriptor: null,
+      recipients: [
+        {
+          removedAtMs: null,
+          expiresAtMs: null,
+          recipientResolvedKind: "workforce_member",
+          recipientResolvedId: membershipId,
+        },
+      ],
+    });
+
+    /** Seeds an active care plan (this encounter's patient + admission) with one Part 2 problem; returns its id. */
+    async function seedPart2Problem(): Promise<string> {
+      const carePlanId = (
+        await admin.query(
+          `INSERT INTO care_plan (organization_id, provider_entity_id, location_id, patient_id, admission_id,
+             status, initial_due_at) VALUES ($1,$2,$3,$4,$5,'active', now() + interval '5 days') RETURNING id`,
+          [ORG_A, SITING_A.providerEntityId, SITING_A.locationId, PATIENT, ADMISSION],
+        )
+      ).rows[0].id as string;
+      return (
+        await admin.query(
+          `INSERT INTO problem (organization_id, provider_entity_id, location_id, care_plan_id, description, kind, sud_related)
+           VALUES ($1,$2,$3,$4,$5,'related',true) RETURNING id`,
+          [ORG_A, SITING_A.providerEntityId, SITING_A.locationId, carePlanId, PART2_PROBLEM_TEXT],
+        )
+      ).rows[0].id as string;
+    }
+
+    /**
+     * Runs `fn` with the real reader + an evaluator over `consents` bound, then restores the stub reader and the
+     * evaluator that was bound before (the registry has no unregister: with none bound, the boot deny-stub that
+     * `validateSeams` binds to an unwired seam goes back, so the in-memory evaluator never outlives the case).
+     */
+    async function withRealSeams<T>(consents: StoredConsent[], fn: () => Promise<T>): Promise<T> {
+      const stubReader = getSeam("CarePlanReader");
+      let priorEvaluator: unknown;
+      try {
+        priorEvaluator = getSeam("ConsentEvaluator");
+      } catch {
+        // None bound yet (this suite never registers one outside this helper).
+      }
+      registerSeam(
+        "CarePlanReader",
+        createCarePlanReader(createDrizzleCarePlanReaderStore(handle.db)),
+      );
+      registerConsentSeams({
+        store: createInMemoryConsentStore({ consents, deceasedPatientIds: new Set() }).store,
+      });
+      try {
+        // The real reader's store reads under the caller's ambient request context (the route supplies it).
+        return await runWithRequestContext({ organizationId: ORG_A, userId: USER } as never, fn);
+      } finally {
+        registerSeam("CarePlanReader", stubReader);
+        registerSeam("ConsentEvaluator", priorEvaluator ?? consentEvaluatorDenyStub);
+      }
+    }
+
+    async function link(
+      problem: string,
+      actor: { membershipId: string; roles: readonly string[] },
+    ) {
+      const encounterId = await draft("routine_visit", "rn", {
+        document: false,
+        captureVitals: false,
+      });
+      const result = await svc.addCarePlanLink(
+        ORG_A,
+        actor.membershipId,
+        encounterId,
+        { problemId: problem },
+        actor.roles,
+      );
+      return { encounterId, result };
+    }
+
+    let problemId: string;
+    beforeAll(async () => {
+      problemId = await seedPart2Problem();
+    });
+
+    it("a nurse the release does NOT name is refused 'problem is not valid for this encounter' and no link row is written; the member it names links", async () => {
+      await withRealSeams([releaseNaming(NAMED_MEMBERSHIP())], async () => {
+        const encounterId = await draft("routine_visit", "rn", {
+          document: false,
+          captureVitals: false,
+        });
+        await expect(
+          svc.addCarePlanLink(ORG_A, OTHER_MEMBERSHIP, encounterId, { problemId }, ["rn"]),
+        ).rejects.toMatchObject({
+          message: "problem is not valid for this encounter",
+          statusCode: 422,
+        });
+        const { rows } = await admin.query(
+          "SELECT count(*)::int AS n FROM encounter_care_plan_link WHERE encounter_id = $1",
+          [encounterId],
+        );
+        expect(rows[0].n).toBe(0);
+
+        const named = await svc.addCarePlanLink(
+          ORG_A,
+          NAMED_MEMBERSHIP(),
+          encounterId,
+          { problemId },
+          ["rn"],
+        );
+        expect(named.id).toBeTruthy();
+      });
+    });
+
+    it("the RN case manager links the Part 2 problem when no release is on file (the picker shows it), a plain nurse does not", async () => {
+      await withRealSeams([], async () => {
+        const caseManager = await link(problemId, {
+          membershipId: OTHER_MEMBERSHIP,
+          roles: ["rn", "rn_case_manager"],
+        });
+        expect(caseManager.result.id).toBeTruthy();
+
+        await expect(
+          link(problemId, { membershipId: OTHER_MEMBERSHIP, roles: ["rn"] }),
+        ).rejects.toMatchObject({ message: "problem is not valid for this encounter" });
+      });
     });
   });
 });

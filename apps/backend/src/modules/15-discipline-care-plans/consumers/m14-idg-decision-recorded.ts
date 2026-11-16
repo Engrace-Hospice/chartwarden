@@ -13,13 +13,18 @@ import { type DbClient, schema } from "@chartwarden/db";
 //
 // ONE transaction per delivery, under the tenant's RLS (`withOrgContext`, system actor — no membership):
 //   1. idempotency — a `discipline_plan_idg_decision_application` row for (org, decisionId) → no-op;
-//   2. the patient's live plan of `planKind`, row-locked so two decisions for one plan serialize;
+//   2. the patient's plan of `planKind` (newest admission first; the decision's own admission when the
+//      event names one), row-locked so two decisions for one plan serialize;
 //   3. the pure decider (`./apply-idg-decision`) over the facts read here;
 //   4. REFUSE → a terminal `refused` row, nothing else (no event, nothing applied) — or
 //      APPLY → (open the plan's next version if none is open) → the goal/intervention writes → an `applied`
 //      row → `m15.idg_decision.applied` through the catalog-validating publisher, all or nothing.
-// Transient conditions THROW so the relay retries and, if they persist, dead-letters visibly: no plan has been
-// bootstrapped for the patient yet, or the plan's open version is sealed `in_review`.
+// A plan whose open version is sealed `in_review`, or that is still a `draft` awaiting its first signature, WAITS
+// (`OutboxDeferral`: retried without consuming an attempt, so it applies once the version is signed). Past the
+// 14-day horizon it becomes a durable `refused` row (`version_in_review` / `plan_not_yet_active`) + audit: a
+// plain throw dead-lettered after ~10 minutes and lost the decision.
+// The one remaining transient condition THROWS so the relay retries and, if it persists, dead-letters visibly:
+// no plan has been bootstrapped for the patient yet.
 //
 // The M7 IPOC parent-problem check is an INJECTED org-explicit port (bound at the composition root to M7's
 // `activeProblemIdsForOrg`): `CarePlanReader`'s id-keyed reads need an ambient request scope a relay tick has
@@ -27,7 +32,12 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { DisciplineGoalSource, DisciplinePlanKind } from "@chartwarden/types";
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import {
+  OUTBOX_DEFERRAL_RETRY_MS,
+  OutboxDeferral,
+  withinDeferralHorizon,
+} from "../../../bootstrap/outbox-dispatcher";
 import { transitionDisciplinePlan } from "../lifecycle/plan";
 import { resolveRequiredSignerSet } from "../lifecycle/required-signer-set";
 import type { WriteOutboxPort } from "../routes/write-service";
@@ -35,7 +45,9 @@ import {
   DISCIPLINE_PLAN_UPDATE_KIND,
   IDG_AUTHORING_DISCIPLINE,
   type IdgApplyFacts,
+  type IdgRefusalReason,
   type ParsedDisciplineMutation,
+  choosePlanForDecision,
   decideDisciplinePlanDecision,
 } from "./apply-idg-decision";
 
@@ -77,6 +89,8 @@ export interface DisciplinePlanIdgDecisionDeps {
    *  applied decision can never be unannounced. */
   readonly outbox: WriteOutboxPort;
   readonly activeProblemIds: ActiveProblemIdsResolver;
+  /** The subset of those problems that are 42 CFR Part 2: a goal added under one is stored as Part 2 too. */
+  readonly sudProblemIds: ActiveProblemIdsResolver;
 }
 
 const fail = (message: string): never => {
@@ -181,6 +195,9 @@ export function parseDisciplinePlanDecision(
   readonly decisionId: string;
   readonly meetingId: string;
   readonly patientId: string;
+  /** The admission the decision was made under, when the event names it (M14 does not emit it yet); null
+   *  falls back to "the patient's newest plan of that kind". */
+  readonly admissionId: string | null;
   readonly recordedByMembershipId: string;
   readonly planKind: DisciplinePlanKind;
   readonly mutations: readonly ParsedDisciplineMutation[];
@@ -204,6 +221,7 @@ export function parseDisciplinePlanDecision(
     decisionId: stringOf(envelope, "decisionId"),
     meetingId: stringOf(envelope, "meetingId"),
     patientId: stringOf(envelope, "patientId"),
+    admissionId: optionalStringOf(envelope, "admissionId") ?? null,
     recordedByMembershipId: stringOf(envelope, "recordedByMembershipId"),
     planKind,
     mutations: rawMutations.map(parseMutation),
@@ -220,14 +238,24 @@ export function buildM15IdgDecisionConsumer(deps: DisciplinePlanIdgDecisionDeps)
       readonly id: string;
       readonly organizationId: string;
       readonly payload: unknown;
+      /** The outbox row's creation instant (the relay always supplies it); bounds how long a decision may wait. */
+      readonly createdAt?: Date;
     }): Promise<void> {
       const organizationId = event.organizationId;
       const decision = parseDisciplinePlanDecision(organizationId, event.payload);
       if (decision === null) return; // another module's decision arm
 
       // The M7 read opens its own tenant transaction, so it runs before ours.
+      // Lower-cased: a uuid is case-insensitive and the decider compares the author's casing against this set.
       const activeProblemIds = new Set(
-        await deps.activeProblemIds(organizationId, decision.patientId),
+        (await deps.activeProblemIds(organizationId, decision.patientId)).map((id) =>
+          id.toLowerCase(),
+        ),
+      );
+      const sudProblemIds = new Set(
+        (await deps.sudProblemIds(organizationId, decision.patientId)).map((id) =>
+          id.toLowerCase(),
+        ),
       );
 
       await withOrgContext(
@@ -248,8 +276,10 @@ export function buildM15IdgDecisionConsumer(deps: DisciplinePlanIdgDecisionDeps)
             .limit(1);
           if (already) return; // idempotent on idgDecisionId (§4.5)
 
-          // The patient's live plan of this kind; locked so concurrent decisions on one plan serialize.
-          const [plan] = await tx
+          // The patient's plans of this kind, locked so concurrent decisions on one plan serialize. There can
+          // be several after a readmission, so the choice is explicit (`choosePlanForDecision`): the
+          // decision's own admission when the event names one, the newest live plan otherwise.
+          const candidates = await tx
             .select()
             .from(PLAN)
             .where(
@@ -257,11 +287,10 @@ export function buildM15IdgDecisionConsumer(deps: DisciplinePlanIdgDecisionDeps)
                 eq(PLAN.organizationId, organizationId),
                 eq(PLAN.patientId, decision.patientId),
                 eq(PLAN.kind, decision.planKind),
-                ne(PLAN.status, "discharged"),
               ),
             )
-            .limit(1)
             .for("update");
+          const chosen = choosePlanForDecision(candidates, decision.admissionId);
 
           const inherit = (p: typeof PLAN.$inferSelect) => ({
             organizationId,
@@ -282,41 +311,37 @@ export function buildM15IdgDecisionConsumer(deps: DisciplinePlanIdgDecisionDeps)
             actorKind: "system",
             correlationId: `idg-decision:${decision.decisionId}`,
           };
-
-          if (!plan) {
-            // A discharged plan is a permanent refusal (record it against the most recent plan of that
-            // kind); no plan at all means M15's bootstrap has not run yet — transient, THROW so it retries.
-            const [discharged] = await tx
-              .select()
-              .from(PLAN)
-              .where(
-                and(
-                  eq(PLAN.organizationId, organizationId),
-                  eq(PLAN.patientId, decision.patientId),
-                  eq(PLAN.kind, decision.planKind),
-                ),
-              )
-              .orderBy(sql`${PLAN.createdAt} desc`)
-              .limit(1);
-            if (!discharged) {
-              return fail(
-                `no ${decision.planKind} plan for patient '${decision.patientId}' (not bootstrapped yet)`,
-              );
-            }
+          /** A terminal `refused` verdict: the application row (idempotent on the decision) + a denied audit. */
+          const refuseWith = async (
+            target: typeof PLAN.$inferSelect,
+            reason: IdgRefusalReason,
+          ): Promise<void> => {
             await tx.insert(APPLICATION).values({
-              ...baseRow(discharged),
+              ...baseRow(target),
               status: "refused",
-              refusalReason: "plan_discharged",
+              refusalReason: reason,
             });
             await audit(tx, auditContext, {
               eventType: "m15.idg_decision.refused",
               resourceKind: "discipline_care_plan",
-              resourceId: discharged.id,
+              resourceId: target.id,
               outcome: "denied",
-              context: { decisionId: decision.decisionId, reason: "plan_discharged" },
+              context: { decisionId: decision.decisionId, reason },
             });
+          };
+
+          // No plan at all means M15's bootstrap has not run yet — transient, THROW so it retries. A
+          // discharged plan (nothing live for this patient/kind/admission) is a permanent refusal.
+          if (!chosen) {
+            return fail(
+              `no ${decision.planKind} plan for patient '${decision.patientId}' (not bootstrapped yet)`,
+            );
+          }
+          if (chosen.status === "discharged") {
+            await refuseWith(chosen, "plan_discharged");
             return;
           }
+          const plan = chosen;
 
           const [openVersion] = await tx
             .select({ id: VERSION.id, status: VERSION.status })
@@ -326,9 +351,33 @@ export function buildM15IdgDecisionConsumer(deps: DisciplinePlanIdgDecisionDeps)
             )
             .limit(1);
           if (openVersion?.status === "in_review") {
-            // The snapshot is sealed (§2.3); applying now would edit a document awaiting signatures.
-            return fail(
-              `plan '${plan.id}' has a version in review; retry after it is signed/rejected`,
+            // The snapshot is sealed (§2.3); applying now would edit a document awaiting signatures. Signatures
+            // can take longer than the relay's attempt window, so the decision WAITS: `OutboxDeferral` retries
+            // it without consuming an attempt and it applies once the version is signed or returned. Only past
+            // the horizon is the verdict DURABLE (a refused row + audit), so a version that never gets signed
+            // still leaves a human-visible trace instead of a dead-lettered row.
+            if (
+              event.createdAt !== undefined &&
+              withinDeferralHorizon({ createdAt: event.createdAt })
+            ) {
+              throw new OutboxDeferral(
+                `${M15_IDG_DECISION_CONSUMER.consumerName}: plan '${plan.id}' version '${openVersion.id}' is awaiting signatures`,
+                OUTBOX_DEFERRAL_RETRY_MS,
+              );
+            }
+            await refuseWith(plan, "version_in_review");
+            return;
+          }
+          // A plan becomes active when its first version is signed. Until then the decision WAITS (same
+          // wait and horizon as above); past the horizon the decider records `plan_not_yet_active` durably.
+          if (
+            plan.status === "draft" &&
+            event.createdAt !== undefined &&
+            withinDeferralHorizon({ createdAt: event.createdAt })
+          ) {
+            throw new OutboxDeferral(
+              `${M15_IDG_DECISION_CONSUMER.consumerName}: plan '${plan.id}' is awaiting its first signature`,
+              OUTBOX_DEFERRAL_RETRY_MS,
             );
           }
 
@@ -354,18 +403,7 @@ export function buildM15IdgDecisionConsumer(deps: DisciplinePlanIdgDecisionDeps)
 
           const action = decideDisciplinePlanDecision(decision.mutations, facts);
           if (action.kind === "refuse") {
-            await tx.insert(APPLICATION).values({
-              ...baseRow(plan),
-              status: "refused",
-              refusalReason: action.reason,
-            });
-            await audit(tx, auditContext, {
-              eventType: "m15.idg_decision.refused",
-              resourceKind: "discipline_care_plan",
-              resourceId: plan.id,
-              outcome: "denied",
-              context: { decisionId: decision.decisionId, reason: action.reason },
-            });
+            await refuseWith(plan, action.reason);
             return;
           }
 
@@ -411,6 +449,9 @@ export function buildM15IdgDecisionConsumer(deps: DisciplinePlanIdgDecisionDeps)
                   ...inherit(plan),
                   planId: plan.id,
                   parentProblemId: m.parentProblemId,
+                  // A goal under a Part 2 problem is Part 2 content (the same rule M7 applies to a problem's
+                  // dependents), whichever module stores it.
+                  sudRelated: sudProblemIds.has(m.parentProblemId.toLowerCase()),
                   source: m.source,
                   originalText: m.originalText,
                   measurableOutcome: m.measurableOutcome,

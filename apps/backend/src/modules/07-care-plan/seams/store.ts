@@ -4,12 +4,16 @@
 // the CONSUMER's `withOrgContext` (the reader never switches tenants — RLS scopes every read by
 // `app.org_id`, §7.8). Mirrors the M6 seams/store.ts precedent.
 //
-// SUD redaction (D7): the store resolves `sudReadAllowed` SQL-side — joining the patient's
-// privacy-flag snapshot / the M39 Part-2 consent fact — and tags each problem `containsSud`. It does
-// NOT trust a caller-asserted scope (§7.8). The in-memory slice seeds the decision directly so reader
-// tests can exercise both the entitled and the redacted paths.
+// SUD redaction (D7): the store resolves `sudReadAllowed` through the M39 evaluator at call time (only
+// `containsSud`, the problem's own flag, comes from the row) and tags each problem `containsSud`. It never
+// trusts a caller-asserted SCOPE (§7.8). A caller supplies an audience (`CarePlanElementsAudience`): either a
+// per-ACTOR verdict its ROUTE resolved from the same M39 closure every other M7 read uses (only trustworthy from
+// such a route — a module that hand-builds `{ sudDisclosureAllowed: true }` would bypass M39), or its SESSION
+// identity (`{ actor }`), from which the Drizzle store resolves that verdict itself. The in-memory slice seeds the
+// decision directly so reader tests can exercise both the entitled and the redacted paths.
 import type {
   CarePlanCodeUsageRecord,
+  CarePlanElementsAudience,
   CarePlanId,
   ClinicalLinkSummary,
   IsoInstant,
@@ -19,16 +23,17 @@ import type {
   RelevantProblem,
 } from "@chartwarden/types";
 
-/** A care-plan problem the store hands the reader, carrying the SQL-resolved `containsSud` flag (D7). */
-export interface StoredRelevantProblem extends RelevantProblem {
-  /** True when this problem is a 42 CFR Part 2 SUD problem — dropped by the reader unless entitled. */
+/** A care-plan problem the store hands the reader, carrying the row's own `containsSud` flag (D7). */
+export interface StoredRelevantProblem extends Omit<RelevantProblem, "sudRelated"> {
+  /** True when this problem is a 42 CFR Part 2 SUD problem — dropped by the reader unless entitled, and handed on
+   * as `RelevantProblem.sudRelated` when it is kept. */
   readonly containsSud: boolean;
 }
 
 /**
  * The active care plan's element set for a patient, already tenant-scoped by RLS. `sudReadAllowed` is
- * the store's SQL-side D7 decision (the caller's scope is never trusted); the reader filters SUD
- * problems out and flags `redacted` when it does.
+ * the store's D7 decision, resolved through the M39 evaluator at call time (the caller's scope is never
+ * trusted); the reader filters SUD problems out and flags `redacted` when it does.
  */
 export interface CarePlanElementsRecord {
   readonly planId: CarePlanId;
@@ -36,7 +41,11 @@ export interface CarePlanElementsRecord {
   readonly problems: readonly StoredRelevantProblem[];
   readonly goals: readonly RelevantGoal[];
   readonly interventions: readonly RelevantIntervention[];
-  /** Whether the caller is entitled to read SUD-flagged content for this patient (resolved SQL-side). */
+  /**
+   * Whether the caller is entitled to read SUD-flagged content for this patient (resolved through the M39 evaluator
+   * at call time, never from the row; or a hand-built viewer's route-resolved verdict, or the seeded value in the
+   * in-memory slice).
+   */
   readonly sudReadAllowed: boolean;
 }
 
@@ -47,6 +56,10 @@ export interface CarePlanClockRecord {
   readonly hasSignedInitialVersion: boolean;
   readonly initialDueAt: IsoInstant;
   readonly nextReviewDueAt: IsoInstant | null;
+  /** `care_plan.initial_signed_at` — lets the gate date a legacy plan whose `nextReviewDueAt` is NULL. */
+  readonly initialSignedAt?: IsoInstant | null;
+  /** The org's IANA timezone; the writers compute due instants in it, so the gate must grade them in it. */
+  readonly timeZone?: string;
 }
 
 /**
@@ -59,7 +72,11 @@ export interface CarePlanReaderStore {
   /** The active care plan's problems/goals/interventions for a patient + the D7 redaction decision. */
   activeCarePlanElements(
     patientId: PatientId,
-    admissionId?: string,
+    admissionId: string | undefined,
+    /** REQUIRED: a route-resolved per-actor verdict, or the caller's session identity (`{ actor }`, resolved to a
+     * per-actor verdict by the store), replaces the patient-level release check; `"patient_level"` is the explicit
+     * choice of the patient-level check, for a caller with no human actor. */
+    viewer: CarePlanElementsAudience,
   ): Promise<CarePlanElementsRecord | null>;
   /** The active care plan's overdue-gate clock facts for a patient (initial/review due columns). */
   activeCarePlanClock(patientId: PatientId): Promise<CarePlanClockRecord | null>;
@@ -109,8 +126,14 @@ export function createInMemoryCarePlanReaderStore(seed: CarePlanReaderSeed = {})
   const links = seed.links ?? [];
   return {
     store: {
-      async activeCarePlanElements(patientId, _admissionId) {
-        return elements.find((e) => e.patientId === patientId) ?? null;
+      async activeCarePlanElements(patientId, _admissionId, viewer) {
+        const record = elements.find((e) => e.patientId === patientId) ?? null;
+        // A route-resolved viewer decides SUD visibility; `"patient_level"` and an `{ actor }` audience both mean
+        // "use the seeded `sudReadAllowed`" (this slice has no consent round-trip to run, so it cannot resolve a
+        // per-actor verdict — the Drizzle store does, through M39).
+        return record && viewer !== "patient_level" && !("actor" in viewer)
+          ? { ...record, sudReadAllowed: viewer.sudDisclosureAllowed }
+          : record;
       },
       async activeCarePlanClock(patientId) {
         return clocks.find((c) => c.patientId === patientId) ?? null;

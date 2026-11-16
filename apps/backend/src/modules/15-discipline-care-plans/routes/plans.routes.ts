@@ -18,7 +18,8 @@ import {
   writeActorOf,
 } from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { type DisclosurePort, resolveDisclosure, seamDisclosurePort } from "./disclosure";
 import { P, STEP_UP, planCaseloadScope } from "./guards";
 import {
   AmendAssessmentBody,
@@ -40,21 +41,49 @@ import {
   parseQuery,
 } from "./m15-typebox";
 import type { M15ReadService } from "./read-service";
-import type { M15WriteService } from "./write-service";
+import { redactVersionForCaller } from "./snapshot-redaction";
+import type { DisclosureGate, M15WriteService } from "./write-service";
 
 export interface PlanRouteDeps {
   readonly readService: M15ReadService;
   readonly writeService: M15WriteService;
+  /** The §7.8 SUD verdict source for version snapshots (default: the M39 seam, fail-closed). */
+  readonly disclosure?: DisclosurePort;
 }
 
 const IDEMPOTENT = requireIdempotencyKey();
 const NO_OFFSET = rejectOffsetPagination();
+
+/** Nothing confidential may be seen: what a lookup that failed or found no plan resolves to (fail closed). */
+const CLOSED_GATE: DisclosureGate = { sudAllowed: false, familyViolenceAllowed: false };
 
 /** The M4 read-audit declaration every PHI plan read carries (§4.1 / M4 §2.5). */
 const PLAN_READ = { resourceKind: "discipline_care_plan", resourceIdParam: "planId" } as const;
 
 export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRouteDeps): void {
   const { readService, writeService } = deps;
+  const disclosure = deps.disclosure ?? seamDisclosurePort;
+  /**
+   * §7.8 — may THIS caller see the plan's `sud_related` content? The same per-request verdict `getPlan`
+   * resolves. FAIL-CLOSED: an unresolvable plan, or any lookup error, withholds (a write that already
+   * committed still answers, redacted, rather than 500ing into a retry).
+   */
+  const disclosureFor = async (
+    request: FastifyRequest,
+    planId: string,
+  ): Promise<DisclosureGate> => {
+    try {
+      const actor = actorOf(request);
+      const patientId = await writeService.planPatientId(actor, planId);
+      if (patientId === null) return CLOSED_GATE;
+      const gate = await resolveDisclosure(actor, patientId, disclosure);
+      return { sudAllowed: gate.sudAllowed, familyViolenceAllowed: gate.familyViolenceAllowed };
+    } catch {
+      return CLOSED_GATE;
+    }
+  };
+  const sudAllowedFor = async (request: FastifyRequest, planId: string): Promise<boolean> =>
+    (await disclosureFor(request, planId)).sudAllowed === true;
   // GAP-046 — every plan write is caseload-scoped over the plan's patient (404 off-caseload / unknown plan).
   const scope = (key: string) =>
     planCaseloadScope(key, (actor, planId) => writeService.planPatientId(actor, planId));
@@ -119,7 +148,8 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
       const { planId, versionId } = parse(VersionParams, request.params);
       const version = await readService.getVersion(actorOf(request), planId, versionId);
       if (!version) throw new NotFoundError("plan version not found");
-      return version;
+      // The sealed snapshot holds every goal, SUD included — redact it like the live goals (§7.8).
+      return redactVersionForCaller(version, await sudAllowedFor(request, planId));
     },
   );
 
@@ -132,10 +162,13 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
     async (request) => {
       const { planId, versionId } = parse(VersionParams, request.params);
       const body = parse(FinalizeVersionBody, request.body);
-      return writeService.finalizeVersion(writeActorOf(request), planId, versionId, {
-        expectedVersion: ifMatchVersionOf(request),
-        requiredSignerSet: body.requiredSignerSet,
-      });
+      const finalized = await writeService.finalizeVersion(
+        writeActorOf(request),
+        planId,
+        versionId,
+        { expectedVersion: ifMatchVersionOf(request), requiredSignerSet: body.requiredSignerSet },
+      );
+      return redactVersionForCaller(finalized, await sudAllowedFor(request, planId));
     },
   );
 
@@ -154,12 +187,13 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
     async (request) => {
       const { planId, versionId } = parse(VersionParams, request.params);
       const body = parse(SignVersionBody, request.body);
-      return writeService.signVersion(writeActorOf(request), planId, versionId, {
+      const signed = await writeService.signVersion(writeActorOf(request), planId, versionId, {
         expectedVersion: ifMatchVersionOf(request),
         signerRole: body.signerRole,
         attestationText: body.attestationText,
         isAcknowledgment: body.isAcknowledgment,
       });
+      return redactVersionForCaller(signed, await sudAllowedFor(request, planId));
     },
   );
 
@@ -185,6 +219,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
       return writeService.updateGoal(writeActorOf(request), planId, goalId, {
         expectedVersion: ifMatchVersionOf(request),
         ...body,
+        ...(await disclosureFor(request, planId)),
       });
     },
   );
@@ -211,6 +246,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
       return writeService.updateIntervention(writeActorOf(request), planId, interventionId, {
         expectedVersion: ifMatchVersionOf(request),
         ...body,
+        ...(await disclosureFor(request, planId)),
       });
     },
   );
@@ -248,6 +284,7 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
       const { planId, assessmentId } = parse(AssessmentParams, request.params);
       return writeService.signAssessment(writeActorOf(request), planId, assessmentId, {
         expectedVersion: ifMatchVersionOf(request),
+        ...(await disclosureFor(request, planId)),
       });
     },
   );
@@ -270,7 +307,11 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
         writeActorOf(request),
         planId,
         assessmentId,
-        { expectedVersion: ifMatchVersionOf(request), ...body },
+        {
+          expectedVersion: ifMatchVersionOf(request),
+          ...body,
+          ...(await disclosureFor(request, planId)),
+        },
       );
       return reply.code(201).send(amendment);
     },

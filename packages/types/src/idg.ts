@@ -280,6 +280,8 @@ export type CarePlanMutation =
       readonly snomedCode: string | null;
       readonly description: string;
       readonly problemKind: "terminal" | "related" | "unrelated";
+      /** 42 CFR Part 2: the problem is SUD-related. Absent = not; only the literal `true` flags it. */
+      readonly sudRelated?: boolean;
     }
   | {
       readonly op: "problem_update";
@@ -287,6 +289,8 @@ export type CarePlanMutation =
       readonly updates: Partial<{
         status: "active" | "resolved" | "inactive";
         description: string;
+        /** Required when `status` is `resolved`. */
+        resolutionNote: string;
       }>;
     }
   | {

@@ -625,6 +625,7 @@ import {
   M7_OUTBOX_EVENTS,
   M7_PLATFORM_JOB_ID,
   activeProblemIdsForOrg,
+  activeSudProblemIdsForOrg,
   buildM7AdmissionActivatedConsumer,
   buildM7AdmissionDischargedConsumer,
   buildM7ExtractionDiagnosisWritebackConsumer,
@@ -866,6 +867,7 @@ import {
   buildDrizzleDisciplinePlanAbacResolver,
   buildDrizzleM15ReadService,
   buildDrizzleM15WriteService,
+  buildM15AdmissionDischargedConsumer,
   buildM15IdgDecisionConsumer,
   buildM15PlanBootstrapConsumer,
   buildM15WorkerDeps,
@@ -4650,6 +4652,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // defined exactly once instead of duplicated at each call site.
   const outboxPendingDepth = () =>
     outboxDispatcherHolder.find()?.pendingDepth() ?? Promise.resolve(0);
+  // Audit D-14 — the same fallback for the oldest-pending-row age gauge.
+  const outboxOldestPendingAgeSeconds = () =>
+    outboxDispatcherHolder.find()?.oldestPendingAgeSeconds() ?? Promise.resolve(0);
   // M1-T10 — assemble the FULL transactional-outbox catalog (M1 folded in by the helper + the passed
   // M30/M33/M34 contributions) and build the catalog-validating tx publisher. The publisher is threaded
   // into the M30 + M33 write services below so their §4.10 `m30.*`/`m33.*` emits persist into
@@ -9733,6 +9738,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   registerHttpMetrics(app, metricsRegistry);
   const outboxMetrics = registerOutboxMetrics(metricsRegistry, {
     pendingDepth: outboxPendingDepth,
+    oldestPendingAgeSeconds: outboxOldestPendingAgeSeconds,
   });
   // F-033/#93 — partition-coverage gauges. Registered for EVERY role, like the outbox ones: the read is
   // a catalog scan of ~43 relations, and an API-only replica answering it is exactly as correct as the
@@ -16140,6 +16146,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             resolveSiting: (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),
+          // M15 §7.11 / `m15.discharge.apply` — the other end of the plan lifecycle: on
+          // `m6.admission.discharged` every non-discharged discipline plan of the admission seals a
+          // system-signed `discharge` version and goes `discharged`, announcing `m15.plan.discharged`.
+          // Nothing dispatched the plan root's `discharge` transition before this binding existed.
+          buildM15AdmissionDischargedConsumer({
+            db: dbHandle.db,
+            outbox: m15OutboxPublisher,
+          }),
           // F-234 (#248) — M15's side of the M14 IDG-decision contract (M15 spec §7.7): a
           // `discipline_plan_update` decision opens a draft next version on the named discipline plan and
           // applies its mutations. The M7 parent-problem check is an org-explicit port (a relay tick is not
@@ -16149,6 +16163,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             outbox: m15OutboxPublisher,
             activeProblemIds: (organizationId, patientId) =>
               activeProblemIdsForOrg(dbHandle.db, organizationId, patientId),
+            sudProblemIds: (organizationId, patientId) =>
+              activeSudProblemIdsForOrg(dbHandle.db, organizationId, patientId),
           }),
           // F-234 (#248) — the return leg: M14 records M15's `m15.idg_decision.applied` acknowledgement.
           buildM14DecisionAppliedConsumer({ db: dbHandle.db }),

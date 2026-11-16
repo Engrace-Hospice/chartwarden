@@ -86,8 +86,20 @@ export interface CreateGoalInput {
   readonly addedByDiscipline: string;
 }
 
+/**
+ * §7.8 / §7.9 — may THIS caller see the plan's confidential categories (42 CFR Part 2 `sud_related` /
+ * `sud_flag`, and `family_violence_flag`)? The route resolves the same per-request verdict the reads use.
+ * Absent means NO (fail closed): a write aimed at confidential content answers "not found", exactly like a row
+ * the caller cannot see, and runs before the version check so a guessed `If-Match` cannot probe for it either.
+ * A write RESULT carries the row (an assessment's `data`, a goal's text), so the answer must not exist at all.
+ */
+export interface DisclosureGate {
+  readonly sudAllowed?: boolean;
+  readonly familyViolenceAllowed?: boolean;
+}
+
 /** Route 9 — edit a goal (status transition and/or the §2.3 revision fields). */
-export interface UpdateGoalInput {
+export interface UpdateGoalInput extends DisclosureGate {
   readonly expectedVersion: number | null;
   readonly event?: {
     readonly type: string;
@@ -114,7 +126,7 @@ export interface CreateInterventionInput {
 }
 
 /** Route 11 — edit an intervention (status transition and/or scope/frequency). */
-export interface UpdateInterventionInput {
+export interface UpdateInterventionInput extends DisclosureGate {
   readonly expectedVersion: number | null;
   readonly event?: { readonly type: string; readonly reason?: string };
   readonly scopeText?: string;
@@ -135,12 +147,12 @@ export interface CreateAssessmentInput {
 }
 
 /** Route 13 — sign a drafted assessment (step-up; closes the D10 initial clock when `is_initial`). */
-export interface SignAssessmentInput {
+export interface SignAssessmentInput extends DisclosureGate {
   readonly expectedVersion: number | null;
 }
 
 /** Route 14 — append-only amendment of a signed assessment (M9 D9 correction-of-record). */
-export interface AmendAssessmentInput {
+export interface AmendAssessmentInput extends DisclosureGate {
   readonly expectedVersion: number | null;
   readonly amendmentReason: string;
   readonly data: unknown;

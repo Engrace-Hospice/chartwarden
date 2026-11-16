@@ -101,6 +101,19 @@ export function humanize(value: string | null | undefined): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** `discipline_goal_source` → the label shown in the goals tables and the Aide POC editor's Source select. */
+const GOAL_SOURCE_LABELS: Record<string, string> = {
+  clinical: "Clinician authored",
+  patient_stated: "Patient stated",
+  family_stated: "Family stated",
+  agent_stated: "Agent stated",
+};
+
+/** The label for a goal `source`; an unknown wire value still renders (humanized). */
+export function goalSourceLabel(source: string): string {
+  return GOAL_SOURCE_LABELS[source] ?? humanize(source);
+}
+
 /** `discipline_plan_kind` → the CoP-facing screen label. */
 export function kindLabel(kind: string | null | undefined): string {
   switch (kind) {
@@ -237,4 +250,30 @@ export function hours(minutes: number | null | undefined): string {
 export function pct(value: number | null | undefined): string {
   if (value == null) return "—";
   return `${(value * 100).toFixed(1)}%`;
+}
+
+/** The permission `screens.ts` gates the Aide POC editor (`discipline-plan.aide-poc.edit`) on. */
+export const AIDE_POC_EDIT_PERMISSION = "discipline_plan.author";
+/** The permission `screens.ts` gates the IDG revision review (`discipline-plan.idg-revision`) on. */
+export const IDG_REVISION_REVIEW_PERMISSION = "discipline_plan.idg_revise";
+
+/**
+ * Which per-row links a version of the chain gets: an OPEN DRAFT Aide POC is edited, and a DRAFT revision an
+ * IDG decision opened (`idg_review`) is reviewed before it is finalized. Each needs the same permission its
+ * screen declares, and an unknown permission set fails closed (the server stays the real enforcer — a
+ * param-path screen is not route-guarded, so the link is the only client-side gate).
+ */
+export function versionRowActions(
+  planKind: string,
+  version: { kind: string; status: string },
+  permissions: readonly string[] | undefined,
+): { edit: boolean; review: boolean } {
+  const can = (key: string): boolean => permissions?.includes(key) ?? false;
+  return {
+    edit: planKind === "aide_poc" && version.status === "draft" && can(AIDE_POC_EDIT_PERMISSION),
+    review:
+      version.kind === "idg_review" &&
+      version.status === "draft" &&
+      can(IDG_REVISION_REVIEW_PERMISSION),
+  };
 }

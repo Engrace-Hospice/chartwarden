@@ -14,18 +14,21 @@
 //
 // The gate is on encounter SIGNING, never chart access — a clinician always reads/documents; the system
 // only blocks committing the visit until the plan is (re)signed. Pure & deterministic: `now` is injected.
+//
+// The grace is CALENDAR days in the org timezone, not a flat 24h × N: the due columns are end-of-day
+// org-tz instants, so adding 24h shifts the gate by ±1h across a DST change. The timezone is the same
+// default `gate-clock.ts` derives the due columns with unless a caller injects the org's own.
 import type { CarePlanId, CarePlanOverdueStatus, IsoInstant, PatientId } from "@chartwarden/types";
+import { DEFAULT_ORG_TIME_ZONE, addOrgCalendarDays, computeNextReviewDueAt } from "./gate-clock";
 
 /** Days past `initial_due_at` (day 5) before the initial-version sign gate engages — day 6 (§2.6 D2). */
 export const INITIAL_GATE_GRACE_DAYS = 1;
 /** Days past `next_review_due_at` (day 15) before the review sign gate engages — day 17 (§2.6 D3). */
 export const REVIEW_GATE_GRACE_DAYS = 2;
 
-const MS_PER_DAY = 86_400_000;
-
-/** Add whole calendar days to an ISO instant (the due columns are stored end-of-day in the org tz). */
-function addDays(iso: IsoInstant, days: number): number {
-  return Date.parse(iso) + days * MS_PER_DAY;
+/** The instant a gate engages: the due instant + `graceDays` calendar days in the org timezone. */
+function graceEndsAtMs(dueAt: IsoInstant, graceDays: number, timeZone: string): number {
+  return Date.parse(addOrgCalendarDays(dueAt, graceDays, timeZone));
 }
 
 /** The care-plan clock facts the gate decides over — the columns M7's cron maintains (§2.6). */
@@ -38,6 +41,26 @@ export interface CarePlanClockFacts {
   readonly initialDueAt: IsoInstant;
   /** `care_plan.next_review_due_at` — last signed version + 15 calendar days; null pre-first-signature. */
   readonly nextReviewDueAt: IsoInstant | null;
+  /**
+   * `care_plan.initial_signed_at`. Optional: plans signed before TASK-040D have `nextReviewDueAt` NULL
+   * with this set (migration 0161 does not backfill), and are then due at
+   * `computeNextReviewDueAt(initialSignedAt)` — see {@link effectiveNextReviewDueAt}.
+   */
+  readonly initialSignedAt?: IsoInstant | null;
+}
+
+/**
+ * The review due date a plan is actually held to: the stored `next_review_due_at`, else — for a legacy
+ * plan whose initial version is signed but whose column was never set — the due date the 15-day clock
+ * derives from `initial_signed_at`. Null when neither is known (the review gate stays inert).
+ */
+export function effectiveNextReviewDueAt(
+  nextReviewDueAt: IsoInstant | null,
+  initialSignedAt: IsoInstant | null | undefined,
+  timeZone: string = DEFAULT_ORG_TIME_ZONE,
+): IsoInstant | null {
+  if (nextReviewDueAt !== null) return nextReviewDueAt;
+  return initialSignedAt ? computeNextReviewDueAt(initialSignedAt, timeZone) : null;
 }
 
 /**
@@ -49,14 +72,19 @@ export interface CarePlanClockFacts {
 export function evaluateCarePlanOverdue(
   facts: CarePlanClockFacts,
   now: IsoInstant,
+  timeZone: string = DEFAULT_ORG_TIME_ZONE,
 ): CarePlanOverdueStatus {
   const nowMs = Date.parse(now);
+  const nextReviewDueAt = facts.hasSignedInitialVersion
+    ? effectiveNextReviewDueAt(facts.nextReviewDueAt, facts.initialSignedAt, timeZone)
+    : facts.nextReviewDueAt;
   const initialOverdue =
-    !facts.hasSignedInitialVersion && nowMs >= addDays(facts.initialDueAt, INITIAL_GATE_GRACE_DAYS);
+    !facts.hasSignedInitialVersion &&
+    nowMs >= graceEndsAtMs(facts.initialDueAt, INITIAL_GATE_GRACE_DAYS, timeZone);
   const reviewOverdue =
     facts.hasSignedInitialVersion &&
-    facts.nextReviewDueAt !== null &&
-    nowMs >= addDays(facts.nextReviewDueAt, REVIEW_GATE_GRACE_DAYS);
+    nextReviewDueAt !== null &&
+    nowMs >= graceEndsAtMs(nextReviewDueAt, REVIEW_GATE_GRACE_DAYS, timeZone);
   return {
     planId: facts.planId,
     patientId: facts.patientId,
@@ -64,6 +92,6 @@ export function evaluateCarePlanOverdue(
     initialOverdue,
     reviewOverdue,
     initialDueAt: facts.initialDueAt,
-    nextReviewDueAt: facts.nextReviewDueAt,
+    nextReviewDueAt,
   };
 }

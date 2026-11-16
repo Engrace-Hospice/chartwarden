@@ -66,6 +66,7 @@ import type {
   VolunteerComplianceGateView,
   VolunteerEffectiveStatusView,
 } from "./read-service";
+import { isSudAnchored } from "./snapshot-redaction";
 
 const iso = (d: Date | string | null): string =>
   d === null ? "" : d instanceof Date ? d.toISOString() : new Date(d).toISOString();
@@ -135,6 +136,19 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
     addedAt: iso(r.addedAt),
     version: r.version,
   });
+
+  /**
+   * Ids (lower-cased) of a plan's Part 2 goals. An intervention that serves one is Part 2 content by its anchor
+   * (the way module 07 drops a problem's dependents), so a read that hides the goal hides the intervention too:
+   * its `scopeText` can name the treatment and its `goalRefs` would otherwise leak the hidden goal's id.
+   */
+  const sudGoalIds = async (tx: DbClient, planId: string): Promise<ReadonlySet<string>> => {
+    const rows = await tx
+      .select({ id: G.id })
+      .from(G)
+      .where(and(eq(G.planId, planId), eq(G.sudRelated, true)));
+    return new Set(rows.map((r) => r.id.toLowerCase()));
+  };
 
   const toIntervention = (r: typeof I.$inferSelect): DisciplineInterventionView => ({
     interventionId: r.id,
@@ -322,6 +336,7 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
           .from(I)
           .where(eq(I.planId, planId))
           .orderBy(asc(I.addedAt), asc(I.id));
+        const hiddenGoalIds = gate.sudAllowed ? new Set<string>() : await sudGoalIds(tx, planId);
         const assessmentFilters = [eq(A.planId, planId)];
         if (!gate.sudAllowed) assessmentFilters.push(eq(A.sudFlag, false));
         if (!gate.familyViolenceAllowed) assessmentFilters.push(eq(A.familyViolenceFlag, false));
@@ -353,7 +368,9 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
           supervisoryCadenceDaysOverride: plan.supervisoryCadenceDaysOverride ?? null,
           spiritualCareDeclined: plan.spiritualCareDeclined ?? null,
           goals: goals.map(toGoal),
-          interventions: interventions.map(toIntervention),
+          interventions: interventions
+            .map(toIntervention)
+            .filter((i) => !isSudAnchored(i.goalRefs, hiddenGoalIds)),
           assessments: assessments.map(toAssessment),
           supervisoryVisits: supervisoryVisits.map(toSupervisoryVisit),
           volunteerAssignments: assignments.map(toAssignment),
@@ -380,6 +397,8 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
           .from(I)
           .where(and(eq(I.planId, planId), eq(I.status, "active")))
           .orderBy(asc(I.addedAt), asc(I.id));
+        // The summary is patient-shareable: Part 2 content is ALWAYS stripped, anchored interventions included.
+        const hiddenGoalIds = await sudGoalIds(tx, planId);
         const summary: DisciplinePlanSummary = {
           planId: plan.id,
           kind: plan.kind,
@@ -390,12 +409,14 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
             status: g.status,
             targetAt: isoN(g.targetAt),
           })),
-          interventions: interventions.map((i) => ({
-            interventionId: i.id,
-            scopeText: i.scopeText,
-            frequencyText: i.frequencyText,
-            status: i.status,
-          })),
+          interventions: interventions
+            .filter((i) => !isSudAnchored(i.goalRefs, hiddenGoalIds))
+            .map((i) => ({
+              interventionId: i.id,
+              scopeText: i.scopeText,
+              frequencyText: i.frequencyText,
+              status: i.status,
+            })),
           // §7.3 — the declination is acknowledged, never quoted, on a patient-facing surface.
           spiritualCareDeclined: plan.spiritualCareDeclinedAt !== null,
           redacted_categories: SUMMARY_DISCLOSURE.redactedCategories,
@@ -579,12 +600,15 @@ export function buildDrizzleM15ReadService(db: DbClient, deps: M15ReadDeps = {})
             .from(I)
             .where(eq(I.planId, plan.id))
             .orderBy(asc(I.addedAt), asc(I.id));
+          const hiddenGoalIds = await sudGoalIds(tx, plan.id);
           out.set(plan.id, {
             planId: plan.id,
             kind: plan.kind,
             status: plan.status,
             goals: goals.map(toGoal),
-            interventions: interventions.map(toIntervention),
+            interventions: interventions
+              .map(toIntervention)
+              .filter((i) => !isSudAnchored(i.goalRefs, hiddenGoalIds)),
           });
         }
         return out;

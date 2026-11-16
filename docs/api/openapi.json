@@ -113874,8 +113874,7 @@
                 ],
                 "properties": {
                   "problemId": {
-                    "minLength": 1,
-                    "maxLength": 64,
+                    "format": "uuid",
                     "type": "string"
                   },
                   "originalText": {
@@ -114073,15 +114072,14 @@
                 ],
                 "properties": {
                   "problemId": {
-                    "minLength": 1,
-                    "maxLength": 64,
+                    "format": "uuid",
                     "type": "string"
                   },
                   "goalRefs": {
+                    "maxItems": 100,
                     "type": "array",
                     "items": {
-                      "minLength": 1,
-                      "maxLength": 64,
+                      "format": "uuid",
                       "type": "string"
                     }
                   },
@@ -116223,6 +116221,7 @@
                         },
                         "count": {
                           "minimum": 1,
+                          "maximum": 1,
                           "type": "integer"
                         }
                       }
@@ -138783,7 +138782,7 @@
                           "source": {
                             "anyOf": [
                               {
-                                "const": "clinician_authored",
+                                "const": "clinical",
                                 "type": "string"
                               },
                               {
@@ -138796,10 +138795,6 @@
                               },
                               {
                                 "const": "agent_stated",
-                                "type": "string"
-                              },
-                              {
-                                "const": "idg_directed",
                                 "type": "string"
                               }
                             ]
@@ -140291,7 +140286,7 @@
                     "source": {
                       "anyOf": [
                         {
-                          "const": "clinician_authored",
+                          "const": "clinical",
                           "type": "string"
                         },
                         {
@@ -140304,10 +140299,6 @@
                         },
                         {
                           "const": "agent_stated",
-                          "type": "string"
-                        },
-                        {
-                          "const": "idg_directed",
                           "type": "string"
                         }
                       ]
@@ -140433,7 +140424,7 @@
                   "source": {
                     "anyOf": [
                       {
-                        "const": "clinician_authored",
+                        "const": "clinical",
                         "type": "string"
                       },
                       {
@@ -140446,10 +140437,6 @@
                       },
                       {
                         "const": "agent_stated",
-                        "type": "string"
-                      },
-                      {
-                        "const": "idg_directed",
                         "type": "string"
                       }
                     ]
@@ -140617,7 +140604,7 @@
                     "source": {
                       "anyOf": [
                         {
-                          "const": "clinician_authored",
+                          "const": "clinical",
                           "type": "string"
                         },
                         {
@@ -140630,10 +140617,6 @@
                         },
                         {
                           "const": "agent_stated",
-                          "type": "string"
-                        },
-                        {
-                          "const": "idg_directed",
                           "type": "string"
                         }
                       ]
@@ -168112,6 +168095,9 @@
                                           "type": "string"
                                         }
                                       ]
+                                    },
+                                    "sudRelated": {
+                                      "type": "boolean"
                                     }
                                   }
                                 },
@@ -168151,6 +168137,11 @@
                                           ]
                                         },
                                         "description": {
+                                          "minLength": 1,
+                                          "maxLength": 4000,
+                                          "type": "string"
+                                        },
+                                        "resolutionNote": {
                                           "minLength": 1,
                                           "maxLength": 4000,
                                           "type": "string"
@@ -171755,6 +171746,9 @@
                                           "type": "string"
                                         }
                                       ]
+                                    },
+                                    "sudRelated": {
+                                      "type": "boolean"
                                     }
                                   }
                                 },
@@ -171794,6 +171788,11 @@
                                           ]
                                         },
                                         "description": {
+                                          "minLength": 1,
+                                          "maxLength": 4000,
+                                          "type": "string"
+                                        },
+                                        "resolutionNote": {
                                           "minLength": 1,
                                           "maxLength": 4000,
                                           "type": "string"
@@ -401971,7 +401970,7 @@
                                 "source": {
                                   "anyOf": [
                                     {
-                                      "const": "clinician_authored",
+                                      "const": "clinical",
                                       "type": "string"
                                     },
                                     {
@@ -401984,10 +401983,6 @@
                                     },
                                     {
                                       "const": "agent_stated",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "idg_directed",
                                       "type": "string"
                                     }
                                   ]

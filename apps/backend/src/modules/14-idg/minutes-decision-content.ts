@@ -80,6 +80,11 @@ function carePlanMutationLine(m: Rec): string | undefined {
   const up = asRec(m.updates);
   switch (asStr(m.op)) {
     case "problem_add":
+      // 42 CFR Part 2: the minutes render once for every reader, so a problem the decision itself flags as
+      // SUD-related is named by its kind only; its text and code stay in the care plan, behind the gate.
+      if (m.sudRelated === true) {
+        return `Add problem${asStr(m.problemKind) ? ` (${words(m.problemKind)})` : ""} - 42 CFR Part 2 content withheld`;
+      }
       return join([
         `Add problem${asStr(m.problemKind) ? ` (${words(m.problemKind)})` : ""}`,
         capText(m.description),
