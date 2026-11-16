@@ -66,6 +66,7 @@ import {
 } from "./inline-code";
 import { runsLiveSuite } from "./live-suite";
 import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
+import { isPackageScript, setPackageScriptsReader } from "./package-scripts";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
 import { protectedNameSamples, protectedNamesComplete } from "./protected-names";
 import { pathCandidates, writeCapable } from "./protected-operands";
@@ -75,6 +76,7 @@ import {
   isProtectedPath,
   protectedPathPattern,
 } from "./protected-paths";
+import { peelRunner } from "./runners";
 import {
   environmentLeak,
   globReachesLiveEnv,
@@ -450,6 +452,8 @@ export interface BashContext {
   readonly liveEnvFiles?: () => readonly string[];
   /** The live suite files that exist (`live-suite-files.ts`), asked for only when a vitest runner has a filter. */
   readonly liveSuiteFiles?: () => readonly string[];
+  /** The scripts of the package the command runs in (`package-scripts.ts`), asked for only when `bun run X` needs them. */
+  readonly packageScripts?: () => ReadonlySet<string>;
 }
 
 /**
@@ -619,7 +623,7 @@ function program(seg: string): {
   assigns: string[];
   chdir?: string;
 } {
-  const w = words(seg);
+  let w = words(seg);
   let k = 0;
   let lastWrapper = "";
   let chdir: string | undefined;
@@ -676,7 +680,12 @@ function program(seg: string): {
       if (w[k] === "--") k++;
       // `flock lockfile cmd`, `chrt -f 1 cmd`, `taskset 0x1 cmd`: operands before the command.
       if (operands && !supplied) k += operands.count;
-    } else break;
+    } else {
+      // `bunx git push`, `npx -c '…'`, `bun run cp …`: the program the runner starts is the command (`runners.ts`).
+      const peeled = peelRunner(w.slice(k), isPackageScript);
+      if (peeled === null) break;
+      w = [...w.slice(0, k), ...peeled];
+    }
   }
   // `env -u X` with no command prints the environment: it is still `env`.
   const prog =
@@ -1049,6 +1058,7 @@ export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): Bas
     liveEnvListed = false;
     setListedLiveEnvFiles([]);
     liveSuiteCache = null;
+    setPackageScriptsReader(ctx.packageScripts);
   }
   const start = startingDir(ctx);
   const verdict = judge(cmd, ctx, depth, [start]);

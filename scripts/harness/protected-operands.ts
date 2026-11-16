@@ -98,47 +98,17 @@ const WRITE_FLAGS: ReadonlyMap<string, FlagTest> = new Map<string, FlagTest>([
 
 const isOption = (a: string): boolean => a.startsWith("-") && a !== "-";
 
-/** A package-binary executor: the next word is the program (`bunx biome …`, `npx -y eslint …`, `pnpm exec prettier …`). */
-const EXECUTOR_OPTION_WITH_VALUE = /^(?:-p|--package|--call|-c)$/;
-
-/**
- * The program that really runs: `bunx|npx|pnpx X`, `bun x X`, `pnpm|yarn|npm exec|dlx X` name a binary; `bun|npm|pnpm|
- * yarn run X` names a package script, which is `bun` itself unless X is a tool the table knows by name.
- */
-function executed(
-  prog: string,
-  args: readonly string[],
-): { name: string; args: readonly string[] } {
-  let rest: readonly string[] | undefined;
-  let binary = true;
-  if (/^(?:bunx|npx|pnpx)$/.test(prog)) rest = args;
-  else if (prog === "bun" && args[0] === "x") rest = args.slice(1);
-  else if (/^(?:pnpm|yarn|npm)$/.test(prog) && /^(?:exec|dlx)$/.test(args[0] ?? "")) {
-    rest = args.slice(1);
-  } else if (/^(?:bun|pnpm|yarn|npm)$/.test(prog) && args[0] === "run") {
-    rest = args.slice(1);
-    binary = false;
-  }
-  if (rest === undefined) return { name: prog, args };
-  let k = 0;
-  while (isOption(rest[k] ?? "")) k += EXECUTOR_OPTION_WITH_VALUE.test(rest[k] as string) ? 2 : 1;
-  // `shellcheck@latest`, `@biomejs/biome@1.9.0`: the package spec, not the binary name.
-  const name = rest[k]?.replace(/^.*\//, "").replace(/@[^@]*$/, "") ?? "";
-  if (!binary && !WRITE_FLAGS.has(name)) return { name: prog, args };
-  return { name, args: rest.slice(k + 1) };
-}
-
 /**
  * Could this command write a file its arguments name, in a way the classifier has no model for? True for a program that
- * is on neither list, and for a checker run with the option that makes it write in place (`biome check --write`).
+ * is on neither list, and for a checker run with the option that makes it write in place (`biome check --write`). A
+ * package runner is already gone: the classifier reads the program it starts (`runners.ts`).
  */
 export function writeCapable(prog: string, args: readonly string[]): boolean {
-  const run = executed(prog, args);
   // No name, or an option of the image's own entry point that a container run left (`-x /mnt/a.sh`): no program.
-  if (run.name === "" || isOption(run.name)) return false;
-  const flagged = WRITE_FLAGS.get(run.name);
-  if (flagged) return flagged(run.args);
-  return !READ_ONLY.has(run.name) && !MODELLED.has(run.name);
+  if (prog === "" || isOption(prog)) return false;
+  const flagged = WRITE_FLAGS.get(prog);
+  if (flagged) return flagged(args);
+  return !READ_ONLY.has(prog) && !MODELLED.has(prog);
 }
 
 /**

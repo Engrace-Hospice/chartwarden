@@ -192,30 +192,9 @@ const RULES: ReadonlyMap<string, Rule> = new Map<string, Rule>([
   ].map((compiler): [string, Rule] => [compiler, dashO]),
 ]);
 
-const LAUNCHER_OPTION_WITH_VALUE = /^(?:-p|--package|--call|-c)$/;
-
-/** The program a runner starts, and its arguments: `bunx tsc …`, `npx -y tsc …`, `bun x|run tsc …`, `pnpm exec tsc …`. */
-function underRunner(
-  prog: string,
-  args: readonly string[],
-): { prog: string; args: readonly string[] } {
-  let rest: readonly string[] | undefined;
-  if (/^(?:bunx|npx|pnpx)$/.test(prog)) rest = args;
-  else if (prog === "bun" && /^(?:x|run)$/.test(args[0] ?? "")) rest = args.slice(1);
-  else if (/^(?:pnpm|yarn|npm)$/.test(prog) && /^(?:exec|dlx)$/.test(args[0] ?? "")) {
-    rest = args.slice(1);
-  }
-  if (rest === undefined) return { prog, args };
-  let k = 0;
-  while (isOption(rest[k] ?? "")) k += LAUNCHER_OPTION_WITH_VALUE.test(rest[k] as string) ? 2 : 1;
-  const name = rest[k]?.replace(/^.*\//, "") ?? "";
-  return { prog: name, args: rest.slice(k + 1) };
-}
-
 /** The files and directories `prog` writes because an option or operand names them; none for a program without a rule. */
 export function moreWriterTargets(prog: string, args: readonly string[]): string[] {
-  const run = underRunner(prog, args);
-  return RULES.get(run.prog)?.(run.args) ?? [];
+  return RULES.get(prog)?.(args) ?? [];
 }
 
 // ---------------------------------------------------------------------------------------------------------

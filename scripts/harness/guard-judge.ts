@@ -47,6 +47,7 @@ import { listLiveEnvFiles } from "./live-env-files";
 import { listLiveSuiteFiles } from "./live-suite-files";
 import { claudeMcpFinding } from "./mcp-claude";
 import { LINE_BREAKS, MAX_PATH_CHARS, mcpPathCandidates } from "./mcp-tokens";
+import { listPackageScripts } from "./package-scripts";
 import {
   type BashVerdict,
   type Decision,
@@ -348,6 +349,8 @@ function judgeBash(cmd: string, root: string, cwd: string, workdir: string): Bas
       // The live env files the tree really holds, listed when a recursive read needs them (`live-env-files.ts`).
       liveEnvFiles: () => listLiveEnvFiles(r),
       liveSuiteFiles: () => listLiveSuiteFiles(r),
+      // The package scripts of the nearest package.json, so `bun run X` says whether X is a script or a PATH program.
+      packageScripts: () => listPackageScripts(r, dir),
     });
   };
   const written = judge(root, cwd);

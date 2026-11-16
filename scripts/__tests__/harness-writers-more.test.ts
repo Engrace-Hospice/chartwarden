@@ -18,14 +18,13 @@ const d = (cmd: string) => classifyBash(cmd, ctx).decision;
 const G = "scripts/harness/hard-deadline.ts";
 const DIR = "scripts/harness";
 
+// A package runner is peeled before this table is asked (`runners.ts`, wave 8): `bunx tsc --outFile` reaches it as `tsc`.
 describe("moreWriterTargets: the file or directory a program writes", () => {
   it.each<[string, string[], string[]]>([
     ["bun", ["build", "x.ts", "--outfile", "o.js"], ["o.js"]],
     ["bun", ["build", "x.ts", "--outfile=o.js", "--outdir=d"], ["o.js", "d"]],
     ["bun", ["build", "x.ts", "--metafile=m.json", "--metafile-md=m.md"], ["m.json", "m.md"]],
     ["bun", ["run", "x.ts", "--outfile", "o.js"], []],
-    ["bunx", ["tsc", "--outFile", "o.js"], ["o.js"]],
-    ["npx", ["-y", "tsc", "--outDir", "d", "--declarationDir", "t"], ["d", "t"]],
     ["tsc", ["--tsBuildInfoFile", "i.tsbuildinfo", "--outfile", "o.js"], ["i.tsbuildinfo", "o.js"]],
     [
       "tsc",
@@ -33,10 +32,6 @@ describe("moreWriterTargets: the file or directory a program writes", () => {
       ["tr", "p.cpuprofile"],
     ],
     ["tsc", ["--noEmit"], []],
-    ["bun", ["x", "tsc", "--outDir", "d"], ["d"]],
-    ["bun", ["run", "tsc", "--outDir", "d"], ["d"]],
-    ["pnpm", ["exec", "tsc", "--outDir", "d"], ["d"]],
-    ["yarn", ["dlx", "tsc", "--outDir", "d"], ["d"]],
     ["vitest", ["run", "--outputFile", "r.json"], ["r.json"]],
     ["vitest", ["run", "--outputFile=r.json"], ["r.json"]],
     ["vitest", ["run", "--outputFile.junit=r.xml"], ["r.xml"]],
