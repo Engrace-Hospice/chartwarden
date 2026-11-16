@@ -31,6 +31,8 @@ import {
 import { scriptedDb } from "./_hope-g3-fake-db";
 
 const ORG = "org_a";
+// The acting membership a skip / regenerate hands the service for its audit event (no HTTP request in these tests).
+const OPERATOR = { membershipId: "88888888-8888-4888-8888-888888888888" };
 // Hex letters on purpose: the upper-cased spelling differs from the stored text.
 const PATIENT = "1111111a-1111-4111-8111-11111111111b";
 const OTHER_PATIENT = "2222222a-2222-4222-8222-22222222222b";
@@ -253,7 +255,7 @@ describe("the echoed id is the canonical id the database stores, not the caller'
 
     const workflow = await inMemory.getWorkflowState(ORG, upper(ADMISSION));
     const databaseWorkflow = await database.getWorkflowState(ORG, upper(ADMISSION));
-    const regenerated = await inMemory.regenerateSchedules(ORG, upper(ADMISSION));
+    const regenerated = await inMemory.regenerateSchedules(ORG, upper(ADMISSION), OPERATOR);
 
     expect(workflow.admissionId).toBe(ADMISSION);
     expect(databaseWorkflow.admissionId).toBe(workflow.admissionId); // parity: the database canonicalises it too

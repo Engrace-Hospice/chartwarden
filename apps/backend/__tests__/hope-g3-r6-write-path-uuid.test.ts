@@ -13,6 +13,8 @@ import { scriptedDb } from "./_hope-g3-fake-db";
 // rejects every statement ("script exhausted"): the call must answer the 404 an absent record answers, and no statement
 // may carry the bad id.
 const ORG = "11111111-1111-4111-8111-111111111111";
+// The acting membership a skip / regenerate hands the service for its audit event (no HTTP request in these tests).
+const OPERATOR = { membershipId: "88888888-8888-4888-8888-888888888888" };
 const USER = "33333333-3333-4333-8333-333333333333";
 const NOT_A_UUID = "not-a-uuid";
 const ID = "abcdef01-2345-4678-89ab-cdef01234567";
@@ -79,7 +81,7 @@ const writePaths = (
   ["markSubmissionUploaded", (svc) => svc.markSubmissionUploaded(ORG, USER, id, {})],
   ["importSubmissionResult", (svc) => svc.importSubmissionResult(ORG, USER, id, { results: [] })],
   ["getWorkflowState", (svc) => svc.getWorkflowState(ORG, id)],
-  ["regenerateSchedules", (svc) => svc.regenerateSchedules(ORG, id)],
+  ["regenerateSchedules", (svc) => svc.regenerateSchedules(ORG, id, OPERATOR)],
   [
     "recordTimepoint",
     (svc) =>

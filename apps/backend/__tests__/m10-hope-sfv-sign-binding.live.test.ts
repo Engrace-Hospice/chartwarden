@@ -122,6 +122,16 @@ const SIGN_AUDIT_KEYS = [
   "version",
 ];
 const LATE_OVERRIDE_AUDIT = "hope.late_deadline_override";
+// The explicit operator events (hope-operator-audit.ts): written beside the row diff the M4 trigger records.
+const SFV_DENIED_AUDIT = "hope.sfv_completion_denied";
+const SKIP_AUDIT = "hope.schedule_skipped";
+const CANCEL_AUDIT = "hope.submission_cancelled";
+const REGENERATE_AUDIT = "hope.schedules_regenerated";
+const OPS_KEYS = [
+  "hope.schedule.skip",
+  "hope.submission.manage",
+  "hope.admin.regenerate_schedules",
+];
 const OVERRIDE_KEY = "hope.admin.late_deadline_override";
 const OVERRIDE_REASON = "Documented late completion after the visit window had closed.";
 const daysFromNow = (n: number): string => new Date(Date.now() + n * 86_400_000).toISOString();
@@ -416,6 +426,22 @@ describe.skipIf(!DB_URL)(
           eventType,
         ])
       )[0]?.n as number;
+    /** Every column the operator-event assertions read, for one event type on one resource. */
+    const eventRows = (eventType: string, resourceId: string) =>
+      q<{
+        actor_user_id: string | null;
+        organization_id: string;
+        outcome: string;
+        resource_kind: string;
+        request_id: string | null;
+        correlation_id: string;
+        context: Record<string, unknown>;
+      }>(
+        `SELECT actor_user_id, organization_id, outcome::text AS outcome, resource_kind, request_id,
+                correlation_id, context
+           FROM audit_event WHERE event_type=$1 AND resource_id=$2`,
+        [eventType, resourceId],
+      );
     const assessmentRow = async (id: string) =>
       (
         await q<{ status: string; version: number }>(
@@ -502,7 +528,7 @@ describe.skipIf(!DB_URL)(
                 permissionKeys: [
                   ...READ_KEYS,
                   ...WRITE_KEYS,
-                  ...(m === member.orgwide ? [OVERRIDE_KEY] : []),
+                  ...(m === member.orgwide ? [OVERRIDE_KEY, ...OPS_KEYS] : []),
                 ],
               },
             ],
@@ -538,6 +564,7 @@ describe.skipIf(!DB_URL)(
         grantCaseload(member.attacker, patientOf[own] as string);
         const answersBefore = await sfvAnswers(victim.draftId);
         const rfa04Before = await rfa04Count();
+        const completedBefore = await auditCount(SFV_AUDIT);
 
         const res = await postSfv(own, as(member.attacker), victim.draftId);
 
@@ -551,6 +578,26 @@ describe.skipIf(!DB_URL)(
         });
         expect(await sfvAnswers(victim.draftId)).toEqual(answersBefore);
         expect(await sfvCompletedEvents(victim.sfvId)).toBe(0);
+        // The refusal rolled its own transaction back, yet the probe leaves exactly one `denied` audit row (written on a new
+        // transaction): the org, the acting session user and membership, the URL admission and the named id, nothing else.
+        const denied = await eventRows(SFV_DENIED_AUDIT, own);
+        expect(denied).toHaveLength(1);
+        expect(denied[0]).toMatchObject({
+          outcome: "denied",
+          organization_id: ORG,
+          actor_user_id: userOf[member.attacker],
+          resource_kind: "admission",
+        });
+        expect(denied[0]?.request_id).toEqual(expect.any(String));
+        expect(denied[0]?.context).toMatchObject({
+          reason: "sfv_not_bound_to_admission",
+          triggeringAssessmentId: victim.draftId,
+          byMembershipId: member.attacker,
+        });
+        // No oracle in the trail either: the victim's patient is not named, and nothing was recorded against the victim's SFV.
+        expect(JSON.stringify(denied[0]?.context)).not.toContain(victim.patientId);
+        expect(await eventRows(SFV_DENIED_AUDIT, victim.adm)).toHaveLength(0);
+        expect(await auditCount(SFV_AUDIT)).toBe(completedBefore);
       });
 
       it("answers a foreign SFV id exactly like a random one — completed or not (no existence oracle)", async () => {
@@ -566,6 +613,9 @@ describe.skipIf(!DB_URL)(
         expect((await postSfv(victim.adm, as(member.victim), victim.draftId)).statusCode).toBe(201);
         const foreignDone = await postSfv(own, as(member.attacker), victim.draftId);
         expect(shapeOf(foreignDone)).toEqual(shapeOf(bogus));
+        // Three refused probes, three denied rows (a random id, a foreign open SFV, a foreign completed SFV): the trail
+        // records each one while the caller's answer stays identical for all of them.
+        expect(await eventRows(SFV_DENIED_AUDIT, own)).toHaveLength(3);
         // …while the owning admission is told the truth.
         const again = await postSfv(victim.adm, as(member.victim), victim.draftId);
         expect(codeOf(again)).toBe("M10_SFV_ALREADY_COMPLETED");
@@ -2582,6 +2632,208 @@ describe.skipIf(!DB_URL)(
           )
         )[0]?.d;
         expect(stored).toBe(written);
+      });
+    });
+
+    describe("operator writes leave an explicit audit event (cancel, skip, regenerate), through the route stack", () => {
+      const postAs = (url: string, headers: Record<string, string>, payload: unknown) =>
+        app.inject({ method: "POST", url, headers, payload: payload as Record<string, unknown> });
+      const scheduleOf = async (adm: string): Promise<string> =>
+        (
+          await q<{ id: string }>(
+            "SELECT id FROM hope_timepoint_schedule WHERE admission_id=$1 AND rfa_kind='01_admission'",
+            [adm],
+          )
+        )[0]?.id as string;
+      /** A `packaged` batch holding one record's XML, as assemble leaves it (the bytes the cancel must purge). */
+      async function packagedBatch(assessmentId: string): Promise<string> {
+        const id = (
+          await q<{ id: string }>(
+            `INSERT INTO hope_submission (organization_id, provider_entity_id, submission_period, status, item_count,
+               package_filename, package_sha256, package_size_bytes, acceptance_report)
+             VALUES ($1,$2,'2026-06','packaged',1,'batch.zip',$3,2,$4::jsonb) RETURNING id`,
+            [
+              ORG,
+              provider,
+              "b".repeat(64),
+              JSON.stringify({ packageContentBase64: "UEs=", files: [{ filename: "a.xml" }] }),
+            ],
+          )
+        )[0]?.id as string;
+        await admin.query(
+          `INSERT INTO hope_submission_item (organization_id, hope_submission_id, hope_assessment_id, xml_sha256,
+             xml_size_bytes, iqies_validation_result)
+           VALUES ($1,$2,$3,$4,2,$5::jsonb)`,
+          [ORG, id, assessmentId, "c".repeat(64), JSON.stringify({ xmlContentBase64: "PHhtbC8+" })],
+        );
+        return id;
+      }
+      /** The facts every operator event must carry: who (session user + membership), where (org), what (resource). */
+      const expectOperatorEvent = (
+        event: Awaited<ReturnType<typeof eventRows>>[number] | undefined,
+        resourceKind: string,
+      ) => {
+        expect(event).toMatchObject({
+          outcome: "success",
+          organization_id: ORG,
+          actor_user_id: userOf[member.orgwide],
+          resource_kind: resourceKind,
+        });
+        expect(event?.request_id).toEqual(expect.any(String));
+        expect(event?.context).toMatchObject({ byMembershipId: member.orgwide });
+      };
+
+      it("a skip writes hope.schedule_skipped with the session user, the membership and the closed reason; a refused skip writes none", async () => {
+        const adm = await admitted();
+        const schedule = await scheduleOf(adm);
+
+        const res = await postAs(`/api/v1/hope/schedules/${schedule}/skip`, as(member.orgwide), {
+          reasonCode: "other",
+        });
+
+        expect(res.statusCode).toBe(200);
+        const events = await eventRows(SKIP_AUDIT, schedule);
+        expect(events).toHaveLength(1);
+        expectOperatorEvent(events[0], "hope_timepoint_schedule");
+        expect(events[0]?.context).toMatchObject({
+          admissionId: adm,
+          rfaKind: "01_admission",
+          skipReasonCode: "other",
+        });
+        expect(events[0]?.correlation_id).toBe(`hope-schedule-skipped:${schedule}`);
+        // The schedule is no longer open: a second skip is a 409 and writes no second event.
+        const again = await postAs(`/api/v1/hope/schedules/${schedule}/skip`, as(member.orgwide), {
+          reasonCode: "other",
+        });
+        expect(again.statusCode).toBe(409);
+        expect(await eventRows(SKIP_AUDIT, schedule)).toHaveLength(1);
+      });
+
+      it("a cancel writes hope.submission_cancelled and purges the bytes in the same transaction; a replay writes no second event", async () => {
+        const adm = await admitted();
+        const draft = await recordDraft(adm, member.victim, QUIET_DATA);
+        const batch = await packagedBatch(draft.id);
+
+        const res = await postAs(`/api/v1/hope/submissions/${batch}/cancel`, as(member.orgwide), {
+          reasonCode: "package_lost",
+        });
+
+        expect(res.statusCode).toBe(200);
+        expect(res.json<{ status: string }>().status).toBe("cancelled");
+        const events = await eventRows(CANCEL_AUDIT, batch);
+        expect(events).toHaveLength(1);
+        expectOperatorEvent(events[0], "hope_submission");
+        expect(events[0]?.context).toMatchObject({
+          reasonCode: "package_lost",
+          priorStatus: "packaged",
+          providerEntityId: provider,
+          packageSha256: "b".repeat(64),
+          packageBytesPurged: true,
+          itemsCancelled: 1,
+        });
+        // CW-DS-01: the bytes are gone, the evidence that the package existed stays, and the batch cannot go onward.
+        const stored = (
+          await q<{
+            acceptance_report: unknown;
+            package_sha256: string;
+            package_size_bytes: number;
+          }>(
+            "SELECT acceptance_report, package_sha256, package_size_bytes FROM hope_submission WHERE id=$1",
+            [batch],
+          )
+        )[0];
+        expect(stored).toEqual({
+          acceptance_report: null,
+          package_sha256: "b".repeat(64),
+          package_size_bytes: 2,
+        });
+        const item = (
+          await q<{ iqies_validation_result: unknown; xml_sha256: string; item_status: string }>(
+            "SELECT iqies_validation_result, xml_sha256, item_status FROM hope_submission_item WHERE hope_submission_id=$1",
+            [batch],
+          )
+        )[0];
+        expect(item).toEqual({
+          iqies_validation_result: null,
+          xml_sha256: "c".repeat(64),
+          item_status: "cancelled",
+        });
+        const download = await app.inject({
+          method: "GET",
+          url: `/api/v1/hope/submissions/${batch}/package`,
+          headers: as(member.orgwide),
+        });
+        expect(codeOf(download)).toBe("M10_SUBMISSION_CANCELLED");
+        const marked = await postAs(
+          `/api/v1/hope/submissions/${batch}/mark-uploaded`,
+          as(member.orgwide),
+          {},
+        );
+        expect(codeOf(marked)).toBe("M10_SUBMISSION_CANCELLED");
+
+        const replay = await postAs(
+          `/api/v1/hope/submissions/${batch}/cancel`,
+          as(member.orgwide),
+          { reasonCode: "other" },
+        );
+        expect(replay.statusCode).toBe(200);
+        expect(await eventRows(CANCEL_AUDIT, batch)).toHaveLength(1);
+      });
+
+      it("a regenerate writes hope.schedules_regenerated naming the windows it created; a repeat run is a recorded no-op", async () => {
+        const adm = await admitted();
+        const before = (
+          await q<{ n: number }>(
+            "SELECT count(*)::int AS n FROM hope_timepoint_schedule WHERE admission_id=$1",
+            [adm],
+          )
+        )[0]?.n as number;
+
+        const res = await postAs("/api/v1/hope/admin/regenerate-schedules", as(member.orgwide), {
+          admissionId: adm,
+        });
+
+        expect(res.statusCode).toBe(200);
+        const after = res.json<{ scheduleCount: number }>().scheduleCount;
+        expect(after).toBeGreaterThan(before);
+        const first = await eventRows(REGENERATE_AUDIT, adm);
+        expect(first).toHaveLength(1);
+        expectOperatorEvent(first[0], "admission");
+        expect(first[0]?.context).toMatchObject({ createdCount: after - before });
+        const created = first[0]?.context.createdScheduleIds as string[];
+        expect(created).toHaveLength(after - before);
+        const real = await q<{ id: string }>(
+          "SELECT id FROM hope_timepoint_schedule WHERE id = ANY($1::uuid[]) AND admission_id=$2",
+          [created, adm],
+        );
+        expect(real).toHaveLength(created.length);
+
+        const repeat = await postAs("/api/v1/hope/admin/regenerate-schedules", as(member.orgwide), {
+          admissionId: adm,
+        });
+        expect(repeat.statusCode).toBe(200);
+        const events = await eventRows(REGENERATE_AUDIT, adm);
+        expect(events).toHaveLength(2);
+        expect(events.map((e) => e.context.createdCount).sort()).toEqual([0, after - before]);
+      });
+
+      it("a caller without the permission or the scope writes no event (the guards run before the service)", async () => {
+        const adm = await admitted();
+        const schedule = await scheduleOf(adm);
+        const noPermission = await postAs(
+          `/api/v1/hope/schedules/${schedule}/skip`,
+          as(member.attacker),
+          { reasonCode: "other" },
+        );
+        expect(noPermission.statusCode).toBe(403);
+        expect(await eventRows(SKIP_AUDIT, schedule)).toHaveLength(0);
+        const aiPrincipal = await postAs(
+          "/api/v1/hope/admin/regenerate-schedules",
+          as(member.orgwide, { "x-test-actor-kind": "ai_agent" }),
+          { admissionId: adm },
+        );
+        expect(aiPrincipal.statusCode).toBe(403);
+        expect(await eventRows(REGENERATE_AUDIT, adm)).toHaveLength(0);
       });
     });
   },

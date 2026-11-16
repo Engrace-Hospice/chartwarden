@@ -25,6 +25,8 @@ import {
   sfvCompletionInvalidMessage,
 } from "./hope-sfv-completion-content";
 import {
+  auditSfvCompletionRefusal,
+  isSfvNoTriggerRefusal,
   lockSfvForCompletion,
   requireSfvBoundToAdmission,
   resolveSfvAdmissionPatient,
@@ -355,16 +357,34 @@ export function createSfvCompletionRecorder(deps: SfvCompletionDeps) {
     // today): before the M6 seam read and the locked SFV lookup, which compare it with uuid columns.
     const admissionId = uuidOrNotFound(urlAdmissionId, `Admission ${urlAdmissionId} not found`);
     const admissionPatientId = await resolveSfvAdmissionPatient(organizationId, admissionId);
-    return withOrgContext(deps.db, { organizationId, userId: "" }, async (tx) =>
-      completeSfvInTx(deps, tx as unknown as DbClient, {
-        organizationId,
-        userId,
-        admissionId,
-        admissionPatientId,
-        args,
-        completedDate,
-        attestationConfirmed,
-      }),
-    );
+    try {
+      return await withOrgContext(deps.db, { organizationId, userId: "" }, async (tx) =>
+        completeSfvInTx(deps, tx as unknown as DbClient, {
+          organizationId,
+          userId,
+          admissionId,
+          admissionPatientId,
+          args,
+          completedDate,
+          attestationConfirmed,
+        }),
+      );
+    } catch (error) {
+      // The unbound-SFV refusal rolled the transaction back, so its `denied` audit event is written now, on a new one
+      // (best effort: it never replaces the refusal the caller receives).
+      if (isSfvNoTriggerRefusal(error)) {
+        await auditSfvCompletionRefusal(
+          deps.db,
+          {
+            organizationId,
+            membershipId: userId,
+            admissionId,
+            triggeringAssessmentId: args.triggeringAssessmentId,
+          },
+          args.request,
+        );
+      }
+      throw error;
+    }
   };
 }

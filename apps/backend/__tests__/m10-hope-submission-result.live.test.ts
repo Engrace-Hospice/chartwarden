@@ -328,6 +328,12 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
       correctionAssessmentId: correction,
     });
     expect((await svc.getSubmission(ORG_A, correctionBatch)).items[0]?.status).toBe("cancelled");
+    // The cancelled package's bytes are purged (CW-DS-01); its hash stays as the evidence that it existed.
+    const cancelledRow = await row(correctionBatch);
+    expect(cancelledRow.acceptance_report).toBeNull();
+    expect(cancelledRow.package_sha256).toBe("a".repeat(64));
+    // The detail view of a cancelled batch reads fine with no report (it has no report reference).
+    expect((await svc.getSubmission(ORG_A, correctionBatch)).resultReportReference).toBeNull();
   });
 
   it("a later report cannot flip an already-settled item, but its rows are still recorded", async () => {

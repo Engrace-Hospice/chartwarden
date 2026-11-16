@@ -8,11 +8,14 @@
 // so the later guards (ALREADY_COMPLETED, INCOMPLETE, PAST_DUE) can never be used to probe another admission.
 import { type DbClient, schema } from "@chartwarden/db";
 import { HopeStateError } from "@chartwarden/hope";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { type AdmissionSummary, DegradedError } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { takeBoundedLock } from "./hope-assessment-lock";
 import { errorClassForLog, idForLog } from "./hope-log-id";
+import { auditHopeSfvCompletionDenied } from "./hope-operator-audit";
+import type { HopeAuditRequestFacts } from "./hope-signature-audit";
 import { canonicalUuidOrNull, sameUuid } from "./hope-uuid";
 
 const SFV = schema.symptomFollowUpVisits;
@@ -116,7 +119,7 @@ export async function lockSfvForCompletion(
 }
 
 /** Who asked, and for what, when an SFV completion is refused as unbound (ids only; no body, no patient). */
-interface SfvCompletionCaller {
+export interface SfvCompletionCaller {
   readonly organizationId: string;
   readonly membershipId: string;
   readonly admissionId: string;
@@ -150,4 +153,40 @@ export function requireSfvBoundToAdmission(
     "M10_SFV_NO_TRIGGER",
     `No SFV obligation for triggering assessment ${caller.triggeringAssessmentId}.`,
   );
+}
+
+/** Whether `error` is the refusal {@link requireSfvBoundToAdmission} throws (the only thrower of `M10_SFV_NO_TRIGGER`). */
+export const isSfvNoTriggerRefusal = (error: unknown): boolean =>
+  error instanceof HopeStateError && error.code === "M10_SFV_NO_TRIGGER";
+
+/**
+ * The `denied` audit event for a refused, unbound SFV completion: the probe a caseload clinician makes by naming ANOTHER
+ * patient's triggering assessment, which would otherwise leave only an application log line. The refusal is thrown inside
+ * the request transaction and rolls it back, so the event is written on a NEW transaction, AFTER that one ended (never
+ * nested inside it: a second pool connection taken while the first is held can starve the pool). Ids only: the org, the
+ * membership, the URL admission and, when it is a uuid, the triggering assessment id.
+ *
+ * Best effort: a failure to write it is logged (ids and the error class only) and NEVER changes the 409 the caller gets,
+ * which is byte-for-byte the answer for an absent SFV (no oracle).
+ */
+export async function auditSfvCompletionRefusal(
+  db: DbClient,
+  caller: SfvCompletionCaller,
+  request?: HopeAuditRequestFacts,
+): Promise<void> {
+  try {
+    await withOrgContext(db, { organizationId: caller.organizationId, userId: "" }, (tx) =>
+      auditHopeSfvCompletionDenied(tx as unknown as DbClient, {
+        organizationId: caller.organizationId,
+        membershipId: caller.membershipId,
+        request,
+        admissionId: caller.admissionId,
+        triggeringAssessmentId: canonicalUuidOrNull(caller.triggeringAssessmentId),
+      }),
+    );
+  } catch (error) {
+    console.warn(
+      `m10: SFV completion refusal audit not written (${errorClassForLog(error)}): org ${idForLog(caller.organizationId)}, membership ${idForLog(caller.membershipId)}, admission ${idForLog(caller.admissionId)}.`,
+    );
+  }
 }

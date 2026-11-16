@@ -286,10 +286,14 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     "/api/v1/hope/schedules/:id/skip",
     { preHandler: [SKIP, REJECT_AI_OPERATIONS, SCOPE_SCHEDULE("hope.schedule.skip")] },
     async (request) => {
-      const { organizationId } = membershipActorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(ScheduleParamsSchema, request.params);
       const body = parse(SkipScheduleSchema, request.body);
-      return service.skipSchedule(organizationId, id, body.reasonCode);
+      // The acting membership and the request facts ride into the explicit `hope.schedule_skipped` audit event.
+      return service.skipSchedule(organizationId, id, body.reasonCode, {
+        membershipId: userId,
+        request: signatureRequestFacts(request),
+      });
     },
   );
 
@@ -736,7 +740,10 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { organizationId, userId } = membershipActorOf(request);
       const { id } = parse(SubmissionParamsSchema, request.params);
       const body = parse(CancelSubmissionSchema, request.body);
-      return service.cancelSubmission(organizationId, userId, id, body);
+      return service.cancelSubmission(organizationId, userId, id, {
+        ...body,
+        request: signatureRequestFacts(request),
+      });
     },
   );
 
@@ -787,9 +794,12 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       ],
     },
     async (request) => {
-      const { organizationId } = membershipActorOf(request);
+      const { organizationId, userId } = membershipActorOf(request);
       const body = parse(RegenerateSchedulesSchema, request.body);
-      return service.regenerateSchedules(organizationId, body.admissionId);
+      return service.regenerateSchedules(organizationId, body.admissionId, {
+        membershipId: userId,
+        request: signatureRequestFacts(request),
+      });
     },
   );
 }

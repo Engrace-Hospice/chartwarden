@@ -12,6 +12,8 @@ import { scriptedDb } from "./_hope-g3-fake-db";
 //  - assemble: every eligibility test is in the candidate SELECT (no read of the entity's whole signed history, no
 //    query per row behind the advisory key).
 const ORG = "11111111-1111-4111-8111-111111111111";
+// The acting membership a skip / regenerate hands the service for its audit event (no HTTP request in these tests).
+const OPERATOR = { membershipId: "88888888-8888-4888-8888-888888888888" };
 const ID = "abcdef01-2345-4678-89ab-cdef01234567";
 const SPELLED = ID.toUpperCase();
 const NOT_A_UUID = "not-a-uuid";
@@ -45,7 +47,8 @@ describe("a URL id that is no uuid never reaches a uuid comparison", () => {
     ],
     [
       "skipSchedule",
-      (svc: ReturnType<typeof backend>["svc"]) => svc.skipSchedule(ORG, NOT_A_UUID, "other"),
+      (svc: ReturnType<typeof backend>["svc"]) =>
+        svc.skipSchedule(ORG, NOT_A_UUID, "other", OPERATOR),
     ],
   ])("%s answers the 404 an absent record answers, and sends no statement", async (_name, call) => {
     const { svc, statements } = backend([[]]);

@@ -61,6 +61,7 @@ import { requireCalendarDateTime, requireCalendarTargetDate } from "./hope-calen
 import { HopeSubmissionPayloadError, serializeHopeAssessmentXml } from "./hope-cms-xml-serializer";
 import { createHopeDischargePrefillService } from "./hope-discharge-prefill-service";
 import { errorClassForLog, idForLog } from "./hope-log-id";
+import { auditHopeScheduleSkipped, auditHopeSchedulesRegenerated } from "./hope-operator-audit";
 import {
   HopeAssessmentNotReadyToSignError,
   createHopeAssessmentReadinessService,
@@ -127,6 +128,7 @@ import type {
   CorrectTimepointArgs,
   HopeAssessmentView,
   HopeComplianceView,
+  HopeOperatorActor,
   HopeRouteService,
   HopeScheduleView,
   HopeSfvView,
@@ -1146,11 +1148,24 @@ export function createDbHopeBackend(
     // operator looking at an empty timepoint worklist had a button that reported the emptiness back to
     // them. It now regenerates, idempotently, which is also the supported way to backfill an admission
     // activated before the scheduling consumer shipped. The returned count is the total AFTER the write.
-    async regenerateSchedules(organizationId, urlAdmissionId) {
+    async regenerateSchedules(organizationId, urlAdmissionId, actor: HopeOperatorActor) {
       // The id as Postgres writes it (never the body's spelling); an id that is no uuid names no admission (404, before the
       // M6 seam or any statement).
       const admissionId = uuidOrNotFound(urlAdmissionId, `Admission ${urlAdmissionId} not found`);
-      await regenerateSchedulesForAdmission(db, outbox, { organizationId, admissionId });
+      // The `hope.schedules_regenerated` event is written on the SAME transaction as the windows it created (none: a no-op
+      // run still records who ran it), so the act and its evidence commit or roll back together.
+      await regenerateSchedulesForAdmission(db, outbox, {
+        organizationId,
+        admissionId,
+        afterWrite: (t, createdScheduleIds) =>
+          auditHopeSchedulesRegenerated(t, {
+            organizationId,
+            membershipId: actor.membershipId,
+            request: actor.request,
+            admissionId,
+            createdScheduleIds,
+          }),
+      });
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         // A count, not the rows: only the total is answered.
         const [total] = await tx
@@ -1230,7 +1245,7 @@ export function createDbHopeBackend(
     },
 
     // ── Schedule skip (§2.2.1) ────────────────────────────────────────────────────────────────────
-    async skipSchedule(organizationId, id, reasonCode) {
+    async skipSchedule(organizationId, id, reasonCode, actor: HopeOperatorActor) {
       // A closed code list (the route's schema is the first gate; a caller that reaches the service another way is judged here too).
       const skipReasonCode = requireSkipReasonCode(reasonCode);
       const scheduleId = uuidOrNotFound(id, `HOPE schedule ${id} not found`);
@@ -1262,8 +1277,20 @@ export function createDbHopeBackend(
             lock: `schedule row ${idForLog(scheduleId)} (org ${idForLog(organizationId)}) for a skip`,
           },
         )) as ScheduleRow[];
-        if (rows.length > 0)
-          return toScheduleView(firstOrThrow(rows, "schedule skip matched no row"));
+        if (rows.length > 0) {
+          const skipped = firstOrThrow(rows, "schedule skip matched no row");
+          // Same transaction as the UPDATE: the skip and the event naming who skipped, which window and why.
+          await auditHopeScheduleSkipped(t, {
+            organizationId,
+            membershipId: actor.membershipId,
+            request: actor.request,
+            scheduleId: skipped.id,
+            admissionId: skipped.admissionId,
+            rfaKind: skipped.rfaKind,
+            skipReasonCode,
+          });
+          return toScheduleView(skipped);
+        }
         const [current] = await t
           .select({ status: SCHED.status })
           .from(SCHED)
@@ -2249,6 +2276,7 @@ export function createDbHopeBackend(
           actorMembershipId: userId,
           reasonCode: args.reasonCode,
           now: clock(),
+          request: args.request,
         });
         return toSubmissionView(row);
       });

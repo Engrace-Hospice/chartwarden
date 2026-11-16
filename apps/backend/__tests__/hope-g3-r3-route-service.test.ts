@@ -8,6 +8,8 @@ import { scriptedDb } from "./_hope-g3-fake-db";
 // payloads and outbox aggregate ids carry the id the DATABASE holds (never the caller's spelling of it), and a timepoint
 // of RFA kind 04_sfv is refused with a typed 4xx before anything is read.
 const ORG = "11111111-1111-4111-8111-111111111111";
+// The acting membership a skip / regenerate hands the service for its audit event (no HTTP request in these tests).
+const OPERATOR = { membershipId: "88888888-8888-4888-8888-888888888888" };
 const MEMBERSHIP = "33333333-3333-4333-8333-333333333333";
 const PATIENT = "44444444-4444-4444-8444-444444444444";
 const ADMISSION = "FEDCBA98-7654-4321-8FED-CBA987654321";
@@ -52,9 +54,10 @@ describe("skipSchedule — the UPDATE re-judges the row it waited for", () => {
   });
 
   it("skips an OPEN schedule, and the UPDATE names the status it needs", async () => {
-    const { svc, statements } = backend([[scheduleRow("skipped")]]);
+    // The second outcome is the `hope.schedule_skipped` audit insert on the same transaction.
+    const { svc, statements } = backend([[scheduleRow("skipped")], []]);
 
-    const skipped = await svc.skipSchedule(ORG, SPELLED, "other");
+    const skipped = await svc.skipSchedule(ORG, SPELLED, "other", OPERATOR);
 
     expect(skipped.status).toBe("skipped");
     const update = statements.find((s) => s.kind === "update");
@@ -66,7 +69,7 @@ describe("skipSchedule — the UPDATE re-judges the row it waited for", () => {
     // The UPDATE matched no row (its status is no longer open); the re-read says why.
     const { svc, statements } = backend([[], [{ status: "completed" }]]);
 
-    const failure = await outcome(svc.skipSchedule(ORG, SPELLED, "other"));
+    const failure = await outcome(svc.skipSchedule(ORG, SPELLED, "other", OPERATOR));
 
     expect(failure).toMatchObject({ statusCode: 409 });
     expect(String(failure?.message)).toContain("completed");
@@ -76,7 +79,7 @@ describe("skipSchedule — the UPDATE re-judges the row it waited for", () => {
   it("a schedule that does not exist (or is hidden by RLS) is still a 404", async () => {
     const { svc } = backend([[], []]);
 
-    const failure = await outcome(svc.skipSchedule(ORG, SPELLED, "other"));
+    const failure = await outcome(svc.skipSchedule(ORG, SPELLED, "other", OPERATOR));
 
     expect(failure).toMatchObject({ statusCode: 404 });
   });

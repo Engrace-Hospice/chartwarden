@@ -22,6 +22,8 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-1111-1111-111111111111";
+// The acting membership a skip / regenerate hands the service for its audit event (no HTTP request in these tests).
+const OPERATOR = { membershipId: "88888888-8888-4888-8888-888888888888" };
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 // patient_id / admission_id are NOT NULL on every M10 table but carry NO FK — literals are fine. PATIENT is
@@ -167,7 +169,7 @@ describe.skipIf(!DB_URL)("M10 Drizzle read service — LIVE Postgres (M10L)", ()
   });
 
   it("skipSchedule now persists (the M10L write lifecycle; full coverage in the write suite)", async () => {
-    const skipped = await service.skipSchedule(ORG_A, a.schedule, "other");
+    const skipped = await service.skipSchedule(ORG_A, a.schedule, "other", OPERATOR);
     expect(skipped.status).toBe("skipped");
     const back = await service.getSchedule(ORG_A, a.schedule);
     expect(back.status).toBe("skipped");

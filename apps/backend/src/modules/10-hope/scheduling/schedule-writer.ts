@@ -194,12 +194,22 @@ export async function writeSchedules(
      * is retried by the dispatcher as before rather than failed with a request-shaped error.
      */
     readonly boundLockWait?: boolean;
+    /**
+     * Runs on the write's own transaction with the ids it created (none when nothing was missing), so evidence of the
+     * run (the admin regenerate's audit event) commits or rolls back with the windows. Set by the REQUEST path only; when
+     * it is set the transaction opens even for a run with nothing to plan, which is the run the event still records.
+     */
+    readonly afterWrite?: (t: DbClient, createdScheduleIds: readonly string[]) => Promise<void>;
   },
 ): Promise<readonly string[]> {
-  if (input.descriptors.length === 0) return [];
+  if (input.descriptors.length === 0 && !input.afterWrite) return [];
   const wanted = input.descriptors.map((d) => d.rfaKind);
   return withOrgContext(db, { organizationId: input.organizationId, userId: "" }, async (tx) => {
     const t = tx as unknown as DbClient;
+    if (wanted.length === 0) {
+      await input.afterWrite?.(t, []);
+      return [];
+    }
     const existing = (await t
       .select({ rfaKind: SCHED.rfaKind })
       .from(SCHED)
@@ -212,7 +222,10 @@ export async function writeSchedules(
       )) as { rfaKind: HopeRfaKind }[];
     const already = new Set(existing.map((r) => r.rfaKind));
     const todo = input.descriptors.filter((d) => !already.has(d.rfaKind));
-    if (todo.length === 0) return [];
+    if (todo.length === 0) {
+      await input.afterWrite?.(t, []);
+      return [];
+    }
 
     const insertMissing = (executor: DbClient) =>
       executor
@@ -270,7 +283,9 @@ export async function writeSchedules(
         },
       });
     }
-    return rows.map((r) => r.id);
+    const createdIds = rows.map((r) => r.id);
+    await input.afterWrite?.(t, createdIds);
+    return createdIds;
   });
 }
 
@@ -291,6 +306,8 @@ export async function regenerateSchedulesForAdmission(
     readonly admissionId: string;
     readonly timeZone?: string;
     readonly resolveSiting?: AdmissionSitingResolver;
+    /** See {@link writeSchedules}: the route's audit event, written on the transaction that creates the windows. */
+    readonly afterWrite?: (t: DbClient, createdScheduleIds: readonly string[]) => Promise<void>;
   },
 ): Promise<readonly string[]> {
   const timeZone = input.timeZone ?? HOPE_SCHEDULE_TIME_ZONE;
@@ -301,11 +318,16 @@ export async function regenerateSchedulesForAdmission(
     { requestRetryNote: true },
   );
   const descriptors: TimepointScheduleDescriptor[] = [];
+  // M6's seam answers `activatedAt` / `dischargedAt` as instants (or a date): the CMS windows count in org-local calendar
+  // days, so both go through the same normaliser the outbox consumer uses (an ISO instant is a date by the org's day,
+  // a `yyyy-mm-dd` passes unchanged, anything else is a typed 422 rather than "Invalid time value").
   if (siting.anchorDate !== null) {
-    descriptors.push(...planAdmissionTimepoints({ anchorDate: siting.anchorDate, timeZone }));
+    const anchorDate = anchorDateOf(siting.anchorDate, timeZone, "activatedAt");
+    descriptors.push(...planAdmissionTimepoints({ anchorDate, timeZone }));
   }
   if (siting.dischargeDate !== null) {
-    descriptors.push(planDischargeTimepoint({ dischargeDate: siting.dischargeDate, timeZone }));
+    const dischargeDate = anchorDateOf(siting.dischargeDate, timeZone, "dischargeDate");
+    descriptors.push(planDischargeTimepoint({ dischargeDate, timeZone }));
   }
   // Only the route (a request holding a pool connection) calls this: it bounds the insert's lock wait.
   return writeSchedules(db, outbox, {
@@ -314,5 +336,6 @@ export async function regenerateSchedulesForAdmission(
     siting,
     descriptors,
     boundLockWait: true,
+    ...(input.afterWrite ? { afterWrite: input.afterWrite } : {}),
   });
 }

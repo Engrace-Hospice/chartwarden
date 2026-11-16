@@ -259,6 +259,16 @@ export interface HopeSignatureRequestFacts {
   readonly sourceIp?: string;
   readonly userAgent?: string;
 }
+
+/**
+ * Who asked for a schedule skip or an admin regenerate, for the explicit audit event that records it: the acting
+ * MEMBERSHIP id (M10's own acting id) and the request facts (the session user for `actor_user_id`, the request id,
+ * address and user agent). The route fills both from the request context; a direct service call has no request.
+ */
+export interface HopeOperatorActor {
+  readonly membershipId: string;
+  readonly request?: HopeSignatureRequestFacts;
+}
 export interface RecordSfvArgs {
   readonly triggeringAssessmentId: string;
   readonly targetDate: string;
@@ -337,7 +347,12 @@ export interface HopeRouteService extends HopeAbacResolver {
     },
   ): Promise<{ schedules: HopeScheduleView[] }>;
   getSchedule(organizationId: string, id: string): Promise<HopeScheduleView>;
-  skipSchedule(organizationId: string, id: string, reasonCode: string): Promise<HopeScheduleView>;
+  skipSchedule(
+    organizationId: string,
+    id: string,
+    reasonCode: string,
+    actor: HopeOperatorActor,
+  ): Promise<HopeScheduleView>;
   recordTimepoint(
     organizationId: string,
     userId: string,
@@ -452,7 +467,7 @@ export interface HopeRouteService extends HopeAbacResolver {
     organizationId: string,
     userId: string,
     id: string,
-    args: { reasonCode: HopeSubmissionCancelReasonCode },
+    args: { reasonCode: HopeSubmissionCancelReasonCode; request?: HopeSignatureRequestFacts },
   ): Promise<HopeSubmissionView>;
   markSubmissionUploaded(
     organizationId: string,
@@ -474,6 +489,7 @@ export interface HopeRouteService extends HopeAbacResolver {
   regenerateSchedules(
     organizationId: string,
     admissionId: string,
+    actor: HopeOperatorActor,
   ): Promise<{ admissionId: string; scheduleCount: number }>;
   /** Drain (and clear) the §2.4 outbox events recorded since the last call (test/relay seam). */
   drainEvents(): RecordedHopeEvent[];
@@ -1908,6 +1924,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       r.cancelledAt = now();
       r.cancelReasonCode = args.reasonCode;
       for (const item of r.items) if (item.status === "pending") item.status = "cancelled";
+      // As in the DB backend: the package bytes are dropped with the cancel (the hash and size stay on the view).
+      r.packageContentBase64 = undefined;
       return viewSub(r);
     },
     async markSubmissionUploaded(organizationId, userId, id, args) {

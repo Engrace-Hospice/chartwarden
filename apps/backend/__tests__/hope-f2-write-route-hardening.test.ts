@@ -22,6 +22,8 @@ import { scriptedDb } from "./_hope-g3-fake-db";
 // the skip reason is a closed list that never echoes what was sent, and recordTimepoint reads the M6 seam before it
 // opens its transaction.
 const ORG = "11111111-1111-4111-8111-111111111111";
+// The acting membership a skip / regenerate hands the service for its audit event (no HTTP request in these tests).
+const OPERATOR = { membershipId: "88888888-8888-4888-8888-888888888888" };
 const USER = "33333333-3333-4333-8333-333333333333";
 const SUB = "66666666-6666-4666-8666-666666666666";
 const SCHEDULE = "55555555-5555-4555-8555-555555555555";
@@ -60,9 +62,10 @@ function backend(outcomes: Parameters<typeof scriptedDb>[0]) {
 describe("every write names the tenant beside the id, on top of RLS", () => {
   it("cancelHopeSubmission: the lock read, the item update and the batch update", async () => {
     const fake = scriptedDb([
-      [{ id: SUB, status: "packaged" }],
+      [{ id: SUB, status: "packaged", providerEntityId: PE, packageSha256: "a".repeat(64) }],
       [],
       [{ id: SUB, status: "cancelled" }],
+      [],
     ]);
 
     await cancelHopeSubmission(fake.tx, {
@@ -74,8 +77,10 @@ describe("every write names the tenant beside the id, on top of RLS", () => {
     });
 
     const data = dataStatements(fake);
-    expect(data.map((s) => s.kind)).toEqual(["select", "update", "update"]);
-    for (const statement of data) expect(namesTenant(statement)).toBe(true);
+    // The last statement is the `hope.submission_cancelled` audit event: audit_event carries no tenant predicate (its RLS
+    // and the row's own organization_id do), the three statements before it do.
+    expect(data.map((s) => s.kind)).toEqual(["select", "update", "update", "insert"]);
+    for (const statement of data.slice(0, 3)) expect(namesTenant(statement)).toBe(true);
   });
 
   it("advancePackagedToExported: the guarded write and the status re-read", async () => {
@@ -99,7 +104,9 @@ describe("every write names the tenant beside the id, on top of RLS", () => {
   it("skipSchedule: the guarded update and the status re-read", async () => {
     const { svc, ...fake } = backend([[], []]);
 
-    await expect(svc.skipSchedule(ORG, SCHEDULE, "other")).rejects.toBeInstanceOf(NotFoundError);
+    await expect(svc.skipSchedule(ORG, SCHEDULE, "other", OPERATOR)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
 
     const data = dataStatements(fake as Fake);
     expect(data.map((s) => s.kind)).toEqual(["update", "select"]);
@@ -164,7 +171,9 @@ describe("skip, retry and regenerate wait for a row lock at most M10_LOCK_TIMEOU
   it("skipSchedule: the bound is set before the update, and a lock timeout is the typed busy 409", async () => {
     const { svc, ...fake } = backend([pgFailure("55P03")]);
 
-    const failure = await svc.skipSchedule(ORG, SCHEDULE, "other").catch((e: unknown) => e);
+    const failure = await svc
+      .skipSchedule(ORG, SCHEDULE, "other", OPERATOR)
+      .catch((e: unknown) => e);
 
     expect(failure).toMatchObject({ code: "M10_RECORD_BUSY", statusCode: 409 });
     expect(boundBeforeFirst(fake as unknown as Fake, "update")).toBe(true);
@@ -229,7 +238,9 @@ describe("the skip reason is a closed list that never echoes what was sent", () 
   it("the service refuses it before any statement is sent", async () => {
     const { svc, ...fake } = backend([]);
 
-    await expect(svc.skipSchedule(ORG, SCHEDULE, TYPED)).rejects.toBeInstanceOf(ValidationError);
+    await expect(svc.skipSchedule(ORG, SCHEDULE, TYPED, OPERATOR)).rejects.toBeInstanceOf(
+      ValidationError,
+    );
 
     expect(fake.statements).toEqual([]);
   });
@@ -237,7 +248,9 @@ describe("the skip reason is a closed list that never echoes what was sent", () 
   it.each([...HOPE_SCHEDULE_SKIP_REASON_CODES])("%s reaches the database", async (code) => {
     const { svc, ...fake } = backend([[], []]);
 
-    await expect(svc.skipSchedule(ORG, SCHEDULE, code)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(svc.skipSchedule(ORG, SCHEDULE, code, OPERATOR)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
 
     expect(dataStatements(fake as Fake).length).toBeGreaterThan(0);
   });
@@ -315,7 +328,7 @@ describe("recordTimepoint reads the M6 seam before it opens its transaction", ()
 
 describe("regenerateSchedules answers a count, not the rows", () => {
   it("selects count(*) for the admission, scoped to the tenant, and keeps the answer shape", async () => {
-    // No anchor and no discharge: nothing to insert, so the only statement is the count.
+    // No anchor and no discharge: no window to insert.
     registerSeam("AdmissionStatusReader", {
       getAdmissionSummary: async () => ({
         organizationId: ORG,
@@ -327,12 +340,15 @@ describe("regenerateSchedules answers a count, not the rows", () => {
         dischargedAt: null,
       }),
     } as never);
-    const { svc, ...fake } = backend([[{ n: 3 }]]);
+    // The one write is the run's own `hope.schedules_regenerated` audit event (a no-op run is still recorded), then the count.
+    const { svc, ...fake } = backend([[], [{ n: 3 }]]);
 
-    const answer = await svc.regenerateSchedules(ORG, ADMISSION);
+    const answer = await svc.regenerateSchedules(ORG, ADMISSION, OPERATOR);
 
     expect(answer).toEqual({ admissionId: ADMISSION, scheduleCount: 3 });
-    const [count] = dataStatements(fake as Fake);
+    const data = dataStatements(fake as Fake);
+    expect(data.map((s) => s.kind)).toEqual(["insert", "select"]);
+    const count = data[1];
     expect(count?.columns).toEqual(["n"]);
     expect(namesTenant(count as Statement)).toBe(true);
     expect(count?.rendered?.params).toContain(ADMISSION);

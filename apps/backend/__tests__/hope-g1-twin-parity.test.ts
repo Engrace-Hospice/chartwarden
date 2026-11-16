@@ -12,6 +12,8 @@ import { describe, expect, it } from "vitest";
 import { createInMemoryHopeBackend } from "../src/modules/10-hope/index";
 
 const ORG = "org_a";
+// The acting membership a skip / regenerate hands the service for its audit event (no HTTP request in these tests).
+const OPERATOR = { membershipId: "88888888-8888-4888-8888-888888888888" };
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const ADMISSION = "33333333-3333-4333-8333-333333333abc";
 const NOW = "2026-06-08T12:00:00.000Z";
@@ -54,7 +56,7 @@ const outcome = (p: Promise<unknown>) =>
 
 describe("in-memory skipSchedule — only an open schedule can be skipped", () => {
   it("skips an open schedule", async () => {
-    const skipped = await backend().skipSchedule(ORG, SCHEDULE_IDS.open, "other");
+    const skipped = await backend().skipSchedule(ORG, SCHEDULE_IDS.open, "other", OPERATOR);
 
     expect(skipped.status).toBe("skipped");
   });
@@ -64,7 +66,7 @@ describe("in-memory skipSchedule — only an open schedule can be skipped", () =
     async (status) => {
       const svc = backend();
 
-      const failure = await outcome(svc.skipSchedule(ORG, SCHEDULE_IDS[status], "other"));
+      const failure = await outcome(svc.skipSchedule(ORG, SCHEDULE_IDS[status], "other", OPERATOR));
 
       expect(failure).toMatchObject({ statusCode: 409 });
       expect(String(failure?.message)).toContain(`is ${status}`);
@@ -74,9 +76,9 @@ describe("in-memory skipSchedule — only an open schedule can be skipped", () =
 
   it("skipping twice is a 409 the second time (a double click must not read as a success)", async () => {
     const svc = backend();
-    await svc.skipSchedule(ORG, SCHEDULE_IDS.open, "other");
+    await svc.skipSchedule(ORG, SCHEDULE_IDS.open, "other", OPERATOR);
 
-    const failure = await outcome(svc.skipSchedule(ORG, SCHEDULE_IDS.open, "other"));
+    const failure = await outcome(svc.skipSchedule(ORG, SCHEDULE_IDS.open, "other", OPERATOR));
 
     expect(failure).toMatchObject({ statusCode: 409 });
   });
@@ -85,7 +87,7 @@ describe("in-memory skipSchedule — only an open schedule can be skipped", () =
     const svc = backend();
 
     const unknown = await outcome(
-      svc.skipSchedule(ORG, "55555555-5555-4555-8555-5555555555ff", "other"),
+      svc.skipSchedule(ORG, "55555555-5555-4555-8555-5555555555ff", "other", OPERATOR),
     );
 
     expect(unknown).toMatchObject({ statusCode: 404 });
@@ -95,7 +97,7 @@ describe("in-memory skipSchedule — only an open schedule can be skipped", () =
   it("an id in another spelling names the same schedule, as the uuid column does in the database", async () => {
     const svc = backend();
 
-    const skipped = await svc.skipSchedule(ORG, SCHEDULE_IDS.open.toUpperCase(), "other");
+    const skipped = await svc.skipSchedule(ORG, SCHEDULE_IDS.open.toUpperCase(), "other", OPERATOR);
 
     expect(skipped.status).toBe("skipped");
     expect((await svc.getSchedule(ORG, SCHEDULE_IDS.open)).status).toBe("skipped");

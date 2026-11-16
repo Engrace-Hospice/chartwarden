@@ -42,6 +42,8 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-1111-1111-111111111111";
+// The acting membership a skip / regenerate hands the service for its audit event (no HTTP request in these tests).
+const OPERATOR = { membershipId: "88888888-8888-4888-8888-888888888888" };
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
@@ -616,9 +618,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
         )
       ).rows[0].n as number;
     expect(await count()).toBe(0);
-    const first = await svc.regenerateSchedules(ORG_A, adm);
+    const first = await svc.regenerateSchedules(ORG_A, adm, OPERATOR);
     expect(first.scheduleCount).toBe(3);
-    const second = await svc.regenerateSchedules(ORG_A, adm);
+    const second = await svc.regenerateSchedules(ORG_A, adm, OPERATOR);
     expect(second.scheduleCount).toBe(3); // no duplicates
     expect(await count()).toBe(3);
   });
@@ -1360,7 +1362,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   it("skipSchedule marks the schedule skipped", async () => {
     const adm = await admitted();
     const sched = await seedSchedule(ORG_A, adm);
-    const skipped = await svc.skipSchedule(ORG_A, sched, "other");
+    const skipped = await svc.skipSchedule(ORG_A, sched, "other", OPERATOR);
     expect(skipped.status).toBe("skipped");
     const { rows } = await admin.query(
       "SELECT skip_reason_code FROM hope_timepoint_schedule WHERE id=$1",
@@ -1372,7 +1374,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   it("skipSchedule refuses a reason that is not on the closed list (422, nothing sent to the database to change)", async () => {
     const adm = await admitted();
     const sched = await seedSchedule(ORG_A, adm);
-    await expect(svc.skipSchedule(ORG_A, sched, "typed by the clinician")).rejects.toMatchObject({
+    await expect(
+      svc.skipSchedule(ORG_A, sched, "typed by the clinician", OPERATOR),
+    ).rejects.toMatchObject({
       statusCode: 422,
     });
     const { rows } = await admin.query(
@@ -1412,7 +1416,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
             () => null,
             (e: { statusCode?: number }) => e.statusCode,
           );
-        expect(await statusCode(backend.skipSchedule(ORG_B, sched, "other"))).toBe(404);
+        expect(await statusCode(backend.skipSchedule(ORG_B, sched, "other", OPERATOR))).toBe(404);
         expect(await statusCode(backend.retrySubmission(ORG_B, rejected))).toBe(404);
         expect(await statusCode(backend.markSubmissionUploaded(ORG_B, asOrgB, packaged, {}))).toBe(
           404,
@@ -1530,7 +1534,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     const itemRows = async (id: string) =>
       (
         await admin.query(
-          "SELECT hope_assessment_id, item_status, xml_sha256, iqies_validation_result FROM hope_submission_item WHERE hope_submission_id=$1 ORDER BY hope_assessment_id",
+          "SELECT hope_assessment_id, item_status, xml_sha256, xml_size_bytes, xml_filename, iqies_validation_result FROM hope_submission_item WHERE hope_submission_id=$1 ORDER BY hope_assessment_id",
           [id],
         )
       ).rows;
@@ -1576,11 +1580,23 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       return (await svc.assembleSubmission(ORG_A, providerOf[ORG_A]!)).id;
     }
 
-    it("assemble -> cancel -> assemble again re-packages the SAME assessments in a NEW batch, keeping the evidence", async () => {
+    const cancelEvents = async (id: string) =>
+      (
+        await admin.query(
+          "SELECT outcome, actor_user_id, organization_id, resource_kind, context FROM audit_event WHERE event_type='hope.submission_cancelled' AND resource_id=$1",
+          [id],
+        )
+      ).rows;
+
+    it("assemble -> cancel -> assemble again re-packages the SAME assessments in a NEW batch; the bytes are purged, the evidence stays", async () => {
       const first = await freshPackage();
       const before = await subRow(first);
       const itemsBefore = await itemRows(first);
       expect(itemsBefore.length).toBeGreaterThan(0);
+      // Before the cancel the package and every record's XML are stored (the bytes the cancel must purge).
+      expect(before.acceptance_report.packageContentBase64).toEqual(expect.any(String));
+      for (const i of itemsBefore)
+        expect(i.iqies_validation_result.xmlContentBase64).toEqual(expect.any(String));
       stubVendor();
       // While the package is live its assessments are locked in it (the partial unique index's job).
       await expect(svc.assembleSubmission(ORG_A, providerOf[ORG_A]!)).rejects.toMatchObject({
@@ -1597,17 +1613,41 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect(after.cancel_reason_code).toBe("package_lost");
       expect(after.cancelled_by_membership_id).toBe(memberOf[ORG_A]);
       expect(after.cancelled_at).toBeInstanceOf(Date);
-      // The stored evidence is never deleted or rewritten: package bytes + hash, per-record XML + hash.
-      expect(after.acceptance_report.packageContentBase64).toBe(
-        before.acceptance_report.packageContentBase64,
-      );
+      // CW-DS-01: a cancelled package was never transmitted (no CMS 10-year anchor) and no scan or eraser reaches it, so its
+      // bytes (the ZIP) and each record's XML (name, DOB, MBI/SSN) are NULLed in the cancel's own transaction. What stays is
+      // the evidence that a package existed: its hash, size and name, each record's XML hash, size and name, and who/when/why.
+      expect(after.acceptance_report).toBeNull();
       expect(after.package_sha256).toBe(before.package_sha256);
+      expect(after.package_size_bytes).toBe(before.package_size_bytes);
+      expect(after.package_filename).toBe(before.package_filename);
       const itemsAfter = await itemRows(first);
       expect(itemsAfter.map((i) => i.item_status)).toEqual(itemsAfter.map(() => "cancelled"));
+      expect(itemsAfter.map((i) => i.iqies_validation_result)).toEqual(itemsAfter.map(() => null));
       expect(itemsAfter.map((i) => i.xml_sha256)).toEqual(itemsBefore.map((i) => i.xml_sha256));
-      expect(itemsAfter.map((i) => i.iqies_validation_result)).toEqual(
-        itemsBefore.map((i) => i.iqies_validation_result),
+      expect(itemsAfter.map((i) => i.xml_size_bytes)).toEqual(
+        itemsBefore.map((i) => i.xml_size_bytes),
       );
+      expect(itemsAfter.map((i) => i.xml_filename)).toEqual(itemsBefore.map((i) => i.xml_filename));
+      // The explicit audit event (the service was called directly here, so it carries no session user; the route-stack
+      // suite asserts `actor_user_id`): written once, ids and enums only, naming the hash of the package that was purged.
+      const events = await cancelEvents(first);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        outcome: "success",
+        organization_id: ORG_A,
+        resource_kind: "hope_submission",
+      });
+      expect(events[0].context).toMatchObject({
+        reasonCode: "package_lost",
+        priorStatus: "packaged",
+        packageSha256: before.package_sha256,
+        packageBytesPurged: true,
+        itemsCancelled: itemsBefore.length,
+        byMembershipId: memberOf[ORG_A],
+      });
+      // A replay changes nothing and writes no second event.
+      await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, first, { reasonCode: "other" });
+      expect(await cancelEvents(first)).toHaveLength(1);
       // A cancel before upload is not an outbox event: the batch's own events are still only the queued one.
       expect(await eventsFor(first)).toEqual(["m10.hope.submission_queued"]);
 
@@ -1623,7 +1663,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       expect(itemsSecond.every((i) => i.item_status === "pending")).toBe(true);
     });
 
-    it("a cancelled batch refuses mark-uploaded, results, download and retry (409), and keeps its bytes", async () => {
+    it("a cancelled batch refuses mark-uploaded, results, download and retry (409); its bytes are gone and its hash stays", async () => {
       const id = await freshPackage();
       await svc.cancelSubmission(ORG_A, memberOf[ORG_A]!, id, { reasonCode: "never_uploaded" });
       const [item] = await itemRows(id);
@@ -1646,7 +1686,8 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       const row = await subRow(id);
       expect(row.status).toBe("cancelled");
       expect(row.transmitted_at).toBeNull();
-      expect(row.acceptance_report.packageContentBase64).toEqual(expect.any(String));
+      expect(row.acceptance_report).toBeNull();
+      expect(row.package_sha256).toEqual(expect.any(String));
     });
 
     it("refuses after mark-uploaded and for a rejected, queued, accepted or file_error batch (409 each); a replay and a concurrent double cancel both answer cancelled", async () => {
@@ -1692,6 +1733,8 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       });
       expect(replay).toEqual(a);
       expect((await subRow(id)).cancel_reason_code).toBe(a.cancelReasonCode);
+      // One winner wrote one event; the loser replayed the cancelled view and wrote none.
+      expect(await cancelEvents(id)).toHaveLength(1);
     });
 
     /** A second connection holding the batch row lock, as a concurrent cancel / mark-uploaded would. */

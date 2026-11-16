@@ -7,6 +7,8 @@ import type { HopeSubmissionCancelReasonCode } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { takeBoundedLock } from "./hope-assessment-lock";
 import { idForLog } from "./hope-log-id";
+import { auditHopeSubmissionCancelled } from "./hope-operator-audit";
+import type { HopeAuditRequestFacts } from "./hope-signature-audit";
 import {
   cancelNotAllowedMessage,
   isCancellableSubmissionStatus,
@@ -25,18 +27,31 @@ export interface CancelHopeSubmissionArgs {
    * bypasses RLS still cannot cancel another tenant's batch), and named (with the batch id) in the lock-timeout log line.
    */
   readonly organizationId: string;
-  /** The acting membership, stored on the batch (the write-audit trigger runs with no actor on this path). */
+  /**
+   * The acting membership: stored on the batch (`cancelled_by_membership_id`) and named in the explicit
+   * `hope.submission_cancelled` audit event. The M4 row-diff trigger records the change too, but its `actor_user_id`
+   * is only whatever the ambient request context carries (the service opens `withOrgContext` with no user), so the
+   * explicit event is what names the operator.
+   */
   readonly actorMembershipId: string;
   readonly reasonCode: HopeSubmissionCancelReasonCode;
   readonly now: Date;
+  /** The request's id / address / user agent / session user, carried into the audit event (none for a direct call). */
+  readonly request?: HopeAuditRequestFacts;
 }
 
 /**
  * Cancel one batch inside the caller's `withOrgContext` transaction. The batch row is locked first, so a
  * double click, a retry after a lost reply, or a cancel racing Mark uploaded sees one consistent status.
  *
+ * The package bytes (`acceptance_report`) and every item's XML (`iqies_validation_result`) are NULLed in the same
+ * transaction: a cancelled package was never transmitted, so it has no CMS 10-year anchor, no scan or eraser reaches it
+ * (`hope_submission` carries no patient id), and keeping its PHI would be retention without a purpose (CW-DS-01). What
+ * stays is the evidence that a package existed: its SHA-256, size, filename and the `cancelled_*` provenance, and each
+ * item's own XML hash and size. The audit event names the hash of the package whose bytes were purged.
+ *
  * Replaying a cancel on an already-cancelled batch is safe and returns it unchanged (the original reason, time
- * and actor stand; nothing is written). RLS hides another tenant's batch, so it reads as absent (404), and so does an
+ * and actor stand; nothing is written, so no second audit event). RLS hides another tenant's batch, so it reads as absent (404), and so does an
  * id that is no uuid (answered before any statement, never sent to a `::uuid` comparison). The lock waits
  * at most `M10_LOCK_TIMEOUT_MS` (then `M10_RECORD_BUSY`: this step was not applied).
  */
@@ -45,8 +60,8 @@ export async function cancelHopeSubmission(
   args: CancelHopeSubmissionArgs,
 ): Promise<LightSubmissionColumns> {
   const id = uuidOrNotFound(args.id, `HOPE submission ${args.id} not found`);
-  // Only the light columns: the package ZIP (`acceptance_report`) stays untouched, neither read under the lock nor
-  // echoed back by the UPDATE.
+  // Only the light columns: the package ZIP (`acceptance_report`) is neither read under the lock nor echoed back by the
+  // UPDATE (which nulls it).
   const [row] = (await takeBoundedLock(
     t,
     (statement) =>
@@ -67,16 +82,19 @@ export async function cancelHopeSubmission(
     "M10_SUBMISSION_CANCEL_NOT_ALLOWED",
     cancelNotAllowedMessage(id, row.status),
   );
-  await t
+  // Every item of a never-uploaded batch is `pending` (an item settles only after Mark uploaded), so this is all of them:
+  // the status flips and the record's XML (PHI: name, DOB, MBI/SSN) is dropped with the package.
+  const cancelledItems = await t
     .update(SUBITEM)
-    .set({ itemStatus: "cancelled", updatedAt: args.now })
+    .set({ itemStatus: "cancelled", iqiesValidationResult: null, updatedAt: args.now })
     .where(
       and(
         eq(SUBITEM.hopeSubmissionId, id),
         eq(SUBITEM.organizationId, args.organizationId),
         eq(SUBITEM.itemStatus, "pending"),
       ),
-    );
+    )
+    .returning({ id: SUBITEM.id });
   const [cancelled] = (await t
     .update(SUB)
     .set({
@@ -84,6 +102,7 @@ export async function cancelHopeSubmission(
       cancelledAt: args.now,
       cancelledByMembershipId: args.actorMembershipId,
       cancelReasonCode: args.reasonCode,
+      acceptanceReport: null,
       updatedAt: args.now,
     })
     .where(and(eq(SUB.id, id), eq(SUB.organizationId, args.organizationId)))
@@ -92,6 +111,17 @@ export async function cancelHopeSubmission(
   // (the id and the tenant the lock matched) selects exactly it, so it always returns the locked row. Kept as defence in
   // depth (a zero-row result fails loudly as a 404 instead of returning `undefined`).
   if (!cancelled) throw new NotFoundError(`HOPE submission ${id} not found`);
+  await auditHopeSubmissionCancelled(t, {
+    organizationId: args.organizationId,
+    membershipId: args.actorMembershipId,
+    request: args.request,
+    submissionId: id,
+    providerEntityId: row.providerEntityId,
+    reasonCode: args.reasonCode,
+    priorStatus: row.status,
+    packageSha256: row.packageSha256 ?? null,
+    itemsCancelled: cancelledItems.length,
+  });
   return cancelled;
 }
 

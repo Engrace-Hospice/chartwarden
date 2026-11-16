@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import { createInMemoryHopeBackend } from "../src/modules/10-hope/index";
 
 const ORG = "org_a";
+// The acting membership a skip / regenerate hands the service for its audit event (no HTTP request in these tests).
+const OPERATOR = { membershipId: "88888888-8888-4888-8888-888888888888" };
 // Hex letters on purpose: the upper-cased and braced spellings differ from the stored text.
 const PATIENT = "1111111a-1111-4111-8111-11111111111b";
 const ADMISSION = "3333333c-3333-4333-8333-33333333333d";
@@ -65,7 +67,7 @@ describe("twin: an id in any spelling names the same record", () => {
     const svc = backend();
 
     const read = await svc.getSchedule(ORG, spell(SCHEDULE));
-    const skipped = await svc.skipSchedule(ORG, spell(SCHEDULE), "other");
+    const skipped = await svc.skipSchedule(ORG, spell(SCHEDULE), "other", OPERATOR);
 
     expect(read.id).toBe(SCHEDULE);
     expect(skipped.status).toBe("skipped");
