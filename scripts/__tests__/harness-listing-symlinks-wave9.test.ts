@@ -77,7 +77,7 @@ describe("live suite listing: a symlink is judged by its target", () => {
     );
   });
 
-  it("a link to a file is judged by its own name: a .live.test.ts link is a suite", () => {
+  it("a link to a file is judged by its own name and its target's: a .live.test.ts link is a suite", () => {
     withTree(
       (root) => {
         touch(root, "apps/backend/__tests__/real.live.test.ts");
@@ -87,8 +87,11 @@ describe("live suite listing: a symlink is judged by its target", () => {
       (root) => {
         const listing = listLiveSuiteFiles(root);
         expect(listing.complete).toBe(true);
+        // Wave 10, B11: a link is judged by its own name AND by the name of the file it points at, so `plain-link.ts -> real.live.test.ts`
+        // is listed too (vitest would run it through a glob that matches the link's name; a filter that names it must ask).
         expect(listing.files.slice().sort()).toEqual([
           "apps/backend/__tests__/alias.live.test.ts",
+          "apps/backend/__tests__/plain-link.ts",
           "apps/backend/__tests__/real.live.test.ts",
         ]);
         expect(ask(root, "bunx vitest run alias")).toBe("ask");

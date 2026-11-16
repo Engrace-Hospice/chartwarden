@@ -11,12 +11,12 @@
  * still name the usual ones. The listing says whether it saw everything (`complete`): a directory over the cap, one it
  * could not read and a symlink under a parent (a directory behind it is not walked) make it incomplete, and the rules then
  * answer "may match" (ask), as the protected-names listing does (wave 8, CR6-6). A symlink is decided by its target (wave 9,
- * W9-0): a link to a file is a file, a dangling link holds nothing, and only a link to a directory is a gap. Not pure: it reads the file system (a test
+ * W9-0): a link to a file is a file (judged by its own name and by the name of what it points at, wave 10, B11), a dangling link holds nothing, and only a link to a directory is a gap. Not pure: it reads the file system (a test
  * passes its own reader).
  */
 import { readdirSync } from "node:fs";
 import type { Listing } from "./listing";
-import { linkTarget } from "./symlink-target";
+import { linkRealName, linkTarget } from "./symlink-target";
 
 /** Directories whose direct children are listed as locations of env files. */
 const PARENT_DIRECTORIES: readonly string[] = ["apps", "services", "packages", "deploy"];
@@ -36,6 +36,8 @@ export type DirectoryReader = (dir: string) => readonly {
   readonly isDirectory: boolean;
   /** A symlink to a directory (or one that cannot be resolved): a directory behind one is not walked, so the listing is not complete. */
   readonly isSymbolicLink?: boolean;
+  /** The name of the file a link to a file points at: a link is judged by its own name and by this one. */
+  readonly targetName?: string;
 }[];
 
 /** A symlink is decided by its target (wave 9, W9-0): a link to a file is a file, a dangling link is gone, the rest is a gap. */
@@ -47,7 +49,15 @@ const readFromDisk =
       const target = entry.isSymbolicLink() ? linkTarget(`${path}/${entry.name}`) : null;
       if (target === "dangling") return [];
       const isGap = target === "directory" || target === "unreadable";
-      return [{ name: entry.name, isDirectory: entry.isDirectory(), isSymbolicLink: isGap }];
+      const targetName = target === "file" ? linkRealName(`${path}/${entry.name}`) : null;
+      return [
+        {
+          name: entry.name,
+          isDirectory: entry.isDirectory(),
+          isSymbolicLink: isGap,
+          ...(targetName === null ? {} : { targetName }),
+        },
+      ];
     });
   };
 
@@ -77,10 +87,12 @@ export function listLiveEnvFiles(
   const found = new Set<string>();
   for (const dir of dirs.slice(0, MAX_DIRECTORIES)) {
     for (const entry of entriesOf(dir)) {
-      if (entry.isDirectory || !ENV_FILE_NAME.test(entry.name) || TEMPLATE_NAME.test(entry.name)) {
-        continue;
-      }
-      found.add(dir === "" ? entry.name : `${dir}/${entry.name}`);
+      if (entry.isDirectory) continue;
+      // A link to a file is judged by its own name and by the name of the file it points at.
+      const named = [entry.name, entry.targetName ?? ""].some(
+        (name) => ENV_FILE_NAME.test(name) && !TEMPLATE_NAME.test(name),
+      );
+      if (named) found.add(dir === "" ? entry.name : `${dir}/${entry.name}`);
     }
   }
   return { files: [...found], complete };
