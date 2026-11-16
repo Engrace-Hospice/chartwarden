@@ -8,7 +8,6 @@ import {
   enrolPasskey,
   expectNoAxeViolations,
   signInAs,
-  signOut,
   stepUpWithPasskey,
 } from "../fixtures/helpers";
 import { openPatientChartByLastName } from "../fixtures/patients";
@@ -24,10 +23,11 @@ test.describe("Care Plan workspace", () => {
 
   // Selectors follow the shipped UI (care-plan-view.tsx): the page h1 is "Plan of Care"; the tabs are
   // Goals / Interventions / Problems / Review & Sign / Revisions; the success notices are the exact
-  // strings the view renders. An ADMIN authors and sends the version for signatures; ONE RN login then
-  // signs ONE slot (the RN case manager), so this proves authoring + finalize + a recorded signature, not
-  // quorum/activation (the quorum rule is asserted server-side). Signing needs a signer role, which the
-  // admin account lacks: it holds every permission but no clinical role, so the sign route refuses it.
+  // strings the view renders. ONE RN login authors the plan, sends the version for signatures and signs
+  // ONE slot (the RN case manager), so this proves authoring + finalize + a recorded signature, not
+  // quorum/activation (the quorum rule is asserted server-side). It is the RN, not the admin, because an
+  // intervention is authored under a discipline and the admin account holds every permission but no
+  // clinical discipline role (`discipline_scope` refuses it), and signing needs a signer role too.
   //
   // Re-runnable: the single signature leaves the version in review, where nothing can be authored, so
   // a second run returns it to draft first (which invalidates that signature) instead of assuming a
@@ -35,7 +35,7 @@ test.describe("Care Plan workspace", () => {
   test("Admission-bootstrapped plan can be authored, sent for signatures, and signed once", async ({
     page,
   }) => {
-    await signInAs(page, ADMIN_ACCOUNT());
+    await signInAs(page, RN_ACCOUNT());
     const planPath = `/patients/${patientId}/care-plan`;
     await page.goto(planPath);
 
@@ -110,8 +110,6 @@ test.describe("Care Plan workspace", () => {
     // The RN case manager signs. `care_plan.sign` is guarded by requireStepUp, so do the real passkey
     // step-up before the gated write (same pattern as encounters.spec.ts / idg.spec.ts), landing back on
     // the plan.
-    await signOut(page);
-    await signInAs(page, RN_ACCOUNT());
     await enrolPasskey(page);
     await stepUpWithPasskey(page, planPath);
     await expect(page.getByRole("heading", { name: "Plan of Care" })).toBeVisible();
