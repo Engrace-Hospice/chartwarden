@@ -310,14 +310,21 @@ export const MarkSubmissionUploadedSchema = Type.Object({
   iqiesSubmissionReference: Type.Optional(referenceString()),
 });
 /**
- * A result-row token is the same charset, or EMPTY (a blank cell of a pasted report names nothing, as an absent key does: a blank
- * `iqiesRecordId` is never stored). A value of only spaces is refused like a reference is.
+ * A result-row token (`severity`, `code`, `itemCode`, `iqiesRecordId`) is the same charset, or EMPTY (a blank cell of a pasted
+ * report names nothing, as an absent key does: a blank `iqiesRecordId` is never stored). A value of only spaces is refused like a
+ * reference is.
  */
 export const HOPE_RESULT_TOKEN_PATTERN = "^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/-]*)?$";
-const resultToken = () =>
-  Type.Optional(
-    Type.String({ maxLength: HOPE_RESULT_TOKEN_MAX_LENGTH, pattern: HOPE_RESULT_TOKEN_PATTERN }),
-  );
+/**
+ * The status text of a row (`status`, `result`, `outcome`) is a phrase CMS wrote ("received, pending review", "Accepted (2
+ * warnings)"), classified by words (`classifyStatusText`): the same charset plus `, ; ( )` after the first character. It is kept
+ * only in the scrubbed raw-result columns, never in a column the audit trail copies, and the identifier screen still reads it.
+ */
+export const HOPE_RESULT_STATUS_PATTERN = "^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/(),;-]*)?$";
+const resultString = (pattern: string) =>
+  Type.Optional(Type.String({ maxLength: HOPE_RESULT_TOKEN_MAX_LENGTH, pattern }));
+const resultToken = () => resultString(HOPE_RESULT_TOKEN_PATTERN);
+const resultStatusText = () => resultString(HOPE_RESULT_STATUS_PATTERN);
 export const ImportSubmissionResultSchema = Type.Object({
   reportReference: Type.Optional(referenceString()),
   // Bounded: every row is stored (report, item result, finding), so an unbounded body is a write amplifier.
@@ -325,9 +332,9 @@ export const ImportSubmissionResultSchema = Type.Object({
     Type.Object(
       {
         assessmentId: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
-        status: resultToken(),
-        result: resultToken(),
-        outcome: resultToken(),
+        status: resultStatusText(),
+        result: resultStatusText(),
+        outcome: resultStatusText(),
         severity: resultToken(),
         code: resultToken(),
         itemCode: resultToken(),

@@ -2741,6 +2741,19 @@ describe("the CMS result-row tokens: a charset in the schema, patient identifier
     await ctx.app.close();
   });
 
+  it("a status phrase may carry commas, semicolons and parentheses (a code may not)", async () => {
+    const ctx = makeServer({ packagedSubmission: true });
+
+    const phrase = await importRows(ctx, [
+      row({ status: "received, pending review (2 notes); ok" }),
+    ]);
+    const code = await importRows(ctx, [row({ code: "E1, E2" })]);
+
+    expect(phrase.statusCode).toBe(409); // past the schema: the batch is only `packaged`
+    expect(code.statusCode).toBe(422);
+    await ctx.app.close();
+  });
+
   it("the codes, severities and ids CMS sends still pass (letters, digits, dashes, dots, underscores, colons, slashes, inner spaces)", async () => {
     const ctx = makeServer({ packagedSubmission: true });
 
