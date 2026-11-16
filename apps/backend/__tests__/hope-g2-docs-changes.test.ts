@@ -208,11 +208,13 @@ describe("CHANGES.md: behaviour changes of this work have an entry that matches 
     expect(SIGNING_ENTRY).toContain("no record is inserted and the SFV stays open");
   });
 
-  it("the deadline-override audit note says whether a justification was supplied, never that it is always true", () => {
+  it("the deadline-override audit note says the typed justification is kept and screened, never that it is dropped", () => {
     expect(NEWEST).toContain(
-      "the context records only whether one was supplied (`justificationSupplied`)",
+      "It still carries the typed justification text (`context.justification`, trimmed)",
     );
-    expect(NEWEST).not.toContain("`justificationSupplied: true` only");
+    expect(NEWEST).toContain("screened for patient identifiers");
+    expect(NEWEST).not.toContain("`justificationSupplied`");
+    expect(NEWEST).not.toContain("no longer carries the typed justification");
   });
 });
 

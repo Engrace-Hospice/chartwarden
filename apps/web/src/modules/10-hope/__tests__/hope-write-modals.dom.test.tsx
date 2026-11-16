@@ -290,6 +290,20 @@ describe("the recording modal past the late deadline", () => {
     );
   });
 
+  it("tells the admin the justification goes into the audit trail and must not name a patient", () => {
+    const { dialog } = renderRecord(
+      vi.fn(async () => ok({ id: "created-hint" })),
+      {
+        window: EXPIRED_WINDOW,
+      },
+    );
+    fireEvent.click(override());
+
+    expect(
+      within(dialog).getByText(/do not enter a patient's name or a Social Security/i),
+    ).toBeTruthy();
+  });
+
   it("sends neither without the override ticked", async () => {
     const post = vi.fn(async () => ok({ id: "created-4" }));
     const { dialog } = renderRecord(post, { window: EXPIRED_WINDOW });

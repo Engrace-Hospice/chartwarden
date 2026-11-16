@@ -626,7 +626,7 @@ export function HopeRecordModal({
             {canOverride && adminOverride ? (
               <TextAreaField
                 label="Justification for the override"
-                hint={`At least ${OVERRIDE_JUSTIFICATION_MIN} characters. It is recorded in the audit trail when the override is used.`}
+                hint={`At least ${OVERRIDE_JUSTIFICATION_MIN} characters. It is recorded in the audit trail when the override is used, so do not enter a patient's name or a Social Security or Medicare number.`}
                 value={overrideJustification}
                 onChange={(e) => setOverrideJustification(e.target.value)}
                 maxLength={OVERRIDE_JUSTIFICATION_MAX}

@@ -97,8 +97,11 @@ longer open now answers `409` (below). `POST /hope/submissions/assemble` can now
   within one transaction, as one update.
 - Audit rows: the deadline-override event (`hope.late_deadline_override`) now carries the same request facts as the signature events
   (`actor_user_id`, `request_id`, `source_ip`, sanitised `user_agent`, a server-generated `correlation_id`, the client's own id only in
-  `context.clientCorrelationId`). It no longer carries the typed justification text: the context records only whether one was
-  supplied (`justificationSupplied`). User agents also lose lone surrogates, private-use and unassigned code points.
+  `context.clientCorrelationId`). It still carries the typed justification text (`context.justification`, trimmed): the event is
+  immutable and is the only record of why the cutoff was lifted. Because that text is free text, `adminOverrideJustification` is now
+  screened for patient identifiers on `POST .../hope/timepoints` and `POST .../hope/sfv`: an SSN- or MBI-shaped value is refused with
+  `422 EVIDENCE_LOOKS_LIKE_PHI` (field `adminOverrideJustification`, the text never echoed), and the 20 to 1000 character rule is
+  measured after the surrounding whitespace is trimmed (a blank or padded one is a `422`). User agents also lose lone surrogates, private-use and unassigned code points.
 - **First tick after deploy.** The first watchdog run after this release pages once for every Symptom Follow-Up Visit that is already
   overdue, and for every SFV missed or schedule expired in the last 7 days, whose alert was never recorded (the alert used to be
   emitted on the status change only, and a failed emit was lost). That one-time burst is expected; each such alert is then recorded and not

@@ -43,8 +43,8 @@ judges lateness and the hard cutoff on the LATER of the client's `targetDate` an
 re-entered after the schedule's `window_closes_at` it is a late capture that needs a typed late-completion reason from
 the existing codelist, and re-entered after `late_deadline_at` it is refused (`409 M10_TIMEPOINT_EXPIRED`) unless a holder
 of `hope.admin.late_deadline_override` lifts the cutoff for that one capture. The override writes the critical
-`hope.late_deadline_override` audit event, which records only that a justification was supplied (it carries no
-`lateOverrideReason` and the justification text is not persisted); it does not move the schedule's own deadline.
+`hope.late_deadline_override` audit event, which records the admin's typed justification (screened for patient
+identifiers; it carries no `lateOverrideReason`); it does not move the schedule's own deadline.
 72-hour enforcement is organisational, not technical.
 
 **Not built** (no source file under `apps/`, `packages/`, `scripts/` or `architecture/` defines or emits any of these
