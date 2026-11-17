@@ -11,6 +11,7 @@
 
 import { localCommandOfOption, optionCommandStrings, sshLikeCommands } from "./option-commands";
 import { commandOptionValues } from "./shell-command-string";
+import { SSH_VALUE_LETTERS, readCluster } from "./ssh-hops";
 
 /** Homebrew's GNU tools carry a `g` prefix on macOS (`gxargs -a FILE`, `gnice`): each is the wrapper it prefixes. */
 const GNU_PREFIXED = /^g(xargs|nice|stdbuf|env|nohup|time|timeout|chroot)$/;
@@ -46,8 +47,6 @@ function rshOption(args: readonly string[]): string[] {
   return out;
 }
 
-const SSH_VALUE_FLAG = /^-[BbcDEeFIiJLlmOopQRSWw]$/;
-
 /**
  * The operands of an `ssh` command line (host, then the remote command), and the programs its options run here. OpenSSH reads
  * options up to the first word after the host; from there on every word belongs to the remote command, dash words included
@@ -67,12 +66,13 @@ function sshWords(args: readonly string[]): { operands: string[]; local: string[
       optionsEnded = true;
       continue;
     }
-    const given = a === "-o" ? (args[++k] ?? "") : a.startsWith("-o") ? a.slice(2) : "";
-    const command = localCommandOfOption(given);
-    if (command !== undefined) local.push(command);
-    else if (given !== "") continue;
-    else if (SSH_VALUE_FLAG.test(a)) k++;
-    else if (!a.startsWith("-") || optionsEnded) operands.push(a);
+    // An option word is read as ssh reads it: a cluster ends at its first valued letter (`-qi KEY`, `-NL spec`, `-vo Option=x`, R9-ADV-15).
+    const cluster = a.startsWith("-") ? readCluster(SSH_VALUE_LETTERS, a, args[k + 1]) : null;
+    if (cluster !== null) {
+      if (cluster.usedNext) k++;
+      const command = cluster.letter === "o" ? localCommandOfOption(cluster.value) : undefined;
+      if (command !== undefined) local.push(command);
+    } else if (!a.startsWith("-") || optionsEnded) operands.push(a);
   }
   return { operands, local };
 }

@@ -1048,10 +1048,12 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
   if (parsed.unplaced !== undefined)
     walk.verdicts.push(ask(UNPLACED_WRAPPER_REASON(parsed.unplaced)));
   // The engine's variables count whether the command sets them or an earlier statement exported them (`export DOCKER_HOST=ssh://H; docker exec …`).
-  const remote = remoteAccessReason(parsed.prog, parsed.args, [
-    ...variableStatements,
-    ...parsed.assigns,
-  ]);
+  const remote = remoteAccessReason(
+    parsed.prog,
+    parsed.args,
+    [...variableStatements, ...parsed.assigns],
+    isLocalHost,
+  );
   if (remote !== null) walk.verdicts.push(ask(remote));
   // A SQL client's own shell escapes and file commands (`sqlite3 .shell`, `psql \\!`, `mysql system`).
   walk.verdicts.push(

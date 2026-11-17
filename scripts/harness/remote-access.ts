@@ -8,6 +8,8 @@
  * a non-local ssh. A text heuristic: a spelling this table does not know passes. Pure.
  */
 
+import { remoteHopReason } from "./ssh-hops";
+
 /** The value options that stand before a subcommand and must not be read as one (`kubectl -n prod exec …`). */
 const VALUE_OPTION: ReadonlyMap<string, RegExp> = new Map([
   [
@@ -192,7 +194,10 @@ export function remoteAccessReason(
   prog: string,
   args: readonly string[],
   assigns: readonly string[] = [],
+  isLocalHost: (host: string) => boolean = () => false,
 ): string | null {
+  const hop = remoteHopReason(prog, args, isLocalHost);
+  if (hop !== null) return reason(hop);
   if (prog === "podman" && args[0] === "machine" && args[1] === "ssh")
     return reason("`podman machine ssh`");
   if (DOCKER_ENGINES.has(prog)) return dockerReason(prog, args, assigns);
