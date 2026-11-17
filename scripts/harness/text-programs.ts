@@ -7,7 +7,8 @@
  * `git -c core.pager=psql`, `find -exec`, `xargs`. They run the client with the variable in its environment.
  *
  * - `CANNOT_EXECUTE`: only programs that cannot start another program by any option: they print, search by pattern, count,
- *   move or change files, or set a variable. Nothing that has a pager, an editor, an `-exec` or a `system` function is on it.
+ *   move or change files, or set a variable. Nothing that has a pager, an editor, an `-exec` or a `system` function is on it
+ *   (`ag --pager CMD`, `ack --pager=CMD` and `rg --pre CMD` start one, so those three are inert only without that option; wave 12, F-6).
  * - `awk`, `sed` and `sort` are exempt only when their words are proven inert: an awk program with no `system(`, no pipe and no
  *   `getline`, a sed script of `p`, `d`, `q`, `n`, `=`, `y` and `s` commands whose flags are not `e` or `w`, a sort with no
  *   `--compress-program`. A program text the reader cannot place (`-f FILE`, a script it cannot split) is not proven inert.
@@ -17,26 +18,53 @@
  */
 
 const CANNOT_EXECUTE =
-  /^(?:echo|printf|cat|ls|cd|pwd|head|tail|wc|grep|egrep|fgrep|rg|ag|ack|cut|tr|uniq|tee|test|\[|\[\[|true|false|:|which|type|date|sleep|mkdir|touch|rm|cp|mv|ln|chmod|chown|diff|jq|yq|export|declare|typeset|readonly|local|unset|set|alias|read|wait|exit|return|kill|basename|dirname|realpath|stat|file)$/;
+  /^(?:echo|printf|cat|ls|cd|pwd|head|tail|wc|grep|egrep|fgrep|cut|tr|uniq|tee|test|\[|\[\[|true|false|:|which|type|date|sleep|mkdir|touch|rm|cp|mv|ln|chmod|chown|diff|jq|yq|export|declare|typeset|readonly|local|unset|set|alias|read|wait|exit|return|kill|basename|dirname|realpath|stat|file)$/;
 
 const AWK = /^[gmn]?awk$/;
 
-/** awk options that take the next word as their value. */
-const AWK_VALUE_OPTION = /^-[Fvf]$|^--(?:field-separator|assign|file)$/;
-const AWK_FILE_OPTION = /^-f$|^--file(?:=|$)|^-f./;
+/**
+ * The awks differ in what an option means: macOS's awk (BWK awk 20200816, recorded: `fixtures/harness-db-tool-options/awk/`) takes `-F`, `-v` and
+ * `-f` with a value and IGNORES every other option letter ("unknown option -i ignored"), so the next word is the program; gawk (`-e SRC`,
+ * `--source`, `-i FILE`, `-l LIB`, `-E FILE`, `-L X`) and mawk (`-W opt`) take a value there. `awk` is whichever the machine has, and gawk and
+ * mawk are not installed here (unverified), so only the three options every awk reads with a value skip their word; EVERY other word is a
+ * candidate program, and the value of an option one awk ignores is judged as the program it is under the awk that ignores it.
+ */
+const AWK_UNIVERSAL_VALUE_OPTION = /^-[Fvf]$/;
+/** Options that take the program from a FILE the guard cannot read: `-f`, gawk's `--file`, `-E`/`--exec`, `-i`/`--include`, mawk's `-W exec`. */
+const AWK_PROGRAM_FILE_OPTION = /^-[fEi]|^--(?:file|exec|include)(?:=|$)|^-W\s*exec/;
 
 /** An awk program longer than this is not read for the commands it runs (its string literals are matched pairwise): not proven inert, and it asks. */
 const MAX_AWK_PROGRAM_CHARS = 16 * 1024;
 
-/** The program text of an awk command line, or undefined when it comes from a file (`-f FILE`). */
-function awkProgram(args: readonly string[]): string | undefined {
+export interface AwkPrograms {
+  /** Every word that can be the program text, whichever awk runs it: the bare words, the value of `-e` and `--source=`. */
+  readonly programs: readonly string[];
+  /** A program comes from a file (`-f FILE`): not readable here, a limit the doc states. */
+  readonly fromFile: boolean;
+}
+
+/**
+ * The candidate program texts of an awk command line (wave 12, F-6; round-9 R9-CR-4). Wave 11 took the first non-option word as THE program
+ * and skipped the value of `-F -v -f` only, so `gawk -i inplace 'BEGIN{system("psql -c 1")}'` judged `inplace` and never the program. Now every
+ * word that is not an option and not the value of `-F`, `-v` or `-f` is judged (the file operands too: a name has no `system(` in it),
+ * and so is the attached value of `-e` and `--source=`.
+ */
+export function awkPrograms(args: readonly string[]): AwkPrograms {
+  const programs: string[] = [];
+  let fromFile = false;
+  let literal = false;
   for (let k = 0; k < args.length; k++) {
     const a = args[k] ?? "";
-    if (AWK_FILE_OPTION.test(a)) return undefined;
-    if (AWK_VALUE_OPTION.test(a)) k++;
-    else if (!a.startsWith("-")) return a;
+    if (literal || !a.startsWith("-") || a === "-") programs.push(a);
+    else if (a === "--") literal = true;
+    else {
+      fromFile ||= AWK_PROGRAM_FILE_OPTION.test(a) || (a === "-W" && args[k + 1] === "exec");
+      if (AWK_UNIVERSAL_VALUE_OPTION.test(a)) k++;
+      else if (/^-e./.test(a)) programs.push(a.slice(2));
+      else if (/^--source=/.test(a)) programs.push(a.slice(a.indexOf("=") + 1));
+    }
   }
-  return "";
+  return { programs, fromFile };
 }
 
 const AWK_RUNS = /\bsystem\s*\(|(?<!\|)\|(?!\|)|\bgetline\b/;
@@ -93,15 +121,16 @@ const gitIsInert = (args: readonly string[]): boolean =>
 export function textProgramIsInert(prog: string, args: readonly string[]): boolean {
   if (CANNOT_EXECUTE.test(prog)) return true;
   if (AWK.test(prog)) {
-    const program = awkProgram(args);
+    const { programs, fromFile } = awkPrograms(args);
     return (
-      program !== undefined &&
-      program.length <= MAX_AWK_PROGRAM_CHARS &&
-      !AWK_RUNS.test(maskAwk(program))
+      !fromFile &&
+      programs.every((p) => p.length <= MAX_AWK_PROGRAM_CHARS && !AWK_RUNS.test(maskAwk(p)))
     );
   }
   if (prog === "sed") return sedIsInert(args);
   if (prog === "sort") return sortIsInert(args);
+  if (prog === "ag" || prog === "ack") return !args.some((a) => /^--pager/.test(a));
+  if (prog === "rg") return !args.some((a) => /^--(?:pre|hostname-bin)/.test(a));
   return (prog === "git" || prog === "gh") && gitIsInert(args);
 }
 
@@ -183,14 +212,26 @@ export interface AwkCommands {
   readonly unplaced: boolean;
 }
 
-/** The commands an awk program runs through `system(…)`, `"…" | getline` and `print … | "…"`. */
+/** The commands an awk program runs through `system(…)`, `"…" | getline` and `print … | "…"`, in every candidate program of the command line. */
 export function awkCommandStrings(prog: string, args: readonly string[]): AwkCommands {
   if (!AWK.test(prog)) return { commands: [], unplaced: false };
-  const program = awkProgram(args);
-  if (program !== undefined && program.length > MAX_AWK_PROGRAM_CHARS)
-    return { commands: [], unplaced: true };
   // A program file (`-f FILE`) is not readable here: a limit the doc states, no ask for every `awk -f`.
-  if (program === undefined) return { commands: [], unplaced: false };
+  const commands: string[] = [];
+  let unplaced = false;
+  for (const program of awkPrograms(args).programs) {
+    if (program.length > MAX_AWK_PROGRAM_CHARS) {
+      unplaced = true;
+      continue;
+    }
+    const found = commandsOfProgram(program);
+    commands.push(...found.commands);
+    unplaced ||= found.unplaced;
+  }
+  return { commands, unplaced };
+}
+
+/** The commands one awk program text runs. */
+function commandsOfProgram(program: string): AwkCommands {
   const masked = maskAwk(program);
   const commands: string[] = [];
   let unplaced = false;
