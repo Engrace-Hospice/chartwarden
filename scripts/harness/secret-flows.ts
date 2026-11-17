@@ -17,22 +17,25 @@
  */
 import { STATEMENT_CAP_MARKER, expandVariables, valuesByName } from "./db-variables";
 import { inlineScriptText } from "./inline-code";
+import {
+  type FlowPart,
+  fileOnlyTargets,
+  readFiles,
+  resolveEnvironmentAliases,
+  routeStatements,
+} from "./secret-flow-routes";
 import { isGuardedVariable, isSecretVariable } from "./secret-reads";
 
-/** One simple command, as far as this module reads it. */
-export interface FlowPart {
-  readonly prog: string;
-  readonly args: readonly string[];
-  /** Here-strings (`<<< word`) the command reads. */
-  readonly strings: readonly string[];
-}
+export type { FlowPart };
 
 /** Programs whose output is what they were given: stdin, operands or both. */
 const PRINTING =
   /^(?:echo|printf|cat|tee|head|tail|tac|rev|tr|cut|sed|awk|gawk|mawk|nawk|base64|xxd|od|hexdump|fold|nl|paste|column|expand|unexpand|fmt|pr|less|more|bat|grep|rg|sort|uniq|wc|jq|yq|diff|cmp|strings)$/;
 
 const REFERENCE = /\$\{?!?([A-Za-z_]\w*)/g;
-const INDIRECT = /\$\{!([A-Za-z_]\w*)\}/g;
+/** `${!K}`, `${!a[0]}` (an array element names the variable) and `${!1}` (a positional parameter does). */
+const INDIRECT = /\$\{!([A-Za-z_]\w*|\d+)(\[[^\]]*\])?\}/g;
+const IDENTIFIER = /^[A-Za-z_]\w*$/;
 const DECLARERS = /^(?:declare|typeset|export|readonly|local)$/;
 
 const GUARDED_REASON_FLOW =
@@ -51,16 +54,12 @@ const isGuardedName = (name: string): boolean => isGuardedVariable(name) || isSe
  * printed without a `console.log` the sink pattern could see, so it is wrapped in one (`node -pe 'process.env.X'` prints X).
  */
 export function leakCheckText(prog: string, args: readonly string[]): string {
-  const text = inlineScriptText(prog, args);
+  const text = resolveEnvironmentAliases(inlineScriptText(prog, args));
   const prints =
     /^(?:node|bun|deno)$/.test(prog) &&
     args.some((a) => a === "--print" || /^-[A-Za-z]*p[A-Za-z]*$/.test(a));
   return prints ? `console.log(${args.filter((a) => !a.startsWith("-")).join(" ")})` : text;
 }
-
-/** Does the command text send its standard output to a file (`> f`, `>> f`, `>| f`, `> /dev/null`; not `2> f` or `>&2`)? */
-const writesStdoutToFile = (text: string): boolean =>
-  /(?<![0-9&<>])>[>|]?\s*(?!&)[^\s>&|]/.test(text);
 
 /** The names a text references, `$NAME` and `${NAME}` alike (`${!K}` names K). */
 const referencedNames = (text: string): string[] =>
@@ -69,20 +68,38 @@ const referencedNames = (text: string): string[] =>
 /** At most this many readings of one text: more is NOT judged by its first few, it counts as a leak (the human decides). */
 const MAX_READINGS = 8;
 
+/**
+ * The variable names an indirect expansion may read, or null when it cannot be placed: a positional parameter (`${!1}`), a name no statement
+ * sets, a name one of whose values is built at run time, an array element of an array no statement spells out. `a=(X Y)` with `${!a[0]}`
+ * reads X or Y (every element: the index is not placed).
+ */
+function indirectNames(
+  m: RegExpMatchArray,
+  values: ReadonlyMap<string, readonly string[]>,
+): string[] | null {
+  const name = m[1] ?? "";
+  const known = values.get(name) ?? [];
+  if (!IDENTIFIER.test(name) || known.length === 0 || known.some((v) => /[$`]/.test(v)))
+    return null;
+  const elements = known.flatMap((value) => {
+    const array = /^\(([^()]*)\)$/.exec(value);
+    return m[2] !== undefined && array ? (array[1] ?? "").split(/\s+/) : [value];
+  });
+  const names = elements.map((e) => e.replace(/^["']|["']$/g, "")).filter((e) => e !== "");
+  return names.every((n) => IDENTIFIER.test(n)) && names.length > 0 ? names : null;
+}
+
 /** `${!K}` with each value of K substituted: `${!K}` with K=M34_TENANT_KEK reads `$M34_TENANT_KEK`. */
 function resolveIndirection(
   text: string,
   values: ReadonlyMap<string, readonly string[]>,
 ): string[] {
-  const names = [...new Set([...text.matchAll(INDIRECT)].map((m) => m[1] ?? ""))];
-  if (names.length === 0) return [text];
   let readings = [text];
-  for (const name of names) {
-    const literals = (values.get(name) ?? []).filter((value) => !/[$`]/.test(value));
+  for (const m of new Map([...text.matchAll(INDIRECT)].map((x) => [x[0], x])).values()) {
+    const names = indirectNames(m, values);
+    if (names === null) continue;
     readings = readings.flatMap((reading) =>
-      literals.length === 0
-        ? [reading]
-        : literals.map((value) => reading.replaceAll(`\${!${name}}`, `\${${value}}`)),
+      names.map((n) => reading.replaceAll(m[0], `\${${n}}`)),
     );
     if (readings.length > MAX_READINGS) break;
   }
@@ -104,14 +121,11 @@ function readingsOf(
   return { readings: out.map((reading) => reading.replace(/\\\$/g, "$")), overflow };
 }
 
-/** Does this text hold an indirect expansion whose name is not known (`${!K}` for a K no statement sets to a literal)? */
+/** Does this text hold an indirect expansion whose name is not known (`${!K}` for a K no statement sets to a literal, `${!1}`)? */
 const hasUnknownIndirection = (
   text: string,
   values: ReadonlyMap<string, readonly string[]>,
-): boolean =>
-  [...text.matchAll(INDIRECT)].some(
-    (m) => !(values.get(m[1] ?? "") ?? []).some((value) => !/[$`]/.test(value)),
-  );
+): boolean => [...text.matchAll(INDIRECT)].some((m) => indirectNames(m, values) === null);
 
 /** The names a statement word assigns from a guarded, secret or tainted source, to a fixed point. */
 function taintedNames(
@@ -156,10 +170,28 @@ function leaks(
   );
 }
 
+/** `printenv NAME` of a name a statement or an inline assignment set from a guarded value prints that value. */
+function printenvReads(
+  part: FlowPart,
+  values: ReadonlyMap<string, readonly string[]>,
+  tainted: ReadonlySet<string>,
+): boolean {
+  if (part.prog !== "printenv") return false;
+  const local = new Set(tainted);
+  for (const assignment of part.assigns ?? []) {
+    const eq = assignment.indexOf("=");
+    if (eq > 0 && leaks(assignment.slice(eq + 1), values, tainted))
+      local.add(assignment.slice(0, eq));
+  }
+  return part.args.some((name) => !name.startsWith("-") && local.has(name));
+}
+
 /**
  * Why this text prints a guarded variable by a route other than `echo $NAME`, or null. `statements` are the `NAME=value` words the
  * variable statements of this text and the texts around it assign (`variableStatementWords`); `bodies` the here-document bodies of each
- * command, in order.
+ * command, in order. A text past the tracker's cap asks outright (F-1); `read`, `mapfile`, `printf -v` and `declare -n` bind names to a
+ * guarded value like an assignment (`secret-flow-routes.ts`); a redirect to a terminal-like target is not a file; a file the value was
+ * written to and a later command reads back prints it.
  */
 export function secretFlowReason(
   parts: readonly FlowPart[],
@@ -167,19 +199,29 @@ export function secretFlowReason(
   statements: readonly string[],
   partTexts: readonly string[] = [],
 ): string | null {
-  const values = valuesByName(statements);
-  if (values.has(STATEMENT_CAP_MARKER)) return STATEMENT_CAP_REASON;
-  const tainted = taintedNames(statements, values);
+  const stated = valuesByName(statements);
+  if (stated.has(STATEMENT_CAP_MARKER)) return STATEMENT_CAP_REASON;
+  const all = [...statements, ...routeStatements(parts, bodies, stated)];
+  const values = valuesByName(all);
+  const tainted = taintedNames(all, values);
+  const written = new Set<string>();
   for (const [index, part] of parts.entries()) {
+    const text = partTexts[index] ?? "";
     if (DECLARERS.test(part.prog) && part.args.some((a) => /^-[A-Za-z]*p[A-Za-z]*$/.test(a))) {
       const names = part.args.filter((a) => !a.startsWith("-") && !a.includes("="));
       if (names.some((name) => isGuardedName(name) || tainted.has(name))) return SECRET_FLOW_REASON;
     }
+    if (printenvReads(part, values, tainted)) return SECRET_FLOW_REASON;
     if (!PRINTING.test(part.prog)) continue;
-    // `cat > file <<EOF ... $NAME ... EOF` writes the text to a file: it does not reach the transcript (`tee FILE` still prints).
-    if (writesStdoutToFile(partTexts[index] ?? "")) continue;
-    const texts = [...part.args, ...part.strings, ...(bodies[index] ?? [])];
-    if (texts.some((text) => leaks(text, values, tainted))) return SECRET_FLOW_REASON;
+    if (readFiles(part, text).some((file) => written.has(file))) return SECRET_FLOW_REASON;
+    const leaking = [...part.args, ...part.strings, ...(bodies[index] ?? [])].some((t) =>
+      leaks(t, values, tainted),
+    );
+    // `cat > file <<EOF ... $NAME ... EOF` writes the text to a file: it does not reach the transcript (`tee FILE` still prints);
+    // a later command of the same text that reads the file back does (`written`).
+    const files = fileOnlyTargets(text);
+    if (files !== null) for (const file of leaking ? files : []) written.add(file);
+    else if (leaking) return SECRET_FLOW_REASON;
   }
   return null;
 }
