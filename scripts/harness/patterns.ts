@@ -111,8 +111,7 @@ import {
   scanShell,
   splitCommand,
 } from "./shell-lex";
-import { EXEC_SWEEP_READER } from "./sibling-sweeps";
-import { siblingCommands } from "./sibling-sweeps";
+import { EXEC_SWEEP_READER, siblingCommands } from "./sibling-sweeps";
 import { stdinTexts } from "./stdin-texts";
 import { readTar } from "./tar-grammar";
 import { isToolchainPath } from "./toolchain-paths";

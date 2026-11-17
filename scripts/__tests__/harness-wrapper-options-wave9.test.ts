@@ -309,17 +309,28 @@ const DUMMY_OPERANDS: ReadonlyMap<string, string> = new Map([
 
 describe("every long option that takes a value, in both spellings, leaves the command visible", () => {
   // `flock --command STR` and `runuser --command STR` are command lines of their own, judged as one (`wrapper-specs.ts`:
-  // `stays`); `env --split-string STR` is the command itself (wave 10: its words are run, so the words after it are its arguments).
+  // `stays`). `env --split-string STR` IS the command (its words are run), so its row hands it the guarded command as the string
+  // (wave 11 removed the skip that let `env -S` regress unseen in round 8: `env-split.ts` has its own test file).
   const rows = [...WRAPPER_LONG_VALUE]
     .flatMap(([wrapper, names]) => names.map((name) => [wrapper, name] as const))
     .filter(
       ([wrapper, name]) =>
         name !== "command" &&
-        !(wrapper === "env" && name === "split-string") &&
         // `gdb` runs a command only behind `--args`; the wave-10 property test covers it
         wrapper !== "gdb",
     );
   it.each(rows)("%s --%s", (wrapper, name) => {
+    if (wrapper === "env" && name === "split-string") {
+      for (const cmd of [
+        "env --split-string 'git commit --no-verify -m x'",
+        "env --split-string='git commit --no-verify -m x'",
+        "env --split 'git commit --no-verify -m x'",
+        "env --s 'git commit --no-verify -m x'",
+      ]) {
+        expect(decide(cmd), cmd).toBe("deny");
+      }
+      return;
+    }
     // `runuser --user NAME` names the user itself: no operand stands before the command
     const operand =
       wrapper === "runuser" && name === "user" ? "" : (DUMMY_OPERANDS.get(wrapper) ?? "");
