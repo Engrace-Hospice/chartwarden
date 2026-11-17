@@ -48,7 +48,7 @@ describe("E1-7: the recorder never reads a failure as an answer", () => {
     }
   });
 
-  it("a non-zero exit is an answer; a probe that hangs is NoAnswer after one retry", async () => {
+  it("a non-zero exit is an answer; a probe that hangs is NoAnswer after two retries", async () => {
     const r = await recorder();
     const box = r.makeSandbox("/bin/echo");
     try {
@@ -56,8 +56,8 @@ describe("E1-7: the recorder never reads a failure as an answer", () => {
       expect(refused.err).toContain("no");
       const started = Date.now();
       await expect(r.run(fakeTool("hang", "sleep 5"), [], box)).rejects.toBeInstanceOf(r.NoAnswer);
-      // two attempts of 300 ms, not one and not five seconds
-      expect(Date.now() - started).toBeGreaterThanOrEqual(550);
+      // three attempts of 300 ms, not one and not five seconds
+      expect(Date.now() - started).toBeGreaterThanOrEqual(850);
       expect(Date.now() - started).toBeLessThan(4000);
     } finally {
       box.dispose();

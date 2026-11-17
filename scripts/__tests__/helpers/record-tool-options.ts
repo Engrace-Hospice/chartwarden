@@ -133,13 +133,13 @@ export class NoAnswer extends Error {}
 
 /**
  * One tool run. A non-zero exit is an ANSWER (the tool said no); a kill by the timeout, a signal or a failure to start is not: it is thrown (after one
- * retry for a timeout on a loaded machine), never read as "ran nothing" (R9-CR-12: a timeout read as "no HIT" misread a valued option as a flag).
+ * two retries for a timeout on a loaded machine), never read as "ran nothing" (R9-CR-12: a timeout read as "no HIT" misread a valued option as a flag).
  */
 export const run = (
   bin: string,
   argv: readonly string[],
   box: Sandbox,
-  retry = true,
+  retries = 2,
 ): Promise<RunResult> =>
   new Promise((resolve, reject) => {
     const child = execFile(
@@ -162,7 +162,8 @@ export const run = (
             typeof failure.code === "string" ||
             (failure.signal ?? null) !== null);
         if (!noAnswer) return resolve({ out: String(stdout), err: String(stderr) });
-        if (failure?.killed === true && retry) return resolve(run(bin, argv, box, false));
+        if (failure?.killed === true && retries > 0)
+          return resolve(run(bin, argv, box, retries - 1));
         const what = `${bin} ${argv.join(" ")}`;
         reject(
           failure?.killed === true
