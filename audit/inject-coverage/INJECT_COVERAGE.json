@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 2078,
-    "coveredRoutes": 2078,
-    "directRoutesReferenced": 1885
+    "routes": 2083,
+    "coveredRoutes": 2083,
+    "directRoutesReferenced": 1886
   },
   "modules": [
     {
@@ -299,7 +299,7 @@
     },
     {
       "module": "15-discipline-care-plans",
-      "routes": 28,
+      "routes": 29,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/discipline-plans-caseload-scope.test.ts",
@@ -308,7 +308,7 @@
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 28
+      "directRoutesReferenced": 29
     },
     {
       "module": "16-bereavement",
@@ -412,7 +412,7 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 123,
+      "routes": 127,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-clinical-site-scope.test.ts",

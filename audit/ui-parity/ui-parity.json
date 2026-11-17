@@ -913,7 +913,7 @@
       "module": "15-discipline-care-plans",
       "moduleId": 15,
       "id": "discipline-plan.assessment",
-      "path": "/patients/:patientId/discipline-plans/msw-plan/:planId/assessments/:assessmentId",
+      "path": "/patients/:patientId/discipline-plans/:kind/:planId/assessments/:assessmentId",
       "permission": "discipline_assessment.author"
     },
     {
@@ -1656,6 +1656,14 @@
       "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
+      "id": "billing.medicare-notices",
+      "path": "/billing/medicare-notices",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "23-billing-medicare",
+      "moduleId": 23,
       "id": "billing.operations",
       "path": "/billing/operations",
       "permission": "(none)"
@@ -1746,6 +1754,14 @@
       "moduleId": 23,
       "id": "billing.noe.detail",
       "path": "/billing/noe/:noeId",
+      "permission": "billing.noe.read"
+    },
+    {
+      "app": "web",
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.noe.exception-review",
+      "path": "/billing/noe/:noeId/exception-review",
       "permission": "billing.noe.read"
     },
     {

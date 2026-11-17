@@ -10,10 +10,17 @@ import {
   CredentialRejectedError,
   DirectMacTransport,
   InMemoryAttemptStore,
+  type StediClaimJson,
   StediTransport,
   UploadNotSentError,
 } from "@chartwarden/x12-837-client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// These tests isolate credential handling. Representation agreement has its own contract suite.
+vi.mock("@chartwarden/x12-837-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@chartwarden/x12-837-client")>()),
+  compareStediClaimJsonToX12: () => [],
+}));
 import {
   CREDENTIAL_HOLD_MS,
   CREDENTIAL_REJECTED_ALERT,
@@ -43,6 +50,11 @@ const fixture = (name: string): string =>
 const withIsa13 = (x12: string, cn: string): string =>
   x12.replace(/^(ISA(?:\*[^*]*){12}\*)[^*]*/, `$1${cn}`);
 const CLAIM_X12 = `${withIsa13(fixture("stedi-claim.x12"), "000000001")}\nREF*SY*${MBI}~`;
+const stediJson = (controlNumber: string): StediClaimJson =>
+  ({
+    usageIndicator: "T",
+    claimInformation: { patientControlNumber: controlNumber },
+  }) as unknown as StediClaimJson;
 
 const ctxFor = (org: string, pe: string): ClearinghouseContext => ({
   organizationId: org,
@@ -87,6 +99,7 @@ const upload = (d: M23TransportDeps, org = ORG_A, pe = PE_A, controlNumber = "00
     providerEntityId: pe,
     kind: "claim_837i",
     x12: withIsa13(CLAIM_X12, controlNumber),
+    stediJson: stediJson(controlNumber),
     controlNumber,
   });
 
@@ -161,6 +174,7 @@ describe("per-organization binding (tenant clearinghouses): the rejection hold e
       providerEntityId: PE_A,
       kind: "claim_837i" as const,
       x12: withIsa13(CLAIM_X12, controlNumber),
+      stediJson: stediJson(controlNumber),
       controlNumber,
     });
 
@@ -203,6 +217,7 @@ describe("per-organization binding (tenant clearinghouses): the rejection hold e
       providerEntityId: PE_A,
       kind: "claim_837i" as const,
       x12: withIsa13(CLAIM_X12, controlNumber),
+      stediJson: stediJson(controlNumber),
       controlNumber,
     });
     await send(input("000000001")).catch(() => undefined);

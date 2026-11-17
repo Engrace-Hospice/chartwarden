@@ -6,6 +6,7 @@ export type {
   DisciplineAssessmentView,
   DisciplineGoalView,
   DisciplineInterventionView,
+  DisciplinePlanActionSummary,
   DisciplinePlanDetail,
   DisciplinePlanListItem,
   DisciplinePlanSummary,
@@ -20,6 +21,9 @@ export type {
 } from "./read-service";
 export type {
   M15WriteService,
+  OpenDisciplinePlanVersionView,
+  OpenDisciplinePlanVersionKind,
+  OpenVersionInput,
   OutboxEmission,
   VolunteerHourEntryView,
   WriteOutboxPort,

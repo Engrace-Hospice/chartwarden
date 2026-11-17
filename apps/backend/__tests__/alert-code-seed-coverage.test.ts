@@ -11,6 +11,7 @@ import { M36_DOSESPOT_ALERT_EVENT_TYPES } from "../src/modules/36-messaging/outb
 const SRC = join(__dirname, "..", "src", "modules");
 const EMIT_SITES = [
   "23-billing-medicare/jobs/m23-jobs.ts",
+  "23-billing-medicare/services/medicare-notice-operational-issues.ts",
   "23-billing-medicare/outbox-consumers/m25-taxonomy-unmapped-code-observed.ts",
   "25-remittance/jobs/m25-jobs.ts",
   "26-cap/jobs/index.ts",
@@ -37,6 +38,8 @@ function emittedCodes(): Set<string> {
       if (expr?.includes("${tier}"))
         for (const t of M27_TIERS) codes.add(`m27.filing_deadline.${t}_due`);
     }
+    for (const m of text.matchAll(/"(m23\.notice\.operational_issue\.(?:warning|critical))"/g))
+      codes.add(m[1] as string);
   }
   return codes;
 }
@@ -47,7 +50,7 @@ describe("cron alert codes have seeded platform rules", () => {
   it("finds the emit sites (guards against the scan silently matching nothing)", () => {
     const codes = emittedCodes();
     expect(codes.size).toBeGreaterThanOrEqual(15);
-    expect(codes).toContain("m23.noe.window_breached");
+    expect(codes).toContain("m23.notice.operational_issue.critical");
     expect(codes).toContain("m27.filing_deadline.t4_75_months_due");
   });
 

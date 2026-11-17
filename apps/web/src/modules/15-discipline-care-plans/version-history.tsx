@@ -3,6 +3,7 @@ import {
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  PatientWorkspaceLayout,
   StatusPill,
   t,
   useApiClient,
@@ -20,6 +21,12 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
+import {
+  ChartPatientBanner,
+  PatientSummaryPanel,
+  useChartIdentity,
+} from "../../shell/patient-context";
 import {
   type VersionDetail,
   type VersionListItem,
@@ -29,6 +36,7 @@ import {
   listVersions,
   normalizeSignerSet,
 } from "./discipline-api";
+import { disciplinePlanPath } from "./discipline-navigation";
 import {
   VERSION_STATUS_TONE,
   dateTime,
@@ -41,6 +49,7 @@ import {
   Card,
   Field,
   SummaryGrid,
+  TableScroll,
   alertStyle,
   columnStyle,
   ghostButtonStyle,
@@ -70,6 +79,7 @@ function diffSnapshots(a: unknown, b: unknown): { key: string; before: string; a
 export function DisciplineVersionHistory(): JSX.Element {
   const client = useApiClient();
   const { patientId, kind } = useParams<{ patientId: string; kind: string }>();
+  const identity = useChartIdentity(patientId);
   const [planId, setPlanId] = useState<string | null>(null);
   const [rows, setRows] = useState<VersionListItem[]>([]);
   const [selected, setSelected] = useState<VersionDetail | null>(null);
@@ -118,214 +128,266 @@ export function DisciplineVersionHistory(): JSX.Element {
     [client, planId],
   );
 
-  if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  const backPath = disciplinePlanPath(patientId ?? "", kind ?? "");
+  const bailBanner = <ChartPatientBanner patientId={patientId} identity={identity} nameAsHeading />;
+  if (loading) {
+    return (
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
+        <LoadingSpinner />
+      </PatientChartBail>
+    );
+  }
+  if (error) {
+    return (
+      <PatientChartBail banner={bailBanner} patientId={patientId} current="discipline-plans">
+        <EmptyState title="Unavailable" description={error} />
+      </PatientChartBail>
+    );
+  }
 
   const diff =
     selected && compare ? diffSnapshots(compare.stateSnapshot, selected.stateSnapshot) : [];
 
   return (
-    <div className="wx-kit-column" style={columnStyle}>
-      <PageHeader
-        title={<span style={pageTitleStyle}>{kindLabel(kind)} — version history</span>}
-        actions={
-          <Link to={`/patients/${patientId}/discipline-plans`} style={ghostButtonStyle}>
-            All discipline plans
-          </Link>
-        }
-      />
+    <PatientWorkspaceLayout
+      banner={
+        <ChartPatientBanner
+          patientId={patientId}
+          identity={identity}
+          actions={
+            <Link to={backPath} className="wx-btn-secondary">
+              Back to {kindLabel(kind)}
+            </Link>
+          }
+        />
+      }
+      rail={<PatientSummaryPanel identity={identity} />}
+    >
+      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        <ChartModuleRail patientId={patientId ?? ""} current="discipline-plans" />
+        <section
+          aria-labelledby="discipline-version-history-title"
+          className="wx-kit-column"
+          style={{ ...columnStyle, flex: 1, minWidth: 0, overflow: "auto" }}
+        >
+          <PageHeader
+            title={
+              <span id="discipline-version-history-title" style={pageTitleStyle}>
+                {kindLabel(kind)} — version history
+              </span>
+            }
+          />
 
-      {detailError ? <p style={alertStyle}>{detailError}</p> : null}
+          {detailError ? (
+            <p role="alert" aria-live="assertive" style={alertStyle}>
+              {detailError}
+            </p>
+          ) : null}
 
-      <Card title="Versions">
-        {rows.length === 0 ? (
-          <span style={mutedStyle}>This plan has no versions yet.</span>
-        ) : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>Version</th>
-                <th style={th}>Kind</th>
-                <th style={th}>IDG meeting</th>
-                <th style={th}>Finalized</th>
-                <th style={th}>Signed</th>
-                <th style={th}>Superseded</th>
-                <th style={th}>Status</th>
-                <th style={th}>&nbsp;</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((v) => (
-                <tr key={v.versionId} style={rowLine}>
-                  <td style={td}>v{v.sequence}</td>
-                  <td style={td}>{humanize(v.kind)}</td>
-                  <td style={td}>{shortId(v.idgMeetingId)}</td>
-                  <td style={td}>{dateTime(v.finalizedAt)}</td>
-                  <td style={td}>{dateTime(v.signedAt)}</td>
-                  <td style={td}>{dateTime(v.supersededAt)}</td>
-                  <td style={td}>
-                    <StatusPill
-                      label={humanize(v.status)}
-                      tone={toneOf(VERSION_STATUS_TONE, v.status)}
-                    />
-                  </td>
-                  <td style={td}>
-                    <div style={{ display: "flex", gap: t.space2 }}>
-                      <button
-                        type="button"
-                        style={ghostButtonStyle}
-                        onClick={() => void open(v.versionId, "selected")}
-                      >
-                        Open
-                      </button>
-                      <button
-                        type="button"
-                        style={ghostButtonStyle}
-                        onClick={() => void open(v.versionId, "compare")}
-                      >
-                        Compare against
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
+          <Card title="Versions" headingLevel={2}>
+            {rows.length === 0 ? (
+              <span style={mutedStyle}>This plan has no versions yet.</span>
+            ) : (
+              <TableScroll label="Plan versions table">
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      <th style={th}>Version</th>
+                      <th style={th}>Kind</th>
+                      <th style={th}>IDG meeting</th>
+                      <th style={th}>Finalized</th>
+                      <th style={th}>Signed</th>
+                      <th style={th}>Superseded</th>
+                      <th style={th}>Status</th>
+                      <th style={th}>&nbsp;</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((v) => (
+                      <tr key={v.versionId} style={rowLine}>
+                        <td style={td}>v{v.sequence}</td>
+                        <td style={td}>{humanize(v.kind)}</td>
+                        <td style={td}>{shortId(v.idgMeetingId)}</td>
+                        <td style={td}>{dateTime(v.finalizedAt)}</td>
+                        <td style={td}>{dateTime(v.signedAt)}</td>
+                        <td style={td}>{dateTime(v.supersededAt)}</td>
+                        <td style={td}>
+                          <StatusPill
+                            label={humanize(v.status)}
+                            tone={toneOf(VERSION_STATUS_TONE, v.status)}
+                          />
+                        </td>
+                        <td style={td}>
+                          <div style={{ display: "flex", gap: t.space2 }}>
+                            <button
+                              type="button"
+                              style={ghostButtonStyle}
+                              onClick={() => void open(v.versionId, "selected")}
+                            >
+                              Open
+                            </button>
+                            <button
+                              type="button"
+                              style={ghostButtonStyle}
+                              onClick={() => void open(v.versionId, "compare")}
+                            >
+                              Compare against
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
+            )}
+          </Card>
 
-      {selected ? (
-        <Card title={`Version ${selected.sequence} — sealed snapshot`}>
-          <SummaryGrid>
-            <Field label="Status" value={humanize(selected.status)} />
-            <Field label="Finalized" value={dateTime(selected.finalizedAt)} />
-            <Field label="Signed" value={dateTime(selected.signedAt)} />
-          </SummaryGrid>
-          <h4
-            style={{
-              margin: 0,
-              fontFamily: t.fontDisplay,
-              fontSize: "0.85rem",
-              color: t.onSurface,
-            }}
-          >
-            Required signer set (frozen at finalize)
-          </h4>
-          {normalizeSignerSet(selected.requiredSignerSet).length === 0 ? (
-            <span style={mutedStyle}>
-              No quorum is recorded on this version — a discharge version is sealed by the system
-              actor and carries none.
-            </span>
-          ) : (
-            <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
-              {normalizeSignerSet(selected.requiredSignerSet).map((slot) => (
-                <li
-                  key={`${slot.role}-${slot.isAcknowledgment}`}
-                  style={{ fontSize: "0.82rem", color: t.onSurface }}
+          {selected ? (
+            <Card title={`Version ${selected.sequence} — sealed snapshot`} headingLevel={2}>
+              <SummaryGrid>
+                <Field label="Status" value={humanize(selected.status)} />
+                <Field label="Finalized" value={dateTime(selected.finalizedAt)} />
+                <Field label="Signed" value={dateTime(selected.signedAt)} />
+              </SummaryGrid>
+              <h3
+                style={{
+                  margin: 0,
+                  fontFamily: t.fontDisplay,
+                  fontSize: "0.85rem",
+                  color: t.onSurface,
+                }}
+              >
+                Required signer set (frozen at finalize)
+              </h3>
+              {normalizeSignerSet(selected.requiredSignerSet).length === 0 ? (
+                <span style={mutedStyle}>
+                  No quorum is recorded on this version — a discharge version is sealed by the
+                  system actor and carries none.
+                </span>
+              ) : (
+                <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                  {normalizeSignerSet(selected.requiredSignerSet).map((slot) => (
+                    <li
+                      key={`${slot.role}-${slot.isAcknowledgment}`}
+                      style={{ fontSize: "0.82rem", color: t.onSurface }}
+                    >
+                      {humanize(slot.role)} × {slot.count}
+                      {slot.isAcknowledgment ? " (acknowledgment)" : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <h3
+                style={{
+                  margin: 0,
+                  fontFamily: t.fontDisplay,
+                  fontSize: "0.85rem",
+                  color: t.onSurface,
+                }}
+              >
+                Signatures collected
+              </h3>
+              {selected.signatures.length === 0 ? (
+                <span style={mutedStyle}>No signature collected yet.</span>
+              ) : (
+                <TableScroll label="Collected signatures table">
+                  <table style={tableStyle}>
+                    <thead>
+                      <tr>
+                        <th style={th}>Signer</th>
+                        <th style={th}>Role</th>
+                        <th style={th}>Kind</th>
+                        <th style={th}>Signed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selected.signatures.map((s) => (
+                        <tr key={s.signatureId} style={rowLine}>
+                          <td style={td}>{shortId(s.signerMembershipId)}</td>
+                          <td style={td}>{humanize(s.signerRole)}</td>
+                          <td style={td}>{s.isAcknowledgment ? "Acknowledgment" : "Signature"}</td>
+                          <td style={td}>{dateTime(s.signedAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableScroll>
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: t.space2 }}>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontFamily: t.fontDisplay,
+                    fontSize: "0.85rem",
+                    color: t.onSurface,
+                  }}
                 >
-                  {humanize(slot.role)} × {slot.count}
-                  {slot.isAcknowledgment ? " (acknowledgment)" : ""}
-                </li>
-              ))}
-            </ul>
-          )}
-          <h4
-            style={{
-              margin: 0,
-              fontFamily: t.fontDisplay,
-              fontSize: "0.85rem",
-              color: t.onSurface,
-            }}
-          >
-            Signatures collected
-          </h4>
-          {selected.signatures.length === 0 ? (
-            <span style={mutedStyle}>No signature collected yet.</span>
-          ) : (
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={th}>Signer</th>
-                  <th style={th}>Role</th>
-                  <th style={th}>Kind</th>
-                  <th style={th}>Signed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selected.signatures.map((s) => (
-                  <tr key={s.signatureId} style={rowLine}>
-                    <td style={td}>{shortId(s.signerMembershipId)}</td>
-                    <td style={td}>{humanize(s.signerRole)}</td>
-                    <td style={td}>{s.isAcknowledgment ? "Acknowledgment" : "Signature"}</td>
-                    <td style={td}>{dateTime(s.signedAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: t.space2 }}>
-            <h4
-              style={{
-                margin: 0,
-                fontFamily: t.fontDisplay,
-                fontSize: "0.85rem",
-                color: t.onSurface,
-              }}
-            >
-              Sealed plan snapshot
-            </h4>
-            <DerivedBadge source="the plan at finalize" verb="computed from" />
-          </div>
-          <pre
-            style={{
-              margin: 0,
-              padding: t.space3,
-              borderRadius: t.radiusMd,
-              background: t.surfaceLow,
-              fontFamily: t.fontMono,
-              fontSize: "0.75rem",
-              whiteSpace: "pre-wrap",
-              color: t.onSurface,
-            }}
-          >
-            {JSON.stringify(selected.stateSnapshot ?? {}, null, 2)}
-          </pre>
-        </Card>
-      ) : null}
+                  Sealed plan snapshot
+                </h3>
+                <DerivedBadge source="the plan at finalize" verb="computed from" />
+              </div>
+              <pre
+                style={{
+                  margin: 0,
+                  padding: t.space3,
+                  borderRadius: t.radiusMd,
+                  background: t.surfaceLow,
+                  fontFamily: t.fontMono,
+                  fontSize: "0.75rem",
+                  whiteSpace: "pre-wrap",
+                  overflowWrap: "anywhere",
+                  overflowX: "auto",
+                  color: t.onSurface,
+                }}
+              >
+                {JSON.stringify(selected.stateSnapshot ?? {}, null, 2)}
+              </pre>
+            </Card>
+          ) : null}
 
-      {selected && compare ? (
-        <Card title={`Diff — v${compare.sequence} → v${selected.sequence}`}>
-          {diff.length === 0 ? (
-            <span style={mutedStyle}>The two sealed snapshots are identical at the top level.</span>
-          ) : (
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={th}>Field</th>
-                  <th style={th}>v{compare.sequence}</th>
-                  <th style={th}>v{selected.sequence}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {diff.map((d) => (
-                  <tr key={d.key} style={rowLine}>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>{d.key}</td>
-                    <td style={{ ...td, fontFamily: t.fontMono, fontSize: "0.75rem" }}>
-                      {d.before}
-                    </td>
-                    <td style={{ ...td, fontFamily: t.fontMono, fontSize: "0.75rem" }}>
-                      {d.after}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <Link to={`/patients/${patientId}/discipline-plans/${kind}/versions`} style={linkStyle}>
-            Clear comparison by reloading
-          </Link>
-        </Card>
-      ) : null}
-    </div>
+          {selected && compare ? (
+            <Card title={`Diff — v${compare.sequence} → v${selected.sequence}`} headingLevel={2}>
+              {diff.length === 0 ? (
+                <span style={mutedStyle}>
+                  The two sealed snapshots are identical at the top level.
+                </span>
+              ) : (
+                <TableScroll label="Version comparison table">
+                  <table style={tableStyle}>
+                    <thead>
+                      <tr>
+                        <th style={th}>Field</th>
+                        <th style={th}>v{compare.sequence}</th>
+                        <th style={th}>v{selected.sequence}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {diff.map((d) => (
+                        <tr key={d.key} style={rowLine}>
+                          <td style={{ ...td, fontFamily: t.fontMono }}>{d.key}</td>
+                          <td style={{ ...td, fontFamily: t.fontMono, fontSize: "0.75rem" }}>
+                            {d.before}
+                          </td>
+                          <td style={{ ...td, fontFamily: t.fontMono, fontSize: "0.75rem" }}>
+                            {d.after}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableScroll>
+              )}
+              <Link
+                to={`/patients/${patientId}/discipline-plans/${kind}/versions`}
+                style={linkStyle}
+              >
+                Clear comparison by reloading
+              </Link>
+            </Card>
+          ) : null}
+        </section>
+      </div>
+    </PatientWorkspaceLayout>
   );
 }

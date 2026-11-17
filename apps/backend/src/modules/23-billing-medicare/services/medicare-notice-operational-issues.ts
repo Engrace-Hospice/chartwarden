@@ -3,7 +3,6 @@ import type { repositories } from "@chartwarden/billing";
 import * as schema from "@chartwarden/db/schema";
 // Durable M23 notice follow-up. Issue records are operational work items; DDE remains the
 // authoritative FISS task lifecycle, and neither issue acknowledgment nor closure is filing evidence.
-import type { AlertEmitter } from "@chartwarden/messaging";
 import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@chartwarden/types";
@@ -96,6 +95,17 @@ const openStatuses = ["active", "acknowledged", "assigned"] as const;
 const MAX_NOTIFICATION_ATTEMPTS = 12;
 const cap = (value: string, max: number) => value.slice(0, max);
 type IssueTx = Parameters<Parameters<repositories.BillingDb["transaction"]>[0]>[0];
+interface MedicareNoticeAlertEmitter {
+  emit(
+    organizationId: string,
+    input: {
+      readonly eventType: string;
+      readonly severity: "info" | "warn" | "critical";
+      readonly correlationId: string;
+      readonly payload: Record<string, unknown>;
+    },
+  ): Promise<{ readonly resolvedRecipientCount: number }>;
+}
 
 export function shouldReopenResolvedOccurrence(
   resolvedOccurrenceKey: string | null | undefined,
@@ -134,7 +144,7 @@ export function noticeDeadlineIssueObservation(input: {
 
 export function buildMedicareNoticeOperationalIssueService(
   db: repositories.BillingDb,
-  alerts?: Pick<AlertEmitter, "emit">,
+  alerts?: MedicareNoticeAlertEmitter,
 ): MedicareNoticeOperationalIssueService {
   return {
     async byNoticeReferences(actor, notices) {
@@ -728,7 +738,7 @@ async function appendIssueEvent(
 async function flushPendingNotifications(
   db: repositories.BillingDb,
   organizationId: string,
-  alerts: Pick<AlertEmitter, "emit">,
+  alerts: MedicareNoticeAlertEmitter,
 ): Promise<number> {
   const pending = await withOrgContext(
     db,

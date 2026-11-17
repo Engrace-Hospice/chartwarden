@@ -1167,7 +1167,7 @@ export async function runClaimSubmitWithinLegacyTransaction(
       });
       return;
     }
-    uploaded = await macPortalOf(deps, transport).upload({
+    uploaded = await macPortalOf(deps, orgTransport).upload({
       organizationId: job.organizationId,
       providerEntityId: claim.providerEntityId,
       effectiveDate: claim.serviceFrom,
@@ -2025,6 +2025,35 @@ export async function claimSubmissionBindingMatches(
   );
 }
 
+/** Resolve a retry from the row that actually won the idempotent append race. */
+export function persistedRetryAttempt(
+  row: Pick<
+    schema.ClaimSubmission,
+    | "id"
+    | "claimControlNumber"
+    | "externalPatientControlNumber"
+    | "attemptIndex"
+    | "dispatchState"
+    | "outcome"
+  >,
+): {
+  readonly claimControlNumber: string;
+  readonly externalPatientControlNumber: string;
+  readonly attemptIndex: number;
+  readonly submissionId: string;
+} | null {
+  if (row.dispatchState !== "pending" || row.outcome !== "queued") return null;
+  if (!row.externalPatientControlNumber) {
+    throw new Error("persisted retry has no external patient control number; retry requires review");
+  }
+  return {
+    claimControlNumber: row.claimControlNumber,
+    externalPatientControlNumber: row.externalPatientControlNumber,
+    attemptIndex: row.attemptIndex,
+    submissionId: row.id,
+  };
+}
+
 /** Retry requests append the next immutable attempt, then use the same split prepare/send/finalize path. */
 export async function runClaimSubmitRetry(
   _workerTx: BillingDb,
@@ -2101,13 +2130,14 @@ export async function runClaimSubmitRetry(
       claimId: claim.id,
       attemptIndex: nextIndex,
     });
+    const externalPatientControlNumber = generateExternalPatientControlNumber();
     const row = await submissions.append({
       organizationId: job.organizationId,
       providerEntityId: claim.providerEntityId,
       kind: "claim_837i",
       claimId: claim.id,
       claimControlNumber,
-      externalPatientControlNumber: generateExternalPatientControlNumber(),
+      externalPatientControlNumber,
       clearinghouseVendor: prior.clearinghouseVendor,
       clearinghouseAccountReference: prior.clearinghouseAccountReference,
       clearinghouseMode: prior.clearinghouseMode,
@@ -2123,13 +2153,11 @@ export async function runClaimSubmitRetry(
       submittedAt: null,
       workerCorrelationId: null,
     });
-    if (row.dispatchState !== "pending" || row.outcome !== "queued") return null;
+    const persisted = persistedRetryAttempt(row);
+    if (!persisted) return null;
     return {
       reconcile: false as const,
-      claimControlNumber,
-      externalPatientControlNumber: row.externalPatientControlNumber,
-      attemptIndex: nextIndex,
-      submissionId: row.id,
+      ...persisted,
       reviewedSourceFingerprint: prior.reviewedSourceFingerprint,
     };
   });

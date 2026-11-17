@@ -11127,7 +11127,8 @@ export interface paths {
         /** The plan's version chain, cursor-paginated by sequence (§4.1 #4) */
         get: operations["getApiV1DisciplineplansByPlanIdVersions"];
         put?: never;
-        post?: never;
+        /** Open the first draft or the next interim revision; IDG-review and discharge versions remain system-owned */
+        post: operations["postApiV1DisciplineplansByPlanIdVersions"];
         delete?: never;
         options?: never;
         head?: never;
@@ -64523,6 +64524,22 @@ export interface operations {
                             spiritualCareDeclinedAt: string | null;
                             updatedAt: string;
                             version: number;
+                            actionSummary: {
+                                openVersion: {
+                                    versionId: string;
+                                    sequence: number;
+                                    status: "draft" | "in_review";
+                                    kind: "initial" | "interim_revision" | "idg_review";
+                                } | null;
+                                latestSignedVersion: {
+                                    versionId: string;
+                                    sequence: number;
+                                    signedAt: string;
+                                } | null;
+                                missingSignerRoles: string[];
+                                ownerMembershipIds: string[];
+                                idgDecisionId: string | null;
+                            };
                         }[];
                         next_cursor: string | null;
                         has_more: boolean;
@@ -64565,6 +64582,22 @@ export interface operations {
                         spiritualCareDeclinedAt: string | null;
                         updatedAt: string;
                         version: number;
+                        actionSummary: {
+                            openVersion: {
+                                versionId: string;
+                                sequence: number;
+                                status: "draft" | "in_review";
+                                kind: "initial" | "interim_revision" | "idg_review";
+                            } | null;
+                            latestSignedVersion: {
+                                versionId: string;
+                                sequence: number;
+                                signedAt: string;
+                            } | null;
+                            missingSignerRoles: string[];
+                            ownerMembershipIds: string[];
+                            idgDecisionId: string | null;
+                        };
                         aideMembershipId: string | null;
                         supervisingRnMembershipId: string | null;
                         supervisoryCadenceDaysOverride: number | null;
@@ -64651,7 +64684,7 @@ export interface operations {
                             planId: string;
                             sequence: number;
                             status: string;
-                            kind: "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan";
+                            kind: "initial" | "idg_review" | "interim_revision" | "discharge";
                             idgMeetingId: string | null;
                             finalizedAt: string | null;
                             signedAt: string | null;
@@ -65195,7 +65228,7 @@ export interface operations {
                             planId: string;
                             sequence: number;
                             status: string;
-                            kind: "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan";
+                            kind: "initial" | "idg_review" | "interim_revision" | "discharge";
                             idgMeetingId: string | null;
                             finalizedAt: string | null;
                             signedAt: string | null;
@@ -65205,6 +65238,46 @@ export interface operations {
                         next_cursor: string | null;
                         has_more: boolean;
                         total_count?: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DisciplineplansByPlanIdVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                planId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "initial" | "interim_revision";
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        versionId: string;
+                        planId: string;
+                        sequence: number;
+                        /** @constant */
+                        status: "draft";
+                        kind: "initial" | "interim_revision";
+                        createdAt: string;
+                        version: number;
                     };
                 };
             };

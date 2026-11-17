@@ -254,6 +254,10 @@ export function pct(value: number | null | undefined): string {
 
 /** The permission `screens.ts` gates the Aide POC editor (`discipline-plan.aide-poc.edit`) on. */
 export const AIDE_POC_EDIT_PERMISSION = "discipline_plan.author";
+/** The permission required by the draft-to-review transition. */
+export const PLAN_FINALIZE_PERMISSION = "discipline_plan.finalize";
+/** The permission required by the step-up version signing ceremony. */
+export const PLAN_SIGN_PERMISSION = "discipline_plan.sign";
 /** The permission `screens.ts` gates the IDG revision review (`discipline-plan.idg-revision`) on. */
 export const IDG_REVISION_REVIEW_PERMISSION = "discipline_plan.idg_revise";
 

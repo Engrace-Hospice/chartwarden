@@ -33,6 +33,7 @@ import {
   getPlan,
   writeHeaders,
 } from "./discipline-api";
+import { disciplinePlanPath } from "./discipline-navigation";
 import {
   ASSESSMENT_STATUS_TONE,
   assessmentKindLabel,
@@ -55,6 +56,7 @@ import {
   mutedStyle,
   pageTitleStyle,
   primaryButtonStyle,
+  useUnsavedChangesWarning,
 } from "./discipline-ui";
 
 /** `discipline_assessment_kind` (enums.ts §3.2). */
@@ -67,6 +69,18 @@ const KIND_OPTIONS = [
 
 /** The route param that means "capture a new assessment" rather than "open an existing one". */
 const NEW = "new";
+
+function formFingerprint(input: {
+  kind: string;
+  capturedAt: string;
+  isInitial: boolean;
+  sudFlag: boolean;
+  familyViolenceFlag: boolean;
+  dataText: string;
+  amendReason: string;
+}): string {
+  return JSON.stringify(input);
+}
 
 export function AssessmentEditor(): JSX.Element {
   const client = useApiClient();
@@ -91,6 +105,29 @@ export function AssessmentEditor(): JSX.Element {
   const [dataText, setDataText] = useState("{}");
   const [amendReason, setAmendReason] = useState("");
   const [amending, setAmending] = useState(false);
+  const [baseline, setBaseline] = useState(() =>
+    formFingerprint({
+      kind: "msw_psychosocial",
+      capturedAt,
+      isInitial: false,
+      sudFlag: false,
+      familyViolenceFlag: false,
+      dataText: "{}",
+      amendReason: "",
+    }),
+  );
+  const dirty =
+    baseline !==
+    formFingerprint({
+      kind,
+      capturedAt,
+      isInitial,
+      sudFlag,
+      familyViolenceFlag,
+      dataText,
+      amendReason,
+    });
+  const confirmDiscard = useUnsavedChangesWarning(dirty);
 
   const load = useCallback(async () => {
     if (!planId) return;
@@ -105,12 +142,24 @@ export function AssessmentEditor(): JSX.Element {
     setPlan(loaded);
     const found = loaded.assessments.find((a) => a.assessmentId === assessmentId) ?? null;
     if (found) {
+      const foundData = JSON.stringify(found.data ?? {}, null, 2);
       setKind(found.kind);
       setCapturedAt(isoToLocalInput(found.capturedAt));
       setIsInitial(found.isInitial);
       setSudFlag(found.sudFlag);
       setFamilyViolenceFlag(found.familyViolenceFlag);
-      setDataText(JSON.stringify(found.data ?? {}, null, 2));
+      setDataText(foundData);
+      setBaseline(
+        formFingerprint({
+          kind: found.kind,
+          capturedAt: isoToLocalInput(found.capturedAt),
+          isInitial: found.isInitial,
+          sudFlag: found.sudFlag,
+          familyViolenceFlag: found.familyViolenceFlag,
+          dataText: foundData,
+          amendReason: "",
+        }),
+      );
     }
     setLoading(false);
   }, [client, planId, assessmentId]);
@@ -155,7 +204,7 @@ export function AssessmentEditor(): JSX.Element {
       setActionError(errorMessage(res.error, "The assessment could not be captured."));
       return;
     }
-    navigate(`/patients/${patientId}/discipline-plans/msw-plan`);
+    navigate(disciplinePlanPath(patientId ?? "", plan.kind));
   }
 
   async function sign(assessment: AssessmentView): Promise<void> {
@@ -236,13 +285,23 @@ export function AssessmentEditor(): JSX.Element {
           </span>
         }
         actions={
-          <Link to={`/patients/${patientId}/discipline-plans/msw-plan`} style={ghostButtonStyle}>
+          <Link
+            to={disciplinePlanPath(patientId ?? "", plan.kind)}
+            style={ghostButtonStyle}
+            onClick={(event) => {
+              if (!confirmDiscard()) event.preventDefault();
+            }}
+          >
             Back to plan
           </Link>
         }
       />
 
-      {actionError ? <p style={alertStyle}>{actionError}</p> : null}
+      {actionError ? (
+        <p role="alert" aria-live="assertive" style={alertStyle}>
+          {actionError}
+        </p>
+      ) : null}
 
       {assessment ? (
         <Card

@@ -27,6 +27,7 @@ import {
   alertStyle,
   mutedStyle,
   primaryButtonStyle,
+  useUnsavedChangesWarning,
 } from "./discipline-ui";
 
 /** How many of a role's required slots are already filled (an acknowledgment fills only an ack slot). */
@@ -58,6 +59,7 @@ export function SignVersionModal({
   const [attestationText, setAttestationText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirmDiscard = useUnsavedChangesWarning(attestationText.trim().length > 0);
 
   const canSubmit = signerRole.trim().length > 0 && attestationText.trim().length >= 10 && !busy;
 
@@ -87,7 +89,10 @@ export function SignVersionModal({
   return (
     <Modal
       title={`Sign version ${version.sequence}`}
-      onClose={onClose}
+      onClose={() => {
+        if (confirmDiscard()) onClose();
+      }}
+      closeDisabled={busy}
       footer={
         <button
           type="button"
@@ -163,7 +168,11 @@ export function SignVersionModal({
         rows={4}
         hint="At least 10 characters. The attestation text is stored verbatim on the signature row."
       />
-      {error ? <p style={alertStyle}>{error}</p> : null}
+      {error ? (
+        <p role="alert" aria-live="assertive" style={alertStyle}>
+          {error}
+        </p>
+      ) : null}
     </Modal>
   );
 }

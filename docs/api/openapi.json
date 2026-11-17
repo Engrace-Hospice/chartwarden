@@ -139490,7 +139490,8 @@
                           "initialAssessmentSignedAt",
                           "spiritualCareDeclinedAt",
                           "updatedAt",
-                          "version"
+                          "version",
+                          "actionSummary"
                         ],
                         "properties": {
                           "planId": {
@@ -139576,6 +139577,118 @@
                           },
                           "version": {
                             "type": "integer"
+                          },
+                          "actionSummary": {
+                            "type": "object",
+                            "required": [
+                              "openVersion",
+                              "latestSignedVersion",
+                              "missingSignerRoles",
+                              "ownerMembershipIds",
+                              "idgDecisionId"
+                            ],
+                            "properties": {
+                              "openVersion": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "required": [
+                                      "versionId",
+                                      "sequence",
+                                      "status",
+                                      "kind"
+                                    ],
+                                    "properties": {
+                                      "versionId": {
+                                        "type": "string"
+                                      },
+                                      "sequence": {
+                                        "type": "integer"
+                                      },
+                                      "status": {
+                                        "anyOf": [
+                                          {
+                                            "const": "draft",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "in_review",
+                                            "type": "string"
+                                          }
+                                        ]
+                                      },
+                                      "kind": {
+                                        "anyOf": [
+                                          {
+                                            "const": "initial",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "interim_revision",
+                                            "type": "string"
+                                          },
+                                          {
+                                            "const": "idg_review",
+                                            "type": "string"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "latestSignedVersion": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "required": [
+                                      "versionId",
+                                      "sequence",
+                                      "signedAt"
+                                    ],
+                                    "properties": {
+                                      "versionId": {
+                                        "type": "string"
+                                      },
+                                      "sequence": {
+                                        "type": "integer"
+                                      },
+                                      "signedAt": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "missingSignerRoles": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "ownerMembershipIds": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "idgDecisionId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
                           }
                         }
                       }
@@ -139648,6 +139761,7 @@
                     "spiritualCareDeclinedAt",
                     "updatedAt",
                     "version",
+                    "actionSummary",
                     "aideMembershipId",
                     "supervisingRnMembershipId",
                     "supervisoryCadenceDaysOverride",
@@ -139745,6 +139859,118 @@
                     },
                     "version": {
                       "type": "integer"
+                    },
+                    "actionSummary": {
+                      "type": "object",
+                      "required": [
+                        "openVersion",
+                        "latestSignedVersion",
+                        "missingSignerRoles",
+                        "ownerMembershipIds",
+                        "idgDecisionId"
+                      ],
+                      "properties": {
+                        "openVersion": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "versionId",
+                                "sequence",
+                                "status",
+                                "kind"
+                              ],
+                              "properties": {
+                                "versionId": {
+                                  "type": "string"
+                                },
+                                "sequence": {
+                                  "type": "integer"
+                                },
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "draft",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "in_review",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "initial",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "interim_revision",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "idg_review",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "latestSignedVersion": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "versionId",
+                                "sequence",
+                                "signedAt"
+                              ],
+                              "properties": {
+                                "versionId": {
+                                  "type": "string"
+                                },
+                                "sequence": {
+                                  "type": "integer"
+                                },
+                                "signedAt": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "missingSignerRoles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "ownerMembershipIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "idgDecisionId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
                     },
                     "aideMembershipId": {
                       "anyOf": [
@@ -140323,19 +140549,19 @@
                           "kind": {
                             "anyOf": [
                               {
-                                "const": "aide_poc",
+                                "const": "initial",
                                 "type": "string"
                               },
                               {
-                                "const": "msw_plan",
+                                "const": "idg_review",
                                 "type": "string"
                               },
                               {
-                                "const": "spiritual_plan",
+                                "const": "interim_revision",
                                 "type": "string"
                               },
                               {
-                                "const": "volunteer_plan",
+                                "const": "discharge",
                                 "type": "string"
                               }
                             ]
@@ -142455,19 +142681,19 @@
                           "kind": {
                             "anyOf": [
                               {
-                                "const": "aide_poc",
+                                "const": "initial",
                                 "type": "string"
                               },
                               {
-                                "const": "msw_plan",
+                                "const": "idg_review",
                                 "type": "string"
                               },
                               {
-                                "const": "spiritual_plan",
+                                "const": "interim_revision",
                                 "type": "string"
                               },
                               {
-                                "const": "volunteer_plan",
+                                "const": "discharge",
                                 "type": "string"
                               }
                             ]
@@ -142544,6 +142770,115 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1DisciplineplansByPlanIdVersions",
+        "tags": [
+          "15-discipline-care-plans"
+        ],
+        "summary": "Open the first draft or the next interim revision; IDG-review and discharge versions remain system-owned",
+        "parameters": [
+          {
+            "name": "planId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "versionId",
+                    "planId",
+                    "sequence",
+                    "status",
+                    "kind",
+                    "createdAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "versionId": {
+                      "type": "string"
+                    },
+                    "planId": {
+                      "type": "string"
+                    },
+                    "sequence": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "const": "draft",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "anyOf": [
+                        {
+                          "const": "initial",
+                          "type": "string"
+                        },
+                        {
+                          "const": "interim_revision",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "initial",
+                        "type": "string"
+                      },
+                      {
+                        "const": "interim_revision",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }

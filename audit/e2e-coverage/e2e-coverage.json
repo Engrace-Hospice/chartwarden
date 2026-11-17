@@ -1,6 +1,6 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 219,
+  "totalStaticWebScreens": 220,
   "e2eReachedCount": 205,
   "axeReachedCount": 205,
   "zeroE2eCoverage": [
@@ -24,6 +24,14 @@
       "id": "identity.auditor-redeem",
       "module": "02-identity",
       "path": "/auditor/redeem",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
+      "id": "billing.medicare-notices",
+      "module": "23-billing-medicare",
+      "path": "/billing/medicare-notices",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
@@ -143,6 +151,14 @@
       "axeReached": false
     },
     {
+      "id": "billing.medicare-notices",
+      "module": "23-billing-medicare",
+      "path": "/billing/medicare-notices",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
       "id": "billing.operations",
       "module": "23-billing-medicare",
       "path": "/billing/operations",
@@ -231,7 +247,7 @@
       "axeReached": false
     }
   ],
-  "dynamicWebScreens": 120,
+  "dynamicWebScreens": 121,
   "dynamicAxeReachedCount": 42,
   "dynamicExcluded": [
     {
@@ -337,6 +353,11 @@
     {
       "id": "billing.noe.detail",
       "path": "/billing/noe/:noeId",
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "billing.noe.exception-review",
+      "path": "/billing/noe/:noeId/exception-review",
       "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
@@ -485,6 +506,11 @@
       "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
+      "id": "discipline-plan.assessment",
+      "path": "/patients/:patientId/discipline-plans/:kind/:planId/assessments/:assessmentId",
+      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
+    },
+    {
       "id": "discipline-plan.idg-revision",
       "path": "/patients/:patientId/discipline-plans/:kind/idg-revisions/:versionId",
       "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
@@ -497,11 +523,6 @@
     {
       "id": "discipline-plan.aide-poc.edit",
       "path": "/patients/:patientId/discipline-plans/aide-poc/:versionId/edit",
-      "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
-    },
-    {
-      "id": "discipline-plan.assessment",
-      "path": "/patients/:patientId/discipline-plans/msw-plan/:planId/assessments/:assessmentId",
       "reason": "needs another seeded resource id (plan, meeting, consent, event, ...) with no run-time discovery helper yet"
     },
     {
@@ -937,6 +958,14 @@
       "permission": "billing.mac_credential.read",
       "e2eReached": true,
       "axeReached": true
+    },
+    {
+      "id": "billing.medicare-notices",
+      "module": "23-billing-medicare",
+      "path": "/billing/medicare-notices",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
     },
     {
       "id": "billing.metrics",

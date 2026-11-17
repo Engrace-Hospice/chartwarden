@@ -90,6 +90,7 @@ export {
   checkInterventionFrequency,
   checkOptimisticConcurrency,
   checkOptionalParentElement,
+  checkPlanKindAuthoringScope,
   checkParentProblem,
   checkPlanWritable,
   checkSnapshotUnsealed,

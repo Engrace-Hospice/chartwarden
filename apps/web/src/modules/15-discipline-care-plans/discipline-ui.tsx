@@ -4,6 +4,7 @@
 // M24 medicaid-ui.tsx precedent). Zero raw hex — `t.*` / CSS-var tokens only, so `arch:design-tokens`
 // stays green and the twilight dark mode is automatic.
 import { Modal as SharedModal, t } from "@chartwarden/ui";
+import { useEffect } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 
 // ── No-Line table (§6.7): no vertical rules, a hairline row separator, uppercase micro-heads ───────────
@@ -33,6 +34,29 @@ export const tdNum: CSSProperties = {
 };
 export const rowLine: CSSProperties = { borderTop: `1px solid ${t.surfaceContainer}` };
 
+/**
+ * Keeps clinical tables usable at narrow widths without forcing the whole patient workspace to overflow.
+ * The labelled region is keyboard-focusable so keyboard users can reach and horizontally scroll it.
+ */
+export function TableScroll({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <section
+      aria-label={label}
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: overflow regions must be keyboard-scrollable.
+      tabIndex={0}
+      style={{ width: "100%", maxWidth: "100%", overflowX: "auto" }}
+    >
+      {children}
+    </section>
+  );
+}
+
 /** Screen-reader-only text — keeps a control labelled without occupying visual space (§16 WCAG AA). */
 export const visuallyHidden: CSSProperties = {
   position: "absolute",
@@ -45,6 +69,18 @@ export const visuallyHidden: CSSProperties = {
   whiteSpace: "nowrap",
   border: 0,
 };
+
+/** Native reload/close protection plus an explicit guard for links and modal cancellation. */
+export function useUnsavedChangesWarning(dirty: boolean): () => boolean {
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent): void => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  return () => !dirty || window.confirm("Discard the unsaved changes on this screen?");
+}
 
 // ── card + section chrome ──────────────────────────────────────────────────────────────────────────────
 export const cardStyle: CSSProperties = {
@@ -189,7 +225,14 @@ export function Card({
   title,
   actions,
   children,
-}: { title: string; actions?: ReactNode; children: ReactNode }): JSX.Element {
+  headingLevel = 3,
+}: {
+  title: string;
+  actions?: ReactNode;
+  children: ReactNode;
+  headingLevel?: 2 | 3;
+}): JSX.Element {
+  const Heading = headingLevel === 2 ? "h2" : "h3";
   return (
     <section style={cardStyle}>
       <div
@@ -200,7 +243,7 @@ export function Card({
           gap: t.space3,
         }}
       >
-        <h3 style={cardTitleStyle}>{title}</h3>
+        <Heading style={cardTitleStyle}>{title}</Heading>
         {actions}
       </div>
       {children}
@@ -334,21 +377,34 @@ export function TextAreaField({
 export function Modal({
   title,
   onClose,
+  closeDisabled = false,
   footer,
   children,
 }: {
   title: string;
   onClose: () => void;
+  closeDisabled?: boolean;
   footer: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   return (
-    <SharedModal open onClose={onClose} ariaLabel={title} width="34rem">
+    <SharedModal
+      open
+      onClose={closeDisabled ? undefined : onClose}
+      dismissOnScrim={!closeDisabled}
+      ariaLabel={title}
+      width="34rem"
+    >
       <div style={{ display: "flex", flexDirection: "column", gap: t.space4, padding: t.space5 }}>
         <h2 style={modalTitleStyle}>{title}</h2>
         {children}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: t.space2 }}>
-          <button type="button" onClick={onClose} style={ghostButtonStyle}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={closeDisabled}
+            style={closeDisabled ? disabledButtonStyle : ghostButtonStyle}
+          >
             Cancel
           </button>
           {footer}
@@ -377,6 +433,8 @@ export function Notice({
           : t.primary;
   return (
     <p
+      role={tone === "error" ? "alert" : undefined}
+      aria-live={tone === "error" ? "assertive" : undefined}
       style={{
         margin: 0,
         padding: `${t.space2} ${t.space3}`,

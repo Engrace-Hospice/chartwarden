@@ -80,15 +80,14 @@ describe("transportUpload payload by vendor", () => {
     expect(r.sent).toEqual([]);
   });
 
-  it("refuses a Stedi notice and keeps raw X12 for claims without a verified JSON path", async () => {
+  it("refuses Stedi notices and claims without a verified JSON path", async () => {
     disagreements.value = [];
     const stedi = rig("stedi");
     await expect(stedi.upload("noe", JSON_DOC)).rejects.toThrow(CH.NOT_WIRED);
-    await stedi.upload("claim_837i");
+    await expect(stedi.upload("claim_837i")).rejects.toThrow(CH.INVALID_REQUEST);
     const other = rig("in_memory");
     await other.upload("claim_837i", JSON_DOC);
-    expect([...stedi.sent, ...other.sent]).toEqual(
-      Array(2).fill({ format: "x12", x12: "ISA*raw~" }),
-    );
+    expect(stedi.sent).toEqual([]);
+    expect(other.sent).toEqual([{ format: "x12", x12: "ISA*raw~" }]);
   });
 });
