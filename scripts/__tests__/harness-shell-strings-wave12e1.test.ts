@@ -126,20 +126,23 @@ describe("E1-5: a string that is one variable is each value the command gives it
     expect(rank(cmd), cmd).toBe(floor);
   });
 
-  it("a variable no statement sets, a positional parameter and an unplaced value ask", () => {
-    for (const cmd of [
-      'bash -c "$C"',
-      "sh -c $C",
-      'bash -c "$1"',
-      'bash -c "$@"',
-      'C=$(cat cmd.txt); bash -c "$C"',
-      'read C; bash -c "$C"',
-      'for C in a b; do bash -c "$C"; done',
-      'C="$X"; bash -c "$C"',
-    ]) {
+  it.each([
+    'bash -c "$C"',
+    "sh -c $C",
+    'bash -c "$1"',
+    'bash -c "$@"',
+    'C=$(cat cmd.txt); bash -c "$C"',
+    'read C; bash -c "$C"',
+    'for C in a b; do bash -c "$C"; done',
+    'C="$X"; bash -c "$C"',
+    "bash -c ${C}",
+    'zsh -c "$C"',
+  ])(
+    "a variable no statement sets, a positional parameter and an unplaced value ask: %s",
+    (cmd) => {
       expect(rank(cmd), cmd).toBeGreaterThanOrEqual(1);
-    }
-  });
+    },
+  );
 
   it("an ordinary variable inside a longer string is not a question (the arguments are read as before)", () => {
     for (const cmd of [

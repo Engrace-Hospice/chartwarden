@@ -628,6 +628,8 @@
     { "args": ["-o", "errexit", "-c"], "ran": "1" },
     { "args": ["-oerrexit", "-c"], "ran": "1" },
     { "args": ["-oc", "errexit"], "ran": "" },
-    { "args": ["-co", "errexit"], "ran": "1" }
+    { "args": ["-co", "errexit"], "ran": "1" },
+    { "args": ["-o", "-", "-c"], "ran": "1" },
+    { "args": ["-o", "--", "-c"], "ran": "" }
   ]
 }

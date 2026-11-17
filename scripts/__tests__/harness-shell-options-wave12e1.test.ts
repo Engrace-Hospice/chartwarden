@@ -79,9 +79,23 @@ describe("2. exact on the discriminating probes", () => {
     );
   }
   it("sh is judged as bash and as dash: whatever either reads, the reader judges", () => {
-    for (const probe of fixtureOf("sh").probes) {
-      for (const n of probe.ran) expect(judgedMarkers("sh", probe.args)).toContain(n);
+    for (const fixture of [fixtureOf("sh"), fixtureOf("bash"), fixtureOf("dash")]) {
+      for (const probe of fixture.probes) {
+        for (const n of probe.ran) {
+          expect(
+            judgedMarkers("sh", probe.args),
+            `sh ${JSON.stringify(probe.args)} (recorded for ${fixture.shell})`,
+          ).toContain(n);
+        }
+      }
     }
+  });
+  it("sh keeps both readings (Debian's sh is dash, macOS's is bash): dropping either is a change of this table", () => {
+    expect(SHELL_GRAMMARS.get("sh")?.length).toBe(2);
+    // `-O` is a bash option that takes the next word; dash has no `-O`, so the two readings of `sh -Oc extglob CMD` differ and both are judged
+    expect(shellCommandStrings("sh", ["-Oc", "extglob", "CMD"])).toEqual(
+      expect.arrayContaining(["CMD", "extglob"]),
+    );
   });
 });
 

@@ -13,8 +13,9 @@
  * `bun exec STR` as a shell line, and adds `uv run|tool run`, `uvx`, `pipx run`, `poetry|pdm|rye|hatch|pipenv|devbox run`,
  * `conda|micromamba run`, `nix shell|develop -c`, `nix-shell --run` and `flox activate`. A runner's own option that names a file
  * (`dotenv -e FILE`, `op run --env-file FILE`, `bun --env-file FILE run echo`) is handed back with the command
- * (`peelRunnerWithFiles`), so peeling never turns the refusal of a live env file into an allow. An option a strict grammar (bun, uv)
- * does not list is handed back as `unplaced`: the guard asks. `make`, `just` and `task` run recipes of the repo, not an arbitrary
+ * (`peelRunnerWithFiles`), so peeling never turns the refusal of a live env file into an allow. An option a strict grammar (`bun run`, uv) does not
+ * list is handed back as `unplaced`: the guard asks; so is an option or short letter a lax grammar does not list when a bare word that could be a program
+ * follows (wave 12, E1-4: unless the word is one of the manager's own subcommands). `make`, `just` and `task` run recipes of the repo, not an arbitrary
  * command, and are not peeled (a documented residual).
  *
  * What a runner starts: `bunx|npx|pnpx X`, `bun x X`, `pnpm|yarn|npm exec|dlx X` and `npm x X` run a package binary or a PATH

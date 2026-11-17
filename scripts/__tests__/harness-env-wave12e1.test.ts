@@ -57,6 +57,9 @@ describe("E1-2: options inside an `env -S` string are env's options", () => {
     ["after an outer value option", (o, c) => `env -u Y -S '${o} ${c.replace(/'/g, "'\\''")}'`],
     ["--split-string=", (o, c) => `env --split-string='${o} ${c.replace(/'/g, "'\\''")}'`],
     ["joined -S", (o, c) => `env -S'${o} ${c.replace(/'/g, "'\\''")}'`],
+    ["joined -S, command outside", (o, c) => `env -S'${o}' ${c}`],
+    ["joined -iS, command outside", (o, c) => `env -iS'${o}' ${c}`],
+    ["--split-string=, command outside", (o, c) => `env --split-string='${o}' ${c}`],
     ["in a cluster", (o, c) => `env -iS '${o} ${c.replace(/'/g, "'\\''")}'`],
     ["behind sudo", (o, c) => `sudo env -S '${o} ${c.replace(/'/g, "'\\''")}'`],
     ["behind nice", (o, c) => `nice env -S '${o} ${c.replace(/'/g, "'\\''")}'`],
@@ -181,15 +184,16 @@ describe("E1-2: env and sudo take every word with a `=` as an assignment", () =>
     );
   });
 
-  it("a NAME holding an expansion asks", () => {
-    for (const cmd of [
-      `env PG\${E}HOST=${HOST} psql -c 1`,
-      `env $N=x psql -c 1`,
-      `sudo \`echo PG\`HOST=${HOST} psql -c 1`,
-      "env $(echo A)=1 ls",
-    ]) {
-      expect(rank(cmd), cmd).toBeGreaterThanOrEqual(1);
-    }
+  it.each([
+    `env PG\${E}HOST=${HOST} psql -c 1`,
+    "env $N=x psql -c 1",
+    `sudo \`echo PG\`HOST=${HOST} psql -c 1`,
+    "env $(echo A)=1 ls",
+    "sudo $N=1 ls",
+    "env A=1 $N=2 ls",
+    "env ${N}=x ls",
+  ])("a NAME holding an expansion asks: %s", (cmd) => {
+    expect(rank(cmd), cmd).toBeGreaterThanOrEqual(1);
   });
 
   it("only env and sudo read a word with an odd name as an assignment (the others run it)", () => {

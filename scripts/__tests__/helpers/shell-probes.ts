@@ -58,6 +58,8 @@ export const EXACT_PROBES: readonly string[] = [
   "ksh|-oc errexit|",
   "ksh|-co errexit|1",
   "ksh|-c --|1",
+  "ksh|-o - -c|1",
+  "ksh|-o -- -c|",
   "ksh|-- -c|",
   "ksh||1",
   "ksh|+c|1",

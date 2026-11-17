@@ -88,7 +88,7 @@ export function peelWrapper(
   const asked = named(options, spec.asksWith)[0];
   if (asked !== undefined)
     unplaced ??= `${wrapper} ${asked.name.length === 1 ? "-" : "--"}${asked.name} SCRIPT`;
-  let stays = asked !== undefined || named(options, spec.stays).length > 0;
+  let stays = named(options, spec.stays).length > 0;
   // `flock FILE -c STRING`, `runuser USER -c STRING`: options may follow the operands once more.
   if (!stays && spec.optionsAfterOperands === true && operands.length > 0) {
     const more = readOptions(spec.grammar, all, next);

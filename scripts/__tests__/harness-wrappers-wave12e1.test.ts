@@ -93,6 +93,18 @@ describe("E1-6: tools that run a script of their own ask instead of peeling", ()
     expect(rank(cmd), cmd).toBe(1);
   });
 
+  it.each([
+    "leaks git commit --no-verify -m x",
+    "leaks --list git commit --no-verify -m x",
+    "leaks -q git push --force origin main",
+    "lldb git commit --no-verify -m x",
+    "lldb -b git push --force origin main",
+    "lldb -f git commit --no-verify -m x",
+  ])("without a -- the words name a process or a target, not a command: %s", (cmd) => {
+    // `leaks NAME` and `lldb TARGET` run nothing (their --help): the same answer as before the wrappers were in the table
+    expect(decide(cmd), cmd).toBe("allow");
+  });
+
   it("a script file, a target and a pid run no command the guard reads", () => {
     for (const cmd of [
       "expect script.exp",
@@ -117,15 +129,15 @@ describe("E1-6: tools that run a script of their own ask instead of peeling", ()
 });
 
 describe("E1-6: nodemon runs a command only behind --exec; npm-run-all, run-p and run-s run scripts by name", () => {
-  it("a script operand is no program", () => {
-    for (const cmd of [
-      "nodemon src/server.ts",
-      "nodemon -w src -e ts server.ts",
-      "nodemon --watch src --ext ts git",
-    ]) {
-      expect(program(cmd).prog, cmd).toBe("nodemon");
-      expect(decide(cmd), cmd).toBe("allow");
-    }
+  it.each([
+    "nodemon src/server.ts",
+    "nodemon -w src -e ts server.ts",
+    "nodemon --watch src --ext ts git",
+    "nodemon git commit --no-verify -m x",
+    "nodemon -w src src/x.ts git push",
+  ])("a script operand is no program: %s", (cmd) => {
+    expect(program(cmd).prog, cmd).toBe("nodemon");
+    expect(decide(cmd), cmd).toBe("allow");
   });
   it("the everyday forms stay allowed", () => {
     for (const cmd of [

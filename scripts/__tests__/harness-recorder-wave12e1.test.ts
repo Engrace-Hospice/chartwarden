@@ -87,6 +87,62 @@ describe("E1-7: the recorder never reads a failure as an answer", () => {
     }
   }, 20_000);
 
+  it("a valued probe that hangs is unverified too, and a tool that answers is read as before", async () => {
+    const r = await recorder();
+    const tool = fakeTool(
+      "valued",
+      'for a in "$@"; do [ "$a" = "--waits" ] && sleep 5; done; [ "$1" = "--takes" ] && [ "$2" = "VAL" ] && echo HIT; exit 0',
+    );
+    const box = r.makeSandbox(tool);
+    const target = {
+      key: "fake",
+      tool: "valued",
+      method: "echo-hit" as const,
+      versionArgs: ["--version"],
+      helpArgs: [],
+      values: ["VAL"],
+      argv: (t: string, v?: string) => [t, ...(v === undefined ? [] : [v])],
+    };
+    try {
+      expect(await r.probe(tool, target, "--takes", box)).toBe(true);
+      expect(await r.probe(tool, target, "--waits", box)).toBe("unverified");
+      expect(await r.probe(tool, target, "--plain", box)).toBe("unverified");
+    } finally {
+      box.dispose();
+    }
+  }, 20_000);
+
+  it("a tool that is slow once and answers the retry is an answer, not an error", async () => {
+    const r = await recorder();
+    const marker = join(scratch, "first-call");
+    const tool = fakeTool(
+      "slowonce",
+      `if [ ! -e ${marker} ]; then : > ${marker}; sleep 5; fi; echo answered`,
+    );
+    const box = r.makeSandbox(tool);
+    try {
+      const result = await r.run(tool, [], box);
+      expect(result.out.trim()).toBe("answered");
+    } finally {
+      box.dispose();
+    }
+  }, 20_000);
+
+  it("a probe whose control also prints the operand fails the recording (the option proves nothing)", async () => {
+    const r = await recorder();
+    const tool = fakeTool("always", "echo HIT");
+    const target = {
+      key: "fake",
+      tool: "always",
+      method: "help" as const,
+      versionArgs: ["1.2.3"],
+      helpArgs: [],
+      argv: () => [],
+      runsOperand: [{ option: "--x", argv: ["--x", "echo HIT"], control: ["echo HIT"] }],
+    };
+    await expect(r.recordTarget(tool, target)).rejects.toThrow(/without it: true/);
+  });
+
   it("a probe that does not show the operand run fails the recording, loudly", async () => {
     const r = await recorder();
     const tool = fakeTool("noisy", 'echo "$@"');
@@ -143,11 +199,15 @@ describe("E1-7: the recorder never reads a failure as an answer", () => {
 });
 
 describe("P21: a carriage return is a blank in env's split grammar", () => {
-  it("the reader splits at it, like \\n, \\t, \\v and \\f", () => {
-    expect(splitEnvString("a\rb").words).toEqual(["a", "b"]);
-    expect(splitEnvString("a\r\rb").words).toEqual(["a", "b"]);
-    expect(splitEnvString("\ra\r").words).toEqual(["a"]);
-    expect(splitEnvString("a\tb\nc\vd\fe\rf").words).toEqual(["a", "b", "c", "d", "e", "f"]);
+  it.each([
+    ["a\rb", ["a", "b"]],
+    ["a\r\rb", ["a", "b"]],
+    ["\ra\r", ["a"]],
+    ["a\r", ["a"]],
+    ["echo\rhi", ["echo", "hi"]],
+    ["a\tb\nc\vd\fe\rf", ["a", "b", "c", "d", "e", "f"]],
+  ])("the reader splits %j at it, like \\n, \\t, \\v and \\f", (text, words) => {
+    expect(splitEnvString(text).words).toEqual(words);
   });
   it.skipIf(!existsSync("/usr/bin/env"))(
     "and so does the installed env (BSD env; GNU env is not verified)",

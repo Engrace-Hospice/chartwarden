@@ -3,10 +3,12 @@
  * package managers with one regex (`MANAGER_VALUED`) that listed `-r -c -w -F -C` as value options, which are flags in pnpm and
  * yarn (`pnpm -r exec CMD` ate `exec` and ran the next word as the subcommand), and wave 9 listed booleans as valued
  * (`env-cmd --fallback`, `lerna exec --include-dependencies`, `nx exec --parallel`, `op run --cache`). Each tool now has the grammar of
- * its own CLI, read by `option-grammar.ts`: bun's from its installed `--help` (every long option is a flag, a value rides after `=`:
- * `bun --port 3000 run x` is a usage error, probed on bun 1.4.4), pnpm's from `pnpm help exec|dlx` (installed, v10), uv's from `uv run|
- * tool run|uvx --help` (installed); npm's, yarn's and the environment loaders' from their documentation, marked `lax` (an unknown
- * option is a flag, as npm's own parser reads it) and `unverified` where the tool is not installed here. Pure.
+ * its own CLI, read by `option-grammar.ts`: bun's, pnpm's, npm's and npx's are RECORDINGS of the installed tools (wave 11, rule 12: the fixtures under
+ * `scripts/__tests__/fixtures/harness-tool-options/`; wave 10 wrote them from memory and said "every long option of bun is a flag whose value rides
+ * after `=`", which is true only before the subcommand: after `run` bun takes `--cwd x`, `--env-file x`, ... with a separate value), uv's from `uv run|
+ * tool run|uvx --help` (installed); yarn's and the environment loaders' from their documentation, marked `lax` (an unknown option is a flag, as npm's
+ * own parser reads it) and `unverified` where the tool is not installed here. Wave 12 (E1-4): the managers' global tables know their subcommands, so an
+ * unlisted option before one of them is a flag; an unlisted option or letter before any other bare word asks. Pure.
  */
 import type { OptionGrammar } from "./option-grammar";
 

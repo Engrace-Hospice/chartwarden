@@ -7,7 +7,8 @@
  * (`env -C`, `sudo -D`), and one whose value is itself a command line (`env -S`).
  *
  * Audited from each tool's own manual page; `sudo`, `env`, `nice`, `nohup`, `xargs`, `stdbuf`, `caffeinate`, `arch`,
- * `chroot`, `ssh-agent` and `script` were read from the manual pages installed on the macOS this runs on. The rest (GNU
+ * `chroot`, `ssh-agent`, `script`, `lockf`, `taskpolicy` and `sandbox-exec` were read from the manual pages installed on the macOS this runs on
+ * (`leaks` and `lldb` from their `--help`; wave 12, E1-6). The rest (GNU
  * coreutils, util-linux, moreutils, strace, GNU parallel) are not installed here: their rows are from the manuals and marked
  * `unverified`. A table that is not complete says `lax` (an unknown option is read as a flag, the older behaviour). Pure.
  */
