@@ -1,0 +1,101 @@
+{
+  "tool": "pg_isready",
+  "version": "18.4",
+  "command": "pg_isready --help; getopt behaviour probes against 127.0.0.1 port 1",
+  "options": [
+    {
+      "name": "dbname",
+      "short": "d",
+      "takesValue": true,
+      "role": "string"
+    },
+    {
+      "name": "quiet",
+      "short": "q",
+      "takesValue": false
+    },
+    {
+      "name": "version",
+      "short": "V",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "help",
+      "short": "?",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "host",
+      "short": "h",
+      "takesValue": true,
+      "role": "host"
+    },
+    {
+      "name": "port",
+      "short": "p",
+      "takesValue": true
+    },
+    {
+      "name": "timeout",
+      "short": "t",
+      "takesValue": true
+    },
+    {
+      "name": "username",
+      "short": "U",
+      "takesValue": true
+    }
+  ],
+  "abbreviations": [
+    {
+      "prefix": "d",
+      "outcome": "string"
+    },
+    {
+      "prefix": "db",
+      "outcome": "string"
+    },
+    {
+      "prefix": "h",
+      "outcome": "host"
+    },
+    {
+      "prefix": "ho",
+      "outcome": "host"
+    },
+    {
+      "prefix": "p",
+      "outcome": "value"
+    },
+    {
+      "prefix": "po",
+      "outcome": "value"
+    },
+    {
+      "prefix": "q",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "qu",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "t",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ti",
+      "outcome": "value"
+    },
+    {
+      "prefix": "u",
+      "outcome": "value"
+    },
+    {
+      "prefix": "us",
+      "outcome": "value"
+    }
+  ]
+}

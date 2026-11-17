@@ -211,6 +211,11 @@
     {
       "name": "role",
       "takesValue": true
+    },
+    {
+      "name": "no-acl",
+      "takesValue": false,
+      "hidden": true
     }
   ],
   "abbreviations": [
@@ -377,6 +382,14 @@
     {
       "prefix": "no-",
       "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-a",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-ac",
+      "outcome": "flag"
     },
     {
       "prefix": "no-c",

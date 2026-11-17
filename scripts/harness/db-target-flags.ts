@@ -1,15 +1,27 @@
 /**
  * The options the real client programs take, per client: the short letters and the long names that take a value, and the long
- * names that take none (wave 10, B4, round-7 R7-ADV-3, R7-CR-6; regenerated in wave 11, part D, from the recorded fixtures).
+ * names that take none (wave 10, B4, round-7 R7-ADV-3, R7-CR-6; regenerated in wave 11, part D, from the recorded fixtures;
+ * wave 12, F-9: the hidden aliases the help does not list, `pg_dump --no-acl` among them).
  * A long option is its exact name first, then an unambiguous prefix of one character or more (getopt_long, `db-long-options.ts`):
  * `--log` of pgbench is a flag although it is also a prefix of `--log-prefix`, `--tls` of redis-cli although it prefixes
  * `--tls-ciphers`. These lists were first read from the `--help` of PostgreSQL 16's programs and redis 8's; wave 11 replaced them
  * by what `scripts/__tests__/helpers/record-pg-options.ts` records from the installed programs (their own getopt parser, not
- * only the help text), and `scripts/__tests__/harness-db-options-wave11.test.ts` proves this table against the committed
- * fixtures (`fixtures/harness-db-tool-options`) and re-records them live when the programs are installed. The table is NOT built
- * from the fixtures at run time: a test compares the two, so neither can drift. The clients that are not installed here keep
- * the hand-kept tables of `db-target-clients.ts` (from their documentation, UNVERIFIED). Data only.
+ * only the help text), and `scripts/__tests__/harness-db-options-wave11.test.ts` proves the PRODUCTION table (this data UNITED with
+ * the hand table of `db-target-clients.ts`) against the committed fixtures (`fixtures/harness-db-tool-options`) and re-records them
+ * live when the programs are installed. Because the production table is a union, a letter or a name dropped from HERE survives
+ * that test whenever the hand table also has it (round 9 mutants P16/P17: `U` and `h` of psql); `harness-db-flags-wave12f.test.ts`
+ * therefore compares THIS data with the fixtures directly. The table is NOT built from the fixtures at run time: the two are
+ * compared, so neither can drift. The clients that are not installed here keep the hand-kept tables of `db-target-clients.ts`
+ * (from their documentation, UNVERIFIED). Data only.
+ *
+ * Only PostgreSQL RECORDED_MAJOR's options are here. The repository ships PostgreSQL 18, recorded as a second version in
+ * `fixtures/harness-db-tool-options/pg18/`: its additions (`pg_dump --sync-method`, `--statistics-only`, `vacuumdb
+ * --missing-stats-only`, `pg_basebackup --incremental`, ...) are deliberately NOT in this table, so they are unknown options of a
+ * verified client and ask; a union would change which prefixes are ambiguous, which the major-16 recording proves.
  */
+/** The PostgreSQL major version the data below was recorded from (the recorder, the fixtures and the proof tests all name it). */
+export const RECORDED_MAJOR = "16";
+
 export interface VerifiedOptions {
   /** Short option letters that take a value. */
   readonly valueShort: string;
@@ -100,6 +112,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "username",
       ],
       flagLong: [
+        "attribute-inserts",
         "binary-upgrade",
         "blobs",
         "clean",
@@ -114,6 +127,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "inserts",
         "large-objects",
         "load-via-partition-root",
+        "no-acl",
         "no-blobs",
         "no-comments",
         "no-large-objects",
@@ -161,6 +175,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "username",
       ],
       flagLong: [
+        "attribute-inserts",
         "binary-upgrade",
         "clean",
         "column-inserts",
@@ -171,6 +186,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "if-exists",
         "inserts",
         "load-via-partition-root",
+        "no-acl",
         "no-comments",
         "no-owner",
         "no-password",
@@ -228,6 +244,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "exit-on-error",
         "if-exists",
         "list",
+        "no-acl",
         "no-comments",
         "no-data-for-failed-tables",
         "no-owner",

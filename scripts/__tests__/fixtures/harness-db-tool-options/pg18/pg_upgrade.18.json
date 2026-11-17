@@ -1,0 +1,365 @@
+{
+  "tool": "pg_upgrade",
+  "version": "18.4",
+  "command": "pg_upgrade --help; getopt behaviour probes against 127.0.0.1 port 1",
+  "options": [
+    {
+      "name": "old-bindir",
+      "short": "b",
+      "takesValue": true
+    },
+    {
+      "name": "new-bindir",
+      "short": "B",
+      "takesValue": true
+    },
+    {
+      "name": "check",
+      "short": "c",
+      "takesValue": false
+    },
+    {
+      "name": "old-datadir",
+      "short": "d",
+      "takesValue": true
+    },
+    {
+      "name": "new-datadir",
+      "short": "D",
+      "takesValue": true
+    },
+    {
+      "name": "jobs",
+      "short": "j",
+      "takesValue": true
+    },
+    {
+      "name": "link",
+      "short": "k",
+      "takesValue": false
+    },
+    {
+      "name": "no-sync",
+      "short": "N",
+      "takesValue": false
+    },
+    {
+      "name": "old-options",
+      "short": "o",
+      "takesValue": true
+    },
+    {
+      "name": "new-options",
+      "short": "O",
+      "takesValue": true
+    },
+    {
+      "name": "old-port",
+      "short": "p",
+      "takesValue": true
+    },
+    {
+      "name": "new-port",
+      "short": "P",
+      "takesValue": true
+    },
+    {
+      "name": "retain",
+      "short": "r",
+      "takesValue": false
+    },
+    {
+      "name": "socketdir",
+      "short": "s",
+      "takesValue": true
+    },
+    {
+      "name": "username",
+      "short": "U",
+      "takesValue": true
+    },
+    {
+      "name": "verbose",
+      "short": "v",
+      "takesValue": false
+    },
+    {
+      "name": "version",
+      "short": "V",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "clone",
+      "takesValue": false
+    },
+    {
+      "name": "copy",
+      "takesValue": false
+    },
+    {
+      "name": "copy-file-range",
+      "takesValue": false
+    },
+    {
+      "name": "no-statistics",
+      "takesValue": false
+    },
+    {
+      "name": "set-char-signedness",
+      "takesValue": true
+    },
+    {
+      "name": "swap",
+      "takesValue": false
+    },
+    {
+      "name": "sync-method",
+      "takesValue": true
+    },
+    {
+      "name": "help",
+      "short": "?",
+      "takesValue": false,
+      "argv1Only": true
+    }
+  ],
+  "abbreviations": [
+    {
+      "prefix": "c",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ch",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "che",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "cl",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "clo",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "co",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "cop",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "copy-",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "copy-f",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "j",
+      "outcome": "value"
+    },
+    {
+      "prefix": "jo",
+      "outcome": "value"
+    },
+    {
+      "prefix": "l",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "li",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "n",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ne",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "new",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "new-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "new-b",
+      "outcome": "value"
+    },
+    {
+      "prefix": "new-bi",
+      "outcome": "value"
+    },
+    {
+      "prefix": "new-d",
+      "outcome": "value"
+    },
+    {
+      "prefix": "new-da",
+      "outcome": "value"
+    },
+    {
+      "prefix": "new-o",
+      "outcome": "value"
+    },
+    {
+      "prefix": "new-op",
+      "outcome": "value"
+    },
+    {
+      "prefix": "new-p",
+      "outcome": "value"
+    },
+    {
+      "prefix": "new-po",
+      "outcome": "value"
+    },
+    {
+      "prefix": "no",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-s",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-st",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-sta",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-sy",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-syn",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "o",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ol",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "old",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "old-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "old-b",
+      "outcome": "value"
+    },
+    {
+      "prefix": "old-bi",
+      "outcome": "value"
+    },
+    {
+      "prefix": "old-d",
+      "outcome": "value"
+    },
+    {
+      "prefix": "old-da",
+      "outcome": "value"
+    },
+    {
+      "prefix": "old-o",
+      "outcome": "value"
+    },
+    {
+      "prefix": "old-op",
+      "outcome": "value"
+    },
+    {
+      "prefix": "old-p",
+      "outcome": "value"
+    },
+    {
+      "prefix": "old-po",
+      "outcome": "value"
+    },
+    {
+      "prefix": "r",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "re",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "s",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "se",
+      "outcome": "value"
+    },
+    {
+      "prefix": "set",
+      "outcome": "value"
+    },
+    {
+      "prefix": "so",
+      "outcome": "value"
+    },
+    {
+      "prefix": "soc",
+      "outcome": "value"
+    },
+    {
+      "prefix": "sw",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "swa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "sy",
+      "outcome": "value"
+    },
+    {
+      "prefix": "syn",
+      "outcome": "value"
+    },
+    {
+      "prefix": "u",
+      "outcome": "value"
+    },
+    {
+      "prefix": "us",
+      "outcome": "value"
+    },
+    {
+      "prefix": "v",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ve",
+      "outcome": "flag"
+    }
+  ]
+}
