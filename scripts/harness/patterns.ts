@@ -75,7 +75,7 @@ import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./op
 import { setPackageScriptsReader } from "./package-scripts";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
 import { persistenceReason } from "./persistence-commands";
-import { expandedProgramWord } from "./program-words";
+import { expandedProgramWord, shellsBehindWord } from "./program-words";
 import {
   protectedDirectories,
   protectedNameSamples,
@@ -155,7 +155,7 @@ import { anyProgramTarget } from "./db-any-program";
 import { connectTargetOf } from "./db-connect-commands";
 import { type DatabaseTarget, databaseTarget, databaseTargetReason } from "./db-target";
 import { TARGET_CLIENTS } from "./db-target-clients";
-import { unplacedBindingWords, variableStatementWords } from "./db-variables";
+import { unplacedBindingWords, valuesByName, variableStatementWords } from "./db-variables";
 import { forcedAdd } from "./git-add-force";
 import { pushDecision, pushFacts, pushFinding } from "./git-push-refs";
 import { leakCheckText, secretFlowReason } from "./secret-flows";
@@ -897,10 +897,12 @@ function nestedCommandVerdicts(
       verdicts.push(judge(run.command, ctx, depth + 1, run.inFileDir ? [null] : here));
   }
   // `bash -c '…'`, `eval …`, a wrapper's string, the command behind a container (`nested-texts.ts`).
-  for (const nested of nestedTexts(prog, args, stdinOf, isLocalHost)) {
+  const variables = (): ReadonlyMap<string, readonly string[]> => valuesByName(variableStatements);
+  for (const nested of nestedTexts(prog, args, stdinOf, isLocalHost, variables)) {
     const inside = nested.workdir === undefined ? here : runIn(here, nested.workdir, ctx);
-    verdicts.push(judge(nested.text, ctx, depth + 1, inside));
+    if (nested.text !== "") verdicts.push(judge(nested.text, ctx, depth + 1, inside));
     if (nested.unplaced !== undefined) verdicts.push(ask(UNPLACED_WRAPPER_REASON(nested.unplaced)));
+    if (nested.question !== undefined) verdicts.push(ask(nested.question));
   }
   verdicts.push(...gitExecVerdicts(parsed, ctx, depth, here));
   verdicts.push(...awkProgramVerdicts(prog, args, ctx, depth, here));
@@ -975,6 +977,32 @@ function dynamicProgramVerdicts(
   return verdicts;
 }
 
+/**
+ * `$SHELL -c 'CMD'`, `S=bash; $S -c 'CMD'`, `=bash -c 'CMD'` (zsh): the program word stands for a shell the guard names (`program-words.ts`), so the string it
+ * runs is judged as that shell's; a word built from a variable asks too (R9-ADV-12).
+ */
+function shellWordVerdicts(
+  parsed: Parsed,
+  stdinOf: () => readonly string[],
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const { shells, dynamic } = shellsBehindWord(parsed.word, valuesByName(variableStatements));
+  const as = (shell: string): Parsed => ({
+    ...parsed,
+    prog: shell,
+    word: shell,
+    ...(parsed.handed === undefined
+      ? {}
+      : { handed: { ...parsed.handed, prog: shell, word: shell } }),
+  });
+  const judged = shells.flatMap((shell) =>
+    nestedWithInlineVariables(as(shell), stdinOf, ctx, depth, here),
+  );
+  return dynamic && shells.length > 0 ? [...judged, ask(DYNAMIC_PROGRAM_REASON)] : judged;
+}
+
 /** What one `judge` call walks: where the next command runs, and what it has found so far. */
 interface Walk {
   after: readonly Cwd[]; // where the next command runs when the one before it succeeded
@@ -1013,23 +1041,19 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
     walk.verdicts.push(ask(UNPLACED_WRAPPER_REASON(parsed.unplaced)));
   const remote = remoteAccessReason(parsed.prog, parsed.args, parsed.assigns);
   if (remote !== null) walk.verdicts.push(ask(remote));
+  const stdinOf = (): readonly string[] =>
+    stdinTexts(
+      parsedParts.map((q, i) => ({ ...q, joiner: parts[i]?.joiner ?? "" })),
+      index,
+      bodiesByPart[index] ?? [],
+    );
   // A SQL client's own shell escapes and file commands (`sqlite3 .shell`, `psql \\!`, `mysql system`).
   walk.verdicts.push(
     ...dbClientVerdicts(parts, parsedParts, index, bodiesByPart[index] ?? [], here, ctx),
     ...siblingSweepVerdicts(parts, parsedParts, index, ctx, depth, here),
     ...dynamicProgramVerdicts(part.text, parsed, ctx, here),
-    ...nestedWithInlineVariables(
-      parsed,
-      () =>
-        stdinTexts(
-          parsedParts.map((q, i) => ({ ...q, joiner: parts[i]?.joiner ?? "" })),
-          index,
-          bodiesByPart[index] ?? [],
-        ),
-      ctx,
-      depth,
-      here,
-    ),
+    ...nestedWithInlineVariables(parsed, stdinOf, ctx, depth, here),
+    ...shellWordVerdicts(parsed, stdinOf, ctx, depth, here),
   );
   if (readsScriptFromStdin(parsed, index)) walk.scriptTexts.push(...pipelineTexts(parts, index));
   // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a command

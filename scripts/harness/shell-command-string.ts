@@ -25,10 +25,13 @@ const PWSH = /^(?:pwsh|powershell)$/;
 const PWSH_COMMAND = /^-(?:c|command|commandwithargs|cwa)$/i;
 /** Options of fish that run a string: `-c STR`, `-C STR`, `--command=STR`, `--init-command=STR`. */
 const FISH_LONG = /^--(?:command|init-command)(?:=(.*))?$/;
-/** A string that reads its operands: `"$@"`, `$*`, `$0`, `$1`, `${1}`, `${@:2}`. */
+/** A string that reads the operands after `$0`: `"$@"`, `$*`, `$1`, `${1}`, `${@:2}`. */
+const READS_REST = /\$\{?[@*1-9]/;
+/** A string that runs its first operand: `$0`, `"$0" "$@"`. */
+const READS_ZERO = /\$\{?0(?![0-9])/;
+
 /** A word that starts an option (`-x`, `+x`, `--`): ksh's `-o` lists the options instead of taking it; a lone `-` it does take (probed). */
 const DASH_WORD = /^[-+]./;
-const POSITIONAL = /\$\{?[@*0-9]/;
 
 interface Scan {
   /** The words of `args` from where the operands start (after the options and a `--`). */
@@ -104,13 +107,18 @@ function fishCommandStrings(args: readonly string[]): string[] {
   return out;
 }
 
-/** The lines a string that reads `$@`, `$0`, `$1` runs besides itself: the operands behind it, joined and quoted back. */
-const operandLines = (string: string, behind: readonly string[]): string[] =>
-  POSITIONAL.test(string)
-    ? [...joinedAndQuoted(behind.slice(1)), ...joinedAndQuoted(behind)].filter(
-        (l) => l.trim() !== "",
-      )
-    : [];
+/**
+ * The lines a string that reads its operands runs besides itself (R9-ADV-12: `sh -c 'exec "$@"' _ CMD`, `find -exec sh -c '"$@"' _ CMD \\;`): the operands
+ * behind the string, joined and quoted back, from `$1` on when the string reads `$@`, `$*` or `$1`, from `$0` when it reads `$0`. The placeholder that
+ * fills `$0` (`_`, `sh`) is no part of the command in the first case, so it is left out there.
+ */
+function operandLines(string: string, behind: readonly string[]): string[] {
+  const lines = [
+    ...(READS_REST.test(string) ? joinedAndQuoted(behind.slice(1)) : []),
+    ...(READS_ZERO.test(string) ? joinedAndQuoted(behind) : []),
+  ];
+  return lines.filter((line) => line.trim() !== "");
+}
 
 /** What one grammar makes of the words: the string `-c` runs and the lines its operands may run, or the ksh operand run as a command. */
 function grammarStrings(grammar: ShellGrammar, args: readonly string[]): string[] {
