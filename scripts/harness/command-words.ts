@@ -1,13 +1,15 @@
+/**
+ * The words of a simple command, and the program it runs (moved out of `patterns.ts` in wave 11 part C). `words` reads shell words the
+ * way the shell does; `program` skips assignments and strips wrappers and package runners (`wrapper-peel.ts`, `runners.ts`) so the
+ * command that really runs is the one every rule judges. `env -S STRING` is split by env's own grammar (`env-split.ts`, R8-ADV-1) from
+ * the words as the program is handed them.
+ */
+import { type EnvLookup, splitEnvString } from "./env-split";
 import { isPackageScript } from "./package-scripts";
 import { parallelExtras, replacementTags } from "./parallel-command";
 import { programName } from "./program-name";
 import { peelRunnerWithFiles } from "./runners";
 import { peelWrapper } from "./wrapper-peel";
-/**
- * The words of a simple command, and the program it runs (moved out of `patterns.ts` in wave 11 part C; the logic is unchanged except
- * where the finding ids below say so). `words` reads shell words the way the shell does; `program` skips assignments and strips wrappers
- * and package runners (`wrapper-peel.ts`, `runners.ts`) so the command that really runs is the one every rule judges.
- */
 import { gnuName } from "./wrappers";
 
 /** What the shell does to a word before the program sees it: remove backslashes, expand braces. */
@@ -124,6 +126,17 @@ export function words(seg: string, values = false): string[] {
 
 // `NAME=v` and `NAME+=v` both assign for the one command that follows.
 export const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
+/** The value `${NAME}` has in `env -S` after the assignments in front of the wrapper (`F=x env -S 'cat ${F}'`): the last one wins. */
+function inlineVariables(words: readonly string[], upTo: number): EnvLookup {
+  return (name) => {
+    for (let at = upTo - 1; at >= 0; at--) {
+      const word = words[at] ?? "";
+      if (word.startsWith(`${name}=`)) return word.slice(name.length + 1);
+    }
+    return undefined;
+  };
+}
+
 /**
  * The program a simple command runs, skipping `VAR=value` prefixes and wrapper commands (`sudo`, `env`, `then`: the
  * table of `wrapper-specs.ts`, read by `wrapper-peel.ts`). A name the shell would unquote (`\cd`, `c\d`) is the program
@@ -149,6 +162,10 @@ export function program(
   reads: string[];
 } {
   let w = words(seg, values);
+  // The words as the programs are HANDED them (an escaped quote inside double quotes is the quote), same indices as `w`: `env -S`
+  // reads its string from them. null once a rewrite below changes the indices (the wrapper then asks).
+  let handed: readonly string[] | null | undefined =
+    values || !/\\/.test(seg) ? undefined : words(seg, true);
   const writes: string[] = [];
   const reads: string[] = [];
   const unplaced: string[] = [];
@@ -162,7 +179,13 @@ export function program(
       k++;
       continue;
     }
-    const wrapper = peelWrapper(gnuName(programName(word)), w, k, (text) => words(text, values));
+    const wrapper = peelWrapper(
+      gnuName(programName(word)),
+      w,
+      k,
+      (text) => splitEnvString(text, inlineVariables(w, k)),
+      handed,
+    );
     if (wrapper !== null) {
       // `flock -c 'cmd' file`, `sudo -e FILE`: the words are a string or files, not a command: the wrapper stays the program.
       if (wrapper.stays) break;
@@ -174,11 +197,18 @@ export function program(
       if (wrapper.unplaced !== undefined) unplaced.push(`${wrapper.wrapper} ${wrapper.unplaced}`);
       // `env -S 'cmd arg'` runs the words of its string as the command.
       w = [...w.slice(0, wrapper.next), ...wrapper.insert, ...w.slice(wrapper.next)];
+      if (handed)
+        handed = [
+          ...handed.slice(0, wrapper.next),
+          ...wrapper.insert,
+          ...handed.slice(wrapper.next),
+        ];
       k = wrapper.next;
       if (wrapper.wrapper === "parallel") {
         // The data after `:::` are not arguments of the command: the command is judged with each datum where parallel puts it.
         const split = parallelExtras(w, k, replacementTags(wrapper.options));
         w = split.words;
+        if (handed !== undefined) handed = null;
         lines.push(...split.lines);
         reads.push(...split.reads);
       }
@@ -193,6 +223,13 @@ export function program(
     reads.push(peeled.inner[0] ?? "");
     unplaced.push(...(peeled.unplaced ?? []).map((option) => `${programName(word)} ${option}`));
     w = [...w.slice(0, k), ...peeled.inner];
+    if (handed) {
+      const again = peelRunnerWithFiles(handed.slice(k), isPackageScript);
+      handed =
+        again !== null && again.inner.length === peeled.inner.length
+          ? [...handed.slice(0, k), ...again.inner]
+          : null;
+    }
   }
   // `env -u X` with no command prints the environment: it is still `env`.
   const prog =
