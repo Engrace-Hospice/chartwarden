@@ -1,4 +1,6 @@
 /**
+ * (Over the 800-line soft ceiling on purpose: one gate, one pass over the register and the harness pins, so a check cannot be skipped by a split.)
+ *
  * ChartWarden — compliance register + agent-harness integrity gate (`arch:compliance`)
  * -----------------------------------------------------------------------------------
  * Two things that otherwise rot silently:

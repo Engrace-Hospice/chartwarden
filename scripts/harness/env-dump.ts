@@ -15,6 +15,10 @@ const REASON =
 /** A word that is only options (`-p`, `-px`, `-0`): it names no variable. */
 const isOptionsOnly = (a: string): boolean => /^-[A-Za-z0-9]*$/.test(a);
 
+/** An option of the lister that prints the whole environment (any, but `--help` and `--version` and their prefixes, which print text). */
+const isDumpingOption = (a: string): boolean =>
+  a.startsWith("-") && !/^--(?:h(?:e(?:l(?:p)?)?)?|v(?:e(?:r(?:s(?:i(?:o(?:n)?)?)?)?)?)?)$/.test(a);
+
 /** The letters that make `export`, `declare` and `typeset` list variables: `-p` (print) and `-x` (exported). */
 const LISTS_VARIABLES = /^-[A-Za-z]*[px][A-Za-z]*$/;
 
@@ -25,8 +29,9 @@ const DASH_PS_ENVIRONMENT = /^-[A-Za-z]*E[A-Za-z]*$/;
 
 /** Why this command line dumps the environment (a deny), or null when it does not. */
 export function environmentDumpReason(prog: string, args: readonly string[]): string | null {
-  if (prog === "printenv" || prog === "env" || prog === "set")
-    return args.length === 0 ? REASON : null;
+  // The null-separated options of printenv print every variable too: options alone name nothing (wave 10, B10; R7-CR-14).
+  if (prog === "printenv") return args.every(isDumpingOption) ? REASON : null;
+  if (prog === "env" || prog === "set") return args.length === 0 ? REASON : null;
   if (prog === "export" || prog === "declare" || prog === "typeset") {
     // No operand lists every variable; options alone list them when one says so (-p, -x); a NAME or NAME=value assigns.
     if (args.length === 0) return REASON;

@@ -15,8 +15,13 @@ import { DEADLINE_MS, deadlineMs, denyJson } from "../harness/hard-deadline";
 const ROOT = join(__dirname, "../..");
 const GUARD = join(ROOT, "scripts/harness/pre-tool-guard.ts");
 const SHORT_DEADLINE_MS = 400;
-/** Far above the short deadline and far below the real one: proves the SEAM's deadline, not a lucky kill. */
-const WITHIN_MS = 4000;
+/**
+ * Far above the short deadline and still BELOW the real one (6.5 s, minus a margin): a call that is cut off by the test seam's
+ * 400 ms deadline, or refused at once, comes back well before the default deadline would have fired, so a hang that the seam
+ * missed still fails here. The upper bound sat at 4 s and flaked once under a machine load of 47 (cold bun + worker start);
+ * it is now as wide as that distinction allows (wave 10, B13).
+ */
+const WITHIN_MS = DEADLINE_MS - 500;
 
 const claudeCommand: string = JSON.parse(readFileSync(join(ROOT, ".claude/settings.json"), "utf8"))
   .hooks.PreToolUse[0].hooks[0].command;

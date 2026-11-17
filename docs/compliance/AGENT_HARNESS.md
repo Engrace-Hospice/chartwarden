@@ -753,7 +753,8 @@ mapped in "Finding IDs cited in this document".
   or a splat, and the sink must be a WHOLE word (three TypeScript snippets in a python heredoc were once read as a dump because
   `partnerAccessAvailability(process.env)` starts with the letter `p`). `connect(process.env)` and `spawn(cmd, {env: process.env})` pass the
   environment on and are not dumps. `declare -x NAME=value`, `typeset -x NAME=value`, `export NAME=value` and `set -x` ASSIGN or switch an option and
-  are no longer denied (v6 and v7 denied them).
+  are no longer denied (v6 and v7 denied them). **Correction (wave 10, B10):** `printenv` with no variable name is a dump, and so is `printenv` with only
+  options (`printenv -0`, `printenv --null`): the rule tested "no arguments" and let them through; only `--help` and `--version` (and their prefixes) print text.
 - *Sweeps* (`sibling-sweeps.ts`, `tar-grammar.ts`, `listing.ts`, `live-env-files.ts`, `live-suite-files.ts`, `harness-sweeps-wave8.test.ts`; T6,
   CR6-5, ADV6-9, ADV6-10, CR6-6). `fd -Hx`, `-HIx`, `-Ix`, `-HX`, `-xcat`, `--exec=cat` are `find -exec`. `ugrep -r`, `rga`, `pt`, `sift`, `ucg`, `zgrep -r`,
   `gitleaks detect --no-git|dir`, `trufflehog filesystem`, `semgrep --no-git-ignore`, `scp -r` and `ag -a|--all-types` are siblings of `grep -r`/`cp -r`/`rg
@@ -765,7 +766,7 @@ mapped in "Finding IDs cited in this document".
   spelling. The tree-sweep operand is matched as the file system folds names (case, NFKC): `grep -r X APPS/PORTAL` asks. The listings of the live env
   files and the live suites return `{files, complete}`: more directories than the cap, a depth past 16 (it was a silent 8), a symlinked directory and
   an unreadable one make the listing incomplete, and every rule that asks "could this reach one?" then answers yes (ask), as the protected-names listing
-  does; `.envrc` is a live env file. A symlinked directory under a listed root is a gap, not followed, unless it points inside a walked root; a symlink to a FILE is a file (wave 9, W9-0: wave 8 treated every symlink as a gap, which made every vitest filter ask on a checkout that holds a Python virtualenv). The three inline long-option abbreviation readers named under CR5-10 were
+  does; `.envrc` is a live env file. A symlinked directory under a listed root is a gap, not followed, unless it points inside a walked root by a path with no skipped directory in it (wave 10, B11); a symlink to a FILE is a file (wave 9, W9-0: wave 8 treated every symlink as a gap, which made every vitest filter ask on a checkout that holds a Python virtualenv). The three inline long-option abbreviation readers named under CR5-10 were
   unified in wave 9 (W9-4); the `isOption` definitions (four: `client-reading.ts`, `protected-operands.ts`, `sibling-sweeps.ts`, `writers-more.ts`) and the
   operand readers (`operands` in `writers.ts` and `writers-more.ts`, `operandsOf` in `sibling-sweeps.ts`) are not unified: they differ on a lone `-` and on an
   empty argument, so one function would change an answer (wave 10 list: not done).
@@ -835,7 +836,9 @@ mapped in "Finding IDs cited in this document".
   chartwarden_app": 9,241 of 140,767 real commands (6.56%) against the 60 (0.047%) that wave 8's own figure reported, because that figure was measured on a
   worktree that has no virtualenv. **Measure false positives against the real checkout's listing, not only a worktree's.** Now `statSync` (it follows the link)
   says what a link points at: a link to a FILE is judged by its name like a file (a `.live.test.ts` link is a suite), a dangling link holds nothing, a link to a
-  directory that is inside a walked root (`.venv/lib64 -> lib` on Linux) holds nothing new (it is walked on its own), and only a link to a directory elsewhere, or
+  directory that is inside a walked root (`.venv/lib64 -> lib` on Linux) holds nothing new (it is walked on its own) **unless its target lies under a skipped directory**
+  (`apps/web/src/viadist -> ../dist` hid `dist/hidden.live.test.ts` with `complete: true`: corrected in wave 10, B11, which also judges a link to a file by the name of
+  what it points at, and no longer takes a sibling of a walked root, `apps-extra` beside `apps`, for something inside it), and only a link to a directory elsewhere, or
   one that cannot be resolved (a link to itself: ELOOP), is a gap. The env listing reads the direct children of `apps`, `services`, `packages` and `deploy` the
   same way (a file link is a file, a dangling link is gone, a directory link is a gap). On the real checkout the suite listing is now complete (530 suites, 3
   symlinks, 1,366 directories) where wave 8's was not. **Residual:** a filter that matches only the NAME of a symlinked directory is not seen.
@@ -848,19 +851,26 @@ mapped in "Finding IDs cited in this document".
   `mycli`, `mysqlsh`, `redis-cli`, `valkey-cli`, `mongosh`, `mongo`, `mongodump`, `mongorestore`, `mongoexport`, `mongoimport`, `mongostat`, `mongotop`,
   `clickhouse-client`, `clickhouse`, `cockroach`, `usql`, `sqlcmd`, `trino` and `cqlsh`: an option table per client (which option letters take a value, which
   name the host, which carry a connection string, which name an alias or a file), a URI reader (no userinfo needed, a port, IPv6 literals, percent-encoding,
-  `a,b` host lists, `?host=` and `?hostaddr=` parameters, `mongodb+srv://`), a libpq connection-string reader that handles quoting and a `dbname=` that is itself
-  a URI, and the EXISTING local-host predicate of `content-scan.ts`, unchanged (loopback, `host.docker.internal`, a compose service, a socket directory;
-  `prod`, `db.internal` and `10.0.0.5` are not local). A host that is not local is **denied**, in any option spelling (`-h H`, `-hH`, `--host=H`, `--host H`, `--ho=H`,
-  `-AtXqh H`), inline (`PGHOST=H psql`, `env PGHOST=H psql`, `MYSQL_HOST`, `COCKROACH_URL`, `COCKROACH_HOST`, `CLICKHOUSE_HOST`) and set earlier on the same
-  command line (`export PGHOST=H; psql`, `PGHOST=H; psql`: those were allowed before), under a runner or a wrapper (`bunx psql …`, `sudo -u postgres pg_dump …`).
+  `a,b` host lists, `?host=` and `?hostaddr=` parameters, `mongodb+srv://`), a libpq connection-string reader (rebuilt in wave 10 from libpq's own `conninfo_parse`: a backslash escapes the next character inside and outside quotes, spaces
+  around `=`, an open quote or a word with no `=` after a first `key=` is refused) and a `dbname=` that is itself a URI, and the EXISTING local-host predicate of `content-scan.ts`, unchanged (loopback, `host.docker.internal`, a compose service, a socket directory;
+  `prod`, `db.internal` and `10.0.0.5` are not local). A host that is not local is **denied**, in the option spellings the client's table lists and the abbreviations its option parser accepts (`-h H`, `-hH`, `--host=H`, `--host H`, `--ho=H`,
+  `-AtXqh H`; wave 10 added that a host option is also looked for in EVERY word, whatever option before it was taken to consume a value; a client that reads no abbreviation, such as
+  redis-cli, mongosh and trino, is read by exact names only, and an exact flag name wins over a prefix of a value option), inline (`PGHOST=H psql`, `env PGHOST=H psql`, `MYSQL_HOST`, `COCKROACH_URL`, `COCKROACH_HOST`, `CLICKHOUSE_HOST`) and set
+  by a variable statement of the same command line (`export PGHOST=H; psql`, `PGHOST=H; psql`: allowed before wave 9; after wave 10 EVERY value a statement assigns is read, a rebound name included,
+  and so are the statements inside `bash -c`, `sh -c`, `eval` and the variables an inline `PGHOST=H bash -c '…'` hands down), under a runner or a wrapper (`bunx psql …`, `sudo -u postgres pg_dump …`).
+  **Correction (wave 10):** the wave-9 URI reader ended the authority at the first `/?#` and then took the userinfo to the last `@`, so `psql "postgres://localhost?@H/db"`
+  and `…localhost#@H/db` (v8 denied them) were allowed, and `…/db#?host=H` dropped its query at the `#`; libpq's own parser takes the userinfo up to the first `@` before the first
+  `/` and does not treat `#` as special, other URL parsers end the authority at `?` or `#` and take the userinfo to the last `@`, so every reading is made and the hosts of all of them are judged.
   A target the reader cannot read (an open quote, an open bracket) is **denied**, not allowed. A service, a password file, a login path or a DSN alias (`psql
   service=NAME`, `PGSERVICE=`, `PGSERVICEFILE=`, `PGPASSFILE=`, `mysql --login-path=`, `--defaults-file=`, `pgcli -D NAME`, `mycli --dsn NAME`) names the host
-  in a file the guard cannot read: **asks**. `$DATABASE_URL` asks for every client in the table (it was four). A SQL string, a file name and a `-v NAME=value`
+  in a file the guard cannot read: **asks**. `$DATABASE_URL` asks for every client in the table (it was four; wave 10: so does a variable or a substitution in the place of a target,
+  `psql "$URL"`, `psql -d "$DB"`, `redis-cli -u "$URL"`, `mongosh "$URI"`, unless the command line sets the variable to a literal first). A SQL string, a file name and a `-v NAME=value`
   are values of options the table names, never read as a host: `psql -c "select … host = 'x.example.org'"` allows. Everyday `psql -h localhost`, `psql
   postgres://u@127.0.0.1:5433/db`, `psql -p 5433 -U u db`, `redis-cli get key:123`, `docker exec … psql` and `docker compose exec postgres psql` allow.
-  **Residuals:** an option the table does not list is read as a flag (its value, if it is a host, is not seen); a bare single-label `mongosh NAME` is read as a
-  database name, not a host; `clickhouse`, `usql` and `sqlcmd` take their DSN forms as the table lists them; a client behind an alias or `docker exec` is not
-  read (as before); a variable that holds the host (`-h $HOST`) is still refused as an unplaceable host, never resolved.
+  **Residuals:** an option the table does not list is read as a flag, but a host option (`-h`, `--host`, `--uri`, …) is found in every word since wave 10; a bare single-label `mongosh NAME` is read as a
+  database name, not a host; `clickhouse`, `usql` and `sqlcmd` take their DSN forms as the table lists them; a client behind an alias is not read. **Correction:** `docker exec c psql -h H` IS
+  read (the code denies it; the wave-9 text said it was not), and wave 10 part A reads a client run in a fresh container (`docker run`, `compose run`); a variable that holds the host
+  (`-h $HOST`) is refused as an unplaceable host unless the command line sets it to a literal first, in which case the literal is read.
 - *The files a wrapper's own options name, and every long option's value* (`wrapper-options.ts`, `wrappers.ts`, `harness-wrapper-options-wave9.test.ts`; W9-2).
   A wrapper is stripped before its command is judged, so two things in its options were never looked at. First, the FILE an option names: `xargs -a FILE`
   (also `-aFILE`, `--arg-file`, `--arg-file=FILE`, `--arg`) and `parallel -a`, `--arg-file`, `--argfile`, `--sshloginfile`, `--slf`, `proxychains4 -f`, `doas -C` READ
@@ -1082,7 +1092,7 @@ fixed them (`git log --grep '<ID>'`), and in the tests named in the paragraph th
 | CR6-10 | `judge` (150 lines) and `mainWrites` (58) over 50 lines. |
 | CR6-11 | The `ISSUED_SSN` exception was recorded only in a code comment: now also in the fixture comment and Wave 8 above; the rule file `.claude/rules/phi-and-secrets.md` (and its `.agents` twin) should name it, which needs the owner. |
 | W9-0 | Wave 8's listings called every symlink a gap; the real checkout's `.venv/bin/python*` file links made 9,241 real commands (6.6%) ask. A symlink is decided by its target. |
-| W9-1 | A non-local database host was allowed in a URL without userinfo, a libpq connection string, `-d`/`--dbname` URIs, `pg_dump` URIs, `export PGHOST=H; psql` and every client but four. One target reader for 46 programs. |
+| W9-1 | A non-local database host was allowed in a URL without userinfo, a libpq connection string, `-d`/`--dbname` URIs, `pg_dump` URIs, `export PGHOST=H; psql` and every client but four. One target reader for 46 programs (71 after wave 10). |
 | W9-2 | `xargs -a <live env file> echo` was allowed; a wrapper's file options and long options with a separate value were dropped unjudged (`nice --adjustment 5 cmd` hid `cmd`). Tables per wrapper. |
 | W9-3 | `corepack`, `volta run`, `mise exec`, `asdf exec`, `direnv exec`, `cross-env`, `dotenv`, `dotenvx`, `env-cmd`, `doppler`, `op run`, `lerna exec`, `nx exec` hid their command; and wave 8's runner peel dropped the runner's own file options (`bun --env-file F run echo` was allowed). |
 | W9-4 | One long-option abbreviation reader instead of three inline copies; four `isOption` definitions and three operand readers stay separate (they differ on a lone `-` and an empty argument; wave 10 corrected the count). |
@@ -1192,3 +1202,84 @@ this part, from the brief: **wrapping a command must never make the answer weake
 | R7-CR-15 | `flock`/`runuser` stayed the program when the inner command had a `-c` of its own. |
 | R7-ADV-18 | `bun <live env file>` and `bun run <live env file>`: the runner peel made the secret name the program (wave-8 regression). |
 | R7-CR-16, R7-CR-17 | Wave-9 miscounted the duplicated `isOption` readers (four, five before this wave); dead `isEditor` removed. |
+
+## Wave 10 part B
+
+Round 7 (two cold reviews of waves 8 and 9) found three regressions of wave 9 in the database-target reader (a URI whose userinfo holds `?` or `#`, a `?`-gated
+slash rule, a flag-versus-value table) and a list of gaps in what the guard reads of a database target, a secret variable, a link and a sweep. Part B is the database
+targets, the secrets and the miscellany; part A (above or below this section) is shell structure, wrappers and runners. Every item has a RED test first (a payload that was
+allow on wave 9), a data-driven table test, hand mutants, everyday-neighbour allow tests and a corpus diff; the test files are `scripts/__tests__/harness-db-targets-wave10.test.ts`,
+`harness-db-uri.test.ts`, `harness-db-target-help.test.ts`, `harness-db-connect-commands.test.ts`, `harness-db-any-program-wave10.test.ts`,
+`harness-secret-variables-wave10.test.ts`, `harness-env-tar-wave10.test.ts`, `harness-listing-links-wave10.test.ts` and `harness-sweeps-persistence-wave10.test.ts`.
+- *The two string grammars are libpq's own* (`db-uri.ts`; B1, B2, B3; R7-CR-3, R7-CR-4, R7-CR-5, R7-ADV-1, R7-ADV-2). A URI is read as libpq's `conninfo_uri_parse` reads it (scheme, `//`, userinfo up to
+  the first `@` before the first `/`, host list, port, `/dbname`, then `?` and the query; `#` is not special) AND as a URL parser that ends the authority at `?`/`#` and takes
+  the userinfo to the last `@` reads it: at most three readings, the hosts and the `host=`/`hostaddr=`/`service=`/`passfile=`/`dbname=` parameters of all of them are judged. A connection string is parsed by a
+  character-for-character copy of `conninfo_parse` (a backslash escapes in and out of quotes; spaces around `=`; a quoted value ends at the next unescaped `'`). The guard receives the lexer's RAW word and the
+  shell's reading of it (the lexer keeps the backslashes of a quoted word, and cannot say whether the shell removed them): the hosts of both are recorded, and a string libpq would refuse (an open quote, or a
+  word with no `=` after a first `key=`) is `unparsed` (denied) only when NO reading parses. A string whose first word has no `=` (SQL handed to a shell function called `psql`) is not a connection string.
+  Verified with the real libpq 16 (`pg_isready -d STRING`, loopback addresses only, port 1, `harness-db-uri.test.ts` re-runs it when the client is installed).
+- *A flag is not a value option; a host option is found anywhere* (`db-target.ts`, `db-target-clients.ts`, `db-target-flags.ts`; B4, B5; R7-ADV-3, R7-CR-6, R7-CR-9). An exact option name wins over a prefix of a longer
+  one (`redis-cli --tls` is not `--tls-ciphers`, `pgbench --log` is not `--log-prefix`), a client that reads no abbreviation (redis-cli, valkey-cli, mongosh and the mongo tools, trino, cockroach, usql, sqlcmd, and the
+  newly added tools) is read by exact names only, `sqlcmd -W` and the `--password` of trino, clickhouse-client and the mongo tools are flags, and `-h`/`--host`/`--uri`/`--url`/`-u`/`-S`/`--server`/`--dsn` are
+  looked for in EVERY word (an over-reading: `psql -c -h H` is refused; real psql reads `-h` as the command). The option tables of PostgreSQL 16's client programs and of redis-cli 8 come from their real `--help`
+  (`db-target-flags.ts`; `harness-db-target-help.test.ts` re-reads it when they are installed and fails on a difference); the other clients are from documentation and UNVERIFIED (none is installed here). `rs0/host,host`
+  is a replica-set prefix for the mongo tools only (`psql -h H/localhost` is the one host name `H/localhost`).
+- *Variables* (`db-variables.ts`, `variable-rebinding.ts`; B6; R7-ADV-8, R7-ADV-17, R7-CR-7). Wave 9 kept the one literal a command line assigns to a name and dropped a rebound name (so "unknown" read as "no host"),
+  and computed the map once at the outer text. Now every value an `export` / `declare` / bare assignment of a text assigns is kept, for every text (a nested `bash -c`, `sh -c`, `eval` string reads the statements around it
+  and its own; the inline `PGHOST=H` of `PGHOST=H bash -c '…'` is handed down), and a client reads each of them. A `$NAME` word in a target position (a libpq/mongosh/usql/cqlsh positional, `-d`, `--dbname`, `-u`, `--uri`,
+  `--url`, `--server`) is replaced by each value; a name bound by `read`, `printf -v`, `for`, `eval` or `+=` keeps its reference as a reading; what is still a variable or a substitution afterwards **asks**
+  (`psql "$URL"`, `psql -d "$DB"`). A variable inside a URI (`localhost:$PORT`, `$(cat f)@localhost`) does not bend the URI. A statement that sets PGHOST/MYSQL_HOST/… from something the guard cannot place asks (an
+  inline `PGHOST=$(…) psql` stays a refusal, as in wave 9). Only `export`-style statements and bare assignments count (`PGHOST=H true; psql` sets it for `true` alone). **Residual:** `-h $HOST` with a name no
+  statement sets is refused as an unplaceable host, as before.
+- *Reconnection from inside a client* (`db-connect-commands.ts`; B7; R7-ADV-9). `\c`/`\connect` (a connection string or URI, `-reuse-previous=`, the host position of `\c db user host port`, a name that looks like a host)
+  of psql, pgcli, usql; `dblink_connect('…')` and `dblink('…', …)` literals and `CREATE SERVER … OPTIONS (host '…')`; mysql `connect DB HOST` and `\r DB HOST`; mongosh `connect("…")`/`Mongo("…")`: in `-c`, a here-string,
+  a heredoc and what an `echo` pipes in, with the same target reader. `\c NAME` with one plain word is a database name (the same host). **Residuals:** `psql -f FILE` of a file the agent wrote; a `dblink` whose connection
+  string is built at run time; `mongosh --eval` code that computes the address.
+- *Any program, and more clients* (`db-any-program.ts`, `db-target-clients-more.ts`; B8; R7-ADV-16, R7-ADV-23, R7-CR-15). A database host variable (`PGHOST`, `MYSQL_HOST`, `CLICKHOUSE_HOST`, `ETCDCTL_ENDPOINTS`, …) or a
+  variable that holds a database URI, set inline, by `export`, a bare assignment or `env X=v`, with a non-local host is **denied** for every program except the text tools (`echo`, `printf`, `cat`, `grep`, `rg`, `sed`, `git`, `cp`, `ls`, `export` and
+  kin): `DATABASE_URL=H bun run db:migrate`, `… node x.js`, `… drizzle-kit push`, `… npx knex migrate:latest`. A database URI (`postgres(ql)`, `mysql`, `mariadb`, `mongodb(+srv)`, `redis(s)`, `valkey`, `clickhouse`,
+  `cockroachdb`, `sqlserver`, `cassandra`, `jdbc:…`) that is a whole word or the value of one (`--url=URI`, `-url=jdbc:…`, `-x url=URI`, `-e DATABASE_URL=URI`) in the words of a program that is not a client with a table
+  **asks** (the host may be a private container's network alias): a URI in the middle of a longer word (a `sed`/`perl` program, a message) is text and is not read. The table gained `createuser`, `dropuser`, `clusterdb`,
+  `pg_amcheck`, `pg_upgrade`, `redis-benchmark` (PostgreSQL 16 and redis 8 verified) and `pgmetrics`, `pgweb`, `harlequin`, `iredis`, `mysqlbinlog`, `mariadb-binlog`, `influx`, `nodetool`, `cypher-shell`, `etcdctl`, `kcat`,
+  `kafkacat`, `dbmate`, `goose`, `atlas`, `prisma`, `drizzle-kit`, `sqlx`, `diesel` (documentation, unverified): 71 programs in all. `alembic` and `flyway` carry the URL inside an option value and are read by the URI rule.
+  `PGDATABASE` is read as a connection string and `CQLSH_HOST` as a host (both from memory of the tools, unverified). **Residuals:** single-dash long options (`influx -host H`, `flyway -url=…` is read only because its value is a
+  URI); a DSN in the mysql/Go style `user:pw@tcp(H:3306)/db` (goose); a client behind a shell script.
+- *The repo's own key-encryption and administrative variables ask* (`env-shapes.ts`, `secret-reads.ts`, `harness-secret-variables-wave10.test.ts`; B9; R7-ADV-14). `echo $M34_TENANT_KEK`, `printenv M35_PSEUDONYM_KEY_KEK`,
+  `echo $DATABASE_ADMIN_URL`, `printenv REDIS_URL`, `printenv DOSESPOT_TENANT_CONFIGS`, `docker compose exec api printenv M34_TENANT_KEK` and the same names read by inline code **ask** (the names are those of the repo's example
+  env files: `*_KEK`, `*_KEK_RETIRED`, `DATABASE_ADMIN|PLATFORM|DESTRUCTION_URL`, `REDIS_URL`, `*_WEBHOOK_URL`, key rings, tenant configs, `APNS_KEY_P8`, service-account JSON): the documented host-seed workflow passes
+  `M34_TENANT_KEK` from the api container, so a human approves a deliberate one; the names that were denied (`DATABASE_URL`, `BETTER_AUTH_SECRET`, `STRIPE_SECRET_KEY`, …) stay denied, and `echo $X_SECRETS` is denied now too. A ratchet test
+  reads the example env files and fails when a secret-looking name allows.
+- *printenv and tar* (B10; R7-CR-14, R7-CR-10). `printenv -0`/`--null`/any option alone is a dump; `tar --creat`, `--cr`, `--appe`, `--upd` and every unambiguous prefix of `--create`, `--append`, `--update` create or extend
+  an archive (GNU tar and bsdtar; bsdtar `--creat` verified).
+- *Links* (B11; R7-CR-11, R7-ADV-21): see the correction under W9-0. *Files read as name lists* (`file-list-options.ts`; B12; R7-ADV-19): `file -f`, `--files-from`, `wc|du|sort --files0-from`, `git … --pathspec-from-file`,
+  `rsync --files-from|--exclude-from|--include-from`, `sed -f`, `awk -f` of a live env file are denied (they print the lines they cannot use). *More tree sweeps* (`sibling-sweeps.ts`; R7-ADV-20): `find … -exec` of an archiver, a copier
+  or a shell whose string holds a reader, `cpio -p` fed by a here-string or an `echo`, `7z a`, `hdiutil create -srcfolder` over a tree that holds a live env file ask. **Residual:** `find | xargs cat` and `… | while read` stay the pipe-fed residual.
+  *Persistence* (`persistence-commands.ts`; R7-ADV-22): `defaults write|import` and `plutil -insert|-replace|-create|-remove|-convert` on a `LaunchAgents`/`LaunchDaemons` plist, `crontab FILE|-|-e|-r`, `at`/`batch`, `osascript` with `do script`,
+  `do shell script`, `keystroke` ask. **Residual:** an `osascript` or `at` script handed in a heredoc body is not read for its text (`at` asks regardless).
+- *Structure and tests* (B13, B14). The six hand mutants that survived round 7 are killed (the walked-root prefix, libpq's `@` split, the `tcp:`/`np:`/`lpc:` strip, the unquoted-backslash branch, git's `--open-files-in-pager`
+  minimum (`isGitPagerOption` is exported for its unit test), the plain-value-option abbreviation minimum), the database tests hold every spelling that failed in round 7, and the upper bound of `harness-hard-deadline.test.ts` is the real
+  deadline minus 500 ms (it was 4 s and flaked once under load 47; a hang the test seam missed still fails, because the default deadline is 6.5 s). `check-compliance-controls.ts` (984 lines) says at its top why it stays one
+  file. `LinkTarget` is no longer exported. **Not done:** nothing of part B's list; `harness-db-target-help.test.ts` verifies only the clients installed on the author's machine.
+- *Corpus* (real Bash commands of this machine, 140,767 distinct, real checkout listing, wave 9 against wave 10 part B, `corpus-diff`). 54 allow to ask (0.038%) and one deny to allow, none allow to deny: 32 are a `$VAR` or substitution in the
+  target position of a `psql` (`psql -d "$DB"`, mostly inside a `docker exec` shell function; an ask), 19 are the guarded variables of B9 (the seed workflow; asks), 2 are a database URI in a program's words, 1 is an `osascript`
+  `do script`; the deny to allow is `psql -h $D` where the command line sets `D` to a socket directory (wave 9 refused it as an unplaceable host, now the literal is read). Nothing else changed: `printenv -0`, the
+  tar prefixes, links, `file -f`, the tree sweeps, `crontab` and `at` cost no real command. A first version refused 9 commands and asked 8 more (a variable that holds the host was not expanded, a URI in a `sed`/`perl` program, a
+  substitution inside a URI, a container network alias): they are the reason for the word-start rule, the expansion and the advisory ask above. Measured with the real checkout's listing (read-only).
+
+### Finding IDs cited in wave 10 part B
+
+| ID | What |
+|---|---|
+| R7-CR-3, R7-CR-4, R7-ADV-2 | A URI whose userinfo holds `?`/`#`, or whose `#` precedes `?host=`, hid a remote host (a wave-9 regression for the first). libpq's grammar plus the other URL readings. |
+| R7-CR-5, R7-ADV-1 | A libpq connection string with a backslash: the guard removed the backslash libpq owns, then a stray word stopped the reader with nothing recorded. |
+| R7-CR-6, R7-ADV-3 | A flag that prefixes a value option (`redis-cli --tls`, `pgbench --log`, `sqlcmd -W`, `trino --password`) swallowed the next word, `-h HOST` with it. |
+| R7-CR-9 | `hostsOf` stripped `^[^/,:]+/` for every client (a wave-9 regression for `psql -h H/localhost`): mongo only. |
+| R7-ADV-8, R7-ADV-17, R7-CR-7 | A rebound name vanished; a nested shell string was never tracked; a `$VAR` target was allowed. |
+| R7-ADV-9 | `\c host=H`, `\connect`, here-strings and heredocs reconnected unread. |
+| R7-ADV-16, R7-ADV-23, R7-CR-15 | A remote `DATABASE_URL`/`PGHOST` for a program that is not a client; clients missing from the table; `CQLSH_HOST`, `PGDATABASE`. |
+| R7-ADV-14 | The repo's own KEK and admin variables were printable. |
+| R7-CR-14, R7-CR-10 | `printenv -0`; `tar --creat`. |
+| R7-CR-11, R7-ADV-21 | A link into a skipped directory counted as walked; a file link was judged by its own name only. |
+| R7-ADV-19, R7-ADV-20, R7-ADV-22 | Files read as name lists; four tree sweeps; persistence by `defaults`, `plutil`, `crontab`, `at`, `osascript`. |
+| R7-CR-18 | Six surviving mutants; the hard-deadline upper bound. |
+| R7-CR-17, R7-CR-19 | Dead exports in part B's files; the doc claims of part B's area, corrected above. |

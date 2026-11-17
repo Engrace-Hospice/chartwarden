@@ -25,6 +25,7 @@ import { containerCommand } from "./container-run";
 import { clientFindings, clientTexts, isDbClient } from "./db-client-escapes";
 import { environmentDumpReason } from "./env-dump";
 import { assignsHookVariable, isAgentSpawn, loaderEnvReason } from "./env-hazards";
+import { listedFiles } from "./file-list-options";
 import {
   SAFE_SOURCE_NAME,
   execCommandWrites,
@@ -73,6 +74,7 @@ import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./op
 import { isPackageScript, setPackageScriptsReader } from "./package-scripts";
 import { parallelExtras, replacementTags } from "./parallel-command";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
+import { persistenceReason } from "./persistence-commands";
 import { programName } from "./program-name";
 import {
   protectedDirectories,
@@ -89,6 +91,8 @@ import {
 import { remoteAccessReason } from "./remote-access";
 import { peelRunnerWithFiles } from "./runners";
 import {
+  GUARDED_REASON,
+  GUARDED_VARIABLE_REFERENCE,
   environmentLeak,
   globReachesLiveEnv,
   holdsLiveEnvDirectly,
@@ -107,6 +111,7 @@ import {
   scanShell,
   splitCommand,
 } from "./shell-lex";
+import { EXEC_SWEEP_READER } from "./sibling-sweeps";
 import { siblingCommands } from "./sibling-sweeps";
 import { readTar } from "./tar-grammar";
 import { isToolchainPath } from "./toolchain-paths";
@@ -153,7 +158,10 @@ export {
   describeFindings,
 } from "./content-scan";
 import { LOCAL_HOST, MBI, scanContent, secretPathReason } from "./content-scan";
-import { databaseTarget, databaseTargetReason } from "./db-target";
+import { anyProgramTarget } from "./db-any-program";
+import { connectTargetOf } from "./db-connect-commands";
+import { type DatabaseTarget, databaseTarget, databaseTargetReason } from "./db-target";
+import { unplacedBindingWords, variableStatementWords } from "./db-variables";
 
 // ---------------------------------------------------------------------------------------------------
 // 3. Shell commands
@@ -641,7 +649,7 @@ const SECRET_BY_NAME =
 
 const isLocalHost = (h: string) => LOCAL_HOST.test(h.replace(/^.*@/, "").replace(/:\d+$/, ""));
 const SECRET_VAR =
-  /\$\{?[A-Z0-9_]*(DATABASE_URL|SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|_KEY)\b/;
+  /\$\{?[A-Z0-9_]*(DATABASE_URL|SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|_KEY)S?\b/;
 const READ_ONLY_CHECK = /^(ls|test|\[|stat|file)$/;
 const COMPOSE_SAFE = /^(up|down|start|stop|restart|run|exec|ps|logs|build|pull|rm)$/;
 
@@ -769,6 +777,11 @@ let judgeBudget = MAX_JUDGED_COMMAND_LINES;
 let hookVariableInCommand = false;
 /** The variables the command line sets to a plain literal (`D=.`), so a sweep operand `$D` is placed (one-shot state, as above). */
 let knownVariables: ReadonlyMap<string, string> = new Map();
+/**
+ * The `NAME=value` words the variable statements of the text being judged, and of the texts around it, assign: every one,
+ * a rebound name included (`db-variables.ts`). Set by `judge` for each text and restored after it (one-shot state, as above).
+ */
+let variableStatements: readonly string[] = [];
 /** The functions the command line defines (`mk() { … }`): called with prose as often as with code (one-shot state, as above). */
 let localFunctions: ReadonlySet<string> = new Set();
 /** Has this command's view of the live env files been asked of the caller yet? (one-shot state, as above) */
@@ -801,6 +814,7 @@ export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): Bas
     refillWork(ctx.judgeTimeLimitMs ?? MAX_COMMAND_JUDGE_MS);
     hookVariableInCommand = assignsHookVariable(cmd);
     knownVariables = literalAssignmentsOf(cmd);
+    variableStatements = [];
     localFunctions = localFunctionNames(cmd);
     liveEnvListed = false;
     setListedLiveEnvFiles([]);
@@ -892,6 +906,14 @@ function envWriteVerdicts(
   return out;
 }
 
+/** A database target the guard found: a remote or unreadable one is refused, one that waits on a human asks. */
+function databaseTargetVerdict(target: DatabaseTarget): BashVerdict {
+  const reason = databaseTargetReason(target, echo);
+  const refused =
+    (target.kind === "remote" || target.kind === "unparsed") && target.advisory !== true;
+  return refused ? deny(reason) : ask(reason);
+}
+
 const DB_SHELL_REASON =
   "A database client's own command (`.shell`, `.system`, `\\!`, `system`, a pipe target) runs an operating-system command from inside the client, and the guard cannot see what it runs: it can overwrite the guard or any file the guard protects. A human decides.";
 const DB_WRITE_REASON =
@@ -912,11 +934,13 @@ function dbClientVerdicts(
   const client = parsed[index] as Parsed;
   if (!isDbClient(client.prog)) return [];
   const stages = parsed.map((q, i) => ({ ...q, joiner: parts[i]?.joiner ?? "" }));
-  const found = clientFindings(client.prog, clientTexts(stages, index, bodies), client.args);
+  const texts = clientTexts(stages, index, bodies);
+  const found = clientFindings(client.prog, texts, client.args);
   if (found === null) return [];
-  const out: BashVerdict[] = found.shell
-    .slice(0, 1)
-    .map((what) => ask(`${DB_SHELL_REASON} (${what})`));
+  // A reconnection from inside the client (`\c host=H`, `dblink_connect('...')`, `connect("H")`) is a target too.
+  const reconnect = connectTargetOf(client.prog, texts);
+  const out: BashVerdict[] = reconnect === null ? [] : [databaseTargetVerdict(reconnect)];
+  out.push(...found.shell.slice(0, 1).map((what) => ask(`${DB_SHELL_REASON} (${what})`)));
   for (const target of found.writes) {
     const hit = writesProtectedPath({ ...NO_COMMAND, outs: [target] }, here, ctx);
     if (hit) out.push(ask(`${DB_WRITE_REASON} ${writeHitReason(hit)}`));
@@ -948,7 +972,7 @@ function siblingSweepVerdicts(
   const p = parsed[index] as Parsed;
   const before = parts[index]?.joiner === "|" ? parsed[index - 1] : undefined;
   const feeder = before ? { prog: before.prog, args: before.args } : null;
-  return siblingCommands(p.prog, p.args, feeder).map(({ text, label }) => {
+  return siblingCommands(p.prog, p.args, feeder, p.strings).map(({ text, label }) => {
     const v = judge(text, ctx, depth + 1, here);
     return v.decision === "allow"
       ? v
@@ -1099,6 +1123,20 @@ function nestedCommandVerdicts(
   return verdicts;
 }
 
+/** The commands a simple command runs inside itself, with the variables it was started with in scope (`PGHOST=H bash -c 'psql'`). */
+function nestedWithInlineVariables(
+  parsed: Parsed,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const outer = variableStatements;
+  variableStatements = [...outer, ...parsed.assigns];
+  const verdicts = nestedCommandVerdicts(parsed, ctx, depth, here);
+  variableStatements = outer;
+  return verdicts;
+}
+
 /**
  * `$(true)git push --no-verify`: the program's name is built at run time, so it is a command the guard cannot name. The
  * literal rest of the word is judged as the program it would be (a deny stands), and a human decides. A word that is one
@@ -1169,7 +1207,7 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
     ...dbClientVerdicts(parts, parsedParts, index, bodiesByPart[index] ?? [], here, ctx),
     ...siblingSweepVerdicts(parts, parsedParts, index, ctx, depth, here),
     ...dynamicProgramVerdicts(part.text, parsed, ctx, here),
-    ...nestedCommandVerdicts(parsed, ctx, depth, here),
+    ...nestedWithInlineVariables(parsed, ctx, depth, here),
   );
   if (readsScriptFromStdin(parsed, index)) walk.scriptTexts.push(...pipelineTexts(parts, index));
   // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a command
@@ -1296,8 +1334,16 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     ctx,
     depth,
   };
+  // The variables this text sets are in scope for the commands in it and for every text nested in it.
+  const outerStatements = variableStatements;
+  variableStatements = [
+    ...outerStatements,
+    ...variableStatementWords(parsedParts),
+    ...unplacedBindingWords(c),
+  ];
   parts.forEach((_part, index) => judgePart(index, walk, input));
   verdicts.push(...trailingVerdicts(c, walk, ctx, depth));
+  variableStatements = outerStatements;
   return (
     verdicts.find((v) => v.decision === "deny") ??
     verdicts.find((v) => v.decision === "ask") ?? { decision: "allow", reason: "" }
@@ -2003,7 +2049,9 @@ function scriptTextVerdict(given: string): BashVerdict | null {
   }
   // Tested as written too: squashing puts the word before a path against it (`rm scripts/harness` reads
   // `rmscripts/harness`), and the fragment's lookbehind then takes that word for a parent directory.
-  if (environmentLeak(text) !== null) {
+  const leak = environmentLeak(text);
+  if (leak === "guarded") return ask(GUARDED_REASON);
+  if (leak !== null) {
     return deny(
       "Inline code that reads the whole environment, or a secret variable by name, puts credentials into the transcript. Check presence, not the value.",
     );
@@ -2375,6 +2423,20 @@ function copyOutVerdict(
     : null;
 }
 
+const isFileReader = (program: string): boolean =>
+  FILE_READER.test(program) || EXEC_SWEEP_READER.test(program);
+
+/** Does the command a `find -exec` runs read (or carry out) the file it is handed: a reader, or a shell whose string holds one? */
+function execReadsFiles(words: readonly string[]): boolean {
+  const parsed = parseSegment(words.map(shellQuote).join(" "));
+  if (isFileReader(parsed.prog)) return true;
+  if (!SHELL_PROGRAM.test(parsed.prog)) return false;
+  const script = parsed.args[parsed.args.findIndex((a) => /^-[a-z]*c$/.test(a)) + 1];
+  return (
+    script !== undefined && segments(script).some((seg) => isFileReader(parseSegment(seg).prog))
+  );
+}
+
 /** `find . -type f -exec cat {} +`: every file under the start paths is read, live env files included. */
 function findReadVerdict(
   prog: string,
@@ -2385,11 +2447,9 @@ function findReadVerdict(
   if (prog !== "find") return null;
   // The expression is read as a boolean one (find-expr.ts): a name test for a source-file type limits a reader only when
   // it is ANDed in front of it, and `-o` narrows nothing (`find . -name '*.ts' -o -type f -exec cat {} +`).
-  const readers = findActions(
-    args,
-    (words) => FILE_READER.test(parseSegment(words.map(shellQuote).join(" ")).prog),
-    narrowsToSourceFiles,
-  ).filter((action) => action.kind === "exec" && !action.narrowed);
+  const readers = findActions(args, execReadsFiles, narrowsToSourceFiles).filter(
+    (action) => action.kind === "exec" && !action.narrowed,
+  );
   if (readers.length === 0) return null;
   let k = 0;
   while (/^-[HLP]$/.test(args[k] ?? "")) k++;
@@ -2685,6 +2745,19 @@ function literalAssignmentsOf(cmd: string): ReadonlyMap<string, string> {
   return new Map([...literalValues(words)].filter(([name]) => !rebound.has(name)));
 }
 
+/** A file a program reads LINE BY LINE as names or code (`file -f F`, `wc --files0-from=F`) prints the lines it cannot use: a secret one is a read (`file-list-options.ts`). */
+function listedFileVerdict(prog: string, args: readonly string[]): BashVerdict | null {
+  for (const listed of listedFiles(prog, args)) {
+    const why = secretPathReason(listed);
+    if (why) {
+      return deny(
+        `\`${echo(listed)}\` is ${why}. \`${echo(prog)}\` reads it line by line and prints the lines it cannot use. Agents do not read secrets or dumps.`,
+      );
+    }
+  }
+  return null;
+}
+
 function classifySegment(
   seg: string,
   parsed: Parsed,
@@ -2789,6 +2862,8 @@ function classifySegment(
 
   const launchd = launchctlReason(prog, args);
   if (launchd !== null) return ask(launchd);
+  const persists = persistenceReason(prog, args, parsed.strings);
+  if (persists !== null) return ask(persists);
   const optionProgram = programOptionReason(prog, args);
   if (optionProgram !== null) return ask(optionProgram);
 
@@ -2805,6 +2880,9 @@ function classifySegment(
     return deny(
       'Echoing a secret-bearing variable puts it in the transcript. Check presence with `[ -n "$VAR" ] && echo set` instead.',
     );
+  }
+  if (/^(echo|printf|cat)$/.test(prog) && GUARDED_VARIABLE_REFERENCE.test(argline)) {
+    return ask(GUARDED_REASON);
   }
 
   // --- docker compose: lifecycle commands may use --env-file; `config` prints resolved secrets.
@@ -2831,6 +2909,10 @@ function classifySegment(
   // --- A file name the guard cannot evaluate, handed to a program that prints files.
   const indirect = dynamicReaderVerdict(prog, args, ins);
   if (indirect) return indirect;
+
+  // --- A file whose lines a program reads as names or code and prints in an error (`file -f F`, `wc --files0-from=F`).
+  const listed = listedFileVerdict(prog, args);
+  if (listed) return listed;
 
   // --- Secret files read through the shell (the Read tool is blocked separately).
   if (
@@ -2892,12 +2974,11 @@ function classifySegment(
   }
 
   // --- Production data access. An agent session connecting to a non-local database is PHI access (`db-target.ts`).
-  const shellEnvironment = [...knownVariables].map(([name, value]) => `${name}=${value}`);
-  const dbTarget = databaseTarget(prog, args.map(unescapeWord), [...assigns, ...shellEnvironment]);
-  if (dbTarget) {
-    const reason = databaseTargetReason(dbTarget, echo);
-    return dbTarget.kind === "remote" || dbTarget.kind === "unparsed" ? deny(reason) : ask(reason);
-  }
+  const dbTarget = databaseTarget(prog, args, assigns, variableStatements);
+  if (dbTarget) return databaseTargetVerdict(dbTarget);
+  // A program the table does not name, started with a database variable or URL that names a remote host (`db-any-program.ts`).
+  const anyTarget = anyProgramTarget(prog, args, assigns, variableStatements);
+  if (anyTarget) return databaseTargetVerdict(anyTarget);
 
   // --- Remote shells: production access must be a human decision every time.
   if (/^(ssh|scp|sftp|rsync)$/.test(prog)) {

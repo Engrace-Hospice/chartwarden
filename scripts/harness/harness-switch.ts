@@ -62,7 +62,7 @@ const GIT_TEXT_ARGUMENTS = /^(log|grep|show|diff|commit)$/;
 const EXECUTOR_OPTION =
   /^--(?:pre|hostname-bin|ackrc|open-files-in-pager)(?:=|$)|^--pag(?:e|er)?(?:=|$)/;
 /** git takes any unambiguous prefix of a long option: `--open-files-in-p`. `--open` is the shortest. */
-const isGitPagerOption = (arg: string): boolean => {
+export const isGitPagerOption = (arg: string): boolean => {
   if (arg.startsWith("-O")) return true;
   if (!arg.startsWith("--op")) return false;
   return spellsLong(longName(arg), "open-files-in-pager", 4);

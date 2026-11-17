@@ -5,6 +5,7 @@
  * asked already, and are pinned here as the differential test's missing rows). `classifyBash` is pure.
  */
 import { describe, expect, it } from "vitest";
+import { isGitPagerOption } from "../harness/harness-switch";
 import { classifyBash } from "../harness/patterns";
 
 const ROOT = "/repo";
@@ -32,6 +33,8 @@ describe("a print or search that can write a file or run a command is not a prin
     "git grep -O'CODEX_HOME=/tmp/x codex exec hi' foo",
     "git grep -n --open-files-in-pager='CODEX_HOME=/tmp/x sh' foo",
     "git grep --open-files-in-p='CODEX_HOME=/tmp/x sh' foo",
+    "git grep --open-f='CODEX_HOME=/tmp/x sh' foo",
+    "git grep --open-files-in-pager='CODEX_HOME=/tmp/x sh' foo",
     "rg --pre 'CODEX_HOME=/tmp/x sh' pat f",
     "rg --pre='CODEX_HOME=/tmp/x sh' pat f",
     "ag --pager='CODEX_HOME=/tmp/x sh' pat",
@@ -130,5 +133,31 @@ describe("a switch spelled so that no `NAME=` shows in the text, or named for th
   ])("keeps the everyday %s allowed", (cmd) => {
     const verdict = v(cmd);
     expect(verdict.decision, verdict.reason).toBe("allow");
+  });
+});
+
+describe("git's --open-files-in-pager takes any unambiguous prefix of four characters or more (wave 10, B13)", () => {
+  it.each([
+    "--open",
+    "--open-f",
+    "--open-files",
+    "--open-files-in-p",
+    "--open-files-in-pager",
+    "--open=x",
+    "-Ocat",
+    "-O",
+  ])("%s is the pager option", (arg) => {
+    expect(isGitPagerOption(arg)).toBe(true);
+  });
+  it.each([
+    "--ope",
+    "--op",
+    "--o",
+    "--only-matching",
+    "--no-index",
+    "-n",
+    "--open-files-in-pagers",
+  ])("%s is not", (arg) => {
+    expect(isGitPagerOption(arg)).toBe(false);
   });
 });
