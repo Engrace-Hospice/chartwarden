@@ -1102,7 +1102,7 @@ fixed them (`git log --grep '<ID>'`), and in the tests named in the paragraph th
 
 Round 7 (two cold reviews of waves 8 and 9) found, and the orchestrator re-ran, the shell-structure, wrapper and runner findings below; part B of the same wave
 holds the database, secret and sweep findings. Each item has a test file under `scripts/__tests__/harness-*-wave10.test.ts`. The orchestrator's spot-check
-script (`verify-r7.ts`) went from 64 of 77 rows not as expected on the wave-9 tip to 28 on this part's tip: 27 belong to part B (database targets, secrets, variables) and one is the documented residual `make -C /tmp psql`. The design rule of
+script (`verify-r7.ts`) went from 64 of 77 rows not as expected on the wave-9 tip to 28 on this part's tip (27 belong to part B: database targets, secrets, variables; one is the documented residual `make -C /tmp psql`), and to 2 on the merged tip of both parts: that residual, and `tar --creat -f x apps`, which asks only where a live env file exists (the spot-check tree holds none; `harness-env-tar-wave10.test.ts` proves it with one). The design rule of
 this part, from the brief: **wrapping a command must never make the answer weaker** (the wave-9 regressions were exactly that), and **unknown is not allow**.
 
 - *A nested command string is read once, by the rules of the quote it came from* (`patterns.ts` `words(seg, values)` and `Parsed.handed`,
