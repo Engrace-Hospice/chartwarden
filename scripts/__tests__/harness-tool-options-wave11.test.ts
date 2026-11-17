@@ -1,0 +1,491 @@
+/**
+ * Wave 11 part C, rule 12 (R8-ADV-2, R8-ADV-3, R8-ADV-11, R8-CR-10, R8-CR-12): the option tables of bun, pnpm, npm, npx and docker/podman/compose
+ * `run` and `exec` are held against what the INSTALLED tools do. `scripts/__tests__/helpers/record-tool-options.ts` probes each tool and writes
+ * `fixtures/harness-tool-options/<command>.<version>.json`; this test needs no tool (it runs on CI) and fails when
+ *  - a recorded valued option is read as a flag (the wave-10 regressions: `bun run --cwd x CMD`, `pnpm --prefix x exec CMD`),
+ *  - a recorded flag is read as a valued option (the next word is the command, not a value),
+ *  - a recorded option is missing from a strict table, or (lax table) an unlisted option does not ask,
+ *  - the production table lists an option the tool does not know without saying why.
+ * The monotonicity walk below iterates the FIXTURE options (not the table), in every spelling: wrapped(inner) >= inner.
+ */
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  COMPOSE_EXEC_GRAMMAR,
+  COMPOSE_RUN_GRAMMAR,
+  EXEC_GRAMMAR,
+  RUN_GRAMMAR,
+} from "../harness/container-run";
+import { type OptionGrammar, readOptions } from "../harness/option-grammar";
+import { classifyBash } from "../harness/patterns";
+import * as G from "../harness/runner-grammars";
+import type { RecordedOption, ToolFixture } from "./helpers/record-tool-options";
+
+const FIXTURE_DIR = join(__dirname, "fixtures", "harness-tool-options");
+const fixtures: ToolFixture[] = readdirSync(FIXTURE_DIR)
+  .filter((name) => name.endsWith(".json"))
+  .map((name) => JSON.parse(readFileSync(join(FIXTURE_DIR, name), "utf8")) as ToolFixture);
+const fixtureOf = (command: string): ToolFixture => {
+  const found = fixtures.find((f) => f.command === command);
+  if (found === undefined) throw new Error(`no fixture for ${command}`);
+  return found;
+};
+
+interface Table {
+  readonly name: string;
+  readonly grammar: OptionGrammar;
+  /** The recordings whose options this one table reads (docker and podman share a table). */
+  readonly commands: readonly string[];
+  /** Recordings of other commands whose options this table also lists (npx reads npm's names). */
+  readonly alsoKnown?: readonly string[];
+  /** Names the table lists that the installed tool does not know, and why (an older version, a spelling the tool lists nowhere). */
+  readonly legacy: readonly string[];
+}
+
+const OLDER_DOCKER = "older docker versions read it, docker 29 rejects it";
+const TABLES: readonly Table[] = [
+  { name: "BUN_GLOBAL", grammar: G.BUN_GLOBAL, commands: ["bun"], legacy: [] },
+  { name: "BUN_RUN", grammar: G.BUN_RUN, commands: ["bun run"], legacy: [] },
+  { name: "BUNX", grammar: G.BUNX, commands: ["bun x"], legacy: ["--help", "-b"] },
+  { name: "PNPM", grammar: G.PNPM, commands: ["pnpm"], legacy: [] },
+  { name: "PNPM_DLX", grammar: G.PNPM_DLX, commands: ["pnpm dlx"], legacy: ["-p"] },
+  { name: "NPM", grammar: G.NPM, commands: ["npm exec"], legacy: [] },
+  { name: "NPX", grammar: G.NPX, commands: ["npx"], alsoKnown: ["npm exec"], legacy: [] },
+  {
+    name: "RUN_GRAMMAR",
+    grammar: RUN_GRAMMAR,
+    commands: ["docker run", "podman run"],
+    legacy: [
+      "--kernel-memory",
+      "--cpu-count",
+      "--cpu-percent",
+      "--io-maxbandwidth",
+      "--io-maxiops",
+    ],
+  },
+  {
+    name: "COMPOSE_RUN_GRAMMAR",
+    grammar: COMPOSE_RUN_GRAMMAR,
+    commands: ["docker compose run"],
+    legacy: ["--help"],
+  },
+  {
+    name: "EXEC_GRAMMAR",
+    grammar: EXEC_GRAMMAR,
+    commands: ["docker exec", "podman exec"],
+    legacy: [],
+  },
+  {
+    name: "COMPOSE_EXEC_GRAMMAR",
+    grammar: COMPOSE_EXEC_GRAMMAR,
+    commands: ["docker compose exec"],
+    legacy: [],
+  },
+];
+void OLDER_DOCKER;
+
+type Reading = "value" | "flag" | "unplaced";
+
+/** How the table reads `token` when a word follows it: a value, a flag (the next word is the command), or a question. */
+function reading(grammar: OptionGrammar, token: string): Reading {
+  const read = readOptions(grammar, [token, "VAL", "CMD"], 0);
+  if (read.unplaced !== undefined) return "unplaced";
+  return read.end === 2 ? "value" : "flag";
+}
+
+/** The tokens one recorded option is spelled with: its long name and its short letter. */
+const tokensOf = (option: RecordedOption): string[] =>
+  [option.name, option.short].filter((t): t is string => t !== undefined);
+
+/** Every disagreement between a table and a recording, as readable lines. */
+function disagreements(grammar: OptionGrammar, fixture: ToolFixture): string[] {
+  const lines: string[] = [];
+  for (const option of fixture.options) {
+    for (const token of tokensOf(option)) {
+      const got = reading(grammar, token);
+      if (option.takesValue === true && got !== "value") {
+        lines.push(
+          `${fixture.command} ${token}: the tool takes a value, the table reads it as ${got}`,
+        );
+      } else if (option.takesValue === false && got === "value") {
+        lines.push(`${fixture.command} ${token}: the tool takes no value, the table reads a value`);
+      } else if (option.takesValue === false && got === "unplaced" && grammar.lax !== true) {
+        lines.push(`${fixture.command} ${token}: missing from a strict table`);
+      } else if (option.takesValue === false && got === "unplaced" && token.startsWith("--")) {
+        lines.push(`${fixture.command} ${token}: a recorded flag is unlisted (it asks)`);
+      } else if (
+        option.takesValue === "unverified" &&
+        token.startsWith("--") &&
+        got !== "unplaced"
+      ) {
+        lines.push(
+          `${fixture.command} ${token}: unverified, so the table must not place it (read as ${got})`,
+        );
+      }
+    }
+  }
+  return lines;
+}
+
+describe("the recordings are well formed", () => {
+  it("every tool has a recording and every recording says how it was made", () => {
+    expect(fixtures.map((f) => f.command).sort()).toEqual(
+      [
+        "bun",
+        "bun run",
+        "bun x",
+        "docker compose exec",
+        "docker compose run",
+        "docker exec",
+        "docker run",
+        "npm exec",
+        "npx",
+        "pnpm",
+        "pnpm dlx",
+        "podman exec",
+        "podman run",
+      ].sort(),
+    );
+    for (const f of fixtures) {
+      expect(f.version, f.command).toMatch(/^\d+\.\d+/);
+      expect(["echo-hit", "flag-needs-argument", "help"]).toContain(f.method);
+      expect(f.options.length, f.command).toBeGreaterThan(4);
+      for (const o of f.options) {
+        expect([true, false, "optional", "unverified"]).toContain(o.takesValue);
+        expect(o.name).toMatch(/^--?[A-Za-z0-9]/);
+      }
+    }
+  });
+
+  it("the wave-10 holes are recorded as the real tools have them", () => {
+    const valued = (command: string, name: string) =>
+      fixtureOf(command).options.find((o) => o.name === name)?.takesValue;
+    for (const name of [
+      "--cwd",
+      "--env-file",
+      "--elide-lines",
+      "--shell",
+      "--install",
+      "--preload",
+      "--tsconfig-override",
+      "--port",
+      "--define",
+      "--loader",
+    ]) {
+      expect(valued("bun run", name), `bun run ${name}`).toBe(true);
+    }
+    // `--config` and `-c` take their value only after `=`: the word after them is the script
+    expect(valued("bun run", "--config")).toBe(false);
+    expect(valued("pnpm", "--prefix")).toBe(true);
+    expect(valued("pnpm", "--workspace-packages")).toBe(true);
+    for (const name of [
+      "--tag",
+      "--otp",
+      "--omit",
+      "--scope",
+      "--proxy",
+      "--cache",
+      "--node-options",
+      "--umask",
+    ]) {
+      expect(valued("npm exec", name), `npm ${name}`).toBe(true);
+    }
+    expect(valued("docker exec", "--env")).toBe(true);
+    expect(valued("docker compose exec", "--env")).toBe(true);
+    expect(valued("podman exec", "--env")).toBe(true);
+  });
+});
+
+describe("the production tables read every recorded option the way the tool does", () => {
+  for (const table of TABLES) {
+    it(`${table.name}: no valued option read as a flag, no flag read as a valued option, nothing missing`, () => {
+      const lines = table.commands.flatMap((command) =>
+        disagreements(table.grammar, fixtureOf(command)),
+      );
+      expect(lines.slice(0, 8), `${lines.length} disagreements`).toEqual([]);
+    });
+
+    it(`${table.name}: the tool's own spellings agree (docker and podman do not disagree on a name)`, () => {
+      const seen = new Map<string, unknown>();
+      const conflicts: string[] = [];
+      for (const command of table.commands) {
+        for (const o of fixtureOf(command).options) {
+          if (o.takesValue === "unverified") continue;
+          const before = seen.get(o.name);
+          if (before !== undefined && before !== o.takesValue && command !== "npm exec") {
+            conflicts.push(
+              `${o.name}: ${String(before)} against ${String(o.takesValue)} in ${command}`,
+            );
+          }
+          seen.set(o.name, o.takesValue);
+        }
+      }
+      expect(conflicts).toEqual([]);
+    });
+
+    it(`${table.name}: a name the table lists and the tool does not know is explained`, () => {
+      const known = new Set<string>();
+      for (const command of [...table.commands, ...(table.alsoKnown ?? [])]) {
+        for (const o of fixtureOf(command).options) for (const t of tokensOf(o)) known.add(t);
+      }
+      const g = table.grammar;
+      const listed = [
+        ...g.longFlags.map((n) => `--${n}`),
+        ...g.longValues.map((n) => `--${n}`),
+        ...[...g.flags, ...g.values].map((n) => `-${n}`),
+      ];
+      const unexplained = listed.filter((t) => !known.has(t) && !table.legacy.includes(t));
+      expect(unexplained).toEqual([]);
+    });
+  }
+
+  it("the checker itself fails on a wrong table (a valued option moved to the flags is caught)", () => {
+    const wrong: OptionGrammar = {
+      ...G.BUN_RUN,
+      longFlags: [...G.BUN_RUN.longFlags, "cwd", "env-file"],
+      longValues: G.BUN_RUN.longValues.filter((n) => n !== "cwd" && n !== "env-file"),
+    };
+    expect(disagreements(wrong, fixtureOf("bun run")).join("\n")).toMatch(
+      /--cwd.*reads it as flag/s,
+    );
+    const missing: OptionGrammar = {
+      ...G.BUN_RUN,
+      longFlags: G.BUN_RUN.longFlags.filter((n) => n !== "silent"),
+    };
+    expect(disagreements(missing, fixtureOf("bun run")).join("\n")).toMatch(
+      /--silent.*missing from a strict table/,
+    );
+    const narrow: OptionGrammar = {
+      ...G.PNPM,
+      longValues: G.PNPM.longValues.filter((n) => n !== "prefix"),
+    };
+    expect(disagreements(narrow, fixtureOf("pnpm")).join("\n")).toMatch(
+      /--prefix.*unplaced|--prefix/,
+    );
+  });
+});
+
+describe("rule 2: in every lax grammar an unlisted `--name VALUE` followed by a bare word asks", () => {
+  const LAX: ReadonlyArray<readonly [string, OptionGrammar]> = [
+    ["PNPM", G.PNPM],
+    ["NPM", G.NPM],
+    ["NPX", G.NPX],
+    ["BUNX", G.BUNX],
+    ["PNPM_DLX", G.PNPM_DLX],
+    ["YARN", G.YARN],
+    ["YARN_FOREACH", G.YARN_FOREACH],
+    ["DOTENV", G.DOTENV],
+    ["DOTENVX", G.DOTENVX],
+    ["ENV_CMD", G.ENV_CMD],
+    ["DOPPLER", G.DOPPLER],
+    ["OP", G.OP],
+    ["LERNA", G.LERNA],
+    ["NX", G.NX],
+    ["MISE", G.MISE],
+    ["VOLTA", G.VOLTA],
+    ["NIX", G.NIX],
+    ["PERF", G.PERF],
+  ];
+  it.each(LAX)("%s", (_name, grammar) => {
+    expect(grammar.lax, "a grammar that reads unlisted options as flags says so").toBe(true);
+    const read = readOptions(grammar, ["--zz-not-an-option", "VALUE", "cmd"], 0);
+    expect(read.unplaced).toBe("--zz-not-an-option");
+    // nothing bare after it: a flag, as before
+    expect(readOptions(grammar, ["--zz-not-an-option"], 0).unplaced).toBeUndefined();
+    expect(readOptions(grammar, ["--zz-not-an-option", "--also"], 0).unplaced).toBeUndefined();
+    expect(readOptions(grammar, ["--zz-not-an-option=v", "cmd"], 0).unplaced).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------
+// MONOTONICITY over the FIXTURE options: wrapped(inner) >= inner, in every spelling of every recorded option
+// ---------------------------------------------------------------------------------------------------
+
+const ENV_FILE = `apps/backend/.e${"nv"}`;
+const HOST = `prod${"."}example.com`;
+const ctx = { root: "/repo", home: "/Users/dev", cwd: "/repo", exists: () => true };
+const RANK: Record<string, number> = { allow: 0, ask: 1, deny: 2 };
+const rank = (cmd: string): number => RANK[classifyBash(cmd, ctx).decision] ?? -1;
+
+const INNERS: ReadonlyArray<readonly [label: string, command: string]> = [
+  ["a force push", "git push --force origin main"],
+  ["a hook bypass", "git commit --no-verify -m x"],
+  ["a non-local database", `psql -h ${HOST} -c 'select 1'`],
+  ["a secret read", `cat ${ENV_FILE}`],
+];
+
+interface Shape {
+  /** The command line for one option spelling `spelled` (a list of words) in front of the guarded command. */
+  readonly build: (spelled: readonly string[], inner: string) => string;
+  /** Options that decide what runs or print and exit: the guarded command is not behind them. */
+  readonly skip: ReadonlySet<string>;
+}
+
+const COMMON_SKIP = ["--help", "-h", "--version", "-v", "-V", "--revision", "--usage", "-?"];
+const SHAPES: Readonly<Record<string, Shape>> = {
+  bun: {
+    build: (o, i) => `bun ${o.join(" ")} run ${i}`,
+    skip: new Set([...COMMON_SKIP, "--eval", "-e", "--print", "-p"]),
+  },
+  "bun run": {
+    build: (o, i) => `bun run ${o.join(" ")} ${i}`,
+    skip: new Set([...COMMON_SKIP, "--eval", "-e", "--print", "-p"]),
+  },
+  "bun x": { build: (o, i) => `bun x ${o.join(" ")} ${i}`, skip: new Set(COMMON_SKIP) },
+  pnpm: {
+    build: (o, i) => `pnpm ${o.join(" ")} exec ${i}`,
+    skip: new Set([...COMMON_SKIP, "-c", "--shell-mode"]),
+  },
+  "pnpm dlx": {
+    build: (o, i) => `pnpm dlx ${o.join(" ")} ${i}`,
+    skip: new Set([...COMMON_SKIP, "-c", "--shell-mode", "-s", "--silent"]),
+  },
+  "npm exec": {
+    build: (o, i) => `npm exec ${o.join(" ")} -- ${i}`,
+    skip: new Set([...COMMON_SKIP, "-c", "--call", "--versions"]),
+  },
+  npx: {
+    build: (o, i) => `npx ${o.join(" ")} -- ${i}`,
+    skip: new Set([...COMMON_SKIP, "-c", "--call", "--versions"]),
+  },
+  "docker run": {
+    build: (o, i) => `docker run ${o.join(" ")} IMG ${i}`,
+    skip: new Set([...COMMON_SKIP, "--entrypoint"]),
+  },
+  "docker exec": {
+    build: (o, i) => `docker exec ${o.join(" ")} CTR ${i}`,
+    skip: new Set(COMMON_SKIP),
+  },
+  "docker compose run": {
+    build: (o, i) => `docker compose run ${o.join(" ")} SVC ${i}`,
+    skip: new Set([...COMMON_SKIP, "--entrypoint"]),
+  },
+  "docker compose exec": {
+    build: (o, i) => `docker compose exec ${o.join(" ")} SVC ${i}`,
+    skip: new Set(COMMON_SKIP),
+  },
+  "podman run": {
+    build: (o, i) => `podman run ${o.join(" ")} IMG ${i}`,
+    skip: new Set([...COMMON_SKIP, "--entrypoint"]),
+  },
+  "podman exec": {
+    build: (o, i) => `podman exec ${o.join(" ")} CTR ${i}`,
+    skip: new Set(COMMON_SKIP),
+  },
+};
+
+/** The spellings of one recorded option in front of a command: separate value, joined `=` value, joined short value, flag alone. */
+function spellings(option: RecordedOption): Array<readonly string[]> {
+  const out: Array<readonly string[]> = [];
+  const longs = option.name.startsWith("--") ? [option.name] : [];
+  const shorts = option.name.startsWith("--")
+    ? option.short === undefined
+      ? []
+      : [option.short]
+    : [option.name];
+  if (option.takesValue === false) {
+    for (const t of [...longs, ...shorts]) out.push([t]);
+    return out;
+  }
+  for (const t of longs) out.push([t, "x"], [`${t}=x`]);
+  for (const t of shorts) out.push([t, "x"], [`${t}x`]);
+  // a value option left with no value, or an unverified one, is the command's own business: the table must not guess
+  return out;
+}
+
+describe("MONOTONICITY over the recorded options: no spelling of a real option hides a guarded command", () => {
+  for (const [command, shape] of Object.entries(SHAPES)) {
+    it(command, () => {
+      const fixture = fixtureOf(command);
+      const weaker: string[] = [];
+      let checked = 0;
+      for (const option of fixture.options) {
+        if (shape.skip.has(option.name) || shape.skip.has(option.short ?? "")) continue;
+        for (const spelled of spellings(option)) {
+          for (const [label, inner] of INNERS) {
+            const alone = rank(inner);
+            const wrapped = shape.build(spelled, inner);
+            checked++;
+            const answer = rank(wrapped);
+            // an option the table cannot place (unverified) asks; any other must keep the answer of the command itself
+            const floor = option.takesValue === "unverified" ? 1 : alone;
+            if (answer < floor) weaker.push(`${label}: ${wrapped} -> ${answer} (alone ${alone})`);
+          }
+        }
+      }
+      expect(checked, `${command}: invocations generated`).toBeGreaterThan(fixture.options.length);
+      expect(weaker.slice(0, 6), `${command}: ${weaker.length} of ${checked} weaker`).toEqual([]);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------------------------------
+// Real command lines: an option no table places asks, an option a table places keeps the command judged
+// ---------------------------------------------------------------------------------------------------
+
+const NO_VERIFY = "git commit --no-verify -m x";
+
+describe("rule 2 on real command lines: an unlisted or unverified option followed by a bare word asks", () => {
+  it.each([
+    `pnpm --zz-unlisted x exec ${NO_VERIFY}`,
+    `pnpm --node-linker hoisted exec ${NO_VERIFY}`,
+    `pnpm --trust-policy no-downgrade exec ${NO_VERIFY}`,
+    `npm exec --zz-unlisted x -- ${NO_VERIFY}`,
+    `npx --zz-unlisted x -- ${NO_VERIFY}`,
+    `bunx --zz-unlisted x ${NO_VERIFY}`,
+    `bun run --zz-unlisted x ${NO_VERIFY}`,
+    `yarn --zz-unlisted x exec ${NO_VERIFY}`,
+    `corepack pnpm --zz-unlisted x exec ${NO_VERIFY}`,
+    `sudo -n pnpm --zz-unlisted x exec ${NO_VERIFY}`,
+  ])("%s", (cmd) => {
+    expect(rank(cmd), cmd).toBeGreaterThanOrEqual(1);
+  });
+
+  it("a recorded option is placed: the command behind it is judged, not asked about", () => {
+    expect(rank(`pnpm --prefix x exec ${NO_VERIFY}`)).toBe(2);
+    expect(rank(`bun run --cwd x ${NO_VERIFY}`)).toBe(2);
+    expect(rank(`npm exec --tag x -- ${NO_VERIFY}`)).toBe(2);
+    expect(rank("pnpm --prefix apps/web exec ls")).toBe(0);
+    expect(rank("bun run --cwd apps/backend test")).toBe(0);
+    expect(rank("npm exec --tag x -- ls")).toBe(0);
+    expect(rank("npx --yes -- tsc --noEmit")).toBe(0);
+    expect(rank("pnpm --silent exec ls")).toBe(0);
+  });
+
+  it("npx reads -p as the package it names, npm exec reads -p as --parseable", () => {
+    expect(rank(`npx -p typescript -- ${NO_VERIFY}`)).toBe(2);
+    expect(rank(`npm exec -p -- ${NO_VERIFY}`)).toBe(2);
+  });
+});
+
+describe("an option whose arity no probe could settle is neither a flag nor a value", () => {
+  const G2: OptionGrammar = {
+    flags: "",
+    values: "",
+    longFlags: ["a"],
+    longValues: ["b"],
+    exact: true,
+    unverified: ["trust-policy"],
+  };
+  it("an exact grammar asks on it, and on nothing else it lacks the name of", () => {
+    expect(readOptions(G2, ["--trust-policy", "x", "cmd"], 0).unplaced).toBe("--trust-policy");
+    expect(readOptions(G2, ["--trust-policy"], 0).unplaced).toBe("--trust-policy");
+    expect(readOptions(G2, ["--a", "cmd"], 0).unplaced).toBeUndefined();
+    // a grammar that is lax as well still does not read it as a flag
+    expect(readOptions({ ...G2, lax: true }, ["--trust-policy"], 0).unplaced).toBe(
+      "--trust-policy",
+    );
+  });
+  it("a prefix of it is not taken for a longer name", () => {
+    const loose: OptionGrammar = {
+      ...G2,
+      exact: false,
+      lax: true,
+      longValues: ["trust-policy-exclude"],
+    };
+    expect(readOptions(loose, ["--trust-policy", "x", "cmd"], 0).unplaced).toBe("--trust-policy");
+    expect(readOptions(loose, ["--trust-policy-exclude", "x", "cmd"], 0).end).toBe(2);
+    expect(readOptions(loose, ["--trust", "x", "cmd"], 0).unplaced).toBe("--trust");
+  });
+});

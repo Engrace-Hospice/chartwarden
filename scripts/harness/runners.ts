@@ -58,7 +58,9 @@ const plain = (options: OptionGrammar, rest: Partial<Grammar> = {}): Grammar => 
   ...rest,
 });
 const NPX = plain(G.NPM, { call: ["c", "call"] });
-const PNPM_RUN = plain(G.PNPM, { shellMode: ["c", "shell-mode"] });
+const NPX_BIN = plain(G.NPX, { call: ["c", "call"] });
+const PNPM_EXEC = plain(G.PNPM, { shellMode: ["c", "shell-mode"] });
+const PNPM_DLX = plain(G.PNPM_DLX, { shellMode: ["c", "shell-mode"] });
 const YARN_RUN = plain(G.YARN);
 const MISE = plain(G.MISE, { call: ["c", "command"], toolSpecs: true });
 const NIX = plain(G.NIX, { commandRest: ["-c", "--command"] });
@@ -74,8 +76,11 @@ const manager = (global: OptionGrammar, ...subs: Array<[string, Grammar]>): Mana
 });
 
 export const MANAGERS: ReadonlyMap<string, Manager> = new Map([
-  ["bun", manager(G.BUN, ["x", plain(G.BUNX)], ["exec", plain(G.BUN, { shellLine: true })])],
-  ["pnpm", manager(G.PNPM, ["exec", PNPM_RUN], ["dlx", PNPM_RUN])],
+  [
+    "bun",
+    manager(G.BUN_GLOBAL, ["x", plain(G.BUNX)], ["exec", plain(G.BUN_RUN, { shellLine: true })]),
+  ],
+  ["pnpm", manager(G.PNPM, ["exec", PNPM_EXEC], ["dlx", PNPM_DLX])],
   ["yarn", manager(G.YARN, ["exec", YARN_RUN], ["dlx", YARN_RUN])],
   ["npm", manager(G.NPM, ["exec", NPX], ["x", NPX])],
   ["volta", manager(G.VOLTA, ["run", plain(G.VOLTA)])],
@@ -107,8 +112,8 @@ export const MANAGERS: ReadonlyMap<string, Manager> = new Map([
 
 export const BARE_RUNNERS: ReadonlyMap<string, Grammar> = new Map([
   ["bunx", plain(G.BUNX)],
-  ["npx", NPX],
-  ["pnpx", PNPM_RUN],
+  ["npx", NPX_BIN],
+  ["pnpx", PNPM_DLX],
   ["uvx", plain(G.UVX)],
   ["dotenv", plain(G.DOTENV)],
   ["env-cmd", plain(G.ENV_CMD)],
@@ -265,7 +270,7 @@ function peel(
   // bun and yarn run a PATH program when the name is no script; npm and pnpm only run scripts.
   if (name !== "bun" && name !== "yarn") return null;
   const builtins = name === "bun" ? BUN_BUILTINS : YARN_BUILTINS;
-  const options = name === "bun" ? G.BUN : G.YARN;
+  const options = name === "bun" ? G.BUN_RUN : G.YARN;
   // After `run` the name is a script or a program, never a subcommand (`bun run rm` is the PATH `rm`, `bun rm` is `bun remove`).
   if (sub === "run")
     return scriptOrProgram(options, words.slice(at + 1), new Set(), isScript, sink);
@@ -284,21 +289,25 @@ export const peelRunner = (
   isScript: ScriptLookup,
 ): readonly string[] | null => peel(words, isScript, { files: [], unplaced: [] });
 
-/** `peelRunner`, the values of the runner's own options (files it reads, `dotenv -e FILE`), and the options it could not place. */
+/**
+ * `peelRunner`, the values of the runner's own options (files it reads, `dotenv -e FILE`), and the options it could not place. A runner that
+ * starts no command but holds an option it could not place (`pnpm --zz-unlisted x exec CMD`: the `x` may be the option's value) is
+ * `{ inner: null, … }`: the classifier asks, because the command after the option may be the one that runs (wave 11, rule 2).
+ */
 export function peelRunnerWithFiles(
   words: readonly string[],
   isScript: ScriptLookup,
 ): {
-  readonly inner: readonly string[];
+  readonly inner: readonly string[] | null;
   readonly files: readonly string[];
   readonly unplaced?: readonly string[];
 } | null {
   const sink: Sink = { files: [], unplaced: [] };
   const inner = peel(words, isScript, sink);
-  if (inner === null) return null;
+  if (inner === null && sink.unplaced.length === 0) return null;
   return {
     inner,
-    files: sink.files,
+    files: inner === null ? [] : sink.files,
     ...(sink.unplaced.length === 0 ? {} : { unplaced: sink.unplaced }),
   };
 }

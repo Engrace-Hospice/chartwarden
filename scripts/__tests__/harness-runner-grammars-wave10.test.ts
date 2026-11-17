@@ -82,8 +82,13 @@ describe("A8: pnpm and yarn read -r -w -c -F -C as the flags and values they are
     expect(rank(cmd), cmd).toBeGreaterThanOrEqual(1);
   });
 
-  it("bun's long options take their value after `=` only: `bun --port 3000 run x` is a usage error, not a run (probed on bun 1.4.4)", () => {
-    expect(peelRunner(["bun", "--port", "3000", "run", "cp", "x"], () => false)).toBeNull();
+  it("bun's options before `run` are read as the recording says (wave 11 changed this payload: wave 10 read every long option as a flag)", () => {
+    // `bun --port 3000 run x` prints bun's usage and runs nothing on bun 1.4.4 (probed); the guard reads the separate value and judges what follows,
+    // which is the stricter of the two readings. `--port=3000` is one word whatever the option is.
+    expect(peelRunner(["bun", "--port", "3000", "run", "cp", "x"], () => false)).toEqual([
+      "cp",
+      "x",
+    ]);
     expect(peelRunner(["bun", "--port=3000", "run", "cp", "x"], () => false)).toEqual(["cp", "x"]);
     // and a bare `bun NAME` with an option before it is not a program (bun reports Script not found)
     expect(peelRunner(["bun", "--bun", "cp", "x"], () => false)).toBeNull();

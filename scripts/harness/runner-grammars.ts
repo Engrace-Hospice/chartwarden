@@ -25,21 +25,50 @@ const loose = (g: Partial<OptionGrammar>): OptionGrammar =>
   grammar({ lax: true, softValues: true, ...g });
 
 // ---------------------------------------------------------------------------------------------------
-// bun (1.4.4: `bun --help`, `bun x --help`)
+// bun (1.4.4), pnpm (10.30), npm and npx (11.11): RECORDED from the installed tools (wave 11, rule 12; round-8 R8-ADV-2, R8-ADV-3, R8-ADV-11)
 // ---------------------------------------------------------------------------------------------------
+// Wave 10 wrote these from memory and was wrong about the real tools three times (`bun run --cwd x CMD`, `pnpm --prefix x exec CMD`, npm's
+// ~90 value options): a valued option declared as a flag lets its value stand for the command. The names below are what
+// `scripts/__tests__/helpers/record-tool-options.ts` read from the installed tool (a probe `TOOL OPT VALUE echo HIT` against `TOOL OPT echo
+// HIT`, the fixtures under `scripts/__tests__/fixtures/harness-tool-options/`), and `harness-tool-options-wave11.test.ts` fails when a
+// recorded valued option is read as a flag, a recorded flag as a valued option, or (for a strict table) a recorded option is missing. An
+// option the probe could not settle is `unverified` in the fixture and is left OUT of a lax table, where an unlisted `--name` followed by a
+// bare word asks (`option-grammar.ts`); an option the tool does not know is reported by a strict table.
 
-/** Every long option of `bun --help`: a flag whose value, when it has one, rides after `=`. */
-const BUN_LONG: readonly string[] = words(
-  "bun check cpu-prof cpu-prof-md experimental-http2-fetch experimental-http3-fetch experimental-stream-iter expose-gc heap-prof heap-prof-md help hot if-present ignore-dce-annotations insecure-http-parser interactive jsx-side-effects no-addons no-clear-screen no-deprecation no-env-file no-exit-on-error no-ffi-cc no-install no-macros no-orphans no-warnings parallel pending-deprecation prefer-latest prefer-offline preserve-symlinks preserve-symlinks-main redis-preconnect revision sequential silent smol sql-preconnect throw-deprecation trace-deprecation trace-warnings use-bundled-ca use-openssl-ca use-system-ca version watch workspaces zero-fill-buffers tls-min-v1.0 tls-min-v1.1 tls-min-v1.2 tls-min-v1.3 tls-max-v1.2 tls-max-v1.3 conditions config console-depth cpu-prof-dir cpu-prof-interval cpu-prof-name cron-period cron-title cwd define disable-warning dns-result-order drop elide-lines env-file eval extension-order feature fetch-preconnect filter heap-prof-dir heap-prof-interval heap-prof-name import inspect inspect-brk inspect-wait install jsx-factory jsx-fragment jsx-import-source jsx-runtime loader main-fields max-http-header-size port preload print redirect-warnings require shell title tsconfig-override unhandled-rejections user-agent watch-kill-signal",
-);
-/** bun, before and after `run`: no abbreviation, an unknown option is reported. */
-export const BUN: OptionGrammar = grammar({
+/**
+ * `bun [options] COMMAND`: the options before the subcommand. bun reads a value after `=`; a separate value after a valued option is read
+ * (`bun --cwd x run y` prints bun's usage and runs nothing, probed), so the guard reads the same words either way. No abbreviation.
+ */
+export const BUN_GLOBAL: OptionGrammar = grammar({
   exact: true,
-  flags: "bhiv",
-  values: "Fcdelpr",
-  longFlags: BUN_LONG,
+  flags: "bchvi",
+  values: "deFlrp",
+  longFlags: words(
+    "bun check config cpu-prof cpu-prof-md experimental-http2-fetch experimental-http3-fetch experimental-stream-iter expose-gc heap-prof heap-prof-md help hot if-present ignore-dce-annotations insecure-http-parser inspect inspect-brk inspect-wait interactive jsx-side-effects no-addons no-clear-screen no-deprecation no-env-file no-exit-on-error no-ffi-cc no-install no-macros no-orphans no-warnings parallel pending-deprecation prefer-latest prefer-offline preserve-symlinks preserve-symlinks-main redis-preconnect revision sequential silent smol sql-preconnect throw-deprecation tls-max-v1.2 tls-max-v1.3 tls-min-v1.0 tls-min-v1.1 tls-min-v1.2 tls-min-v1.3 trace-deprecation trace-warnings use-bundled-ca use-openssl-ca use-system-ca version watch workspaces zero-fill-buffers",
+  ),
+  longValues: words(
+    "conditions console-depth cpu-prof-dir cpu-prof-interval cpu-prof-name cron-period cron-title cwd define disable-warning dns-result-order drop elide-lines env-file eval extension-order feature fetch-preconnect filter heap-prof-dir heap-prof-interval heap-prof-name import install jsx-factory jsx-fragment jsx-import-source jsx-runtime loader main-fields max-http-header-size port preload print redirect-warnings require shell title tsconfig-override unhandled-rejections user-agent watch-kill-signal",
+  ),
 });
-/** `bun x [flags] <package>`: bunx's own. */
+
+/**
+ * `bun run [options] <file or script>`: a valued option takes the NEXT word (`bun run --cwd x CMD` runs CMD, `--env-file`, `--elide-lines`,
+ * `--preload`, `--shell`, `--install`, `--port`, `--define`, `--loader`, `-r`, `-d`, `-l`, `-F`, `-e`, `-p`); `--config` and `-c` take their
+ * value only after `=` (`bun run -c x CMD` treats x as the script), as do `--inspect*`, so they are flags here. No abbreviation.
+ */
+export const BUN_RUN: OptionGrammar = grammar({
+  exact: true,
+  flags: "bchi",
+  values: "deFlrp",
+  longFlags: words(
+    "bun check config cpu-prof cpu-prof-md experimental-http2-fetch experimental-http3-fetch experimental-stream-iter expose-gc heap-prof heap-prof-md help hot if-present ignore-dce-annotations insecure-http-parser inspect inspect-brk inspect-wait interactive jsx-side-effects no-addons no-clear-screen no-deprecation no-env-file no-exit-on-error no-ffi-cc no-install no-macros no-orphans no-warnings parallel pending-deprecation prefer-latest prefer-offline preserve-symlinks preserve-symlinks-main redis-preconnect sequential silent smol sql-preconnect throw-deprecation tls-max-v1.2 tls-max-v1.3 tls-min-v1.0 tls-min-v1.1 tls-min-v1.2 tls-min-v1.3 trace-deprecation trace-warnings use-bundled-ca use-openssl-ca use-system-ca watch workspaces zero-fill-buffers",
+  ),
+  longValues: words(
+    "conditions console-depth cpu-prof-dir cpu-prof-interval cpu-prof-name cron-period cron-title cwd define disable-warning dns-result-order drop elide-lines env-file eval extension-order feature fetch-preconnect filter heap-prof-dir heap-prof-interval heap-prof-name import install jsx-factory jsx-fragment jsx-import-source jsx-runtime loader main-fields max-http-header-size port preload print redirect-warnings require shell title tsconfig-override unhandled-rejections user-agent watch-kill-signal",
+  ),
+});
+
+/** `bun x [flags] <package>`: bunx's own (`bun x --help`: help text only, a flag would make the next word a package to install). */
 export const BUNX: OptionGrammar = loose({
   flags: "b",
   values: "p",
@@ -47,32 +76,56 @@ export const BUNX: OptionGrammar = loose({
   longValues: words("package registry cwd env-file minimum-release-age ca cafile"),
 });
 
-// ---------------------------------------------------------------------------------------------------
-// pnpm (10.30: `pnpm help exec`, `pnpm help dlx`), npm, yarn
-// ---------------------------------------------------------------------------------------------------
-
-/** pnpm: `-r -w -s -c` are flags (`--recursive`, `--workspace-root`, `--silent`, `--shell-mode`); `-C` and `-F` take a value. */
+/**
+ * pnpm's options before the subcommand (`pnpm --prefix x exec CMD`, `pnpm -r exec CMD`, `pnpm --filter x exec CMD`). pnpm 10.30 reads
+ * everything AFTER `exec` as the command (`pnpm exec -r echo HIT` runs a program named `-r`); the guard still reads options there, which
+ * only makes it stricter. Lax: pnpm accepts every npm config name, and an option the fixture marks `unverified` (needs a workspace, or a
+ * value of a certain shape) is left out so that `pnpm --name VALUE CMD` asks.
+ */
 export const PNPM: OptionGrammar = loose({
-  flags: "rwschv",
-  values: "CFp",
+  flags: "hrcswdpqv",
+  values: "CF",
   longFlags: words(
-    "recursive workspace-root silent shell-mode help version color no-color aggregate-output parallel report-summary stream use-stderr no-reporter-hide-prefix bail no-bail sort no-sort reverse if-present include-workspace-root fail-if-no-match",
+    "aggregate-output color fail-if-no-match help ignore-workspace include include-workspace-root no-bail no-color no-reporter-hide-prefix parallel parseable recursive report-summary reporter-hide-prefix reverse shell shell-mode silent sort stream unsafe-perm usage use-stderr version workspace-root",
   ),
   longValues: words(
-    "dir filter filter-prod workspace-concurrency reporter loglevel registry resume-from package allow-build test-pattern changed-files-ignore-pattern",
+    "changed-files-ignore-pattern child-concurrency dir filter filter-prod hoist-pattern lockfile-dir loglevel modules-dir network-concurrency prefix public-hoist-pattern reporter save-catalog-name store-dir test-pattern trust-policy-exclude trust-policy-ignore-after virtual-store-dir workspace-concurrency workspace-packages",
+  ),
+  unverified: words(
+    "all allow-build ca cache cache-dir cpu fetch-retries fetch-retry-factor fetch-retry-maxtimeout fetch-retry-mintimeout fetch-timeout global-bin-dir global-dir global-pnpmfile https-proxy libc merge-git-branch-lockfiles-branch-pattern node-linker noproxy npm-path only os package package-import-method pnpmfile proxy registry resume-from save-catalog save-prefix trust-policy use-node-version which",
   ),
 });
 
-/** npm and npx: `-w NAME` is a value, `--workspaces` a flag; an unknown option is a boolean, as nopt reads it. */
+/** `pnpm dlx [options] <package>` (`pnpm help dlx`; the value placeholders are documented at pnpm.io/cli/dlx). */
+export const PNPM_DLX: OptionGrammar = loose({
+  flags: "cs",
+  // pnpm 9 and older spell `--package` as `-p`; 10.30's help no longer lists it, and a valued reading is the safe one for a command after it.
+  values: "p",
+  longFlags: words("shell-mode silent"),
+  longValues: words("allow-build package reporter"),
+});
+
+/**
+ * `npm [options] exec|x ...`: the config names of `npm config ls -l` plus npm's shorthands, valued or flag as `npm exec --OPT VALUE -c
+ * 'echo HIT'` shows (`-p` is `--parseable` here, a flag). An unknown option is a boolean in nopt, so the table is lax.
+ */
 export const NPM: OptionGrammar = loose({
-  flags: "yhvs",
-  values: "pwcC",
+  flags: "0123456789aAbBdDEfFgGhHiIjJKlMnNoOpPqQrRsStTuUvVWxXyYzZ",
+  values: "cwCekLm",
   longFlags: words(
-    "yes no silent include-workspace-root workspaces ignore-scripts legacy-peer-deps json help version verbose",
+    "all allow-same-version audit bin-links bypass-2fa color commit-hooks description dev diff-ignore-all-space diff-name-only diff-no-prefix diff-text dry-run engine-strict expect-results force foreground-scripts format-package-lock fund git-tag-version global global-style if-present ignore-scripts include-staged include-workspace-root init-private install-links json legacy-bundling legacy-peer-deps link long npm-version offline omit-lockfile-registry-resolved optional package-lock package-lock-only packages-all parseable prefer-dedupe prefer-offline prefer-online production progress provenance read-only rebuild-bundle save save-bundle save-dev save-exact save-optional save-peer save-prod shrinkwrap sign-git-commit sign-git-tag strict-peer-deps strict-ssl timing unicode update-notifier usage version versions workspaces workspaces-update yes",
   ),
   longValues: words(
-    "package call workspace prefix cache userconfig globalconfig registry loglevel node-arg before",
+    "access allow-git also audit-level auth-type before browser ca cache cache-max cache-min cafile call cert cidr cpu depth diff diff-dst-prefix diff-src-prefix diff-unified editor expect-result-count expires fetch-retries fetch-retry-factor fetch-retry-maxtimeout fetch-retry-mintimeout fetch-timeout git globalconfig heading https-proxy include init-author-email init-author-name init-author-url init-license init-module init-type init-version install-strategy key libc local-address location lockfile-version loglevel logs-dir logs-max maxsockets message min-release-age name node-gyp node-options noproxy omit only orgs orgs-permission os otp pack-destination package packages packages-and-scopes-permission password prefix preid provenance-file proxy registry replace-registry-host save-prefix sbom-format sbom-type scope scopes script-shell searchexclude searchlimit searchopts searchstaleness shell tag tag-version-prefix token-description umask user-agent userconfig viewer which workspace",
   ),
+});
+
+/** `npx` is its own binary: it rewrites `-p` to `--package` and reads `-n` with a value; everything else is npm's. */
+export const NPX: OptionGrammar = loose({
+  flags: NPM.flags.replace(/[pn]/g, ""),
+  values: `${NPM.values}pn`,
+  longFlags: NPM.longFlags,
+  longValues: [...NPM.longValues, "node-arg"],
 });
 
 /** yarn (unverified here): `-w -r -c -s` are flags; `--cwd` and a few more take a value. */

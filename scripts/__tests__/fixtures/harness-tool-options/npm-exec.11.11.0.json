@@ -1,0 +1,1136 @@
+{
+  "tool": "npm",
+  "version": "11.11.0",
+  "command": "npm exec",
+  "method": "echo-hit",
+  "options": [
+    {
+      "name": "--access",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--all",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--allow-git",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--allow-same-version",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--also",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--audit",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--audit-level",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--auth-type",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--before",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--bin-links",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--browser",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--bypass-2fa",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--ca",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cache",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cache-max",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cache-min",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cafile",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--call",
+      "short": "-c",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cert",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cidr",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--color",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--commit-hooks",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cpu",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--depth",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--description",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--dev",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--diff",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--diff-dst-prefix",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--diff-ignore-all-space",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--diff-name-only",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--diff-no-prefix",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--diff-src-prefix",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--diff-text",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--diff-unified",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--dry-run",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--editor",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--engine-strict",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--expect-result-count",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--expect-results",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--expires",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--fetch-retries",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--fetch-retry-factor",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--fetch-retry-maxtimeout",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--fetch-retry-mintimeout",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--fetch-timeout",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--force",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--foreground-scripts",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--format-package-lock",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--fund",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--git",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--git-tag-version",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--global",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--global-style",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--globalconfig",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--heading",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--https-proxy",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--if-present",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--ignore-scripts",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--include",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--include-staged",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--include-workspace-root",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--init-author-email",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--init-author-name",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--init-author-url",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--init-license",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--init-module",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--init-private",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--init-type",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--init-version",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--install-links",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--install-strategy",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--json",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--key",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--legacy-bundling",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--legacy-peer-deps",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--libc",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--link",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--local-address",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--location",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--lockfile-version",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--loglevel",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--logs-dir",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--logs-max",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--long",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--maxsockets",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--message",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--min-release-age",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--name",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--node-gyp",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--node-options",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--noproxy",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--npm-version",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--offline",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--omit",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--omit-lockfile-registry-resolved",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--only",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--optional",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--orgs",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--orgs-permission",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--os",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--otp",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--pack-destination",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--package",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--package-lock",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--package-lock-only",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--packages",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--packages-all",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--packages-and-scopes-permission",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--parseable",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--password",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--prefer-dedupe",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--prefer-offline",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--prefer-online",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--prefix",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--preid",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--production",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--progress",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--provenance",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--provenance-file",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--proxy",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--read-only",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--rebuild-bundle",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--registry",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--replace-registry-host",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--save",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--save-bundle",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--save-dev",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--save-exact",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--save-optional",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--save-peer",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--save-prefix",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--save-prod",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--sbom-format",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--sbom-type",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--scope",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--scopes",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--script-shell",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--searchexclude",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--searchlimit",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--searchopts",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--searchstaleness",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--shell",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--shrinkwrap",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--sign-git-commit",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--sign-git-tag",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--strict-peer-deps",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--strict-ssl",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--tag",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--tag-version-prefix",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--timing",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--token-description",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--umask",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--unicode",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--update-notifier",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--usage",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--user-agent",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--userconfig",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--version",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--versions",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--viewer",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--which",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--workspace",
+      "short": "-w",
+      "takesValue": true,
+      "evidence": "help"
+    },
+    {
+      "name": "--workspaces",
+      "takesValue": false,
+      "evidence": "help"
+    },
+    {
+      "name": "--workspaces-update",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--yes",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-0",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-1",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-2",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-3",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-4",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-5",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-6",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-7",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-8",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-9",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-a",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-A",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-b",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-B",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-C",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "-d",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-D",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-e",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "-E",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-f",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-F",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-g",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-G",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-h",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-H",
+      "takesValue": false,
+      "evidence": "help"
+    },
+    {
+      "name": "-i",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-I",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-j",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-J",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-k",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "-K",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-l",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-L",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "-m",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "-M",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-n",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-N",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-o",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-O",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-p",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-P",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-q",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-Q",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-r",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-R",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-s",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-S",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-t",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-T",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-u",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-U",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-v",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-V",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-W",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-x",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-X",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-y",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-Y",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-z",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "-Z",
+      "takesValue": false,
+      "evidence": "probe"
+    }
+  ],
+  "rejected": []
+}
