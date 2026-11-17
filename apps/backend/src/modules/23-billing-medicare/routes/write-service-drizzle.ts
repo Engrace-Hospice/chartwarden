@@ -5,6 +5,7 @@ import {
   canonicalRuleKey,
   reduce as claimReduce,
   deriveControlNumber,
+  generateExternalPatientControlNumber,
   noeMachine,
   notrMachine,
   repositories,
@@ -919,16 +920,71 @@ export function buildDrizzleM23WriteService(
         } catch (e) {
           throw new ChartWardenError("VALIDATION_FAILED", (e as Error).message, 422);
         }
-        const submission = await subRepo.append({
-          organizationId: actor.organizationId,
-          providerEntityId: claim.providerEntityId,
-          kind: "claim_837i",
-          claimId: claim.id,
-          claimControlNumber,
-          attemptIndex,
-          outcome: "queued",
-          reviewedSourceFingerprint: route.reviewedSourceFingerprint,
-        });
+        const routingBinding = route.routingBinding;
+        if (
+          routingBinding &&
+          (routingBinding.routeFingerprint !== route.expectedRouteFingerprint ||
+            routingBinding.accountReference.length < 1 ||
+            routingBinding.accountReference.length > 128)
+        ) {
+          throw new ConflictError("the selected clearinghouse binding changed after preparation");
+        }
+        let submission: Awaited<ReturnType<typeof subRepo.append>> | undefined;
+        for (let collisionAttempt = 0; collisionAttempt < 4 && !submission; collisionAttempt += 1) {
+          try {
+            submission = await subRepo.append({
+              organizationId: actor.organizationId,
+              providerEntityId: claim.providerEntityId,
+              kind: "claim_837i",
+              claimId: claim.id,
+              claimControlNumber,
+              externalPatientControlNumber: generateExternalPatientControlNumber(),
+              ...(routingBinding
+                ? {
+                    clearinghouseVendor: routingBinding.vendor,
+                    clearinghouseAccountReference: routingBinding.accountReference,
+                    clearinghouseMode: routingBinding.mode,
+                    clearinghouseConfigId: routingBinding.configId,
+                    clearinghouseConfigVersion: routingBinding.configVersion,
+                    clearinghouseCredentialFingerprint: routingBinding.credentialFingerprint,
+                    expectedRouteFingerprint: routingBinding.routeFingerprint,
+                  }
+                : {}),
+              attemptIndex,
+              outcome: "queued",
+              reviewedSourceFingerprint: route.reviewedSourceFingerprint,
+            });
+          } catch (error) {
+            const databaseError = error as {
+              code?: string;
+              constraint?: string;
+              cause?: { code?: string; constraint?: string };
+            };
+            const unique = databaseError.code === "EXTERNAL_PCN_COLLISION";
+            if (!unique || collisionAttempt === 3) throw error;
+          }
+        }
+        if (!submission) throw new Error("external patient control number allocation failed");
+        if (!submission.externalPatientControlNumber) {
+          throw new ConflictError(
+            "this historical submission has no supported external control identity",
+          );
+        }
+        if (
+          routingBinding &&
+          (submission.clearinghouseVendor !== routingBinding.vendor ||
+            submission.clearinghouseAccountReference !== routingBinding.accountReference ||
+            submission.clearinghouseMode !== routingBinding.mode ||
+            submission.clearinghouseConfigId !== routingBinding.configId ||
+            submission.clearinghouseConfigVersion !== routingBinding.configVersion ||
+            submission.clearinghouseCredentialFingerprint !==
+              routingBinding.credentialFingerprint ||
+            submission.expectedRouteFingerprint !== routingBinding.routeFingerprint)
+        ) {
+          throw new ConflictError(
+            "the existing submission attempt is bound to a different clearinghouse route",
+          );
+        }
         if (submission.reviewedSourceFingerprint !== route.reviewedSourceFingerprint) {
           throw new ConflictError(
             "an idempotent submission key already exists for a different reviewed claim snapshot",
@@ -941,6 +997,7 @@ export function buildDrizzleM23WriteService(
             claimId: claim.id,
             submissionId: submission.id,
             claimControlNumber,
+            externalPatientControlNumber: submission.externalPatientControlNumber,
             attemptIndex,
             reviewedSourceFingerprint: route.reviewedSourceFingerprint,
             ...(route.expectedRouteFingerprint
@@ -958,6 +1015,7 @@ export function buildDrizzleM23WriteService(
             claimId: claim.id,
             submissionId: submission.id,
             claimControlNumber,
+            externalPatientControlNumber: submission.externalPatientControlNumber,
             attemptIndex,
             reviewedSourceFingerprint: route.reviewedSourceFingerprint,
             ...(route.expectedRouteFingerprint
@@ -965,7 +1023,13 @@ export function buildDrizzleM23WriteService(
               : {}),
           },
         });
-        return { submissionId: submission.id, jobId, attemptIndex, claimControlNumber };
+        return {
+          submissionId: submission.id,
+          jobId,
+          attemptIndex,
+          claimControlNumber,
+          externalPatientControlNumber: submission.externalPatientControlNumber!,
+        };
       });
     },
 

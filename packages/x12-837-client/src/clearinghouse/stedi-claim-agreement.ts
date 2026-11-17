@@ -58,6 +58,7 @@ export function compareStediClaimJsonToX12(json: StediClaimJson, raw: string): s
   );
   const isa = first("ISA");
   expect("envelope.usage", isa[15] === json.usageIndicator);
+  expect("claim.patientControlNumber", clm[1] === info.patientControlNumber);
   const nm1 = (q: string): Segment => segments.find((s) => s[0] === "NM1" && s[1] === q) ?? [];
   expect("billingProvider.npi", nm1("85")[9] === json.billing.npi);
   expect("attendingPhysician.npi", nm1("71")[9] === json.attending.npi);

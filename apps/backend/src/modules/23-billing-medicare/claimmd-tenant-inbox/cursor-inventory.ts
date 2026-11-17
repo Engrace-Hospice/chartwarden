@@ -2,7 +2,12 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 
-export type TenantClaimMdCursorCutoverClass = "legacy_only" | "cutover_assessment_required";
+export type TenantClaimMdCursorCutoverClass =
+  | "legacy_only"
+  | "repository_ready"
+  | "cutover_assessment_required"
+  | "cutover_blocked"
+  | "qualified_for_controlled_transition";
 
 /** A historical poll coordinate is deliberately not equated to an account-level ResponseID cursor. */
 export interface LegacyTenantClaimMdCursorCoordinate {
@@ -13,7 +18,10 @@ export interface LegacyTenantClaimMdCursorCoordinate {
   readonly acknowledgmentKind: "ack_999" | "ack_277ca";
   readonly cursor: string | null;
   readonly version: number;
+  /** Timestamp of the last cursor commit; the legacy table has no independent poll-success heartbeat. */
   readonly lastUpdatedAt: Date;
+  readonly lastSuccessfulProcessingAt: null;
+  readonly currentPollerOwner: "runTransportAckPull";
   readonly comparableWithOtherLegacyCoordinates: false;
   readonly accountIdentityId: null;
   readonly classification: TenantClaimMdCursorCutoverClass;
@@ -46,7 +54,9 @@ export function classifyLegacyTenantClaimMdCursor(input: {
     lastUpdatedAt: input.updatedAt,
     comparableWithOtherLegacyCoordinates: false,
     accountIdentityId: null,
-    classification: "cutover_assessment_required",
+    lastSuccessfulProcessingAt: null,
+    currentPollerOwner: "runTransportAckPull",
+    classification: "legacy_only",
   };
 }
 

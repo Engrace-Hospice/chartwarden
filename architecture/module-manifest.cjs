@@ -895,6 +895,7 @@ exports.MODULES = [
       "claimmd_tenant_response_account_credential",
       "claimmd_tenant_response_batch",
       "claimmd_tenant_response_item",
+      "claimmd_tenant_response_item_outcome",
       "claimmd_response_resolution",
       "claimmd_response_resolution_history",
       "claimmd_ack_application",

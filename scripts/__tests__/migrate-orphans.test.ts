@@ -84,6 +84,48 @@ describe("applyMigrations orphan detection (GAP-189)", () => {
     expect(result.orphaned).toEqual([legacy]);
   });
 
+  it("adopts the checksum-identical M23 collision filenames without rerunning their SQL", async () => {
+    const aliases = [
+      [
+        "1502_m23_medicare_notice_operational_issues.sql",
+        "1494_m23_medicare_notice_operational_issues.sql",
+      ],
+      ["1503_m23_claimmd_tenant_response_inbox.sql", "1495_m23_claimmd_tenant_response_inbox.sql"],
+      [
+        "1504_m23_claimmd_tenant_response_outcomes.sql",
+        "1496_m23_claimmd_tenant_response_outcomes.sql",
+      ],
+      [
+        "1505_m23_claim_submission_external_identity_binding.sql",
+        "1497_m23_claim_submission_external_identity_binding.sql",
+      ],
+      [
+        "1506_m23_claim_submission_clearinghouse_config_org_fk.sql",
+        "1498_m23_claim_submission_clearinghouse_config_org_fk.sql",
+      ],
+      [
+        "1507_m23_claim_submission_hold_reasons_and_rls.sql",
+        "1499_m23_claim_submission_hold_reasons_and_rls.sql",
+      ],
+    ] as const;
+    const files = Object.fromEntries(aliases.map(([filename]) => [filename, body]));
+    const tracked = Object.fromEntries(aliases.map(([, legacy]) => [legacy, sha(body)]));
+    const db = fakeDb(tracked);
+
+    const result = await applyMigrations(db, {
+      migrationsDir: dirWith(files),
+      strictOrphans: true,
+    });
+
+    expect(result).toMatchObject({ ran: [], pending: [], orphaned: [] });
+    for (const [filename, legacy] of aliases) {
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringContaining("UPDATE _chartwarden_migration"),
+        [filename, sha(body), legacy],
+      );
+    }
+  });
+
   it("adopts the deployed M36 filenames by their real checksums, then runs the ack-actor correction", async () => {
     const aliases = [
       [

@@ -262,6 +262,7 @@ export interface ClaimSubmissionView {
   readonly notrId: string | null;
   readonly transferNoticeId: string | null;
   readonly claimControlNumber: string;
+  readonly externalPatientControlNumber: string | null;
   readonly attemptIndex: number;
   readonly outcome: ClaimSubmissionOutcome;
   readonly dispatchState: "pending" | "sending" | "in_doubt" | "finished";

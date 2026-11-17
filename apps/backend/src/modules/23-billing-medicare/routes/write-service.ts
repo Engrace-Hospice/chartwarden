@@ -219,6 +219,16 @@ export interface ClaimSubmissionAcceptedView {
   readonly jobId: string;
   readonly attemptIndex: number;
   readonly claimControlNumber: string;
+  readonly externalPatientControlNumber: string;
+}
+export interface ClaimSubmissionRoutingBinding {
+  readonly vendor: "claimmd" | "stedi";
+  readonly accountReference: string;
+  readonly mode: "test" | "production";
+  readonly configId: string | null;
+  readonly configVersion: number | null;
+  readonly credentialFingerprint: string | null;
+  readonly routeFingerprint: string;
 }
 export interface NoticeSubmissionAcceptedView {
   /** Null when the notice was parked (the organization bills outside ChartWarden): nothing was queued. */
@@ -404,6 +414,7 @@ export interface M23WriteRouteService {
       readonly expectedVersion: number;
       readonly expectedRouteFingerprint?: string;
       readonly reviewedSourceFingerprint: string;
+      readonly routingBinding?: ClaimSubmissionRoutingBinding;
     },
   ): Promise<ClaimSubmissionAcceptedView>;
   replaceClaim(

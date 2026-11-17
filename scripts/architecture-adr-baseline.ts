@@ -23,7 +23,6 @@ export const UNCITED_ACCEPTED_ADRS: readonly string[] = [
   "0044",
   "0046",
   "0047",
-  "0052",
   "0054",
   "0055",
   "0059",

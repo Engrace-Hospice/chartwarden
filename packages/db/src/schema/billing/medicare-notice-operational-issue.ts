@@ -2,7 +2,16 @@
 // Notice source facts remain owned by their original modules; this table stores only references,
 // stable reason codes, assignment and lifecycle. DDE remains the specialized FISS work queue.
 import { sql } from "drizzle-orm";
-import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
 export const MEDICARE_NOTICE_ISSUE_TYPES = ["noe", "notr", "transfer", "cancellation"] as const;
@@ -94,6 +103,7 @@ export const medicareNoticeOperationalIssueEvent = pgTable(
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    organizationIdId: unique("med_notice_issue_event_org_id_uq").on(t.organizationId, t.id),
     eventOnce: uniqueIndex("med_notice_issue_event_once_uq").on(t.organizationId, t.eventKey),
     history: index("med_notice_issue_event_history_ix").on(
       t.organizationId,

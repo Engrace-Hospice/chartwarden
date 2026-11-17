@@ -73,7 +73,11 @@ import {
 } from "./guards";
 import type { M23ReadRouteService } from "./read-service";
 import type { ClaimLineView } from "./read-service";
-import type { AssembledClaimLineInput, M23WriteRouteService } from "./write-service";
+import type {
+  AssembledClaimLineInput,
+  ClaimSubmissionRoutingBinding,
+  M23WriteRouteService,
+} from "./write-service";
 
 export interface ClaimsRouteDeps {
   readonly readService: M23ReadRouteService;
@@ -104,6 +108,10 @@ export interface ClaimsRouteDeps {
         readonly sourceFingerprint: string | null;
         readonly accountReference: string;
         readonly usage: "test" | "production";
+        readonly clearinghouseVendor?: "claimmd" | "stedi";
+        readonly clearinghouseConfigId?: string | null;
+        readonly clearinghouseConfigVersion?: number | null;
+        readonly clearinghouseCredentialFingerprint?: string | null;
       }
     | { readonly status: "blocked"; readonly gaps: readonly ClaimGap[] }
   >;
@@ -242,6 +250,7 @@ const ClaimSubmissionHistoryItemSchema = Type.Object(
     notrId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
     transferNoticeId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
     claimControlNumber: Type.String(),
+    externalPatientControlNumber: Type.Union([Type.String({ maxLength: 20 }), Type.Null()]),
     attemptIndex: Type.Integer({ minimum: 0 }),
     outcome: Type.Union([
       Type.Literal("queued"),
@@ -455,6 +464,15 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
                 routeFingerprint: boundRouteFingerprint,
                 accountReference: rendered.accountReference,
                 usage: rendered.usage,
+                ...(rendered.clearinghouseVendor
+                  ? {
+                      clearinghouseVendor: rendered.clearinghouseVendor,
+                      clearinghouseConfigId: rendered.clearinghouseConfigId ?? null,
+                      clearinghouseConfigVersion: rendered.clearinghouseConfigVersion ?? null,
+                      clearinghouseCredentialFingerprint:
+                        rendered.clearinghouseCredentialFingerprint ?? null,
+                    }
+                  : {}),
                 issuedAt: now,
                 expiresAt: confirmationExpiresAt,
               },
@@ -640,7 +658,11 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
         !current.sourceFingerprint ||
         current.sourceFingerprint !== reviewed.sourceFingerprint ||
         current.accountReference !== reviewed.accountReference ||
-        current.usage !== reviewed.usage
+        current.usage !== reviewed.usage ||
+        current.clearinghouseVendor !== reviewed.clearinghouseVendor ||
+        current.clearinghouseConfigId !== reviewed.clearinghouseConfigId ||
+        current.clearinghouseConfigVersion !== reviewed.clearinghouseConfigVersion ||
+        current.clearinghouseCredentialFingerprint !== reviewed.clearinghouseCredentialFingerprint
       ) {
         throw new ChartWardenError(
           "CLAIM_PREVIEW_STALE",
@@ -662,6 +684,19 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
         expectedVersion,
         ...(expectedRouteFingerprint ? { expectedRouteFingerprint } : {}),
         reviewedSourceFingerprint: reviewed.sourceFingerprint,
+        ...(reviewed.clearinghouseVendor
+          ? {
+              routingBinding: {
+                vendor: reviewed.clearinghouseVendor,
+                accountReference: reviewed.accountReference,
+                mode: reviewed.usage,
+                configId: reviewed.clearinghouseConfigId ?? null,
+                configVersion: reviewed.clearinghouseConfigVersion ?? null,
+                credentialFingerprint: reviewed.clearinghouseCredentialFingerprint ?? null,
+                routeFingerprint: reviewed.routeFingerprint,
+              } satisfies ClaimSubmissionRoutingBinding,
+            }
+          : {}),
       });
       return reply.code(202).send(res);
     },

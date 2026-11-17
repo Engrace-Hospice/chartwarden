@@ -170,6 +170,7 @@ export const claimMdTenantResponseItems = pgTable(
       t.messageIndex,
       t.payloadDigest,
     ),
+    unique("claimmd_tenant_response_item_scope_uq").on(t.id, t.organizationId, t.accountId),
     index("claimmd_tenant_response_item_pending_ix").on(
       t.organizationId,
       t.accountId,
@@ -179,8 +180,50 @@ export const claimMdTenantResponseItems = pgTable(
   ],
 );
 
+/** Append-only processing/quarantine provenance; source evidence remains immutable. */
+export const claimMdTenantResponseItemOutcomes = pgTable(
+  "claimmd_tenant_response_item_outcome",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    accountId: uuid("account_id").notNull(),
+    itemId: uuid("item_id").notNull(),
+    consumerKey: text("consumer_key").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    outcome: text("outcome").$type<"processed" | "quarantined">().notNull(),
+    reasonCode: text("reason_code"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.itemId, t.organizationId, t.accountId],
+      foreignColumns: [
+        claimMdTenantResponseItems.id,
+        claimMdTenantResponseItems.organizationId,
+        claimMdTenantResponseItems.accountId,
+      ],
+      name: "claimmd_tenant_response_item_outcome_item_fk",
+    }),
+    unique("claimmd_tenant_response_item_outcome_idempotency_uq").on(
+      t.itemId,
+      t.consumerKey,
+      t.idempotencyKey,
+    ),
+    index("claimmd_tenant_response_item_outcome_org_ix").on(
+      t.organizationId,
+      t.accountId,
+      t.itemId,
+      t.occurredAt,
+    ),
+  ],
+);
+
 export type ClaimMdTenantResponseAccountRow = typeof claimMdTenantResponseAccounts.$inferSelect;
 export type ClaimMdTenantResponseAccountCredentialRow =
   typeof claimMdTenantResponseAccountCredentials.$inferSelect;
 export type ClaimMdTenantResponseBatchRow = typeof claimMdTenantResponseBatches.$inferSelect;
 export type ClaimMdTenantResponseItemRow = typeof claimMdTenantResponseItems.$inferSelect;
+export type ClaimMdTenantResponseItemOutcomeRow =
+  typeof claimMdTenantResponseItemOutcomes.$inferSelect;

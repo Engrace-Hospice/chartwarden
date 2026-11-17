@@ -22,6 +22,8 @@ export interface FakeStore {
   readonly overrides: Map<string, any>;
   readonly history: any[];
   readonly emitted: any[];
+  readonly submissions: Map<string, any>;
+  readonly acknowledgments: Map<string, any>;
   /** Resolved HETS eligibility checks (newest last) the RHC carry-over reads. */
   readonly eligibilityChecks: any[];
   reset(): void;
@@ -45,6 +47,8 @@ export function buildFakeRepositories(): {
     overrides: new Map<string, any>(),
     history: [],
     emitted: [],
+    submissions: new Map<string, any>(),
+    acknowledgments: new Map<string, any>(),
     eligibilityChecks: [],
     reset(): void {
       this.claims.clear();
@@ -56,6 +60,8 @@ export function buildFakeRepositories(): {
       this.overrides.clear();
       this.history.length = 0;
       this.emitted.length = 0;
+      this.submissions.clear();
+      this.acknowledgments.clear();
       this.eligibilityChecks.length = 0;
       seq = 0;
     },
@@ -176,21 +182,30 @@ export function buildFakeRepositories(): {
         return row;
       });
     }
+    async listForClaim(claimId: string): Promise<any[]> {
+      return store.lines.filter((line) => line.claimId === claimId);
+    }
   }
 
   class PerDiemRateCalculationRepository {
     async append(v: any): Promise<any> {
-      const row = { id: newId("perDiemClass"), ...v };
+      const row = { id: newId("perDiemClass"), ...v, calculatedAt: v.calculatedAt ?? new Date() };
       store.perDiemClass.push(row);
       return row;
+    }
+    async findByClaim(claimId: string): Promise<any> {
+      return [...store.perDiemClass].reverse().find((row) => row.claimId === claimId) ?? null;
     }
   }
 
   class SiaCalculationRepository {
     async append(v: any): Promise<any> {
-      const row = { id: newId("sia"), ...v };
+      const row = { id: newId("sia"), ...v, calculatedAt: v.calculatedAt ?? new Date() };
       store.sia.push(row);
       return row;
+    }
+    async findByClaim(claimId: string): Promise<any> {
+      return [...store.sia].reverse().find((row) => row.claimId === claimId) ?? null;
     }
   }
 
@@ -295,6 +310,121 @@ export function buildFakeRepositories(): {
     }
   }
 
+  class ClaimSubmissionRepository {
+    async append(v: any): Promise<any> {
+      const existing = [...store.submissions.values()].find(
+        (row) => row.claimId === v.claimId && row.attemptIndex === v.attemptIndex,
+      );
+      if (existing) return existing;
+      const row = {
+        id: v.id ?? newId("submission"),
+        outcomeReason: null,
+        generatedFileUri: null,
+        submittedAt: null,
+        workerCorrelationId: null,
+        dispatchState: "pending",
+        dispatchReasonCode: null,
+        createdAt: new Date(),
+        ...v,
+      };
+      store.submissions.set(row.id, row);
+      return row;
+    }
+    async findById(id: string): Promise<any> {
+      return store.submissions.get(id) ?? null;
+    }
+    async findLatestForClaim(claimId: string): Promise<any> {
+      return (
+        [...store.submissions.values()]
+          .filter((row) => row.claimId === claimId)
+          .sort((a, b) => b.attemptIndex - a.attemptIndex)[0] ?? null
+      );
+    }
+    async listForClaim(claimId: string): Promise<any[]> {
+      return [...store.submissions.values()]
+        .filter((row) => row.claimId === claimId)
+        .sort((a, b) => a.attemptIndex - b.attemptIndex);
+    }
+    async findLatestAttempt(providerEntityId: string, controlNumber: string): Promise<any> {
+      return (
+        [...store.submissions.values()]
+          .filter(
+            (row) =>
+              row.providerEntityId === providerEntityId &&
+              (row.externalPatientControlNumber === controlNumber ||
+                (row.externalPatientControlNumber == null &&
+                  row.claimControlNumber === controlNumber)),
+          )
+          .sort((a, b) => b.attemptIndex - a.attemptIndex)[0] ?? null
+      );
+    }
+    async terminalize(id: string, patch: any): Promise<any> {
+      const current = store.submissions.get(id);
+      if (!current) return null;
+      const row = { ...current, ...patch, dispatchState: "finished" };
+      store.submissions.set(id, row);
+      return row;
+    }
+    async beginDispatch(id: string): Promise<any> {
+      const current = store.submissions.get(id);
+      if (!current) throw new Error(`submission ${id} not found`);
+      if (current.outcome !== "queued" || current.dispatchState === "finished") {
+        return { kind: "terminal", row: current };
+      }
+      if (current.dispatchState === "sending" || current.dispatchState === "in_doubt") {
+        return { kind: "already_started", row: current };
+      }
+      const token = newId("dispatch");
+      const row = { ...current, dispatchState: "sending", dispatchToken: token };
+      store.submissions.set(id, row);
+      return { kind: "claimed", row, token };
+    }
+    async markDispatchInDoubt(id: string, token: string, reasonCode: string): Promise<any> {
+      const current = store.submissions.get(id);
+      if (!current || current.dispatchToken !== token || current.dispatchState !== "sending") {
+        throw new Error(`submission ${id} dispatch fencing token mismatch`);
+      }
+      const row = { ...current, dispatchState: "in_doubt", dispatchReasonCode: reasonCode };
+      store.submissions.set(id, row);
+      return row;
+    }
+    async finishDispatch(id: string, token: string, _state: string, patch: any): Promise<any> {
+      const current = store.submissions.get(id);
+      if (
+        !current ||
+        current.dispatchToken !== token ||
+        !["sending", "in_doubt"].includes(current.dispatchState)
+      ) {
+        return null;
+      }
+      const row = { ...current, ...patch, dispatchState: "finished" };
+      store.submissions.set(id, row);
+      return row;
+    }
+  }
+
+  class ClaimAcknowledgmentRepository {
+    async append(v: any): Promise<any> {
+      const existing = [...store.acknowledgments.values()].find(
+        (row) => row.macJurisdiction === v.macJurisdiction && row.ackFileUri === v.ackFileUri,
+      );
+      if (existing) return existing;
+      const now = new Date();
+      const row = {
+        id: v.id ?? newId("ack"),
+        ...v,
+        ackReceivedAt: v.ackReceivedAt ?? now,
+        parsedAt: v.parsedAt ?? now,
+        createdAt: v.createdAt ?? now,
+      };
+      store.acknowledgments.set(row.id, row);
+      return row;
+    }
+    async listForClaim(claimId: string): Promise<any[]> {
+      return [...store.acknowledgments.values()].filter((row) => row.claimId === claimId);
+    }
+  }
+
   const repos: Record<string, unknown> = {
     ClaimRepository,
     EligibilityCheckRepository,
@@ -305,6 +435,8 @@ export function buildFakeRepositories(): {
     ValidationRunRepository,
     ValidationResultRepository,
     ValidationOverrideRepository,
+    ClaimSubmissionRepository,
+    ClaimAcknowledgmentRepository,
   };
 
   return { store, repos };

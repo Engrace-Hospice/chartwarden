@@ -73,6 +73,7 @@ CREATE TABLE medicare_notice_operational_issue_event (
   occurred_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT med_notice_issue_event_parent_fk FOREIGN KEY (organization_id,issue_id)
     REFERENCES medicare_notice_operational_issue(organization_id,id) ON DELETE RESTRICT,
+  CONSTRAINT med_notice_issue_event_org_id_uq UNIQUE (organization_id,id),
   CONSTRAINT med_notice_issue_event_once_uq UNIQUE (organization_id,event_key)
 );
 CREATE INDEX med_notice_issue_event_history_ix ON medicare_notice_operational_issue_event

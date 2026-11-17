@@ -218,6 +218,8 @@ export type TransportUpload = (input: {
   /** The same claim as Stedi's JSON; used for a Stedi claim, where it replaces the raw X12 (no ISA13 to match). */
   readonly stediJson?: StediClaimJson;
   readonly controlNumber: string;
+  /** Stable internal attempt identity; kept separate from the vendor-facing CLM01. */
+  readonly idempotencyKey?: string;
   readonly claimId?: string;
   readonly submissionId?: string;
   readonly attemptIndex?: number;
@@ -251,8 +253,15 @@ function payloadFor(
     readonly stediJson?: StediClaimJson;
   },
 ): SubmissionPayload {
-  if (vendor !== "stedi" || kind !== "claim" || !input.stediJson) {
+  if (vendor !== "stedi" || kind !== "claim") {
     return { format: "x12", x12: input.x12 };
+  }
+  if (!input.stediJson) {
+    throw failure(
+      kind,
+      CH.INVALID_REQUEST,
+      "the claim cannot be represented within Stedi's JSON submission limits",
+    );
   }
   const disagree = compareStediClaimJsonToX12(input.stediJson, input.x12);
   if (disagree.length > 0) {
@@ -410,7 +419,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
             payloadSha256: parsed.payloadSha256,
             outboundReference: claimMdFilename(
               scopeKey(ctx),
-              submissionKeyFor(kind, input.controlNumber),
+              input.idempotencyKey ?? submissionKeyFor(kind, input.controlNumber),
               "x12",
             ),
             reservedAt: new Date(),
@@ -469,7 +478,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
             x12: parsed,
             outboundReference: claimMdFilename(
               scopeKey(ctx),
-              submissionKeyFor(kind, input.controlNumber),
+              input.idempotencyKey ?? submissionKeyFor(kind, input.controlNumber),
               "x12",
             ),
             reservedAt: new Date(),
@@ -486,7 +495,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
     const submission = {
       kind,
       controlNumber: input.controlNumber,
-      idempotencyKey: submissionKeyFor(kind, input.controlNumber),
+      idempotencyKey: input.idempotencyKey ?? submissionKeyFor(kind, input.controlNumber),
       payload: payloadFor(transport.binding.vendor, kind, input),
     } as const;
     const result = await withCredentialGuard(transport, ctx, () =>

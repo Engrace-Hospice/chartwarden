@@ -206,7 +206,7 @@ describe("compareStediClaimJsonToX12 — raw and JSON agree", () => {
       },
     ],
     [
-      "claim.controlNumber",
+      "claim.patientControlNumber",
       (j: StediClaimJson) => {
         claim(j).patientControlNumber = "OTHER";
       },

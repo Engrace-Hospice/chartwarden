@@ -7976,6 +7976,34 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                     { binding: clearinghouseBinding, env: process.env },
                     organizationId,
                   );
+                  const resolvedSubmissionBinding = clearinghouseBinding.forOrg
+                    ? await clearinghouseBinding.forOrg(organizationId)
+                    : clearinghouseBinding;
+                  const configSnapshot = await withOrgContext(
+                    dbHandle.db,
+                    { organizationId, userId: actorUserId },
+                    async (tx) => {
+                      const [row] = await (tx as DbClient)
+                        .select({
+                          id: schema.tenantClearinghouseConfig.id,
+                          vendor: schema.tenantClearinghouseConfig.vendor,
+                          mode: schema.tenantClearinghouseConfig.mode,
+                          status: schema.tenantClearinghouseConfig.status,
+                          version: schema.tenantClearinghouseConfig.version,
+                          credentialFingerprint:
+                            schema.tenantClearinghouseConfig.credentialFingerprint,
+                        })
+                        .from(schema.tenantClearinghouseConfig)
+                        .where(eq(schema.tenantClearinghouseConfig.organizationId, organizationId))
+                        .limit(1);
+                      return row ?? null;
+                    },
+                  );
+                  const clearinghouseVendor = resolvedSubmissionBinding.vendor;
+                  const tenantConfigIsActive =
+                    configSnapshot?.status === "active" &&
+                    configSnapshot.vendor === clearinghouseVendor &&
+                    configSnapshot.mode !== null;
                   return withOrgContext(
                     dbHandle.db,
                     { organizationId, userId: actorUserId },
@@ -8008,6 +8036,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                             sourceFingerprint: rendered.sourceFingerprint,
                             accountReference,
                             usage: context.usage,
+                            ...(clearinghouseVendor === "claimmd" || clearinghouseVendor === "stedi"
+                              ? {
+                                  clearinghouseVendor,
+                                  clearinghouseConfigId: tenantConfigIsActive
+                                    ? configSnapshot.id
+                                    : null,
+                                  clearinghouseConfigVersion: tenantConfigIsActive
+                                    ? configSnapshot.version
+                                    : null,
+                                  clearinghouseCredentialFingerprint: tenantConfigIsActive
+                                    ? configSnapshot.credentialFingerprint
+                                    : null,
+                                }
+                              : {}),
                           }
                         : {
                             status: "blocked" as const,

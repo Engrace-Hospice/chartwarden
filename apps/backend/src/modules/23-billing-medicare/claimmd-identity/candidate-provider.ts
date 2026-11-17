@@ -1,5 +1,5 @@
 import { type DbClient, schema } from "@chartwarden/db";
-import { and, eq, exists, inArray, or } from "drizzle-orm";
+import { and, eq, exists, inArray, or, sql } from "drizzle-orm";
 import type { FoundationSiteReader } from "../../../bootstrap/foundation-site-reader";
 import type { ClaimMdIdentityEvent, SubmissionCandidate } from "./resolve";
 
@@ -247,7 +247,7 @@ export function createClaimMdCandidateProvider(input: {
             m23ProviderId: M23.providerEntityId,
             m23ClaimId: M23.claimId,
             m23Kind: M23.kind,
-            m23Control: M23.claimControlNumber,
+            m23Control: sql<string>`COALESCE(${M23.externalPatientControlNumber}, ${M23.claimControlNumber})`,
             m23AttemptIndex: M23.attemptIndex,
             attemptId: A.id,
             attemptOrgId: A.organizationId,

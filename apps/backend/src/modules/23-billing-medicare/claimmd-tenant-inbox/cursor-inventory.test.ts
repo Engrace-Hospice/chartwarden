@@ -27,13 +27,17 @@ describe("tenant Claim.MD historical cursor inventory", () => {
     expect(first).toMatchObject({
       accountIdentityId: null,
       comparableWithOtherLegacyCoordinates: false,
-      classification: "cutover_assessment_required",
+      classification: "legacy_only",
+      currentPollerOwner: "runTransportAckPull",
+      lastSuccessfulProcessingAt: null,
       cursor: "900",
     });
     expect(second).toMatchObject({
       accountIdentityId: null,
       comparableWithOtherLegacyCoordinates: false,
-      classification: "cutover_assessment_required",
+      classification: "legacy_only",
+      currentPollerOwner: "runTransportAckPull",
+      lastSuccessfulProcessingAt: null,
       cursor: "120",
     });
   });

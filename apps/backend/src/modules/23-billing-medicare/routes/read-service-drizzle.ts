@@ -231,6 +231,7 @@ function mapSubmission(row: schema.ClaimSubmission): ClaimSubmissionView {
     notrId: row.notrId ?? null,
     transferNoticeId: row.transferNoticeId ?? null,
     claimControlNumber: row.claimControlNumber,
+    externalPatientControlNumber: row.externalPatientControlNumber ?? null,
     attemptIndex: row.attemptIndex,
     outcome: row.outcome,
     dispatchState: row.dispatchState as ClaimSubmissionView["dispatchState"],

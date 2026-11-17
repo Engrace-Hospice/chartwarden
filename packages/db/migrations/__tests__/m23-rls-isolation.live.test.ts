@@ -65,6 +65,7 @@ type SeedIds = {
   tenantResponseCredential: string;
   tenantResponseBatch: string;
   tenantResponseItem: string;
+  tenantResponseOutcome: string;
 };
 
 /**
@@ -110,6 +111,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   },
   { table: "claimmd_tenant_response_batch", key: "tenantResponseBatch" },
   { table: "claimmd_tenant_response_item", key: "tenantResponseItem" },
+  { table: "claimmd_tenant_response_item_outcome", key: "tenantResponseOutcome" },
 ];
 
 describe.skipIf(!DB_URL)(
@@ -463,6 +465,12 @@ describe.skipIf(!DB_URL)(
          VALUES ($1,$2,$3,$4,'0',0,0,$5,'captured') RETURNING id`,
         [org, tenantResponseAccount, tenantResponseBatch, String(n), "c".repeat(64)],
       );
+      const tenantResponseOutcome = await one(
+        `INSERT INTO claimmd_tenant_response_item_outcome
+         (organization_id,account_id,item_id,consumer_key,idempotency_key,outcome)
+         VALUES ($1,$2,$3,'test.ack','seed-outcome','processed') RETURNING id`,
+        [org, tenantResponseAccount, tenantResponseItem],
+      );
 
       return {
         membership,
@@ -499,6 +507,7 @@ describe.skipIf(!DB_URL)(
         tenantResponseCredential,
         tenantResponseBatch,
         tenantResponseItem,
+        tenantResponseOutcome,
       };
     }
 
@@ -664,7 +673,7 @@ describe.skipIf(!DB_URL)(
       expect(foreignIssue.rowCount).toBe(0);
 
       const foreignReview = await withOrg(ORG_B, () =>
-        db.query("SELECT id FROM noe_exception_review WHERE id=$1", [a.exceptionReview]),
+        db.query("SELECT id FROM noe_exception_review WHERE id=$1", [a.noeExceptionReview]),
       );
       expect(foreignReview.rowCount).toBe(0);
 
@@ -684,68 +693,78 @@ describe.skipIf(!DB_URL)(
         ),
       ).rejects.toThrow(/append-only/);
       await expect(
-        db.query("DELETE FROM noe_exception_review_event WHERE id=$1", [a.exceptionReviewEvent]),
+        db.query("DELETE FROM noe_exception_review_event WHERE id=$1", [a.noeExceptionReviewEvent]),
       ).rejects.toThrow(/append-only/);
     });
 
-    it(
-      "tenant Claim.MD inbox is org-scoped and captured evidence and credential bindings are immutable",
-      async () => {
-        for (const [table, id] of [
-          ["claimmd_tenant_response_account", a.tenantResponseAccount],
-          ["claimmd_tenant_response_account_credential", a.tenantResponseCredential],
-          ["claimmd_tenant_response_batch", a.tenantResponseBatch],
-          ["claimmd_tenant_response_item", a.tenantResponseItem],
-        ] as const) {
-          await expect(
-            withOrg(ORG_A, () => db.query(`DELETE FROM ${table} WHERE id=$1`, [id])),
-          ).rejects.toThrow();
-        }
-        const foreignUpdate = await withOrg(ORG_B, () =>
-          db.query("UPDATE claimmd_tenant_response_batch SET captured_at=now() WHERE id=$1", [
-            a.tenantResponseBatch,
-          ]),
-        );
-        expect(foreignUpdate.rowCount).toBe(0);
-        const wrongTenantRead = await withOrg(ORG_B, () =>
-          db.query("SELECT id FROM claimmd_tenant_response_item WHERE id=$1", [
-            a.tenantResponseItem,
-          ]),
-        );
-        expect(wrongTenantRead.rowCount).toBe(0);
-        const ownedInsert = await withOrg(ORG_A, () =>
+    it("tenant Claim.MD inbox is org-scoped and captured evidence and credential bindings are immutable", async () => {
+      for (const [table, id] of [
+        ["claimmd_tenant_response_account", a.tenantResponseAccount],
+        ["claimmd_tenant_response_account_credential", a.tenantResponseCredential],
+        ["claimmd_tenant_response_batch", a.tenantResponseBatch],
+        ["claimmd_tenant_response_item", a.tenantResponseItem],
+        ["claimmd_tenant_response_item_outcome", a.tenantResponseOutcome],
+      ] as const) {
+        await expect(
+          withOrg(ORG_A, () => db.query(`DELETE FROM ${table} WHERE id=$1`, [id])),
+        ).rejects.toThrow();
+      }
+      const foreignUpdate = await withOrg(ORG_B, () =>
+        db.query("UPDATE claimmd_tenant_response_batch SET captured_at=now() WHERE id=$1", [
+          a.tenantResponseBatch,
+        ]),
+      );
+      expect(foreignUpdate.rowCount).toBe(0);
+      const wrongTenantRead = await withOrg(ORG_B, () =>
+        db.query("SELECT id FROM claimmd_tenant_response_item WHERE id=$1", [a.tenantResponseItem]),
+      );
+      expect(wrongTenantRead.rowCount).toBe(0);
+      const wrongTenantOutcomeRead = await withOrg(ORG_B, () =>
+        db.query("SELECT id FROM claimmd_tenant_response_item_outcome WHERE id=$1", [
+          a.tenantResponseOutcome,
+        ]),
+      );
+      expect(wrongTenantOutcomeRead.rowCount).toBe(0);
+      await expect(
+        withOrg(ORG_A, () =>
           db.query(
-            `INSERT INTO claimmd_tenant_response_batch
+            "UPDATE claimmd_tenant_response_item_outcome SET outcome='quarantined' WHERE id=$1",
+            [a.tenantResponseOutcome],
+          ),
+        ),
+      ).rejects.toThrow();
+      const ownedInsert = await withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO claimmd_tenant_response_batch
              (organization_id,account_id,usage,after_cursor,next_cursor,source_format,key_version,
               payload_cipher,payload_digest,parent_count,item_count,capture_id)
              VALUES ($1,$2,'test','10','11','json','tenant-test-v1',decode(repeat('cd',32),'hex'),
               $3,0,0,gen_random_uuid()) RETURNING id`,
-            [ORG_A, a.tenantResponseAccount, "d".repeat(64)],
-          ),
-        );
-        expect(ownedInsert.rowCount).toBe(1);
-        await expect(
-          withOrg(ORG_B, () =>
-            db.query(
-              `INSERT INTO claimmd_tenant_response_batch
+          [ORG_A, a.tenantResponseAccount, "d".repeat(64)],
+        ),
+      );
+      expect(ownedInsert.rowCount).toBe(1);
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO claimmd_tenant_response_batch
                (organization_id,account_id,usage,after_cursor,next_cursor,source_format,key_version,
                 payload_cipher,payload_digest,parent_count,item_count,capture_id)
                VALUES ($1,$2,'test','10','11','json','tenant-test-v1',decode(repeat('cd',32),'hex'),
                 $3,0,0,gen_random_uuid())`,
-              [ORG_A, a.tenantResponseAccount, "d".repeat(64)],
-            ),
+            [ORG_A, a.tenantResponseAccount, "d".repeat(64)],
           ),
-        ).rejects.toThrow();
-        await expect(
-          withOrg(ORG_A, () =>
-            db.query(
-              "UPDATE claimmd_tenant_response_account_credential SET verification_reference='changed' WHERE id=$1",
-              [a.tenantResponseCredential],
-            ),
+        ),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            "UPDATE claimmd_tenant_response_account_credential SET verification_reference='changed' WHERE id=$1",
+            [a.tenantResponseCredential],
           ),
-        ).rejects.toThrow();
-      },
-    );
+        ),
+      ).rejects.toThrow();
+    });
 
     it("deduplicates active issues and keeps issue event plus notification intent transactional", async () => {
       await expect(

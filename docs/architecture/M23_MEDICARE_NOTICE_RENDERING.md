@@ -210,7 +210,7 @@ The generated OpenAPI/client contract now includes the NOE exception-review read
 
 ## CM-4C.3B durable operational follow-up (bounded backend slice)
 
-Migration `1492_m23_medicare_notice_operational_issues.sql` adds three organization-scoped M23 tables: `medicare_notice_operational_issue` (current assignment/lifecycle), append-only `medicare_notice_operational_issue_event` (history), and `medicare_notice_operational_issue_notification` (transactional notification outbox). RLS is enabled and forced on all three. A database guard validates the referenced notice's organization and requires an assignee to be an active membership in that same organization. No clinical facts, MBI, X12, credentials, or exception narrative are duplicated.
+Migration `1502_m23_medicare_notice_operational_issues.sql` adds three organization-scoped M23 tables: `medicare_notice_operational_issue` (current assignment/lifecycle), append-only `medicare_notice_operational_issue_event` (history), and `medicare_notice_operational_issue_notification` (transactional notification outbox). RLS is enabled and forced on all three. A database guard validates the referenced notice's organization and requires an assignee to be an active membership in that same organization. No clinical facts, MBI, X12, credentials, or exception narrative are duplicated.
 
 The cross-type notice identity remains `(notice_type, notice_id)`; a partial unique index permits one active occurrence per `(organization, notice_type, notice_id, issue_code)` while allowing a later occurrence after a prior row is resolved. `occurrence_key` stores only a source version/deadline stage. The current writer synchronizes NOE/NOTR approaching, due-today, and overdue conditions from the existing Eastern-calendar watchdog. Severity/stage changes append `severity_changed`/`escalated`; a later observation after a resolved row creates a new issue and `reopened` history. Existing open DDE work is linked by logical reference for those deadline cases; DDE state remains owned by the DDE service.
 
@@ -242,7 +242,7 @@ The six previously unenriched M23 provider/payer-routing routes now publish thei
 - After correcting evidence or recipient configuration, allow the normal watchdog evaluation/outbox flush to reconcile idempotently.
 - Preserve migrations 1489–1492, issue history, encrypted artifacts, dispatch fencing, and outbox rows during rollback.
 
-Runtime application-role RLS qualification for migration 1492 and a complete backend TypeScript project check remain release gates. They are not implied by focused unit tests, static SQL inspection, a web build, or OpenAPI generation.
+Runtime application-role RLS qualification for migration 1502 and a complete backend TypeScript project check remain release gates. They are not implied by focused unit tests, static SQL inspection, a web build, or OpenAPI generation.
 
 ## CM-4C.4 internal release qualification
 

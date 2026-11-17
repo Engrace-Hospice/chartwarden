@@ -9,9 +9,19 @@ import { sql } from "drizzle-orm";
 // `provider_entity_id` (M40), and `noe_id`/`notr_id` (intra-M23 pointers populated by subject kind) are
 // LOGICAL FKs — plain uuid, validated at runtime (mirrors the M27 cost-report precedent). No PHI / MBI
 // is ever stored here (D13, §8.7).
-import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  foreignKey,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { claim } from "./claim";
+import { tenantClearinghouseConfig } from "./tenant-clearinghouse-config";
 import { m23ClaimSubmissionKind, m23ClaimSubmissionOutcome } from "./types";
 
 export const claimSubmission = pgTable(
@@ -30,6 +40,15 @@ export const claimSubmission = pgTable(
     transferNoticeId: uuid("transfer_notice_id"), // logical FK → transfer_notice_record (migration 0375)
 
     claimControlNumber: text("claim_control_number").notNull(),
+    // Clearinghouse-facing CLM01 / patientControlNumber. Historical attempts stay NULL and are never rewritten.
+    externalPatientControlNumber: text("external_patient_control_number"),
+    clearinghouseVendor: text("clearinghouse_vendor"),
+    clearinghouseAccountReference: text("clearinghouse_account_reference"),
+    clearinghouseMode: text("clearinghouse_mode"),
+    clearinghouseConfigId: uuid("clearinghouse_config_id"),
+    clearinghouseConfigVersion: integer("clearinghouse_config_version"),
+    clearinghouseCredentialFingerprint: text("clearinghouse_credential_fingerprint"),
+    expectedRouteFingerprint: text("expected_route_fingerprint"),
     attemptIndex: integer("attempt_index").notNull(),
     /** Keyed fingerprint of the reviewed 837I business inputs; null only for historical/non-interactive legacy attempts. */
     reviewedSourceFingerprint: text("reviewed_source_fingerprint"),
@@ -55,6 +74,31 @@ export const claimSubmission = pgTable(
       t.claimControlNumber,
       t.attemptIndex,
     ),
+    externalPcnUq: uniqueIndex("claim_submission_external_pcn_uq")
+      .on(t.providerEntityId, t.externalPatientControlNumber)
+      .where(sql`external_patient_control_number IS NOT NULL`),
+    clearinghouseConfigOrgFk: foreignKey({
+      name: "claim_submission_clearinghouse_config_org_fk",
+      columns: [t.clearinghouseConfigId, t.organizationId],
+      foreignColumns: [tenantClearinghouseConfig.id, tenantClearinghouseConfig.organizationId],
+    }).onDelete("restrict"),
+    bindingShape: sql`CHECK (
+      (clearinghouse_vendor IS NULL AND clearinghouse_account_reference IS NULL AND clearinghouse_mode IS NULL
+        AND clearinghouse_config_id IS NULL AND clearinghouse_config_version IS NULL
+        AND clearinghouse_credential_fingerprint IS NULL AND expected_route_fingerprint IS NULL)
+      OR
+      (clearinghouse_vendor IS NOT NULL AND clearinghouse_vendor IN ('claimmd','stedi')
+        AND clearinghouse_account_reference IS NOT NULL
+        AND clearinghouse_account_reference ~ '^[A-Za-z0-9._:-]{1,128}$'
+        AND clearinghouse_mode IS NOT NULL AND clearinghouse_mode IN ('test','production')
+        AND expected_route_fingerprint IS NOT NULL AND expected_route_fingerprint ~ '^[0-9a-f]{64}$'
+        AND ((clearinghouse_config_id IS NULL AND clearinghouse_config_version IS NULL
+              AND clearinghouse_credential_fingerprint IS NULL)
+          OR (clearinghouse_config_id IS NOT NULL AND clearinghouse_config_version IS NOT NULL
+              AND clearinghouse_config_version > 0 AND clearinghouse_credential_fingerprint IS NOT NULL
+              AND clearinghouse_credential_fingerprint ~ '^[0-9a-f]{64}$')))
+    )`,
+    externalPcnShape: sql`CHECK (external_patient_control_number IS NULL OR external_patient_control_number ~ '^[A-Z0-9]{17}$')`,
     claimIdx: index("claim_submission_claim_idx").on(t.claimId).where(sql`claim_id IS NOT NULL`),
     exactlyOneSubject: sql`CHECK ((claim_id IS NOT NULL)::int + (noe_id IS NOT NULL)::int + (notr_id IS NOT NULL)::int + (transfer_notice_id IS NOT NULL)::int = 1)`,
     kindMatchesSubject: sql`CHECK (

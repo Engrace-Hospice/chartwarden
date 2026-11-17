@@ -34,6 +34,7 @@ export * from "./eraser";
 export * from "./domain";
 // D4 / §2.6 the deterministic claim_control_number derivation + parse/validate.
 export * from "./control-number";
+export * from "./external-patient-control-number";
 // §4.5 / §11.A / D1 the validation rule MODEL (Rule, ValidationContext, RuleResult + constructors).
 export * from "./rules";
 // §2.2 the `claim` lifecycle reducer (the exemplar the noe/notr machines mirror).

@@ -270,6 +270,7 @@ describe("loadClaim837iInput golden claim", () => {
     const r = await loadAndRender837i(deps().value, args);
     if (!r.ok) throw new Error(`load failed: ${gapsOf(r).join(",")}`);
     const json = r.rendered.reveal().stediJson;
+    if (!json) throw new Error("expected Stedi JSON for the golden claim");
     expect(json.claimInformation.claimChargeAmount).toBe("1500.00");
     const lines = json.claimInformation.serviceLines.map((l) => l.institutionalService);
     expect(lines.map((l) => l.lineItemChargeAmount)).toEqual(["200.00", "800.00", "500.00"]);

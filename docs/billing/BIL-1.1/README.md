@@ -18,9 +18,13 @@ The [test-account guide](https://docs.claim.md/docs/test-account-quickstart-guid
 
 ### CM-5A.3A tenant inbox foundation
 
-Migration 1493 and `apps/backend/src/modules/23-billing-medicare/claimmd-tenant-inbox/` add a separate tenant-owned evidence store. It uses an operator-verified internal account UUID tied to the authoritative tenant clearinghouse configuration, append-only credential-fingerprint bindings (so key rotation requires explicit confirmation but does not change account identity), encrypted source pages under that tenant's M36 DEK, and organization-scoped RLS. The operator verification reference is provenance, not a vendor-issued account identifier; the current config model does not expose a separately verifiable Claim.MD account ID. Ambiguous or unverified identity fails closed.
+Migrations 1503–1504 and `apps/backend/src/modules/23-billing-medicare/claimmd-tenant-inbox/` add a separate tenant-owned evidence store and append-only processing/quarantine outcome ledger. It uses an operator-verified internal account UUID tied to the authoritative tenant clearinghouse configuration, append-only credential-fingerprint bindings (so key rotation requires explicit confirmation but does not change account identity), encrypted source pages under that tenant's M36 DEK, and organization-scoped RLS. The operator verification reference is provenance, not a vendor-issued account identifier; the current config model does not expose a separately verifiable Claim.MD account ID. Ambiguous or unverified identity fails closed.
 
 The typed archive-before-ACK handoff accepts the raw page already fetched by the existing tenant poller. It makes no Claim.MD request and is not yet wired into that poller. The tenant poller remains the only active tenant account reader and its legacy per-provider ACK cursors remain unchanged. Cursor inventory is read-only and deliberately does not combine incomparable ACK-type/provider coordinates into an account-level `ResponseID`. No production provisioning route, live polling activation, cursor cutover, historical backfill, or runtime PostgreSQL/RLS qualification is provided by CM-5A.3A. See [CAPTURE_FLOW.md](./CAPTURE_FLOW.md), [SECURITY.md](./SECURITY.md), and [CUTOVER_NOTES.md](./CUTOVER_NOTES.md).
+
+The repeatable, network-blocked institutional-claim integration rehearsal and the checklist for a later explicitly
+approved Claim.MD test-account exercise are documented in
+[CLAIMMD_SYNTHETIC_REHEARSAL.md](./CLAIMMD_SYNTHETIC_REHEARSAL.md).
 
 ## Files
 

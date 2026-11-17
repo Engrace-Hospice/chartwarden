@@ -220,7 +220,7 @@ The required order is:
 2. `1489_m23_medicare_notice_render_identity.sql` — immutable render identity.
 3. `1490_m23_medicare_notice_render_artifact.sql` — encrypted artifact bound to render identity.
 4. `1491_m23_noe_exception_review.sql` — current review plus append-only history.
-5. `1492_m23_medicare_notice_operational_issues.sql` — current issue, append-only events and notification outbox.
+5. `1502_m23_medicare_notice_operational_issues.sql` — current issue, append-only events and notification outbox.
 
 Static checks confirm expand compatibility, unique numbering, forced canonical `app.org_id` RLS,
 manifest/schema ownership and legal DDL. The Drizzle exports and both manifest variants include the

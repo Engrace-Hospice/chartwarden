@@ -1,6 +1,6 @@
 import { canTransition, reduce, repositories } from "@chartwarden/billing";
 import { type DbClient, schema } from "@chartwarden/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 const { ClaimRepository } = repositories;
@@ -35,7 +35,10 @@ export async function applyMedicareClaimMdReceipt(
         eq(S.providerEntityId, input.providerEntityId),
         eq(S.claimId, input.claimId),
         eq(S.kind, "claim_837i"),
-        eq(S.claimControlNumber, input.pcn),
+        or(
+          eq(S.externalPatientControlNumber, input.pcn),
+          and(isNull(S.externalPatientControlNumber), eq(S.claimControlNumber, input.pcn)),
+        ),
       ),
     )
     .limit(1);

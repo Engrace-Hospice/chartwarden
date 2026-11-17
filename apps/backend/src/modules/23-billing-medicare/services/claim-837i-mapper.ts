@@ -140,21 +140,28 @@ export interface Rendered837i {
   /** The raw 005010X223A2 interchange. Contains the MBI — transmit it, never store or log it. */
   readonly x12: string;
   /** Stedi's JSON institutional-claims request for the same claim. Contains the MBI likewise. */
-  readonly stediJson: StediClaimJson;
+  /** Absent when the claim is valid X12 but exceeds a Stedi-JSON-only constraint. Stedi submission then fails closed. */
+  readonly stediJson?: StediClaimJson;
 }
 
 /**
- * Run both builders; a builder REFUSAL (any `X12BuildError`) becomes a gap naming the builder's field (never a value). Any other error is
- * a bug, not an input gap, and is rethrown (its message is never composed from field values).
+ * Build the vendor-neutral X12 first. Its refusal is a claim gap. Stedi JSON is an additional representation with
+ * stricter vendor limits (for example a shorter CLM01); a Stedi-only refusal must not make valid Claim.MD X12
+ * unsendable. The Stedi transport boundary refuses a missing JSON representation, so this never falls back to raw
+ * X12 for Stedi. Any non-X12 error is a bug and is rethrown.
  */
 export function render837i(input: Claim837iInput): GapResult<Rendered837i> {
+  let x12: string;
   try {
-    const x12 = build837iClaim(input);
+    x12 = build837iClaim(input);
+  } catch (err) {
+    if (!(err instanceof X12BuildError)) throw err;
+    return { ok: false, gaps: [gap(err.field, "invalid")] };
+  }
+  try {
     return { ok: true, value: { x12, stediJson: buildStediClaimJson(input) } };
   } catch (err) {
-    // The base class: Claim837iBuildError AND the shared X12 writer's refusals (e.g. the Stedi-JSON-only checks).
     if (!(err instanceof X12BuildError)) throw err;
-    const gaps: readonly ClaimGap[] = [gap(err.field, "invalid")];
-    return { ok: false, gaps };
+    return { ok: true, value: { x12 } };
   }
 }

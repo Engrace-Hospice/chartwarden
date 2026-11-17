@@ -1,5 +1,5 @@
 import { type DbClient, schema } from "@chartwarden/db";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { isVerifiedM23SubmissionEvidence } from "./candidate-provider";
 
 const E = schema.claimmdSubmissionEvidence;
@@ -69,7 +69,7 @@ export async function readClaimMdEraSubmissionFacts(input: {
       m23ProviderEntityId: C.providerEntityId,
       m23ClaimId: C.claimId,
       m23Kind: C.kind,
-      m23ControlNumber: C.claimControlNumber,
+      m23ControlNumber: sql<string>`COALESCE(${C.externalPatientControlNumber}, ${C.claimControlNumber})`,
       m23AttemptIndex: C.attemptIndex,
       attemptOrganizationId: A.organizationId,
       attemptProviderEntityId: A.providerEntityId,
