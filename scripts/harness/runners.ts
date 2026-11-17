@@ -13,8 +13,9 @@
  * `bun exec STR` as a shell line, and adds `uv run|tool run`, `uvx`, `pipx run`, `poetry|pdm|rye|hatch|pipenv|devbox run`,
  * `conda|micromamba run`, `nix shell|develop -c`, `nix-shell --run` and `flox activate`. A runner's own option that names a file
  * (`dotenv -e FILE`, `op run --env-file FILE`, `bun --env-file FILE run echo`) is handed back with the command
- * (`peelRunnerWithFiles`), so peeling never turns the refusal of a live env file into an allow. An option a strict grammar (bun, uv)
- * does not list is handed back as `unplaced`: the guard asks. `make`, `just` and `task` run recipes of the repo, not an arbitrary
+ * (`peelRunnerWithFiles`), so peeling never turns the refusal of a live env file into an allow. An option a strict grammar (`bun run`, uv) does not
+ * list is handed back as `unplaced`: the guard asks; so is an option or short letter a lax grammar does not list when a bare word that could be a program
+ * follows (wave 12, E1-4: unless the word is one of the manager's own subcommands). `make`, `just` and `task` run recipes of the repo, not an arbitrary
  * command, and are not peeled (a documented residual).
  *
  * What a runner starts: `bunx|npx|pnpx X`, `bun x X`, `pnpm|yarn|npm exec|dlx X` and `npm x X` run a package binary or a PATH
@@ -24,9 +25,10 @@
  * runs `echo`: checked; a bare `bun echo hello` does not on bun 1.4.4, and an option before the name makes the name no program
  * here). `npm run X` and `pnpm run X` only run scripts, so they are no runner. Pure.
  */
-import { type OptionGrammar, readOptions } from "./option-grammar";
+import { type OptionGrammar, type ReadOption, readOptions } from "./option-grammar";
 import { programName } from "./program-name";
 import * as G from "./runner-grammars";
+import { joinedAndQuoted } from "./shell-quote";
 
 /** Does this name a package script of the package the command runs in? The caller knows; a colon always says yes. */
 export type ScriptLookup = (name: string) => boolean;
@@ -51,6 +53,10 @@ export interface Grammar {
   readonly toolSpecs?: boolean;
   /** The words are ONE shell command line (`bun exec 'cmd args'`). */
   readonly shellLine?: boolean;
+  /** Every operand after the options is a shell line of its own (`concurrently 'a' 'b'`): the first is handed back, the rest judged besides it. */
+  readonly lines?: boolean;
+  /** Only a `call` option starts a command (`nodemon --exec 'CMD'`): the first operand is a script the tool runs itself, no program. */
+  readonly callOnly?: boolean;
 }
 
 const plain = (options: OptionGrammar, rest: Partial<Grammar> = {}): Grammar => ({
@@ -80,9 +86,9 @@ export const MANAGERS: ReadonlyMap<string, Manager> = new Map([
     "bun",
     manager(G.BUN_GLOBAL, ["x", plain(G.BUNX)], ["exec", plain(G.BUN_RUN, { shellLine: true })]),
   ],
-  ["pnpm", manager(G.PNPM, ["exec", PNPM_EXEC], ["dlx", PNPM_DLX])],
-  ["yarn", manager(G.YARN, ["exec", YARN_RUN], ["dlx", YARN_RUN])],
-  ["npm", manager(G.NPM, ["exec", NPX], ["x", NPX])],
+  ["pnpm", manager(G.PNPM_GLOBAL, ["exec", PNPM_EXEC], ["dlx", PNPM_DLX])],
+  ["yarn", manager(G.YARN_GLOBAL, ["exec", YARN_RUN], ["dlx", YARN_RUN])],
+  ["npm", manager(G.NPM_GLOBAL, ["exec", NPX], ["x", NPX])],
   ["volta", manager(G.VOLTA, ["run", plain(G.VOLTA)])],
   ["mise", manager(G.MISE, ["exec", MISE], ["x", MISE])],
   ["asdf", manager(G.ASDF, ["exec", plain(G.ASDF)])],
@@ -118,6 +124,10 @@ export const BARE_RUNNERS: ReadonlyMap<string, Grammar> = new Map([
   ["dotenv", plain(G.DOTENV)],
   ["env-cmd", plain(G.ENV_CMD)],
   ["nix-shell", plain(G.NIX, { call: ["run", "command"] })],
+  // command-string runners (wave 12, E1-6; unverified: not installed here)
+  ["concurrently", plain(G.CONCURRENTLY, { lines: true })],
+  ["nodemon", plain(G.NODEMON, { call: ["x", "exec"], callOnly: true })],
+  ["watchexec", plain(G.WATCHEXEC, { shellLine: true })],
 ]);
 
 /** `corepack pnpm exec x`: corepack runs the package manager that follows it (`pnpm@9` names pnpm). */
@@ -126,17 +136,9 @@ const ASSIGNMENT_WORD = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
 /** `node@20`, `npm@10`, `python@3.12`: a tool and its version, not a command. */
 const TOOL_SPEC = /^[\w.-]+@[\w.*-]+$/;
 
-/** The subcommands a manager reads itself: a word that is one of these is NOT a program to run. */
-const BUN_BUILTINS = new Set([
-  ..."x run test build install i add a remove rm update upgrade link unlink pm init create c repl outdated publish audit info patch why exec completions help".split(
-    " ",
-  ),
-]);
-const YARN_BUILTINS = new Set([
-  ..."add bin cache config constraints dedupe dlx exec explain info init install link node npm pack patch plugin rebuild remove run set stage unlink unplug up upgrade version why workspace workspaces global help install-peerdeps import generate-lock-entry licenses outdated owner policies publish tag team test login logout list check autoclean".split(
-    " ",
-  ),
-]);
+/** The subcommands a manager reads itself: a word that is one of these is NOT a program to run (`runner-grammars.ts` holds the lists and where they come from). */
+const BUN_BUILTINS = new Set(G.BUN_COMMANDS);
+const YARN_BUILTINS = new Set(G.YARN_COMMANDS);
 
 /** A name a PATH program can have: not code (`bun -e 'x()'` is bun's own option), not a lone `-` (stdin). */
 const PROGRAM_NAME = /^[A-Za-z0-9_@.][\w.@+-]*$/;
@@ -148,6 +150,8 @@ const LOOKS_LIKE_FILE = /\/|\.(?:[cm]?[jt]sx?|json|sh|py)$/;
 interface Sink {
   readonly files: string[];
   readonly unplaced: string[];
+  /** Command lines the runner runs besides the one it hands back (`bun run --parallel 'A' 'B'`, `npm exec -c A -c B`): judged as command lines. */
+  readonly lines: string[];
 }
 
 /**
@@ -164,8 +168,14 @@ function readInto(grammar: OptionGrammar, words: readonly string[], from: number
 /** The command a runner starts, from the words after its subcommand; null when it names none. */
 function innerOf(words: readonly string[], grammar: Grammar, sink: Sink): readonly string[] | null {
   const read = readInto(grammar.options, words, 0, sink);
-  const call = read.options.find((o) => grammar.call?.includes(o.name));
-  if (call !== undefined) return ["sh", "-c", call.value ?? ""];
+  // npm reads the LAST -c/--call (probed on npm 11.11: `exec -c true -c 'echo HIT'` prints HIT): the first one is no safe reading, so every value is judged
+  const calls = read.options
+    .filter((o) => grammar.call?.includes(o.name))
+    .map((o) => o.value ?? "");
+  if (calls.length > 0) {
+    sink.lines.push(...calls.slice(0, -1));
+    return ["sh", "-c", calls.at(-1) as string];
+  }
   const mode = read.options.find((o) => grammar.shellMode?.includes(o.name));
   if (mode !== undefined) return ["sh", "-c", words.slice(mode.at + 1).join(" ")];
   // `nix shell nixpkgs#git -c CMD ARGS`: installables stand before the option, so the spellings are searched for anywhere.
@@ -177,6 +187,15 @@ function innerOf(words: readonly string[], grammar: Grammar, sink: Sink): readon
     return [binaryOf(words[rest + 1] as string), ...words.slice(rest + 2)];
   }
   let k = read.end;
+  if (grammar.callOnly === true) return null;
+  if (grammar.lines === true) {
+    if (k >= words.length) return null;
+    sink.lines.push(
+      ...words.slice(k + 1),
+      ...(words.length - k > 1 ? joinedAndQuoted(words.slice(k)) : []),
+    );
+    return ["sh", "-c", words[k] as string];
+  }
   if (grammar.shellLine === true)
     return k < words.length ? ["sh", "-c", words.slice(k).join(" ")] : null;
   if (grammar.toolSpecs) {
@@ -251,6 +270,34 @@ function pnpmProgram(
   return innerOf(words.slice(at), PNPM_EXEC, sink);
 }
 
+/**
+ * `bun run --parallel 'A' 'B'`, `bun run --sequential 'A'`, `bun --parallel run 'A'`, `bun --parallel 'A'`: bun runs EVERY operand as a line for its own
+ * shell (probed on bun 1.4.4: `bun run --parallel 'echo HIT'` prints HIT where `bun run 'echo HIT'` is "Script not found"; each word is a line of its
+ * own: `--parallel echo HIT` runs `echo` and then `HIT`; with --filter or --workspaces the operands are scripts, which read as lines harmlessly).
+ * The first line is handed back as an `sh -c` command and the others go to `sink.lines`; null when neither option is there.
+ */
+function bunLines(
+  words: readonly string[],
+  at: number,
+  global: readonly ReadOption[],
+  sink: Sink,
+): readonly string[] | null {
+  const sub = words[at];
+  // `bun --parallel x CMD`, `exec`, `test`, `install`: the subcommand wins and the flag is its own (probed); only `run` and a bare word run lines
+  if (sub === undefined || (sub !== "run" && BUN_BUILTINS.has(sub))) return null;
+  const from = sub === "run" ? at + 1 : at;
+  const peek = readOptions(G.BUN_RUN, words, from);
+  const parallel = [...global, ...peek.options].some(
+    (o) => o.name === "parallel" || o.name === "sequential",
+  );
+  if (!parallel) return null;
+  const lines = words.slice(readInto(G.BUN_RUN, words, from, sink).end);
+  if (lines.length === 0) return null;
+  // the words joined are what a user typing `bun run --parallel git push ...` means (bun itself runs them one by one): judged too
+  sink.lines.push(...lines.slice(1), ...(lines.length > 1 ? joinedAndQuoted(lines) : []));
+  return ["sh", "-c", lines[0] as string];
+}
+
 /** The words of the command a runner starts, and the files its own options name; null when it starts none. */
 function peel(
   words: readonly string[],
@@ -270,8 +317,13 @@ function peel(
   }
   const runner = MANAGERS.get(name);
   if (runner === undefined) return null;
-  const at = readInto(runner.global, words, 1, sink).end;
+  const globalRead = readInto(runner.global, words, 1, sink);
+  const at = globalRead.end;
   const sub = words[at];
+  if (name === "bun") {
+    const lines = bunLines(words, at, globalRead.options, sink);
+    if (lines !== null) return lines;
+  }
   // `uv tool run`: the subcommand is the pair.
   const tool = name === "uv" && sub === "tool" && words[at + 1] === "run";
   const grammar = tool ? plain(G.UVX) : sub === undefined ? undefined : runner.subcommands.get(sub);
@@ -302,7 +354,7 @@ function peel(
 export const peelRunner = (
   words: readonly string[],
   isScript: ScriptLookup,
-): readonly string[] | null => peel(words, isScript, { files: [], unplaced: [] });
+): readonly string[] | null => peel(words, isScript, { files: [], unplaced: [], lines: [] });
 
 /**
  * `peelRunner`, the values of the runner's own options (files it reads, `dotenv -e FILE`), and the options it could not place. A runner that
@@ -316,13 +368,16 @@ export function peelRunnerWithFiles(
   readonly inner: readonly string[] | null;
   readonly files: readonly string[];
   readonly unplaced?: readonly string[];
+  /** Command lines the runner runs besides `inner` (`bun run --parallel 'A' 'B'`, `npm exec -c A -c B`). */
+  readonly lines?: readonly string[];
 } | null {
-  const sink: Sink = { files: [], unplaced: [] };
+  const sink: Sink = { files: [], unplaced: [], lines: [] };
   const inner = peel(words, isScript, sink);
   if (inner === null && sink.unplaced.length === 0) return null;
   return {
     inner,
     files: inner === null ? [] : sink.files,
     ...(sink.unplaced.length === 0 ? {} : { unplaced: sink.unplaced }),
+    ...(inner === null || sink.lines.length === 0 ? {} : { lines: sink.lines }),
   };
 }

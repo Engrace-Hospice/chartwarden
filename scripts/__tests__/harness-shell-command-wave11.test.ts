@@ -37,6 +37,7 @@ describe("C4: the command string is the first operand after every option", () =>
     ["bash", ["-c", "-x", "CMD"], "CMD"],
     ["bash", ["-c", "-e", "CMD"], "CMD"],
     ["bash", ["-c", "+x", "CMD"], "CMD"],
+    ["bash", ["+c", "CMD"], "CMD"],
     ["bash", ["-c", "-o", "pipefail", "CMD"], "CMD"],
     ["bash", ["-o", "pipefail", "-c", "CMD"], "CMD"],
     ["bash", ["-O", "extglob", "-c", "CMD"], "CMD"],
@@ -67,7 +68,7 @@ describe("C4: the command string is the first operand after every option", () =>
     ["bash", ["-x", "script.sh", "CMD"], undefined],
     ["bash", ["-o", "pipefail", "script.sh"], undefined],
     ["bash", ["--", "-c"], undefined],
-    ["bash", ["+c", "CMD"], undefined],
+    // wave 12 (R9-ADV-1): `+c` IS `-c` in bash, sh, dash and zsh (recorded: `harness-shell-options/`), so it moved to the rows above
     // `-c` and no string
     ["bash", ["-c"], undefined],
     ["bash", ["-c", "--"], undefined],
@@ -86,9 +87,8 @@ describe("C4: the command string is the first operand after every option", () =>
       expect.arrayContaining(["INIT", "CMD"]),
     );
     expect(shellCommandStrings("fish", ["--command=CMD"])).toEqual(["CMD"]);
-    expect(shellCommandStrings("tcsh", ["-c", "-x", "CMD"])).toEqual(
-      expect.arrayContaining(["-x", "CMD"]),
-    );
+    // wave 12: tcsh takes the NEXT word whatever it is, so `-c -x CMD` runs the string `-x` (recorded), not CMD
+    expect(shellCommandStrings("tcsh", ["-c", "-x", "CMD"])).toEqual(["-x"]);
     expect(shellCommandStrings("csh", ["-c", "CMD"])).toEqual(["CMD"]);
   });
 
@@ -187,7 +187,6 @@ describe("C4 findings: every spelling of the guarded command behind a shell is j
     "-c +x",
     "-c -o pipefail",
     "-o pipefail -c",
-    "-O extglob -c",
     "-cx",
     "-ce",
     "-cl",
@@ -196,18 +195,24 @@ describe("C4 findings: every spelling of the guarded command behind a shell is j
     "--norc -c",
     "--noprofile --norc -c",
     "--posix -c",
-    "--rcfile f -c",
     "-e -c",
     "-x -c --",
   ];
+  // wave 12: `-O VAL` and `--rcfile F` are bash options only (zsh's `-O` is a flag, dash and ksh have neither): in the others the words after
+  // them are a script file, not a command string, so these two are tried on the bash family alone (the recordings: `harness-shell-options/`)
+  const BASH_ONLY_OPTIONS = ["-O extglob -c", "--rcfile f -c"];
   const SHELLS = ["bash", "sh", "zsh", "dash", "ksh", "ash"];
+  const optionsOf = (shell: string): string[] =>
+    ["bash", "sh", "ash"].includes(shell)
+      ? [...SHELL_OPTIONS, ...BASH_ONLY_OPTIONS]
+      : SHELL_OPTIONS;
   for (const [label, inner] of GUARDED) {
     it(label, () => {
       const alone = rank(inner);
       expect(alone, `${label} alone`).toBeGreaterThanOrEqual(1);
       const weaker: string[] = [];
       for (const shell of SHELLS) {
-        for (const options of SHELL_OPTIONS) {
+        for (const options of optionsOf(shell)) {
           const cmd = `${shell} ${options} ${shellQuote(inner)}`;
           if (rank(cmd) < alone) weaker.push(cmd);
         }
@@ -282,7 +287,6 @@ describe("C4 findings: every spelling of the guarded command behind a shell is j
       "script -qc 'ls' /dev/null",
       "eval -- 'ls'",
       "csh -c 'ls'",
-      "pwsh -c 'ls'",
     ]) {
       expect(decide(cmd), cmd).toBe("allow");
     }

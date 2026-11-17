@@ -41,6 +41,10 @@
       "evidence": "builtin",
       "note": "a shell builtin or precommand modifier: it takes no option the guard reads (any dash word is a flag)"
     },
+    "concurrently": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks (wave 12, E1-6: command-string runners)"
+    },
     "conda": {
       "evidence": "manual",
       "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
@@ -93,6 +97,10 @@
       "evidence": "builtin",
       "note": "a shell builtin or precommand modifier: it takes no option the guard reads (any dash word is a flag)"
     },
+    "expect": {
+      "evidence": "manpage",
+      "note": "installed: only `-c` (Tcl that can spawn anything) is read, and it asks (wave 12, E1-6); the recorder does not probe it"
+    },
     "fakeroot": {
       "evidence": "manual",
       "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
@@ -121,6 +129,10 @@
       "evidence": "manual",
       "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
     },
+    "leaks": {
+      "evidence": "help-text",
+      "note": "option table read from the `--help` text installed on the macOS the guard runs on (wave 12, E1-6); the command stands after a `--`, and lldb's own scripts (-o, -s, ...) ask; the recorder does not probe it (a debugger)"
+    },
     "lerna": {
       "evidence": "manual",
       "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
@@ -128,6 +140,14 @@
     "lima": {
       "evidence": "manual",
       "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "lldb": {
+      "evidence": "help-text",
+      "note": "option table read from the `--help` text installed on the macOS the guard runs on (wave 12, E1-6); the command stands after a `--`, and lldb's own scripts (-o, -s, ...) ask; the recorder does not probe it (a debugger)"
+    },
+    "lockf": {
+      "evidence": "manpage",
+      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
     },
     "ltrace": {
       "evidence": "manual",
@@ -160,6 +180,10 @@
     "nocorrect": {
       "evidence": "builtin",
       "note": "a shell builtin or precommand modifier: it takes no option the guard reads (any dash word is a flag)"
+    },
+    "nodemon": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks (wave 12, E1-6: command-string runners)"
     },
     "noglob": {
       "evidence": "builtin",
@@ -233,6 +257,10 @@
       "evidence": "manual",
       "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
     },
+    "sandbox-exec": {
+      "evidence": "manpage",
+      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
+    },
     "setpriv": {
       "evidence": "manual",
       "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
@@ -264,6 +292,10 @@
     "systemd-run": {
       "evidence": "manual",
       "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "taskpolicy": {
+      "evidence": "manpage",
+      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
     },
     "taskset": {
       "evidence": "manual",
@@ -313,6 +345,10 @@
       "evidence": "manual",
       "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
     },
+    "watchexec": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks (wave 12, E1-6: command-string runners)"
+    },
     "xargs": {
       "evidence": "manpage",
       "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
@@ -324,6 +360,10 @@
     "yarn": {
       "evidence": "manual",
       "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "zx": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks (wave 12, E1-6: command-string runners)"
     }
   }
 }

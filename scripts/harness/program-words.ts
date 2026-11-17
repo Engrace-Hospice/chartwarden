@@ -18,6 +18,35 @@ export interface StoodFor {
 const EQUALS_COMMAND = /^=([A-Za-z_][\w.+-]*)$/;
 const IFS_REFERENCE = /\$\{IFS\}|\$IFS(?![A-Za-z0-9_])/g;
 
+/** Variables that hold a shell by convention: `$SHELL` is the login shell (zsh on macOS, bash elsewhere), `$BASH` and `$ZSH_NAME` the running one. */
+const SHELL_VARIABLES: Readonly<Record<string, readonly string[]>> = {
+  SHELL: ["bash", "zsh"],
+  BASH: ["bash"],
+  ZSH_NAME: ["zsh"],
+};
+const SHELL_NAME = /^(?:bash|sh|zsh|dash|ksh|ash)$/;
+const LONE_VARIABLE = /^\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))$/;
+
+/**
+ * The shells a program word stands for when it is not a shell's name: zsh's `=bash` (equals expansion), `$SHELL`, `${BASH}`, or a variable some
+ * statement of the command binds to a shell's name (`S=bash; $S -c 'CMD'`). `dynamic` says the word is built at run time (a variable): the guard
+ * judges the shell's string AND asks, as it does for any program name built by an expansion (R9-ADV-12: `$SHELL -c CMD` allowed).
+ */
+export function shellsBehindWord(
+  word: string,
+  values: ReadonlyMap<string, readonly string[]>,
+): { readonly shells: readonly string[]; readonly dynamic: boolean } {
+  const equals = EQUALS_COMMAND.exec(word)?.[1];
+  if (equals !== undefined && SHELL_NAME.test(equals)) return { shells: [equals], dynamic: false };
+  const match = LONE_VARIABLE.exec(word);
+  const name = match?.[1] ?? match?.[2];
+  if (name === undefined) return { shells: [], dynamic: false };
+  const bound = (values.get(name) ?? [])
+    .map((value) => value.replace(/^.*\//, ""))
+    .filter((value) => SHELL_NAME.test(value));
+  return { shells: [...new Set([...(SHELL_VARIABLES[name] ?? []), ...bound])], dynamic: true };
+}
+
 /** What a program word stands for after zsh's `=name` or `$IFS` splitting, or null when it holds neither. */
 export function expandedProgramWord(word: string): StoodFor | null {
   const equals = EQUALS_COMMAND.exec(word);

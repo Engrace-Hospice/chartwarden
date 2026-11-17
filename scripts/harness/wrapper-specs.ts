@@ -7,7 +7,8 @@
  * (`env -C`, `sudo -D`), and one whose value is itself a command line (`env -S`).
  *
  * Audited from each tool's own manual page; `sudo`, `env`, `nice`, `nohup`, `xargs`, `stdbuf`, `caffeinate`, `arch`,
- * `chroot`, `ssh-agent` and `script` were read from the manual pages installed on the macOS this runs on. The rest (GNU
+ * `chroot`, `ssh-agent`, `script`, `lockf`, `taskpolicy` and `sandbox-exec` were read from the manual pages installed on the macOS this runs on
+ * (`leaks` and `lldb` from their `--help`; wave 12, E1-6). The rest (GNU
  * coreutils, util-linux, moreutils, strace, GNU parallel) are not installed here: their rows are from the manuals and marked
  * `unverified`. A table that is not complete says `lax` (an unknown option is read as a flag, the older behaviour). Pure.
  */
@@ -29,6 +30,13 @@ export interface WrapperSpec {
   readonly optionsAfterOperands?: boolean;
   /** The program runs a command only with one of these options (`gdb --args PROG`); without one it is no wrapper. */
   readonly onlyWith?: readonly string[];
+  /** The wrapper runs a command only after a `--` (`leaks --atExit -- CMD`, `lldb -- PROG ARGS`); without one it is no wrapper. */
+  readonly dashDash?: boolean;
+  /**
+   * Options whose value is a script of the tool's own that can run any command (`expect -c`, `lldb -o`, `zx -e`): the guard cannot read it, so the
+   * wrapper stays the program and the line asks (wave 12, E1-6).
+   */
+  readonly asksWith?: readonly string[];
   /** Options after which the words that follow are ONE command line for a shell, not a program and its arguments (`sudo -s 'CMD'`, `sudo -i CMD ARGS`). */
   readonly shellLine?: readonly string[];
 }
@@ -548,6 +556,102 @@ export const WRAPPER_SPECS: ReadonlyMap<string, WrapperSpec> = new Map<string, W
     },
   ],
   ["timeout", TIMEOUT],
+  // wave 12, E1-6 (R9-ADV-16): wrappers the table did not hold. lockf, taskpolicy, sandbox-exec, leaks, lldb and expect are INSTALLED here and read from
+  // their manual pages and `--help`; zx is not (manual, unverified).
+  ["lockf", { grammar: grammar({ flags: "knsw", values: "t" }), operands: 1 }],
+  [
+    "taskpolicy",
+    {
+      // `taskpolicy [-d policy] [-g policy] [-c clamp] [-b] [-t tier] [-l tier] [-a] [-s] [-S shims] [-m limit] [-j pri] [-P pcontrol] program [args]`;
+      // `-p pid` changes a running process and runs no program.
+      grammar: grammar({ flags: "bBas", values: "dgctlSmjPp" }),
+      stays: ["p"],
+    },
+  ],
+  ["sandbox-exec", { grammar: grammar({ values: "fnpD" }) }],
+  [
+    "leaks",
+    {
+      // `leaks [options] --atExit -- <command-and-arguments>`: the command stands after the `--`; every other form names a process or a memory graph.
+      grammar: grammar({
+        flags: "hqc",
+        values: "e",
+        lax: true,
+        longFlags: words(
+          "help quiet list groupByType nostacks fullStacks nosources fullStackHistory fullContent readonlyContent noContent hex conservative forkCorpse referenceTree autoreleasePools atExit",
+        ),
+        longValues: words("exclude"),
+      }),
+      dashDash: true,
+    },
+  ],
+  [
+    "lldb",
+    {
+      // `lldb [options] [-- program args]`: the program stands after the `--`; a one-line command or a source file (`-o`, `-s`, ...) is lldb's own script
+      // (`platform shell CMD`, `process launch`), which the guard cannot read: it asks.
+      grammar: grammar({
+        flags: "bwdeQxXhvr",
+        values: "nKkOoSsafcl",
+        lax: true,
+        longFlags: words(
+          "batch debug editor help no-lldbinit local-lldbinit no-use-colors print-script-interpreter-info python-path repl source-quietly version wait-for",
+        ),
+        longValues: words(
+          "arch attach-name attach-pid core file one-line one-line-before-file one-line-on-crash script-language source source-before-file source-on-crash repl-language",
+        ),
+      }),
+      dashDash: true,
+      asksWith: [
+        "o",
+        "O",
+        "s",
+        "S",
+        "k",
+        "K",
+        "one-line",
+        "one-line-before-file",
+        "one-line-on-crash",
+        "source",
+        "source-before-file",
+        "source-on-crash",
+      ],
+      stays: [
+        "o",
+        "O",
+        "s",
+        "S",
+        "k",
+        "K",
+        "one-line",
+        "one-line-before-file",
+        "one-line-on-crash",
+        "source",
+        "source-before-file",
+        "source-on-crash",
+      ],
+    },
+  ],
+  [
+    "expect",
+    {
+      // `expect -c 'spawn CMD; expect eof'`: Tcl, which can spawn anything; a script file or no option runs no command word the guard reads.
+      grammar: grammar({ flags: "dDinNbvQ", values: "cfp", lax: true }),
+      onlyWith: ["c"],
+      asksWith: ["c"],
+      stays: ["c"],
+    },
+  ],
+  [
+    "zx",
+    {
+      // google/zx (not installed here: unverified): `zx --eval 'await $`CMD`'` is JavaScript that runs commands.
+      grammar: grammar({ lax: true, values: "e", longValues: ["eval"] }),
+      onlyWith: ["e", "eval"],
+      asksWith: ["e", "eval"],
+      stays: ["e", "eval"],
+    },
+  ],
   ["command", LAX_NO_OPTIONS],
   // zsh precommand modifiers (wave 11, R8-ADV-7): `noglob`, `nocorrect`, a leading `-` and `repeat N` run the command after them.
   ["noglob", LAX_NO_OPTIONS],

@@ -325,6 +325,8 @@ describe("MONOTONICITY: a guarded command behind any spelling of any runner opti
     }
   }
   for (const [name, grammar] of BARE_RUNNERS) {
+    // wave 12: `nodemon` runs a command only behind `--exec`/`-x` (the first operand is a script node runs); harness-wrappers-wave12e1 covers it
+    if (grammar.callOnly === true) continue;
     it(`${name}: its own options`, () => {
       check((o) => [name, ...o], spellings(grammar.options, skipOf(grammar)), name);
     });

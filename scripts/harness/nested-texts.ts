@@ -1,3 +1,4 @@
+import { words } from "./command-words";
 /**
  * The command lines a simple command runs INSIDE itself, as texts to judge (wave 11 part C, C4, C5, C7; moved out of `patterns.ts`).
  * `bash -c 'CMD'`, `eval CMD`, a wrapper's string (`watch`, `su -c`, `ssh host CMD`, `rsync -e`, `script -c`), the command behind a container
@@ -7,8 +8,10 @@
  * client's `\c host=H` is seen behind a `docker exec -i` (R8-CR-5). Pure.
  */
 import { containerCommand } from "./container-run";
-import { shellCommandStrings } from "./shell-command-string";
-import { COMMAND_SHELLS } from "./shell-command-string";
+import { expandVariables } from "./db-variables";
+import { printedText } from "./inline-code";
+import { COMMAND_SHELLS, shellCommandStrings } from "./shell-command-string";
+import { UNVERIFIED_SHELLS } from "./shell-grammars";
 import { withStdin } from "./stdin-texts";
 import { containerRun, shellStrings } from "./wrappers";
 
@@ -19,6 +22,48 @@ export interface NestedText {
   readonly workdir?: string;
   /** A question the guard asks instead of guessing (a container option it cannot place), phrased as the words after "after `". */
   readonly unplaced?: string;
+  /** A question with its whole reason (a shell string the guard cannot read): asked as it stands. */
+  readonly question?: string;
+}
+
+/** The reason a shell string the guard cannot read asks (R9-ADV-12). */
+export const SHELL_STRING_QUESTION =
+  'A shell is handed a command string the guard cannot read: a variable no statement of the command sets, a positional parameter or a command substitution (`bash -c "$C"`, `sh -c "$(…)"`). Put the command in the string itself, or let a human decide.';
+
+/** The reason a `-c` of a shell no table was recorded for asks (wave 12, E1-1: where a shell is not installed, its `-c` asks). */
+export const UNVERIFIED_SHELL_QUESTION =
+  "This shell is not installed where the guard's shell tables were recorded (`fish`, `pwsh`, `powershell`, `ash`), so how it reads its own options is unverified: its command string is judged, and a human decides.";
+
+/** A string that is one expansion and nothing else: `$C`, `${C}`, `$1`, `$@`. */
+const LONE_EXPANSION = /^\$(?:\{[^{}]+\}|[A-Za-z_]\w*|[0-9@*#?!$-])$/;
+/** A string that is one command substitution: `$(echo CMD)`, a backtick pair. */
+const LONE_SUBSTITUTION = /^(?:\$\(([^()]*)\)|`([^`]*)`)$/;
+
+/** What `echo` or `printf` inside a substitution prints, when that is plain text (no expansion of its own). */
+function printedBySubstitution(inner: string): string | null {
+  const [prog, ...rest] = words(inner.trim());
+  const printed = prog === undefined ? null : printedText(prog, rest);
+  return printed !== null && !/[$`]/.test(printed) ? printed : null;
+}
+
+/**
+ * The readings of the string a shell is given as its command. A string that is one variable (`C='CMD'; bash -c "$C"`) is each value a statement of
+ * the command gives it; one that no statement places, a positional parameter, and a command substitution that is no plain `echo` are questions; a
+ * substitution that is a plain `echo CMD` is CMD. Any other string is itself (R9-ADV-12).
+ */
+function shellStringReadings(
+  text: string,
+  variables: () => ReadonlyMap<string, readonly string[]>,
+): { readonly texts: readonly string[]; readonly question: boolean } {
+  if (LONE_EXPANSION.test(text)) {
+    const read = expandVariables(text, variables());
+    const placed = read.texts.filter((t) => t !== text && t.trim() !== "");
+    return { texts: placed, question: read.unplaceable || placed.length === 0 };
+  }
+  const substitution = LONE_SUBSTITUTION.exec(text);
+  if (substitution === null) return { texts: [text], question: false };
+  const printed = printedBySubstitution(substitution[1] ?? substitution[2] ?? "");
+  return { texts: printed === null ? [] : [printed], question: printed === null };
 }
 
 /** `eval -- CMD`: the arguments are the command line; a leading `--` ends eval's options. */
@@ -35,6 +80,7 @@ export function nestedTexts(
   args: readonly string[],
   stdinOf: () => readonly string[],
   isLocalHost: (host: string) => boolean,
+  variables: () => ReadonlyMap<string, readonly string[]> = () => new Map(),
 ): NestedText[] {
   const out: NestedText[] = [];
   let stdin: readonly string[] | undefined;
@@ -44,7 +90,17 @@ export function nestedTexts(
     out.push({ text: withStdin(text, stdin), ...rest });
   };
   if (prog === "eval") add(evalLine(args));
-  else if (COMMAND_SHELLS.test(prog)) for (const text of shellCommandStrings(prog, args)) add(text);
+  else if (COMMAND_SHELLS.test(prog)) {
+    const strings = shellCommandStrings(prog, args);
+    if (strings.length > 0 && UNVERIFIED_SHELLS.includes(prog)) {
+      out.push({ text: "", question: UNVERIFIED_SHELL_QUESTION });
+    }
+    for (const text of strings) {
+      const read = shellStringReadings(text, variables);
+      for (const reading of read.texts) add(reading);
+      if (read.question) out.push({ text: "", question: SHELL_STRING_QUESTION });
+    }
+  }
   // A command line a wrapper hands to a shell (`watch 'x'`, `su -c 'x'`, `ssh h 'x'`, `rsync -e 'x'`).
   for (const text of shellStrings(prog, args, isLocalHost)) add(text);
   // A command run in a fresh container or in a running one (`docker run IMG psql -h HOST`, `docker exec -e PGHOST=H db psql`): its paths

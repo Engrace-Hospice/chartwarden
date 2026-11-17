@@ -35,6 +35,12 @@ export interface RecordedOption {
   readonly short?: string;
   readonly takesValue: TakesValue;
   readonly evidence: Evidence;
+  /**
+   * The tool RUNS the operand of this option (or, for a flag, every operand after it) as a command line: `bun run --parallel 'CMD'`, `npm exec -c 'CMD'`,
+   * `env -S 'CMD'`. Recorded by a probe (`echo HIT` in a quoted operand prints HIT with the option and does not without it); the monotonicity walk
+   * puts a guarded command behind such an option as a QUOTED operand (wave 12, R9-CR-1).
+   */
+  readonly runsOperandAsCommand?: boolean;
 }
 
 export interface ToolFixture {
@@ -79,17 +85,18 @@ export function findTool(name: string): string | undefined {
 }
 
 const LOOPBACK = "http://127.0.0.1:1/";
-const PROBE_TIMEOUT_MS = 8000;
+// `CW_PROBE_TIMEOUT_MS` shortens it for the tests of the recorder itself (a hanging fake tool)
+const PROBE_TIMEOUT_MS = Number(process.env.CW_PROBE_TIMEOUT_MS ?? 8000);
 const CONCURRENCY = 6;
 
-interface Sandbox {
+export interface Sandbox {
   readonly cwd: string;
   readonly env: Record<string, string>;
   dispose(): void;
 }
 
 /** A scratch directory and a scrubbed environment: no secret reaches the tool and nothing leaves the machine. */
-function makeSandbox(bin: string): Sandbox {
+export function makeSandbox(bin: string): Sandbox {
   const cwd = mkdtempSync(join(tmpdir(), "cw-record-"));
   const home = join(cwd, "home");
   mkdirSync(home);
@@ -121,8 +128,20 @@ interface RunResult {
   readonly err: string;
 }
 
-const run = (bin: string, argv: readonly string[], box: Sandbox): Promise<RunResult> =>
-  new Promise((resolve) => {
+/** A probe the tool never answered (killed by the timeout): the option is `unverified`, never read as a flag. */
+export class NoAnswer extends Error {}
+
+/**
+ * One tool run. A non-zero exit is an ANSWER (the tool said no); a kill by the timeout, a signal or a failure to start is not: it is thrown (after one
+ * two retries for a timeout on a loaded machine), never read as "ran nothing" (R9-CR-12: a timeout read as "no HIT" misread a valued option as a flag).
+ */
+export const run = (
+  bin: string,
+  argv: readonly string[],
+  box: Sandbox,
+  retries = 2,
+): Promise<RunResult> =>
+  new Promise((resolve, reject) => {
     const child = execFile(
       bin,
       [...argv],
@@ -133,7 +152,25 @@ const run = (bin: string, argv: readonly string[], box: Sandbox): Promise<RunRes
         killSignal: "SIGKILL",
         maxBuffer: 1 << 20,
       },
-      (_error, stdout, stderr) => resolve({ out: String(stdout), err: String(stderr) }),
+      (error, stdout, stderr) => {
+        const failure = error as
+          | (Error & { killed?: boolean; signal?: string | null; code?: unknown })
+          | null;
+        const noAnswer =
+          failure !== null &&
+          (failure.killed === true ||
+            typeof failure.code === "string" ||
+            (failure.signal ?? null) !== null);
+        if (!noAnswer) return resolve({ out: String(stdout), err: String(stderr) });
+        if (failure?.killed === true && retries > 0)
+          return resolve(run(bin, argv, box, retries - 1));
+        const what = `${bin} ${argv.join(" ")}`;
+        reject(
+          failure?.killed === true
+            ? new NoAnswer(`${what}: no answer within ${PROBE_TIMEOUT_MS} ms`)
+            : new Error(`${what}: ${failure?.message}`),
+        );
+      },
     );
     child.stdin?.end();
   });
@@ -206,7 +243,7 @@ export function candidatesOf(...helpTexts: readonly string[]): Candidate[] {
 
 type Method = ToolFixture["method"];
 
-interface Target {
+export interface Target {
   readonly key: string;
   readonly tool: string;
   readonly method: Method;
@@ -239,6 +276,12 @@ interface Target {
   readonly valuedOnly?: boolean;
   /** The help text marks every valued option (a placeholder after the name): a name without one is a flag. */
   readonly helpMarksFlags?: boolean;
+  /** Options whose operand the tool runs as a command line, each probed with `echo HIT` in a quoted operand (`control`: the same without the option). */
+  readonly runsOperand?: ReadonlyArray<{
+    readonly option: string;
+    readonly argv: readonly string[];
+    readonly control: readonly string[];
+  }>;
   /**
    * What the tool's documentation says of an option no probe can settle (an option that needs a workspace, or a package to install): the
    * name, whether it takes a value, and where it says so. Used only when the probe found nothing, and recorded as `help` evidence.
@@ -247,7 +290,10 @@ interface Target {
 }
 
 const DOCKER_H = ["-H", "tcp://127.0.0.1:1"];
+// The first value is the one a FLAG's "is the word consumed anyway" probe uses: it must be no subcommand or alias of any tool (`bun --smol x run …`
+// is `bun x run …`, which installs a package and hangs; `npm x` is `npm exec`), or a loaded machine and a hang are indistinguishable.
 const DEFAULT_VALUES = [
+  "zzx",
   "x",
   "1",
   ".",
@@ -326,6 +372,31 @@ const pnpmCommands = async (bin: string, box: Sandbox): Promise<string[]> => {
   return [...names].sort();
 };
 
+/** `bun --help`: the Commands block (`  run       ./my-script.ts   Execute a file`) and the `(bun i)` aliases its lines name. */
+const bunCommands = async (bin: string, box: Sandbox): Promise<string[]> => {
+  const { out } = await run(bin, ["--help"], box);
+  const block = out.slice(
+    out.indexOf("Commands:"),
+    out.indexOf("Flags:") < 0 ? undefined : out.indexOf("Flags:"),
+  );
+  const names = new Set<string>();
+  for (const m of block.matchAll(/^ {2}([a-z][a-z-]*)(?:\s|$)/gm)) names.add(m[1] as string);
+  for (const m of block.matchAll(/\(bun ([a-z]+)\)/g)) names.add(m[1] as string);
+  return [...names].sort();
+};
+
+/** `npm help`: the comma-separated list under "All commands:". */
+const npmCommands = async (bin: string, box: Sandbox): Promise<string[]> => {
+  const { out } = await run(bin, ["help"], box);
+  const at = out.indexOf("All commands:");
+  if (at < 0) return [];
+  const list = out.slice(at + "All commands:".length).split(/\n\s*\n/, 2)[1] ?? "";
+  return list
+    .split(/[\s,]+/)
+    .filter((w) => /^[a-z][a-z-]*$/.test(w))
+    .sort();
+};
+
 export const TARGETS: readonly Target[] = [
   {
     key: "bun",
@@ -334,7 +405,12 @@ export const TARGETS: readonly Target[] = [
     method: "echo-hit",
     versionArgs: ["--version"],
     helpArgs: [["--help"]],
+    commands: bunCommands,
     argv: (t, v) => [t, ...(v === undefined ? [] : [v]), "run", "echo", "HIT"],
+    runsOperand: [
+      { option: "--parallel", argv: ["--parallel", "echo HIT"], control: ["echo HIT"] },
+      { option: "--sequential", argv: ["--sequential", "echo HIT"], control: ["echo HIT"] },
+    ],
     skip: new Set([
       "--watch",
       "--hot",
@@ -354,6 +430,18 @@ export const TARGETS: readonly Target[] = [
     versionArgs: ["--version"],
     helpArgs: [["run", "--help"]],
     argv: (t, v) => ["run", t, ...(v === undefined ? [] : [v]), "echo", "HIT"],
+    runsOperand: [
+      {
+        option: "--parallel",
+        argv: ["run", "--parallel", "echo HIT"],
+        control: ["run", "echo HIT"],
+      },
+      {
+        option: "--sequential",
+        argv: ["run", "--sequential", "echo HIT"],
+        control: ["run", "echo HIT"],
+      },
+    ],
     skip: new Set([
       "--watch",
       "--hot",
@@ -401,6 +489,12 @@ export const TARGETS: readonly Target[] = [
     rejects: /Unknown option/,
     // Options that need a workspace (so every probe errors before `echo` runs) and that `pnpm help` states without a placeholder.
     manual: {
+      // pnpm.io/settings: each of these is `<number>`; every probe errors before `echo` runs (R9-CR-8: `pnpm --fetch-timeout 1 install` is an everyday line)
+      "--fetch-retries": [true, "pnpm.io/settings: fetch-retries (number)"],
+      "--fetch-retry-factor": [true, "pnpm.io/settings: fetch-retry-factor (number)"],
+      "--fetch-retry-maxtimeout": [true, "pnpm.io/settings: fetch-retry-maxtimeout (ms)"],
+      "--fetch-retry-mintimeout": [true, "pnpm.io/settings: fetch-retry-mintimeout (ms)"],
+      "--fetch-timeout": [true, "pnpm.io/settings: fetch-timeout (ms)"],
       "--workspace-root": [
         false,
         "pnpm help exec: `-w, --workspace-root  Run the command on the root workspace project`",
@@ -425,15 +519,36 @@ export const TARGETS: readonly Target[] = [
     },
   },
   {
+    // the subcommands of npm (`npm help`): an unlisted option before one of them is a flag, before any other word it asks (E1-4); no option is probed
+    key: "npm",
+    tool: "npm",
+    method: "help",
+    versionArgs: ["--version"],
+    helpArgs: [],
+    commands: npmCommands,
+    argv: () => [],
+  },
+  {
     key: "npm exec",
     tool: "npm",
     method: "echo-hit",
     versionArgs: ["--version"],
     helpArgs: [["exec", "--help"]],
-    extraNames: npmNames,
+    // `--no` is no config name: `npm exec --no echo HIT` leaves `echo` as the package, so it is a flag (R9-CR-18, probed on npm 11.11)
+    extraNames: async (bin, box) => [...(await npmNames(bin, box)), "--no"],
+    runsOperand: [
+      {
+        option: "--call",
+        argv: ["exec", "--offline", "--call", "echo HIT"],
+        control: ["exec", "--offline", "echo HIT"],
+      },
+    ],
     letters: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     argv: (t, v) => [t, ...(v === undefined ? [] : [v]), "exec", "--offline", "-c", "echo HIT"],
     exits: new Set([...EXIT_EARLY, "--versions", "--usage"]),
+    // npm itself warns `Unknown cli config "--Z". This will stop working in the next major version` for a name it has no config of: a letter it does
+    // not know is NOT an option (R9-COMP-5: `npm exec -Z x -- CMD` must ask), so it is `rejected`, not a flag the table lists
+    rejects: /Unknown cli config/,
     // `npm exec --help`: `[--package <package-spec> ...] [-c|--call <call>] [-w|--workspace <workspace-name> ...] [--workspaces]`; npm help config: script-shell is a path.
     manual: {
       "--workspace": [true, "npm exec --help"],
@@ -458,6 +573,14 @@ export const TARGETS: readonly Target[] = [
       "--yes",
       "--node-arg",
       "--no-install",
+      "--no",
+    ],
+    runsOperand: [
+      {
+        option: "--call",
+        argv: ["--offline", "--call", "echo HIT"],
+        control: ["--offline", "echo HIT"],
+      },
     ],
     letters: "pcnywq",
     argv: (t, v) => [t, ...(v === undefined ? [] : [v]), "--offline", "-c", "echo HIT"],
@@ -480,6 +603,7 @@ export const TARGETS: readonly Target[] = [
     versionArgs: ["--version"],
     helpArgs: [],
     letters: "i0vuCSPahx",
+    runsOperand: [{ option: "-S", argv: ["-S", "/bin/echo HIT"], control: ["/bin/echo HIT"] }],
     argv: (t, v) => [t, ...(v === undefined ? [] : [v]), "/bin/echo", "HIT"],
     exits: new Set<string>(),
     rejects: /illegal option|invalid option|unrecognized option/,
@@ -539,7 +663,7 @@ export const versionOf = (text: string): string =>
 const flavourOf = (text: string): string =>
   /GNU coreutils/.test(text) ? `gnu-${versionOf(text)}` : "bsd";
 
-type Probed = TakesValue | "rejected";
+export type Probed = TakesValue | "rejected";
 
 /** The echo-HIT probe: the separate form of a valued option consumes the word, a flag does not. */
 async function probeHit(bin: string, target: Target, token: string, box: Sandbox): Promise<Probed> {
@@ -569,12 +693,24 @@ async function probeArgument(
   return /needs an argument/.test(err);
 }
 
-async function probe(bin: string, target: Target, token: string, box: Sandbox): Promise<Probed> {
+export async function probe(
+  bin: string,
+  target: Target,
+  token: string,
+  box: Sandbox,
+): Promise<Probed> {
   if (target.skip?.has(token) === true) return "unverified";
   if (target.exits?.has(token) === true) return false;
-  return target.method === "flag-needs-argument"
-    ? probeArgument(bin, target, token, box)
-    : probeHit(bin, target, token, box);
+  try {
+    return target.method === "flag-needs-argument"
+      ? await probeArgument(bin, target, token, box)
+      : await probeHit(bin, target, token, box);
+  } catch (error) {
+    // a probe the tool never answered (`pnpm --use-node-version exec echo HIT` waits for a download that cannot come) settles nothing: unverified,
+    // which the production tables ask about; it is never read as "no HIT", which would call a valued option a flag (R9-CR-12)
+    if (error instanceof NoAnswer) return "unverified";
+    throw error;
+  }
 }
 
 /**
@@ -600,6 +736,62 @@ const settle = (
 /** The documented answer for an option no probe settled. */
 const documented = (target: Target, name: string): boolean | undefined =>
   target.manual?.[name]?.[0];
+
+/**
+ * The options whose quoted operand the tool runs as a command line: `TOOL … OPT 'echo HIT'` prints HIT where the same without the option does not. A
+ * probe that does not show it is an error (the table was written for it), never a silent "no".
+ */
+async function operandRunners(
+  bin: string,
+  target: Target,
+  box: Sandbox,
+): Promise<ReadonlySet<string>> {
+  const names = new Set<string>();
+  for (const entry of target.runsOperand ?? []) {
+    // bun prefixes the output of a line it runs in parallel with the line (`echo HIT | HIT`)
+    const printsHit = (out: string): boolean => /(?:^|\| )HIT$/m.test(out);
+    const hit = printsHit((await run(bin, entry.argv, box)).out);
+    const control = printsHit((await run(bin, entry.control, box)).out);
+    if (!hit || control) {
+      throw new Error(
+        `${target.key} ${entry.option}: expected the operand to run as a command line (ran with the option: ${hit}, without it: ${control})`,
+      );
+    }
+    names.add(entry.option);
+  }
+  return names;
+}
+
+/** The subcommands the installed tool lists now (`target.commands`), run in a sandbox; empty when the target records none. */
+export async function liveCommands(bin: string, target: Target): Promise<string[]> {
+  const box = makeSandbox(bin);
+  try {
+    return [...((await target.commands?.(bin, box)) ?? [])];
+  } finally {
+    box.dispose();
+  }
+}
+
+/** Names the installed tool's own `--help` lists that the recording does not hold (a newer tool: re-record before trusting the tables). */
+export async function newNamesInHelp(
+  bin: string,
+  target: Target,
+  known: ToolFixture,
+): Promise<string[]> {
+  const box = makeSandbox(bin);
+  try {
+    const helps = await Promise.all(target.helpArgs.map((args) => run(bin, args, box)));
+    const have = new Set(
+      known.options.flatMap((o) => [o.name, ...(o.short === undefined ? [] : [o.short])]),
+    );
+    const rejected = new Set(known.rejected);
+    return candidatesOf(...helps.map((h) => `${h.out}\n${h.err}`))
+      .map((c) => c.name)
+      .filter((name) => !have.has(name) && !rejected.has(name));
+  } finally {
+    box.dispose();
+  }
+}
 
 /** Read the installed tool's options for one target. `only` limits the names probed (the live test's sample). */
 export async function recordTarget(
@@ -666,13 +858,14 @@ export async function recordTarget(
       }
     }
     options.sort((a, b) => a.name.localeCompare(b.name));
+    const runners = await operandRunners(bin, target, box);
     const commands = await target.commands?.(bin, box);
     return {
       tool: target.tool,
       version,
       command: target.key,
       method: target.method,
-      options,
+      options: options.map((o) => (runners.has(o.name) ? { ...o, runsOperandAsCommand: true } : o)),
       rejected: rejected.sort(),
       ...(commands === undefined ? {} : { commands }),
     };
@@ -757,6 +950,20 @@ if (process.argv[1]?.endsWith("record-tool-options.ts") === true) {
   });
 }
 
-/** `execFileSync` of `--version`, for a test that wants the installed version without recording. */
-export const installedVersion = (bin: string, args: readonly string[] = ["--version"]): string =>
-  versionOf(execFileSync(bin, [...args], { encoding: "utf8", timeout: PROBE_TIMEOUT_MS }));
+/** `--version` of the installed tool, run in the sandbox (a scratch directory, a scrubbed environment: a package manager would otherwise read the repo's own package.json). */
+export function installedVersion(bin: string, args: readonly string[] = ["--version"]): string {
+  const box = makeSandbox(bin);
+  try {
+    return versionOf(
+      execFileSync(bin, [...args], {
+        encoding: "utf8",
+        timeout: PROBE_TIMEOUT_MS,
+        cwd: box.cwd,
+        env: box.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      }),
+    );
+  } finally {
+    box.dispose();
+  }
+}

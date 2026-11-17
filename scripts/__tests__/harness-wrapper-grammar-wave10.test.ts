@@ -364,6 +364,8 @@ const changesCommand = (spec: WrapperSpec, names: readonly string[]): boolean =>
 describe("MONOTONICITY: wrapping a guarded command never makes the answer weaker (every wrapper, every spelling)", () => {
   for (const [wrapper, spec] of WRAPPER_SPECS) {
     if (["then", "do", "else", "elif", "if", "while", "until", "!"].includes(wrapper)) continue;
+    // wave 12: a wrapper whose own script cannot be read asks instead of peeling (`expect -c`, `lldb -o`, `zx -e`): harness-wrappers-wave12e1 covers them
+    if (spec.asksWith !== undefined) continue;
     it(wrapper, () => {
       const failures: string[] = [];
       let checked = 0;
@@ -377,7 +379,16 @@ describe("MONOTONICITY: wrapping a guarded command never makes the answer weaker
           // `gdb --args PROG` runs the program only behind that option
           const needs = spec.onlyWith?.slice(0, 1).map((name) => `--${name}`) ?? [];
           if (needs.length > 0 && invocation.words.at(-1) === "--") continue;
-          const cmd = [wrapper, ...invocation.words, ...needs, ...operands, command].join(" ");
+          // `leaks … -- CMD`: the command stands only after a `--` (wave 12)
+          const dashes = spec.dashDash === true && invocation.words.at(-1) !== "--" ? ["--"] : [];
+          const cmd = [
+            wrapper,
+            ...invocation.words,
+            ...needs,
+            ...operands,
+            ...dashes,
+            command,
+          ].join(" ");
           checked++;
           if (rank(cmd) < alone) failures.push(`${invocation.label} ${label}: ${cmd}`);
         }

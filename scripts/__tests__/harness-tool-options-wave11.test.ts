@@ -36,6 +36,7 @@ describe("the recordings are well formed", () => {
         "docker exec",
         "docker run",
         "env",
+        "npm",
         "npm exec",
         "npx",
         "pnpm",
@@ -47,7 +48,8 @@ describe("the recordings are well formed", () => {
     for (const f of fixtures) {
       expect(f.version, f.command).toMatch(/^(?:\d+\.\d+|bsd|gnu-\d+\.\d+)/);
       expect(["echo-hit", "flag-needs-argument", "help"]).toContain(f.method);
-      expect(f.options.length, f.command).toBeGreaterThan(4);
+      // `npm` is recorded for its subcommand list alone (wave 12, E1-4): no option of its own is probed
+      if (f.command !== "npm") expect(f.options.length, f.command).toBeGreaterThan(4);
       for (const o of f.options) {
         expect([true, false, "optional", "unverified"]).toContain(o.takesValue);
         expect(o.name).toMatch(/^--?[A-Za-z0-9]/);

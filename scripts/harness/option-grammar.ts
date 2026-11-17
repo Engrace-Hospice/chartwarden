@@ -21,8 +21,9 @@
  * `unplaced`: the guard cannot tell where the inner command starts, so it asks instead of letting a guessed word
  * stand for the command (rule 3 of wave 10: unknown is not allow). A grammar for a tool whose options cannot be listed
  * completely is `lax`: it reads an unknown option as a flag when nothing bare follows it, and says so in its comment. An unlisted
- * LONG option followed by a bare word is not read as a flag even then (wave 11, rule 2: `--name VALUE CMD` and `--flag CMD` look alike,
- * and the lax reading is what hid `bun run --cwd x CMD` and `pnpm --prefix x exec CMD`): it is `unplaced`, and the guard asks.
+ * option, long or short, followed by a bare word is not read as a flag even then (wave 11, rule 2: `--name VALUE CMD` and `--flag CMD` look
+ * alike, and the lax reading is what hid `bun run --cwd x CMD` and `pnpm --prefix x exec CMD`; wave 12 extends it to short letters): it is
+ * `unplaced`, and the guard asks, UNLESS the bare word is one of the tool's own subcommands (`subcommands`: no program can start there).
  * Pure.
  */
 
@@ -51,6 +52,18 @@ export interface OptionGrammar {
   readonly exact?: boolean;
   /** A value option does not take a next word that starts with a dash (commander, clap: `dotenv -c -- cmd`). */
   readonly softValues?: boolean;
+  /**
+   * The words the tool reads as one of its own SUBCOMMANDS (`install`, `run`, `exec`). In a lax grammar an unlisted option followed by one of them is a
+   * flag: no program can start there (`npm --no-fund install`, `pnpm --frozen-lockfile install`, `bun --frozen-lockfile install`; wave 12, E1-4). Any
+   * other bare word after an unlisted option could be a PROGRAM the option's value is hiding, so it asks.
+   */
+  readonly subcommands?: readonly string[];
+  /**
+   * A package manager or runner (not a wrapper that "takes no option"): an unlisted short letter followed by a bare word that could be a program asks
+   * too, like an unlisted long option (wave 12, R9-COMP-5: the recordings of the real tools list every letter they know, so an unlisted one is not an
+   * option of theirs, and `pnpm -Z x exec CMD` must not read `-Z` as a flag and `x` as the package).
+   */
+  readonly unlistedLettersAsk?: boolean;
   /**
    * Long options the tool HAS but whose arity no probe could settle (`pnpm --node-linker`: every probe errors before the command runs).
    * Never read as a flag or as a value: the guard asks (wave 11, rule 12). Listed so that an unambiguous-prefix reading cannot take
@@ -109,6 +122,13 @@ export function resolveLong(grammar: OptionGrammar, given: string): LongKind {
   return candidates.every((c) => c.kind === first.kind) ? first : "ambiguous";
 }
 
+/**
+ * Could the bare word after an UNLISTED option be a program (or the option's value)? A word that is no word at all, an option, or one of the tool's
+ * own subcommands cannot: the unlisted option is then read as the flag it most likely is.
+ */
+const stranded = (grammar: OptionGrammar, next: string | undefined): boolean =>
+  next !== undefined && !next.startsWith("-") && grammar.subcommands?.includes(next) !== true;
+
 /** The word after a value option, unless the grammar says a dash word is no value (`dotenv -c -- cmd`). */
 const valueWord = (
   grammar: OptionGrammar,
@@ -133,8 +153,7 @@ function readLong(
     // `--name=value` is one word whatever the option is: only a bare unknown option leaves its value in doubt. A lax grammar reads an
     // unlisted `--name` as a flag, which is what hid the round-8 holes: an unlisted `--name VALUE` followed by a bare word asks (wave 11).
     const next = words[k + 1];
-    const bareNext = next !== undefined && !next.startsWith("-");
-    const flagLike = grammar.lax === true && found === undefined && !bareNext;
+    const flagLike = grammar.lax === true && found === undefined && !stranded(grammar, next);
     const unplaced = eq >= 0 || flagLike ? undefined : word;
     return {
       used: 1,
@@ -175,7 +194,9 @@ function readCluster(
       options.push({ name: letter, at: k, value: attached });
       return { used: 1 };
     }
-    if (grammar.flags.includes(letter) || grammar.lax === true) {
+    // an unlisted letter of a lax grammar is a flag unless a bare word that could be a program follows it (E1-4, R9-COMP-5)
+    const asks = grammar.unlistedLettersAsk === true && stranded(grammar, words[k + 1]);
+    if (grammar.flags.includes(letter) || (grammar.lax === true && !asks)) {
       options.push({ name: letter, at: k, value: undefined });
     } else unplaced ??= word;
   }

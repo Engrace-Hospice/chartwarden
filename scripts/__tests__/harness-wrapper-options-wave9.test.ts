@@ -1,3 +1,12 @@
+import { describe, expect, it } from "vitest";
+import { classifyBash } from "../harness/patterns";
+import {
+  type FileOptions,
+  READ_OPTIONS,
+  WRAPPER_LONG_VALUE,
+  WRAPPER_OPERAND_WRITES,
+  WRITE_OPTIONS,
+} from "../harness/wrapper-options";
 /**
  * Wave 9, W9-2. A wrapper's own options are dropped before the command is judged, so the VALUE of an option the wrapper
  * itself reads or writes was never looked at: `xargs -a <live env file> echo` was allowed while `cat <file>` is denied
@@ -8,15 +17,7 @@
  * wrappers `chroot`, `unshare`, `chronic`, `proxychains`, `ssh-agent` and `entr` are known. The live env file name is
  * built from parts: the repo guard refuses a command that names one.
  */
-import { describe, expect, it } from "vitest";
-import { classifyBash } from "../harness/patterns";
-import {
-  type FileOptions,
-  READ_OPTIONS,
-  WRAPPER_LONG_VALUE,
-  WRAPPER_OPERAND_WRITES,
-  WRITE_OPTIONS,
-} from "../harness/wrapper-options";
+import { WRAPPER_SPECS } from "../harness/wrapper-specs";
 
 const ENV_FILE = `apps/backend/.e${"nv"}`;
 const PROTECTED = "scripts/harness/patterns.ts";
@@ -317,7 +318,10 @@ describe("every long option that takes a value, in both spellings, leaves the co
       ([wrapper, name]) =>
         name !== "command" &&
         // `gdb` runs a command only behind `--args`; the wave-10 property test covers it
-        wrapper !== "gdb",
+        wrapper !== "gdb" &&
+        // wave 12: `leaks` and `lldb` run a command only behind a `--`, `lldb` and `zx` ask on their own scripts (harness-wrappers-wave12e1)
+        WRAPPER_SPECS.get(wrapper)?.dashDash !== true &&
+        WRAPPER_SPECS.get(wrapper)?.asksWith === undefined,
     );
   it.each(rows)("%s --%s", (wrapper, name) => {
     if (wrapper === "env" && name === "split-string") {

@@ -9,12 +9,15 @@
  */
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
+import * as G from "../harness/runner-grammars";
 import {
   TARGETS,
   type ToolFixture,
   candidatesOf,
   findTool,
   installedVersion,
+  liveCommands,
+  newNamesInHelp,
   recordTarget,
 } from "./helpers/record-tool-options";
 import { TABLES, disagreements, fixtureOf } from "./helpers/tool-tables";
@@ -36,6 +39,16 @@ const sampleOf = (fixture: ToolFixture): ReadonlySet<string> => {
 const isGnuEnv = (bin: string): boolean =>
   /GNU coreutils/.test(spawnSync(bin, ["--version"], { encoding: "utf8" }).stdout);
 
+/** The subcommand lists the production tables carry, per recording (a word in one is no program: `npm --no-fund install`). */
+const PRODUCTION_COMMANDS: Readonly<Record<string, readonly string[]>> = {
+  bun: G.BUN_COMMANDS,
+  npm: G.NPM_COMMANDS,
+  pnpm: [...G.PNPM_COMMANDS],
+};
+
+/** The recordings that hold subcommands alone: no option of theirs is probed (`npm`, for `npm --no-fund install`). */
+const COMMANDS_ONLY = new Set(["npm"]);
+
 /** The commands whose option names come from a help text alone (no probe to repeat): their names are compared instead. */
 const HELP_ONLY = new Set(["bun x", "pnpm dlx"]);
 
@@ -44,7 +57,7 @@ for (const target of TARGETS) {
   describe(`live: ${target.key}`, () => {
     it.skipIf(bin === undefined)(
       `the installed ${target.tool} still reads its options as the recording and the production table say`,
-      async () => {
+      async (ctx) => {
         const committed = fixtureOf(target.key);
         const installed =
           target.flavour === true
@@ -52,6 +65,27 @@ for (const target of TARGETS) {
               ? committed.version
               : "other flavour"
             : installedVersion(bin as string);
+        // A name the installed tool lists that the recording does not hold is an option nobody has read yet (a newer tool): fail until re-recorded
+        const fresh = COMMANDS_ONLY.has(target.key)
+          ? []
+          : await newNamesInHelp(bin as string, target, committed);
+        expect(
+          fresh,
+          `${target.key} ${installed} lists options the recording does not hold: re-record the fixture and read them`,
+        ).toEqual([]);
+        // the same for subcommands, and the production list must hold every one the tool lists
+        if (target.commands !== undefined) {
+          const now = await liveCommands(bin as string, target);
+          expect(
+            now.filter((c) => !(committed.commands ?? []).includes(c)),
+            `${target.key} ${installed} lists subcommands the recording does not hold`,
+          ).toEqual([]);
+          expect(
+            now.filter((c) => !(PRODUCTION_COMMANDS[target.key] ?? []).includes(c)),
+            `the production list of ${target.key} subcommands lacks some`,
+          ).toEqual([]);
+        }
+        if (COMMANDS_ONLY.has(target.key)) return;
         if (HELP_ONLY.has(target.key)) {
           // names only: every recorded option must still be in the tool's own help text
           const { spawnSync } = await import("node:child_process");
@@ -69,7 +103,22 @@ for (const target of TARGETS) {
             expect(gone, `${target.key} ${installed}`).toEqual([]);
           return;
         }
-        const live = await recordTarget(bin as string, target, sampleOf(committed));
+        const first = await recordTarget(bin as string, target, sampleOf(committed));
+        // a probe the loaded machine never answered is `unverified` live (`NoAnswer`): ask again, alone, for the names the recording had settled
+        const settled = new Set(
+          committed.options.filter((o) => o.takesValue !== "unverified").map((o) => o.name),
+        );
+        const unsure = first.options
+          .filter((o) => o.takesValue === "unverified" && settled.has(o.name))
+          .map((o) => o.name);
+        const again =
+          unsure.length === 0
+            ? []
+            : (await recordTarget(bin as string, target, new Set(unsure))).options;
+        const live = {
+          ...first,
+          options: first.options.map((o) => again.find((a) => a.name === o.name) ?? o),
+        };
         // 1. the table against the tool as it is now
         const table = TABLES.filter((t) => t.commands.includes(target.key));
         expect(table.length, `a production table reads ${target.key}`).toBeGreaterThan(0);
@@ -84,11 +133,14 @@ for (const target of TARGETS) {
           .map(
             (o) => `${o.name}: recorded ${String(was.get(o.name))}, now ${String(o.takesValue)}`,
           );
+        expect(live.options.length).toBeGreaterThan(0);
         if (installed === committed.version) {
           expect(changed, `${target.key} ${installed}: re-record the fixture`).toEqual([]);
         } else {
-          // another version: the table check above is the one that matters; a difference is reported by the assertion message of a later run
-          expect(live.options.length).toBeGreaterThan(0);
+          // another version: the table was held against the live tool above, but the recording is NOT this tool's: say so, never pass silently (R9-CR-12)
+          ctx.skip(
+            `${target.key} ${installed} is installed and the recording is ${committed.version}: re-record with "bun scripts/__tests__/helpers/record-tool-options.ts --write \"${target.key}\"" to compare the recording itself`,
+          );
         }
       },
       LIVE_TIMEOUT_MS,
