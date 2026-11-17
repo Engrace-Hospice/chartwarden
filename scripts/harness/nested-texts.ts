@@ -3,8 +3,9 @@
  * `bash -c 'CMD'`, `eval CMD`, a wrapper's string (`watch`, `su -c`, `ssh host CMD`, `rsync -e`, `script -c`), the command behind a container
  * image or name (`docker run|exec`, `compose run|exec`), and a command run in a container that mounts the repo: each is judged as a command
  * line of its own. A text is the text the SHELL would see: a re-quoted word has no backslash the readers keep (`wrappers.ts` `shellQuote`),
- * and the stdin the segment is fed (a here-string, a heredoc, a pipe from `echo`) is handed to the command that really reads it, so a
- * client's `\c host=H` is seen behind a `docker exec -i` (R8-CR-5). Pure.
+ * and the stdin the segment is fed (a here-string, a heredoc, what every earlier stage prints or carries, a process substitution, a known variable, a
+ * group's redirect: `stdin-texts.ts`) is handed to the command that really reads it, so a client's `\c host=H` is seen behind a `docker exec -i`
+ * (R8-CR-5, R9-CR-3). Pure.
  */
 import { containerCommand, hiddenEnvFileReason } from "./container-run";
 import { shellCommandStrings } from "./shell-command-string";

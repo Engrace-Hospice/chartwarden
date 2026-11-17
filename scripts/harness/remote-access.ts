@@ -1,11 +1,12 @@
 /**
- * Programs that open a shell or a tunnel on another machine (wave 10, A9; round-7 R7-ADV-15). A non-local `ssh` asks, and so does
- * `docker exec`; the same access through `kubectl exec POD -- CMD`, `kubectl port-forward|cp|debug|attach`, `docker -H host`,
- * `DOCKER_HOST=ssh://…`, `docker context use`, `gcloud sql connect`, `gcloud compute ssh`, `aws rds …`, `aws ssm start-session`,
- * `fly postgres connect|proxy`, `fly ssh`, `heroku pg:psql`, `supabase db … --db-url|--linked`, `autossh` and `cloudflared access`
- * was never read. What runs on the other side is not the guard's to read (a remote command names that machine's files, and a
- * database reached through a tunnel is a database), so each of these ASKS, whatever the command behind it: a human decides, like
- * a non-local ssh. A text heuristic: a spelling this table does not know passes. Pure.
+ * Programs that open a shell or a tunnel on another machine (wave 10, A9; round-7 R7-ADV-15; wave 12 part E2). A non-local `ssh` asks, and so does
+ * `docker exec`; the same access through `kubectl exec POD -- CMD`, `kubectl port-forward|cp|debug|attach|proxy`, `docker -H host`, `podman --connection|--url|-r`,
+ * `DOCKER_HOST=ssh://…` and `CONTAINER_HOST=…` (set for the command or exported earlier), `docker context use`, `autossh` and `cloudflared access` was never read.
+ * The hosted-service CLIs (`heroku`, `railway`, `render`, `az`, `doctl`, `aws`, `supabase`, `gcloud`, `fly`) are NAMED SUBCOMMANDS, kept in `cloud-cli-sessions.ts`
+ * (`heroku run`, `heroku config`, `gcloud sql connect`, `aws ssm send-command`, `supabase db dump`, …: other spellings pass); a jump host, forward or proxy of ssh,
+ * scp, sftp, mosh and et that names another machine is `ssh-hops.ts`. What runs on the other side is not the guard's to read (a remote command names that machine's
+ * files, and a database reached through a tunnel is a database), so each of these ASKS, whatever the command behind it: a human decides, like a non-local ssh. A text
+ * heuristic: a spelling this table does not know passes. Pure.
  */
 
 import { cloudCliReason } from "./cloud-cli-sessions";

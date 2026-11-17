@@ -218,13 +218,14 @@ function readAll(texts: readonly string[], readers: FeedReaders): Read {
   const out: string[] = [];
   let unseen = false;
   let capped = false;
-  for (const text of texts.slice(0, MAX_FEED_TEXTS)) {
+  const distinct = unique(texts);
+  for (const text of distinct.slice(0, MAX_FEED_TEXTS)) {
     const read = readingsOf(text, readers);
     if (read.readings.every((r) => WHOLE_EXPANSION.test(r))) unseen = true;
     capped ||= read.capped;
     out.push(...read.readings);
   }
-  return { texts: unique(out), unseen, overflow: capped || texts.length > MAX_FEED_TEXTS };
+  return { texts: unique(out), unseen, overflow: capped || distinct.length > MAX_FEED_TEXTS };
 }
 
 export interface PipelineStdin {

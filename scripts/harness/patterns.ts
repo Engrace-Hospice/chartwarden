@@ -1033,6 +1033,26 @@ interface WalkInput {
   readonly depth: number;
 }
 
+/**
+ * Why this command opens a session on another machine, or null (`remote-access.ts`). The engine's variables count whether the command sets them or
+ * an earlier statement exported them (`export DOCKER_HOST=ssh://H; docker exec …`).
+ */
+function remoteSessionReason(parsed: Parsed, engineVariables: readonly string[]): string | null {
+  return remoteAccessReason(
+    parsed.prog,
+    parsed.args,
+    [...variableStatements, ...engineVariables, ...parsed.assigns],
+    isLocalHost,
+  );
+}
+
+/** What a wrapper hands to the command it runs; a pipeline longer than the guard reads hides it, so it asks (R9-ADV-5). */
+function fedTexts(walk: Walk, stdin: PipelineStdin, index: number): string[] {
+  const feed = stdin.feed(index);
+  if (feed.overflow) walk.verdicts.push(ask(PIPE_FEED_REASON));
+  return allTexts(feed);
+}
+
 /** Judge the simple command at `index`, in the directories the ones before it may have left the shell in. */
 function judgePart(index: number, walk: Walk, input: WalkInput): void {
   const { parts, parsedParts, bodiesByPart, stages, stdin, cdpath, ctx, depth } = input;
@@ -1049,31 +1069,14 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
   if (v) walk.verdicts.push(v);
   if (parsed.unplaced !== undefined)
     walk.verdicts.push(ask(UNPLACED_WRAPPER_REASON(parsed.unplaced)));
-  // The engine's variables count whether the command sets them or an earlier statement exported them (`export DOCKER_HOST=ssh://H; docker exec …`).
-  const remote = remoteAccessReason(
-    parsed.prog,
-    parsed.args,
-    [...variableStatements, ...input.engineVariables, ...parsed.assigns],
-    isLocalHost,
-  );
+  const remote = remoteSessionReason(parsed, input.engineVariables);
   if (remote !== null) walk.verdicts.push(ask(remote));
   // A SQL client's own shell escapes and file commands (`sqlite3 .shell`, `psql \\!`, `mysql system`).
   walk.verdicts.push(
     ...dbClientVerdicts(stages, stdin, index, here, ctx),
     ...siblingSweepVerdicts(parts, parsedParts, index, ctx, depth, here),
     ...dynamicProgramVerdicts(part.text, parsed, ctx, here),
-    ...nestedWithInlineVariables(
-      parsed,
-      () => {
-        // What a wrapper hands to the command it runs; a pipeline longer than the guard reads hides it (R9-ADV-5).
-        const feed = stdin.feed(index);
-        if (feed.overflow) walk.verdicts.push(ask(PIPE_FEED_REASON));
-        return allTexts(feed);
-      },
-      ctx,
-      depth,
-      here,
-    ),
+    ...nestedWithInlineVariables(parsed, () => fedTexts(walk, stdin, index), ctx, depth, here),
   );
   if (readsScriptFromStdin(parsed, index)) walk.scriptTexts.push(...pipelineTexts(parts, index));
   // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a command

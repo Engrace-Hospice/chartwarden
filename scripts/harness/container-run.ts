@@ -9,7 +9,8 @@
  * own `--help` lists them (`option-grammar.ts`): the image is the first word that is no option or option value, an
  * `--entrypoint X` makes X the program, and `-e NAME=VALUE` becomes an assignment in front of the command so a database
  * variable set for the container is read like one set for the shell. An option the table does not know asks (rule 3 of
- * wave 10): the image word cannot be told from an option's value. `exec` (docker, podman, nerdctl, compose) is read here too since wave 11: the same options, the same `-e` assignments. Pure.
+ * wave 10): the image word cannot be told from an option's value. `exec` (docker, podman, nerdctl, compose) is read here too since wave 11: the same options, the same `-e` assignments.
+ * An `--env-file` or `--env-from-file` whose operand is a process substitution, stdin or a descriptor sets variables nobody can read: it asks (wave 12, R9-ADV-20). Pure.
  */
 import { type OptionGrammar, readOptions } from "./option-grammar";
 import { shellQuote } from "./wrappers";

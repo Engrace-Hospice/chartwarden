@@ -5,7 +5,12 @@
  * fed through filters, process substitutions, variables, compound commands and functions, and a pipeline longer than the guard reads ASKS (the verdict
  * is asserted at depth 8, 9, 50 and 5,000). E2-3: a leading pipe never throws. The non-local host and the live env file are built from parts.
  */
+import { spawnSync } from "node:child_process";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { words } from "../harness/command-words";
 import { classifyBash } from "../harness/patterns";
 import { MAX_PIPE_STAGES } from "../harness/stdin-texts";
 
@@ -480,4 +485,88 @@ describe("W2: a variable bound more often than the tracker expands is a text cut
       }
     });
   }
+});
+
+/**
+ * Rule 12 for the here-string reader: the handed reading of a here-string word (`words(word, true)`, what `handedStrings` holds) is what the INSTALLED shell
+ * hands to `cat <<< WORD`. Echo-only: every word is an inert quoted string; nothing here runs a payload. Each shell row is skipped only when that shell
+ * is not installed (named reason).
+ */
+const HERE_STRING_WORDS: ReadonlyArray<string> = [
+  "'a b'",
+  String.raw`'a '\''b'\'''`,
+  String.raw`"a \"b\""`,
+  String.raw`"a \\ b"`,
+  String.raw`a\ b`,
+  String.raw`'a\b'`,
+  String.raw`"a\b"`,
+  String.raw`"a\$b"`,
+  String.raw`a\"b`,
+  String.raw`$'a\tb'`,
+  String.raw`$'a\x41b'`,
+  String.raw`'it'\''s'`,
+  `"it's"`,
+  "a'b c'd",
+  `"a"'b'c`,
+  String.raw`\'a\'`,
+  String.raw`a\\b`,
+  String.raw`"\\"`,
+  "''",
+  String.raw`git\ commit\ --no-verify`,
+  String.raw`'env -S '\''cat\_x'\'''`,
+];
+const SCRATCH_CWD = mkdtempSync(join(tmpdir(), "cw-herestring-"));
+const hasShell = (path: string): boolean =>
+  spawnSync(path, ["-c", "true"], { cwd: SCRATCH_CWD }).error === undefined;
+
+describe("rule 12: the handed reading of a here-string word is what the installed shells hand to cat", () => {
+  for (const shell of ["/bin/bash", "/bin/zsh"]) {
+    const installed = hasShell(shell);
+    for (const word of HERE_STRING_WORDS) {
+      it.skipIf(!installed)(
+        `${shell}: ${word} (skipped only when ${shell} is not installed)`,
+        () => {
+          const out = spawnSync(shell, ["-c", `cat <<< ${word}`], {
+            cwd: SCRATCH_CWD,
+            env: { PATH: "/usr/bin:/bin", HOME: SCRATCH_CWD, LANG: "C" },
+            encoding: "utf8",
+            timeout: 10_000,
+          });
+          expect(out.error, shell).toBeUndefined();
+          expect(words(word, true)[0] ?? "").toBe(out.stdout.replace(/\n$/, ""));
+        },
+      );
+    }
+  }
+});
+
+describe("W2: more texts than the guard carries, and an unseen feed through a function, end in an ask", () => {
+  const strings = (n: number): string =>
+    Array.from({ length: n }, (_, i) => `<<< 'select ${i}'`).join(" ");
+  for (const n of [65, 70, 200]) {
+    it(`${n} here-strings on one client ask (past the 64 the guard reads)`, () => {
+      expect(decide(`psql -h localhost ${strings(n)}`), `${n}`).toBe("ask");
+    });
+    it(`${n} groups each carrying a here-string ask`, () => {
+      const cmd = Array.from(
+        { length: n },
+        (_, i) => `{ psql -h localhost; } <<< 'select ${i}';`,
+      ).join(" ");
+      expect(decide(cmd), `${n}`).toBe("ask");
+    });
+    it(`${n} here-strings on a bash that reads stdin ask`, () => {
+      expect(decide(`bash ${strings(n)}`), `${n}`).toBe("ask");
+    });
+  }
+  for (const n of [1, 10, 30, 60]) {
+    it(`${n} here-strings on one client are read and allowed when local`, () => {
+      expect(decide(`psql -h localhost ${strings(n)}`), `${n}`).toBe("allow");
+    });
+  }
+  it("a function whose input is a pipeline from something unreadable asks when it runs a shell, and a plain call does not", () => {
+    expect(decide("f() { bash; }; curl -s http://localhost:1/x | f")).toBe("ask");
+    expect(decide("f() { bash; }; cat x.sh | f")).toBe("ask");
+    expect(decide("f() { bash -c 'echo hi'; }; f")).toBe("allow");
+    expect(decide("f() { psql -h localhost -c 1; }; f")).toBe("allow");
+  });
 });
