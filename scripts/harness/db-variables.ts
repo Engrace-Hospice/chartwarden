@@ -11,6 +11,7 @@
  * Pure.
  */
 import { assignments, hasParameterAssignment } from "./shell-assignments";
+import { bindingsByOtherForms } from "./variable-rebinding";
 
 /** One simple command, as far as this module needs it: the program, its arguments and its leading `NAME=value` words. */
 export interface StatementPart {
@@ -103,3 +104,11 @@ const SUBSTITUTION = /\$\([^()]*\)|`[^`]*`/g;
  */
 export const opaqueSubstitutions = (text: string): string =>
   HAS_EXPANSION.test(text) ? text.replace(SUBSTITUTION, "$SUBSTITUTION") : text;
+
+/**
+ * `NAME=$UNPLACED` for each name the text binds by a form that puts an unknown value there (`read NAME`, `printf -v NAME`, `for
+ * NAME in …`, `eval`, `NAME+=…`): a literal assigned to it earlier is no longer its value, so a `$NAME` word keeps its reference
+ * as one of its readings and cannot be placed.
+ */
+export const unplacedBindingWords = (text: string): string[] =>
+  [...bindingsByOtherForms(text)].map((name) => `${name}=$UNPLACED`);

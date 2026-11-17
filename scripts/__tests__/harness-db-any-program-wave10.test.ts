@@ -129,25 +129,57 @@ describe("a database URI in the words of a program that is not a text tool", () 
     "{PG}localhost?@{H}/x",
     "{PG}localhost/x?host={H}",
   ];
-  it.each(URIS)("%s", (uri) => {
+  it.each(URIS)(
+    "%s: a program that is not a client asks; a client with a table of its own refuses",
+    (uri) => {
+      for (const cmd of [
+        `bun run db:migrate --url ${uri}`,
+        `bun run db:migrate --url=${uri}`,
+        `node x.js ${uri}`,
+        `npx knex migrate:latest --connection ${uri}`,
+        `flyway -url=${uri} migrate`,
+        `alembic -x url=${uri} upgrade head`,
+        `docker run -e DATABASE_URL=${uri} app`,
+      ]) {
+        const text = fill(cmd);
+        expect(decide(text), text).toBe("ask");
+      }
+      for (const cmd of [
+        `drizzle-kit push --url ${uri}`,
+        `dbmate --url ${uri} up`,
+        `atlas migrate apply --url ${uri}`,
+        `sqlx migrate run --database-url ${uri}`,
+        `diesel migration run --database-url=${uri}`,
+        `prisma migrate deploy --url ${uri}`,
+      ]) {
+        const text = fill(cmd);
+        expect(decide(text), text).toBe("deny");
+      }
+    },
+  );
+
+  it.each([
+    "perl -pi -e 's#a#{PG}{H}:5432/x#' /tmp/x.sh",
+    "sed -i 's#^url=.*#url={PG}{H}/x#' /tmp/x.conf",
+    "node -e \"console.log('use {PG}{H}/x')\"",
+    "bun run notes --message 'see {PG}{H}/x for details'",
+    "bun run x -- see:{PG}{H}/x",
+  ])("a URI in the middle of a longer word is text, not a target: %s", (template) => {
+    expect(decide(fill(template)), template).toBe("allow");
+  });
+
+  it("a variable the line sets is expanded; one it cannot place asks", () => {
     for (const cmd of [
-      `bun run db:migrate --url ${uri}`,
-      `bun run db:migrate --url=${uri}`,
-      `node x.js ${uri}`,
-      `npx knex migrate:latest --connection ${uri}`,
-      `flyway -url=${uri} migrate`,
-      `alembic -x url=${uri} upgrade head`,
-      `drizzle-kit push --url ${uri}`,
-      `dbmate --url ${uri} up`,
-      `atlas migrate apply --url ${uri}`,
-      `sqlx migrate run --database-url ${uri}`,
-      `diesel migration run --database-url=${uri}`,
-      `prisma migrate deploy --url ${uri}`,
-      `docker run -e DATABASE_URL=${uri} app`,
+      "w=localhost:5433/x; DATABASE_URL={PG}u:p@$w bun run db:migrate",
+      "w=localhost:5433/x; export DATABASE_URL={PG}u:p@${w}; bun run db:migrate",
+      'export DATABASE_URL="{PG}u:$(cat /tmp/pw)@127.0.0.1:5433/x"; bun run db:migrate',
+      "export PGHOST=$(cat /tmp/h) PGUSER=u; true; node x.js",
     ]) {
       const text = fill(cmd);
-      expect(decide(text), text).toBe("deny");
+      expect(decide(text), text).toBe(text.includes("PGHOST") ? "ask" : "allow");
     }
+    expect(decide(fill("w={H}:5432/x; DATABASE_URL={PG}u@$w bun run db:migrate"))).toBe("deny");
+    expect(decide(fill("DATABASE_URL={PG}u@$UNKNOWN/x bun run db:migrate"))).toBe("ask");
   });
 
   it.each([
@@ -243,7 +275,13 @@ describe("anyProgramTarget, the reader itself", () => {
   });
 
   it("names the first remote host", () => {
+    // A URI in the words is advisory (an ask); a host variable is a refusal.
     expect(anyProgramTarget("node", [fill("{PG}{H}/x")], [], [])).toEqual({
+      kind: "remote",
+      subject: H,
+      advisory: true,
+    });
+    expect(anyProgramTarget("node", [], [fill("PGHOST={H}")], [])).toEqual({
       kind: "remote",
       subject: H,
     });

@@ -519,3 +519,22 @@ describe("B13: option abbreviations, the sqlcmd transport prefix and libpq's unq
     expect(databaseTarget("psql", ["dbname=a\\ b host=localhost"], [])).toBeNull();
   });
 });
+
+describe("B6: a name rebound by `read`, `printf -v`, `for`, `eval` or `+=` is no longer its literal", () => {
+  it.each([
+    "DB={PG}localhost/db; read DB; psql \"$DB\" -c 'select 1'",
+    "DB={PG}localhost/db; printf -v DB %s x; psql \"$DB\" -c 'select 1'",
+    "DB={PG}localhost/db; for DB in a b; do psql \"$DB\" -c 'select 1'; done",
+    'DB={PG}localhost/db; eval "DB=x"; psql "$DB" -c \'select 1\'',
+    "DB={PG}localhost/db; DB+=x; psql \"$DB\" -c 'select 1'",
+    "H2=localhost; read H2; psql -h $H2 -c 'select 1'",
+  ])("%s is not read as the literal it was set to first", (template) => {
+    const cmd = fill(template);
+    expect(decide(cmd), cmd).not.toBe("allow");
+  });
+
+  it("a name set once to a local literal and used is still placed", () => {
+    expect(decide(fill("DB={PG}localhost/db; psql \"$DB\" -c 'select 1'"))).toBe("allow");
+    expect(decide(fill("H2=localhost; psql -h $H2 -c 'select 1'"))).toBe("allow");
+  });
+});

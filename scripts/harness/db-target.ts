@@ -21,6 +21,8 @@ export interface DatabaseTarget {
   readonly kind: "remote" | "unparsed" | "indirect" | "variable";
   /** The host, the string that did not parse or the name of the indirection. */
   readonly subject: string;
+  /** Found in a program's words, not in a client's own options: a human decides instead of a refusal (`db-any-program.ts`). */
+  readonly advisory?: boolean;
 }
 
 const URI = /^(?:jdbc:)?([A-Za-z][A-Za-z0-9+.-]*):\/\/(.*)$/s;
@@ -52,6 +54,8 @@ interface Reader {
   readonly found: Found;
   /** Every value the command's variable statements assign each name. */
   readonly vars: ReadonlyMap<string, readonly string[]>;
+  /** A host that still holds a variable or a substitution is one a human decides (`db-any-program.ts`), not a refused host. */
+  readonly unplacedIsVariable?: boolean;
 }
 
 /** What the shell does to a word before the program sees it: remove backslashes. */
@@ -87,7 +91,10 @@ function unwrapHost(piece: string): string {
 }
 
 const addHosts = (r: Reader, value: string): void => {
-  r.found.hosts.push(...hostsOf(value, r.spec));
+  for (const host of hostsOf(value, r.spec)) {
+    if (r.unplacedIsVariable && HAS_EXPANSION.test(host)) r.found.variables.push(host);
+    else r.found.hosts.push(host);
+  }
 };
 
 /** `postgres://[userinfo@]host[:port][,host2]/db?host=...&service=...`, read as libpq reads it and as other URL parsers do. */
@@ -164,7 +171,9 @@ const isUnplacedTarget = (
   spec: TargetClient,
 ): boolean =>
   expanded.unplaceable &&
-  !expanded.texts.some((text) => URI.test(text) || conninfoShaped(text, spec));
+  expanded.texts.some(
+    (text) => HAS_EXPANSION.test(text) && !URI.test(text) && !conninfoShaped(text, spec),
+  );
 
 /**
  * A word handed to the client as a connection string, with each variable it names replaced by every value a statement
@@ -434,11 +443,12 @@ const NEUTRAL: TargetClient = {
 export function databaseTargetOfWords(
   uris: readonly string[],
   hosts: readonly string[],
+  vars: ReadonlyMap<string, readonly string[]> = new Map(),
 ): DatabaseTarget | null {
   const found: Found = { hosts: [], unparsed: [], indirect: [], variables: [] };
-  const r: Reader = { spec: NEUTRAL, found, vars: new Map() };
-  for (const uri of uris) readUri(uri, r);
-  for (const host of hosts) addHosts(r, host);
+  const r: Reader = { spec: NEUTRAL, found, vars, unplacedIsVariable: true };
+  for (const uri of uris) for (const text of expandVariables(uri, vars).texts) readUri(text, r);
+  for (const host of hosts) for (const text of expandVariables(host, vars).texts) addHosts(r, text);
   return findingOf(found, undefined);
 }
 

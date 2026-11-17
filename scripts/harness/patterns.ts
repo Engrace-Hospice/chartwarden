@@ -160,7 +160,7 @@ import { LOCAL_HOST, MBI, scanContent, secretPathReason } from "./content-scan";
 import { anyProgramTarget } from "./db-any-program";
 import { connectTargetOf } from "./db-connect-commands";
 import { type DatabaseTarget, databaseTarget, databaseTargetReason } from "./db-target";
-import { variableStatementWords } from "./db-variables";
+import { unplacedBindingWords, variableStatementWords } from "./db-variables";
 
 // ---------------------------------------------------------------------------------------------------
 // 3. Shell commands
@@ -909,7 +909,9 @@ function envWriteVerdicts(
 /** A database target the guard found: a remote or unreadable one is refused, one that waits on a human asks. */
 function databaseTargetVerdict(target: DatabaseTarget): BashVerdict {
   const reason = databaseTargetReason(target, echo);
-  return target.kind === "remote" || target.kind === "unparsed" ? deny(reason) : ask(reason);
+  const refused =
+    (target.kind === "remote" || target.kind === "unparsed") && target.advisory !== true;
+  return refused ? deny(reason) : ask(reason);
 }
 
 const DB_SHELL_REASON =
@@ -1318,7 +1320,11 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   };
   // The variables this text sets are in scope for the commands in it and for every text nested in it.
   const outerStatements = variableStatements;
-  variableStatements = [...outerStatements, ...variableStatementWords(parsedParts)];
+  variableStatements = [
+    ...outerStatements,
+    ...variableStatementWords(parsedParts),
+    ...unplacedBindingWords(c),
+  ];
   parts.forEach((_part, index) => judgePart(index, walk, input));
   verdicts.push(...trailingVerdicts(c, walk, ctx, depth));
   variableStatements = outerStatements;

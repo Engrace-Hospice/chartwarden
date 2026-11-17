@@ -34,22 +34,41 @@ const REBINDING_FORMS: readonly RegExp[] = [
 /** `read A B`, `mapfile -t A`, `readarray A`: every identifier word after the builtin up to the end of its command. */
 const NAMING_BUILTIN = /(?:^|[\s;&|({])(?:read|mapfile|readarray)\b([^;&|<>)\n]*)/g;
 
-/** The names a command line binds by a form other than one `NAME=value`, or binds more than once. */
-export function reboundNames(cmd: string): ReadonlySet<string> {
+/** `eval 'NAME=x …'` and `eval "NAME=x …"`: the quote and the text inside it. */
+const EVAL_STRING = /\beval\s+(["'])((?:(?!\1).)*)\1/gs;
+
+/**
+ * The names a command line binds by a form other than a plain `NAME=value` (`read`, `printf -v`, `for`, `eval`, `+=`, `mapfile`,
+ * `${X:=…}`, …): their value is whatever the form puts there. `reboundNames` adds the names a plain assignment binds more than
+ * once; a reader that keeps EVERY assigned value (`db-variables.ts`) needs only these.
+ */
+export function bindingsByOtherForms(cmd: string): ReadonlySet<string> {
   const names = new Set<string>();
-  const counts = new Map<string, number>();
   for (const m of cmd.matchAll(ASSIGNMENT_ANYWHERE)) {
-    const name = m[1] as string;
-    counts.set(name, (counts.get(name) ?? 0) + 1);
     // `+=` appends: the value is no longer the first literal, even with a single assignment.
-    if (m[0].includes("+=")) names.add(name);
+    if (m[0].includes("+=")) names.add(m[1] as string);
   }
-  for (const [name, count] of counts) if (count > 1) names.add(name);
   for (const form of REBINDING_FORMS) for (const m of cmd.matchAll(form)) names.add(m[1] as string);
   for (const m of cmd.matchAll(NAMING_BUILTIN)) {
     for (const word of (m[1] ?? "").split(/\s+/)) {
       if (new RegExp(`^${IDENTIFIER}$`).test(word)) names.add(word);
     }
   }
+  // `eval "NAME=x"` binds NAME to whatever the string says, and the string may be built at run time.
+  for (const m of cmd.matchAll(EVAL_STRING)) {
+    for (const a of (m[2] ?? "").matchAll(ASSIGNMENT_ANYWHERE)) names.add(a[1] as string);
+  }
+  return names;
+}
+
+/** The names a command line binds by a form other than one `NAME=value`, or binds more than once. */
+export function reboundNames(cmd: string): ReadonlySet<string> {
+  const names = new Set(bindingsByOtherForms(cmd));
+  const counts = new Map<string, number>();
+  for (const m of cmd.matchAll(ASSIGNMENT_ANYWHERE)) {
+    const name = m[1] as string;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  for (const [name, count] of counts) if (count > 1) names.add(name);
   return names;
 }
