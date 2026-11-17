@@ -1645,7 +1645,7 @@ part report; they are not repeated here (the corpus, the commands recorded in th
   `prisma migrate dev --name x` and `prisma studio --port x` asked from the database client tables, not from the lax rule; they were fixed after the merge (`db-target-clients-more.ts`,
   `harness-db-orm-names-wave12.test.ts`). `usql --no-psqlrc URI` still asks (see "Wave 12 follow-up").
 - *Shell strings that run operands, variables, substitutions, shell variables* (`shell-command-string.ts`, `nested-texts.ts`, `program-words.ts`, `patterns.ts` `shellWordVerdicts`,
-  `harness-shell-strings-wave12e1.test.ts`; R9-ADV-12 shell-string half, R9-ADV-22, R9-ADV-23). A string that reads `$@`, `$*` or `$1` runs the operands behind it (`sh -c 'exec "$@"' _ CMD`,
+  `harness-shell-strings-wave12e1.test.ts`; R9-ADV-12 shell-string half, R9-ADV-22). A string that reads `$@`, `$*` or `$1` runs the operands behind it (`sh -c 'exec "$@"' _ CMD`,
   `find -exec sh -c '"$@"' _ CMD \;`, `xargs sh -c '"$@"' _ CMD`): they are judged as a command line (joined and quoted back; the placeholder in `$0` is left out), and `$0` runs the first one. A string that
   is one variable (`C='CMD'; bash -c "$C"`, `sh -c $C`) is each value a statement of the command gives it; a name no statement sets, a positional parameter and an unplaced value ask. A string that is one
   command substitution is the text of a plain `echo` or `printf` (`bash -c "$(echo CMD)"`) and asks otherwise. A program word that stands for a shell (`$SHELL`, `$BASH`, a variable bound to a shell's name,
@@ -1668,7 +1668,7 @@ part report; they are not repeated here (the corpus, the commands recorded in th
   place asks (never guessed). `taskpolicy -b` printed nothing under the probe (the other taskpolicy options did run `echo`).
 - *Structure.* `shellQuote` and `joinedAndQuoted` moved out of `wrappers.ts` into `shell-quote.ts` so the shell reader can use them without an import cycle (`wrappers.ts` re-exports both); the `env -S`
   expansion is `split-string-expand.ts` and the per-shell tables are `shell-grammars.ts`. `peelWrapper` came under 50 lines. The recorders `helpers/record-shell-options.ts` and `helpers/shell-probes.ts`, the
-  fixture directory `fixtures/harness-shell-options/` and the new `npm.11.11.0.json` (the 68 `npm` command names) are evidence files the register does not name yet.
+  fixture directory `fixtures/harness-shell-options/` and the new `npm.11.11.0.json` (the 68 `npm` command names) are evidence files named by the register's evidence list.
 
 ## Wave 12 part E2
 
@@ -1723,7 +1723,7 @@ and R9-COMP-3.
   A transforming filter (`sed s/a/b/`, `tr`) is read as if it passed its input through unchanged: a text built by the filter is judged as typed. `ssh -F config` may hold a ProxyJump or HostName of its own
   (the secret-file rule judges the path, the config's content is not read). `gcloud`, `heroku` and the other CLIs have more subcommands that reach production than the lists name: "other spellings pass".
   The `heroku`, `railway`, `render`, `az`, `doctl`, `aws`, `supabase`, `fly`, `mosh` and `et` entries are from documentation. Linux and GNU userland are not exercised. `ssh -G` was the proof for
-  OpenSSH_10.6p1 only: an older OpenSSH that parses a cluster or an option after the host differently is not covered. Evidence files the register does not name: the new modules `ssh-hops.ts` and
+  OpenSSH_10.6p1 only: an older OpenSSH that parses a cluster or an option after the host differently is not covered. Evidence files named by the register's evidence list: the new modules `ssh-hops.ts` and
   `cloud-cli-sessions.ts`, the rewritten `stdin-texts.ts` and the new tests `harness-stdin-wave12e2`, `harness-container-remote-wave12e2`, `harness-ssh-hops-wave12e2`, `harness-cloud-sessions-wave12e2` and `harness-heavy-wave12e2`.
 
 ## Wave 12 part F
@@ -1891,7 +1891,7 @@ line of the shape the asks use (event `pre_tool`, tool, decision `deny`, a reaso
 - `_guard-copy.ts` (every real hook run on a guard copy: `runClaude`, `runCodex`) no longer passes the developer's guard switches to the hook (`CW_HARNESS_FAIL_OPEN=1` makes a deny an allow; a forced worker
   fault refuses every call). `harness-test-env-wave12.test.ts` pins the helper against a poisoned parent (loopback addresses and scratch paths only).
 - Listed, not changed (not part G's files, or the guard under test with explicit seams): `harness-env-split-wave11`, `harness-shell-command-wave11`, `harness-wrapper-tables-wave11` and
-  `harness-tool-options-live-wave11` run real `env`, shells and package managers with the inherited environment (the recorder `helpers/record-tool-options.ts` scrubs its own probes); about 25 direct
+  `harness-tool-options-live-wave11` run real `env`, shells and package managers: the first three pass a fixed minimal `PATH` for their comparisons, but a few probes (the `env -S` version check, a `printf` through `/bin/sh`, and the help and version probes of the live test) inherit the developer's environment (the recorder `helpers/record-tool-options.ts` scrubs its own probes); about 25 direct
   `spawnSync("bun", [GUARD])` sites in harness tests pass `process.env` plus overrides (`harness-hard-deadline` strips three switches itself; the others do not); `git ls-files` and `git check-ignore` in
   `harness-destructive`, `harness-protected-definition`, `harness-protected-names`, `harness-bypasses` and `compliance-controls` deliberately read the real checkout.
 
@@ -1909,7 +1909,7 @@ or a 3 s per-probe timeout for `dropdb` and `dropuser`, would remove most of it;
 - Two denies the guard made itself had no ledger line either (an unparseable input; an internal error); both are logged now.
 - A backgrounded mutation run with the ledger child's timeout removed leaves hung `bun` children behind when its test times out; the mutant, not the production code, does that (the production child is
   killed at its bound).
-- Evidence files the register does not name (`arch:compliance` resolves each file the register does name): `scripts/harness/emergency-ledger.ts`, `scripts/__tests__/harness-timing-wave12.test.ts`,
+- Evidence files named by the register's evidence list (`arch:compliance` resolves each one): `scripts/harness/emergency-ledger.ts`, `scripts/__tests__/harness-timing-wave12.test.ts`,
   `scripts/__tests__/harness-test-env-wave12.test.ts`, `scripts/__tests__/helpers/work-counters.ts`, `scripts/__tests__/helpers/scrubbed-env.ts` and `scripts/__tests__/harness-ledger-asks.test.ts`.
 
 ## Wave 12 follow-up (open items)
@@ -1924,7 +1924,7 @@ What is NOT done after wave 12, measured at commit `bd8b9d2cc` (the tip of the p
 - **`patterns.ts` is 3,088 lines and `classifySegment` is 280 lines** (`patterns.ts:2809` to the end of the file). The soft ceiling is 800 lines; the file was 2,969 lines at the wave-11 tip `b290ef92a` (the wave-11
   part C text says 2,884, written before part D merged) and `classifySegment` was 280 there too. No hunk of the wave-12 diff lies inside `classifySegment`; `patterns.ts` grew by 119 lines in other functions
   (`forcedAddVerdict` among them). Splitting the classifier is a refactor of its own: it threads the one-shot state variables (`variableStatements` among them) through every rule.
-- **Functions in `scripts/harness/*.ts` still over 50 lines**, 13 of 739 top-level functions, counted from the first line of the declaration (signature and return type included) to the closing brace. Nested
+- **Functions in `scripts/harness/*.ts` still over 50 lines**, 13 of about 740 top-level functions (739 by one count and 741 by another that includes arrow-function constants), counted from the first line of the declaration (signature and return type included) to the closing brace. Nested
   functions and methods of object literals are not counted, and neither are the helpers under `scripts/__tests__/helpers/`.
 
   | Lines | Function | Where |
