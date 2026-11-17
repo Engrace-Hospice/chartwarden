@@ -1,0 +1,18 @@
+{
+  "tool": "awk",
+  "note": "Options of the awks that are NOT installed on the machine that recorded the fixtures (gawk, mawk). They come from the awks' manual pages, not from a probe: the reader never relies on them (text-programs.ts judges every word that is not the value of -F, -v or -f, which every awk reads the same way), and the live test fails on a machine whose awk is not the recorded one so the table is re-verified there.",
+  "unverified": [
+    {
+      "flavour": "gawk",
+      "valued": ["-F", "-v", "-f", "-e", "-E", "-i", "-l", "-L", "-W", "--field-separator", "--assign", "--file", "--source", "--exec", "--include", "--load"],
+      "programFromFile": ["-f", "--file", "-E", "--exec", "-i", "--include"],
+      "programText": ["-e", "--source"]
+    },
+    {
+      "flavour": "mawk",
+      "valued": ["-F", "-v", "-f", "-W", "-m"],
+      "programFromFile": ["-f", "-W exec"],
+      "programText": []
+    }
+  ]
+}

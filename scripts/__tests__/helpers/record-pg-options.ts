@@ -25,6 +25,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { TARGET_CLIENTS } from "../../harness/db-target-clients";
+import { RECORDED_MAJOR } from "../../harness/db-target-flags";
 
 export const FIXTURE_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -44,6 +46,11 @@ export interface RecordedOption {
   readonly role?: Role;
   /** Read from `argv[1]` by the program, not by getopt (`--help`, `--version` of most PostgreSQL programs). */
   readonly argv1Only?: true;
+  /**
+   * Accepted by the program's parser but absent from its `--help` (a deprecated alias: `pg_dump --no-acl` is `--no-privileges`,
+   * `--attribute-inserts` is `--column-inserts`; found by probing a bounded candidate list, wave 12, F-9).
+   */
+  readonly hidden?: true;
 }
 
 export type AbbreviationOutcome =
@@ -85,7 +92,7 @@ interface ProbeSpec {
   readonly major: string;
 }
 
-const PG = { kind: "getopt", major: "16" } as const;
+const PG = { kind: "getopt", major: RECORDED_MAJOR } as const;
 export const PROBED_TOOLS: Readonly<Record<string, ProbeSpec>> = {
   psql: PG,
   pg_dump: PG,
@@ -120,11 +127,20 @@ const STRING_PROBE = "host=127.0.0.1 port=1";
 
 // ---------------------------------------------------------------------------------------------------------------- binaries
 
+/**
+ * The PostgreSQL majors recorded: the tables were first proven against 16's programs; the repository ships 18 (`deploy/production/postgres/Dockerfile`),
+ * whose clients are recorded as a second version (wave 12, F-9). `fixtureFile` keeps 16 where wave 11 put it and puts 18 in `pg18/`. A major that is
+ * installed but not listed here is not recorded: say so (`harness-db-flags-wave12f.test.ts`), never skip silently.
+ */
+export const RECORDED_POSTGRES_MAJORS: readonly string[] = [RECORDED_MAJOR, "18"];
+
 const EXTRA_BIN_DIRECTORIES = [
-  "/opt/homebrew/opt/postgresql@16/bin",
-  "/usr/local/opt/postgresql@16/bin",
-  "/usr/lib/postgresql/16/bin",
-  "/usr/pgsql-16/bin",
+  ...RECORDED_POSTGRES_MAJORS.flatMap((major) => [
+    `/opt/homebrew/opt/postgresql@${major}/bin`,
+    `/usr/local/opt/postgresql@${major}/bin`,
+    `/usr/lib/postgresql/${major}/bin`,
+    `/usr/pgsql-${major}/bin`,
+  ]),
   "/opt/homebrew/bin",
   "/usr/local/bin",
 ];
@@ -137,7 +153,7 @@ const brewPrefix = (formula: string): string | undefined => {
 const isExpected = (path: string, wanted: string | undefined): boolean =>
   existsSync(path) && versionOf(path)?.startsWith(`${wanted}.`) === true;
 
-/** `PATH` first, then the places a package manager puts PostgreSQL 16 and redis; undefined when the program is not installed. */
+/** `PATH` first, then the places a package manager puts PostgreSQL (each recorded major) and redis; undefined when the program is not installed. */
 export function findBinary(tool: string, major?: string): string | undefined {
   const wanted = major ?? PROBED_TOOLS[tool]?.major;
   const directories = [...(process.env.PATH ?? "").split(delimiter), ...EXTRA_BIN_DIRECTORIES];
@@ -147,7 +163,7 @@ export function findBinary(tool: string, major?: string): string | undefined {
     .find((path) => isExpected(path, wanted));
   if (found !== undefined || tool.startsWith("redis-")) return found;
   // A keg-only Homebrew formula is on no PATH: ask brew only when nothing else found the program.
-  const brewed = brewPrefix("postgresql@16");
+  const brewed = brewPrefix(`postgresql@${wanted}`);
   return brewed === undefined || !isExpected(join(brewed, tool), wanted)
     ? undefined
     : join(brewed, tool);
@@ -399,6 +415,74 @@ async function recordGetoptOptions(
   return options;
 }
 
+/**
+ * Names the real tool accepts although its `--help` does not list them (wave 12, F-9; round-9 R9-CR-10: real PostgreSQL 16 accepts `pg_dump --no-acl`,
+ * `pg_dumpall --no-acl`, `pg_restore --no-acl` and `pg_dump`/`pg_dumpall --attribute-inserts`, the deprecated spellings of `--no-privileges` and
+ * `--column-inserts`; the recorder read only the help, so the table called them unknown and a plain `pg_dump --no-owner --no-acl -h localhost db` asked).
+ * The candidate list is BOUNDED: the known aliases, `--no-` plus every flag the help lists, every name the production table lists for the tool, and
+ * every name another PostgreSQL program of the same major lists in its help (a deprecated alias is shared by a family). A candidate counts when
+ * the parser accepts it as written AND it is not merely a prefix of a listed option.
+ */
+const KNOWN_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  pg_dump: ["no-acl", "attribute-inserts"],
+  pg_dumpall: ["no-acl", "attribute-inserts"],
+  pg_restore: ["no-acl"],
+};
+
+/** The long names every PostgreSQL program of this major lists in its `--help`: the candidates a hidden alias is looked for among. */
+async function commonNames(major: string, binary: string, cwd: string): Promise<readonly string[]> {
+  const names = new Set<string>();
+  const directory = dirname(binary);
+  for (const tool of Object.keys(PROBED_TOOLS)) {
+    if (PROBED_TOOLS[tool]?.kind !== "getopt") continue;
+    const sibling = join(directory, tool);
+    if (!existsSync(sibling)) continue;
+    const help = (await run(sibling, ["--help"], cwd)).output;
+    for (const entry of parseGetoptHelp(help)) for (const name of entry.names) names.add(name);
+  }
+  return [...names].sort();
+}
+
+async function recordHiddenOptions(
+  p: Probe,
+  tool: string,
+  listed: readonly RecordedOption[],
+  common: readonly string[],
+): Promise<RecordedOption[]> {
+  const known = new Set(listed.flatMap((o) => (o.name === undefined ? [] : [o.name])));
+  const production = TARGET_CLIENTS.get(tool);
+  const candidates = new Set<string>([
+    ...(KNOWN_ALIASES[tool] ?? []),
+    ...[...known].filter((n) => !n.startsWith("no-")).map((n) => `no-${n}`),
+    ...(production === undefined
+      ? []
+      : [
+          ...production.valueLong,
+          ...(production.flagLong ?? []),
+          ...production.hostLong,
+          ...production.stringLong,
+        ]),
+    ...common,
+  ]);
+  const wanted = [...candidates].filter(
+    (name) => !known.has(name) && ![...known].some((k) => k.startsWith(name)),
+  );
+  const out: RecordedOption[] = [];
+  const results = await Promise.all(
+    wanted.sort().map(async (name) => ({ name, read: await classifyGetoptLong(p, name) })),
+  );
+  for (const { name, read } of results) {
+    if (read.outcome === "unrecognized" || read.outcome === "ambiguous") continue;
+    out.push({
+      name,
+      takesValue: takesOf(read.outcome),
+      ...(read.role === undefined ? {} : { role: read.role }),
+      hidden: true,
+    });
+  }
+  return out;
+}
+
 /** A program that reads its input before it connects cannot be probed for roles: the help's metavariable says what a value is. */
 const metavarRole = (name: string, metavar: string | undefined): Role | undefined =>
   metavar === "HOSTNAME"
@@ -521,11 +605,11 @@ function pool(width: number): <T>(task: () => Promise<T>) => Promise<T> {
   };
 }
 
-/** Record one installed program; undefined when it is not installed (or is not the expected major version). */
-export async function recordTool(tool: string): Promise<ToolFixture | undefined> {
+/** Record one installed program; undefined when it is not installed (or is not the wanted major version: `major`, else the tool's own). */
+export async function recordTool(tool: string, major?: string): Promise<ToolFixture | undefined> {
   const spec = PROBED_TOOLS[tool];
   if (spec === undefined) throw new Error(`no probe spec for ${tool}`);
-  const binary = findBinary(tool);
+  const binary = findBinary(tool, major);
   if (binary === undefined) return undefined;
   const version = versionOf(binary) ?? "unknown";
   const cwd = mkdtempSync(join(tmpdir(), "cw-record-options-"));
@@ -555,7 +639,14 @@ export async function recordTool(tool: string): Promise<ToolFixture | undefined>
         ...(exact ? { exactLong: true as const } : {}),
       };
     }
-    const options = await recordGetoptOptions(p, tool, help);
+    const listed = await recordGetoptOptions(p, tool, help);
+    const hidden = await recordHiddenOptions(
+      p,
+      tool,
+      listed,
+      await commonNames(spec.major, binary, cwd),
+    );
+    const options = [...listed, ...hidden];
     const abbreviations = await recordAbbreviations(p, options);
     return {
       tool,
@@ -569,11 +660,21 @@ export async function recordTool(tool: string): Promise<ToolFixture | undefined>
   }
 }
 
-export const fixtureFile = (tool: string, version: string): string =>
-  join(FIXTURE_DIR, `${tool}.${version.split(".")[0]}.json`);
+/** Where the fixture of a tool at a major lives: 16 and redis' 8 in the fixture directory (wave 11), every other PostgreSQL major in `pg<major>/`. */
+export const fixtureDirectory = (tool: string, major: string): string =>
+  tool.startsWith("redis-") || major === RECORDED_MAJOR
+    ? FIXTURE_DIR
+    : join(FIXTURE_DIR, `pg${major}`);
+
+export const fixtureFile = (tool: string, version: string): string => {
+  const major = version.split(".")[0] as string;
+  return join(fixtureDirectory(tool, major), `${tool}.${major}.json`);
+};
 
 export const readFixture = (tool: string, major: string): ToolFixture =>
-  JSON.parse(readFileSync(join(FIXTURE_DIR, `${tool}.${major}.json`), "utf8")) as ToolFixture;
+  JSON.parse(
+    readFileSync(join(fixtureDirectory(tool, major), `${tool}.${major}.json`), "utf8"),
+  ) as ToolFixture;
 
 /** The comparable part of a recording: the version's minor number is not part of what the tool's parser does. */
 export const comparable = (fixture: ToolFixture): Omit<ToolFixture, "version"> => {
@@ -585,25 +686,31 @@ async function main(): Promise<void> {
   const check = process.argv.includes("--check");
   let failed = false;
   for (const tool of Object.keys(PROBED_TOOLS)) {
-    const fixture = await recordTool(tool);
-    if (fixture === undefined) {
-      console.log(`${tool}: not installed, fixture left as it is`);
-      continue;
-    }
-    const file = fixtureFile(tool, fixture.version);
-    const text = `${JSON.stringify(fixture, null, 2)}\n`;
-    if (check) {
-      const same =
-        existsSync(file) &&
-        JSON.stringify(comparable(JSON.parse(readFileSync(file, "utf8")))) ===
-          JSON.stringify(comparable(fixture));
-      console.log(`${tool}: ${same ? "matches" : "DIFFERS from"} ${file}`);
-      failed ||= !same;
-    } else {
-      writeFileSync(file, text);
-      console.log(
-        `${tool} ${fixture.version}: ${fixture.options.length} options, ${fixture.abbreviations.length} prefixes -> ${file}`,
-      );
+    const majors = tool.startsWith("redis-") ? [undefined] : RECORDED_POSTGRES_MAJORS;
+    for (const major of majors) {
+      const fixture = await recordTool(tool, major);
+      if (fixture === undefined) {
+        console.log(
+          `${tool}${major === undefined ? "" : ` ${major}`}: not installed, fixture left as it is`,
+        );
+        continue;
+      }
+      const file = fixtureFile(tool, fixture.version);
+      const text = `${JSON.stringify(fixture, null, 2)}\n`;
+      if (check) {
+        const same =
+          existsSync(file) &&
+          JSON.stringify(comparable(JSON.parse(readFileSync(file, "utf8")))) ===
+            JSON.stringify(comparable(fixture));
+        console.log(`${tool}: ${same ? "matches" : "DIFFERS from"} ${file}`);
+        failed ||= !same;
+      } else {
+        mkdirSync(dirname(file), { recursive: true });
+        writeFileSync(file, text);
+        console.log(
+          `${tool} ${fixture.version}: ${fixture.options.length} options, ${fixture.abbreviations.length} prefixes -> ${file}`,
+        );
+      }
     }
   }
   if (failed) process.exitCode = 1;

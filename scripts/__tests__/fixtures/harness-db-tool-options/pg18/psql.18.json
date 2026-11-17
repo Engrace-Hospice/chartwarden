@@ -1,0 +1,653 @@
+{
+  "tool": "psql",
+  "version": "18.4",
+  "command": "psql --help; getopt behaviour probes against 127.0.0.1 port 1",
+  "options": [
+    {
+      "name": "command",
+      "short": "c",
+      "takesValue": true
+    },
+    {
+      "name": "dbname",
+      "short": "d",
+      "takesValue": true,
+      "role": "string"
+    },
+    {
+      "name": "file",
+      "short": "f",
+      "takesValue": true
+    },
+    {
+      "name": "list",
+      "short": "l",
+      "takesValue": false
+    },
+    {
+      "name": "set",
+      "short": "v",
+      "takesValue": true
+    },
+    {
+      "name": "variable",
+      "takesValue": true
+    },
+    {
+      "name": "version",
+      "short": "V",
+      "takesValue": false
+    },
+    {
+      "name": "no-psqlrc",
+      "short": "X",
+      "takesValue": false
+    },
+    {
+      "name": "single-transaction",
+      "short": "1",
+      "takesValue": false
+    },
+    {
+      "name": "help",
+      "short": "?",
+      "takesValue": "optional"
+    },
+    {
+      "name": "echo-all",
+      "short": "a",
+      "takesValue": false
+    },
+    {
+      "name": "echo-errors",
+      "short": "b",
+      "takesValue": false
+    },
+    {
+      "name": "echo-queries",
+      "short": "e",
+      "takesValue": false
+    },
+    {
+      "name": "echo-hidden",
+      "short": "E",
+      "takesValue": false
+    },
+    {
+      "name": "log-file",
+      "short": "L",
+      "takesValue": true
+    },
+    {
+      "name": "no-readline",
+      "short": "n",
+      "takesValue": false
+    },
+    {
+      "name": "output",
+      "short": "o",
+      "takesValue": true
+    },
+    {
+      "name": "quiet",
+      "short": "q",
+      "takesValue": false
+    },
+    {
+      "name": "single-step",
+      "short": "s",
+      "takesValue": false
+    },
+    {
+      "name": "single-line",
+      "short": "S",
+      "takesValue": false
+    },
+    {
+      "name": "no-align",
+      "short": "A",
+      "takesValue": false
+    },
+    {
+      "name": "csv",
+      "takesValue": false
+    },
+    {
+      "name": "field-separator",
+      "short": "F",
+      "takesValue": true
+    },
+    {
+      "name": "html",
+      "short": "H",
+      "takesValue": false
+    },
+    {
+      "name": "pset",
+      "short": "P",
+      "takesValue": true
+    },
+    {
+      "name": "record-separator",
+      "short": "R",
+      "takesValue": true
+    },
+    {
+      "name": "tuples-only",
+      "short": "t",
+      "takesValue": false
+    },
+    {
+      "name": "table-attr",
+      "short": "T",
+      "takesValue": true
+    },
+    {
+      "name": "expanded",
+      "short": "x",
+      "takesValue": false
+    },
+    {
+      "name": "field-separator-zero",
+      "short": "z",
+      "takesValue": false
+    },
+    {
+      "name": "record-separator-zero",
+      "short": "0",
+      "takesValue": false
+    },
+    {
+      "name": "host",
+      "short": "h",
+      "takesValue": true,
+      "role": "host"
+    },
+    {
+      "name": "port",
+      "short": "p",
+      "takesValue": true
+    },
+    {
+      "name": "username",
+      "short": "U",
+      "takesValue": true
+    },
+    {
+      "name": "no-password",
+      "short": "w",
+      "takesValue": false
+    },
+    {
+      "name": "password",
+      "short": "W",
+      "takesValue": false
+    }
+  ],
+  "abbreviations": [
+    {
+      "prefix": "c",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "co",
+      "outcome": "value"
+    },
+    {
+      "prefix": "com",
+      "outcome": "value"
+    },
+    {
+      "prefix": "cs",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "d",
+      "outcome": "string"
+    },
+    {
+      "prefix": "db",
+      "outcome": "string"
+    },
+    {
+      "prefix": "e",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ec",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ech",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "echo",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "echo-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "echo-a",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "echo-al",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "echo-e",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "echo-er",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "echo-h",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "echo-hi",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "echo-q",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "echo-qu",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ex",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "exp",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "f",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "fi",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "fie",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "fiel",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "field",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "field-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "field-s",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "field-se",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "field-sep",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "field-sepa",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "field-separ",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "field-separa",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "field-separat",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "field-separato",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "field-separator-",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "field-separator-z",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "fil",
+      "outcome": "value"
+    },
+    {
+      "prefix": "h",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "he",
+      "outcome": "optional"
+    },
+    {
+      "prefix": "hel",
+      "outcome": "optional"
+    },
+    {
+      "prefix": "ho",
+      "outcome": "host"
+    },
+    {
+      "prefix": "hos",
+      "outcome": "host"
+    },
+    {
+      "prefix": "ht",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "htm",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "l",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "li",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "lis",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "lo",
+      "outcome": "value"
+    },
+    {
+      "prefix": "log",
+      "outcome": "value"
+    },
+    {
+      "prefix": "n",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-a",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-al",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-p",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-pa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-pas",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-ps",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-psq",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-r",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-re",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "o",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ou",
+      "outcome": "value"
+    },
+    {
+      "prefix": "p",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "pa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "pas",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "po",
+      "outcome": "value"
+    },
+    {
+      "prefix": "por",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ps",
+      "outcome": "value"
+    },
+    {
+      "prefix": "pse",
+      "outcome": "value"
+    },
+    {
+      "prefix": "q",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "qu",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "r",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "re",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "rec",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "reco",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "recor",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "record",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "record-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "record-s",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "record-se",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "record-sep",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "record-sepa",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "record-separ",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "record-separa",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "record-separat",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "record-separato",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "record-separator-",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "record-separator-z",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "s",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "se",
+      "outcome": "value"
+    },
+    {
+      "prefix": "si",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "sin",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "sing",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "singl",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "single",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "single-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "single-l",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "single-li",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "single-s",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "single-st",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "single-t",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "single-tr",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "t",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ta",
+      "outcome": "value"
+    },
+    {
+      "prefix": "tab",
+      "outcome": "value"
+    },
+    {
+      "prefix": "tu",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "tup",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "u",
+      "outcome": "value"
+    },
+    {
+      "prefix": "us",
+      "outcome": "value"
+    },
+    {
+      "prefix": "v",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "va",
+      "outcome": "value"
+    },
+    {
+      "prefix": "var",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ve",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ver",
+      "outcome": "flag"
+    }
+  ]
+}

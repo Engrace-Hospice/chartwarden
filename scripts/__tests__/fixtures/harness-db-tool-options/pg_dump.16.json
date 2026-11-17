@@ -288,9 +288,27 @@
     {
       "name": "role",
       "takesValue": true
+    },
+    {
+      "name": "attribute-inserts",
+      "takesValue": false,
+      "hidden": true
+    },
+    {
+      "name": "no-acl",
+      "takesValue": false,
+      "hidden": true
     }
   ],
   "abbreviations": [
+    {
+      "prefix": "a",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "at",
+      "outcome": "flag"
+    },
     {
       "prefix": "b",
       "outcome": "ambiguous"
@@ -666,6 +684,14 @@
     {
       "prefix": "no-",
       "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-a",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-ac",
+      "outcome": "flag"
     },
     {
       "prefix": "no-b",

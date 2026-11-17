@@ -21,21 +21,33 @@ export interface StatementPart {
 }
 
 const SETTERS = /^(?:export|declare|typeset|readonly|local)$/;
-/** At most this many `NAME=value` words are kept for one text: a longer list is judged by its first words. */
+/** At most this many `NAME=value` words are read for one text; a longer list is NOT judged by its first words: it carries the cap marker. */
 const MAX_STATEMENT_WORDS = 256;
+/**
+ * The name of the word `variableStatementWords` appends when a text holds more statement words than the cap reads (wave 12, F-1; R9-ADV-4).
+ * Words past the cap were dropped without a trace, so 256 junk `pN=1` before `export PGHOST=<remote>` hid the export from every rule that
+ * reads the tracker. A cap must end in an ask: `secretFlowReason` asks for a text whose words carry this marker, and the words travel
+ * outward to the nested texts and the sourced texts like any other statement.
+ */
+export const STATEMENT_CAP_MARKER = "CW_STATEMENT_WORDS_OVER_CAP";
 
-/** The `NAME=value` words a command text's variable statements assign, every one of them, a rebound name included. */
+/** The `NAME=value` words a command text's variable statements assign, every one of them, a rebound name included; the cap marker past the cap. */
 export function variableStatementWords(parts: readonly StatementPart[]): string[] {
   const words: string[] = [];
+  let overCap = false;
   for (const part of parts) {
     if (SETTERS.test(part.prog)) words.push(...part.assigns, ...part.args);
     else if (part.prog === "") words.push(...part.assigns);
     else words.push(...part.args.filter(hasParameterAssignment));
-    if (words.length >= MAX_STATEMENT_WORDS) break;
+    if (words.length > MAX_STATEMENT_WORDS) {
+      overCap = true;
+      break;
+    }
   }
-  return assignments(words.slice(0, MAX_STATEMENT_WORDS)).map(
+  const read = assignments(words.slice(0, MAX_STATEMENT_WORDS)).map(
     ({ name, value }) => `${name}=${value}`,
   );
+  return overCap ? [...read, `${STATEMENT_CAP_MARKER}=1`] : read;
 }
 
 /** Every value the `NAME=value` words give each name, in order. */
@@ -53,7 +65,7 @@ export function valuesByName(words: readonly string[]): ReadonlyMap<string, read
 const VARIABLE_REFERENCE = /\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g;
 /** A word the shell would still expand at run time. */
 export const HAS_EXPANSION = /[$`]/;
-/** At most this many readings of one word (each variable's values multiply): more is read as unplaceable. */
+/** At most this many readings of one word (each variable's values multiply): more is read as unplaceable (the word stays one reading). */
 const MAX_READINGS = 8;
 
 export interface Expanded {
@@ -87,11 +99,41 @@ export function expandVariables(
       );
       return placeable ? replaced : [...replaced, text];
     });
+    // Past the cap the readings are NOT judged by their first few: the word itself, still holding its references, joins them as one
+    // reading nobody can place (wave 12, F-1: `x=1; … x=8; x=$KEK; echo $x` read only the eight literals and allowed).
     if (texts.length > MAX_READINGS)
-      return { texts: texts.slice(0, MAX_READINGS), unplaceable: true };
+      return { texts: [...texts.slice(0, MAX_READINGS - 1), word], unplaceable: true };
   }
   return { texts, unplaceable: texts.some((text) => HAS_EXPANSION.test(text)) };
 }
+
+/**
+ * A fill-in the shell rewrites or supplies and the variable tracker cannot place (wave 12, F-3; R9-ADV-11): a parameter expansion that
+ * TRANSFORMS its value (`${P/x/1@host}`, `${P//x/y}`, `${P/#x/y}`, `${P#x}`, `${P%x}`, `${P^^}`, `${P,,}`, `${P:1:2}`, `${P@Q}`, `${#P}`,
+ * `${!X}`, `${1}`), a default whose text carries structure (`${Q:-host=H}`, `${P:-1@H}`: the shell puts that text in the word when the
+ * variable is unset), a positional parameter (`$1`, `$@`, `$*`: a function builds the URI from its arguments and the caller supplies
+ * `1@host`), or a brace expansion the lexer left whole (`?{host=H,a=b}`, `{a,host=H}`, `{1..3}`). Inside a URI, a connection string or a
+ * database name any of them can supply `@host`, `?host=H` or `host=H`. A plain default (`${PGUSER:-postgres}`, `${SSL:-disable}`, the
+ * corpus measure of wave 12 found 25 real commands asking when every default asked) is read like a bare `$NAME`: its text is a literal
+ * word with none of `= & ? @ / ,` or a blank in it.
+ */
+const REWRITING_FILL_IN = new RegExp(
+  [
+    String.raw`\$\{[A-Za-z_]\w*(?:[/#%^,@]|:\s*[0-9(]|:\s+-)`,
+    String.raw`\$\{[A-Za-z_]\w*:?[-=+?][^}]*[=&?@/,\s]`,
+    String.raw`\$\{[^A-Za-z_0-9@*}]`,
+    String.raw`\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}`,
+  ].join("|"),
+);
+/**
+ * A positional parameter (`$1`, `$@`, `${1}`) is a fill-in anywhere but in the PATH of a URI: there it is the database name a shell function
+ * is handed (`run() { psql "<uri>/$1" -c "$2"; }`), the same position a bare variable bound to something unplaceable is not asked about
+ * (`holdsUnplacedFill`); the corpus measure of wave 12 found 24 of 25 real asks in that position. The port, the userinfo, the query and a
+ * connection string keep the ask (`localhost:$1/db` supplies `1@host`).
+ */
+const POSITIONAL_FILL_IN = /\$[0-9@*]|\$\{[0-9@*]/;
+export const holdsRewritingFillIn = (text: string): boolean =>
+  REWRITING_FILL_IN.test(text) || POSITIONAL_FILL_IN.test(withoutUriPath(text));
 
 /** A `$( … )` or backtick substitution without a nested one. */
 const SUBSTITUTION = /\$\([^()]*\)|`[^`]*`/g;
@@ -116,6 +158,7 @@ export function holdsUnplacedFill(
   text: string,
   values: ReadonlyMap<string, readonly string[]>,
 ): boolean {
+  if (holdsRewritingFillIn(text)) return true;
   if (!HAS_EXPANSION.test(text)) return false;
   if (HAS_SUBSTITUTION.test(text)) return true;
   return [...withoutUriPath(text).matchAll(VARIABLE_REFERENCE)].some((m) =>

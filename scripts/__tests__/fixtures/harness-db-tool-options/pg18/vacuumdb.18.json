@@ -1,0 +1,527 @@
+{
+  "tool": "vacuumdb",
+  "version": "18.4",
+  "command": "vacuumdb --help; getopt behaviour probes against 127.0.0.1 port 1",
+  "options": [
+    {
+      "name": "all",
+      "short": "a",
+      "takesValue": false
+    },
+    {
+      "name": "buffer-usage-limit",
+      "takesValue": true
+    },
+    {
+      "name": "dbname",
+      "short": "d",
+      "takesValue": true,
+      "role": "string"
+    },
+    {
+      "name": "disable-page-skipping",
+      "takesValue": false
+    },
+    {
+      "name": "echo",
+      "short": "e",
+      "takesValue": false
+    },
+    {
+      "name": "full",
+      "short": "f",
+      "takesValue": false
+    },
+    {
+      "name": "freeze",
+      "short": "F",
+      "takesValue": false
+    },
+    {
+      "name": "force-index-cleanup",
+      "takesValue": false
+    },
+    {
+      "name": "jobs",
+      "short": "j",
+      "takesValue": true
+    },
+    {
+      "name": "min-mxid-age",
+      "takesValue": true
+    },
+    {
+      "name": "min-xid-age",
+      "takesValue": true
+    },
+    {
+      "name": "missing-stats-only",
+      "takesValue": false
+    },
+    {
+      "name": "no-index-cleanup",
+      "takesValue": false
+    },
+    {
+      "name": "no-process-main",
+      "takesValue": false
+    },
+    {
+      "name": "no-process-toast",
+      "takesValue": false
+    },
+    {
+      "name": "no-truncate",
+      "takesValue": false
+    },
+    {
+      "name": "schema",
+      "short": "n",
+      "takesValue": true
+    },
+    {
+      "name": "exclude-schema",
+      "short": "N",
+      "takesValue": true
+    },
+    {
+      "name": "parallel",
+      "short": "P",
+      "takesValue": true
+    },
+    {
+      "name": "quiet",
+      "short": "q",
+      "takesValue": false
+    },
+    {
+      "name": "skip-locked",
+      "takesValue": false
+    },
+    {
+      "name": "table",
+      "short": "t",
+      "takesValue": true
+    },
+    {
+      "name": "verbose",
+      "short": "v",
+      "takesValue": false
+    },
+    {
+      "name": "version",
+      "short": "V",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "analyze",
+      "short": "z",
+      "takesValue": false
+    },
+    {
+      "name": "analyze-only",
+      "short": "Z",
+      "takesValue": false
+    },
+    {
+      "name": "analyze-in-stages",
+      "takesValue": false
+    },
+    {
+      "name": "help",
+      "short": "?",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "host",
+      "short": "h",
+      "takesValue": true,
+      "role": "host"
+    },
+    {
+      "name": "port",
+      "short": "p",
+      "takesValue": true
+    },
+    {
+      "name": "username",
+      "short": "U",
+      "takesValue": true
+    },
+    {
+      "name": "no-password",
+      "short": "w",
+      "takesValue": false
+    },
+    {
+      "name": "password",
+      "short": "W",
+      "takesValue": false
+    },
+    {
+      "name": "maintenance-db",
+      "takesValue": true,
+      "role": "string"
+    }
+  ],
+  "abbreviations": [
+    {
+      "prefix": "a",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "al",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "an",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ana",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "anal",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "analy",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "analyz",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "analyze-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "analyze-i",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "analyze-in",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "analyze-o",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "analyze-on",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "b",
+      "outcome": "value"
+    },
+    {
+      "prefix": "bu",
+      "outcome": "value"
+    },
+    {
+      "prefix": "d",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "db",
+      "outcome": "string"
+    },
+    {
+      "prefix": "dbn",
+      "outcome": "string"
+    },
+    {
+      "prefix": "di",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "dis",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "e",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ec",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ech",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ex",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exc",
+      "outcome": "value"
+    },
+    {
+      "prefix": "f",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "fo",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "for",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "fr",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "fre",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "fu",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ful",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "h",
+      "outcome": "host"
+    },
+    {
+      "prefix": "ho",
+      "outcome": "host"
+    },
+    {
+      "prefix": "j",
+      "outcome": "value"
+    },
+    {
+      "prefix": "jo",
+      "outcome": "value"
+    },
+    {
+      "prefix": "m",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ma",
+      "outcome": "string"
+    },
+    {
+      "prefix": "mai",
+      "outcome": "string"
+    },
+    {
+      "prefix": "mi",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "min",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "min-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "min-m",
+      "outcome": "value"
+    },
+    {
+      "prefix": "min-mx",
+      "outcome": "value"
+    },
+    {
+      "prefix": "min-x",
+      "outcome": "value"
+    },
+    {
+      "prefix": "min-xi",
+      "outcome": "value"
+    },
+    {
+      "prefix": "mis",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "miss",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "n",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-i",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-in",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-p",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-pa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-pas",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-pr",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-pro",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-proc",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-proce",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-proces",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-process",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-process-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-process-m",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-process-ma",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-process-t",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-process-to",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-t",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-tr",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "p",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "pa",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "par",
+      "outcome": "value"
+    },
+    {
+      "prefix": "para",
+      "outcome": "value"
+    },
+    {
+      "prefix": "pas",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "pass",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "po",
+      "outcome": "value"
+    },
+    {
+      "prefix": "por",
+      "outcome": "value"
+    },
+    {
+      "prefix": "q",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "qu",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "s",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "sc",
+      "outcome": "value"
+    },
+    {
+      "prefix": "sch",
+      "outcome": "value"
+    },
+    {
+      "prefix": "sk",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ski",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "t",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ta",
+      "outcome": "value"
+    },
+    {
+      "prefix": "u",
+      "outcome": "value"
+    },
+    {
+      "prefix": "us",
+      "outcome": "value"
+    },
+    {
+      "prefix": "v",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ve",
+      "outcome": "flag"
+    }
+  ]
+}
