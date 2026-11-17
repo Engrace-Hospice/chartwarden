@@ -79,8 +79,7 @@ function indirectNames(
 ): string[] | null {
   const name = m[1] ?? "";
   const known = values.get(name) ?? [];
-  if (!IDENTIFIER.test(name) || known.length === 0 || known.some((v) => /[$`]/.test(v)))
-    return null;
+  if (!IDENTIFIER.test(name) || known.length === 0) return null;
   const elements = known.flatMap((value) => {
     const array = /^\(([^()]*)\)$/.exec(value);
     return m[2] !== undefined && array ? (array[1] ?? "").split(/\s+/) : [value];

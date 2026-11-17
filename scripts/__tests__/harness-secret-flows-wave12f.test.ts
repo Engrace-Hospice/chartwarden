@@ -36,6 +36,10 @@ const READ_AND_MAPFILE: readonly string[] = [
   'mapfile -t a <<< "${K}"; echo ${a[0]}',
   'readarray a <<< "${D}"; echo "${a[@]}"',
   "printf -v y '%s' \"${K}\"; echo $y",
+  "printf -v y '%s' \"${K}\" > /dev/null; echo $y",
+  'printf -v y "%s" "${D}" >/dev/null 2>&1; echo "$y"',
+  'x=${K}; printf -v y "%s" "$x" > /dev/null; echo $y',
+  'x=${D}; printf -v y[0] "%s" "$x" >/dev/null; echo $y',
   "read x <<EOF\n${K}\nEOF\necho $x",
   'read -a arr <<< "${K}"; echo "${arr[0]}"',
 ];
@@ -51,6 +55,9 @@ const INDIRECTIONS: readonly string[] = [
   'ref={K}; echo "${!ref}"',
   'echo "${!UNSET_NAME}"',
   'echo "${!a[i]}"',
+  // a name rebound to something the guard cannot place is not read as its first literal
+  'K=HOME; read K <<< "$X"; echo "${!K}"',
+  'K=HOME; for K in $LIST; do echo "${!K}"; done',
 ];
 
 const NAMEREFS: readonly string[] = [
@@ -105,6 +112,8 @@ const INTERPRETER_ALIASES: readonly string[] = [
   "node -e 'const e = process.env; console.log(e.{D})'",
   "node -e 'const e = process.env; console.log(e[\"{D}\"])'",
   "bun -e 'console.log(import.meta.env)'",
+  "bun -e 'console.log(JSON.stringify(import.meta.env))'",
+  "bun -e 'console.log(import.meta.env.{D})'",
   "bun -e 'const e = import.meta.env; console.log(e)'",
   "bun -e 'const e = Bun.env; console.log(e)'",
   "node -e 'e = process.env; console.log(e)'",
@@ -179,6 +188,8 @@ describe("F-2: everyday neighbours stay allow", () => {
     'read x <<< "hello"; echo $x',
     'mapfile -t a <<< "x"; echo ${a[0]}',
     'a=(FOO); echo "${!a[0]}"',
+    'a=("FOO"); echo "${!a[0]}"',
+    'a=(HOME); echo "${!a[2]}"',
     "declare -n r=FOO; echo $r",
     "echo hi > /dev/stdout",
     "echo hi > /dev/null",
