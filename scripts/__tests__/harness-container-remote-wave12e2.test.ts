@@ -136,7 +136,12 @@ describe("E2-4: an engine variable is read whatever comes before it, and into ne
     });
   }
   it("a harmless variable among the padding is not an engine variable", () => {
-    expect(decide(`${pad(300)} export DOCKER_BUILDKIT=1; docker build .`)).toBe("allow");
+    expect(decide(`${pad(100)} export DOCKER_BUILDKIT=1; docker build .`)).toBe("allow");
+  });
+  // Part F's tracker cap (R9-ADV-4): past 256 variable statement words the guard cannot read the variables, so it asks. The engine
+  // variable rule above does not depend on the tracker; this ask is the cap's, whatever the variable is.
+  it("a text past the variable tracker's cap asks even for a harmless variable", () => {
+    expect(decide(`${pad(300)} export DOCKER_BUILDKIT=1; docker build .`)).toBe("ask");
   });
 });
 
