@@ -1666,6 +1666,9 @@ part report; they are not repeated here (the corpus, the commands recorded in th
 - **Residuals.** GNU env, Linux and a bash newer than 3.2 were not verified (nothing is installed here). fish, pwsh, powershell and ash are not recorded; mksh, rbash, ksh93 (by name), rzsh, yash and nu are not
   read as shell names (`COMMAND_SHELLS` lists bash, sh, zsh, dash, ksh, fish, csh, tcsh, ash, pwsh and powershell). `su` and `sudo` are read from their manuals. A string held in a variable the command cannot
   place asks (never guessed). `taskpolicy -b` printed nothing under the probe (the other taskpolicy options did run `echo`).
+- *Structure.* `shellQuote` and `joinedAndQuoted` moved out of `wrappers.ts` into `shell-quote.ts` so the shell reader can use them without an import cycle (`wrappers.ts` re-exports both); the `env -S`
+  expansion is `split-string-expand.ts` and the per-shell tables are `shell-grammars.ts`. `peelWrapper` came under 50 lines. The recorders `helpers/record-shell-options.ts` and `helpers/shell-probes.ts`, the
+  fixture directory `fixtures/harness-shell-options/` and the new `npm.11.11.0.json` (the 68 `npm` command names) are evidence files the register does not name yet.
 
 ## Wave 12 part E2
 
@@ -1720,8 +1723,8 @@ and R9-COMP-3.
   A transforming filter (`sed s/a/b/`, `tr`) is read as if it passed its input through unchanged: a text built by the filter is judged as typed. `ssh -F config` may hold a ProxyJump or HostName of its own
   (the secret-file rule judges the path, the config's content is not read). `gcloud`, `heroku` and the other CLIs have more subcommands that reach production than the lists name: "other spellings pass".
   The `heroku`, `railway`, `render`, `az`, `doctl`, `aws`, `supabase`, `fly`, `mosh` and `et` entries are from documentation. Linux and GNU userland are not exercised. `ssh -G` was the proof for
-  OpenSSH_10.6p1 only: an older OpenSSH that parses a cluster or an option after the host differently is not covered. New evidence files: the modules `stdin-texts.ts`, `ssh-hops.ts` and
-  `cloud-cli-sessions.ts` and the tests `harness-stdin-wave12e2`, `harness-container-remote-wave12e2`, `harness-ssh-hops-wave12e2`, `harness-cloud-sessions-wave12e2` and `harness-heavy-wave12e2`.
+  OpenSSH_10.6p1 only: an older OpenSSH that parses a cluster or an option after the host differently is not covered. Evidence files the register does not name: the new modules `ssh-hops.ts` and
+  `cloud-cli-sessions.ts`, the rewritten `stdin-texts.ts` and the new tests `harness-stdin-wave12e2`, `harness-container-remote-wave12e2`, `harness-ssh-hops-wave12e2`, `harness-cloud-sessions-wave12e2` and `harness-heavy-wave12e2`.
 
 ## Wave 12 part F
 
@@ -1906,7 +1909,7 @@ or a 3 s per-probe timeout for `dropdb` and `dropuser`, would remove most of it;
 - Two denies the guard made itself had no ledger line either (an unparseable input; an internal error); both are logged now.
 - A backgrounded mutation run with the ledger child's timeout removed leaves hung `bun` children behind when its test times out; the mutant, not the production code, does that (the production child is
   killed at its bound).
-- New evidence files for the register (`arch:compliance` resolves each): `scripts/harness/emergency-ledger.ts`, `scripts/__tests__/harness-timing-wave12.test.ts`,
+- Evidence files the register does not name (`arch:compliance` resolves each file the register does name): `scripts/harness/emergency-ledger.ts`, `scripts/__tests__/harness-timing-wave12.test.ts`,
   `scripts/__tests__/harness-test-env-wave12.test.ts`, `scripts/__tests__/helpers/work-counters.ts`, `scripts/__tests__/helpers/scrubbed-env.ts` and `scripts/__tests__/harness-ledger-asks.test.ts`.
 
 ## Wave 12 follow-up (open items)
