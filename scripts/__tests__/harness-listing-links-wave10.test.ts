@@ -139,7 +139,7 @@ describe("a link to a file is judged by its own name and by its target's", () =>
       (root) => {
         const listing = listLiveSuiteFiles(root);
         expect(listing.complete).toBe(true);
-        expect(listing.files.sort()).toEqual([
+        expect([...listing.files].sort()).toEqual([
           "apps/b/alias.test.ts",
           "apps/b/alias.txt",
           "apps/b/real.live.test.ts",
@@ -177,7 +177,7 @@ describe("the env listing judges a link to a file the same way", () => {
       (root) => {
         const listing = listLiveEnvFiles(root);
         expect(listing.complete).toBe(true);
-        expect(listing.files.sort()).toEqual([`apps/web/${ENV}`, "apps/web/notes.txt"]);
+        expect([...listing.files].sort()).toEqual([`apps/web/${ENV}`, "apps/web/notes.txt"]);
       },
     );
     withTree(
