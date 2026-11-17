@@ -8,6 +8,7 @@
  * a non-local ssh. A text heuristic: a spelling this table does not know passes. Pure.
  */
 
+import { cloudCliReason } from "./cloud-cli-sessions";
 import { remoteHopReason } from "./ssh-hops";
 
 /** The value options that stand before a subcommand and must not be read as one (`kubectl -n prod exec …`). */
@@ -27,6 +28,10 @@ const VALUE_OPTION: ReadonlyMap<string, RegExp> = new Map([
   ["fly", /^(?:-a|--app|-c|--config|-o|--org|-r|--region|-t|--access-token)$/],
   ["flyctl", /^(?:-a|--app|-c|--config|-o|--org|-r|--region|-t|--access-token)$/],
   ["heroku", /^(?:-a|--app|-r|--remote)$/],
+  ["az", /^(?:--subscription|-o|--output|--query)$/],
+  ["doctl", /^(?:-t|--access-token|--context|-o|--output|--format|-c|--config)$/],
+  ["railway", /^(?:-s|--service|-e|--environment|-p|--project)$/],
+  ["render", /^(?:-o|--output|--config|--profile)$/],
   ["supabase", /^(?:--workdir|--experimental|-o|--output|--db-url|--project-ref)$/],
   ["cloudflared", /^(?:--config|--origincert|--loglevel|--logfile)$/],
 ]);
@@ -47,7 +52,10 @@ function positionals(prog: string, args: readonly string[]): string[] {
 const reason = (what: string): string =>
   `${what} opens a shell, a tunnel or a database session on another machine, which is the access a non-local ssh is. Agents do not reach production from a session; a human decides.`;
 
-const KUBECTL_REMOTE = new Set(["exec", "port-forward", "cp", "debug", "attach", "run"]);
+const KUBECTL_REMOTE = new Set(["exec", "port-forward", "cp", "debug", "attach", "run", "proxy"]);
+const isRawOption = (a: string): boolean => a === "--raw" || a.startsWith("--raw=");
+/** A raw API path that names secrets (`/api/v1/namespaces/x/secrets`, `…/secrets/name`). */
+const RAW_SECRET_PATH = /\/secrets?(?:\/|$|\?)/;
 /** `kubectl get secret`, `secrets`, `secret/NAME`, `pods,secrets`: the values of a cluster's secrets are printed (base64). */
 const SECRET_RESOURCE = /(?:^|,)secrets?(?:\/|,|$)/;
 const DOCKER_ENGINES = new Set(["docker", "podman", "nerdctl", "docker-compose", "podman-compose"]);
@@ -184,6 +192,11 @@ function kubectlReason(words: readonly string[], args: readonly string[]): strin
   if (first === "config" && second === "view" && args.includes("--raw")) {
     return secretsReason("`kubectl config view --raw`");
   }
+  // `kubectl create token` mints a service-account token; `kubectl get --raw /api/v1/namespaces/x/secrets` reads the API path directly (kubectl --help, v1.36.1).
+  if (first === "create" && second === "token") return secretsReason("`kubectl create token`");
+  if (first === "get" && args.some((a) => RAW_SECRET_PATH.test(a)) && args.some(isRawOption)) {
+    return secretsReason("`kubectl get --raw` of a secrets path");
+  }
   return first !== undefined && KUBECTL_REMOTE.has(first) ? reason(`\`kubectl ${first}\``) : null;
 }
 
@@ -206,31 +219,12 @@ export function remoteAccessReason(
   const [first, second] = words;
   const session = SESSION_TOOLS.get(prog);
   if (session?.(first, second) === true) return reason(`\`${prog} ${first}\``);
+  // The named subcommands of the hosted-service CLIs (`cloud-cli-sessions.ts`).
+  const cloud = cloudCliReason(prog, words, args);
+  if (cloud !== null) return reason(cloud);
   switch (prog) {
     case "kubectl":
       return kubectlReason(words, args);
-    case "gcloud":
-      return (first === "sql" && second === "connect") ||
-        (first === "compute" && (second === "ssh" || second === "scp"))
-        ? reason(`\`gcloud ${first} ${second}\``)
-        : null;
-    case "aws":
-      return first === "rds" ||
-        (first === "ssm" && second === "start-session") ||
-        (first === "ecs" && second === "execute-command")
-        ? reason(`\`aws ${first}${second === undefined ? "" : ` ${second}`}\``)
-        : null;
-    case "fly":
-    case "flyctl":
-      return first === "ssh" ||
-        first === "proxy" ||
-        ((first === "postgres" || first === "pg") && (second === "connect" || second === "proxy"))
-        ? reason(`\`${prog} ${first}\``)
-        : null;
-    case "heroku":
-      return words.some((w) => w === "pg:psql" || w === "pg:pull" || w === "pg:push")
-        ? reason("`heroku pg:psql`")
-        : null;
     case "supabase":
       return first === "db" && args.some((a) => /^--(?:db-url|linked)(?:=|$)/.test(a))
         ? reason("`supabase db` against a remote database")
