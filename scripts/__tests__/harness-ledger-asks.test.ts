@@ -11,7 +11,7 @@
  * process AFTER the deny is out and under a hard timeout. The second half of this file pins every path in both agents,
  * and that the deny is the same, and as fast, when the ledger is unwritable, locked or hangs.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -264,15 +264,27 @@ describe("every emergency deny leaves exactly one ledger line", () => {
     expect(ledgerOf(dir)).toEqual([]);
   });
 
-  it("the ledger off writes nothing, not even a directory", () => {
-    const dir = guardCopy();
-    const r = runClaude(dir, bashPayload(COMMAND), {
-      CW_AGENT_LEDGER: "off",
-      CW_HARNESS_TEST_FAULT: "throw",
-    });
-    expect(r.status).toBe(2);
-    expect(existsSync(join(dir, ".claude/audit"))).toBe(false);
-  });
+  // Off means off: no line, no directory, and no child process either (one that would hang is not waited for).
+  it.each(PATHS.map(([fault]) => fault))(
+    "the ledger off writes nothing and starts no ledger child (%s)",
+    async (fault) => {
+      const dir = guardCopy();
+      const r = await runRaw(
+        CLAUDE_HOOK,
+        dir,
+        {
+          CW_AGENT_LEDGER: "off",
+          CW_HARNESS_TEST_FAULT: fault,
+          CW_HARNESS_TEST_LEDGER_FAULT: "hang",
+          ...SHORT_DEADLINE,
+        },
+        payloadFor(CLAUDE_HOOK, dir),
+      );
+      expect(r.status).toBe(2);
+      expect(existsSync(join(dir, ".claude/audit"))).toBe(false);
+      expect(r.ms - r.firstOutputMs).toBeLessThan(LEDGER_TIMEOUT_MS * 0.6);
+    },
+  );
 });
 
 describe("the deny is the same when the ledger cannot be written", () => {
@@ -331,39 +343,60 @@ describe("the deny is the same when the ledger cannot be written", () => {
     expect(ledgerOf(dir)).toEqual([]);
   });
 
-  it("a ledger child that hangs is killed at its bound: the same deny, no line, never a hung guard", async () => {
-    const dir = guardCopy();
-    const r = await runRaw(
-      CLAUDE_HOOK,
-      dir,
-      {
-        ...LEDGER_ON,
-        CW_HARNESS_TEST_FAULT: "hang",
-        CW_HARNESS_TEST_LEDGER_FAULT: "hang",
-        ...SHORT_DEADLINE,
-      },
-      input,
-    );
-    expect(answer(r)).toEqual(await reference("hang"));
-    expect(r.ms).toBeGreaterThanOrEqual(300 + LEDGER_TIMEOUT_MS); // it waited for the child, and no longer
-    expect(r.ms).toBeLessThan(BOUND_MS);
-    expect(ledgerOf(dir)).toEqual([]);
-  });
+  it.each(["hang", "malformed"])(
+    "a ledger child that hangs is killed at its bound (%s): the same deny, no line, never a hung guard",
+    async (fault) => {
+      const dir = guardCopy();
+      const r = await runRaw(
+        CLAUDE_HOOK,
+        dir,
+        {
+          ...LEDGER_ON,
+          CW_HARNESS_TEST_FAULT: fault,
+          CW_HARNESS_TEST_LEDGER_FAULT: "hang",
+          ...SHORT_DEADLINE,
+        },
+        input,
+      );
+      expect(answer(r)).toEqual(await reference(fault));
+      expect(r.ms).toBeGreaterThanOrEqual(LEDGER_TIMEOUT_MS); // it waited for the child, and no longer
+      expect(r.ms).toBeLessThan(BOUND_MS);
+      expect(ledgerOf(dir)).toEqual([]);
+    },
+  );
 
-  it("the deny is on stdout before the ledger child starts: a hung child delays the exit, not the answer", async () => {
-    const r = await runRaw(
-      CLAUDE_HOOK,
-      guardCopy(),
-      {
-        ...LEDGER_ON,
-        CW_HARNESS_TEST_FAULT: "hang",
-        CW_HARNESS_TEST_LEDGER_FAULT: "hang",
-        ...SHORT_DEADLINE,
-      },
-      input,
-    );
+  it.each(["hang", "throw", "malformed"])(
+    "the deny is on stdout before the ledger child starts (%s): a hung child delays the exit, not the answer",
+    async (fault) => {
+      const r = await runRaw(
+        CLAUDE_HOOK,
+        guardCopy(),
+        {
+          ...LEDGER_ON,
+          CW_HARNESS_TEST_FAULT: fault,
+          CW_HARNESS_TEST_LEDGER_FAULT: "hang",
+          ...SHORT_DEADLINE,
+        },
+        input,
+      );
+      expect(r.status).toBe(2);
+      // The child hangs for LEDGER_TIMEOUT_MS after the deny: had the ledger gone first, the deny would arrive with it.
+      expect(r.ms - r.firstOutputMs).toBeGreaterThan(LEDGER_TIMEOUT_MS * 0.6);
+    },
+  );
+
+  // `finish` in a fresh process, like harness-finish-answers.test.ts: a ledger child that cannot even be started (here
+  // `spawnSync` rejects the input it is given) is a lost line: the deny and exit 2 stand.
+  it("a ledger child that cannot be started changes nothing about the deny", () => {
+    const module = join(__dirname, "../harness/hard-deadline.ts");
+    const program = `import { finish } from ${JSON.stringify(module)}; finish(null as never, { cause: "test", raw: 5 as never, codex: false });`;
+    const r = spawnSync("bun", ["--no-install", "-e", program], {
+      encoding: "utf8",
+      timeout: 20_000,
+      env: { ...process.env, ...LEDGER_ON },
+    });
     expect(r.status).toBe(2);
-    // The child hangs for LEDGER_TIMEOUT_MS after the deny: had the ledger gone first, the deny would arrive with it.
-    expect(r.ms - r.firstOutputMs).toBeGreaterThan(LEDGER_TIMEOUT_MS * 0.6);
+    const out = JSON.parse(r.stdout) as { hookSpecificOutput: Record<string, string> };
+    expect(out.hookSpecificOutput.permissionDecision).toBe("deny");
   });
 });
