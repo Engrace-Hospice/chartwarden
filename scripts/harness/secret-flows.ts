@@ -15,7 +15,7 @@
  *   3. `declare|typeset|export|readonly -p NAME` of such a name asks (a bare `-p` already denies in `env-dump.ts`).
  * A name is guarded or secret by `isSecretVariable` / `isGuardedVariable` (`secret-reads.ts`); no list is kept here.
  */
-import { expandVariables, valuesByName } from "./db-variables";
+import { STATEMENT_CAP_MARKER, expandVariables, valuesByName } from "./db-variables";
 import { inlineScriptText } from "./inline-code";
 import { isGuardedVariable, isSecretVariable } from "./secret-reads";
 
@@ -39,6 +39,10 @@ const GUARDED_REASON_FLOW =
   'This prints a key-encryption key, an administrative database URL or another of the repo\'s guarded variables (it reaches the output through a copy, a here-string, an indirect expansion or a declaration). Check presence with `[ -n "$VAR" ] && echo set` instead; a human approves a deliberate seed.';
 
 export const SECRET_FLOW_REASON = GUARDED_REASON_FLOW;
+
+/** The text holds more variable statements than the tracker reads (`db-variables.ts`): what a later word names is unknown. */
+const STATEMENT_CAP_REASON =
+  "This text assigns more variables than the guard tracks (a long list can hide `export PGHOST=<remote>` or a copy of a guarded variable among the padding), so what a later database client or print reads is unknown. Split it into smaller commands; a human decides.";
 
 const isGuardedName = (name: string): boolean => isGuardedVariable(name) || isSecretVariable(name);
 
@@ -147,6 +151,7 @@ export function secretFlowReason(
   partTexts: readonly string[] = [],
 ): string | null {
   const values = valuesByName(statements);
+  if (values.has(STATEMENT_CAP_MARKER)) return STATEMENT_CAP_REASON;
   const tainted = taintedNames(statements, values);
   for (const [index, part] of parts.entries()) {
     if (DECLARERS.test(part.prog) && part.args.some((a) => /^-[A-Za-z]*p[A-Za-z]*$/.test(a))) {

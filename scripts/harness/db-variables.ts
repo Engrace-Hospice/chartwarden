@@ -21,21 +21,33 @@ export interface StatementPart {
 }
 
 const SETTERS = /^(?:export|declare|typeset|readonly|local)$/;
-/** At most this many `NAME=value` words are kept for one text: a longer list is judged by its first words. */
+/** At most this many `NAME=value` words are read for one text; a longer list is NOT judged by its first words: it carries the cap marker. */
 const MAX_STATEMENT_WORDS = 256;
+/**
+ * The name of the word `variableStatementWords` appends when a text holds more statement words than the cap reads (wave 12, F-1; R9-ADV-4).
+ * Words past the cap were dropped without a trace, so 256 junk `pN=1` before `export PGHOST=<remote>` hid the export from every rule that
+ * reads the tracker. A cap must end in an ask: `secretFlowReason` asks for a text whose words carry this marker, and the words travel
+ * outward to the nested texts and the sourced texts like any other statement.
+ */
+export const STATEMENT_CAP_MARKER = "CW_STATEMENT_WORDS_OVER_CAP";
 
-/** The `NAME=value` words a command text's variable statements assign, every one of them, a rebound name included. */
+/** The `NAME=value` words a command text's variable statements assign, every one of them, a rebound name included; the cap marker past the cap. */
 export function variableStatementWords(parts: readonly StatementPart[]): string[] {
   const words: string[] = [];
+  let overCap = false;
   for (const part of parts) {
     if (SETTERS.test(part.prog)) words.push(...part.assigns, ...part.args);
     else if (part.prog === "") words.push(...part.assigns);
     else words.push(...part.args.filter(hasParameterAssignment));
-    if (words.length >= MAX_STATEMENT_WORDS) break;
+    if (words.length > MAX_STATEMENT_WORDS) {
+      overCap = true;
+      break;
+    }
   }
-  return assignments(words.slice(0, MAX_STATEMENT_WORDS)).map(
+  const read = assignments(words.slice(0, MAX_STATEMENT_WORDS)).map(
     ({ name, value }) => `${name}=${value}`,
   );
+  return overCap ? [...read, `${STATEMENT_CAP_MARKER}=1`] : read;
 }
 
 /** Every value the `NAME=value` words give each name, in order. */
