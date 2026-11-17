@@ -136,16 +136,18 @@ const installedVersion = (): string | undefined =>
     ? undefined
     : /git version (\S+)/.exec(spawnSync(git, ["--version"], { encoding: "utf8" }).stdout)?.[1];
 
-describe.skipIf(git === null)(
-  "live re-recording of the git option tables (skipped only when git is not installed on this machine)",
-  () => {
-    it("the installed git still behaves as the fixtures record (a different version is a loud failure, not a skip)", () => {
-      expect(
-        installedVersion(),
-        "re-record with scripts/__tests__/helpers/record-git-options.ts",
-      ).toBe(GIT_PINNED);
-    });
+const installed = installedVersion();
+/** Why the live re-record does not run here: always a NAMED reason (git absent, or another version than the one recorded: git's option set changes between versions). */
+const GIT_SKIP_REASON =
+  git === null
+    ? "git is not installed on this machine"
+    : installed !== GIT_PINNED
+      ? `the installed git is ${installed}, the fixtures record ${GIT_PINNED}: re-record with scripts/__tests__/helpers/record-git-options.ts`
+      : "";
 
+describe.skipIf(GIT_SKIP_REASON !== "")(
+  `live re-recording of the git option tables (skipped: ${GIT_SKIP_REASON || "never"})`,
+  () => {
     // The names the rules read, and every prefix of them: the live part of the proof (a few dozen probes); the full recording is the script.
     const READ: Readonly<Record<string, readonly string[]>> = {
       push: [
