@@ -132,14 +132,6 @@ interface Pair {
   readonly handed: readonly string[] | null | undefined;
 }
 
-/** `insert` put in at `at`, in both readings. */
-const insertAt = (pair: Pair, at: number, insert: readonly string[]): Pair => ({
-  w: [...pair.w.slice(0, at), ...insert, ...pair.w.slice(at)],
-  handed: pair.handed
-    ? [...pair.handed.slice(0, at), ...insert, ...pair.handed.slice(at)]
-    : pair.handed,
-});
-
 /** The words from `at` on read as one command line for `sh -c` (`sudo -s 'CMD'`), in both readings. */
 const shellLineFrom = (pair: Pair, at: number): Pair => {
   const line = (rest: readonly string[]): string[] => ["sh", "-c", rest.join(" ")];
@@ -163,6 +155,21 @@ function replaceFrom(pair: Pair, at: number, inner: readonly string[]): Pair {
         ? [...pair.handed.slice(0, at), ...again.inner]
         : null,
   };
+}
+
+/** Wrappers that read every operand holding a `=` as `NAME=value` before the command. */
+const ENV_ASSIGNING = /^(?:env|sudo)$/;
+
+/**
+ * An operand of env or sudo that is an assignment: the shell removes its backslashes, then env takes any word with a `=` after the first
+ * character as `NAME=value` (BSD env, probed: `env A.B=x echo HIT`, `A-B=1`, `1A=x`, `A:B=1`, `a/b=1` all run `echo`; GNU env and sudo are
+ * documented the same and not installed here). A NAME holding an expansion the guard cannot place may be any variable's name.
+ */
+function envOperandAssignment(word: string): { decoded: string; unplacedName: boolean } | null {
+  const decoded = unescapeWord(word);
+  const eq = decoded.indexOf("=");
+  if (eq <= 0) return null;
+  return { decoded, unplacedName: /[$`]/.test(decoded.slice(0, eq)) };
 }
 
 /** The value `${NAME}` has in `env -S` after the assignments in front of the wrapper (`F=x env -S 'cat ${F}'`): the last one wins. */
@@ -210,12 +217,21 @@ export function program(
   const reads: string[] = [];
   const unplaced: string[] = [];
   const lines: string[] = [];
+  const operandAssigns: string[] = [];
   let k = 0;
   let lastWrapper = "";
   let chdir: string | undefined;
   while (k < pair.w.length) {
     const word = pair.w[k] ?? "";
     if (ASSIGNMENT.test(word)) {
+      k++;
+      continue;
+    }
+    // env and sudo take EVERY word holding a `=` after its first character as an assignment (R9-ADV-7: `env A.B=x CMD`, `env P\GHOST=H psql`)
+    const assignment = ENV_ASSIGNING.test(lastWrapper) ? envOperandAssignment(word) : null;
+    if (assignment !== null) {
+      operandAssigns.push(assignment.decoded);
+      if (assignment.unplacedName) unplaced.push(`${lastWrapper} ${word}`);
       k++;
       continue;
     }
@@ -235,8 +251,9 @@ export function program(
       writes.push(...wrapper.files.writes);
       reads.push(...wrapper.files.reads);
       if (wrapper.unplaced !== undefined) unplaced.push(`${wrapper.wrapper} ${wrapper.unplaced}`);
-      // The words an `env -S` string stands for run as the command.
-      pair = insertAt(pair, wrapper.next, wrapper.insert);
+      // The words an `env -S` string stands for take the place of the option, options in them included (E1-2).
+      if (wrapper.rewritten !== undefined)
+        pair = { w: wrapper.rewritten.words, handed: wrapper.rewritten.handed };
       k = wrapper.next;
       if (wrapper.shellLine) {
         // `sudo -s 'CMD ARGS'`: the shell runs the words joined as one command line, and the words typed, quoted back (sudo keeps their boundaries).
@@ -271,7 +288,7 @@ export function program(
     prog,
     word: unescapeWord(w[k] ?? ""),
     args: prog === "env" && k >= w.length ? [] : w.slice(k + 1),
-    assigns: w.slice(0, k).filter((x) => ASSIGNMENT.test(x)),
+    assigns: [...w.slice(0, k).filter((x) => ASSIGNMENT.test(x)), ...operandAssigns],
     writes,
     reads,
     ...(unplaced.length === 0 ? {} : { unplaced: unplaced.join("; ") }),

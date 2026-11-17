@@ -6,6 +6,7 @@
  */
 import type { EnvSplit } from "./env-split";
 import { type ReadOption, readOptions } from "./option-grammar";
+import { expandSplits } from "./split-string-expand";
 import { type WrapperFiles, wrapperFiles } from "./wrapper-options";
 import { WRAPPER_SPECS, type WrapperSpec } from "./wrapper-specs";
 
@@ -24,8 +25,14 @@ export interface WrapperPeel {
   readonly files: WrapperFiles;
   /** The words from `next` on are ONE command line for a shell (`sudo -s 'CMD'`): the classifier hands them to `sh -c`. */
   readonly shellLine: boolean;
-  /** Words that run before `next` and stand for the command (`env -S 'cmd arg'`): spliced in at `next`. */
-  readonly insert: readonly string[];
+  /**
+   * The words with every `env -S STRING` replaced by the words of the string (E1-2): `next` indexes these, and the caller continues with them
+   * (and with `handed`, the same in the reading the programs are handed). Absent when the wrapper splits no string.
+   */
+  readonly rewritten?: {
+    readonly words: readonly string[];
+    readonly handed: readonly string[] | null | undefined;
+  };
   /** The first word of its own the table could not place: the guard cannot tell where the command starts. */
   readonly unplaced?: string;
 }
@@ -47,26 +54,6 @@ function takeOperands(
 }
 
 /**
- * The values of the options that split a string (`env -S STRING`), as the wrapper is HANDED them: read from `handed` (the same words
- * with a backslash read once, the way the shell hands them over) when there is one. `null` handed (the indices were lost to a rewrite)
- * reads as nothing, which the caller turns into a question.
- */
-function splitTexts(
-  spec: WrapperSpec,
-  words: readonly string[],
-  at: number,
-  primary: readonly ReadOption[],
-  handed: readonly string[] | null | undefined,
-): readonly string[] | null {
-  const values = (options: readonly ReadOption[]): string[] =>
-    named(options, spec.splits).map((option) => option.value ?? "");
-  if (handed === undefined) return values(primary);
-  if (handed === null) return null;
-  const again = values(readOptions(spec.grammar, handed, at + 1).options);
-  return again.length === values(primary).length ? again : null;
-}
-
-/**
  * The wrapper at `words[at]`, stripped; null when the word is no wrapper or the wrapper has nothing after it (`sudo` alone is
  * the program `sudo`). `split` reads a string the way the wrapper itself does (`env -S`); `handed` is `words` as the programs are
  * handed them (a backslash read once), same indices, undefined when it is the same text.
@@ -80,41 +67,38 @@ export function peelWrapper(
 ): WrapperPeel | null {
   const spec = WRAPPER_SPECS.get(wrapper);
   if (spec === undefined || at + 1 >= words.length) return null;
-  const read = readOptions(spec.grammar, words, at + 1);
+  // `env -S '-i CMD'`: the words of the string stand where the option was, and env reads its options over them (E1-2)
+  const expanded =
+    spec.splits === undefined ? undefined : expandSplits(spec, words, at, split, handed);
+  const all = expanded?.words ?? words;
+  const read = readOptions(spec.grammar, all, at + 1);
   let options = read.options;
-  let unplaced = read.unplaced;
+  let unplaced = read.unplaced ?? expanded?.unplaced;
   let next = read.end;
-  const operands = takeOperands(spec, words, next, options);
+  const operands = takeOperands(spec, all, next, options);
   next += operands.length;
   if (spec.onlyWith !== undefined && named(options, spec.onlyWith).length === 0) return null;
   let stays = named(options, spec.stays).length > 0;
   // `flock FILE -c STRING`, `runuser USER -c STRING`: options may follow the operands once more.
   if (!stays && spec.optionsAfterOperands === true && operands.length > 0) {
-    const more = readOptions(spec.grammar, words, next);
+    const more = readOptions(spec.grammar, all, next);
     options = [...options, ...more.options];
     unplaced ??= more.unplaced;
     stays = named(more.options, spec.stays).length > 0;
     if (!stays) next = more.end;
   }
   const dir = named(options, spec.chdir).at(-1);
-  const insert: string[] = [];
-  if (named(options, spec.splits).length > 0) {
-    const texts = splitTexts(spec, words, at, options, handed);
-    if (texts === null) unplaced ??= `${wrapper} -S string`;
-    for (const result of (texts ?? []).map(split)) {
-      insert.push(...result.words);
-      unplaced ??= result.unplaced;
-    }
-  }
   return {
     wrapper,
     next: stays ? at : next,
     stays,
     ...(dir === undefined ? {} : { chdir: dir.value ?? "" }),
     options,
-    shellLine: !stays && named(options, spec.shellLine).length > 0 && next < words.length,
-    files: wrapperFiles(wrapper, words.slice(at + 1, read.optionsEnd), operands),
-    insert,
+    shellLine: !stays && named(options, spec.shellLine).length > 0 && next < all.length,
+    files: wrapperFiles(wrapper, all.slice(at + 1, read.optionsEnd), operands),
+    ...(expanded === undefined
+      ? {}
+      : { rewritten: { words: expanded.words, handed: expanded.handed } }),
     ...(unplaced === undefined ? {} : { unplaced }),
   };
 }
