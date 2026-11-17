@@ -119,7 +119,13 @@ function store(
 describe("CarePlanReader.relevantElementsForEncounter (§7.8)", () => {
   it("returns active interventions of the requested discipline and their parent problems' goals", async () => {
     const reader = createCarePlanReader(store({ sudReadAllowed: true }));
-    const out = await reader.relevantElementsForEncounter(PAT, "rn_routine_visit", "rn");
+    const out = await reader.relevantElementsForEncounter(
+      PAT,
+      "rn_routine_visit",
+      "rn",
+      undefined,
+      "patient_level",
+    );
     // rn interventions: active iv-rn + iv-rn-sud (sud allowed); the discontinued iv-rn-dc is dropped.
     expect(out?.interventions.map((i) => i.interventionId).sort()).toEqual(["iv-rn", "iv-rn-sud"]);
     // goals: only those of the parent problems of the included interventions (pain + sud), not orphan.
@@ -129,20 +135,88 @@ describe("CarePlanReader.relevantElementsForEncounter (§7.8)", () => {
     expect(out?.redacted).toBe(false);
     // the store-side containsSud flag never leaks into the seam DTO.
     expect(out?.problems.every((p) => !("containsSud" in p))).toBe(true);
+    // …but the kept problem's Part 2 flag rides through as `sudRelated`, so M15 can make a goal under it inherit.
+    expect(out?.problems.map((p) => [p.problemId, p.sudRelated]).sort()).toEqual([
+      ["prob-pain", false],
+      ["prob-sud", true],
+    ]);
   });
 
   it("redacts SUD problems (and their goals/interventions) when the caller is not entitled (D7)", async () => {
     const reader = createCarePlanReader(store({ sudReadAllowed: false }));
-    const out = await reader.relevantElementsForEncounter(PAT, "rn_routine_visit", "rn");
+    const out = await reader.relevantElementsForEncounter(
+      PAT,
+      "rn_routine_visit",
+      "rn",
+      undefined,
+      "patient_level",
+    );
     expect(out?.problems.map((p) => p.problemId)).toEqual(["prob-pain"]);
     expect(out?.interventions.map((i) => i.interventionId)).toEqual(["iv-rn"]);
     expect(out?.goals.map((g) => g.goalId)).toEqual(["goal-pain"]);
     expect(out?.redacted).toBe(true);
   });
 
+  it("a per-actor viewer verdict decides SUD visibility, not the patient-level release fact", async () => {
+    // The store says "a release exists" (patient-level allow), but this caller is not named on it.
+    const readerOverReleasedStore = createCarePlanReader(store({ sudReadAllowed: true }));
+    const denied = await readerOverReleasedStore.relevantElementsForEncounter(
+      PAT,
+      "rn_routine_visit",
+      "rn",
+      undefined,
+      { sudDisclosureAllowed: false },
+    );
+    expect(denied?.problems.map((p) => p.problemId)).toEqual(["prob-pain"]);
+    expect(denied?.interventions.map((i) => i.interventionId)).toEqual(["iv-rn"]);
+    expect(denied?.goals.map((g) => g.goalId)).toEqual(["goal-pain"]);
+    expect(denied?.redacted).toBe(true);
+
+    // …and the converse: a caller the release names sees it though the store's fact was "denied".
+    const readerOverUnreleasedStore = createCarePlanReader(store({ sudReadAllowed: false }));
+    const allowed = await readerOverUnreleasedStore.relevantElementsForEncounter(
+      PAT,
+      "rn_routine_visit",
+      "rn",
+      undefined,
+      { sudDisclosureAllowed: true },
+    );
+    expect(allowed?.problems.map((p) => p.problemId).sort()).toEqual(["prob-pain", "prob-sud"]);
+    expect(allowed?.redacted).toBe(false);
+  });
+
+  it("the in-memory store treats an { actor } audience like the seeded value (it cannot resolve a verdict)", async () => {
+    // The Drizzle store resolves the per-actor verdict through M39; this slice has no consent round-trip, so an
+    // actor audience answers with the seed, exactly like "patient_level" (and unlike a hand-built viewer).
+    const actor = { actor: { roles: ["rn_case_manager"], membershipId: "m-1" } } as const;
+    const askAs = async (sudReadAllowed: boolean) =>
+      createCarePlanReader(store({ sudReadAllowed })).relevantElementsForEncounter(
+        PAT,
+        "rn_routine_visit",
+        "rn",
+        undefined,
+        actor,
+      );
+    const seededAllowed = await askAs(true);
+    expect(seededAllowed?.problems.map((p) => p.problemId).sort()).toEqual([
+      "prob-pain",
+      "prob-sud",
+    ]);
+    expect(seededAllowed?.redacted).toBe(false);
+    const seededDenied = await askAs(false);
+    expect(seededDenied?.problems.map((p) => p.problemId)).toEqual(["prob-pain"]);
+    expect(seededDenied?.redacted).toBe(true);
+  });
+
   it("filters by discipline (msw sees only the msw intervention)", async () => {
     const reader = createCarePlanReader(store({ sudReadAllowed: true }));
-    const out = await reader.relevantElementsForEncounter(PAT, "msw_visit", "msw");
+    const out = await reader.relevantElementsForEncounter(
+      PAT,
+      "msw_visit",
+      "msw",
+      undefined,
+      "patient_level",
+    );
     expect(out?.interventions.map((i) => i.interventionId)).toEqual(["iv-msw"]);
     expect(out?.goals.map((g) => g.goalId)).toEqual(["goal-pain"]);
   });
@@ -150,7 +224,13 @@ describe("CarePlanReader.relevantElementsForEncounter (§7.8)", () => {
   it("returns null when the patient has no active care plan", async () => {
     const reader = createCarePlanReader(createInMemoryCarePlanReaderStore().store);
     expect(
-      await reader.relevantElementsForEncounter("nobody", "rn_routine_visit", "rn"),
+      await reader.relevantElementsForEncounter(
+        "nobody",
+        "rn_routine_visit",
+        "rn",
+        undefined,
+        "patient_level",
+      ),
     ).toBeNull();
   });
 });
@@ -218,7 +298,13 @@ describe("boot wiring (registerCarePlanSeams)", () => {
     registerCarePlanSeams({ store: store({ sudReadAllowed: true }) });
     expect(() => validateSeams()).not.toThrow();
     const reader = getSeam("CarePlanReader");
-    const out = await reader.relevantElementsForEncounter(PAT, "rn_routine_visit", "rn");
+    const out = await reader.relevantElementsForEncounter(
+      PAT,
+      "rn_routine_visit",
+      "rn",
+      undefined,
+      "patient_level",
+    );
     expect(out?.planId).toBe(PLAN);
   });
 

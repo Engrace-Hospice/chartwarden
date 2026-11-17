@@ -2,7 +2,7 @@
 // Shared by the DB backend and the in-memory slice so the two cannot drift. iQIES has no submission API:
 // the user uploads the zip in the CMS portal, then records the outcome here.
 import { createHash } from "node:crypto";
-import { HopeStateError } from "@chartwarden/hope";
+import { HopeStateError, type M10ErrorCode } from "@chartwarden/hope";
 import type { HopeSubmissionItemStatus, HopeSubmissionStatus } from "@chartwarden/types";
 
 /** Batch states a result may be recorded against: the zip was downloaded or marked uploaded. A `packaged`
@@ -15,6 +15,48 @@ export const RESULT_IMPORTABLE_STATUSES: readonly HopeSubmissionStatus[] = [
 
 export const isResultImportable = (status: string): boolean =>
   (RESULT_IMPORTABLE_STATUSES as readonly string[]).includes(status);
+
+/** The batch statuses that count as ACCEPTED by iQIES: every item accepted, with or without CMS warnings (the batch's
+ * `accepted_count` already counts a warning item as accepted: `deriveBatchOutcome`). */
+export const ACCEPTED_BATCH_STATUSES = [
+  "accepted",
+  "accepted_with_warnings",
+] as const satisfies readonly HopeSubmissionStatus[];
+
+/** The batch statuses iQIES has ANSWERED on (the acceptance-rate denominator and the M30 submission-posture rows): a
+ * queued or in-flight batch has no acceptance outcome yet. The dashboard and the M30 rollup read this one list, so they
+ * agree on WHICH batches count; they do not share the unit (the dashboard counts batches, the rollup sums the items of
+ * the batches). */
+export const ANSWERED_BATCH_STATUSES = [
+  ...ACCEPTED_BATCH_STATUSES,
+  "rejected",
+  "partially_accepted",
+] as const satisfies readonly HopeSubmissionStatus[];
+
+/**
+ * The batch statuses with nothing left for an operator to do: answered clean by CMS (`accepted`, `accepted_with_warnings`) or
+ * dead (`cancelled`: never uploaded, its records are packaged again in a new batch). EVERY OTHER status can still need someone:
+ * a batch to download or mark uploaded (`packaged`), to record a result for (`exported`, `in_flight`,
+ * `submitted_pending_result`), or rejected items to correct (`rejected`, `partially_accepted`); `ready`, `queued` and
+ * `file_error` are in no manual lifecycle but are not closed either. The submission list is capped, and the cap keeps these
+ * batches first (see `GET /hope/submissions`), so a status added later is kept by default rather than hidden.
+ * `rejected` and `partially_accepted` are deliberately never closed: a correction goes in a NEW batch and the old one stays
+ * `rejected` (see SUBMISSION_LIST_LIMIT in hope-route-service-db.ts for what that costs and why it is left).
+ */
+export const CLOSED_BATCH_STATUSES = [
+  "accepted",
+  "accepted_with_warnings",
+  "cancelled",
+] as const satisfies readonly HopeSubmissionStatus[];
+
+/** Why a result cannot be recorded against a batch in `status` (the 409 code): never handed to CMS, cancelled
+ * (R-08: it must never be uploaded or settled), or already settled. */
+export const resultRefusalCode = (status: string): M10ErrorCode =>
+  ["packaged", "queued", "ready"].includes(status)
+    ? "M10_SUBMISSION_RESULT_NOT_UPLOADED"
+    : status === "cancelled"
+      ? "M10_SUBMISSION_CANCELLED"
+      : "M10_SUBMISSION_RESULT_ALREADY_RECORDED";
 
 /** Polarity-safe status text -> outcome: "not accepted" is a rejection, "0 errors" is not an error, anything
  * unrecognised is null (the row stays pending rather than being guessed accepted). The web parser mirrors this. */
@@ -51,11 +93,27 @@ export function classifyCmsResult(
   return byText ?? "pending";
 }
 
+/** The item statuses that are a CMS verdict (final, see `isSettledItemStatus`). */
+export const SETTLED_ITEM_STATUSES = ["accepted", "accepted_with_warnings", "rejected"] as const;
+
 /** A CMS verdict on an item is final: once an item is accepted/accepted_with_warnings/rejected, a later
  * report must not flip it (the RESULT event rows are still recorded for audit). Correct a rejection with a
  * correction assessment in a new batch, not by re-reporting. */
 export const isSettledItemStatus = (status: string): boolean =>
-  status === "accepted" || status === "accepted_with_warnings" || status === "rejected";
+  (SETTLED_ITEM_STATUSES as readonly string[]).includes(status);
+
+/** The iQIES record id a report row names, or null when it names none: a blank or whitespace-only id is none (it must not
+ * be stamped on the item or the assessment: an empty `iqies_record_id` reads as "already recorded" to every `IS NULL` test). */
+export const nonBlankRecordId = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() !== "" ? value : null;
+
+/**
+ * A report row's edit code or item code as stored: the trimmed text, or NULL for a blank cell. The result-event table's unique
+ * index (`uniq_hope_sub_result_event_import`) is partial on `cms_edit_code IS NOT NULL`, so a stored `""` would be a key: two rows
+ * of one assessment in one report with blank codes and different messages would collide, and the second would be silently dropped.
+ */
+export const nullIfBlank = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 
 const sha256Hex = (text: string): string => createHash("sha256").update(text).digest("hex");
 
@@ -81,6 +139,16 @@ export function reportHashes(results: readonly Record<string, unknown>[]): {
 
 /** Matches the route schema's `maxItems` for `results`. */
 export const MAX_RETAINED_RESULTS = 2000;
+
+/**
+ * The most `hope_submission_result_event` rows one batch may hold for reports that settle no item. The rows are append-only audit
+ * evidence, and every import whose report differs by a character (a new report hash) adds up to 2000 more while the batch is still
+ * `submitted_pending_result`, so the total is bounded: an import that settles no pending item and would pass it is a 409 and records
+ * nothing. An import that settles an item is always recorded (a CMS verdict is final and nothing could lower the count afterwards);
+ * it is bounded by the batch's finite items, each settled once, times 2000 rows. The batch's findings read returns the newest rows,
+ * up to this number.
+ */
+export const MAX_RESULT_EVENTS_PER_SUBMISSION = 20_000;
 
 /** Append a later report's raw rows to those already stored on the batch, keeping the newest `MAX_RETAINED_RESULTS`. */
 export function appendReportResults(
@@ -160,6 +228,8 @@ export function resolveRejectedItem(
       return "resolved";
     case "rejected":
       return "needs_correction";
+    case "cancelled": // its package was cancelled before upload: the correction is signed but not in a live batch
+      return "correction_in_progress";
     default:
       return "resubmitted";
   }
@@ -189,11 +259,14 @@ export function terminalCorrection(
  * `transmittedAt` and `envelopeSha256`; a manual upload has no signed envelope, so the package's own
  * SHA-256 is the integrity hash that identifies what was uploaded. Emitting the older
  * `{submittedAt, transportMode}`-only shape failed catalog validation and turned "Mark uploaded" into a 500.
+ * `transmittedAt` is the instant the system recorded the upload (the retention anchor, the server's clock);
+ * `submittedAt` is when the operator says it happened, and is `transmittedAt` when they said nothing.
  */
 export function manualUploadTransmittedPayload(
   submissionId: string,
   packageSha256: string | null | undefined,
-  at: Date,
+  transmittedAt: Date,
+  submittedAt: Date = transmittedAt,
 ): {
   submissionId: string;
   transmittedAt: string;
@@ -206,13 +279,12 @@ export function manualUploadTransmittedPayload(
       "M10_SUBMISSION_PACKAGE_HASH_MISSING",
       `Submission ${submissionId} has no package hash to record; re-package the batch before marking it uploaded.`,
     );
-  const iso = at.toISOString();
   return {
     submissionId,
-    transmittedAt: iso,
+    transmittedAt: transmittedAt.toISOString(),
     envelopeSha256: packageSha256,
     transportMode: "manual_iqies_upload",
-    submittedAt: iso,
+    submittedAt: submittedAt.toISOString(),
   };
 }
 

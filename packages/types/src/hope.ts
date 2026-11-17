@@ -63,7 +63,8 @@ export type HopeSubmissionStatus =
   | "rejected"
   | "partially_accepted"
   | "accepted_with_warnings"
-  | "file_error";
+  | "file_error"
+  | "cancelled";
 
 /** The per-assessment outcome within a submission batch (mirrors `hope_submission_item_status`). */
 export type HopeSubmissionItemStatus =
@@ -72,7 +73,56 @@ export type HopeSubmissionItemStatus =
   | "rejected"
   | "pending"
   | "blocked"
-  | "unmatched";
+  | "unmatched"
+  | "cancelled";
+
+/**
+ * R-05 — the version of the signature attestation wording the signer attested to (`attestationConfirmed: true`).
+ * The audit row for a HOPE signature records the version the SERVER held (`serverCurrentAttestationVersion`, with a
+ * SHA-256 of the statement text) and, when the client named one, the version it named (`suppliedAttestationVersion`), so
+ * "what did the signer attest to?" stays answerable after the wording changes. Bump it in the same change that edits either statement below;
+ * `hope-attestation.test.ts` pins the wording of every version and fails until the new one is pinned.
+ */
+export const HOPE_ATTESTATION_VERSION = "2026-11-15.1";
+
+/** The attestation a signer affirms before signing a timepoint (modelled on the M8 encounter sign ceremony). */
+export const HOPE_SIGN_ATTESTATION_STATEMENT =
+  "I attest that this HOPE record is complete and accurate to the best of my knowledge. I understand that signing makes it read-only.";
+
+/** The attestation a signer affirms before completing a Symptom Follow-Up Visit, which is recorded as a signed record. */
+export const HOPE_SFV_ATTESTATION_STATEMENT =
+  "I attest that this symptom follow-up visit took place as recorded and that the information is accurate to the best of my knowledge. I understand that it is recorded as a signed HOPE record.";
+
+/**
+ * R-08 — why an operator cancelled a package that was generated but never uploaded to iQIES. A CLOSED list on
+ * purpose: the reason is stored beside the batch and read by the audit trail, so it can never carry free text
+ * (and so never PHI). Mirrors the CHECK on `hope_submission.cancel_reason_code` (migration 1495).
+ */
+export const HOPE_SUBMISSION_CANCEL_REASON_CODES = [
+  "package_lost",
+  "never_uploaded",
+  "generated_in_error",
+  "other",
+] as const;
+export type HopeSubmissionCancelReasonCode = (typeof HOPE_SUBMISSION_CANCEL_REASON_CODES)[number];
+
+/**
+ * Why an operator skipped an OPEN timepoint schedule (`POST /hope/schedules/:id/skip`). A CLOSED list on purpose, like the
+ * cancel reasons above: the code is stored in `hope_timepoint_schedule.skip_reason_code` and copied into the immutable
+ * write-audit before/after, so it can never carry free text (and so never PHI). There is NO database CHECK: rows written
+ * before this list (any 1-64 character string) stay readable, and the system's own `discharged_before_huv_window`
+ * (the M6 discharge consumer) is not an operator choice and so not on this list. The web skip dialog offers exactly these.
+ */
+export const HOPE_SCHEDULE_SKIP_REASON_CODES = [
+  "patient_deceased",
+  "patient_revoked",
+  "patient_hospitalized",
+  "transferred_out",
+  "admission_discharged",
+  "duplicate_window",
+  "other",
+] as const;
+export type HopeScheduleSkipReasonCode = (typeof HOPE_SCHEDULE_SKIP_REASON_CODES)[number];
 
 /** A `hope_validation_finding`'s blocking class (mirrors `hope_validation_severity`). */
 export type HopeValidationSeverity = "error" | "warning";
@@ -121,10 +171,17 @@ export const M10_AUDIT_DENYLIST: { readonly [K in M10TableName]: readonly string
   hope_assessment: ["data", "clinical_context_snapshot", "late_completion_reason_code"],
   symptom_follow_up_visit: ["alert_cadence"],
   hope_validation_finding: ["message"],
-  hope_submission: ["acceptance_report", "envelope_storage_uri", "envelope_sha256"],
+  // `report_reference` / `iqies_submission_reference` are operator-typed free text (migration 1497).
+  hope_submission: [
+    "acceptance_report",
+    "envelope_storage_uri",
+    "envelope_sha256",
+    "report_reference",
+    "iqies_submission_reference",
+  ],
   hope_submission_item: ["iqies_validation_result"],
-  // The iQIES result as received and its free-text CMS message (migration 0234).
-  hope_submission_result_event: ["raw_result", "message"],
+  // The iQIES result as received, its free-text CMS message (migration 0234) and the operator-typed report reference (1499).
+  hope_submission_result_event: ["raw_result", "message", "report_reference"],
   hope_retention_review: [],
 } as const;
 

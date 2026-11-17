@@ -18,11 +18,7 @@ import type {
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { createDrizzleHopeSeamStore } from "./drizzle-store";
 import { createHopeOrgRollupProvider } from "./org-rollup-provider";
-import {
-  type HopeOrgRollupStore,
-  createDrizzleHopeOrgRollupStore,
-  createInMemoryHopeOrgRollupStore,
-} from "./org-rollup-store";
+import { type HopeOrgRollupStore, createDrizzleHopeOrgRollupStore } from "./org-rollup-store";
 import {
   createHopeJ2051Provider,
   createHopeSubmissionProvider,

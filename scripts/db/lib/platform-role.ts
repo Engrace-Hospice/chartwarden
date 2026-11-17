@@ -1,14 +1,15 @@
 /**
  * ChartWarden — grant / revoke a PLATFORM-OWNED role (GAP-003, GAP-096). The shared core of the operator CLI
- * (`scripts/db/platform-role.ts`) and the dev seeds (`seed-org-admin.ts`, `seed-scenario-billing.ts`).
+ * (`scripts/db/platform-role.ts`) and the dev seeds (`seed-org-admin.ts`, `seed-scenario-billing.ts`,
+ * `seed-superadmin.ts`).
  *
- * Since GAP-003 a platform role key (`platform_*`, or the exact key `ai_safety_owner`) or the
+ * Since GAP-003 a platform role key (`platform_*`, or the exact keys `ai_safety_owner` and `superadmin`) or the
  * `platform_staff` category confers authority only on a row with `organization_id IS NULL`: the
  * enrichment reader and the effective-permission store drop a tenant-owned one (`roleConfersKey`),
  * migration 0318's CHECK refuses to insert a `platform_*` one, and the M3 role routes refuse to create or
  * assign one (422 RESERVED_ROLE). So no tenant surface can grant platform authority; this is the
  * out-of-band path. The platform-owned row is upserted on migration 0320's `role_platform_key_idx` (one
- * platform-owned row per key) and bound to an existing ACTIVE membership.
+ * platform-owned row per key) and bound to an existing ACTIVE membership (a revoke also reaches a suspended one).
  *
  * AUDIT. Nothing here disables triggers. Every `role`, `role_permission` and `membership_role` write is
  * captured by the M4 write-audit triggers into `audit_event`; callers set `app.correlation_id` (see
@@ -20,6 +21,8 @@ import {
   PLATFORM_OPS_ROLE_GRANTS,
   type PlatformGrantableRoleKey,
   ROLE_TEMPLATES,
+  SUPERADMIN_ROLE_KEY,
+  effectivePermissionKeys,
   isPlatformGrantableRoleKey,
 } from "@chartwarden/auth";
 import type { Client } from "pg";
@@ -59,6 +62,11 @@ const NON_TEMPLATE_PLATFORM_ROLES: Readonly<
     name: "AI Safety Owner",
     description: "M32 §4.7 cross-tenant AI safety authority (kill switch, lifecycle, prompts).",
   },
+  [SUPERADMIN_ROLE_KEY]: {
+    name: "Superadmin",
+    description:
+      "Every platform role plus administrator and org_admin, and the permission catalog less the keys withheld from the admin roles. Cross-tenant PHI still needs a consented support session or break-glass.",
+  },
 };
 
 /** The canonical name/description an operator grant uses for `key`. */
@@ -73,9 +81,32 @@ export function platformRoleLabel(key: PlatformGrantableRoleKey): {
   return label;
 }
 
-/** The M35 template grants a platform-ops key carries (`PLATFORM_OPS_ROLE_GRANTS`); `[]` otherwise. */
-function templateGrantsFor(key: PlatformGrantableRoleKey): readonly string[] {
+/**
+ * The permission keys a platform-owned role row is granted: what the resolver grants `superadmin` (the catalog
+ * less the keys withheld from the admin roles), the M35 template grants (`PLATFORM_OPS_ROLE_GRANTS`) for a
+ * platform-ops key, `[]` for the rest.
+ */
+export function platformRoleGrantKeys(key: PlatformGrantableRoleKey): readonly string[] {
+  if (key === SUPERADMIN_ROLE_KEY) return effectivePermissionKeys(SUPERADMIN_ROLE_KEY, [], null);
   return (PLATFORM_OPS_ROLE_GRANTS as Readonly<Record<string, readonly string[]>>)[key] ?? [];
+}
+
+/**
+ * `superadmin` holds the catalog (less the withheld keys) and, unlike a `platform_*` role, no consented support session stands between
+ * it and a tenant's PHI once it is bound inside that tenant. So it is bound only where there is no tenant: an
+ * organization with a `tenant_account` is a tenant, and a typo in `--org` must not turn a clinician into a superadmin.
+ * (Migration 1501's trigger refuses the same binding for ad-hoc SQL and seeds.)
+ */
+export async function assertSuperadminOrg(db: Client, organizationId: string): Promise<void> {
+  const tenant = await db.query(
+    "SELECT 1 AS one FROM tenant_account WHERE organization_id = $1 LIMIT 1",
+    [organizationId],
+  );
+  if ((tenant.rowCount ?? 0) > 0) {
+    throw new Error(
+      `refusing ${SUPERADMIN_ROLE_KEY}: organization ${organizationId} has a tenant_account; ${SUPERADMIN_ROLE_KEY} belongs to the ChartWarden platform org, not a tenant`,
+    );
+  }
 }
 
 /** Refuse anything outside {@link PLATFORM_GRANTABLE_ROLE_KEYS} — the keys a platform predicate reads. */
@@ -95,6 +126,7 @@ export async function grantPlatformRole(
   grant: PlatformRoleGrant,
 ): Promise<PlatformRoleGrantResult> {
   const key = assertPlatformGrantableKey(grant.key);
+  if (key === SUPERADMIN_ROLE_KEY) await assertSuperadminOrg(db, grant.organizationId);
   const legacy = await db.query<{ id: string }>(
     `SELECT id FROM role WHERE organization_id = $1 AND key = $2`,
     [grant.organizationId, key],
@@ -122,7 +154,7 @@ export async function grantPlatformRole(
       ),
       `platform role ${key}`,
     );
-  const wanted = templateGrantsFor(key);
+  const wanted = platformRoleGrantKeys(key);
   const granted = await db.query(
     `INSERT INTO role_permission (organization_id, role_id, permission_key)
      SELECT NULL, $1, p.key FROM permission p WHERE p.key = ANY($2::text[])
@@ -164,7 +196,17 @@ export async function revokePlatformRole(
         AND mr.membership_id = $1`,
     [input.membershipId, key],
   );
-  return (deleted.rowCount ?? 0) > 0;
+  const removed = (deleted.rowCount ?? 0) > 0;
+  // The role that held the whole catalog ends the holder's sessions too, so a session minted while they held it
+  // does not outlive it (the resolver never caches a superadmin set, so the permissions are gone at once either
+  // way). Only when a binding was actually removed: an idempotent re-run must not sign anyone out.
+  if (removed && key === SUPERADMIN_ROLE_KEY) {
+    await db.query(
+      "DELETE FROM session WHERE user_id = (SELECT user_id FROM membership WHERE id = $1)",
+      [input.membershipId],
+    );
+  }
+  return removed;
 }
 
 export interface ActiveMembership {
@@ -179,11 +221,15 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /**
  * Resolve (user email, org slug or id) to an ACTIVE membership, or throw naming what is missing. A
  * platform role is bound to a membership, so an operator must already be an active member somewhere.
+ * `allowInactive` (a revoke only) accepts any status: removing authority must reach an offboarded holder too.
  */
 export async function resolveActiveMembership(
   db: Client,
   email: string,
   orgRef: string,
+  // A revoke removes authority, so it must reach an offboarded (suspended) holder too: otherwise the binding stays
+  // dormant and returns the moment the membership is reactivated.
+  options: { readonly allowInactive?: boolean } = {},
 ): Promise<ActiveMembership> {
   const user = await db.query<{ id: string }>(
     `SELECT id FROM "user" WHERE lower(email) = lower($1)`,
@@ -205,7 +251,7 @@ export async function resolveActiveMembership(
   );
   const row = membership.rows[0];
   if (!row) throw new Error(`${email} has no membership in ${organizationSlug}`);
-  if (row.status !== "active") {
+  if (row.status !== "active" && !options.allowInactive) {
     throw new Error(`${email}'s membership in ${organizationSlug} is ${row.status}, not active`);
   }
   return { userId, organizationId, organizationSlug, membershipId: row.id };

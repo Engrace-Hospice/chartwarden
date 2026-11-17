@@ -135,6 +135,14 @@ export const M7_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: true,
   },
   {
+    action: "m7.care_plan.idg_proposal_refused",
+    moduleOwner: "m7",
+    defaultRetentionClass: "compliance",
+    description: "The IDG consumer recorded an M14 care-plan decision it will not apply as a durable conflict (idgDecisionId, meetingId, refusal code; ids and a code only, no record content).",
+    denylistCategories: [],
+    isPartTwoEligible: true,
+  },
+  {
     action: "m7.care_plan.idg_proposal_applied",
     moduleOwner: "m7",
     defaultRetentionClass: "compliance",

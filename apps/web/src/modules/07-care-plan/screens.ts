@@ -31,15 +31,14 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 // OPEN admission through that read and offers "Start the Plan of Care" — or says the patient has no open
 // admission, which is the one honest reason not to offer it.
 //
-// F-077 (#91 AC5) — `e2e/specs/care-plan.spec.ts` drives the §2 version lifecycle in a real browser and
-// through TWO logins: open an interim revision, author a problem into it, close it for signature, sign
-// as the RN — and assert the plan is still NOT active — then sign as the physician and watch it
-// activate. One signer could not tell "the quorum was met" apart from "the quorum was never checked".
-// An interim revision rather than an IDG review because `resolveRequiredSignerSet` gives the latter the
-// full four-slot quorum (RN + MSW + chaplain + MD/DO), and `db:seed:staff` creates only `primary_rn`
-// and `attending_clinician` assignments — the seeded MSW and chaplain are in nobody's caseload, so
-// `caseload_or_scope` denies them. Driving the §418.56(b)(1) authoring pair is the smallest set that is
-// still a quorum.
+// F-077 (#91 AC5) — browser coverage is `e2e/specs/care-plan.spec.ts`, and it is thinner than this header
+// once said. Its authoring → send-for-signatures → sign scenario and its governed-IDG-proposal scenario run
+// ONLY when E2E_CARE_PLAN_PATIENT_ID / E2E_CARE_PLAN_IDG_PATIENT_ID name a seeded patient (they are
+// skipped otherwise), and they drive a single login. No two-login quorum test exists: the one that did
+// (RN signs → plan stays inactive → physician signs → activates) drove the pre-redesign footer ceremony
+// and was not ported, as the spec's own comment says. The §418.56 quorum rule is asserted server-side
+// only; nothing in a browser proves "one signer cannot activate the plan". Only the spec's axe scan runs
+// unconditionally, against the seeded demo patient.
 //
 // The spec's axe scan found a REAL WCAG AA failure the moment it could reach this state: the quorum
 // checklist rendered its slots at `t.success` (4.33:1 on a white card) and the guard chip at `t.warning`

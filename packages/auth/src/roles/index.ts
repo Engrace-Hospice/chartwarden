@@ -62,6 +62,7 @@ export {
   hasAdmittingClinicianRole,
 } from "./admitting-clinician-grants";
 export { CODE_STATUS_EDITOR_ROLE_KEYS } from "./code-status-grants";
+export { CARE_PLAN_DEFAULT_GRANTS, CARE_PLAN_GRANTEE_ROLE_KEYS } from "./care-plan-grants";
 export {
   PLATFORM_ALERT_AUDIENCE_ROLE_KEY,
   PLATFORM_OPS_ROLE_KEY,
@@ -70,6 +71,8 @@ export {
   RESERVED_PLATFORM_ROLE_CATEGORY,
   RESERVED_PLATFORM_ROLE_KEYS,
   RESERVED_PLATFORM_ROLE_PREFIX,
+  SUPERADMIN_ROLE_KEY,
+  expandSuperadminRoles,
   isPlatformGrantableRoleKey,
   isReservedPlatformRoleKey,
   isTenantRoleReserved,
@@ -77,6 +80,7 @@ export {
 } from "./platform-reserved";
 export {
   ADMINISTRATOR_EXCLUDED_KEYS,
+  FULL_CATALOG_EXCLUDED_KEYS,
   FULL_CATALOG_ROLE_KEYS,
   type MirrorPermission,
   PLATFORM_PERMISSION_CATEGORY,

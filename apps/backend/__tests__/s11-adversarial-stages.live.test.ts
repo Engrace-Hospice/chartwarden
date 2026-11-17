@@ -597,7 +597,7 @@ describe.skipIf(!DB_URL)("S11 adversarial cases across clinical stages — LIVE 
         mountPatientRoutes(instance, db, bind("m5") as never, {} as never, {});
         mountAdmissionRoutes(instance, db, bind("m6") as never);
         mountEncounterRoutes(instance, db, bind("m8") as never);
-        mountHopeRoutes(instance, db, bind("m10") as never);
+        mountHopeRoutes(instance, db, bind("m10") as never, undefined, async () => undefined);
         mountOrderRoutes(instance, db, bind("m11") as never);
         mountEmarRoutes(instance, db, bind("m13") as never);
         mountIdgRoutes(instance, db, bind("m14") as never);

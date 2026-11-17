@@ -30,18 +30,22 @@ function refusal(error: unknown, fallback: string): string {
 }
 
 const KEY_PATTERN = /^[a-z0-9_]+$/;
+const NO_KEYS: ReadonlySet<string> = new Set();
 
 /** "New role" — a tenant role cloned from the selected one (its category, its permission set). */
 export function NewRoleModal({
   open,
   base,
   categories,
+  platformKeys = NO_KEYS,
   onClose,
   onCreated,
 }: {
   open: boolean;
   base: RoleRecord | null;
   categories: readonly string[];
+  /** Platform-category (cross-tenant) permission keys: never copied onto a tenant role, so a clone leaves them behind. */
+  platformKeys?: ReadonlySet<string>;
   onClose: () => void;
   onCreated: (role: RoleRecord) => void;
 }): JSX.Element | null {
@@ -49,13 +53,18 @@ export function NewRoleModal({
   const toast = useToast();
   const [key, setKey] = useState("");
   const [name, setName] = useState("");
-  const [category, setCategory] = useState(base?.category ?? categories[0] ?? "");
+  // The base's category, unless the list does not offer it (a platform role's category is withheld: the server refuses it).
+  const [category, setCategory] = useState(
+    base && categories.includes(base.category) ? base.category : (categories[0] ?? ""),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (!open) return null;
 
   const keyValid = KEY_PATTERN.test(key);
   const canSubmit = keyValid && name.trim() !== "" && category !== "" && !busy;
+  const copiedKeys = base ? base.permissionKeys.filter((key) => !platformKeys.has(key)) : [];
+  const leftBehind = base ? base.permissionKeys.length - copiedKeys.length : 0;
 
   async function submit(): Promise<void> {
     setBusy(true);
@@ -66,7 +75,7 @@ export function NewRoleModal({
         name: name.trim(),
         // The options come from the roles the server already returned, so this is a member of its enum.
         category: category as never,
-        ...(base ? { clonedFromKey: base.key, permissionKeys: base.permissionKeys } : {}),
+        ...(base ? { clonedFromKey: base.key, permissionKeys: copiedKeys } : {}),
       },
     });
     setBusy(false);
@@ -87,7 +96,11 @@ export function NewRoleModal({
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>New role</h2>
         <p style={{ margin: 0, fontSize: "0.82rem" }}>
           {base
-            ? `Starts as a copy of ${base.name} (${base.permissionKeys.length} permissions). You can only grant permissions you hold yourself.`
+            ? `Starts as a copy of ${base.name} (${copiedKeys.length} permission${copiedKeys.length === 1 ? "" : "s"}). You can only grant permissions you hold yourself.${
+                leftBehind > 0
+                  ? ` ${leftBehind} platform permission${leftBehind === 1 ? " is" : "s are"} not copied: a tenant role never carries them.`
+                  : ""
+              }`
             : "Starts with no permissions."}
         </p>
         <TextField

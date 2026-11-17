@@ -15,7 +15,7 @@
  * Run:  bun run arch:error-envelope   (in `arch:fitness`)
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -57,7 +57,9 @@ export function scanRepo(): FlatErrorHit[] {
     encoding: "utf8",
   })
     .split("\n")
-    .filter(isScanned);
+    // `git ls-files` still lists a tracked file that is deleted in the working tree (an uncommitted
+    // removal): a deleted file has nothing to scan, and reading it would throw ENOENT.
+    .filter((f) => isScanned(f) && existsSync(join(REPO_ROOT, f)));
   return files.flatMap((f) => findFlatErrorBodies(f, readFileSync(join(REPO_ROOT, f), "utf8")));
 }
 

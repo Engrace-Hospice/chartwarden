@@ -31,6 +31,7 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
 import {
   assertParentElements,
+  elementsAudienceFor,
   isAssessmentEncounterValid,
   isSupervisoryEncounterValid,
 } from "../consumers/index";
@@ -71,6 +72,7 @@ import type {
   VolunteerAssignmentView,
   VolunteerComplianceGateView,
 } from "./read-service";
+import { isSudAnchored, redactDisciplineSnapshot } from "./snapshot-redaction";
 import type {
   AmendAssessmentInput,
   CreateAssessmentInput,
@@ -80,6 +82,7 @@ import type {
   CreateSupervisoryVisitInput,
   CreateVolunteerAssignmentInput,
   CreateVolunteerGateInput,
+  DisclosureGate,
   FinalizeVersionInput,
   M15WriteService,
   OutboxEmission,
@@ -272,6 +275,13 @@ export function buildDrizzleM15WriteService(
     signedByMembershipId: r.signedByMembershipId ?? null,
     version: r.version,
   });
+
+  /** §7.8 / §7.9 — is this assessment confidential to a caller whose gate does not allow its category? */
+  const isConfidentialToCaller = (
+    row: { readonly sudFlag: boolean; readonly familyViolenceFlag: boolean },
+    gate: DisclosureGate,
+  ): boolean =>
+    (row.sudFlag && !gate.sudAllowed) || (row.familyViolenceFlag && !gate.familyViolenceAllowed);
 
   const toSupervisoryVisit = (r: typeof SV.$inferSelect): AideSupervisoryVisitView => ({
     supervisoryVisitId: r.id,
@@ -566,27 +576,36 @@ export function buildDrizzleM15WriteService(
               .where(and(eq(P.id, planId), eq(P.version, plan.version)));
           }
           // §2.4 / D12 — the M22 discipline-plan PDF render handshake + the M28/M14/M30/M33 fan-out.
-          await emit(tx, {
-            organizationId: actor.organizationId,
-            eventName: "m15.plan.version_signed",
-            aggregateKind: "discipline_care_plan_version",
-            aggregateId: versionId,
-            payload: {
-              planId,
-              versionId,
-              // F-166 (#248) — the M22 render-request chart target; already in scope on `plan`.
-              patientId: plan.patientId,
-              kind: plan.kind,
-              versionKind: updated.kind,
-              snapshot: updated.stateSnapshot,
-              signers: signatures.map((s) => ({
-                membershipId: s.signerMembershipId,
-                role: s.signerRole,
-                signedAt: iso(s.signedAt),
-                isAcknowledgment: s.isAcknowledgment,
-              })),
-            },
-          });
+          const eventSnapshot = redactDisciplineSnapshot(updated.stateSnapshot, false);
+          // A snapshot whose shape the redactor does not recognise is not rendered at all (fail closed): a blank
+          // PDF that looks like the signed plan is worse than none.
+          if (eventSnapshot !== null)
+            await emit(tx, {
+              organizationId: actor.organizationId,
+              eventName: "m15.plan.version_signed",
+              aggregateKind: "discipline_care_plan_version",
+              aggregateId: versionId,
+              payload: {
+                planId,
+                versionId,
+                // F-166 (#248) — the M22 render-request chart target; already in scope on `plan`.
+                patientId: plan.patientId,
+                kind: plan.kind,
+                versionKind: updated.kind,
+                // 42 CFR Part 2: the event is persisted (and readable through the ops outbox detail) and M22
+                // renders the plan PDF from it, with no viewer to decide who may see SUD goals. So the payload
+                // carries the snapshot WITHOUT Part 2 goals and the interventions that serve them (null if the
+                // shape is not recognised); the sealed snapshot itself stays whole on the version row, behind
+                // the disclosure-gated reads. Audit D-13.
+                snapshot: eventSnapshot,
+                signers: signatures.map((s) => ({
+                  membershipId: s.signerMembershipId,
+                  role: s.signerRole,
+                  signedAt: iso(s.signedAt),
+                  isAcknowledgment: s.isAcknowledgment,
+                })),
+              },
+            });
         }
         return toVersionDetail(updated, signatures);
       });
@@ -607,11 +626,12 @@ export function buildDrizzleM15WriteService(
         mutatingOriginalText: false,
       });
       // §2.1 / §2.3 — resolved through M7's CarePlanReader; an unbound seam throws and nothing is written.
-      await assertParentElements(
+      const { parentSudRelated } = await assertParentElements(
         plan.kind as DisciplinePlanKind,
         plan.patientId as never,
         { parentProblemId: input.parentProblemId, parentGoalId: input.parentGoalId },
         true,
+        elementsAudienceFor(actor),
       );
       checkDpoaGoalConsent(
         input.source as DisciplineGoalSource,
@@ -640,7 +660,9 @@ export function buildDrizzleM15WriteService(
             frequencyText: input.frequencyText ?? null,
             frequencyValue: input.frequencyValue ?? null,
             modalityText: input.modalityText ?? null,
-            sudRelated: input.sudRelated ?? false,
+            // Part 2 inheritance (the IDG-apply path does the same): a goal under a Part 2 problem is Part 2 content
+            // whatever the author sent, or M15 readers who cannot see the problem in M7 would see the goal's text.
+            sudRelated: (input.sudRelated ?? false) || parentSudRelated,
             actingConsentId: input.actingConsentId ?? null,
             addedByMembershipId: actor.membershipId,
             addedByDiscipline: input.addedByDiscipline,
@@ -662,6 +684,10 @@ export function buildDrizzleM15WriteService(
           .where(and(eq(G.id, goalId), eq(G.planId, planId)))
           .limit(1);
         if (!row) throw new NotFoundError("discipline goal not found");
+        // §7.8 — a Part 2 goal the caller may not see is not theirs to edit, and the result carries its text.
+        // Before the version check: a stale-version message would otherwise confirm it exists.
+        if (row.sudRelated && !input.sudAllowed)
+          throw new NotFoundError("discipline goal not found");
         if (input.expectedVersion !== null) {
           checkOptimisticConcurrency(input.expectedVersion, row.version);
         }
@@ -733,6 +759,7 @@ export function buildDrizzleM15WriteService(
         plan.patientId as never,
         { parentInterventionId: input.parentInterventionId },
         false,
+        elementsAudienceFor(actor),
       );
       return withOrgContext(db, scope(actor), async (tx) => {
         const [row] = await tx
@@ -767,6 +794,17 @@ export function buildDrizzleM15WriteService(
           .where(and(eq(I.id, interventionId), eq(I.planId, planId)))
           .limit(1);
         if (!row) throw new NotFoundError("discipline intervention not found");
+        if (!input.sudAllowed) {
+          // §7.8 — an intervention serving a Part 2 goal is Part 2 content by its anchor (the reads drop it).
+          const sudGoals = await tx
+            .select({ id: G.id })
+            .from(G)
+            .where(and(eq(G.planId, planId), eq(G.sudRelated, true)));
+          const hidden = new Set(sudGoals.map((goal) => goal.id.toLowerCase()));
+          if (isSudAnchored(row.goalRefs, hidden)) {
+            throw new NotFoundError("discipline intervention not found");
+          }
+        }
         if (input.expectedVersion !== null) {
           checkOptimisticConcurrency(input.expectedVersion, row.version);
         }
@@ -852,6 +890,11 @@ export function buildDrizzleM15WriteService(
         return row ?? null;
       });
       if (!existing) throw new NotFoundError("discipline assessment not found");
+      // §7.8 / §7.9 — a confidential assessment the caller may not see is not theirs to sign; the result carries
+      // its `data`. Before the version check, so a stale-version message cannot confirm it exists.
+      if (isConfidentialToCaller(existing, input)) {
+        throw new NotFoundError("discipline assessment not found");
+      }
       if (input.expectedVersion !== null) {
         checkOptimisticConcurrency(input.expectedVersion, existing.version);
       }
@@ -917,6 +960,10 @@ export function buildDrizzleM15WriteService(
           .where(and(eq(A.id, assessmentId), eq(A.planId, planId)))
           .limit(1);
         if (!original) throw new NotFoundError("discipline assessment not found");
+        // §7.8 / §7.9 — as signAssessment: a correction of a record the caller may not see is refused as absent.
+        if (isConfidentialToCaller(original, input)) {
+          throw new NotFoundError("discipline assessment not found");
+        }
         if (input.expectedVersion !== null) {
           checkOptimisticConcurrency(input.expectedVersion, original.version);
         }

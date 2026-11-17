@@ -21,6 +21,8 @@
  *   - a failed / unacknowledged iQIES submission is never `accepted`: packaging, upload, a silent or
  *     unrecognised report and a mixed report all stay short of accepted, a rejection surfaces on the batch,
  *     the outbox and the compliance rate, and the results route needs `hope.submission.manage`.
+ *   - a batch accepted WITH warnings counts as accepted on the compliance rate; a URL id that is no uuid is a 404 (an empty
+ *     list for a patient), never a 22P02 out of the ABAC loaders or the by-id reads.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m10:s04-override:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -85,6 +87,9 @@ const CLOCK_GRACE = new Date("2026-06-17T12:00:00.000Z");
 const CLOCK_EXPIRED = new Date("2026-06-30T12:00:00.000Z");
 const JUSTIFICATION = "EHR outage during the window; approved by the compliance lead";
 const OVERRIDE_AUDIT = "hope.late_deadline_override";
+// Synthetic: an SSN with area 900 is never issued. A justification naming one must never reach the immutable audit trail.
+const PHI_JUSTIFICATION =
+  "Outage; patient 900-12-3456 could not be keyed in time, approved by the lead";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -97,6 +102,9 @@ function headerAuth(request: FastifyRequest): void {
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
   request.context.providerEntityIds = [];
+  // R-05: the SFV route is a signing route (`requireStepUp`); the harness maps a header onto the attribute
+  // `step_up_recent` reads, and `as()` sends it fresh by default.
+  request.context.attributes.stepUpRecent = request.headers["x-test-step-up"] === "true";
 }
 
 describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE Postgres", () => {
@@ -116,6 +124,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
     "x-test-user": m,
     "x-test-uid": userOf[m] as string,
     "x-test-roles": roles,
+    "x-test-step-up": "true",
   });
   const uuid = (prefix: string, n: number): string =>
     `${prefix}-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
@@ -226,14 +235,36 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
     (await admin.query(`SELECT count(*)::int AS n FROM ${table} WHERE admission_id=$1`, [adm]))
       .rows[0].n as number;
   const overrideAudits = async (): Promise<
-    { severity: string; resource_id: string; context: Record<string, unknown> }[]
+    {
+      severity: string;
+      resource_id: string;
+      context: Record<string, unknown>;
+      correlation_id: string;
+      request_id: string | null;
+      actor_user_id: string | null;
+      source_ip: string | null;
+      user_agent: string | null;
+    }[]
   > =>
     (
       await admin.query(
-        "SELECT severity, resource_id, context FROM audit_event WHERE event_type=$1",
+        "SELECT severity, resource_id, context, correlation_id, request_id, actor_user_id, source_ip, user_agent FROM audit_event WHERE event_type=$1",
         [OVERRIDE_AUDIT],
       )
     ).rows;
+  /**
+   * What a deadline-override audit row must carry: the request facts the signature audit carries, the server's own
+   * correlation id, and the justification the admin typed (the only record, in an immutable trail, of why the cutoff was lifted).
+   */
+  const expectRequestFactsAndJustification = (
+    audit: Awaited<ReturnType<typeof overrideAudits>>[number],
+  ): void => {
+    expect(audit.actor_user_id).toBe(userOf[member.admin]);
+    expect(audit.request_id).toBeTruthy();
+    expect(audit.correlation_id).toBe(`hope-late-deadline-override:${audit.resource_id}`);
+    expect(audit.context).toMatchObject({ justification: JUSTIFICATION });
+    expect(audit.context).not.toHaveProperty("justificationSupplied");
+  };
   const overrideAuditsFor = async (id: string) =>
     (await overrideAudits()).filter((a) => a.resource_id === id);
 
@@ -326,10 +357,19 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       }),
     ))
       registry.register(name, fn);
+    registry.register(
+      "step_up_recent",
+      async (context) => context.attributes.stepUpRecent === true,
+    );
     registerAbacRegistry(registry);
     await app?.close();
     app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-    registerHopeRoutes(app, { service: svc, caseloadPatientIds: async () => [] });
+    registerHopeRoutes(app, {
+      service: svc,
+      caseloadPatientIds: async () => [],
+      // The SFV route's per-actor limiter is a composition-root concern (unit-tested in hope-routes.test.ts): no-op here.
+      sfvCompletionRateLimit: async () => undefined,
+    });
     await app.ready();
   });
 
@@ -362,7 +402,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
   });
 
   describe("unauthorized override", () => {
-    it("a hope.timepoint.write holder cannot self-declare adminOverride past the deadline (403, nothing written)", async () => {
+    it("a hope.timepoint.write holder cannot self-declare adminOverride past the deadline (403, no hope_assessment row and no override audit row)", async () => {
       const adm = await admissionWithWindow();
       liveNow = CLOCK_EXPIRED;
       const before = (await overrideAudits()).length;
@@ -407,6 +447,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
           targetDate: new Date().toISOString(),
           authorDiscipline: "RN",
           data: SFV_DATA,
+          attestationConfirmed: true,
           adminOverride: true,
           adminOverrideJustification: JUSTIFICATION,
         },
@@ -430,7 +471,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       expect(await countRows("hope_assessment", adm)).toBe(0);
     });
 
-    it("the flag rides no other write route: an edit carrying adminOverride changes nothing and audits nothing", async () => {
+    it("the flag does not ride the draft edit route: a PUT carrying adminOverride adds no override audit row", async () => {
       const adm = await admissionWithWindow();
       const draft = await svc.recordTimepoint(ORG, member.rn, adm, {
         rfaKind: "01_admission",
@@ -452,7 +493,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       expect((await overrideAudits()).length).toBe(before);
     });
 
-    it("every timepoint write route refuses a read-only caller (403) and writes nothing", async () => {
+    it("each listed timepoint write route refuses a read-only caller (403): the draft stays a draft, the schedule stays open and the admission still has one assessment row", async () => {
       const adm = await admissionWithWindow();
       const draft = await svc.recordTimepoint(ORG, member.rn, adm, {
         rfaKind: "01_admission",
@@ -500,7 +541,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
           `${A}/inactivations`,
           { reason: "entered on the wrong patient chart", authorDiscipline: "RN" },
         ],
-        ["POST", `/api/v1/hope/schedules/${schedule}/skip`, { reasonCode: "patient_declined" }],
+        ["POST", `/api/v1/hope/schedules/${schedule}/skip`, { reasonCode: "other" }],
       ];
       for (const [method, url, payload] of attempts) {
         const res = await app.inject({
@@ -560,7 +601,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
   });
 
   describe("justified override", () => {
-    it("the permitted admin without a justification is a 422, and nothing is written", async () => {
+    it("the permitted admin without a justification is a 422, and the admission has no hope_assessment row", async () => {
       const adm = await admissionWithWindow();
       liveNow = CLOCK_EXPIRED;
       const res = await postTimepoint(adm, as(member.admin), {
@@ -582,6 +623,55 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       expect(res.statusCode).toBeGreaterThanOrEqual(400);
       expect(res.statusCode).toBeLessThan(500);
       expect(await countRows("hope_assessment", adm)).toBe(0);
+    });
+
+    it("a justification that names a patient is a 422 that does not echo it: no row, no audit event", async () => {
+      const adm = await admissionWithWindow();
+      liveNow = CLOCK_EXPIRED;
+      const before = (await overrideAudits()).length;
+      const res = await postTimepoint(adm, as(member.admin), {
+        adminOverride: true,
+        adminOverrideJustification: PHI_JUSTIFICATION,
+        lateCompletionReasonCode: "admin_override",
+      });
+      expect(res.statusCode).toBe(422);
+      expect(codeOf(res)).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+      expect(res.body).not.toContain("900-12-3456");
+      expect(await countRows("hope_assessment", adm)).toBe(0);
+      expect((await overrideAudits()).length).toBe(before);
+    });
+
+    it("the service refuses it too (a second caller cannot put an identifier in the immutable trail): the write rolls back", async () => {
+      const adm = await admissionWithWindow();
+      liveNow = CLOCK_EXPIRED;
+      const before = (await overrideAudits()).length;
+      await expect(
+        svc.recordTimepoint(ORG, member.admin, adm, {
+          rfaKind: "01_admission",
+          targetDate: IN_WINDOW_DATE,
+          authorDiscipline: "RN",
+          data: QUIET_DATA,
+          lateCompletionReasonCode: "admin_override",
+          adminOverride: true,
+          adminOverrideJustification: PHI_JUSTIFICATION,
+        }),
+      ).rejects.toMatchObject({ code: "EVIDENCE_LOOKS_LIKE_PHI", statusCode: 422 });
+      expect(await countRows("hope_assessment", adm)).toBe(0);
+      expect((await overrideAudits()).length).toBe(before);
+    });
+
+    it("the stored justification is the trimmed text", async () => {
+      const adm = await admissionWithWindow();
+      liveNow = CLOCK_EXPIRED;
+      const res = await postTimepoint(adm, as(member.admin), {
+        adminOverride: true,
+        adminOverrideJustification: `   ${JUSTIFICATION}  \n`,
+        lateCompletionReasonCode: "admin_override",
+      });
+      expect(res.statusCode).toBe(201);
+      const audits = await overrideAuditsFor(res.json<{ id: string }>().id);
+      expect(audits).toHaveLength(1);
+      expect(audits[0]?.context).toMatchObject({ justification: JUSTIFICATION });
     });
 
     it("an override still demands the typed late reason (400)", async () => {
@@ -610,10 +700,10 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       expect(audits).toHaveLength(1);
       expect(audits[0]?.severity).toBe("critical");
       expect(audits[0]?.context).toMatchObject({
-        justification: JUSTIFICATION,
         byMembershipId: member.admin,
         rfaKind: "01_admission",
       });
+      expectRequestFactsAndJustification(audits[0] as (typeof audits)[number]);
       // The app role can only append: it can neither rewrite the reason nor delete the event.
       await expect(
         appClient.query("UPDATE audit_event SET context='{}'::jsonb WHERE event_type=$1", [
@@ -655,6 +745,7 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
         targetDate: IN_WINDOW_DATE,
         authorDiscipline: "RN",
         data: SFV_DATA,
+        attestationConfirmed: true,
         ...over,
       });
       const post = (headers: Record<string, string>, over: object = {}) =>
@@ -671,6 +762,14 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       const noReason = await post(as(member.admin), { adminOverride: true });
       expect(noReason.statusCode).toBe(422);
       expect(await sfvStatus(draft.id)).toBe("open");
+      const namesPatient = await post(as(member.admin), {
+        adminOverride: true,
+        adminOverrideJustification: PHI_JUSTIFICATION,
+      });
+      expect(namesPatient.statusCode).toBe(422);
+      expect(codeOf(namesPatient)).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+      expect(namesPatient.body).not.toContain("900-12-3456");
+      expect(await sfvStatus(draft.id)).toBe("open");
       const ok = await post(as(member.admin), {
         adminOverride: true,
         adminOverrideJustification: JUSTIFICATION,
@@ -680,10 +779,8 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       const audits = await overrideAuditsFor(ok.json<{ id: string }>().id);
       expect(audits).toHaveLength(1);
       expect(audits[0]?.severity).toBe("critical");
-      expect(audits[0]?.context).toMatchObject({
-        justification: JUSTIFICATION,
-        byMembershipId: member.admin,
-      });
+      expect(audits[0]?.context).toMatchObject({ byMembershipId: member.admin });
+      expectRequestFactsAndJustification(audits[0] as (typeof audits)[number]);
     });
   });
 
@@ -752,6 +849,9 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
     });
 
     it("a rejection is surfaced on the batch, the findings and the outbox, and is never labeled accepted", async () => {
+      // Deltas, not absolutes: the provider entity is shared with the accepted_with_warnings test below,
+      // which settles an accepted batch, so an absolute `accepted === 0` depends on test order.
+      const before = await svc.complianceDashboard(ORG, provider);
       const a = await signedAssessment();
       const b = await batch("submitted_pending_result", [a]);
       const res = await postResults(b, as(member.compliance, "compliance_officer"), [
@@ -772,8 +872,30 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
       expect(rows.map((r) => r.event_type)).toContain("m10.hope.submission_rejected");
       // The failed batch is counted as a non-acceptance on the compliance posture.
       const dash = await svc.complianceDashboard(ORG, provider);
-      expect(dash.submissionAcceptanceCounts.accepted).toBe(0);
-      expect(dash.submissionAcceptanceCounts.total).toBeGreaterThan(0);
+      expect(dash.submissionAcceptanceCounts).toEqual({
+        accepted: before.submissionAcceptanceCounts.accepted,
+        total: before.submissionAcceptanceCounts.total + 1,
+      });
+    });
+
+    it("a batch iQIES accepted with warnings is accepted on the compliance rate (in both halves of the ratio)", async () => {
+      const before = await svc.complianceDashboard(ORG, provider);
+      const a = await signedAssessment();
+      const b = await batch("submitted_pending_result", [a]);
+      const res = await postResults(b, as(member.compliance, "compliance_officer"), [
+        { assessmentId: a, status: "accepted_with_warnings", code: "W-100", message: "advisory" },
+      ]);
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        status: "accepted_with_warnings",
+        acceptedCount: 1,
+        rejectedCount: 0,
+      });
+      const after = await svc.complianceDashboard(ORG, provider);
+      expect(after.submissionAcceptanceCounts).toEqual({
+        accepted: before.submissionAcceptanceCounts.accepted + 1,
+        total: before.submissionAcceptanceCounts.total + 1,
+      });
     });
 
     it("an unrecognised or empty report row leaves the batch pending: never guessed accepted", async () => {
@@ -847,9 +969,53 @@ describe.skipIf(!DB_URL)("S04 HOPE deadline override + iQIES hand-off — LIVE P
     });
   });
 
+  describe("an id in the URL that is no uuid is a 404 (or an empty list), never a 22P02 / 500", () => {
+    const NOT_A_UUID = "not-a-uuid";
+
+    it.each([
+      ["an assessment", `/api/v1/hope/assessments/${NOT_A_UUID}`, () => as(member.viewer)],
+      ["a schedule", `/api/v1/hope/schedules/${NOT_A_UUID}`, () => as(member.viewer)],
+      ["an SFV", `/api/v1/hope/sfv/${NOT_A_UUID}`, () => as(member.viewer)],
+      [
+        "a submission",
+        `/api/v1/hope/submissions/${NOT_A_UUID}`,
+        () => as(member.compliance, "compliance_officer"),
+      ],
+    ])(
+      "GET %s by a non-uuid id answers 404 (the ABAC loader answers absent)",
+      async (_name, url, headers) => {
+        const res = await app.inject({ method: "GET", url, headers: headers() });
+
+        expect(res.statusCode).toBe(404);
+      },
+    );
+
+    it("a patient id that is no uuid has no assessments (200, empty), not a cast", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/patients/${NOT_A_UUID}/hope/assessments`,
+        headers: as(member.viewer),
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ assessments: [] });
+    });
+
+    it("the service answers the same without the route: reads are a NotFoundError, the loaders null", async () => {
+      await expect(svc.getAssessment(ORG, NOT_A_UUID)).rejects.toMatchObject({ statusCode: 404 });
+      await expect(svc.getSchedule(ORG, NOT_A_UUID)).rejects.toMatchObject({ statusCode: 404 });
+      await expect(svc.getSfv(ORG, NOT_A_UUID)).rejects.toMatchObject({ statusCode: 404 });
+      await expect(svc.getSubmission(ORG, NOT_A_UUID)).rejects.toMatchObject({ statusCode: 404 });
+      expect(await svc.loadAssessment(ORG, NOT_A_UUID)).toBeNull();
+      expect(await svc.loadSchedule(ORG, NOT_A_UUID)).toBeNull();
+      expect(await svc.loadSfv(ORG, NOT_A_UUID)).toBeNull();
+      expect(await svc.loadSubmission(ORG, NOT_A_UUID)).toBeNull();
+    });
+  });
+
   /** Patch the J2050/J2051 answers that open the SFV obligation (mirrors m10-hope-write.live). */
   async function patchTrigger(id: string): Promise<void> {
-    const ws = await svc.getAssessmentWorkspace(ORG, id);
+    const ws = await svc.getAssessmentWorkspace(ORG, id, { mayWrite: true });
     await svc.patchAssessmentAnswers(ORG, member.rn, id, {
       ifVersion: ws.assessment.version,
       changes: [

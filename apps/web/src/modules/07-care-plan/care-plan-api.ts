@@ -26,7 +26,12 @@
 // row in `GET /patients/:patientId/care-plan` carries its own `version`. Nothing here invents one, and
 // nothing re-reads to "refresh" it before writing — that would defeat the check, since the point of
 // optimistic concurrency is to fail when the row moved under the caller.
-import { sharedAttemptKeys } from "@chartwarden/ui";
+import {
+  describeOpsError,
+  isInFlightDuplicate,
+  isKeyStuck as isKeyStuckRefusal,
+  sharedAttemptKeys,
+} from "@chartwarden/ui";
 import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── READ side (the Care Plan workspace screens: plan + readiness + review status + proposed changes) ──
@@ -186,6 +191,11 @@ export interface ClinicalSnapshot {
   problems?: Problem[];
   goals?: Goal[];
   interventions?: Intervention[];
+  /**
+   * Set by the server (`redactCarePlanForCaller`, per caller): true when restricted content (42 CFR Part 2)
+   * was withheld from these lists, false when nothing was. Absent on a legacy or unredacted snapshot.
+   */
+  redacted?: boolean;
 }
 
 /**
@@ -209,6 +219,8 @@ export function errorMessage(error: unknown, fallback: string): string {
     blockers?: { code?: string; message?: string }[];
   } | null;
   if (body?.blockers?.length) return body.blockers.map((b) => b.message ?? b.code).join("; ");
+  const idempotency = idempotencyRefusalCopy(error);
+  if (idempotency) return idempotency;
   // §7.7 — these well-known refusals get a friendly, actionable message BEFORE the generic
   // detail/message/title fallbacks below: a stale write carries `error.message` too (e.g.
   // "version 4 is stale"), and checking the generic fields first would leak that raw text instead
@@ -373,7 +385,48 @@ export type InterventionDiscipline = CreateInterventionBody["discipline"];
 
 export type WriteResult<T> =
   | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly status: number | null; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly status: number | null;
+      readonly message: string;
+      /** The parsed error body exactly as the server sent it (the platform envelope), for step-up / stale / field reading. */
+      readonly body: unknown;
+    };
+
+/** The server's platform error envelope is `{ error: { code, message } }`; a flat `{ message }` is read too. */
+function errorDetail(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const b = body as { message?: unknown; error?: { message?: unknown } };
+  if (typeof b.error?.message === "string") return b.error.message;
+  return typeof b.message === "string" ? b.message : null;
+}
+
+/** True for the 409 the server answers a stale `If-Match` / `ifVersion` write with. */
+export function isStaleVersion(error: unknown): boolean {
+  const b = error as { code?: unknown; error?: { code?: unknown } } | null;
+  return (b?.error?.code ?? b?.code) === "STALE_VERSION";
+}
+
+/**
+ * True for the 409 that says the first request under an Idempotency-Key never finished and its outcome is unknown.
+ * The client renews the key after it, so the next click would be a new write: the caller re-reads the plan first.
+ */
+export function isKeyStuck(body: unknown): boolean {
+  return isKeyStuckRefusal(409, body);
+}
+
+/**
+ * The server words the in-flight and key-stuck 409s for an API client ("Idempotency-Key request is still being
+ * processed"). The ops screens give them plain copy in `describeOpsError`; this reuses that copy (never a second
+ * wording) and returns null for any other refusal, so the caller keeps its own message. It matches on the shared
+ * predicates, not the error code alone: a server from before the deploy answers the in-flight duplicate as a plain
+ * `CONFLICT` with that sentence. Retry behaviour lives in the client middleware.
+ */
+function idempotencyRefusalCopy(body: unknown): string | null {
+  return isInFlightDuplicate(409, body) || isKeyStuckRefusal(409, body)
+    ? describeOpsError(body, { status: 409 }).message
+    : null;
+}
 
 /**
  * Turn a failure into copy a clinician can act on.
@@ -385,29 +438,72 @@ export type WriteResult<T> =
  */
 function failure<T>(status: number | undefined, body: unknown): WriteResult<T> {
   const code = typeof status === "number" ? status : null;
-  const detail =
-    body && typeof body === "object" && "message" in body && typeof body.message === "string"
-      ? body.message
-      : null;
-  const errorCode =
-    body && typeof body === "object" && "error" in body
-      ? (body as { error?: { code?: unknown } }).error?.code
-      : undefined;
-  const message =
-    errorCode === "STALE_VERSION"
-      ? "Someone else changed this care plan while it was open. Reload to see their change, then try again."
-      : code === 428
-        ? (detail ?? "This edit did not carry the version it was based on and was refused.")
-        : code === 403
-          ? (detail ?? "Your role is not permitted to take this action on the care plan.")
-          : code === 409
-            ? (detail ?? "The plan is not in a state that allows this.")
-            : code === 404
-              ? "That care plan is no longer available to you."
-              : code === 422
-                ? (detail ?? "The server rejected the details supplied.")
-                : (detail ?? "The action could not be completed.");
-  return { ok: false, status: code, message };
+  const detail = errorDetail(body);
+  const message = isStaleVersion(body)
+    ? "Someone else changed this care plan while it was open. Reload to see their change, then try again."
+    : code === 428
+      ? (detail ?? "This edit did not carry the version it was based on and was refused.")
+      : code === 403
+        ? (detail ?? "Your role is not permitted to take this action on the care plan.")
+        : code === 409
+          ? (idempotencyRefusalCopy(body) ??
+            detail ??
+            "The plan is not in a state that allows this.")
+          : code === 404
+            ? "That care plan is no longer available to you."
+            : code === 422
+              ? (detail ?? "The server rejected the details supplied.")
+              : (detail ?? "The action could not be completed.");
+  return { ok: false, status: code, message, body };
+}
+
+/**
+ * Read an openapi-fetch result. A refusal is `error` set OR a non-2xx `response` (an error page with an empty
+ * body parses to `""`, which is falsy but still a refusal). Success does NOT require a body: an M7 write that
+ * answers with none is still a write that happened.
+ */
+function resultOf<T>(res: {
+  data?: unknown;
+  error?: unknown;
+  response?: Response;
+}): WriteResult<T> {
+  if (res.error !== undefined || res.response?.ok === false) {
+    return failure(res.response?.status, res.error);
+  }
+  return { ok: true, value: res.data as T };
+}
+
+/** A property-name token out of a validation `field` path (`body/description`, `/description`, `goalRefs.0`). */
+function propertyOf(field: string | undefined): string | null {
+  const name = (field ?? "").replace(/^body(?=[/.]|$)/, "").replace(/^[/.]+/, "");
+  const first = name.split(/[/.]/)[0] ?? "";
+  return /^[A-Za-z][A-Za-z0-9_]*$/.test(first) ? first : null;
+}
+
+/**
+ * Which input each validation message belongs to, by EXACT property name: the envelope's `details[].field`
+ * (TypeBox path) and Fastify's `body/<property> must …` / `body must have required property '<property>'`.
+ * A message that names no property maps to nothing, so it is never printed under an unrelated input.
+ */
+export function fieldErrorsOf(error: unknown): Record<string, string> {
+  const payload = error as {
+    message?: string;
+    error?: { message?: string; details?: { field?: string; message?: string }[] };
+    details?: { field?: string; message?: string }[];
+  } | null;
+  const out: Record<string, string> = {};
+  for (const detail of payload?.error?.details ?? payload?.details ?? []) {
+    const property = propertyOf(detail.field);
+    if (property && detail.message && !(property in out)) out[property] = detail.message;
+  }
+  const message = payload?.error?.message ?? payload?.message ?? "";
+  for (const m of message.matchAll(/\bbody[/.]([A-Za-z][A-Za-z0-9_]*) ([^,;]+)/g)) {
+    if (m[1] && !(m[1] in out)) out[m[1]] = `${m[1]} ${m[2]}`;
+  }
+  for (const m of message.matchAll(/\bbody must have required property '([A-Za-z0-9_]+)'/g)) {
+    if (m[1] && !(m[1] in out)) out[m[1]] = "This field is required.";
+  }
+  return out;
 }
 
 /**
@@ -436,6 +532,13 @@ const patchIntent = (route: string, elementId: string, rowVersion: number, body:
 
 // ── plan + version lifecycle ───────────────────────────────────────────────────────────────────────────
 
+export interface PatientAdmission {
+  id: string;
+  state: string;
+  admissionAt: string | null;
+  dischargedAt: string | null;
+}
+
 /**
  * F-066 (#161) — the patient's admissions, newest first (the read F-065 added).
  *
@@ -445,22 +548,19 @@ const patchIntent = (route: string, elementId: string, rowVersion: number, body:
  * client for the plan bootstrap and declined to offer a control for it — the screen header said as
  * much: "a 'create care plan' button would need an admissionId this screen does not read". It reads it
  * now.
+ *
+ * A refused read is returned as `error`, never as an empty list: "no admissions" and "could not look" are
+ * different answers and only the first one means "admit the patient first".
  */
 export async function loadPatientAdmissions(
   client: ApiClient,
   patientId: string,
-): Promise<
-  { id: string; state: string; admissionAt: string | null; dischargedAt: string | null }[]
-> {
-  const { data } = await client.GET("/api/v1/patients/{patientId}/admissions", {
+): Promise<{ admissions: PatientAdmission[]; error: unknown }> {
+  const { data, error } = await client.GET("/api/v1/patients/{patientId}/admissions", {
     params: { path: { patientId } },
   });
-  return (data?.items ?? []) as {
-    id: string;
-    state: string;
-    admissionAt: string | null;
-    dischargedAt: string | null;
-  }[];
+  if (error !== undefined) return { admissions: [], error };
+  return { admissions: (data?.items ?? []) as PatientAdmission[], error: null };
 }
 
 /** §5.2 — create the plan shell for an admission. The initial IPOC hangs off this. */
@@ -469,12 +569,12 @@ export async function bootstrapCarePlan(
   patientId: string,
   admissionId: string,
 ): Promise<WriteResult<unknown>> {
-  const { data, error, response } = await client.POST("/api/v1/patients/{patientId}/care-plan", {
-    params: { path: { patientId } },
-    body: { admissionId },
-  });
-  if (error || !data) return failure(response?.status, error);
-  return { ok: true, value: data };
+  return resultOf(
+    await client.POST("/api/v1/patients/{patientId}/care-plan", {
+      params: { path: { patientId } },
+      body: { admissionId },
+    }),
+  );
 }
 
 /** §2 — open a new DRAFT version. `idg_review` is the 15-day CoP cadence (418.56(d)). */
@@ -483,12 +583,12 @@ export async function createVersion(
   planId: string,
   body: CreateVersionBody,
 ): Promise<WriteResult<CarePlanVersion>> {
-  const { data, error, response } = await client.POST("/api/v1/care-plans/{planId}/versions", {
-    params: { path: { planId } },
-    body,
-  });
-  if (error || !data) return failure(response?.status, error);
-  return { ok: true, value: data as CarePlanVersion };
+  return resultOf(
+    await client.POST("/api/v1/care-plans/{planId}/versions", {
+      params: { path: { planId } },
+      body,
+    }),
+  );
 }
 
 /**
@@ -502,12 +602,12 @@ export async function finalizeVersion(
   versionId: string,
   body: FinalizeBody,
 ): Promise<WriteResult<CarePlanVersion>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/care-plans/{planId}/versions/{versionId}/finalize",
-    { params: { path: { planId, versionId } }, body },
+  return resultOf(
+    await client.POST("/api/v1/care-plans/{planId}/versions/{versionId}/finalize", {
+      params: { path: { planId, versionId } },
+      body,
+    }),
   );
-  if (error || !data) return failure(response?.status, error);
-  return { ok: true, value: data as CarePlanVersion };
 }
 
 /**
@@ -520,12 +620,12 @@ export async function signVersion(
   versionId: string,
   body: SignBody,
 ): Promise<WriteResult<CarePlanVersion>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/care-plans/{planId}/versions/{versionId}/signatures",
-    { params: { path: { planId, versionId } }, body },
+  return resultOf(
+    await client.POST("/api/v1/care-plans/{planId}/versions/{versionId}/signatures", {
+      params: { path: { planId, versionId } },
+      body,
+    }),
   );
-  if (error || !data) return failure(response?.status, error);
-  return { ok: true, value: data as CarePlanVersion };
 }
 
 /** §2 — reopen a finalized version for editing (before the quorum completes). */
@@ -535,12 +635,12 @@ export async function returnToDraft(
   versionId: string,
   ifVersion: number,
 ): Promise<WriteResult<CarePlanVersion>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/care-plans/{planId}/versions/{versionId}/return-to-draft",
-    { params: { path: { planId, versionId } }, body: { ifVersion } },
+  return resultOf(
+    await client.POST("/api/v1/care-plans/{planId}/versions/{versionId}/return-to-draft", {
+      params: { path: { planId, versionId } },
+      body: { ifVersion },
+    }),
   );
-  if (error || !data) return failure(response?.status, error);
-  return { ok: true, value: data as CarePlanVersion };
 }
 
 // ── problems ───────────────────────────────────────────────────────────────────────────────────────────
@@ -550,12 +650,12 @@ export async function createProblem(
   planId: string,
   body: CreateProblemBody,
 ): Promise<WriteResult<ProblemRecord>> {
-  const { data, error, response } = await client.POST("/api/v1/care-plans/{planId}/problems", {
-    params: { path: { planId } },
-    body,
-  });
-  if (error || !data) return failure(response?.status, error);
-  return { ok: true, value: data as ProblemRecord };
+  return resultOf(
+    await client.POST("/api/v1/care-plans/{planId}/problems", {
+      params: { path: { planId } },
+      body,
+    }),
+  );
 }
 
 export async function patchProblem(
@@ -565,16 +665,16 @@ export async function patchProblem(
   rowVersion: number,
   body: PatchProblemBody,
 ): Promise<WriteResult<ProblemRecord>> {
-  const { data, error, response } = await sharedAttemptKeys.run(
-    patchIntent("problems", `${planId}/${elementId}`, rowVersion, body),
-    (idempotencyKey) =>
-      client.PATCH("/api/v1/care-plans/{planId}/problems/{elementId}", {
-        params: { path: { planId, elementId }, header: patchHeaders(rowVersion, idempotencyKey) },
-        body,
-      }),
+  return resultOf(
+    await sharedAttemptKeys.run(
+      patchIntent("problems", `${planId}/${elementId}`, rowVersion, body),
+      (idempotencyKey) =>
+        client.PATCH("/api/v1/care-plans/{planId}/problems/{elementId}", {
+          params: { path: { planId, elementId }, header: patchHeaders(rowVersion, idempotencyKey) },
+          body,
+        }),
+    ),
   );
-  if (error || !data) return failure(response?.status, error);
-  return { ok: true, value: data as ProblemRecord };
 }
 
 /** §2 — resolve a problem. Its goals and interventions are the server's business, not this call's. */
@@ -585,12 +685,12 @@ export async function resolveProblem(
   ifVersion: number,
   resolutionNote: string,
 ): Promise<WriteResult<ProblemRecord>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/care-plans/{planId}/problems/{elementId}/resolve",
-    { params: { path: { planId, elementId } }, body: { ifVersion, resolutionNote } },
+  return resultOf(
+    await client.POST("/api/v1/care-plans/{planId}/problems/{elementId}/resolve", {
+      params: { path: { planId, elementId } },
+      body: { ifVersion, resolutionNote },
+    }),
   );
-  if (error || !data) return failure(response?.status, error);
-  return { ok: true, value: data as ProblemRecord };
 }
 
 // ── goals ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -600,12 +700,12 @@ export async function createGoal(
   planId: string,
   body: CreateGoalBody,
 ): Promise<WriteResult<GoalRecord>> {
-  const { data, error, response } = await client.POST("/api/v1/care-plans/{planId}/goals", {
-    params: { path: { planId } },
-    body,
-  });
-  if (error || !data) return failure(response?.status, error);
-  return { ok: true, value: data as GoalRecord };
+  return resultOf(
+    await client.POST("/api/v1/care-plans/{planId}/goals", {
+      params: { path: { planId } },
+      body,
+    }),
+  );
 }
 
 /**
@@ -620,16 +720,16 @@ export async function patchGoal(
   rowVersion: number,
   body: PatchGoalBody,
 ): Promise<WriteResult<GoalRecord>> {
-  const { data, error, response } = await sharedAttemptKeys.run(
-    patchIntent("goals", `${planId}/${elementId}`, rowVersion, body),
-    (idempotencyKey) =>
-      client.PATCH("/api/v1/care-plans/{planId}/goals/{elementId}", {
-        params: { path: { planId, elementId }, header: patchHeaders(rowVersion, idempotencyKey) },
-        body,
-      }),
+  return resultOf(
+    await sharedAttemptKeys.run(
+      patchIntent("goals", `${planId}/${elementId}`, rowVersion, body),
+      (idempotencyKey) =>
+        client.PATCH("/api/v1/care-plans/{planId}/goals/{elementId}", {
+          params: { path: { planId, elementId }, header: patchHeaders(rowVersion, idempotencyKey) },
+          body,
+        }),
+    ),
   );
-  if (error || !data) return failure(response?.status, error);
-  return { ok: true, value: data as GoalRecord };
 }
 
 // ── interventions ──────────────────────────────────────────────────────────────────────────────────────
@@ -639,12 +739,12 @@ export async function createIntervention(
   planId: string,
   body: CreateInterventionBody,
 ): Promise<WriteResult<InterventionRecord>> {
-  const { data, error, response } = await client.POST("/api/v1/care-plans/{planId}/interventions", {
-    params: { path: { planId } },
-    body,
-  });
-  if (error || !data) return failure(response?.status, error);
-  return { ok: true, value: data as InterventionRecord };
+  return resultOf(
+    await client.POST("/api/v1/care-plans/{planId}/interventions", {
+      params: { path: { planId } },
+      body,
+    }),
+  );
 }
 
 export async function patchIntervention(
@@ -654,16 +754,16 @@ export async function patchIntervention(
   rowVersion: number,
   body: PatchInterventionBody,
 ): Promise<WriteResult<InterventionRecord>> {
-  const { data, error, response } = await sharedAttemptKeys.run(
-    patchIntent("interventions", `${planId}/${elementId}`, rowVersion, body),
-    (idempotencyKey) =>
-      client.PATCH("/api/v1/care-plans/{planId}/interventions/{elementId}", {
-        params: { path: { planId, elementId }, header: patchHeaders(rowVersion, idempotencyKey) },
-        body,
-      }),
+  return resultOf(
+    await sharedAttemptKeys.run(
+      patchIntent("interventions", `${planId}/${elementId}`, rowVersion, body),
+      (idempotencyKey) =>
+        client.PATCH("/api/v1/care-plans/{planId}/interventions/{elementId}", {
+          params: { path: { planId, elementId }, header: patchHeaders(rowVersion, idempotencyKey) },
+          body,
+        }),
+    ),
   );
-  if (error || !data) return failure(response?.status, error);
-  return { ok: true, value: data as InterventionRecord };
 }
 
 export async function discontinueIntervention(
@@ -673,10 +773,10 @@ export async function discontinueIntervention(
   ifVersion: number,
   reason: string,
 ): Promise<WriteResult<InterventionRecord>> {
-  const { data, error, response } = await client.POST(
-    "/api/v1/care-plans/{planId}/interventions/{elementId}/discontinue",
-    { params: { path: { planId, elementId } }, body: { ifVersion, reason } },
+  return resultOf(
+    await client.POST("/api/v1/care-plans/{planId}/interventions/{elementId}/discontinue", {
+      params: { path: { planId, elementId } },
+      body: { ifVersion, reason },
+    }),
   );
-  if (error || !data) return failure(response?.status, error);
-  return { ok: true, value: data as InterventionRecord };
 }

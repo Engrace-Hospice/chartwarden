@@ -33,27 +33,30 @@ export function roleSatisfiesSlot(slot: RequiredSignerSlot, role: CarePlanSigner
 }
 
 /**
- * Greedy consume-once match of collected `signedRoles` against the quorum's slots: each signature is
- * counted toward at most one slot, so a role that could satisfy two slots (via a union) never
- * double-counts. Returns the count of slots still unmet.
+ * Maximum bipartite match of collected `signedRoles` against the quorum's slot units (a slot of `count`
+ * n is n units): each signature fills at most one unit, and the quorum is met iff SOME assignment fills
+ * every unit. A greedy first-fit is order-dependent — with [physician|NP, rn, NP] it hands a signing NP
+ * to the union slot and strands the explicit NP seat — so this runs Kuhn's augmenting-path matching
+ * (sets are a handful of slots; O(units x signatures) is nothing). Returns the units still unmet.
  */
 function unmetSlotCount(
   set: RequiredSignerSet,
   signedRoles: ReadonlyArray<CarePlanSignerRole>,
 ): number {
-  const remaining = [...signedRoles];
-  let unmet = 0;
-  for (const slot of set) {
-    let need = slot.count;
-    for (let i = remaining.length - 1; i >= 0 && need > 0; i--) {
-      if (roleSatisfiesSlot(slot, remaining[i]!)) {
-        remaining.splice(i, 1);
-        need--;
+  const units = set.flatMap((slot) => Array.from({ length: slot.count }, () => slot));
+  const unitOfRole: number[] = signedRoles.map(() => -1);
+  const assign = (unit: number, visited: Set<number>): boolean => {
+    for (let r = 0; r < signedRoles.length; r++) {
+      if (visited.has(r) || !roleSatisfiesSlot(units[unit]!, signedRoles[r]!)) continue;
+      visited.add(r);
+      if (unitOfRole[r] === -1 || assign(unitOfRole[r]!, visited)) {
+        unitOfRole[r] = unit;
+        return true;
       }
     }
-    if (need > 0) unmet += need;
-  }
-  return unmet;
+    return false;
+  };
+  return units.filter((_, unit) => !assign(unit, new Set())).length;
 }
 
 /** Whether the collected `signedRoles` fully satisfy the `set` (every required slot filled). */
@@ -100,14 +103,15 @@ export function decideRecordSignature(
 }
 
 /** The signer roles a signature may be captured under — the M3 role key IS the signer role (GAP-011). */
-const KNOWN_SIGNER_ROLES: ReadonlySet<string> = new Set<CarePlanSignerRole>([
+const ALL_SIGNER_ROLES: ReadonlyArray<CarePlanSignerRole> = [
   "rn_case_manager",
   "hospice_physician",
   "nurse_practitioner",
   "msw",
   "chaplain",
   "medical_director",
-]);
+];
+const KNOWN_SIGNER_ROLES: ReadonlySet<string> = new Set(ALL_SIGNER_ROLES);
 
 /**
  * GAP-011 — the claimed `signerRole` is a BODY field; it is only a valid attestation if the AUTHENTICATED
@@ -143,7 +147,10 @@ export function assertMembershipNotAlreadySigned(
  * length, physician seat gone. The requested set must COVER every floor slot — each floor slot is matched
  * to a distinct requested slot whose roles are a non-empty subset of the floor slot's roles and whose count
  * is at least the floor's — and every requested role must be a known signer role. Extra slots are the
- * tightening. Returns the set to store (the requested one) or throws REQUIRED_SIGNER_SET_UNMET.
+ * tightening. Every slot must be a single seat (`count` 1): one live signature per (version, signer_role)
+ * is a DB unique index, so a slot needing 2 can never be met, and the set as a whole must be satisfiable
+ * by distinct roles (two seats that only an `rn_case_manager` can fill would deadlock the version).
+ * Returns the set to store (the requested one) or throws REQUIRED_SIGNER_SET_UNMET.
  */
 export function resolveTightenedSignerSet(
   floor: RequiredSignerSet,
@@ -155,6 +162,13 @@ export function resolveTightenedSignerSet(
       tokens.every((t) => KNOWN_SIGNER_ROLES.has(t)) && slot.count >= 1,
       "REQUIRED_SIGNER_SET_UNMET",
       "the Required Signer Set names an unknown signer role or a zero count",
+    );
+  }
+  for (const slot of requested) {
+    require_(
+      slot.count === 1,
+      "REQUIRED_SIGNER_SET_UNMET",
+      `the Required Signer Set slot '${slot.role}' must have count 1 (one signature per signer role per version)`,
     );
   }
   const used = new Set<number>();
@@ -173,5 +187,10 @@ export function resolveTightenedSignerSet(
     );
     used.add(index);
   }
+  require_(
+    unmetSlotCount(requested, ALL_SIGNER_ROLES) === 0,
+    "REQUIRED_SIGNER_SET_UNMET",
+    "the Required Signer Set cannot be satisfied by distinct signer roles",
+  );
   return requested;
 }

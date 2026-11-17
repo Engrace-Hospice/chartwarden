@@ -111,6 +111,25 @@ describe("Submission worklist KPIs", () => {
     expect(await screen.findByText("4 matching submissions")).toBeTruthy();
   });
 
+  it("R-08: filters on Cancelled, labels the pill, and never counts a cancelled package as awaiting", async () => {
+    routes["/api/v1/hope/submissions"] = json({
+      submissions: [row("11111111-aaaa", "cancelled"), row("22222222-bbbb", "exported")],
+    });
+    mount(<SubmissionWorklist />);
+    await screen.findByText("2 matching submissions");
+    expect(screen.getByRole("button", { name: /Awaiting confirmation/ }).textContent).toContain(
+      "1",
+    );
+    fireEvent.change(screen.getByLabelText("Submission status"), {
+      target: { value: "cancelled" },
+    });
+    await waitFor(() => expect(screen.getByText("1 matching submissions")).toBeTruthy());
+    // The status pill in the (clickable) table row; the <option> of the same name is not inside a row.
+    const rows = screen.getAllByRole("button").filter((el) => el.tagName === "TR");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.textContent).toContain("Cancelled");
+  });
+
   it("pluralises the batch count", async () => {
     mount(<SubmissionWorklist />);
     await screen.findByText("4 matching submissions");

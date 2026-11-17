@@ -5,7 +5,7 @@ import type { FastifyInstance } from "fastify";
 import {
   defaultConsentActiveChecker,
   defaultInternalSudAccessChecker,
-  sudDisclosureAllowedForPatient,
+  sudDisclosureAllowedForActor,
 } from "./abac-predicates";
 import {
   type CarePlanWriteOutboxPort,
@@ -50,20 +50,12 @@ export function mountCarePlanRoutes(
     const resolvedPatientId =
       patientId || (await resolver.loadPlan(organizationId, planId))?.patientId;
     if (!resolvedPatientId) return false;
-    return sudDisclosureAllowedForPatient(
-      {
-        organizationId,
-        userId: "",
-        roles,
-        providerEntityIds: [],
-        locationIds: [],
-        // The Part 2 decision is now PER-ACTOR, so the synthesized context has to carry the one
-        // attribute that names the actor. Passing `{}` here would have made every route-level
-        // redaction read as `actor_unidentified` against a workforce-restricted release — a
-        // fail-closed answer, but one that hides the chart from the very people it names.
-        attributes: { membershipId },
-      },
-      resolvedPatientId,
+    // The Part 2 decision is PER-ACTOR, so the synthesized context carries the one attribute that names the actor
+    // (`membershipId`, inside `sudDisclosureAllowedForActor`). Passing `{}` would have made every route-level
+    // redaction read as `actor_unidentified` against a workforce-restricted release — a fail-closed answer, but
+    // one that hides the chart from the very people it names.
+    return sudDisclosureAllowedForActor(
+      { organizationId, patientId: resolvedPatientId, roles, membershipId },
       sudInternalAccess,
     );
   };
@@ -108,6 +100,7 @@ export {
   getCarePlanReader,
   type IdgPacketCarePlanContext,
   activeProblemIdsForOrg,
+  activeSudProblemIdsForOrg,
   idgPacketCarePlanContextForOrg,
   registerCarePlanSeams,
 } from "./seams/index";
@@ -185,19 +178,11 @@ export {
 } from "./jobs/cron-workers";
 export { M7_PLATFORM_JOB_ID, wireM7Tenancy } from "./wiring";
 
-// M7-T08 — the `apply-idg-decision` decision core (§7.9 / §11 D4): the live M14
-// `idg.decision_recorded` consumer opens a draft `idg_review` version and
-// applies the meeting's element mutations; it refuses a terminal-problem discontinue (T4) and is
-// idempotent on `idgDecisionId` (D4). The §7.8 encounter-relevance surface M8 consumes is the
-// CarePlanReader seam (registered in M7-T04, served by the /internal/care-plan/relevant-elements +
+// M7-T08 — the live M14 `idg.decision_recorded` consumer persists a governed proposal (never an active
+// row), refuses what the element machines / the T4 terminal-problem rule reject as a durable `conflict`
+// application, and is idempotent on `idgDecisionId` (D4). The §7.8 encounter-relevance surface M8 consumes is
+// the CarePlanReader seam (registered in M7-T04, served by the /internal/care-plan/relevant-elements +
 // overdue-status routes in M7-T05) — finalized; no new code here.
-export {
-  type IdgApplyFacts,
-  type IdgApplyAction,
-  type IdgRefusalReason,
-  type PlannedElementMutation,
-  decideIdgDecision,
-} from "./consumers/apply-idg-decision";
 export {
   buildM7AdmissionActivatedConsumer,
   buildM7AdmissionDischargedConsumer,
@@ -207,7 +192,6 @@ export {
   buildM7IdgDecisionConsumer,
   M7_IDG_DECISION_CONSUMER,
   M7_IDG_DECISION_CONSUMER_DEFERRED,
-  decideIdgDecisionRecorded,
 } from "./outbox-consumers/m14-idg-decision-recorded";
 // F-238 dx-writeback — DocLens diagnoses → pending problem PROPOSALS (never `problem` rows) + the
 // clinician's accept / dismiss service.

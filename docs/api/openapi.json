@@ -24390,7 +24390,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Record an SFV completion (RFA-04; RN/NP/LPN/LVN author)",
+        "summary": "Record an SFV completion (RFA-04, inserted signed; RN/NP/LPN/LVN author) — the SFV must belong to the path admission (409 M10_SFV_NO_TRIGGER otherwise); `attestationConfirmed: true` required (422 M10_ATTESTATION_REQUIRED); optional `attestationVersion` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); `targetDate` must be a real calendar date-time with an explicit offset (422); J2053 symptom-follow-up content required and every value CMS-allowed (422 M10_SFV_COMPLETION_INCOMPLETE); the triggering assessment's target date has no HOPE spec to judge the values against (422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; the idempotency layer replays the 422 for 24 h on the same key, so after an operator loads the spec use a NEW Idempotency-Key)); 422 M10_ADMISSION_PROJECTION_GAP (no admission projection is available from the M6 seam; the idempotency layer replays the 422 for 24 h on the same key, so after an operator repairs the admission use a NEW Idempotency-Key); admission read failing after the caseload check passed, retry (503 DEGRADED; a failure inside the caseload check answers 404); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); at most 10 requests a minute per user and 100 per organization (429 RATE_LIMITED beyond, Retry-After 60); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
         "parameters": [
           {
             "name": "admissionId",
@@ -24645,12 +24645,12 @@
                   "triggeringAssessmentId",
                   "targetDate",
                   "authorDiscipline",
+                  "attestationConfirmed",
                   "data"
                 ],
                 "properties": {
                   "triggeringAssessmentId": {
-                    "minLength": 1,
-                    "maxLength": 64,
+                    "format": "uuid",
                     "type": "string"
                   },
                   "targetDate": {
@@ -24687,6 +24687,14 @@
                   "adminOverrideJustification": {
                     "minLength": 20,
                     "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "attestationConfirmed": {
+                    "const": true,
+                    "type": "boolean"
+                  },
+                  "attestationVersion": {
+                    "maxLength": 32,
                     "type": "string"
                   },
                   "data": {
@@ -24889,7 +24897,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Record a new HOPE timepoint (draft; RN/NP/MD author)",
+        "summary": "Record a new HOPE timepoint (draft; RN/NP/MD author) — `targetDate` must be a real calendar date-time with an explicit offset (422 otherwise; a date that does not exist is never rolled forward); `rfaKind` `04_sfv` is accepted by the schema but refused before anything is written (422 VALIDATION_FAILED, detail code M10_RFA_KIND_NOT_A_TIMEPOINT: an SFV completion is recorded with POST /admissions/{admissionId}/hope/sfv); an admission and RFA that already has a draft returns that draft, and when the chart changed an answer the clinician did not type, the answer is rewritten, `version` goes up by one and the response carries it (a first fill of a new record answers version 1); 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; the idempotency layer replays the 422 for 24 h on the same key, so after an operator loads the spec use a NEW Idempotency-Key); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
         "parameters": [
           {
             "name": "admissionId",
@@ -114919,8 +114927,7 @@
                 ],
                 "properties": {
                   "problemId": {
-                    "minLength": 1,
-                    "maxLength": 64,
+                    "format": "uuid",
                     "type": "string"
                   },
                   "originalText": {
@@ -115118,15 +115125,14 @@
                 ],
                 "properties": {
                   "problemId": {
-                    "minLength": 1,
-                    "maxLength": 64,
+                    "format": "uuid",
                     "type": "string"
                   },
                   "goalRefs": {
+                    "maxItems": 100,
                     "type": "array",
                     "items": {
-                      "minLength": 1,
-                      "maxLength": 64,
+                      "format": "uuid",
                       "type": "string"
                     }
                   },
@@ -117268,6 +117274,7 @@
                         },
                         "count": {
                           "minimum": 1,
+                          "maximum": 1,
                           "type": "integer"
                         }
                       }
@@ -139828,7 +139835,7 @@
                           "source": {
                             "anyOf": [
                               {
-                                "const": "clinician_authored",
+                                "const": "clinical",
                                 "type": "string"
                               },
                               {
@@ -139841,10 +139848,6 @@
                               },
                               {
                                 "const": "agent_stated",
-                                "type": "string"
-                              },
-                              {
-                                "const": "idg_directed",
                                 "type": "string"
                               }
                             ]
@@ -141336,7 +141339,7 @@
                     "source": {
                       "anyOf": [
                         {
-                          "const": "clinician_authored",
+                          "const": "clinical",
                           "type": "string"
                         },
                         {
@@ -141349,10 +141352,6 @@
                         },
                         {
                           "const": "agent_stated",
-                          "type": "string"
-                        },
-                        {
-                          "const": "idg_directed",
                           "type": "string"
                         }
                       ]
@@ -141478,7 +141477,7 @@
                   "source": {
                     "anyOf": [
                       {
-                        "const": "clinician_authored",
+                        "const": "clinical",
                         "type": "string"
                       },
                       {
@@ -141491,10 +141490,6 @@
                       },
                       {
                         "const": "agent_stated",
-                        "type": "string"
-                      },
-                      {
-                        "const": "idg_directed",
                         "type": "string"
                       }
                     ]
@@ -141662,7 +141657,7 @@
                     "source": {
                       "anyOf": [
                         {
-                          "const": "clinician_authored",
+                          "const": "clinical",
                           "type": "string"
                         },
                         {
@@ -141675,10 +141670,6 @@
                         },
                         {
                           "const": "agent_stated",
-                          "type": "string"
-                        },
-                        {
-                          "const": "idg_directed",
                           "type": "string"
                         }
                       ]
@@ -160875,7 +160866,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Admin: recompute schedules for an admission",
+        "summary": "Admin: create any missing HOPE schedule windows for an admission (existing rows, in any status, are left untouched, so nothing is recomputed or reopened and a window computed from a wrong date stays as it is); returns the admission's schedule count; AI principals refused (403); a concurrent regenerate of the same admission is waited for at most 5 seconds, then 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one); an admission the caller cannot see (absent here, or another organization's) answers 404 from the scope guard before anything is written; an admission that is visible but not sited (no provider entity or location) is 422 M10_ADMISSION_PROJECTION_GAP (no admission projection is available from the M6 seam; the idempotency layer replays the 422 for 24 h on the same key, so after an operator repairs the admission use a NEW Idempotency-Key)",
         "parameters": [],
         "responses": {
           "200": {
@@ -161186,7 +161177,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Update a draft assessment",
+        "summary": "Update a draft assessment; the draft is judged on the locked row, so an edit that raced a sign is refused (409 M10_CORRECTION_TARGET_NOT_SIGNED) and the signed record is untouched; 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
         "parameters": [
           {
             "name": "id",
@@ -161641,7 +161632,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Patch canonical HOPE item answers on a draft assessment",
+        "summary": "Patch canonical HOPE item answers on a draft assessment; 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
         "parameters": [
           {
             "name": "id",
@@ -161714,6 +161705,7 @@
                               {
                                 "anyOf": [
                                   {
+                                    "maxLength": 64,
                                     "type": "string"
                                   },
                                   {
@@ -161884,6 +161876,7 @@
                             "value": {
                               "anyOf": [
                                 {
+                                  "maxLength": 64,
                                   "type": "string"
                                 },
                                 {
@@ -161930,7 +161923,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Create a correction draft for a signed HOPE assessment",
+        "summary": "Create a correction draft for a signed HOPE assessment; the body's `targetDate` is required but IGNORED (the correction reuses the original record's date); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
         "parameters": [
           {
             "name": "id",
@@ -162426,7 +162419,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Set the HUV completion date (Z0350) through the workflow-controlled capture path",
+        "summary": "Set the HUV completion date (Z0350) through the workflow-controlled capture path; 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
         "parameters": [
           {
             "name": "id",
@@ -162499,6 +162492,7 @@
                               {
                                 "anyOf": [
                                   {
+                                    "maxLength": 64,
                                     "type": "string"
                                   },
                                   {
@@ -162660,7 +162654,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Create an inactivation draft for a signed HOPE assessment",
+        "summary": "Create an inactivation draft for a signed HOPE assessment; 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
         "parameters": [
           {
             "name": "id",
@@ -162963,7 +162957,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "HOPE final-review readiness model",
+        "summary": "HOPE final-review readiness model; a read-only caller (no hope.timepoint.write) never freezes a legacy draft's spec or runs the SFV self-heal: it reads the stored state, and for a legacy draft with no frozen spec gets a static 409 CONFLICT with nothing written; 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; a GET is never cached by the idempotency layer, so a retry works as soon as an operator has loaded the spec) for a legacy draft whose spec cannot be frozen; 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" A GET is never claimed or cached by the idempotency layer, so it is simply sent again)",
         "parameters": [
           {
             "name": "id",
@@ -163336,7 +163330,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Final-validate and sign a draft HOPE assessment",
+        "summary": "Final-validate and sign a draft HOPE assessment — `attestationConfirmed: true` required (422 M10_ATTESTATION_REQUIRED); optional `attestationVersion` must be the current attestation wording (409 M10_ATTESTATION_STALE otherwise: reload and review the new wording); fresh step-up required (403 STEP_UP_REQUIRED); AI principals refused (403); 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; the idempotency layer replays the 422 for 24 h on the same key, so after an operator loads the spec use a NEW Idempotency-Key) for a legacy draft whose spec cannot be frozen; 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
         "parameters": [
           {
             "name": "id",
@@ -163421,7 +163415,8 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "ifVersion"
+                  "ifVersion",
+                  "attestationConfirmed"
                 ],
                 "properties": {
                   "ifVersion": {
@@ -163431,6 +163426,10 @@
                   "attestationConfirmed": {
                     "const": true,
                     "type": "boolean"
+                  },
+                  "attestationVersion": {
+                    "maxLength": 32,
+                    "type": "string"
                   }
                 }
               }
@@ -163528,6 +163527,10 @@
                               {
                                 "const": "file_error",
                                 "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
                               }
                             ]
                           },
@@ -163555,6 +163558,10 @@
                               },
                               {
                                 "const": "unmatched",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
                                 "type": "string"
                               }
                             ]
@@ -163673,7 +163680,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "On-demand pre-submission validation findings for one row",
+        "summary": "On-demand pre-submission validation findings for one row; `submissionDate`, when given, must be a real calendar date-time with an explicit offset (else 422); a final run is stored (the findings are reconciled) only for a caller holding hope.timepoint.write, any other caller gets the same findings computed and nothing is written",
         "parameters": [
           {
             "name": "id",
@@ -163856,7 +163863,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Canonical HOPE assessment workspace from frozen spec and current answers",
+        "summary": "Canonical HOPE assessment workspace from frozen spec and current answers; a caller holding hope.timepoint.write also refreshes chart-derived answers, which bumps the draft version when one changes (an older ifVersion is then refused), while a read-only caller writes nothing and is shown a workspace that equals a writer's only for the workflow-control items (A0050, A0250, derived in memory for a draft no writer has opened yet) and the progress counts that follow from them: the chart refresh and the workflow-control reconcile are done for a writer only, so a reader sees chart-derived answers as stored and the workflow controls derived on the fly, and a draft that needs a chart refresh reads differently for a reader until a writer opens it (for a legacy draft with no frozen spec, a static 409 CONFLICT); 422 M10_SPEC_NOT_IN_FORCE (no HOPE spec is in force for that target date, and the message names no date; a GET is never cached by the idempotency layer, so a retry works as soon as an operator has loaded the spec) for a legacy draft whose spec cannot be frozen; 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" A GET is never claimed or cached by the idempotency layer, so it is simply sent again)",
         "parameters": [
           {
             "name": "id",
@@ -164037,6 +164044,7 @@
                                     {
                                       "anyOf": [
                                         {
+                                          "maxLength": 64,
                                           "type": "string"
                                         },
                                         {
@@ -164376,7 +164384,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Org-level HQRP compliance posture",
+        "summary": "Org-level HQRP compliance posture; the submission acceptance rate counts BATCHES (accepted / answered), while M30's rollup reads the same batch statuses but sums accepted_count / item_count",
         "parameters": [
           {
             "name": "providerEntityId",
@@ -164826,7 +164834,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Skip a schedule (requires reason code)",
+        "summary": "Skip an OPEN schedule; `reasonCode` is one of a closed list (patient_deceased, patient_revoked, patient_hospitalized, transferred_out, admission_discharged, duplicate_window, other) and nothing else is accepted, a note included (422 VALIDATION_FAILED, which never echoes what was sent); a schedule that is already completed, expired or skipped answers 409 CONFLICT (\"only an open schedule can be skipped\") and is left unchanged, because the status is checked by the same UPDATE that writes the skip; an unknown schedule is 404; AI principals refused (403); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
         "parameters": [
           {
             "name": "id",
@@ -164966,19 +164974,43 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "type": "object",
                 "required": [
                   "reasonCode"
                 ],
                 "properties": {
                   "reasonCode": {
-                    "minLength": 1,
-                    "maxLength": 64,
-                    "type": "string"
-                  },
-                  "note": {
-                    "maxLength": 2000,
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "const": "patient_deceased",
+                        "type": "string"
+                      },
+                      {
+                        "const": "patient_revoked",
+                        "type": "string"
+                      },
+                      {
+                        "const": "patient_hospitalized",
+                        "type": "string"
+                      },
+                      {
+                        "const": "transferred_out",
+                        "type": "string"
+                      },
+                      {
+                        "const": "admission_discharged",
+                        "type": "string"
+                      },
+                      {
+                        "const": "duplicate_window",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
@@ -164993,7 +165025,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2)",
+        "summary": "SFV worklist — open/overdue/missed symptom-follow-up visits across the org (§5.1/§5.2); optional `triggeringAssessmentId` returns only the SFV that assessment triggered (an unknown id is an empty list)",
         "parameters": [
           {
             "name": "state",
@@ -165001,6 +165033,15 @@
             "required": false,
             "schema": {
               "maxLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "name": "triggeringAssessmentId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -165207,7 +165248,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2)",
+        "summary": "HOPE submission worklist — batches per ProviderEntity, per-period (§5.1/§5.2); newest first, at most 500 batches (the list is bounded, not paged, and does not say when it was cut); the cap keeps the unfinished batches first (every status but accepted, accepted_with_warnings and cancelled), so an old exported or rejected batch is not dropped behind 500 newer finished ones",
         "parameters": [
           {
             "name": "providerEntityId",
@@ -165302,6 +165343,10 @@
                               },
                               {
                                 "const": "file_error",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
                                 "type": "string"
                               }
                             ]
@@ -165408,6 +165453,43 @@
                               }
                             ]
                           },
+                          "cancelledAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "cancelReasonCode": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "package_lost",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "never_uploaded",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "generated_in_error",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "other",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "needsCorrectionCount": {
                             "type": "integer"
                           },
@@ -165440,7 +165522,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "HOPE submission detail — items, per-item CMS outcome, recorded findings, correction standing (§5.2)",
+        "summary": "HOPE submission detail — items, per-item CMS outcome, recorded findings (the batch's newest report rows, at most 20,000, oldest first), correction standing (§5.2)",
         "parameters": [
           {
             "name": "id",
@@ -165530,6 +165612,10 @@
                         },
                         {
                           "const": "file_error",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
                           "type": "string"
                         }
                       ]
@@ -165630,6 +165716,43 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelledAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelReasonCode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "package_lost",
+                              "type": "string"
+                            },
+                            {
+                              "const": "never_uploaded",
+                              "type": "string"
+                            },
+                            {
+                              "const": "generated_in_error",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
                         },
                         {
                           "type": "null"
@@ -165772,6 +165895,10 @@
                               },
                               {
                                 "const": "unmatched",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
                                 "type": "string"
                               }
                             ]
@@ -165917,13 +166044,13 @@
         }
       }
     },
-    "/api/v1/hope/submissions/{id}/mark-uploaded": {
+    "/api/v1/hope/submissions/{id}/cancel": {
       "post": {
-        "operationId": "postApiV1HopeSubmissionsByIdMarkuploaded",
+        "operationId": "postApiV1HopeSubmissionsByIdCancel",
         "tags": [
           "10-hope"
         ],
-        "summary": "Mark a generated HOPE package as manually uploaded to iQIES",
+        "summary": "Cancel a generated HOPE package that was never marked uploaded (packaged/exported), freeing its assessments to be packaged again in a NEW batch; 409 once uploaded; replaying a cancel returns the cancelled batch; the package ZIP and every record's XML are deleted with the cancel unless an M4 legal hold applies (org-wide, a held patient among the batch's records, or an unreadable hold scope), in which case the batch is still cancelled but keeps all its bytes (the event says why; to delete them once the hold is released, repeat the cancel with a NEW Idempotency-Key: the response is the unchanged batch either way and the audit event is the evidence); AI principals refused (403); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
         "parameters": [
           {
             "name": "id",
@@ -166009,6 +166136,10 @@
                         },
                         {
                           "const": "file_error",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
                           "type": "string"
                         }
                       ]
@@ -166115,6 +166246,341 @@
                         }
                       ]
                     },
+                    "cancelledAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelReasonCode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "package_lost",
+                              "type": "string"
+                            },
+                            {
+                              "const": "never_uploaded",
+                              "type": "string"
+                            },
+                            {
+                              "const": "generated_in_error",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "needsCorrectionCount": {
+                      "type": "integer"
+                    },
+                    "correctionInProgressCount": {
+                      "type": "integer"
+                    },
+                    "resubmittedCount": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reasonCode"
+                ],
+                "properties": {
+                  "reasonCode": {
+                    "anyOf": [
+                      {
+                        "const": "package_lost",
+                        "type": "string"
+                      },
+                      {
+                        "const": "never_uploaded",
+                        "type": "string"
+                      },
+                      {
+                        "const": "generated_in_error",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/hope/submissions/{id}/mark-uploaded": {
+      "post": {
+        "operationId": "postApiV1HopeSubmissionsByIdMarkuploaded",
+        "tags": [
+          "10-hope"
+        ],
+        "summary": "Mark a generated HOPE package as manually uploaded to iQIES; `submittedAt`, when given, must be a real calendar date-time with an explicit offset (else 422); a cancelled package cannot be marked uploaded (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one); `iqiesSubmissionReference`, when given, is at most 128 characters of letters, digits and ` . _ : # / -` (spaces allowed after the first character; else 422) and is refused when shaped like a Social Security or Medicare number (422 EVIDENCE_LOOKS_LIKE_PHI)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "providerEntityId",
+                    "submissionPeriod",
+                    "status",
+                    "itemCount",
+                    "acceptedCount",
+                    "rejectedCount",
+                    "transmittedAt",
+                    "acceptedAt",
+                    "needsCorrectionCount",
+                    "correctionInProgressCount",
+                    "resubmittedCount"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "submissionPeriod": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "queued",
+                          "type": "string"
+                        },
+                        {
+                          "const": "packaged",
+                          "type": "string"
+                        },
+                        {
+                          "const": "exported",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_flight",
+                          "type": "string"
+                        },
+                        {
+                          "const": "submitted_pending_result",
+                          "type": "string"
+                        },
+                        {
+                          "const": "accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rejected",
+                          "type": "string"
+                        },
+                        {
+                          "const": "partially_accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "accepted_with_warnings",
+                          "type": "string"
+                        },
+                        {
+                          "const": "file_error",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "transportMode": {
+                      "type": "string"
+                    },
+                    "validationProfile": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "packageFilename": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "packageSha256": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "packageSizeBytes": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "itemCount": {
+                      "type": "integer"
+                    },
+                    "acceptedCount": {
+                      "type": "integer"
+                    },
+                    "rejectedCount": {
+                      "type": "integer"
+                    },
+                    "transmittedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "exportedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "submittedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acceptedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "iqiesSubmissionReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelledAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelReasonCode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "package_lost",
+                              "type": "string"
+                            },
+                            {
+                              "const": "never_uploaded",
+                              "type": "string"
+                            },
+                            {
+                              "const": "generated_in_error",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "needsCorrectionCount": {
                       "type": "integer"
                     },
@@ -166150,7 +166616,9 @@
                   "iqiesSubmissionReference": {
                     "anyOf": [
                       {
-                        "maxLength": 200,
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/-]*$",
                         "type": "string"
                       },
                       {
@@ -166171,7 +166639,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Download the generated manual iQIES ZIP package",
+        "summary": "Download the generated manual iQIES ZIP package; a cancelled package cannot be downloaded (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); the first download of a packaged batch records the acting membership as the exporter; 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" A GET is never claimed or cached by the idempotency layer, so it is simply sent again)",
         "parameters": [
           {
             "name": "id",
@@ -166201,7 +166669,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent)",
+        "summary": "Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent; a blank iqiesRecordId is no id and is not stored on the item or the assessment); a cancelled package cannot take a result (409 M10_SUBMISSION_CANCELLED); AI principals refused (403); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one); `reportReference`, when given, is at most 128 characters of letters, digits and ` . _ : # / -` (spaces allowed after the first character; else 422) and is refused when shaped like a Social Security or Medicare number (422 EVIDENCE_LOOKS_LIKE_PHI); each row is checked by the route and again by the service, which stores only rows it rebuilt (unknown keys and non-string values are 422), at most 2000 rows and 100,000 characters of the text the screen reads (every message and every assessmentId that is not a uuid; about 660 rows at 150-character messages, 2000 only at an average of 50; 422 TOO_LARGE, split the report), a request body of at most 3 MiB (413 beyond it) and at most 20,000 recorded report rows per batch across its imports that settle no item (a report that settles no pending item and would pass that is a static 409 and records nothing; a report that settles an item, a CMS verdict, is always recorded); a report accepted before the stricter row rules and sent again under a new Idempotency-Key, which they now refuse, is 422, not the batch's idempotent replay: `code`, `itemCode` and `iqiesRecordId` are one word of letters, digits and . _ : # - (no space, no slash, at most 64, empty allowed) and are refused when shaped like a date or a phone number set apart by any of - . _ : # (a uuid iqiesRecordId is exempt from the identifier screen; compact digit forms and month-name dates are a documented residual), `severity` is fatal, error or warning (any case) or empty (another severity such as Info makes the import 422: drop such rows; unconfirmed against real iQIES output), `status`, `result` and `outcome` are phrases (letters, digits, . _ : # / - and, after the first character, spaces and , ; ( ); at most 64), assessmentId is spelt like an id (hex digits, hyphens, braces, trimmed blanks; text outside a uuid's characters is 422, a hex-only word still fits and can be stored in the raw report but no read returns it, and a read of an unmatched row returns the id only when it is a uuid), message and a non-uuid assessmentId are screened for an SSN or MBI shape and a non-uuid assessmentId also for a date or a phone number set apart by hyphens, blanks, braces or a run of them (status, result, outcome, message and reportReference get the SSN and MBI screen only), and NUL, an unpaired surrogate or (as policy) any other control character in a message or id is 422 INVALID_CHARACTERS; 422 names results.<row>.<field> and never echoes the value; if the bulk item update stores fewer items than the report named nothing is kept and the call answers 409",
         "parameters": [
           {
             "name": "id",
@@ -166292,6 +166760,10 @@
                         {
                           "const": "file_error",
                           "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
                         }
                       ]
                     },
@@ -166391,6 +166863,43 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelledAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelReasonCode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "package_lost",
+                              "type": "string"
+                            },
+                            {
+                              "const": "never_uploaded",
+                              "type": "string"
+                            },
+                            {
+                              "const": "generated_in_error",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
                         },
                         {
                           "type": "null"
@@ -166533,6 +167042,10 @@
                               },
                               {
                                 "const": "unmatched",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
                                 "type": "string"
                               }
                             ]
@@ -166689,7 +167202,9 @@
                   "reportReference": {
                     "anyOf": [
                       {
-                        "maxLength": 500,
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "pattern": "^[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/-]*$",
                         "type": "string"
                       },
                       {
@@ -166707,30 +167222,37 @@
                         "assessmentId": {
                           "minLength": 1,
                           "maxLength": 64,
+                          "pattern": "^[\\s{}0-9A-Fa-f-]{1,64}$",
                           "type": "string"
                         },
                         "status": {
                           "maxLength": 64,
+                          "pattern": "^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/(),;-]*)?$",
                           "type": "string"
                         },
                         "result": {
                           "maxLength": 64,
+                          "pattern": "^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/(),;-]*)?$",
                           "type": "string"
                         },
                         "outcome": {
                           "maxLength": 64,
+                          "pattern": "^(?:[A-Za-z0-9._:#/-][A-Za-z0-9 ._:#/(),;-]*)?$",
                           "type": "string"
                         },
                         "severity": {
                           "maxLength": 64,
+                          "pattern": "^(?:[Ff][Aa][Tt][Aa][Ll]|[Ee][Rr][Rr][Oo][Rr]|[Ww][Aa][Rr][Nn][Ii][Nn][Gg])?$",
                           "type": "string"
                         },
                         "code": {
                           "maxLength": 64,
+                          "pattern": "^(?:[A-Za-z0-9._:#-]{1,64})?$",
                           "type": "string"
                         },
                         "itemCode": {
                           "maxLength": 64,
+                          "pattern": "^(?:[A-Za-z0-9._:#-]{1,64})?$",
                           "type": "string"
                         },
                         "message": {
@@ -166739,6 +167261,7 @@
                         },
                         "iqiesRecordId": {
                           "maxLength": 64,
+                          "pattern": "^(?:[A-Za-z0-9._:#-]{1,64})?$",
                           "type": "string"
                         }
                       }
@@ -166757,7 +167280,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Deprecated for the UI: requeue a rejected batch. iQIES has no retry; fix a rejected record with a correction assessment and re-package it in a new batch",
+        "summary": "Deprecated for the UI: requeue a rejected batch (status rejected to queued; nothing consumes queued, and it neither re-validates nor re-assembles). iQIES has no retry; fix a rejected record with a correction assessment and re-package it in a new batch; AI principals refused (403); 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
         "parameters": [
           {
             "name": "id",
@@ -166844,6 +167367,10 @@
                         {
                           "const": "file_error",
                           "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
                         }
                       ]
                     },
@@ -166949,6 +167476,43 @@
                         }
                       ]
                     },
+                    "cancelledAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelReasonCode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "package_lost",
+                              "type": "string"
+                            },
+                            {
+                              "const": "never_uploaded",
+                              "type": "string"
+                            },
+                            {
+                              "const": "generated_in_error",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "needsCorrectionCount": {
                       "type": "integer"
                     },
@@ -166989,7 +167553,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Force-assemble a submission outside the cron cadence",
+        "summary": "Assemble and package the eligible signed assessments of a provider entity into a `packaged` manual iQIES ZIP batch (the only assemble path; no cron runs it); one call looks at no more than 200 eligible records, oldest signed first, so a package holds at most 200 items and a second call packages the rest (the 409 says none are left); a record with no location is skipped, not an error; 409 CONFLICT when no signed assessment is eligible; 422 when the submission header or an assessment payload cannot be built (the message names what to set); AI principals refused (403); a second assemble of the same provider entity queues behind the first (an advisory lock), so it can answer 409 M10_RECORD_BUSY (\"The record is busy. This step was not applied (an earlier step of the same request may have been); check the current state, then send the request again.\" The same Idempotency-Key may be reused because the key is released; if an earlier step of the request had already committed, the 409 is replayed on the same key, so use a new one)",
         "parameters": [],
         "responses": {
           "200": {
@@ -167067,6 +167631,10 @@
                         {
                           "const": "file_error",
                           "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
                         }
                       ]
                     },
@@ -167172,6 +167740,43 @@
                         }
                       ]
                     },
+                    "cancelledAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelReasonCode": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "package_lost",
+                              "type": "string"
+                            },
+                            {
+                              "const": "never_uploaded",
+                              "type": "string"
+                            },
+                            {
+                              "const": "generated_in_error",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "needsCorrectionCount": {
                       "type": "integer"
                     },
@@ -167204,8 +167809,7 @@
                 ],
                 "properties": {
                   "providerEntityId": {
-                    "minLength": 1,
-                    "maxLength": 64,
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -168544,6 +169148,9 @@
                                           "type": "string"
                                         }
                                       ]
+                                    },
+                                    "sudRelated": {
+                                      "type": "boolean"
                                     }
                                   }
                                 },
@@ -168583,6 +169190,11 @@
                                           ]
                                         },
                                         "description": {
+                                          "minLength": 1,
+                                          "maxLength": 4000,
+                                          "type": "string"
+                                        },
+                                        "resolutionNote": {
                                           "minLength": 1,
                                           "maxLength": 4000,
                                           "type": "string"
@@ -172187,6 +172799,9 @@
                                           "type": "string"
                                         }
                                       ]
+                                    },
+                                    "sudRelated": {
+                                      "type": "boolean"
                                     }
                                   }
                                 },
@@ -172226,6 +172841,11 @@
                                           ]
                                         },
                                         "description": {
+                                          "minLength": 1,
+                                          "maxLength": 4000,
+                                          "type": "string"
+                                        },
+                                        "resolutionNote": {
                                           "minLength": 1,
                                           "maxLength": 4000,
                                           "type": "string"
@@ -403280,7 +403900,7 @@
                                 "source": {
                                   "anyOf": [
                                     {
-                                      "const": "clinician_authored",
+                                      "const": "clinical",
                                       "type": "string"
                                     },
                                     {
@@ -403293,10 +403913,6 @@
                                     },
                                     {
                                       "const": "agent_stated",
-                                      "type": "string"
-                                    },
-                                    {
-                                      "const": "idg_directed",
                                       "type": "string"
                                     }
                                   ]

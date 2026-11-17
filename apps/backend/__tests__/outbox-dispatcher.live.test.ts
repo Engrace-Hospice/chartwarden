@@ -24,6 +24,7 @@ import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator
 import {
   type DispatchableOutboxEvent,
   type OutboxConsumerBinding,
+  OutboxDeferral,
   type OutboxDispatcherOptions,
   createOutboxDispatcher,
 } from "../src/bootstrap/outbox-dispatcher";
@@ -43,6 +44,8 @@ const EV_RECORD_ONLY = "aaaaaaaa-0000-4000-8000-000000000005";
 const EV_PURGE_DISPATCHED = "aaaaaaaa-0000-4000-8000-000000000006";
 const EV_PURGE_FAILED = "aaaaaaaa-0000-4000-8000-000000000007";
 const EV_PARTIAL = "aaaaaaaa-0000-4000-8000-000000000008";
+const EV_WAIT = "aaaaaaaa-0000-4000-8000-00000000000a";
+const EV_WAIT_OLD = "aaaaaaaa-0000-4000-8000-00000000000b";
 
 describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () => {
   let admin: Client;
@@ -347,6 +350,55 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
     expect((await fetchRow(EV_DEFERRED)).attempt_count).toBe(0);
   });
 
+  it("OutboxDeferral: a young event waits without burning an attempt; past the horizon the relay treats it as an ordinary failure", async () => {
+    await seed({ id: EV_WAIT, eventType: "outbox.test.wait" });
+    await seed({ id: EV_WAIT_OLD, eventType: "outbox.test.wait" });
+    await admin.query(
+      "UPDATE outbox_event SET created_at = now() - interval '15 days' WHERE id=$1",
+      [EV_WAIT_OLD],
+    );
+    const deadLetters: string[] = [];
+    const dispatcher = makeDispatcher(
+      [
+        {
+          consumerName: "waiting-consumer",
+          consumerModule: "m1",
+          eventTypes: ["outbox.test.wait"],
+          // A consumer that keeps asking to wait, whatever the age of the event.
+          handle: async () => {
+            throw new OutboxDeferral("not yet", 30 * 60_000);
+          },
+        },
+      ],
+      undefined,
+      { maxAttempts: 1, onDeadLetter: (e) => deadLetters.push(e.eventId) },
+    );
+
+    const beforeTick = Date.now();
+    const summary = await dispatcher.tick();
+    expect(summary.deferred).toBe(1);
+
+    // Young: stays pending, the claim's attempt is handed back (maxAttempts 1 would otherwise dead-letter it).
+    const young = await fetchRow(EV_WAIT);
+    expect(young.status).toBe("pending");
+    expect(young.attempt_count).toBe(0);
+    expect(String(young.last_error)).toContain("deferred:");
+    const eta = new Date(young.next_attempt_at).getTime();
+    expect(eta).toBeGreaterThan(beforeTick + 29 * 60_000);
+    expect(eta).toBeLessThan(beforeTick + 31 * 60_000);
+
+    // Past the 14-day horizon the relay enforces the bound itself: an ordinary failure, dead-lettered + alerted.
+    const old = await fetchRow(EV_WAIT_OLD);
+    expect(old.status).toBe("failed");
+    expect(old.attempt_count).toBe(1);
+    expect(deadLetters).toEqual([EV_WAIT_OLD]);
+
+    // Leave the table as found: the closing pending-depth test counts the rows earlier tests left behind.
+    await admin.query("DELETE FROM outbox_event WHERE id = ANY($1::uuid[])", [
+      [EV_WAIT, EV_WAIT_OLD],
+    ]);
+  });
+
   it("record-only: no consumer and not deferred → 'dispatched' immediately (the row IS the durable record)", async () => {
     await seed({ id: EV_RECORD_ONLY, eventType: "outbox.test.unrouted" });
     // A consumer for a DIFFERENT type proves routing selectivity (it must not receive this event).
@@ -498,5 +550,12 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
 
     // TASK-040B — the readiness probe's outbox-depth source reads the SAME count under RLS.
     expect(await dispatcher.pendingDepth()).toBe(1);
+
+    // Audit D-14 — the same pending row is the oldest one, and its age is what an alert on a DEFERRED event
+    // reads: a 3-day-old pending row reads as at least 3 days.
+    await admin.query(
+      "UPDATE outbox_event SET created_at = now() - interval '3 days' WHERE status='pending'",
+    );
+    expect(await dispatcher.oldestPendingAgeSeconds()).toBeGreaterThanOrEqual(3 * 86_400 - 60);
   });
 });

@@ -263,3 +263,262 @@ describe("assertNoPatientIdentifierInValue: a structured value is screened leaf 
     expect(refused(nested)).toEqual({});
   });
 });
+
+// The screen drops combining marks and format characters before it judges, and it drops them BEFORE the NFKD as well as after:
+// NFKD reorders a run of marks by combining class (quadratic in the run), so a string of marks in descending class order held the
+// event loop for seconds although the marks are discarded anyway. The output must not change, and the work must stay linear.
+describe("marks and format characters, before and after the NFKD", () => {
+  const MARKS = ["ͅ", "̕", "̀", "̖", "̛", "̡", "ّ", "ً", "ְ", "̴"];
+  /** `a` followed by many marks of each class, in descending class order: the worst case for the canonical reordering. */
+  const markRun = (units: number, perMark = 99): string =>
+    `a${MARKS.map((m) => m.repeat(perMark)).join("")}`.slice(0, units);
+
+  it.each([
+    ["a combining acute after each digit", "9́0́0́1́2́3́4́5́6́"],
+    [
+      "a run of descending-class marks after each digit",
+      `9${markRun(40).slice(1)}0${markRun(40).slice(1)}0${markRun(40).slice(1)}-12-3456`,
+    ],
+    ["marks between the groups", "900ͅ-̕12̀-̖3456"],
+    ["a zero-width joiner and marks together", "900‍́-12​́-3456"],
+    ["Arabic-Indic digits with marks", "٩٠٠ً-١٢ً-٣٤٥٦"],
+    ["full-width digits with marks", "９００́-１２-３４５６"],
+    ["superscript separators with marks", "900́²12́²3456"],
+  ])("still refuses an SSN with %s", (_label, text) => {
+    expect(looksLikeSsn(text)).toBe(true);
+    expect(looksLikePatientIdentifier(text)).toBe(true);
+  });
+
+  it("still refuses an MBI with marks and zero-width characters between its characters", () => {
+    expect(looksLikeMbi("1́E​Ǵ4TE5ͅMK‍73")).toBe(true);
+  });
+
+  it("leaves ordinary text with marks alone", () => {
+    expect(looksLikePatientIdentifier("café résumé näive 12 of 45")).toBe(false);
+    expect(looksLikePatientIdentifier(markRun(2000))).toBe(false);
+  });
+
+  it("a 20,000-unit string of marks in descending class order is screened in well under a second (it took 2.6 s)", () => {
+    const text = markRun(20_000, 2000);
+    const started = performance.now();
+
+    const verdict = looksLikePatientIdentifier(text);
+    expect(() => assertNoPatientIdentifier("note", text)).not.toThrow();
+
+    expect(verdict).toBe(false);
+    expect(performance.now() - started).toBeLessThan(250);
+  });
+});
+
+// The marks-first `normalise` against the function it replaced. The old function is kept here, inline (the regexes are unchanged;
+// only `normalise` differs: git show 831349919:packages/shared/src/text/patient-identifier.ts), so that "the verdicts are the same"
+// stays something a test proves rather than a comment claims. `normalise` itself is not exported, so the equality is asserted on
+// the verdicts the module gives, which are the only thing a caller sees.
+describe("the marks-first normalise gives the verdicts the previous function gave", () => {
+  const ND = "\\p{Nd}";
+  const SEP = "[^\\p{L}\\p{N}]";
+  const SEP_NOT_LINE = "[^\\p{L}\\p{N}\\r\\n]";
+  const GAP = `${SEP}{0,10}`;
+  const GAP1 = `${SEP}{1,10}`;
+  const SSN_GROUPED = new RegExp(`(?<!${ND})${ND}{3}${GAP}${ND}{2}${GAP}${ND}{4}(?!${ND})`, "u");
+  const SSN_THREES = new RegExp(
+    `(?<!${ND}${SEP_NOT_LINE}?)${ND}{3}${GAP1}${ND}{3}${GAP1}${ND}{3}(?!${SEP_NOT_LINE}?${ND})`,
+    "u",
+  );
+  const SSN_SPACED = new RegExp(`(?<!${ND})${ND}(?:${GAP1}${ND}){8}(?!${ND})`, "u");
+  const MBI_LETTER = "[AC-HJKMNP-RT-Y]";
+  const MBI_LETTER_OR_DIGIT = "[AC-HJKMNP-RT-Y0-9]";
+  const MBI_WINDOW = new RegExp(
+    `[1-9]${MBI_LETTER}${MBI_LETTER_OR_DIGIT}[0-9]${MBI_LETTER}${MBI_LETTER_OR_DIGIT}[0-9]${MBI_LETTER}${MBI_LETTER}[0-9]{2}`,
+    "i",
+  );
+  const OTHER_NUMBER = /\p{No}/gu;
+  const oldNormalise = (text: string): string =>
+    text
+      .normalize("NFKD")
+      .replace(/[\p{M}\p{Cf}]/gu, "")
+      .replace(/[^\S\r\n]+/gu, " ");
+  const oldLooksLikeSsn = (text: string): boolean =>
+    [oldNormalise(text), oldNormalise(text.replace(OTHER_NUMBER, " "))].some(
+      (folded) => SSN_GROUPED.test(folded) || SSN_THREES.test(folded) || SSN_SPACED.test(folded),
+    );
+  const oldLooksLikeMbi = (text: string): boolean =>
+    MBI_WINDOW.test(oldNormalise(text).replace(/[^A-Za-z0-9]/g, ""));
+
+  const codePoints = (from: number, count: number): string[] =>
+    Array.from({ length: count }, (_, i) => String.fromCodePoint(from + i));
+  // a digit of nine scripts: ASCII, full-width, Arabic-Indic (two sets), Devanagari, math bold, and superscripts
+  const DIGITS: string[][] = [
+    codePoints(0x30, 10),
+    codePoints(0xff10, 10),
+    codePoints(0x660, 10),
+    codePoints(0x6f0, 10),
+    codePoints(0x966, 10),
+    codePoints(0x1d7ce, 10),
+    Array.from("⁰¹²³⁴⁵⁶⁷⁸⁹"),
+  ];
+  // a letter of the MBI window: ASCII, full-width, math bold, and a lower-case form
+  const letterForms = (letter: string): string[] => {
+    const offset = letter.charCodeAt(0) - 0x41;
+    return [
+      letter,
+      letter.toLowerCase(),
+      String.fromCodePoint(0xff21 + offset),
+      String.fromCodePoint(0x1d400 + offset),
+    ];
+  };
+  // combining marks in DESCENDING class order (the worst case for the reordering), plus single marks of other kinds
+  const MARKS = ["ͅ", "̴", "̖", "̛", "́", "̀", "⃐", "゙"];
+  // what sits between two characters: separators, marks, zero-width and bidi format characters, or nothing
+  const PADS = [
+    "",
+    "",
+    " ",
+    "-",
+    "/",
+    ".",
+    "|",
+    "́",
+    "ͅ",
+    "̴",
+    "⃐",
+    "゙",
+    "️",
+    "​",
+    "‌",
+    "‍",
+    "⁠",
+    "﻿",
+    "‮",
+    "̴́ͅ",
+    " ́-",
+    "­",
+    " ",
+    "´",
+    "¨",
+    "˘",
+    "¯",
+  ];
+  // text around a value: ordinary words, ligatures, Hangul, astral, precomposed and compatibility characters
+  const NOISE = [
+    "ticket ",
+    "ﬁ",
+    "가각힣",
+    "😀",
+    "𝐀",
+    "Å",
+    "é",
+    "ǆ",
+    "ﷺ",
+    "㎏",
+    "x",
+    "12",
+    " of ",
+    "\n",
+    "ẛ̣",
+    "⒈",
+    "´5",
+    "5´",
+    "¨7",
+    " 4",
+    "9 ",
+  ];
+
+  let state = 987654321;
+  const next = (): number => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 2 ** 32;
+  };
+  const pickFrom = <T>(items: readonly T[]): T => items[Math.floor(next() * items.length)] as T;
+  const pad = (): string => {
+    if (next() < 0.15) {
+      const run = Math.floor(next() * 30);
+      return Array.from({ length: run }, (_, i) => MARKS[i % MARKS.length]).join("");
+    }
+    return pickFrom(PADS);
+  };
+  const around = (core: string): string =>
+    `${next() < 0.5 ? "" : pickFrom(NOISE)}${core}${next() < 0.5 ? "" : pickFrom(NOISE)}`;
+  /** A value's characters with padding between them, grouped like an SSN (3-2-4 or 3-3-3, or digit by digit). */
+  const ssnSkeleton = (): string => {
+    const digits = pickFrom(DIGITS);
+    const text = Array.from({ length: 9 }, (_, i) => (i === 0 ? "9" : String(i % 10)));
+    const rendered = text.map((d) => (d === "9" && next() < 0.5 ? "9" : (digits[Number(d)] ?? d)));
+    const shape = pickFrom([[3, 2, 4], [3, 3, 3], [1, 1, 1, 1, 1, 1, 1, 1, 1], [9]]);
+    let at = 0;
+    return around(
+      shape
+        .map((size) => {
+          const group = rendered.slice(at, at + size).join(pad());
+          at += size;
+          return group;
+        })
+        .join(pad() + pickFrom(["-", " ", "/", ".", "", "–"]) + pad()),
+    );
+  };
+  const mbiSkeleton = (): string => {
+    const digit = () => pickFrom(pickFrom(DIGITS.slice(0, 2)));
+    const letter = (l: string) => pickFrom(letterForms(l));
+    const characters = [
+      digit(),
+      letter("E"),
+      letter("G"),
+      digit(),
+      letter("T"),
+      letter("E"),
+      digit(),
+      letter("M"),
+      letter("K"),
+      digit(),
+      digit(),
+    ];
+    return around(characters.map((c) => `${c}${pad()}`).join(""));
+  };
+  const mixedSkeleton = (): string =>
+    [ssnSkeleton(), mbiSkeleton(), around(pickFrom(NOISE)), ssnSkeleton()]
+      .slice(0, 1 + Math.floor(next() * 4))
+      .join(pickFrom([" ", "\n", ", ", ""]));
+
+  it("agrees with the previous function on 4,500 well-formed strings (SSN and MBI skeletons, padded with marks and zero-width characters)", () => {
+    const strings = [
+      ...Array.from({ length: 1500 }, ssnSkeleton),
+      ...Array.from({ length: 1500 }, mbiSkeleton),
+      ...Array.from({ length: 1500 }, mixedSkeleton),
+    ];
+    let ssnHits = 0;
+    let mbiHits = 0;
+
+    for (const text of strings) {
+      const label = JSON.stringify(text);
+      expect(looksLikeSsn(text), `SSN verdict of ${label}`).toBe(oldLooksLikeSsn(text));
+      expect(looksLikeMbi(text), `MBI verdict of ${label}`).toBe(oldLooksLikeMbi(text));
+      expect(looksLikePatientIdentifier(text), `verdict of ${label}`).toBe(
+        oldLooksLikeSsn(text) || oldLooksLikeMbi(text),
+      );
+      if (looksLikeSsn(text)) ssnHits += 1;
+      if (looksLikeMbi(text)) mbiHits += 1;
+    }
+
+    // not vacuous: plenty of strings of each kind are refused, and plenty are not
+    expect(ssnHits).toBeGreaterThan(500);
+    expect(mbiHits).toBeGreaterThan(300);
+    expect(strings.length - ssnHits).toBeGreaterThan(500);
+    expect(strings.length - mbiHits).toBeGreaterThan(500);
+  });
+
+  // The ONE difference: an ILL-FORMED string, a lone high surrogate and a lone low surrogate with only marks between them. The
+  // first drop joins the halves before the NFKD, so the pair is decomposed as the character it spells (here a letter that folds to
+  // ASCII), where the previous function joined them after the NFKD. Not an evasion: the character typed whole gives the new verdict.
+  it("differs only for a split surrogate pair with marks between the halves: the documented difference", () => {
+    const mbi = "1EG4\ud801́\udfa5TE5\ud801́\udfa5MK73";
+    const ssn = "900\ud833́\udcd612\ud833́\udcd63456";
+    const mbiWhole = "1EG4\u{107a5}TE5\u{107a5}MK73";
+    const ssnWhole = "900\u{1ccd6}12\u{1ccd6}3456";
+
+    expect([oldLooksLikeMbi(mbi), looksLikeMbi(mbi)]).toEqual([true, false]);
+    expect([oldLooksLikeSsn(ssn), looksLikeSsn(ssn)]).toEqual([true, false]);
+    // the same characters typed whole: the new verdict for the split pair is the verdict for the whole one
+    expect(looksLikeMbi(mbi)).toBe(looksLikeMbi(mbiWhole));
+    expect(looksLikeSsn(ssn)).toBe(looksLikeSsn(ssnWhole));
+  });
+});

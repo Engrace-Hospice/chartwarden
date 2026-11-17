@@ -30,7 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSession } from "../../shell/session";
-import { assembleSubmission } from "./hope-api";
+import { assembleSubmission, failedResultOutcomeUnknown, withRequestTimeout } from "./hope-api";
 import { HopeListReadState } from "./hope-read-state";
 import { SUBMISSION_TONE, stateLabel } from "./hope-status";
 import {
@@ -40,6 +40,7 @@ import {
   submissionKpis,
   submissionLogCsv,
 } from "./submission-log";
+import { useFocusOnNewError } from "./use-focus-on-new-error";
 
 const MANAGE_PERMISSION = "hope.submission.manage";
 const PROVIDER_ENTITY_PAGE_SIZE = 100;
@@ -94,35 +95,89 @@ export function SubmissionWorklist(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const focusRef = useReloadFocus<HTMLDivElement>(loading);
   const [error, setError] = useState<string | null>(null);
+  // A refused (or unconfirmed) Generate takes focus: the button is disabled while the request is out, and Firefox and Safari drop
+  // focus from a disabled control to the document, leaving the keyboard user nowhere near the alert that was just announced.
+  const errorRef = useFocusOnNewError<HTMLDivElement>(error);
   const [readStatus, setReadStatus] = useState<ReadStatus>("ok");
   const canGenerate = useSession()?.permissions?.includes(MANAGE_PERMISSION) ?? false;
   const [providerEntities, setProviderEntities] = useState<ProviderEntityOption[]>([]);
   const [providerEntityId, setProviderEntityId] = useState("");
   const [generating, setGenerating] = useState(false);
 
+  // The provider entities the Generate button needs. A read that fails (rejected, unanswered past the bound, an empty 5xx) is said
+  // so, with Retry, never a Generate button that stays disabled without a word. The alert stays mounted while Retry is in flight
+  // (so the keyboard keeps its place on the button, which is `aria-disabled` rather than `disabled` for that reason, and the alert's
+  // wording says it is retrying); once the read succeeds focus moves to Generate, which the alert's Retry button no longer is.
+  const [entitiesAttempt, setEntitiesAttempt] = useState(0);
+  const [entitiesFailed, setEntitiesFailed] = useState(false);
+  const [entitiesRetrying, setEntitiesRetrying] = useState(false);
+  // The read succeeded and there is no entity: Generate then stays disabled, which is said (and takes focus after a Retry).
+  const [noProviderEntity, setNoProviderEntity] = useState(false);
+  const noProviderEntityRef = useRef<HTMLOutputElement>(null);
+  const generateGroupRef = useRef<HTMLDivElement>(null);
+  const retryPressed = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `entitiesAttempt` is not read here; bumping it is what re-runs the read (Retry)
   useEffect(() => {
     if (!canGenerate) return;
     let cancelled = false;
-    void client
-      .GET("/api/v1/provider-entities", { params: { query: { limit: PROVIDER_ENTITY_PAGE_SIZE } } })
-      .then(({ data, error: err }) => {
-        if (cancelled) return;
-        if (err) {
-          setError("Could not load provider entities, so a package cannot be generated.");
-          return;
-        }
-        const options = (data?.items ?? []) as ProviderEntityOption[];
-        setProviderEntities(options);
-        setProviderEntityId((current) => current || (options[0]?.id ?? ""));
-      });
+    void (async () => {
+      const { status: outcome, res } = await settleRead(
+        withRequestTimeout((signal) =>
+          client.GET("/api/v1/provider-entities", {
+            params: { query: { limit: PROVIDER_ENTITY_PAGE_SIZE } },
+            signal,
+          }),
+        ),
+      );
+      if (cancelled) return;
+      setEntitiesRetrying(false);
+      if (outcome !== "ok" || !res?.data) {
+        setEntitiesFailed(true);
+        return;
+      }
+      setEntitiesFailed(false);
+      const options = (res.data.items ?? []) as ProviderEntityOption[];
+      setProviderEntities(options);
+      setNoProviderEntity(options.length === 0);
+      setProviderEntityId((current) => current || (options[0]?.id ?? ""));
+    })();
     return () => {
       cancelled = true;
     };
-  }, [canGenerate, client]);
+  }, [canGenerate, client, entitiesAttempt]);
+
+  const retryEntities = (): void => {
+    if (entitiesRetrying) return;
+    retryPressed.current = true;
+    setEntitiesRetrying(true);
+    setEntitiesAttempt((n) => n + 1);
+  };
+  // The Retry button leaves with its alert when the read succeeds, which would drop focus to the page: Generate takes it, or, with
+  // no entity to generate for (Generate is disabled and cannot hold focus), the note that says so.
+  useEffect(() => {
+    if (entitiesFailed || entitiesRetrying || !retryPressed.current) return;
+    retryPressed.current = false;
+    if (document.activeElement === document.body || document.activeElement === null) {
+      (noProviderEntity
+        ? noProviderEntityRef.current
+        : generateGroupRef.current?.querySelector("button")
+      )?.focus();
+    }
+  }, [entitiesFailed, entitiesRetrying, noProviderEntity]);
 
   // Synchronous guard: `disabled={generating}` only takes effect after the next render, so a fast second click
   // (or a key-repeat) could otherwise start a second batch.
   const generatingRef = useRef(false);
+  // The package build is deliberately unbounded, so the clinician may have left the list by the time it answers: a late answer
+  // must not pull them to the batch's page (the observable effect), nor re-read a list nobody is looking at. A state update after
+  // unmount is a no-op on React 18, so only `navigate` and the re-reads are guarded.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const generatePackage = async (): Promise<void> => {
     if (generatingRef.current) return;
     generatingRef.current = true;
@@ -132,11 +187,19 @@ export function SubmissionWorklist(): JSX.Element {
       const result = await assembleSubmission(client, providerEntityId);
       if (!result.ok) {
         setError(result.message);
+        // An unconfirmed result (an empty 5xx, a fault of the server's own) may still have built the package: re-read the list the
+        // message says to check, as for a rejected request below. A refusal that was answered built nothing.
+        if (failedResultOutcomeUnknown(result) && mounted.current) void load();
         return;
       }
-      navigate(`/hope/submissions/${encodeURIComponent(result.value.id)}`);
+      if (mounted.current) navigate(`/hope/submissions/${encodeURIComponent(result.value.id)}`);
     } catch {
-      setError("Could not generate the iQIES package. Check your connection and try again.");
+      // No usable answer (offline, a reset): the package may have been built, and generating again (a fresh key, by design)
+      // would build a second one. Say so, and re-read the list so the batch shows if it was.
+      setError(
+        "Could not confirm that the iQIES package was generated. Check the submissions list before trying again.",
+      );
+      if (mounted.current) void load();
     } finally {
       generatingRef.current = false;
       setGenerating(false);
@@ -149,7 +212,9 @@ export function SubmissionWorklist(): JSX.Element {
     setLoading(true);
     setReadStatus("ok");
     const { status: readOutcome, res } = await settleRead(
-      client.GET("/api/v1/hope/submissions", { params: { query: {} } }),
+      withRequestTimeout((signal) =>
+        client.GET("/api/v1/hope/submissions", { params: { query: {} }, signal }),
+      ),
       "denied",
     );
     if (mine !== latestLoad.current) return;
@@ -255,7 +320,7 @@ export function SubmissionWorklist(): JSX.Element {
             ZIP from the batch page, upload it in the iQIES portal, then mark it uploaded.
           </div>
           {canGenerate ? (
-            <div style={controlGroupStyle}>
+            <div ref={generateGroupRef} style={controlGroupStyle}>
               {providerEntities.length > 1 ? (
                 <label className="wx-filter-field">
                   <span>Provider entity</span>
@@ -283,11 +348,48 @@ export function SubmissionWorklist(): JSX.Element {
               </Button>
             </div>
           ) : null}
-          {error ? (
+          {canGenerate && noProviderEntity && !entitiesFailed ? (
+            <output
+              ref={noProviderEntityRef}
+              tabIndex={-1}
+              style={{ ...pipelineNoticeStyle, display: "block" }}
+            >
+              No provider entity is available to you, so a package cannot be generated.
+            </output>
+          ) : null}
+          {entitiesFailed ? (
             <div role="alert" style={errorBannerStyle}>
+              <span>
+                {entitiesRetrying
+                  ? "Retrying…"
+                  : "Could not load provider entities, so a package cannot be generated."}
+              </span>
+              <button
+                type="button"
+                onClick={retryEntities}
+                aria-disabled={entitiesRetrying}
+                style={
+                  entitiesRetrying ? { ...dismissButtonStyle, opacity: 0.6 } : dismissButtonStyle
+                }
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
+          {error ? (
+            <div ref={errorRef} tabIndex={-1} role="alert" style={errorBannerStyle}>
               <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
-                x
+              <button
+                type="button"
+                aria-label="Dismiss error"
+                onClick={() => {
+                  setError(null);
+                  // The banner (and this button) leave with the error: Generate is where the clinician was.
+                  generateGroupRef.current?.querySelector("button")?.focus();
+                }}
+                style={dismissButtonStyle}
+              >
+                <span aria-hidden="true">×</span>
               </button>
             </div>
           ) : null}
@@ -336,6 +438,7 @@ export function SubmissionWorklist(): JSX.Element {
                   <option value="accepted_with_warnings">Accepted with warnings</option>
                   <option value="partially_accepted">Partially accepted</option>
                   <option value="rejected">Rejected</option>
+                  <option value="cancelled">Cancelled</option>
                 </select>
               </label>
               <label className="wx-filter-field">

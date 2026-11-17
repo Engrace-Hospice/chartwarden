@@ -1,7 +1,11 @@
 // @chartwarden/hope — the Symptom-Follow-Up-Visit engine (M10-T03; §2.2.3, §2.3, D3, D4). PURE, IO-free.
 // Three concerns:
 //   • creation  — `planSfvCreation`: when J2051 fires (D4), produce the one `symptom_follow_up_visit`
-//     descriptor with the D3 due-date (signed_at + 2 calendar days, org-TZ).
+//     descriptor with the ADR-0018 D1 due-date (assessment date + 2 calendar days, the end of that day in
+//     the timezone the planner is handed; D1 names no timezone; never `signed_at`). NOTE: only the in-memory
+//     backend calls this; the DB backend computes `due_at`
+//     from J2050B in UTC (`hopeSfvDueAtFromJ2050B`, apps/backend hope-sfv-service.ts) — an open
+//     compliance question (CMS-VERIFY), see docs/BUSINESS_LOGIC.md (M10 SFV bullet).
 //   • completion — `planSfvCompletion`: the open/overdue → completed transition guard (a signed RFA-04
 //     row completes its source SFV; rejects double-completion and past-due-without-override).
 //   • watchdog   — `decideSfvWatchdogStatus`: the cron-side open → overdue → missed time-based decay.

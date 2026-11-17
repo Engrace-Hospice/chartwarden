@@ -34,6 +34,7 @@ export {
   createDrizzleCarePlanReaderStore,
   type IdgPacketCarePlanContext,
   activeProblemIdsForOrg,
+  activeSudProblemIdsForOrg,
   idgPacketCarePlanContextForOrg,
 } from "./drizzle-store";
 

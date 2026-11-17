@@ -1,0 +1,17 @@
+-- compat: expand
+-- M10 HOPE - the report reference of a recorded CMS result gets its own column on `hope_submission`.
+-- Until now it lived only inside `acceptance_report->>'reportReference'`, and the "light" submission reads (the worklist, the
+-- detail, every lock) projected it from there. A jsonb `->>` reads the whole value, and that value also holds the package ZIP
+-- as base64 (multi-MB), so every batch of a worklist read pulled its ZIP out of TOAST just to show a reference of a few
+-- characters. The code now writes both (the jsonb keeps the reference, so the previous release still reads it) and the light
+-- reads select the column.
+-- THIS FILE ONLY ADDS THE COLUMN (nullable, no default, no constraint: a catalog-only change that holds ACCESS EXCLUSIVE for an
+-- instant). The backfill of the batches that already have a result is migration 1498, on purpose: the runner executes a file in
+-- ONE transaction, so an UPDATE here would run while this ALTER's ACCESS EXCLUSIVE lock is held and BEFORE 1497 replaces the
+-- write-audit trigger, i.e. through the old trigger that detoasts the multi-MB `acceptance_report` of every row it touches.
+-- 1498 runs after 1497, when the trigger no longer reads the package.
+-- A result recorded by a release that does not know the column (a rolling deploy, or a rollback and re-deploy) writes the jsonb
+-- copy only: the ledger runs each file once, so nothing fills the column afterwards, and that batch shows NO reference in the
+-- list and detail reads (they read the column and fall back to nothing) until its next result import writes both. The reference
+-- stays in `acceptance_report->>'reportReference'` and in `hope_submission_result_event.report_reference`.
+ALTER TABLE "hope_submission" ADD COLUMN IF NOT EXISTS "report_reference" text;

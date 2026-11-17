@@ -13,7 +13,7 @@
 // the composition root constructs it unconditionally whenever a DB client exists, so by the time a cron
 // tick runs it is guaranteed bound. Only `activeOrgs` gets the lazy fail-closed thunk (`unbound()`,
 // `M7_WORKER_PORT_UNBOUND: <port> — <hint>`, the M25 convention).
-import type { DbClient } from "@chartwarden/db";
+import { type DbClient, organizationTimezone } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import {
@@ -108,9 +108,11 @@ export async function runCarePlanGatesCron(deps: M7WorkerDeps): Promise<void> {
   for (const { organizationId } of orgs) {
     await withOrgContext(deps.db, systemOrgContext(organizationId), async (tx) => {
       const t = tx as unknown as DbClient;
-      const snapshots = await carePlanGateSnapshotsForOrg(t, organizationId);
-      const initialPlan = planInitialGateScan(snapshots, now);
-      const reviewPlan = planReviewGateScan(snapshots, now);
+      // Due instants are written in the org's timezone (bootstrap / sign), so the scan reads them in it too.
+      const timeZone = await organizationTimezone(t, organizationId);
+      const snapshots = await carePlanGateSnapshotsForOrg(t, organizationId, timeZone);
+      const initialPlan = planInitialGateScan(snapshots, now, timeZone);
+      const reviewPlan = planReviewGateScan(snapshots, now, timeZone);
       for (const event of [...initialPlan.events, ...reviewPlan.events]) {
         await deps.outbox.publish(t, {
           eventName: event.eventName,

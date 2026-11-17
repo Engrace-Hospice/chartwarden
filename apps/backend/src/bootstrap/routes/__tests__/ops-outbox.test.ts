@@ -9,8 +9,10 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
+import type { DbClient } from "@chartwarden/db";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../../index";
+import { payloadForOps } from "../ops-outbox";
 
 const ORG_ID = "11111111-1111-1111-1111-111111111111";
 const USER_ID = "22222222-2222-2222-2222-222222222222";
@@ -87,5 +89,140 @@ describe("ops-outbox routes — GET /api/v1/ops/outbox/:id", () => {
     const app = buildApp(["member.manage"]);
     const res = await app.inject({ method: "GET", url: "/api/v1/ops/outbox/some-id" });
     expect(res.statusCode).toBe(404);
+  });
+
+  it("accounts the read against the event id: the detail returns the full payload, which can carry PHI", async () => {
+    const eventId = "44444444-4444-4444-8444-444444444444";
+    const stored = {
+      id: eventId,
+      eventType: "m15.plan.version_signed",
+      aggregateKind: "discipline_care_plan",
+      aggregateId: "55555555-5555-4555-8555-555555555555",
+      status: "dispatched",
+      attemptCount: 1,
+      lastError: null,
+      payload: { synthetic: true },
+      createdAt: new Date("2026-11-15T12:00:00.000Z"),
+      dispatchedAt: null,
+      nextAttemptAt: null,
+    };
+    const audited: { eventType?: string; resourceKind?: string; resourceId?: string }[] = [];
+    const tx = {
+      execute: async () => undefined,
+      select: () => ({ from: () => ({ where: () => ({ limit: async () => [stored] }) }) }),
+      insert: () => ({
+        values: async (row: (typeof audited)[number]) => {
+          audited.push(row);
+        },
+      }),
+    };
+    const db = {
+      transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
+    } as unknown as DbClient;
+    const { store, put } = createInMemoryEffectivePermissionStore();
+    put(ORG_ID, USER_ID, [
+      { roleKey: "test-role", enabled: true, expiresAt: null, permissionKeys: ["member.manage"] },
+    ]);
+    registerEffectivePermissionResolver(store);
+    const app = buildServer({
+      db,
+      authenticate: (request) => {
+        request.context.userId = USER_ID;
+        request.context.organizationId = ORG_ID;
+      },
+      security: { rateLimitEnabled: false },
+    });
+
+    const res = await app.inject({ method: "GET", url: `/api/v1/ops/outbox/${eventId}` });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().payload).toEqual({ synthetic: true });
+    expect(audited).toContainEqual(
+      expect.objectContaining({ resourceKind: "outbox_event", resourceId: eventId }),
+    );
+  });
+});
+
+describe("payloadForOps — a decision's clinical text never reaches an operator (audit D-11)", () => {
+  it("withholds the narrative of a decision that has no mutations (a team note, a referral, an order request)", () => {
+    const out = payloadForOps("idg.decision_recorded", {
+      decisionId: "d1",
+      payload: { kind: "team_note", noteText: "SYNTHETIC-NOTE-TEXT" },
+    });
+    const text = JSON.stringify(out);
+    expect(text).not.toContain("SYNTHETIC-NOTE-TEXT");
+    expect(text).toContain("team_note");
+    expect(text).toContain("d1");
+  });
+
+  const decision = (mutations: unknown[]) => ({
+    decisionId: "d1",
+    payload: { kind: "care_plan_update", mutations },
+  });
+
+  it("keeps the structure of every mutation and withholds its text, codes, notes and updates", () => {
+    const out = payloadForOps(
+      "idg.decision_recorded",
+      decision([
+        {
+          op: "problem_add",
+          description: "SYNTHETIC-PART2-TEXT",
+          icd10Code: "F10.20",
+          snomedCode: null,
+          problemKind: "related",
+          sudRelated: true,
+        },
+        {
+          op: "problem_update",
+          problemId: "pr-1",
+          updates: { status: "resolved", resolutionNote: "SYNTHETIC-RESOLUTION-NOTE" },
+        },
+        {
+          op: "goal_add",
+          problemId: "pr-1",
+          originalText: "SYNTHETIC-GOAL-TEXT",
+          source: "clinical",
+        },
+        {
+          op: "intervention_add",
+          problemId: "pr-1",
+          scopeText: "SYNTHETIC-SCOPE-TEXT",
+          frequencyText: "Weekly",
+          discipline: "rn",
+        },
+      ]),
+    );
+    const text = JSON.stringify(out);
+    for (const secret of [
+      "SYNTHETIC-PART2-TEXT",
+      "F10.20",
+      "SYNTHETIC-RESOLUTION-NOTE",
+      "SYNTHETIC-GOAL-TEXT",
+      "SYNTHETIC-SCOPE-TEXT",
+      "Weekly",
+    ]) {
+      expect(text).not.toContain(secret);
+    }
+    // What an operator needs to find a stuck decision stays.
+    for (const kept of [
+      "problem_add",
+      "problem_update",
+      "goal_add",
+      "intervention_add",
+      "pr-1",
+      "resolved",
+      "d1",
+    ]) {
+      expect(text).toContain(kept);
+    }
+  });
+
+  it("returns every other event, and an unrecognised decision shape, exactly as stored", () => {
+    const other = { planId: "p1", snapshot: { goals: [] } };
+    expect(payloadForOps("m15.plan.version_signed", other)).toBe(other);
+    // An unrecognised wrapper is returned as is.
+    expect(payloadForOps("idg.decision_recorded", null)).toBeNull();
+    const noDecision = { decisionId: "d1" };
+    expect(payloadForOps("idg.decision_recorded", noDecision)).toBe(noDecision);
   });
 });

@@ -14,18 +14,31 @@
 //     no request scope) — it SELF-SCOPES via `withOrgContext`, with the explicit `organization_id`
 //     predicate as the second wall.
 //
-// SUD (D7, §7.8): `sudReadAllowed` is the patient-level M39 Part-2 consent fact — resolved through the
-// `ConsentEvaluator` seam at call time (the M16 disclosure-gate precedent), NEVER a caller-asserted
-// scope. FAIL-CLOSED: while M39 is a deny-stub, throws, or denies, the record reads
-// `sudReadAllowed=false` and the reader drops SUD problems + flags `redacted` — a consent outage
-// narrows what a clinician sees; it never widens it. The consent round-trip is skipped entirely when
-// the plan carries no SUD-flagged problem (the verdict would be unobservable).
-import { type DbClient, schema } from "@chartwarden/db";
+// SUD (D7, §7.8): `sudReadAllowed` is resolved through the `ConsentEvaluator` seam at call time (the M16
+// disclosure-gate precedent), NEVER from a caller-asserted scope. A caller passes one of three audiences:
+//   • `{ actor: { roles, membershipId } }` — its SESSION identity (server-assembled, never request input); this store
+//     resolves the per-ACTOR verdict itself (`actorSudAllowed`: M39 `evaluateForInternalAccess` + the §7.6
+//     RN-case-manager carve-out, through the same `sudDisclosureAllowedForActor` the M7 routes' closure uses), so the
+//     caller never hands over a verdict (M8 link validation, M15 parent check);
+//   • `{ sudDisclosureAllowed }` — a verdict that replaces the lookup, so it is a TRUST BOUNDARY: only a ROUTE that
+//     resolved it from the M7 closure (the picker's `deps.sudDisclosureAllowed`) may hand-build one;
+//   • `"patient_level"` — a caller with NO human actor (the scheduling worker, M15's system actor): the patient-level
+//     release lookup (`part2ReleaseAllowed`).
+// The store-resolved paths (`actor`, `"patient_level"`) are FAIL-CLOSED: while M39 is a deny-stub, throws, or denies,
+// the record reads `sudReadAllowed=false` and the reader drops SUD problems + flags `redacted` — a consent outage
+// narrows what a clinician sees; it never widens it. A hand-built `{ sudDisclosureAllowed }` viewer is only as safe
+// as the route that resolved it. The picker route calls its closure unconditionally before the reader runs (one M39
+// `evaluateForInternalAccess` call per load); the `actor` and `"patient_level"` round-trips are skipped when the
+// plan carries no SUD-flagged problem.
+import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 import { getRequestContext, withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy";
-import type { CarePlanCodeUsageRecord } from "@chartwarden/types";
+import type { CarePlanCodeUsageRecord, CarePlanElementsActor } from "@chartwarden/types";
 import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { getSeam } from "../../../bootstrap/index";
+import { sudDisclosureAllowedForActor } from "../abac-predicates";
+import { effectiveNextReviewDueAt } from "../lifecycle/overdue-gate";
+import { PATIENT_PLAN_ORDER } from "../plan-selection";
 import {
   type ClaimDiagnosisCandidate,
   type ClaimDiagnosisRecord,
@@ -90,13 +103,38 @@ async function part2ReleaseAllowed(organizationId: string, patientId: string): P
 }
 
 /**
+ * The PER-ACTOR Part 2 verdict for a caller that passed its session identity (`{ actor }`): exactly the
+ * resolver the M7 routes' `sudDisclosureAllowed` closure uses (M39 `evaluateForInternalAccess`, then the §7.6
+ * RN-case-manager carve-out where no release names others). FAIL-CLOSED on any throw — redact, never disclose.
+ */
+async function actorSudAllowed(
+  organizationId: string,
+  patientId: string,
+  actor: CarePlanElementsActor["actor"],
+): Promise<boolean> {
+  try {
+    return await sudDisclosureAllowedForActor({
+      organizationId,
+      patientId,
+      roles: actor.roles,
+      membershipId: actor.membershipId,
+    });
+  } catch {
+    return false; // §8.7 — an erroring resolver REDACTS, never discloses
+  }
+}
+
+/**
  * Build the production Drizzle-backed {@link CarePlanReaderStore}. No in-memory fallback: every
  * method reads M7's tables.
  *
- * ACTIVE-PLAN SELECTION (both patient-keyed reads): the patient's non-`discharged` plan, oldest
- * `created_at` first — the same row the route service's `getCarePlanForPatient` resolves, narrowed by
- * the bootstrap invariant (`care_plan_one_per_admission_uq` keeps at most one non-discharged plan per
- * admission). No visible plan ⇒ null, per the interface docs.
+ * ACTIVE-PLAN SELECTION (both patient-keyed reads): the patient's non-`discharged` plan, newest
+ * `created_at` first (`PATIENT_PLAN_ORDER`, ../plan-selection.ts — the ONE rule the route service's
+ * `getCarePlanForPatient` and the two org-level reads below also order by). `care_plan` has one row per
+ * ADMISSION, so a re-admitted patient has a discharged plan 1 and a live plan 2; this store reads only
+ * the live one (the route service falls back to the newest discharged plan so a discharged chart still
+ * reads). `care_plan_one_per_admission_uq` keeps at most one non-discharged plan per admission. No
+ * live plan ⇒ null, per the interface docs.
  *
  * ★ INTERPRETATION (flagged): `RelevantGoal.text` is the goal's CURRENT display text —
  *   `revised_text` when a clinician has revised it, else the verbatim `original_text` (the §7.3/D6
@@ -120,12 +158,17 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
           ...(admissionId ? [eq(CP.admissionId, admissionId)] : []),
         ),
       )
+      .orderBy(...PATIENT_PLAN_ORDER)
       .limit(1);
     return row ?? null;
   }
 
   return {
-    async activeCarePlanElements(patientId, admissionId): Promise<CarePlanElementsRecord | null> {
+    async activeCarePlanElements(
+      patientId,
+      admissionId,
+      viewer,
+    ): Promise<CarePlanElementsRecord | null> {
       return withOrgContextFromRequest(db, async (tx) => {
         const t = tx as unknown as DbClient;
         const plan = await loadActivePlan(t, patientId, admissionId);
@@ -148,9 +191,17 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
         }));
         // The D7 decision is only observable when SUD content exists — skip the M39 round-trip otherwise.
         const sudPresent = problems.some((p) => p.containsSud);
-        const sudReadAllowed = sudPresent
-          ? await part2ReleaseAllowed(plan.organizationId, patientId)
-          : true;
+        // A human caller's per-ACTOR verdict outranks the patient-level release fact: a release that names other
+        // staff redacts this caller even though "a release exists", and an RN case manager is let through where no
+        // release names others. The verdict is either the route's own (`sudDisclosureAllowed`) or resolved HERE
+        // from the session identity (`actor`); only a caller with no human actor gets the patient-level lookup.
+        const sudReadAllowed = !sudPresent
+          ? true
+          : viewer === "patient_level"
+            ? await part2ReleaseAllowed(plan.organizationId, patientId)
+            : "actor" in viewer
+              ? await actorSudAllowed(plan.organizationId, patientId, viewer.actor)
+              : viewer.sudDisclosureAllowed;
         return {
           planId: plan.id,
           patientId: plan.patientId,
@@ -188,6 +239,8 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
           hasSignedInitialVersion: plan.initialSignedAt !== null,
           initialDueAt: iso(plan.initialDueAt),
           nextReviewDueAt: isoN(plan.nextReviewDueAt),
+          initialSignedAt: isoN(plan.initialSignedAt),
+          timeZone: await organizationTimezone(t, plan.organizationId),
         };
       });
     },
@@ -377,8 +430,9 @@ export interface IdgPacketCarePlanContext {
  * The ids of the patient's ACTIVE IPOC problems, org-explicit (F-234 / #248). M15's IDG-decision consumer
  * (`discipline_plan_update`, M15 spec §2.1/§7.7) must verify that a goal it adds names a real, active M7
  * problem as its parent — the same check M15's goal route runs through `CarePlanReader`, whose id-keyed reads
- * open `withOrgContextFromRequest` and so cannot run on a relay tick. Reads the patient's care plan
- * (`care_plan` has one row per patient) and returns only ids — no problem text leaves M7. An empty array means
+ * open `withOrgContextFromRequest` and so cannot run on a relay tick. Reads the patient's care plan (the
+ * newest non-discharged plan, else the newest — `PATIENT_PLAN_ORDER`; `care_plan` has one row per ADMISSION)
+ * and returns only ids — no problem text leaves M7. An empty array means
  * "no plan / no active problem": the caller refuses the goal, it never waves it through.
  */
 export function activeProblemIdsForOrg(
@@ -391,7 +445,7 @@ export function activeProblemIdsForOrg(
       .select({ id: CP.id })
       .from(CP)
       .where(and(eq(CP.organizationId, organizationId), eq(CP.patientId, patientId)))
-      .orderBy(desc(CP.createdAt))
+      .orderBy(...PATIENT_PLAN_ORDER)
       .limit(1);
     if (!plan) return [];
     const rows = await tx
@@ -401,6 +455,39 @@ export function activeProblemIdsForOrg(
     return rows.map((r) => r.id);
   });
 }
+
+/**
+ * The ids of the patient's ACTIVE problems that are 42 CFR Part 2 (`sud_related`), org-explicit, for the plan
+ * `activeProblemIdsForOrg` resolves. M15's IDG consumer reads it so a goal it adds under such a problem inherits
+ * the flag: a Part 2 problem's goal is Part 2 content whichever module stores it (audit round 3, finding 7).
+ */
+export function activeSudProblemIdsForOrg(
+  db: DbClient,
+  organizationId: string,
+  patientId: string,
+): Promise<readonly string[]> {
+  return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    const [plan] = await tx
+      .select({ id: CP.id })
+      .from(CP)
+      .where(and(eq(CP.organizationId, organizationId), eq(CP.patientId, patientId)))
+      .orderBy(...PATIENT_PLAN_ORDER)
+      .limit(1);
+    if (!plan) return [];
+    const rows = await tx
+      .select({ id: PROB.id })
+      .from(PROB)
+      .where(
+        and(eq(PROB.carePlanId, plan.id), eq(PROB.status, "active"), eq(PROB.sudRelated, true)),
+      );
+    return rows.map((r) => r.id.toLowerCase());
+  });
+}
+
+/** What the IDG packet cover shows for a terminal problem that is Part 2 (the packet cover reads "Primary
+ *  diagnosis: 42 CFR Part 2 (withheld)"). Fixed text: nothing of the problem survives. */
+const PART2_COVER_ICD10 = "withheld";
+const PART2_COVER_LABEL = "42 CFR Part 2";
 
 /**
  * Resolve the §2.4 packet-cover care-plan facts for one patient, org-explicit. `null` when the patient has
@@ -415,10 +502,14 @@ export function idgPacketCarePlanContextForOrg(
 ): Promise<IdgPacketCarePlanContext | null> {
   return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
     const [plan] = await tx
-      .select({ id: CP.id, nextReviewDueAt: CP.nextReviewDueAt })
+      .select({
+        id: CP.id,
+        nextReviewDueAt: CP.nextReviewDueAt,
+        initialSignedAt: CP.initialSignedAt,
+      })
       .from(CP)
       .where(and(eq(CP.organizationId, organizationId), eq(CP.patientId, patientId)))
-      .orderBy(desc(CP.createdAt))
+      .orderBy(...PATIENT_PLAN_ORDER)
       .limit(1);
     if (!plan) return null;
 
@@ -448,7 +539,11 @@ export function idgPacketCarePlanContextForOrg(
       .limit(1);
 
     const [terminal] = await tx
-      .select({ icd10Code: PROB.icd10Code, description: PROB.description })
+      .select({
+        icd10Code: PROB.icd10Code,
+        description: PROB.description,
+        sudRelated: PROB.sudRelated,
+      })
       .from(PROB)
       .where(
         and(eq(PROB.carePlanId, plan.id), eq(PROB.kind, "terminal"), eq(PROB.status, "active")),
@@ -465,7 +560,13 @@ export function idgPacketCarePlanContextForOrg(
       .limit(1);
 
     const asOf = new Date(asOfIso);
-    const nextReviewDueAt = plan.nextReviewDueAt?.toISOString() ?? null;
+    // A plan signed before TASK-040D has next_review_due_at NULL with initial_signed_at set: date it
+    // the same way the overdue gate does, rather than reporting "no review due".
+    const nextReviewDueAt = effectiveNextReviewDueAt(
+      plan.nextReviewDueAt?.toISOString() ?? null,
+      plan.initialSignedAt?.toISOString() ?? null,
+      await organizationTimezone(tx, organizationId),
+    );
 
     return {
       carePlanId: plan.id,
@@ -476,8 +577,20 @@ export function idgPacketCarePlanContextForOrg(
       lastSignedAt: lastSigned?.signedAt?.toISOString() ?? null,
       nextReviewDueAt,
       isReviewOverdue: nextReviewDueAt !== null && new Date(nextReviewDueAt) < asOf,
-      terminalDiagnosisIcd10: terminal?.icd10Code ?? null,
-      terminalDiagnosisLabel: terminal?.description ?? null,
+      // 42 CFR Part 2 (audit D-16): the cover is built once, for every reader, so a terminal problem that is
+      // SUD-related (or whose flag is not the literal `false`) is named by a fixed marker, never its text or
+      // code. The marker is not null, so the packet still builds and the IDG team still sees that a primary
+      // diagnosis exists; the authorised view of it is the care plan itself, behind the disclosure gate.
+      terminalDiagnosisIcd10: terminal
+        ? terminal.sudRelated === false
+          ? (terminal.icd10Code ?? null)
+          : PART2_COVER_ICD10
+        : null,
+      terminalDiagnosisLabel: terminal
+        ? terminal.sudRelated === false
+          ? terminal.description
+          : PART2_COVER_LABEL
+        : null,
       sudFlag: !!sudRow,
     };
   });

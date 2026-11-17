@@ -51,7 +51,7 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m15.plan.version_signed",
     moduleOwner: "m15",
     description:
-      "A discipline_care_plan_version satisfied its sealed D11 required-signer set. Carries the sealed state_snapshot — the M22 plan-PDF render handshake and the M28 FHIR CarePlan projection input (D12).",
+      "A discipline_care_plan_version was signed: its sealed D11 required-signer set was satisfied, or it is the system-signed discharge version (empty signers). Carries the state_snapshot with 42 CFR Part 2 goals and the interventions that serve them REMOVED (no viewer decides who reads a persisted event or a rendered PDF) — the M22 plan-PDF render handshake and the M28 FHIR CarePlan projection input (D12).",
     payloadSchema: Type.Object({
       planId: Id,
       versionId: Id,
@@ -101,8 +101,8 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
     // §4.5 outbox-subscriptions table never names this event.
     // F-144 (#248) — m22 REMOVED: M15's own Lock-status section makes the exhaustive, specific claim
     // "M22 discipline-plan PDF rendering subscribes to `m15.plan.version_signed` when M22 locks" — naming
-    // only that sibling event, not this one. Discharge seals an existing already-rendered snapshot
-    // version rather than producing a new artifact.
+    // only that sibling event, not this one. Discharge seals a version of its own, and THAT version is rendered:
+    // the discharge consumer publishes `m15.plan.version_signed` for it (audit D-6), so this event does not.
     // F-180 (#248) — m30 DROPPED: same reasoning as `m15.plan.version_signed` above — M30's own locked
     // spec §1.2 names only the 4 `DisciplineComplianceProvider` measures as its real M15 consumption; plan
     // discharge is not among them, no measure code or seam method reads it.

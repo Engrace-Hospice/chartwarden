@@ -60,6 +60,7 @@ import {
   evaluateSupervisoryCadence,
   resolveRequiredSignerSet,
 } from "../lifecycle/index";
+import { isSudAnchored } from "../routes/snapshot-redaction";
 import { type VolunteerGateFacts, effectiveStatusFor } from "../volunteer/index";
 import type {
   DisciplineComplianceCounts,
@@ -284,6 +285,12 @@ export function createDrizzleDisciplinePlanSeamStore(
           .from(I)
           .where(eq(I.planId, planId))
           .orderBy(asc(I.addedAt), asc(I.id));
+        // An intervention that serves a SUD goal is Part 2 content by its anchor: withheld with the goal.
+        const sudGoals = await tx
+          .select({ id: G.id })
+          .from(G)
+          .where(and(eq(G.planId, planId), eq(G.sudRelated, true)));
+        const hiddenGoalIds: ReadonlySet<string> = new Set(sudGoals.map((r) => r.id.toLowerCase()));
         const assessments = await tx
           .select()
           .from(A)
@@ -296,7 +303,9 @@ export function createDrizzleDisciplinePlanSeamStore(
           // inside sealed version snapshots); `null` is the honest answer, never an invented body.
           data: null,
           goals: goals.map(toGoalDto),
-          interventions: interventions.map(toInterventionDto),
+          interventions: interventions
+            .filter((i) => !isSudAnchored(i.goalRefs, hiddenGoalIds))
+            .map(toInterventionDto),
           assessments: assessments.map(toAssessmentDto),
           requiredSignerSet: await requiredSignerSetFor(tx, plan),
         };

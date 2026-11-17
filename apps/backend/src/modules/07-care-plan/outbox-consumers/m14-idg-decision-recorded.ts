@@ -6,11 +6,22 @@ import { randomUUID } from "node:crypto";
 import { type AuditContext, audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { IdgDecisionPayload } from "@chartwarden/types";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import type { IdgApplyAction, IdgApplyFacts } from "../consumers/apply-idg-decision";
-import { decideIdgDecision } from "../consumers/apply-idg-decision";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import {
+  OUTBOX_DEFERRAL_RETRY_MS,
+  OutboxDeferral,
+  withinDeferralHorizon,
+} from "../../../bootstrap/outbox-dispatcher";
+import { transitionIntervention } from "../lifecycle";
 import { resolveRequiredSignerSet } from "../lifecycle/required-signer-set";
+import {
+  IdgProposalRefusal,
+  guardGoalStatus,
+  guardProblemStatus,
+  guardTransition,
+  invalidPayload,
+  notFound,
+} from "./m14-idg-proposal-guards";
 
 const CP = schema.carePlans;
 const CPV = schema.carePlanVersions;
@@ -37,6 +48,20 @@ interface M7IdgDispatchEvent {
   readonly id: string;
   readonly organizationId: string;
   readonly payload: unknown;
+  /** The outbox row's creation instant (the relay always supplies it); bounds how long a decision may wait. */
+  readonly createdAt?: Date;
+}
+
+/**
+ * A decision refused only because of a condition that clears on its own (a plan not yet signed, a revision
+ * awaiting signatures) WAITS instead of being recorded as refused: the relay retries it without consuming an
+ * attempt, so it applies once the blocker is gone and nobody has to re-record it. Past the horizon the caller
+ * records its durable refusal as before, so a blocker that never clears still leaves a human-visible trace.
+ */
+function deferWhileYoung(event: M7IdgDispatchEvent, reason: string): void {
+  if (event.createdAt === undefined || !withinDeferralHorizon({ createdAt: event.createdAt }))
+    return;
+  throw new OutboxDeferral(`m7.apply-idg-decision: ${reason}`, OUTBOX_DEFERRAL_RETRY_MS);
 }
 
 /** The forward-declared (event → consumer) binding M14 dispatches to once it lands (Wave F, §7.9). */
@@ -50,7 +75,7 @@ export const M7_IDG_DECISION_CONSUMER_DEFERRED = false;
 
 function recordOf(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`m7.apply-idg-decision: ${label} must be an object`);
+    throw invalidPayload(`${label} must be an object`);
   }
   return value as Record<string, unknown>;
 }
@@ -58,7 +83,7 @@ function recordOf(value: unknown, label: string): Record<string, unknown> {
 function stringOf(record: Record<string, unknown>, key: string): string {
   const value = record[key];
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`m7.apply-idg-decision: '${key}' must be a non-empty string`);
+    throw invalidPayload(`'${key}' must be a non-empty string`);
   }
   return value;
 }
@@ -67,7 +92,7 @@ function nullableStringOf(record: Record<string, unknown>, key: string): string 
   const value = record[key];
   if (value === null) return null;
   if (typeof value !== "string") {
-    throw new Error(`m7.apply-idg-decision: '${key}' must be a string or null`);
+    throw invalidPayload(`'${key}' must be a string or null`);
   }
   return value;
 }
@@ -79,7 +104,7 @@ function problemKindOf(value: unknown): (typeof schema.problemKind.enumValues)[n
     case "unrelated":
       return value;
     default:
-      throw new Error(`m7.apply-idg-decision: unsupported problem kind '${String(value)}'`);
+      throw invalidPayload("unsupported problem kind");
   }
 }
 
@@ -90,7 +115,7 @@ function problemStatusOf(value: unknown): (typeof schema.problemStatus.enumValue
     case "inactive":
       return value;
     default:
-      throw new Error(`m7.apply-idg-decision: unsupported problem status '${String(value)}'`);
+      throw invalidPayload("unsupported problem status");
   }
 }
 
@@ -102,7 +127,7 @@ function goalSourceOf(value: unknown): (typeof schema.goalSource.enumValues)[num
     case "agent_stated":
       return value;
     default:
-      throw new Error(`m7.apply-idg-decision: unsupported goal source '${String(value)}'`);
+      throw invalidPayload("unsupported goal source");
   }
 }
 
@@ -116,7 +141,7 @@ function goalStatusOf(value: unknown): (typeof schema.goalStatus.enumValues)[num
     case "discontinued":
       return value;
     default:
-      throw new Error(`m7.apply-idg-decision: unsupported goal status '${String(value)}'`);
+      throw invalidPayload("unsupported goal status");
   }
 }
 
@@ -127,7 +152,7 @@ function requireNonEmptyPatch(
 ): void {
   const keys = Object.keys(updates);
   if (keys.length === 0 || keys.some((key) => !allowedKeys.includes(key))) {
-    throw new Error(`m7.apply-idg-decision: ${label} must contain only supported update fields`);
+    throw invalidPayload(`${label} must contain only supported update fields`);
   }
 }
 
@@ -151,8 +176,10 @@ function disciplineOf(value: unknown): (typeof schema.interventionDiscipline.enu
     case "np":
       return "md_np";
     default:
-      throw new Error(
-        `m7.apply-idg-decision: unsupported intervention discipline '${String(value)}'`,
+      // M14's schema accepts any discipline string (decision-payload-schema.ts); M7's enum is narrower.
+      throw new IdgProposalRefusal(
+        "unsupported_intervention_discipline",
+        "unsupported intervention discipline (not an M7 interventionDiscipline value)",
       );
   }
 }
@@ -163,8 +190,12 @@ async function requireProblem(tx: DbClient, planId: string, problemId: string): 
     .from(PROBLEM)
     .where(and(eq(PROBLEM.carePlanId, planId), eq(PROBLEM.id, problemId)))
     .limit(1);
-  if (!row)
-    throw new Error(`m7.apply-idg-decision: problem '${problemId}' is not on plan '${planId}'`);
+  if (!row) {
+    throw new IdgProposalRefusal(
+      "element_not_found",
+      `problem '${problemId}' is not on plan '${planId}'`,
+    );
+  }
 }
 
 const iso = (d: Date | string | null): string | null =>
@@ -226,7 +257,12 @@ async function captureBaselineSnapshot(tx: DbClient, planId: string) {
   };
 }
 
-async function buildProposedChange(
+/**
+ * Turn one M14 care-plan mutation into a governed proposed-change row (reads only: no clinical row is
+ * written, and `carePlanVersionId` is attached by the caller once the idg_review version is known, so a
+ * refused decision never opens a version). Throws {@link IdgProposalRefusal} for anything non-transient.
+ */
+export async function buildProposedChange(
   tx: DbClient,
   input: {
     readonly organizationId: string;
@@ -235,10 +271,9 @@ async function buildProposedChange(
     readonly applicationId: string;
     readonly decisionId: string;
     readonly meetingId: string;
-    readonly versionId: string;
     readonly ordinal: number;
   },
-): Promise<typeof PROPOSED_CHANGE.$inferInsert> {
+): Promise<Omit<typeof PROPOSED_CHANGE.$inferInsert, "carePlanVersionId">> {
   const mutation = recordOf(input.mutation, "care-plan mutation");
   const op = stringOf(mutation, "op");
   const common = {
@@ -247,7 +282,6 @@ async function buildProposedChange(
     locationId: input.plan.locationId,
     applicationId: input.applicationId,
     carePlanId: input.plan.id,
-    carePlanVersionId: input.versionId,
     idgDecisionId: input.decisionId,
     idgMeetingId: input.meetingId,
     ordinal: input.ordinal,
@@ -263,7 +297,9 @@ async function buildProposedChange(
         description: stringOf(mutation, "description"),
         kind: problemKindOf(mutation.problemKind),
         source: "clinical",
-        sudRelated: false,
+        // 42 CFR Part 2: only the literal `true` flags it, so a decision recorded before the field existed
+        // (or a mangled value) stays what it always was, and a flagged one is withheld like any SUD problem.
+        sudRelated: mutation.sudRelated === true,
         status: "active",
       };
       return {
@@ -277,21 +313,30 @@ async function buildProposedChange(
     case "problem_update": {
       const id = stringOf(mutation, "problemId");
       const updates = recordOf(mutation.updates, "problem updates");
-      requireNonEmptyPatch(updates, ["status", "description"], "problem updates");
+      requireNonEmptyPatch(updates, ["status", "description", "resolutionNote"], "problem updates");
       const [before] = await tx
         .select()
         .from(PROBLEM)
         .where(and(eq(PROBLEM.carePlanId, input.plan.id), eq(PROBLEM.id, id)))
         .limit(1);
-      if (!before) throw new Error(`m7.apply-idg-decision: problem '${id}' not found`);
+      if (!before) throw notFound("problem", id);
       const proposed: Record<string, unknown> = {};
-      if (updates.status !== undefined) proposed.status = problemStatusOf(updates.status);
+      const toStatus = updates.status !== undefined ? problemStatusOf(updates.status) : undefined;
+      // Always guard: a resolved/inactive problem refuses every edit, not only a status change.
+      const resolutionNote =
+        updates.resolutionNote !== undefined ? stringOf(updates, "resolutionNote").trim() : "";
+      guardProblemStatus(before, toStatus, resolutionNote);
+      if (toStatus !== undefined) proposed.status = toStatus;
+      if (resolutionNote !== "") proposed.resolutionNote = resolutionNote;
       if (updates.description !== undefined)
         proposed.description = stringOf(updates, "description");
       return { ...common, entityType: "problem", targetEntityId: id, before, proposed };
     }
     case "goal_add": {
-      const problemId = stringOf(mutation, "problemId");
+      // A uuid is case-insensitive and the payload's format check accepts either case, so the anchor is stored
+      // lower-cased: the Part 2 anchor match (`withoutSudAnchoredChanges`, `filterAnchoredToVisible`) and the
+      // post-apply snapshot comparison all compare against the database's lower-case form.
+      const problemId = stringOf(mutation, "problemId").toLowerCase();
       await requireProblem(tx, input.plan.id, problemId);
       const proposed = {
         id: randomUUID(),
@@ -318,29 +363,37 @@ async function buildProposedChange(
         .from(GOAL)
         .where(and(eq(GOAL.carePlanId, input.plan.id), eq(GOAL.id, id)))
         .limit(1);
-      if (!before) throw new Error(`m7.apply-idg-decision: goal '${id}' not found`);
+      if (!before) throw notFound("goal", id);
       const proposed: Record<string, unknown> = {};
       if (updates.revisedText !== undefined)
         proposed.revisedText = stringOf(updates, "revisedText");
-      if (updates.status !== undefined) proposed.status = goalStatusOf(updates.status);
+      const toStatus = updates.status !== undefined ? goalStatusOf(updates.status) : undefined;
+      // Always guard: a met / not_met / discontinued goal refuses every edit, not only a status change.
+      guardGoalStatus(before.status, toStatus);
+      if (toStatus !== undefined) proposed.status = toStatus;
       if (updates.statusNote !== undefined) proposed.statusNote = stringOf(updates, "statusNote");
       return { ...common, entityType: "goal", targetEntityId: id, before, proposed };
     }
     case "intervention_add": {
-      const problemId = stringOf(mutation, "problemId");
+      const problemId = stringOf(mutation, "problemId").toLowerCase();
       await requireProblem(tx, input.plan.id, problemId);
       const rawGoalRefs = mutation.goalRefs;
       if (!Array.isArray(rawGoalRefs) || rawGoalRefs.some((id) => typeof id !== "string")) {
-        throw new Error("m7.apply-idg-decision: 'goalRefs' must be an array of ids");
+        throw invalidPayload("'goalRefs' must be an array of ids");
       }
-      const goalRefs = rawGoalRefs.filter((id): id is string => typeof id === "string");
+      const goalRefs = rawGoalRefs
+        .filter((id): id is string => typeof id === "string")
+        .map((id) => id.toLowerCase());
       if (goalRefs.length > 0) {
         const found = await tx
           .select({ id: GOAL.id })
           .from(GOAL)
           .where(and(eq(GOAL.carePlanId, input.plan.id), inArray(GOAL.id, goalRefs)));
         if (found.length !== new Set(goalRefs).size) {
-          throw new Error("m7.apply-idg-decision: one or more intervention goalRefs are off-plan");
+          throw new IdgProposalRefusal(
+            "element_not_found",
+            "one or more intervention goalRefs are off-plan",
+          );
         }
       }
       const proposed = {
@@ -367,9 +420,9 @@ async function buildProposedChange(
         .from(INTERVENTION)
         .where(and(eq(INTERVENTION.carePlanId, input.plan.id), eq(INTERVENTION.id, id)))
         .limit(1);
-      if (!before) {
-        throw new Error(`m7.apply-idg-decision: intervention '${id}' not found`);
-      }
+      if (!before) throw notFound("intervention", id);
+      const reason = stringOf(mutation, "reason");
+      guardTransition(() => transitionIntervention(before.status, { type: "discontinue", reason }));
       return {
         ...common,
         entityType: "intervention",
@@ -377,13 +430,77 @@ async function buildProposedChange(
         before,
         proposed: {
           status: "discontinued",
-          discontinueReason: stringOf(mutation, "reason"),
+          discontinueReason: reason,
         },
       };
     }
     default:
-      throw new Error(`m7.apply-idg-decision: unsupported care-plan mutation '${op}'`);
+      throw new IdgProposalRefusal("invalid_mutation", "unsupported care-plan mutation");
   }
+}
+
+interface RefusedDecision {
+  readonly organizationId: string;
+  readonly plan: typeof CP.$inferSelect;
+  readonly decisionId: string;
+  readonly meetingId: string;
+  readonly sourceEventId: string;
+}
+
+/**
+ * Persist a refused decision as a durable `conflict` application (reason in `conflict_reason`) plus an audit
+ * event, so the IDG decision leaves a human-visible trace and the outbox row is acked rather than retried
+ * into the dead-letter queue. The row is anchored on a NON-idg_review version: finalize/sign read every
+ * application of an idg_review version and treat any that is not 'proposed' as a conflict that blocks publish.
+ */
+async function recordRefusal(
+  tx: DbClient,
+  input: RefusedDecision,
+  refusal: IdgProposalRefusal,
+): Promise<void> {
+  const [anchor] = await tx
+    .select({ id: CPV.id })
+    .from(CPV)
+    .where(and(eq(CPV.carePlanId, input.plan.id), ne(CPV.kind, "idg_review")))
+    .orderBy(desc(CPV.sequence))
+    .limit(1);
+  if (!anchor) {
+    // Every bootstrapped plan has its initial version; a plan without one is mid-bootstrap, so retry.
+    throw new Error(`m7.apply-idg-decision: care plan '${input.plan.id}' has no version yet`);
+  }
+  const inserted = await tx
+    .insert(APPLICATION)
+    .values({
+      organizationId: input.organizationId,
+      providerEntityId: input.plan.providerEntityId,
+      locationId: input.plan.locationId,
+      idgDecisionId: input.decisionId,
+      idgMeetingId: input.meetingId,
+      sourceOutboxEventId: input.sourceEventId,
+      carePlanId: input.plan.id,
+      carePlanVersionId: anchor.id,
+      status: "conflict",
+      conflictReason: `${refusal.code}: ${refusal.reason}`,
+    })
+    .onConflictDoNothing({ target: [APPLICATION.organizationId, APPLICATION.idgDecisionId] })
+    .returning({ id: APPLICATION.id });
+  if (inserted.length === 0) return;
+  await audit(
+    tx,
+    {
+      organizationId: input.organizationId,
+      userId: null,
+      actorKind: "system",
+      correlationId: `idg-decision:${input.decisionId}`,
+    },
+    {
+      eventType: "m7.care_plan.idg_proposal_refused",
+      resourceKind: "care_plan",
+      resourceId: input.plan.id,
+      outcome: "denied",
+      context: { decisionId: input.decisionId, meetingId: input.meetingId, reason: refusal.code },
+    },
+  );
 }
 
 /** Build the production M7 binding. Source events for other decision arms are valid handled no-ops. */
@@ -436,15 +553,98 @@ export function buildM7IdgDecisionConsumer(deps: {
             .limit(1);
           if (already) return;
 
+          const refused = (plan: typeof CP.$inferSelect): RefusedDecision => ({
+            organizationId: event.organizationId,
+            plan,
+            decisionId,
+            meetingId,
+            sourceEventId: event.id,
+          });
+
+          // Locked like finalize/sign (plan first, then version): the draft-version read and the inserts below
+          // are check-then-insert, so without it a finalize committing between them leaves a `proposed`
+          // application inside an `in_review` version, and the last signer gets IDG_PROPOSAL_CONFLICT.
           const [plan] = await t
             .select()
             .from(CP)
             .where(and(eq(CP.patientId, patientId), eq(CP.status, "active")))
-            .limit(1);
+            .limit(1)
+            .for("update");
           if (!plan) {
-            throw new Error(
-              `m7.apply-idg-decision: no active care plan for patient '${patientId}'`,
+            // A plan that exists but is not active (draft/unsigned, discharged) can never take this decision:
+            // record it. No plan at all means the M6 bootstrap has not run yet: transient, so throw and retry.
+            const [latest] = await t
+              .select()
+              .from(CP)
+              .where(eq(CP.patientId, patientId))
+              .orderBy(desc(CP.createdAt))
+              .limit(1);
+            if (!latest) {
+              throw new Error(
+                `m7.apply-idg-decision: no care plan for patient '${patientId}' (not bootstrapped yet)`,
+              );
+            }
+            // A draft plan becomes active when its initial version is signed: wait for that.
+            if (latest.status !== "discharged") {
+              deferWhileYoung(
+                event,
+                `care plan '${latest.id}' is '${latest.status}', not active yet`,
+              );
+            }
+            await recordRefusal(
+              t,
+              refused(latest),
+              new IdgProposalRefusal(
+                latest.status === "discharged" ? "plan_discharged" : "plan_not_active",
+                `care plan '${latest.id}' is '${latest.status}', not active, so the IDG decision was not applied`,
+              ),
             );
+            return;
+          }
+
+          // Build every proposed change before opening a version, so a refused decision opens nothing.
+          const applicationId = randomUUID();
+          const drafts: Awaited<ReturnType<typeof buildProposedChange>>[] = [];
+          try {
+            for (const [ordinal, mutation] of mutations.entries()) {
+              drafts.push(
+                await buildProposedChange(t, {
+                  organizationId: event.organizationId,
+                  plan,
+                  mutation,
+                  applicationId,
+                  decisionId,
+                  meetingId,
+                  ordinal,
+                }),
+              );
+            }
+          } catch (error) {
+            if (!(error instanceof IdgProposalRefusal)) throw error;
+            await recordRefusal(t, refused(plan), error);
+            return;
+          }
+
+          // Each mutation was guarded alone against the LIVE row, but finalize applies a version's changes in
+          // sequence: a terminal move (goal `met`, problem `inactive`, intervention discontinued) followed by
+          // another change to the same element would pass the builder and then fail `finalizeVersion` for good,
+          // wedging the plan's single open-version slot. So an element is changed at most once per version.
+          // Lowercased: the payload schema's `uuid` format accepts either case and Postgres compares uuids
+          // case-insensitively, so `ABC…` and `abc…` are one element.
+          const targets = drafts.flatMap((draft) =>
+            typeof draft.targetEntityId === "string" ? [draft.targetEntityId.toLowerCase()] : [],
+          );
+          const repeated = targets.find((id, index) => targets.indexOf(id) !== index);
+          if (repeated !== undefined) {
+            await recordRefusal(
+              t,
+              refused(plan),
+              new IdgProposalRefusal(
+                "element_targeted_twice",
+                `two mutations of this decision target element '${repeated}'; send one mutation per element`,
+              ),
+            );
+            return;
           }
 
           let [version] = await t
@@ -459,6 +659,35 @@ export function buildM7IdgDecisionConsumer(deps: {
               ),
             )
             .limit(1);
+          if (version && targets.length > 0) {
+            // Another decision of this meeting already proposes a change to one of these elements. Waiting
+            // until that version is finalized and applied lets this decision be judged against the result.
+            const [clash] = await t
+              .select({ id: PROPOSED_CHANGE.id })
+              .from(PROPOSED_CHANGE)
+              .where(
+                and(
+                  eq(PROPOSED_CHANGE.carePlanVersionId, version.id),
+                  inArray(PROPOSED_CHANGE.targetEntityId, targets),
+                ),
+              )
+              .limit(1);
+            if (clash) {
+              deferWhileYoung(
+                event,
+                `care-plan version '${version.id}' already carries a pending change to an element of this decision`,
+              );
+              await recordRefusal(
+                t,
+                refused(plan),
+                new IdgProposalRefusal(
+                  "element_has_pending_change",
+                  `care-plan version '${version.id}' already carries a pending IDG change to an element of this decision; finalize or return it, then re-record the IDG decision`,
+                ),
+              );
+              return;
+            }
+          }
           if (!version) {
             const [open] = await t
               .select()
@@ -466,9 +695,20 @@ export function buildM7IdgDecisionConsumer(deps: {
               .where(and(eq(CPV.carePlanId, plan.id), inArray(CPV.status, ["draft", "in_review"])))
               .limit(1);
             if (open) {
-              throw new Error(
-                "m7.apply-idg-decision: an incompatible care-plan version is already open",
+              // The open revision is signed (or abandoned) sooner or later: wait for the slot to free up.
+              deferWhileYoung(
+                event,
+                `care-plan version '${open.id}' (${open.kind}, ${open.status}) is already open`,
               );
+              await recordRefusal(
+                t,
+                refused(plan),
+                new IdgProposalRefusal(
+                  "version_already_open",
+                  `care-plan version '${open.id}' (${open.kind}, ${open.status}) is already open; finish or return it, then re-record the IDG decision`,
+                ),
+              );
+              return;
             }
           }
           if (!version) {
@@ -505,9 +745,9 @@ export function buildM7IdgDecisionConsumer(deps: {
               },
             });
           }
+          const versionId = version.id;
 
           const baselineSnapshot = await captureBaselineSnapshot(t, plan.id);
-          const applicationId = randomUUID();
           const inserted = await t
             .insert(APPLICATION)
             .values({
@@ -519,7 +759,7 @@ export function buildM7IdgDecisionConsumer(deps: {
               idgMeetingId: meetingId,
               sourceOutboxEventId: event.id,
               carePlanId: plan.id,
-              carePlanVersionId: version.id,
+              carePlanVersionId: versionId,
               status: "proposed",
               baselineSnapshot,
             })
@@ -529,29 +769,19 @@ export function buildM7IdgDecisionConsumer(deps: {
             .returning({ id: APPLICATION.id });
           if (inserted.length === 0) return;
 
-          const proposedChanges = await Promise.all(
-            mutations.map((mutation, index) =>
-              buildProposedChange(t, {
-                organizationId: event.organizationId,
-                plan,
-                mutation,
-                applicationId,
-                decisionId,
-                meetingId,
-                versionId: version.id,
-                ordinal: index,
-              }),
-            ),
-          );
-          if (proposedChanges.length > 0) await t.insert(PROPOSED_CHANGE).values(proposedChanges);
+          const proposedChanges = drafts.map((draft) => ({
+            ...draft,
+            carePlanVersionId: versionId,
+          }));
+          await t.insert(PROPOSED_CHANGE).values(proposedChanges);
           await deps.outbox.publish(t, {
             eventName: "m7.care_plan.idg_proposal_created",
             organizationId: event.organizationId,
             aggregateKind: "care_plan_version",
-            aggregateId: version.id,
+            aggregateId: versionId,
             payload: {
               planId: plan.id,
-              versionId: version.id,
+              versionId,
               decisionId,
               meetingId,
               changeCount: proposedChanges.length,
@@ -566,7 +796,7 @@ export function buildM7IdgDecisionConsumer(deps: {
           await audit(t, auditContext, {
             eventType: "m7.care_plan.idg_proposal_created",
             resourceKind: "care_plan_version",
-            resourceId: version.id,
+            resourceId: versionId,
             outcome: "success",
             context: { decisionId, meetingId, mutationCount: proposedChanges.length },
           });
@@ -574,16 +804,4 @@ export function buildM7IdgDecisionConsumer(deps: {
       );
     },
   };
-}
-
-/**
- * The pure decision helper retained for policy tests: resolve {@link IdgApplyFacts} from the
- * idempotency audit log + the care-plan aggregate, then call this to get the {@link IdgApplyAction} to
- * execute. Kept as a one-line compatibility re-export.
- */
-export function decideIdgDecisionRecorded(
-  payload: IdgDecisionPayload,
-  facts: IdgApplyFacts,
-): IdgApplyAction {
-  return decideIdgDecision(payload, facts);
 }

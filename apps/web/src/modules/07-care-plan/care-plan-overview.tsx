@@ -7,8 +7,9 @@ import { Glyph, type GlyphName, KpiCard, Panel, StatusPill, t } from "@chartward
 import { type JSX, type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 import { GoalsProgressPanel } from "../../shell/goals-progress";
+import { useSession } from "../../shell/session";
 import type { CarePlan, Goal, Intervention, Problem, ReviewStatus, Version } from "./care-plan-api";
-import { cap, toneFor } from "./care-plan-status";
+import { cap, isGoalEditable, isInterventionEditable, toneFor } from "./care-plan-status";
 
 const DISCIPLINE_LABEL: Record<string, string> = {
   rn: "Nursing",
@@ -27,6 +28,30 @@ const DISCIPLINE_LABEL: Record<string, string> = {
 };
 export const disciplineLabel = (d: string): string => DISCIPLINE_LABEL[d] ?? cap(d);
 
+const restrictedNoteStyle = {
+  margin: 0,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.3rem",
+  color: t.warning,
+  fontSize: "0.8rem",
+  fontWeight: 600,
+} as const;
+
+/**
+ * Shown over a version snapshot the server redacted for this caller (`snapshot.redacted === true`, set by
+ * `redactCarePlanForCaller` when anything was withheld). Same lock and "restricted content omitted" wording as
+ * the workspace banner: without it a list or count that quietly leaves content out reads as the whole plan.
+ */
+export function RestrictedContentNote(): JSX.Element {
+  return (
+    <p role="note" style={restrictedNoteStyle}>
+      <Glyph name="lock" size={13} /> Restricted content omitted: some problems, goals or
+      interventions are not shown to your role.
+    </p>
+  );
+}
+
 const OPEN_GOAL = ["not_started", "in_progress", "revised"];
 
 /** Date-only strings ("2026-10-21") are calendar dates — parse them locally, not as UTC midnight. */
@@ -35,11 +60,16 @@ function toDate(value: string): Date | null {
   const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
 }
+/**
+ * A goal's `targetAt` is a calendar day stored as a UTC date-time ("2026-12-01T00:00:00.000Z"), so it is
+ * read in UTC: local fields would show a US clinician's Dec 1 as Nov 30. (A date-only string parses as
+ * UTC midnight too, so both wire shapes land on the same day.)
+ */
 function usDate(value: string | null | undefined): string {
   if (!value) return "—";
-  const d = toDate(value);
-  if (!d) return value;
-  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return `${String(d.getUTCMonth() + 1).padStart(2, "0")}/${String(d.getUTCDate()).padStart(2, "0")}/${d.getUTCFullYear()}`;
 }
 function longDate(value: string | null | undefined): string {
   if (!value) return "Not set";
@@ -79,7 +109,10 @@ export function PlanHeader({
   actions?: ReactNode;
 }): JSX.Element {
   const shown = activeVersion ?? openVersion;
-  const isActive = Boolean(activeVersion);
+  // Discharge does not clear the active version, so the version alone cannot say the plan is live.
+  const isDischarged = plan.status === "discharged";
+  const isActive = plan.status === "active" && Boolean(activeVersion);
+  const planLabel = isActive ? "Active Plan" : isDischarged ? "Discharged Plan" : null;
   // A revision opened on top of the active plan drives the next action and the editable tabs, so
   // the header names it rather than showing only the signed version.
   const pendingRevision =
@@ -95,18 +128,28 @@ export function PlanHeader({
           <span
             aria-hidden
             className="wx-version-dot"
-            style={{ background: isActive ? t.success : t.warning }}
+            style={{ background: isActive ? t.success : isDischarged ? t.outline : t.warning }}
           />
           <span style={{ minWidth: 0 }}>
             <strong>
-              {shown
-                ? `${isActive ? "Active Plan" : cap(shown.kind)} (v${shown.sequence})`
-                : "No version yet"}
+              {shown ? `${planLabel ?? cap(shown.kind)} (v${shown.sequence})` : "No version yet"}
             </strong>
             <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <StatusPill
-                label={isActive ? "Active" : cap(shown?.status ?? plan.status)}
-                tone={isActive ? "success" : toneFor(shown?.status ?? plan.status)}
+                label={
+                  isActive
+                    ? "Active"
+                    : isDischarged
+                      ? "Discharged"
+                      : cap(shown?.status ?? plan.status)
+                }
+                tone={
+                  isActive
+                    ? "success"
+                    : isDischarged
+                      ? "neutral"
+                      : toneFor(shown?.status ?? plan.status)
+                }
               />
               {shown?.signedAt ? (
                 <span className="wx-row-sub">Effective {longDate(shown.signedAt)}</span>
@@ -332,7 +375,7 @@ export function GoalsList({
                 </div>
                 <div className="wx-goal-side">
                   <StatusPill label={cap(g.status)} tone={toneFor(g.status)} />
-                  {editable ? (
+                  {editable && isGoalEditable(g.status) ? (
                     <button
                       type="button"
                       className="wx-icon-link"
@@ -445,7 +488,7 @@ export function InterventionsList({
                     <StatusPill label={cap(i.status)} tone={toneFor(i.status)} />
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    {editable ? (
+                    {editable && isInterventionEditable(i.status) ? (
                       <>
                         <button
                           type="button"
@@ -523,20 +566,51 @@ export function CarePlanRail({
 }): JSX.Element {
   const dx = plan.problems.filter((p: Problem) => p.status === "active");
   const g = plan.goals;
+  const held = useSession()?.permissions ?? [];
 
-  const links: { label: string; icon: GlyphName; to?: string; onClick?: () => void }[] = [
+  // Each destination screen is gated on the `permission` named here (its screens.ts requiredPermission);
+  // a link a viewer can only be denied at is noise, so a link they cannot open is not offered.
+  const candidates: {
+    label: string;
+    icon: GlyphName;
+    to?: string;
+    onClick?: () => void;
+    permission?: string;
+  }[] = [
     ...(canAddGoal ? [{ label: "Add Goal", icon: "plus" as GlyphName, onClick: onAddGoal }] : []),
     { label: "Version History", icon: "rotate-ccw", to: `/care-plans/${plan.id}/versions` },
-    { label: "View IDG Notes", icon: "grid-circles", to: `/patients/${patientId}/idg-history` },
-    { label: "Discipline Plans", icon: "users", to: `/patients/${patientId}/discipline-plans` },
-    { label: "Print Care Plan", icon: "printer", to: `/care-plans/${plan.id}/summary` },
+    {
+      label: "View IDG Notes",
+      icon: "grid-circles",
+      to: `/patients/${patientId}/idg-history`,
+      permission: "idg.read",
+    },
+    {
+      label: "Discipline Plans",
+      icon: "users",
+      to: `/patients/${patientId}/discipline-plans`,
+      permission: "discipline_plan.read",
+    },
+    {
+      label: "Print Care Plan",
+      icon: "printer",
+      to: `/care-plans/${plan.id}/summary`,
+      permission: "care_plan.read_summary",
+    },
     {
       label: "View Assessments",
       icon: "clipboard-check",
       to: `/patients/${patientId}/assessments`,
+      permission: "assessment.read",
     },
-    { label: "View Medications", icon: "pill", to: `/patients/${patientId}/medications` },
+    {
+      label: "View Medications",
+      icon: "pill",
+      to: `/patients/${patientId}/medications`,
+      permission: "prescribing.read",
+    },
   ];
+  const links = candidates.filter((l) => !l.permission || held.includes(l.permission));
   return (
     <>
       {summary}

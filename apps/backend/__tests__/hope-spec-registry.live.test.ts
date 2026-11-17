@@ -64,6 +64,11 @@ describe.skipIf(!DB_URL)("HopeSpecRegistry — LIVE Postgres", () => {
     await expect(registry.resolveVersionForTargetDate("2025-09-30")).rejects.toThrow(
       "No HOPE spec version",
     );
+    // Typed, so every caller that surfaces it (record a timepoint, open a draft, complete an SFV) answers a 422, not a 500.
+    await expect(registry.resolveVersionForTargetDate("2025-09-30")).rejects.toMatchObject({
+      code: "M10_SPEC_NOT_IN_FORCE",
+      statusCode: 422,
+    });
     await expect(registry.resolveVersionForTargetDate("2025-10-01")).resolves.toMatchObject({
       code: "1.00.1",
     });

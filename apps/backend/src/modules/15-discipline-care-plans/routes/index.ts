@@ -40,6 +40,7 @@ export {
   seamDisclosurePort,
 } from "./disclosure";
 
+import type { DisclosurePort } from "./disclosure";
 import type { M15ReadService } from "./read-service";
 import type { M15WriteService } from "./write-service";
 
@@ -47,4 +48,6 @@ import type { M15WriteService } from "./write-service";
 export interface M15RouteServices {
   readonly readService: M15ReadService;
   readonly writeService: M15WriteService;
+  /** Overrides the M39-seam SUD verdict the version routes redact snapshots with (tests only). */
+  readonly disclosure?: DisclosurePort;
 }

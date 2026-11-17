@@ -3,15 +3,18 @@
 // assessment's correction stands. All run inside the caller's `withOrgContext` transaction (RLS-scoped).
 import { type DbClient, schema } from "@chartwarden/db";
 import type { HopeSubmissionItemStatus } from "@chartwarden/types";
-import { asc, desc, eq, getTableColumns, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import {
   MAX_CORRECTION_CHAIN,
+  MAX_RESULT_EVENTS_PER_SUBMISSION,
   findingSeverity,
   resolveRejectedItem,
   terminalCorrection,
 } from "./hope-submission-result";
+import { canonicalUuidOrNull } from "./hope-uuid";
 import type { HopeSubmissionFindingView, HopeSubmissionItemView } from "./routes/service";
 
+const SUB = schema.hopeSubmissions;
 const SUBITEM = schema.hopeSubmissionItems;
 const RESULT = schema.hopeSubmissionResultEvents;
 const ASSESS = schema.hopeAssessments;
@@ -19,6 +22,11 @@ export type SubmissionItemRow = typeof SUBITEM.$inferSelect;
 // Skip `iqies_validation_result` (the raw XML payload): item reads that only render the view never need it.
 const { iqiesValidationResult: _heavyItem, ...LIGHT_ITEM_COLUMNS } = getTableColumns(SUBITEM);
 export const LIGHT_ITEM = LIGHT_ITEM_COLUMNS;
+// Skip `acceptance_report` (the base64 ZIP + raw CMS results): a read, lock or write that only needs the batch's
+// status/columns must not drag the package bytes through the connection.
+const { acceptanceReport: _heavyReport, ...LIGHT_SUB_COLUMNS_ } = getTableColumns(SUB);
+export const LIGHT_SUB_COLUMNS = LIGHT_SUB_COLUMNS_;
+export type LightSubmissionColumns = Omit<typeof SUB.$inferSelect, "acceptanceReport">;
 
 interface Standing {
   readonly correctionAssessmentId: string | null;
@@ -26,9 +34,11 @@ interface Standing {
 }
 
 /** Corrections supersede (a NEW assessment row; the original is never edited). The correction's latest
- * batch item decides the standing of the rejected original. */
+ * batch item decides the standing of the rejected original. Every read names `organizationId` beside its ids: RLS is the
+ * guard on the app role, the predicate is the one that holds on a connection that bypasses it. */
 export async function rejectedStandings(
   t: DbClient,
+  organizationId: string,
   items: readonly Pick<SubmissionItemRow, "hopeAssessmentId" | "itemStatus">[],
 ): Promise<Map<string, Standing>> {
   const rejectedIds = [
@@ -44,7 +54,12 @@ export async function rejectedStandings(
     const level = await t
       .select({ id: ASSESS.id, corrects: ASSESS.correctsAssessmentId })
       .from(ASSESS)
-      .where(inArray(ASSESS.correctsAssessmentId, frontier))
+      .where(
+        and(
+          eq(ASSESS.organizationId, organizationId),
+          inArray(ASSESS.correctsAssessmentId, frontier),
+        ),
+      )
       // newest first: the first child seen is the live correction; an older one is an abandoned attempt
       .orderBy(desc(ASSESS.createdAt), desc(ASSESS.id));
     frontier = [];
@@ -60,7 +75,12 @@ export async function rejectedStandings(
     ? await t
         .select({ assessmentId: SUBITEM.hopeAssessmentId, status: SUBITEM.itemStatus })
         .from(SUBITEM)
-        .where(inArray(SUBITEM.hopeAssessmentId, correctionIds))
+        .where(
+          and(
+            eq(SUBITEM.organizationId, organizationId),
+            inArray(SUBITEM.hopeAssessmentId, correctionIds),
+          ),
+        )
         .orderBy(asc(SUBITEM.createdAt))
     : [];
   for (const id of rejectedIds) {
@@ -83,6 +103,7 @@ export async function rejectedStandings(
 /** Per-batch rejected-item resolution counts for the worklist KPIs. */
 export async function resolutionCountsByBatch(
   t: DbClient,
+  organizationId: string,
   batchIds: readonly string[],
 ): Promise<Map<string, { needs: number; inProgress: number; resubmitted: number }>> {
   const out = new Map<string, { needs: number; inProgress: number; resubmitted: number }>();
@@ -94,8 +115,13 @@ export async function resolutionCountsByBatch(
       itemStatus: SUBITEM.itemStatus,
     })
     .from(SUBITEM)
-    .where(inArray(SUBITEM.hopeSubmissionId, [...batchIds]));
-  const standings = await rejectedStandings(t, rejected);
+    .where(
+      and(
+        eq(SUBITEM.organizationId, organizationId),
+        inArray(SUBITEM.hopeSubmissionId, [...batchIds]),
+      ),
+    );
+  const standings = await rejectedStandings(t, organizationId, rejected);
   for (const item of rejected) {
     if (item.itemStatus !== "rejected") continue;
     const c = out.get(item.hopeSubmissionId) ?? { needs: 0, inProgress: 0, resubmitted: 0 };
@@ -110,12 +136,15 @@ export async function resolutionCountsByBatch(
 
 export async function loadSubmissionItems(
   t: DbClient,
+  organizationId: string,
   submissionId: string,
 ): Promise<HopeSubmissionItemView[]> {
   const items = (await t
     .select(LIGHT_ITEM)
     .from(SUBITEM)
-    .where(eq(SUBITEM.hopeSubmissionId, submissionId))
+    .where(
+      and(eq(SUBITEM.organizationId, organizationId), eq(SUBITEM.hopeSubmissionId, submissionId)),
+    )
     .orderBy(asc(SUBITEM.createdAt), asc(SUBITEM.id))) as SubmissionItemRow[];
   const ids = items.map((i) => i.hopeAssessmentId);
   const assessments = ids.length
@@ -127,9 +156,9 @@ export async function loadSubmissionItems(
           status: ASSESS.status,
         })
         .from(ASSESS)
-        .where(inArray(ASSESS.id, ids))
+        .where(and(eq(ASSESS.organizationId, organizationId), inArray(ASSESS.id, ids)))
     : [];
-  const standings = await rejectedStandings(t, items);
+  const standings = await rejectedStandings(t, organizationId, items);
   return items.map((i) => {
     const a = assessments.find((x) => x.id === i.hopeAssessmentId);
     const standing = standings.get(i.hopeAssessmentId);
@@ -152,30 +181,54 @@ export async function loadSubmissionItems(
 /** The recorded CMS findings: result rows that name an edit code, an item or a message. */
 export async function loadSubmissionFindings(
   t: DbClient,
+  organizationId: string,
   submissionId: string,
 ): Promise<HopeSubmissionFindingView[]> {
-  const rows = await t
-    .select()
+  // The NEWEST rows, newest first, so that a batch past the cap (an import that settles an item is recorded whatever the count)
+  // still shows its latest report, the verdict; they are put back in oldest-first order below. Only the columns the view reads:
+  // the cap bounds the rows, not their bytes, so the stored `raw_result` is not pulled through the connection (its
+  // `assessmentId`, which names an unmatched row, is the one field read from it).
+  const newestFirst = await t
+    .select({
+      id: RESULT.id,
+      hopeSubmissionItemId: RESULT.hopeSubmissionItemId,
+      rawAssessmentId: sql<string | null>`${RESULT.rawResult}->>'assessmentId'`,
+      cmsEditCode: RESULT.cmsEditCode,
+      itemCode: RESULT.itemCode,
+      message: RESULT.message,
+      resultStatus: RESULT.resultStatus,
+      cmsSeverity: RESULT.cmsSeverity,
+    })
     .from(RESULT)
-    .where(eq(RESULT.hopeSubmissionId, submissionId))
-    .orderBy(asc(RESULT.createdAt), asc(RESULT.id));
+    .where(
+      and(eq(RESULT.organizationId, organizationId), eq(RESULT.hopeSubmissionId, submissionId)),
+    )
+    .orderBy(desc(RESULT.createdAt), desc(RESULT.id))
+    // A batch's findings are read to this many rows, the same number the import's cap names.
+    .limit(MAX_RESULT_EVENTS_PER_SUBMISSION);
+  const rows = newestFirst.reverse();
   const items = await t
     .select({ id: SUBITEM.id, assessmentId: SUBITEM.hopeAssessmentId })
     .from(SUBITEM)
-    .where(eq(SUBITEM.hopeSubmissionId, submissionId));
+    .where(
+      and(eq(SUBITEM.organizationId, organizationId), eq(SUBITEM.hopeSubmissionId, submissionId)),
+    );
+  // One lookup for the whole read, not a scan of the items per row.
+  const assessmentOfItem = new Map(items.map((i) => [i.id, i.assessmentId]));
   return rows
     .filter((r) => r.cmsEditCode || r.itemCode || r.message)
-    .map((r) => {
-      const raw = (r.rawResult ?? {}) as { assessmentId?: unknown };
-      return {
-        id: r.id,
-        assessmentId:
-          items.find((i) => i.id === r.hopeSubmissionItemId)?.assessmentId ??
-          (typeof raw.assessmentId === "string" ? raw.assessmentId : null),
-        severity: findingSeverity(r),
-        code: r.cmsEditCode ?? null,
-        itemCode: r.itemCode ?? null,
-        message: r.message ?? null,
-      };
-    });
+    .map((r) => ({
+      id: r.id,
+      // The matched item's assessment, else the id the report named, but only when it IS an id (a uuid, read as Postgres reads
+      // one): what an operator typed into an unmatched row is not returned to every `hope.submission.read` caller.
+      assessmentId:
+        (r.hopeSubmissionItemId ? assessmentOfItem.get(r.hopeSubmissionItemId) : undefined) ??
+        (typeof r.rawAssessmentId === "string"
+          ? canonicalUuidOrNull(r.rawAssessmentId.trim())
+          : null),
+      severity: findingSeverity(r),
+      code: r.cmsEditCode ?? null,
+      itemCode: r.itemCode ?? null,
+      message: r.message ?? null,
+    }));
 }

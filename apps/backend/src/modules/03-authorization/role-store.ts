@@ -1,5 +1,5 @@
 import type { ScopeLevel } from "@chartwarden/auth";
-import { floorViolations, isSystemLocked } from "@chartwarden/auth";
+import { effectivePermissionKeys, floorViolations, isSystemLocked } from "@chartwarden/auth";
 // apps/backend/src/modules/03-authorization — the PRODUCTION RoleStore (M3 §3.4 / §7.6).
 //
 // The role catalog routes (GET /api/v1/roles, POST/PATCH/DELETE) run through an injected RoleStore.
@@ -76,7 +76,9 @@ async function toViews(tx: { select: DbClient["select"] }, rows: RoleRow[]): Pro
     systemLocked: r.systemLocked,
     enabled: r.enabled,
     customized: r.organizationId !== null, // a tenant-owned row is a customization of the catalog
-    permissionKeys: byRole.get(r.id) ?? [],
+    // What the role is actually granted: the Roles screen's "permission coverage" must match the resolver, and for the
+    // platform-owned `superadmin` the resolver answers from the code catalog, not from stored rows that can lag it.
+    permissionKeys: [...effectivePermissionKeys(r.key, byRole.get(r.id) ?? [], r.organizationId)],
   }));
 }
 

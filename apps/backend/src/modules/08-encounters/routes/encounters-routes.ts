@@ -505,13 +505,14 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId/care-plan-links",
     { preHandler: [AUTHOR, SCOPE_FOR("encounter.author")] },
     async (request, reply) => {
-      const { organizationId, userId } = membershipActorOf(request);
+      const { organizationId, userId, roles } = membershipActorOf(request);
       const body = parse(CarePlanLinkSchema, request.body);
       const res = await service.addCarePlanLink(
         organizationId,
         userId,
         encounterIdOf(request),
         body,
+        roles,
       );
       return reply.code(201).send(res);
     },

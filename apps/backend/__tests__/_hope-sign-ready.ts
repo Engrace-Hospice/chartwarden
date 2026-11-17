@@ -45,7 +45,7 @@ export async function answerHopeForSign(
 ): Promise<void> {
   const { svc, orgId, membershipId } = deps;
   const patch = async (changes: Record<string, string>) => {
-    const ws = await svc.getAssessmentWorkspace(orgId, id);
+    const ws = await svc.getAssessmentWorkspace(orgId, id, { mayWrite: true });
     await svc.patchAssessmentAnswers(orgId, membershipId, id, {
       ifVersion: ws.assessment.version,
       changes: Object.entries(changes).map(([itemCode, value]) => ({
@@ -62,7 +62,7 @@ export async function answerHopeForSign(
   // non-placeholder number unless the caller supplies one.
   const first: Record<string, string> = { A1400A: "1", A0600A: "492817365", ...overrides };
   {
-    const ws = await svc.getAssessmentWorkspace(orgId, id);
+    const ws = await svc.getAssessmentWorkspace(orgId, id, { mayWrite: true });
     const items = ws.sections.flatMap((s) => s.items);
     for (const [stem, pick] of CHECKLIST_GROUPS) {
       const group = items.filter(
@@ -81,9 +81,9 @@ export async function answerHopeForSign(
   await patch(first);
 
   for (let round = 0; round < 6; round++) {
-    const review = await svc.getAssessmentReview(orgId, id);
+    const review = await svc.getAssessmentReview(orgId, id, { mayWrite: true });
     if (review.readiness.readyToSign) return;
-    const ws = await svc.getAssessmentWorkspace(orgId, id);
+    const ws = await svc.getAssessmentWorkspace(orgId, id, { mayWrite: true });
     const items = new Map(ws.sections.flatMap((s) => s.items).map((i) => [i.itemCode, i]));
     const changes: Record<string, string> = {};
     for (const b of review.readiness.blockers) {

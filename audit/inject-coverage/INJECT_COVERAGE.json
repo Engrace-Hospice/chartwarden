@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 2077,
-    "coveredRoutes": 2077,
-    "directRoutesReferenced": 1883
+    "routes": 2078,
+    "coveredRoutes": 2078,
+    "directRoutesReferenced": 1885
   },
   "modules": [
     {
@@ -24,6 +24,7 @@
         "apps/backend/__tests__/gap-115-m2-me-session.test.ts",
         "apps/backend/__tests__/gap-115-m2-org-admin.test.ts",
         "apps/backend/__tests__/gap-115-m2-step-up-overrides.test.ts",
+        "apps/backend/__tests__/hope-routes.test.ts",
         "apps/backend/__tests__/identity-routes.test.ts",
         "apps/backend/__tests__/m02-rust-bridge-route.test.ts",
         "apps/backend/__tests__/m1-tenant-host.live.test.ts",
@@ -62,6 +63,7 @@
         "apps/backend/__tests__/authz-routes.test.ts",
         "apps/backend/__tests__/authz-validation.test.ts",
         "apps/backend/__tests__/gap-007-grant-scope-route.live.test.ts",
+        "apps/backend/__tests__/hope-routes.test.ts",
         "apps/backend/__tests__/identity-routes.test.ts",
         "apps/backend/__tests__/m02-rust-bridge-route.test.ts",
         "apps/backend/__tests__/m2-auditor-enrolment.live.test.ts",
@@ -84,6 +86,7 @@
         "apps/backend/__tests__/audit-routes.test.ts",
         "apps/backend/__tests__/gap-003-compliance-routes-mount.test.ts",
         "apps/backend/__tests__/gap-003-compliance-routes.live.test.ts",
+        "apps/backend/__tests__/m10-hope-sfv-sign-binding.live.test.ts",
         "apps/backend/__tests__/m36-retention-governance.live.test.ts",
         "apps/backend/__tests__/m4-audit-integrity-sample.live.test.ts"
       ],
@@ -98,6 +101,7 @@
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
+        "apps/backend/__tests__/m10-hope-sfv-sign-binding.live.test.ts",
         "apps/backend/__tests__/m10-s04-hope-override.live.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m2-link-redemption.live.test.ts",
@@ -135,6 +139,7 @@
         "apps/backend/__tests__/discharge-details-routes.test.ts",
         "apps/backend/__tests__/discharge-worklist-routes.test.ts",
         "apps/backend/__tests__/election-addendum-upload-routes.test.ts",
+        "apps/backend/__tests__/m10-hope-sfv-sign-binding.live.test.ts",
         "apps/backend/__tests__/m10-s04-hope-override.live.test.ts",
         "apps/backend/__tests__/m2-link-redemption.live.test.ts",
         "apps/backend/__tests__/m31-signature-requests.live.test.ts",
@@ -157,6 +162,7 @@
         "apps/backend/__tests__/admission-routes.test.ts",
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/care-plan-conformance.live.test.ts",
+        "apps/backend/__tests__/care-plan-hardening-routes.test.ts",
         "apps/backend/__tests__/care-plan-routes.test.ts",
         "apps/backend/__tests__/consent-routes-abac.test.ts",
         "apps/backend/__tests__/discipline-plans-caseload-scope.test.ts",
@@ -212,15 +218,17 @@
     },
     {
       "module": "10-hope",
-      "routes": 30,
+      "routes": 31,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/hope-routes.test.ts",
+        "apps/backend/__tests__/hope-workspace-read-only.test.ts",
+        "apps/backend/__tests__/m10-hope-sfv-sign-binding.live.test.ts",
         "apps/backend/__tests__/m10-s04-hope-override.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
-      "directRoutesReferenced": 29
+      "directRoutesReferenced": 31
     },
     {
       "module": "11-orders",
@@ -296,6 +304,8 @@
       "suiteFiles": [
         "apps/backend/__tests__/discipline-plans-caseload-scope.test.ts",
         "apps/backend/__tests__/discipline-plans-inject.test.ts",
+        "apps/backend/__tests__/discipline-plans-snapshot-redaction.test.ts",
+        "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 28

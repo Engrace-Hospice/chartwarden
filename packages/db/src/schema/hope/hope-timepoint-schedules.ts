@@ -56,6 +56,12 @@ export const hopeTimepointSchedules = pgTable(
       t.status,
       t.windowClosesAt,
     ),
+    // The window watchdog's alert replay: schedules `expired` since a cutoff (migration 1495).
+    byOrgStatusUpdated: index("idx_hope_sched_org_status_updated").on(
+      t.organizationId,
+      t.status,
+      t.updatedAt,
+    ),
     // One open base-RFA schedule per (admission, rfa_kind); SFVs (RFA 04) are distinct rows.
     uniqueOpenAdmissionRfa: uniqueIndex("uniq_hope_sched_admission_rfa_open")
       .on(t.admissionId, t.rfaKind)

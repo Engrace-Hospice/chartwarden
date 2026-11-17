@@ -192,6 +192,18 @@ describe("registerOutboxMetrics", () => {
     registerOutboxMetrics(withoutDepth);
     expect(await withoutDepth.metrics()).toContain("chartwarden_outbox_pending_depth 0");
   });
+
+  it("reports the oldest pending row's age (audit D-14), 0 when no dispatcher is running", async () => {
+    const withAge = buildMetricsRegistry();
+    registerOutboxMetrics(withAge, { oldestPendingAgeSeconds: async () => 90_000 });
+    expect(await withAge.metrics()).toContain(
+      "chartwarden_outbox_oldest_pending_age_seconds 90000",
+    );
+
+    const withoutAge = buildMetricsRegistry();
+    registerOutboxMetrics(withoutAge);
+    expect(await withoutAge.metrics()).toContain("chartwarden_outbox_oldest_pending_age_seconds 0");
+  });
 });
 
 describe("mountMetricsRoute", () => {

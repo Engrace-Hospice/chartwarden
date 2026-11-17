@@ -31,7 +31,7 @@ export const symptomFollowUpVisits = pgTable(
     completingAssessmentId: uuid("completing_assessment_id"), // M10 hope_assessment (logical; nullable until completed)
 
     triggeredAt: timestamp("triggered_at", { withTimezone: true }).notNull(),
-    dueAt: timestamp("due_at", { withTimezone: true }).notNull(), // visit_date + 2 calendar days (ADR-0018 D1)
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(), // live DB path: J2050B + 2 calendar days, end of day UTC; ADR-0018 D1 anchors to the visit date and names no timezone; UTC-vs-org-local and J2050B-vs-visit-date are open (docs/BUSINESS_LOGIC.md)
     status: hopeSfvStatus("status").notNull().default("open"),
     alertCadence: jsonb("alert_cadence").notNull(), // AlertCadence (§3.3); free-text denylisted from audit
     completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -41,6 +41,12 @@ export const symptomFollowUpVisits = pgTable(
   (t) => ({
     byPatientOpen: index("idx_sfv_patient_open").on(t.patientId, t.status, t.dueAt),
     byOrgDueAt: index("idx_sfv_org_due_at").on(t.organizationId, t.status, t.dueAt),
+    // The sfv-watchdog's alert replay: SFVs `missed` since a cutoff (migration 1495).
+    byOrgStatusUpdated: index("idx_sfv_org_status_updated").on(
+      t.organizationId,
+      t.status,
+      t.updatedAt,
+    ),
     // One SFV per triggering assessment (D4).
     uniqueTriggeringAssessment: uniqueIndex("uniq_sfv_per_triggering_assessment").on(
       t.triggeringAssessmentId,

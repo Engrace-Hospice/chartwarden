@@ -1676,7 +1676,7 @@ export function createDbEncounterRouteService(
      * relaxed that pair on every other encounter satellite and left this table out. Migration 0231
      * finishes that list, and `createDraft` now stamps the encounter's siting from M6.
      */
-    async addCarePlanLink(organizationId, actorMembershipId, encounterId, input) {
+    async addCarePlanLink(organizationId, actorMembershipId, encounterId, input, actorRoles) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
@@ -1686,11 +1686,16 @@ export function createDbEncounterRouteService(
         // The refs must name elements of THIS patient's active plan, relevant to this encounter's
         // (type × discipline), and a goal/intervention must hang off the problem it is linked with —
         // otherwise a link could claim a visit addressed a problem on some other patient's plan.
+        // The audience is the ACTOR (session roles + membership id): the store resolves the same per-actor Part 2
+        // verdict the picker route used, so what the picker offers is exactly what this check accepts (an RN case
+        // manager can link a Part 2 problem where no release names others; a nurse the release does not name cannot
+        // link one even if she holds its uuid). The verdict is never asserted here, only the identity is passed.
         const elements = await getCarePlanReader().relevantElementsForEncounter(
           r.patientId as PatientId,
           r.encounterType,
           r.discipline as never,
           r.admissionId,
+          { actor: { roles: actorRoles, membershipId: actorMembershipId } },
         );
         if (!elements || elements.patientId !== r.patientId) {
           throw new ValidationError(

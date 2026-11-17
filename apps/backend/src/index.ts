@@ -391,6 +391,7 @@ import {
   DOSESPOT_VERIFY_ROUTE_RATE_LIMIT,
   EMERGENCY_ROUTE_RATE_LIMIT,
   HELP_REQUEST_ROUTE_RATE_LIMIT,
+  HOPE_SFV_COMPLETION_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   MAC_CREDENTIAL_TEST_ROUTE_RATE_LIMIT,
   MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
@@ -485,7 +486,10 @@ import {
   registerAuditOpsWorkers,
   scheduleAuditOpsJobs,
 } from "./modules/04-audit/jobs/audit-ops-workers";
-import { activeLegalHoldScopeForOrg } from "./modules/04-audit/legal-hold-scope";
+import {
+  activeLegalHoldScopeForOrg,
+  activeLegalHoldScopeInTransaction,
+} from "./modules/04-audit/legal-hold-scope";
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
   activeLegalHolds,
@@ -621,6 +625,7 @@ import {
   M7_OUTBOX_EVENTS,
   M7_PLATFORM_JOB_ID,
   activeProblemIdsForOrg,
+  activeSudProblemIdsForOrg,
   buildM7AdmissionActivatedConsumer,
   buildM7AdmissionDischargedConsumer,
   buildM7ExtractionDiagnosisWritebackConsumer,
@@ -862,6 +867,7 @@ import {
   buildDrizzleDisciplinePlanAbacResolver,
   buildDrizzleM15ReadService,
   buildDrizzleM15WriteService,
+  buildM15AdmissionDischargedConsumer,
   buildM15IdgDecisionConsumer,
   buildM15PlanBootstrapConsumer,
   buildM15WorkerDeps,
@@ -4648,6 +4654,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // defined exactly once instead of duplicated at each call site.
   const outboxPendingDepth = () =>
     outboxDispatcherHolder.find()?.pendingDepth() ?? Promise.resolve(0);
+  // Audit D-14 — the same fallback for the oldest-pending-row age gauge.
+  const outboxOldestPendingAgeSeconds = () =>
+    outboxDispatcherHolder.find()?.oldestPendingAgeSeconds() ?? Promise.resolve(0);
   // M1-T10 — assemble the FULL transactional-outbox catalog (M1 folded in by the helper + the passed
   // M30/M33/M34 contributions) and build the catalog-validating tx publisher. The publisher is threaded
   // into the M30 + M33 write services below so their §4.10 `m30.*`/`m33.*` emits persist into
@@ -6591,7 +6600,26 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             createHearthnoteCiphers(getTenantKeyProvider()),
           );
           mountAssessmentRoutes(app, dbHandle.db, m9OutboxPublisher); // M9 — reads + the §10 write pipeline over Drizzle+RLS, m9.* transactional outbox
-          mountHopeRoutes(app, dbHandle.db, m10OutboxPublisher); // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox
+          // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox. The M4 legal-hold read gates a
+          // package cancel's byte purge (M4's scope computation, the one the retention cron uses, run on the cancel's own
+          // transaction; unbound it would fail closed and keep the bytes).
+          mountHopeRoutes(
+            app,
+            dbHandle.db,
+            m10OutboxPublisher,
+            {
+              // M4's own reader, run on the cancel's transaction after its row lock (no second connection).
+              activeLegalHoldScopeInTransaction: (tx, organizationId) =>
+                activeLegalHoldScopeInTransaction(tx, organizationId),
+            },
+            // Fail-open (an availability control): 10/min/user, 100/min/org on the SFV completion route, which bounds the
+            // immutable denied-probe audit rows one caller can add.
+            createRouteRateLimit({
+              store: rateLimitStore ?? createInMemoryRateLimitStore(),
+              limit: HOPE_SFV_COMPLETION_ROUTE_RATE_LIMIT,
+              keyPrefix: "m10-sfv-completion",
+            }),
+          );
           // M11 — reads + the write lifecycle over Drizzle+RLS, m11.order.* transactional outbox. F-181 (#248): the
           // fourth argument is what lets a signed lab order request its outbound HL7 ORM (M5 demographics, M40
           // physician + facility, M29's single active `orm_outbound` feed) — refused-not-fabricated when unresolvable.
@@ -9760,6 +9788,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   registerHttpMetrics(app, metricsRegistry);
   const outboxMetrics = registerOutboxMetrics(metricsRegistry, {
     pendingDepth: outboxPendingDepth,
+    oldestPendingAgeSeconds: outboxOldestPendingAgeSeconds,
   });
   // F-033/#93 — partition-coverage gauges. Registered for EVERY role, like the outbox ones: the read is
   // a catalog scan of ~43 relations, and an API-only replica answering it is exactly as correct as the
@@ -16202,6 +16231,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             resolveSiting: (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),
+          // M15 §7.11 / `m15.discharge.apply` — the other end of the plan lifecycle: on
+          // `m6.admission.discharged` every non-discharged discipline plan of the admission seals a
+          // system-signed `discharge` version and goes `discharged`, announcing `m15.plan.discharged`.
+          // Nothing dispatched the plan root's `discharge` transition before this binding existed.
+          buildM15AdmissionDischargedConsumer({
+            db: dbHandle.db,
+            outbox: m15OutboxPublisher,
+          }),
           // F-234 (#248) — M15's side of the M14 IDG-decision contract (M15 spec §7.7): a
           // `discipline_plan_update` decision opens a draft next version on the named discipline plan and
           // applies its mutations. The M7 parent-problem check is an org-explicit port (a relay tick is not
@@ -16211,6 +16248,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             outbox: m15OutboxPublisher,
             activeProblemIds: (organizationId, patientId) =>
               activeProblemIdsForOrg(dbHandle.db, organizationId, patientId),
+            sudProblemIds: (organizationId, patientId) =>
+              activeSudProblemIdsForOrg(dbHandle.db, organizationId, patientId),
           }),
           // F-234 (#248) — the return leg: M14 records M15's `m15.idg_decision.applied` acknowledgement.
           buildM14DecisionAppliedConsumer({ db: dbHandle.db }),

@@ -1,17 +1,21 @@
 import {
   DetailPageLayout,
-  EmptyState,
   Glyph,
-  LoadingSpinner,
   PageHeader,
+  type ReadStatus,
   StatusPill,
   cardSurface,
+  formatDateOnly,
+  settleRead,
   t,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { withRequestTimeout } from "./hope-api";
+import { HopeListReadState } from "./hope-read-state";
+import { useRetryFocus } from "./hope-retry-focus";
 import { ATTENTION_TONE, WORKFLOW_TONE, attentionLabel, rfaLabel, stateLabel } from "./hope-status";
 
 type FixedKind = "01_admission" | "02_huv1" | "03_huv2" | "05_discharge";
@@ -105,23 +109,33 @@ export function AdmissionHopeOverview(): JSX.Element {
   const { admissionId } = useParams<{ admissionId: string }>();
   const [state, setState] = useState<WorkflowState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [readStatus, setReadStatus] = useState<ReadStatus>("ok");
+  const retry = useRetryFocus(loading, readStatus === "ok" ? null : readStatus);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
-
+  const [patientFailed, setPatientFailed] = useState(false);
+  // A reply for an admission the clinician has since left must not fill this screen: only the latest load may answer. (A reply
+  // after the whole screen unmounted needs no guard: React 18 treats a state update on an unmounted component as a no-op.)
+  const latestLoad = useRef(0);
   const load = useCallback(async () => {
-    if (!admissionId) return;
+    const mine = ++latestLoad.current;
     setLoading(true);
-    setError(null);
-    const { data, error: err } = await client.GET("/api/v1/admissions/{admissionId}/hope", {
-      params: { path: { admissionId } },
-    });
-    if (err || !data) {
-      setError("Unable to load HOPE workflow.");
-      setLoading(false);
-      return;
-    }
-
-    setState(data as WorkflowState);
+    // A rejected, stalled or bodiless-502 read is a `failed` read (with Retry), never a spinner that does not end or an empty
+    // workflow; a refused one is `denied` (Retry cannot help it). hope.scope answers an admission outside the caller's caseload
+    // with 404 (deny-as-not-found), so a 404 is `denied` too: Retry cannot make it appear. No admission id is a failed read too.
+    const { status, res } = admissionId
+      ? await settleRead(
+          withRequestTimeout((signal) =>
+            client.GET("/api/v1/admissions/{admissionId}/hope", {
+              params: { path: { admissionId } },
+              signal,
+            }),
+          ),
+          "denied",
+        )
+      : { status: "failed" as const, res: undefined };
+    if (mine !== latestLoad.current) return;
+    if (status === "ok" && res?.data) setState(res.data as WorkflowState);
+    setReadStatus(status === "ok" && !res?.data ? "failed" : status);
     setLoading(false);
   }, [admissionId, client]);
 
@@ -129,22 +143,28 @@ export function AdmissionHopeOverview(): JSX.Element {
     void load();
   }, [load]);
 
+  const patientId = state?.patientId;
   useEffect(() => {
-    if (!state?.patientId) return;
-    (async () => {
-      const { data: patientData, error: patientError } = await client.GET("/api/v1/patients/{id}", {
-        params: {
-          path: {
-            id: state.patientId as string,
-          },
-        },
-      });
-
-      if (!patientError && patientData) {
-        setPatient(patientData as PatientSummary);
-      }
+    setPatient(null);
+    setPatientFailed(false);
+    if (!patientId) return;
+    let active = true;
+    void (async () => {
+      // Best-effort: the patient name is a convenience beside the workflow, which does not depend on it. A failed or
+      // unanswered lookup ends as a plain link label, never as "Loading patient..." for good.
+      const { status, res } = await settleRead(
+        withRequestTimeout((signal) =>
+          client.GET("/api/v1/patients/{id}", { params: { path: { id: patientId } }, signal }),
+        ),
+      );
+      if (!active) return;
+      if (status === "ok" && res?.data) setPatient(res.data as PatientSummary);
+      else setPatientFailed(true);
     })();
-  }, [state, client]);
+    return () => {
+      active = false;
+    };
+  }, [patientId, client]);
 
   const orderedItems = useMemo(() => {
     if (!state) return [];
@@ -156,25 +176,31 @@ export function AdmissionHopeOverview(): JSX.Element {
   if (loading) {
     return (
       <DetailPageLayout header={<PageHeader title="HOPE" />}>
-        <div style={skeletonGrid} aria-label="Loading HOPE workflow">
-          {SKELETON_KEYS.map((key) => (
-            <div key={key} style={skeletonCard} />
-          ))}
-        </div>
+        <section ref={retry.loadingRef} tabIndex={-1} aria-label="Loading HOPE workflow">
+          <div style={skeletonGrid}>
+            {SKELETON_KEYS.map((key) => (
+              <div key={key} style={skeletonCard} />
+            ))}
+          </div>
+        </section>
       </DetailPageLayout>
     );
   }
 
-  if (error || !state) {
+  if (readStatus !== "ok" || !state) {
     return (
       <DetailPageLayout header={<PageHeader title="HOPE" />}>
-        <EmptyState
-          title="Unable to load HOPE workflow"
-          description={error ?? "The workflow summary was not available."}
-        />
-        <button type="button" onClick={() => void load()} style={primaryBtn}>
-          <Glyph name="clock" size={14} /> Retry
-        </button>
+        <div ref={retry.errorRef} tabIndex={-1}>
+          <HopeListReadState
+            status={readStatus === "denied" ? "denied" : "failed"}
+            subject="the HOPE workflow for this admission"
+            failedTitle="Unable to load HOPE workflow"
+            onRetry={() => {
+              retry.retried();
+              void load();
+            }}
+          />
+        </div>
       </DetailPageLayout>
     );
   }
@@ -199,18 +225,27 @@ export function AdmissionHopeOverview(): JSX.Element {
           <span style={metaLine}>
             <span>
               Patient{" "}
-              <Link
-                to={`/patients/${state.patientId}`}
-                style={{
-                  color: "var(--color-primary)",
-                  fontWeight: 600,
-                  textDecoration: "none",
-                }}
-              >
-                {patient ? `${patient.firstName} ${patient.lastName}` : "Loading patient..."}
-              </Link>
+              {state.patientId ? (
+                <Link
+                  to={`/patients/${state.patientId}`}
+                  style={{
+                    color: "var(--color-primary)",
+                    fontWeight: 600,
+                    textDecoration: "none",
+                  }}
+                >
+                  {patient
+                    ? `${patient.firstName} ${patient.lastName}`
+                    : patientFailed
+                      ? "Open patient record"
+                      : "Loading patient..."}
+                </Link>
+              ) : (
+                // The contract allows no patient: there is nothing to look up or link to (not "Loading patient..." for good).
+                "not linked"
+              )}
             </span>
-            {state.admissionAt ? ` · Admission ${fmtDate(state.admissionAt)}` : ""}
+            {state.admissionAt ? ` · Admission ${fmtAdmissionDate(state.admissionAt)}` : ""}
             {state.admissionStatus ? ` · ${stateLabel(state.admissionStatus)}` : ""}
           </span>
         </PageHeader>
@@ -585,6 +620,12 @@ function attentionOf(attention: HopeAttention | undefined): HopeAttention {
 function formatWindow(start: string | null, end: string | null): string {
   if (!start || !end) return "—";
   return `${fmtDate(start)} - ${fmtDate(end)}`;
+}
+
+/** `admissionAt` is a date column serialized as midnight UTC: format it date-only so US zones do not show the day before. */
+function fmtAdmissionDate(value: string): string {
+  const formatted = formatDateOnly(value);
+  return formatted === value ? fmtDate(value) : formatted;
 }
 
 function fmtDate(value: string | null | undefined): string {

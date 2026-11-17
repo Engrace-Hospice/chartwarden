@@ -49,21 +49,34 @@ export function legalHoldScopeOf(criteriaRows: readonly unknown[]): ActiveLegalH
   return { orgWide, messagingHeld, patientIds };
 }
 
-/** The org's active legal-hold scope, read under the org's RLS context. */
+/**
+ * The org's active legal-hold scope, read as ONE statement on the CALLER'S transaction (no connection of its own): for a caller
+ * that must decide on the hold inside its own transaction, after its row locks (M10's package cancel, whose purge is
+ * irreversible). The transaction must already carry the org's RLS context (`withOrgContext`). Nothing locks `legal_hold`, so a
+ * hold committed after this statement and before the caller's commit is not seen.
+ */
+export async function activeLegalHoldScopeInTransaction(
+  tx: DbClient,
+  organizationId: string,
+): Promise<ActiveLegalHoldScope> {
+  const rows = await tx
+    .select({ criteria: schema.legalHolds.criteria })
+    .from(schema.legalHolds)
+    .where(
+      and(
+        eq(schema.legalHolds.organizationId, organizationId),
+        eq(schema.legalHolds.status, "active"),
+      ),
+    );
+  return legalHoldScopeOf(rows.map((r) => r.criteria));
+}
+
+/** The org's active legal-hold scope, read under the org's RLS context (on a connection of its own). */
 export function activeLegalHoldScopeForOrg(
   db: DbClient,
   organizationId: string,
 ): Promise<ActiveLegalHoldScope> {
-  return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-    const rows = await tx
-      .select({ criteria: schema.legalHolds.criteria })
-      .from(schema.legalHolds)
-      .where(
-        and(
-          eq(schema.legalHolds.organizationId, organizationId),
-          eq(schema.legalHolds.status, "active"),
-        ),
-      );
-    return legalHoldScopeOf(rows.map((r) => r.criteria));
-  });
+  return withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+    activeLegalHoldScopeInTransaction(tx as unknown as DbClient, organizationId),
+  );
 }

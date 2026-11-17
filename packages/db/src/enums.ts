@@ -1509,6 +1509,7 @@ export const hopeSubmissionStatus = pgEnum("hope_submission_status", [
   "partially_accepted",
   "accepted_with_warnings",
   "file_error",
+  "cancelled",
 ]);
 
 /** `hope_submission_item_status` — the per-assessment outcome within a submission batch. */
@@ -1519,6 +1520,7 @@ export const hopeSubmissionItemStatus = pgEnum("hope_submission_item_status", [
   "pending",
   "blocked",
   "unmatched",
+  "cancelled",
 ]);
 
 /** `hope_validation_severity` — a §3 `hope_validation_finding`'s blocking class (error vs warning). */

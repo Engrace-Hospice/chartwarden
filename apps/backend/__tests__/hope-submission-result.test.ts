@@ -176,7 +176,7 @@ describe("importSubmissionResult", () => {
     expect(
       await code(
         svc.importSubmissionResult(ORG, "u1", b.id, {
-          results: [{ assessmentId: "nope", status: "accepted" }],
+          results: [{ assessmentId: "90000000-0000-4000-8000-0000000000ff", status: "accepted" }],
         }),
       ),
     ).toBe("M10_SUBMISSION_RESULT_NO_MATCH");
@@ -190,6 +190,21 @@ describe("importSubmissionResult", () => {
       results: [{ assessmentId: A1, status: "accepted" }],
     });
     expect(out.status).toBe("submitted_pending_result");
+  });
+
+  it("an empty iqiesRecordId names no record id (as the database backend: it is not stored), a real one is", async () => {
+    const svc = setup();
+    const b = await svc.assembleSubmission(ORG, PE);
+    await svc.markSubmissionUploaded(ORG, "u1", b.id, {});
+    const out = await svc.importSubmissionResult(ORG, "u1", b.id, {
+      results: [
+        { assessmentId: A1, status: "accepted", iqiesRecordId: "" },
+        { assessmentId: A2, status: "accepted", iqiesRecordId: "REC-2" },
+      ],
+    });
+    const recordIds = new Map(out.items.map((i) => [i.assessmentId, i.iqiesRecordId]));
+    expect(recordIds.get(A1)).toBeNull();
+    expect(recordIds.get(A2)).toBe("REC-2");
   });
 });
 

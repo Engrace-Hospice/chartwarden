@@ -5,6 +5,8 @@
 // per-org fan-out owns that so the read, the outbox publish, and the marker writes commit atomically).
 import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq, inArray, ne } from "drizzle-orm";
+import { DEFAULT_ORG_TIME_ZONE } from "../lifecycle/gate-clock";
+import { effectiveNextReviewDueAt } from "../lifecycle/overdue-gate";
 import type { CarePlanGateSnapshot, PlannedCarePlanEvent } from "./index";
 
 const CP = schema.carePlans;
@@ -19,11 +21,14 @@ const isoN = (d: Date | string | null): string | null => (d === null ? null : is
  * filter; `care_plan_status` has exactly one terminal value, `discharged`). `admissionActivatedAt` is
  * nullable on pre-mig-0161 rows (backfilled going forward by the route service's bootstrap stamp) —
  * falls back to `createdAt`, the closest available proxy, so a legacy row still scans instead of being
- * silently skipped.
+ * silently skipped. A plan signed before TASK-040D has `next_review_due_at` NULL with `initial_signed_at`
+ * set (mig 0161 does not backfill): its due date is derived in code (`effectiveNextReviewDueAt`) so the
+ * review scan still fires for it.
  */
 export async function carePlanGateSnapshotsForOrg(
   tx: DbClient,
   organizationId: string,
+  timeZone: string = DEFAULT_ORG_TIME_ZONE,
 ): Promise<CarePlanGateSnapshot[]> {
   const rows = await tx
     .select()
@@ -35,7 +40,11 @@ export async function carePlanGateSnapshotsForOrg(
     admissionActivatedAt: iso(row.admissionActivatedAt ?? row.createdAt),
     hasSignedInitialVersion: row.initialSignedAt !== null,
     initialDueAt: iso(row.initialDueAt),
-    nextReviewDueAt: isoN(row.nextReviewDueAt),
+    nextReviewDueAt: effectiveNextReviewDueAt(
+      isoN(row.nextReviewDueAt),
+      isoN(row.initialSignedAt),
+      timeZone,
+    ),
     initialWarningEmitted: row.initialWarningEmitted,
     reviewDueEmitted: row.reviewDueEmitted,
     reviewOverdueEmitted: row.reviewOverdueEmitted,

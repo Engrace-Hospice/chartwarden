@@ -1,6 +1,10 @@
 import { pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
-import type { CarePlanOverdueStatus, RelevantCarePlanElements } from "@chartwarden/types";
+import type {
+  CarePlanOverdueStatus,
+  RelevantCarePlanElements,
+  RelevantProblem,
+} from "@chartwarden/types";
 // apps/backend/src/modules/07-care-plan/routes/care-plan-typebox.ts — M7-T05 TypeBox route schemas
 // (§4.3). Named `care-plan-typebox` (NOT `*schema*`) so the table-ownership import heuristic never
 // mistakes a TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's
@@ -81,7 +85,11 @@ export const FinalizeVersionSchema = Type.Object({
   ifVersion: Version(),
   /** A tenant may tighten (add slots) the floor quorum; never loosen (validated server-side). */
   requiredSignerSet: Type.Optional(
-    Type.Array(Type.Object({ role: lit(SIGNER_ROLE), count: Type.Integer({ minimum: 1 }) })),
+    // count is capped at 1: `care_plan_signature_version_role_uq` allows ONE live signature per
+    // (version, signer_role), so a count-2 slot could never be satisfied and would deadlock the version.
+    Type.Array(
+      Type.Object({ role: lit(SIGNER_ROLE), count: Type.Integer({ minimum: 1, maximum: 1 }) }),
+    ),
   ),
 });
 export const SignVersionSchema = Type.Object({
@@ -114,7 +122,7 @@ export const ResolveProblemSchema = Type.Object({
 
 // ── Goals ───────────────────────────────────────────────────────────────────────────────────────
 export const CreateGoalSchema = Type.Object({
-  problemId: Type.String({ minLength: 1, maxLength: 64 }),
+  problemId: Type.String({ format: "uuid" }),
   originalText: Text(),
   source: lit(GOAL_SOURCE),
   actingConsentId: Type.Optional(Type.String({ format: "uuid" })),
@@ -132,8 +140,8 @@ export const PatchGoalSchema = Type.Object({
 
 // ── Interventions ───────────────────────────────────────────────────────────────────────────────
 export const CreateInterventionSchema = Type.Object({
-  problemId: Type.String({ minLength: 1, maxLength: 64 }),
-  goalRefs: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 64 }))),
+  problemId: Type.String({ format: "uuid" }),
+  goalRefs: Type.Optional(Type.Array(Type.String({ format: "uuid" }), { maxItems: 100 })),
   scopeText: Text(),
   frequencyText: Type.String({ minLength: 1, maxLength: 200 }),
   frequencyValue: Type.String({ minLength: 1, maxLength: 64 }),
@@ -410,7 +418,13 @@ export const RelevantElementsResponseSchema = Type.Object({
 // Compile-time pins: the two seam DTOs must stay assignable to the §7.8 contract they serialize.
 type Conforms<T extends V, V> = T;
 type _Overdue = Conforms<Static<typeof OverdueStatusResponseSchema>, CarePlanOverdueStatus>;
-type _Relevant = Conforms<Static<typeof RelevantElementsResponseSchema>, RelevantCarePlanElements>;
+// The picker response omits `RelevantProblem.sudRelated` (an in-process flag, stripped by the route).
+type _Relevant = Conforms<
+  Static<typeof RelevantElementsResponseSchema>,
+  Omit<RelevantCarePlanElements, "problems"> & {
+    readonly problems: ReadonlyArray<Omit<RelevantProblem, "sudRelated">>;
+  }
+>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

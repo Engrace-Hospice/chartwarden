@@ -9,7 +9,6 @@
 // event the relay publishes (drainable for tests).
 import {
   type CaptureDecision,
-  type HopeAttention,
   HopeStateError,
   type HopeValidationFindingDescriptor,
   type J2051SymptomReading,
@@ -17,34 +16,46 @@ import {
   assertCaptureAllowed,
   assertRfaMatchesSchedule,
   assertSectionQForDischarge,
-  evaluateFixedHopeAttention,
   evaluateJ2051Trigger,
-  evaluateSfvAttention,
   planSfvCompletion,
   planSfvCreation,
+  requireAttestation,
   require_,
 } from "@chartwarden/hope";
 import type {
   HopeDischargeReason,
   HopeRfaKind,
-  HopeScheduleGeneratedBy,
-  HopeScheduleStatus,
-  HopeSfvStatus,
+  HopeSubmissionCancelReasonCode,
   HopeSubmissionItemStatus,
   HopeSubmissionStatus,
   J2051Severity,
   LatestAssessmentProvider,
   ScaleType,
 } from "@chartwarden/types";
-import { ConflictError, NotFoundError } from "@chartwarden/types";
+import { ConflictError, DegradedError, NotFoundError, ValidationError } from "@chartwarden/types";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "../abac-predicates";
 import type {
   HopeAnswerPatchChange,
   HopeAnswerPatchResult,
   HopeAssessmentWorkspace,
 } from "../hope-answer-service";
+import { normalizeDateText } from "../hope-answer-value";
+import { requireCalendarDateTime, requireCalendarTargetDate } from "../hope-calendar-date";
 import type { HopeReviewReadModel } from "../hope-readiness-service";
+import { requireSkipReasonCode } from "../hope-schedule-skip";
+import { sfvProjectionGapMessage } from "../hope-sfv-completion-guards";
 import {
+  SFV_COMPLETION_INCOMPLETE_MESSAGE,
+  buildCompletedSfvRegulatoryAnswerPlan,
+} from "../hope-sfv-completion-plan";
+import {
+  cancelNotAllowedMessage,
+  isCancellableSubmissionStatus,
+  requireNotCancelled,
+} from "../hope-submission-cancel";
+import {
+  ACCEPTED_BATCH_STATUSES,
+  ANSWERED_BATCH_STATUSES,
   type RejectedItemResolution,
   classifyCmsResult,
   deriveBatchOutcome,
@@ -52,15 +63,40 @@ import {
   isResultImportable,
   isSettledItemStatus,
   manualUploadTransmittedPayload,
+  nonBlankRecordId,
+  nullIfBlank,
   reportHashes,
   resolveRejectedItem,
+  resultRefusalCode,
   settledBatchEvent,
   terminalCorrection,
   worstOutcome,
 } from "../hope-submission-result";
+import { canonicalUuidOrNull } from "../hope-uuid";
 import type { HopeValidationRunView } from "../hope-validation-service";
 import { submissionPeriodFor } from "../jobs/submission";
+import { assertSubmissionReferenceIsClean, cleanResultRows } from "./hope-reference-screen";
 
+import {
+  type HopeAssessmentView,
+  type HopeScheduleView,
+  type HopeSfvView,
+  type HopeWorkflowStateView,
+  buildWorkflowState,
+} from "./workflow-state";
+
+// The workflow-state views and builder live in ./workflow-state.ts; re-exported so importers of this file are unchanged.
+export {
+  buildWorkflowState,
+  type HopeAssessmentView,
+  type HopeScheduleView,
+  type HopeSfvView,
+  type HopeWorkflowItemStatus,
+  type HopeWorkflowSfvView,
+  type HopeWorkflowStateView,
+  type HopeWorkflowSummaryView,
+  type HopeWorkflowTimepointView,
+} from "./workflow-state";
 export type { HopeReviewReadModel } from "../hope-readiness-service";
 export type { HopeAnswerPatchResult, HopeAssessmentWorkspace } from "../hope-answer-service";
 export type { HopeValidationFindingView, HopeValidationRunView } from "../hope-validation-service";
@@ -73,51 +109,6 @@ export interface RecordedHopeEvent {
 }
 
 // ── view DTOs (read projections; never the raw Drizzle row) ────────────────────────────────────────────
-export interface HopeAssessmentView {
-  readonly id: string;
-  readonly patientId: string;
-  readonly admissionId: string;
-  readonly rfaKind: HopeRfaKind;
-  readonly status: "draft" | "signed" | "superseded";
-  readonly targetDate: string;
-  readonly authorDiscipline: string;
-  readonly j2051MaxSeverity: J2051Severity | null;
-  readonly j2051TriggerFired: boolean;
-  readonly wasLate: boolean;
-  readonly signedAt: string | null;
-  readonly signedBy: string | null;
-  readonly correctsAssessmentId: string | null;
-  readonly supersededByAssessmentId: string | null;
-  readonly snapshot: Readonly<Record<string, number | null>> | null;
-  readonly regulatory: {
-    readonly specVersionId: string | null;
-    readonly isc: "HA" | "HUV" | "HD" | "XX" | null;
-  };
-  readonly version: number;
-}
-export interface HopeScheduleView {
-  readonly id: string;
-  readonly patientId: string;
-  readonly admissionId: string;
-  readonly rfaKind: HopeRfaKind;
-  readonly status: HopeScheduleStatus;
-  readonly windowOpensAt: string;
-  readonly windowClosesAt: string;
-  readonly lateDeadlineAt: string;
-  readonly generatedBy: HopeScheduleGeneratedBy;
-  readonly completedByAssessmentId: string | null;
-}
-export interface HopeSfvView {
-  readonly id: string;
-  readonly patientId: string;
-  /** The admission the follow-up belongs to — the key `POST …/hope/sfv` is addressed by (#91). */
-  readonly admissionId: string;
-  readonly triggeringAssessmentId: string;
-  readonly status: HopeSfvStatus;
-  readonly triggeredAt: string;
-  readonly dueAt: string;
-  readonly completingAssessmentId: string | null;
-}
 export interface HopeSubmissionView {
   readonly id: string;
   readonly providerEntityId: string;
@@ -136,6 +127,9 @@ export interface HopeSubmissionView {
   readonly submittedAt?: string | null;
   readonly acceptedAt: string | null;
   readonly iqiesSubmissionReference?: string | null;
+  /** R-08 — set only on a package cancelled before upload; the reason is a fixed code, never free text. */
+  readonly cancelledAt?: string | null;
+  readonly cancelReasonCode?: HopeSubmissionCancelReasonCode | null;
   /** Rejected items still awaiting a correction assessment (corrections supersede; originals untouched). */
   readonly needsCorrectionCount: number;
   /** Rejected items whose correction exists but is not yet in a batch (draft/signed, unpackaged). */
@@ -230,61 +224,6 @@ export interface HopeComplianceView {
   readonly submissionAcceptanceRate: number | null;
   readonly submissionAcceptanceCounts: { readonly accepted: number; readonly total: number };
 }
-export type HopeWorkflowItemStatus =
-  | "upcoming"
-  | "open"
-  | "late"
-  | "completed"
-  | "expired"
-  | "skipped"
-  | "not_applicable"
-  | "workflow_not_initialized";
-export interface HopeWorkflowTimepointView {
-  readonly kind: Exclude<HopeRfaKind, "04_sfv">;
-  readonly status: HopeWorkflowItemStatus;
-  readonly scheduleId: string | null;
-  readonly windowStart: string | null;
-  readonly windowEnd: string | null;
-  readonly lateDeadline: string | null;
-  readonly completedAt: string | null;
-  readonly assessmentId: string | null;
-  readonly attention: HopeAttention;
-}
-export interface HopeWorkflowSfvView {
-  readonly id: string;
-  readonly status: HopeSfvStatus;
-  readonly triggeringAssessmentId: string;
-  readonly triggeringRfaKind: HopeRfaKind | null;
-  readonly dueAt: string;
-  readonly triggeredAt: string;
-  readonly completedAt: string | null;
-  readonly completingAssessmentId: string | null;
-  readonly attention: HopeAttention;
-}
-export interface HopeWorkflowSummaryView {
-  readonly actionableCount: number;
-  readonly overdueCount: number;
-  readonly completedCount: number;
-  readonly nextDeadline: string | null;
-  readonly highestSeverity: HopeAttention["severity"];
-  readonly dueSoonCount: number;
-  readonly workflowIssueCount: number;
-}
-export interface HopeWorkflowStateView {
-  readonly admissionId: string;
-  readonly patientId: string | null;
-  readonly admissionStatus: string | null;
-  readonly admissionAt: string | null;
-  readonly activatedAt: string | null;
-  readonly dischargedAt: string | null;
-  readonly admissionAssessment: HopeWorkflowTimepointView;
-  readonly huv1: HopeWorkflowTimepointView;
-  readonly huv2: HopeWorkflowTimepointView;
-  readonly sfvs: readonly HopeWorkflowSfvView[];
-  readonly dischargeAssessment: HopeWorkflowTimepointView;
-  readonly summary: HopeWorkflowSummaryView;
-}
-
 export interface RecordTimepointArgs {
   readonly rfaKind: HopeRfaKind;
   readonly targetDate: string;
@@ -294,8 +233,13 @@ export interface RecordTimepointArgs {
   readonly dischargeReason?: string;
   readonly lateCompletionReasonCode?: string | null;
   readonly adminOverride?: boolean;
-  /** GAP-015: the platform-admin justification recorded on the critical audit when the override is used. */
+  /**
+   * GAP-015: the platform-admin justification the route requires with an override (trimmed, 20 to 1000 characters,
+   * screened for patient identifiers). The DB backend stores it in the critical `hope.late_deadline_override` audit context.
+   */
   readonly adminOverrideJustification?: string;
+  /** The request's id / address / user agent, carried into the critical deadline-override audit row. */
+  readonly request?: HopeSignatureRequestFacts;
   /**
    * #48 — the `hope_timepoint_schedule` window this capture completes, as handed to the clinician by the
    * timepoint worklist. Naming it is what makes `M10_RFA_KIND_MISMATCH` reachable: the payload's RFA and
@@ -303,16 +247,58 @@ export interface RecordTimepointArgs {
    */
   readonly scheduleId?: string;
 }
+/**
+ * The HTTP request facts a signing (or deadline-override) route hands the service for its audit row: ids and network
+ * facts only, never content. All optional, so a direct (non-HTTP) service call records none.
+ */
+export interface HopeSignatureRequestFacts {
+  readonly requestId?: string;
+  /** The request's correlation id: a client-suppliable trace hint (`x-correlation-id`), never evidence. */
+  readonly correlationId?: string;
+  /** The SESSION user (a uuid) behind the request; M10's own acting id is the membership id. */
+  readonly actorUserId?: string;
+  readonly sourceIp?: string;
+  readonly userAgent?: string;
+}
+
+/**
+ * Who asked for a schedule skip or an admin regenerate, for the explicit audit event that records it: the acting
+ * MEMBERSHIP id (M10's own acting id) and the request facts (the session user for `actor_user_id`, the request id,
+ * address and user agent). The route fills both from the request context; a direct service call has no request.
+ */
+export interface HopeOperatorActor {
+  readonly membershipId: string;
+  readonly request?: HopeSignatureRequestFacts;
+}
 export interface RecordSfvArgs {
   readonly triggeringAssessmentId: string;
   readonly targetDate: string;
   readonly authorDiscipline: string;
   readonly data: Record<string, unknown>;
   readonly adminOverride?: boolean;
+  /** As for `RecordTimepointArgs.adminOverrideJustification`; stored in the audit context when the override lifts the due date. */
   readonly adminOverrideJustification?: string;
+  /** R-05: the signer's attestation. The service refuses (422 M10_ATTESTATION_REQUIRED) unless it is `true`. */
+  readonly attestationConfirmed?: boolean;
+  /**
+   * The attestation wording version the signer was shown. Optional; when present and not the current
+   * `HOPE_ATTESTATION_VERSION` the service refuses (409 M10_ATTESTATION_STALE) before writing anything.
+   */
+  readonly attestationVersion?: string;
+  /** The request's id / address / user agent, carried into the signature audit row. */
+  readonly request?: HopeSignatureRequestFacts;
 }
 export interface SignTimepointArgs {
   readonly ifVersion?: number;
+  /** R-05: the signer's attestation. The service refuses (422 M10_ATTESTATION_REQUIRED) unless it is `true`. */
+  readonly attestationConfirmed?: boolean;
+  /**
+   * The attestation wording version the signer was shown. Optional; when present and not the current
+   * `HOPE_ATTESTATION_VERSION` the service refuses (409 M10_ATTESTATION_STALE) before writing anything.
+   */
+  readonly attestationVersion?: string;
+  /** The request's id / address / user agent, carried into the signature audit row. */
+  readonly request?: HopeSignatureRequestFacts;
 }
 export interface SetHuvCompletionDateArgs {
   readonly ifVersion: number;
@@ -343,6 +329,14 @@ export interface InactivateTimepointArgs {
   readonly ifVersion?: number;
   readonly authorDiscipline: string;
 }
+export interface HopeReadOptions {
+  /**
+   * Whether the caller holds `hope.timepoint.write`. REQUIRED, with no default: a read that wrote because a caller forgot to say
+   * so would write on the strength of a read permission. `false` makes the open a pure read: no spec freeze, chart refresh,
+   * control-answer rewrite or SFV heal, and a legacy spec-less draft is a static 409 ("opened once by a clinician who can edit it").
+   */
+  readonly mayWrite: boolean;
+}
 
 /** The §4.1 route service contract (the routes compose over it; the in-mem slice + the prod Drizzle
  * backend both implement it). All ids/org binding come from server context, never the body. */
@@ -358,7 +352,12 @@ export interface HopeRouteService extends HopeAbacResolver {
     },
   ): Promise<{ schedules: HopeScheduleView[] }>;
   getSchedule(organizationId: string, id: string): Promise<HopeScheduleView>;
-  skipSchedule(organizationId: string, id: string, reasonCode: string): Promise<HopeScheduleView>;
+  skipSchedule(
+    organizationId: string,
+    id: string,
+    reasonCode: string,
+    actor: HopeOperatorActor,
+  ): Promise<HopeScheduleView>;
   recordTimepoint(
     organizationId: string,
     userId: string,
@@ -376,8 +375,25 @@ export interface HopeRouteService extends HopeAbacResolver {
     id: string,
     data: Record<string, unknown>,
   ): Promise<HopeAssessmentView>;
-  getAssessmentWorkspace(organizationId: string, id: string): Promise<HopeAssessmentWorkspace>;
-  getAssessmentReview(organizationId: string, id: string): Promise<HopeReviewReadModel>;
+  /**
+   * `options.mayWrite` (REQUIRED): whether the caller holds `hope.timepoint.write`. A caller that does not gets a pure read: the
+   * open runs no spec freeze, chart refresh (prefill) or control-answer rewrite, which would write on the strength of a read
+   * permission. A reader's view equals a writer's only for the workflow-control items (A0050, A0250, derived from the record in
+   * memory, not stored) and the progress counts that follow from them; the chart refresh and the workflow-control reconcile are
+   * done for a writer only, so a reader sees chart-derived answers as stored and the workflow controls derived on the fly, and a
+   * draft that needs a chart refresh reads differently for a reader until a writer opens it. A legacy spec-less draft, which
+   * cannot be shown without freezing its spec, is a static 409. The route resolves it from the caller's grants.
+   */
+  getAssessmentWorkspace(
+    organizationId: string,
+    id: string,
+    options: HopeReadOptions,
+  ): Promise<HopeAssessmentWorkspace>;
+  getAssessmentReview(
+    organizationId: string,
+    id: string,
+    options: HopeReadOptions,
+  ): Promise<HopeReviewReadModel>;
   patchAssessmentAnswers(
     organizationId: string,
     userId: string,
@@ -423,12 +439,19 @@ export interface HopeRouteService extends HopeAbacResolver {
     state?: string,
     /** GAP-182 — caseload narrowing: ONLY these patients' SFVs (empty = none); absent = org-wide. */
     patientIds?: readonly string[],
+    /** Only the SFV this assessment triggered (an unknown id is an empty list, never a 404). */
+    triggeringAssessmentId?: string,
   ): Promise<{ sfvs: HopeSfvView[] }>;
   getSfv(organizationId: string, id: string): Promise<HopeSfvView>;
   getValidation(
     organizationId: string,
     id: string,
-    options?: { readonly mode?: "draft" | "final"; readonly submissionDate?: string },
+    options: {
+      readonly mode?: "draft" | "final";
+      readonly submissionDate?: string;
+      /** Whether the caller holds `hope.timepoint.write` (REQUIRED); `false` returns the findings without storing them. */
+      readonly mayWrite: boolean;
+    },
   ): Promise<HopeValidationRunView>;
   listSubmissions(
     organizationId: string,
@@ -446,10 +469,25 @@ export interface HopeRouteService extends HopeAbacResolver {
    */
   retrySubmission(organizationId: string, id: string): Promise<HopeSubmissionView>;
   assembleSubmission(organizationId: string, providerEntityId: string): Promise<HopeSubmissionView>;
+  /**
+   * Stream the package. `actorMembershipId` (the route always passes it) is stamped as `exported_by_membership_id` when the
+   * download advances `packaged -> exported`, so the row says who took the PHI package out.
+   */
   downloadSubmissionPackage(
     organizationId: string,
     id: string,
+    actorMembershipId?: string,
   ): Promise<{ filename: string; contentType: string; bytes: Buffer }>;
+  /**
+   * R-08 — cancel a package that was never marked uploaded (`packaged`/`exported`), so its signed assessments can be
+   * packaged again in a NEW batch. 409 on any other status; replaying a cancel returns the cancelled batch unchanged.
+   */
+  cancelSubmission(
+    organizationId: string,
+    userId: string,
+    id: string,
+    args: { reasonCode: HopeSubmissionCancelReasonCode; request?: HopeSignatureRequestFacts },
+  ): Promise<HopeSubmissionView>;
   markSubmissionUploaded(
     organizationId: string,
     userId: string,
@@ -470,6 +508,7 @@ export interface HopeRouteService extends HopeAbacResolver {
   regenerateSchedules(
     organizationId: string,
     admissionId: string,
+    actor: HopeOperatorActor,
   ): Promise<{ admissionId: string; scheduleCount: number }>;
   /** Drain (and clear) the §2.4 outbox events recorded since the last call (test/relay seam). */
   drainEvents(): RecordedHopeEvent[];
@@ -492,10 +531,14 @@ interface AssessmentRecord extends Mutable<HopeAssessmentView> {
 interface ScheduleRecord extends Mutable<HopeScheduleView> {
   organizationId: string;
   timeZone: string;
+  /** The CCN the DB backend denormalises from the admission. A filter fact only (the dashboard narrows on it); not on the view. */
+  providerEntityId?: string | null;
 }
 interface SfvRecord extends Mutable<HopeSfvView> {
   organizationId: string;
   timeZone: string;
+  /** As on {@link ScheduleRecord}: a filter fact for the dashboard, not part of the view. */
+  providerEntityId?: string | null;
   triggeringSymptoms: ReadonlyArray<{ symptomCode: string; severity: string }>;
 }
 interface SubmissionItemRecord {
@@ -577,6 +620,8 @@ export interface HopeRouteSeed {
    * about the guard is unaffected and one that does states the closed status explicitly.
    */
   readonly admissionStatuses?: Readonly<Record<string, string>>;
+  /** Admissions whose M6 status seam THROWS (an outage): an SFV completion on one answers the DB backend's 503. */
+  readonly unavailableAdmissions?: readonly string[];
 }
 
 /** The §D8 scales snapshotted at HOPE sign (PPS + ESAS-r) — read from M9's `LatestAssessmentProvider`. */
@@ -597,6 +642,58 @@ function nextId(): string {
   return `00000000-0000-4000-8000-${hex}`;
 }
 
+/** A uuid in any spelling Postgres reads (upper case, braces) as the canonical text the database stores; any other text as it is. */
+const canonicalText = (value: string): string => canonicalUuidOrNull(value) ?? value;
+
+/** The keys of an object argument (a filter, a body) read as ids; the rest of the object is content, left as it was sent. */
+const ID_KEYS: ReadonlySet<string> = new Set([
+  "patientId",
+  "patientIds",
+  "scheduleId",
+  "triggeringAssessmentId",
+]);
+
+function canonicalArg(arg: unknown): unknown {
+  if (typeof arg === "string") return canonicalText(arg);
+  if (Array.isArray(arg))
+    return arg.map((item) => (typeof item === "string" ? canonicalText(item) : item));
+  if (arg === null || typeof arg !== "object" || Object.getPrototypeOf(arg) !== Object.prototype)
+    return arg;
+  return Object.fromEntries(
+    Object.entries(arg).map(([key, value]) => [
+      key,
+      ID_KEYS.has(key) ? canonicalArg(value) : value,
+    ]),
+  );
+}
+
+/**
+ * The twin judges a caller's id the way the database does: a uuid column equals itself in any spelling, so an id typed in
+ * upper case or in braces names the same record. Each string (or list of strings) a method is handed, and the keys in
+ * {@link ID_KEYS} of an object argument (read one level deep), are put in the database's canonical text on the way in, so the
+ * lookups, comparisons and recorded events below see one spelling. Text that is no uuid (the slice's own fixtures such as
+ * `pe_1`) is untouched. Stored ids are canonical already (`nextId`, and seeds written the way the database would store them).
+ * Ids nested deeper are not reached: a report row's assessment id sits inside `results`, so `importSubmissionResult` reads
+ * that one itself.
+ */
+function withCanonicalIds(service: HopeRouteService): HopeRouteService {
+  const wrapped: Record<string, unknown> = {};
+  for (const [name, member] of Object.entries(service)) {
+    wrapped[name] =
+      typeof member === "function"
+        ? (...args: unknown[]) =>
+            (member as (...a: unknown[]) => unknown)(...args.map(canonicalArg))
+        : member;
+  }
+  return wrapped as unknown as HopeRouteService;
+}
+
+/** `providerEntityId` unnamed is no predicate (the whole organisation); named, only a record carrying that entity matches. */
+const onProviderEntity = (
+  record: { readonly providerEntityId?: string | null },
+  providerEntityId: string | undefined,
+): boolean => !providerEntityId || record.providerEntityId === providerEntityId;
+
 const j2051EntriesOf = (data: Record<string, unknown>): J2051SymptomReading[] => {
   const j = (data as { J?: { J2051?: { entries?: unknown } } }).J?.J2051?.entries;
   if (!Array.isArray(j)) return [];
@@ -611,191 +708,6 @@ const j2051EntriesOf = (data: Record<string, unknown>): J2051SymptomReading[] =>
       : [],
   );
 };
-
-const FIXED_RFA_KINDS = ["01_admission", "02_huv1", "03_huv2", "05_discharge"] as const;
-
-function statusForSchedule(
-  schedule: HopeScheduleView | null,
-  kind: (typeof FIXED_RFA_KINDS)[number],
-  nowIso: string,
-): HopeWorkflowItemStatus {
-  if (!schedule) return kind === "05_discharge" ? "not_applicable" : "workflow_not_initialized";
-  if (
-    schedule.status === "completed" ||
-    schedule.status === "expired" ||
-    schedule.status === "skipped"
-  )
-    return schedule.status;
-  if (nowIso < schedule.windowOpensAt) return "upcoming";
-  if (nowIso > schedule.lateDeadlineAt) return "expired";
-  if (nowIso > schedule.windowClosesAt) return "late";
-  return "open";
-}
-
-export function buildWorkflowState(input: {
-  readonly admissionId: string;
-  readonly nowIso: string;
-  readonly schedules: readonly HopeScheduleView[];
-  readonly assessments: readonly HopeAssessmentView[];
-  readonly sfvs: readonly HopeSfvView[];
-  readonly admission?: {
-    readonly patientId?: string | null;
-    readonly status?: string | null;
-    readonly admissionAt?: string | null;
-    readonly activatedAt?: string | null;
-    readonly dischargedAt?: string | null;
-  } | null;
-}): HopeWorkflowStateView {
-  const assessmentsById = new Map(input.assessments.map((a) => [a.id, a]));
-  const signedByRfa = new Map<HopeRfaKind, HopeAssessmentView>();
-  for (const a of [...input.assessments].sort((a, b) => b.targetDate.localeCompare(a.targetDate))) {
-    if (a.status === "signed" && !signedByRfa.has(a.rfaKind)) signedByRfa.set(a.rfaKind, a);
-  }
-  const draftByRfa = new Map<HopeRfaKind, HopeAssessmentView>();
-  for (const a of [...input.assessments].sort((a, b) => b.targetDate.localeCompare(a.targetDate))) {
-    if (a.status === "draft" && !draftByRfa.has(a.rfaKind)) draftByRfa.set(a.rfaKind, a);
-  }
-  const schedulesByKind = new Map<HopeRfaKind, HopeScheduleView>();
-  for (const s of [...input.schedules].sort((a, b) =>
-    a.windowOpensAt.localeCompare(b.windowOpensAt),
-  ))
-    if (!schedulesByKind.has(s.rfaKind)) schedulesByKind.set(s.rfaKind, s);
-
-  const timepoint = (kind: (typeof FIXED_RFA_KINDS)[number]): HopeWorkflowTimepointView => {
-    const schedule = schedulesByKind.get(kind) ?? null;
-    const completed =
-      (schedule?.completedByAssessmentId
-        ? assessmentsById.get(schedule.completedByAssessmentId)
-        : undefined) ??
-      signedByRfa.get(kind) ??
-      null;
-    const draft = draftByRfa.get(kind) ?? null;
-    const status = completed ? "completed" : statusForSchedule(schedule, kind, input.nowIso);
-    return {
-      kind,
-      status,
-      scheduleId: schedule?.id ?? null,
-      windowStart: schedule?.windowOpensAt ?? null,
-      windowEnd: schedule?.windowClosesAt ?? null,
-      lateDeadline: schedule?.lateDeadlineAt ?? null,
-      completedAt: completed?.signedAt ?? null,
-      assessmentId: completed?.id ?? draft?.id ?? null,
-      attention: evaluateFixedHopeAttention({
-        kind,
-        workflowStatus: status,
-        windowOpensAt: schedule?.windowOpensAt ?? null,
-        windowClosesAt: schedule?.windowClosesAt ?? null,
-        lateDeadlineAt: schedule?.lateDeadlineAt ?? null,
-        completedAt: completed?.signedAt ?? null,
-        nowIso: input.nowIso,
-      }),
-    };
-  };
-
-  const fixed = {
-    admissionAssessment: timepoint("01_admission"),
-    huv1: timepoint("02_huv1"),
-    huv2: timepoint("03_huv2"),
-    dischargeAssessment: timepoint("05_discharge"),
-  };
-  const sfvs = input.sfvs
-    .map((s) => {
-      const source = assessmentsById.get(s.triggeringAssessmentId);
-      const completion = s.completingAssessmentId
-        ? assessmentsById.get(s.completingAssessmentId)
-        : null;
-      return {
-        id: s.id,
-        status: s.status,
-        triggeringAssessmentId: s.triggeringAssessmentId,
-        triggeringRfaKind: source?.rfaKind ?? null,
-        dueAt: s.dueAt,
-        triggeredAt: s.triggeredAt,
-        completedAt: completion?.signedAt ?? null,
-        completingAssessmentId: s.completingAssessmentId,
-        attention: evaluateSfvAttention({
-          status: s.status,
-          dueAt: s.dueAt,
-          completedAt: completion?.signedAt ?? null,
-          nowIso: input.nowIso,
-        }),
-      };
-    })
-    .sort(
-      (a, b) =>
-        attentionPriority(a.attention.state) - attentionPriority(b.attention.state) ||
-        a.dueAt.localeCompare(b.dueAt),
-    );
-  const fixedItems = Object.values(fixed);
-  const actionableCount =
-    fixedItems.filter((i) => i.status === "open" || i.status === "late").length +
-    sfvs.filter((s) => s.status === "open" || s.status === "overdue").length;
-  const overdueCount =
-    fixedItems.filter(
-      (i) => i.attention.state === "overdue" || i.attention.state === "window_expired",
-    ).length + sfvs.filter((s) => s.status === "overdue" || s.status === "missed").length;
-  const completedCount =
-    fixedItems.filter((i) => i.status === "completed").length +
-    sfvs.filter((s) => s.status === "completed").length;
-  const allAttention = [...fixedItems.map((i) => i.attention), ...sfvs.map((s) => s.attention)];
-  const dueSoonCount = allAttention.filter((a) => a.state === "due_soon").length;
-  const workflowIssueCount = allAttention.filter((a) => a.state === "workflow_issue").length;
-  const candidateDeadlines = [
-    ...fixedItems
-      .filter((i) => i.status === "upcoming" || i.status === "open" || i.status === "late")
-      .map((i) => (i.status === "upcoming" ? i.windowStart : i.windowEnd))
-      .filter((v): v is string => !!v),
-    ...sfvs.filter((s) => s.status === "open" || s.status === "overdue").map((s) => s.dueAt),
-  ].sort();
-  const patientId =
-    input.admission?.patientId ??
-    input.schedules[0]?.patientId ??
-    input.assessments[0]?.patientId ??
-    input.sfvs[0]?.patientId ??
-    null;
-  return {
-    admissionId: input.admissionId,
-    patientId,
-    admissionStatus: input.admission?.status ?? null,
-    admissionAt: input.admission?.admissionAt ?? null,
-    activatedAt: input.admission?.activatedAt ?? null,
-    dischargedAt: input.admission?.dischargedAt ?? null,
-    ...fixed,
-    sfvs,
-    summary: {
-      actionableCount,
-      overdueCount,
-      completedCount,
-      nextDeadline: candidateDeadlines[0] ?? null,
-      highestSeverity: highestSeverity(allAttention.map((a) => a.severity)),
-      dueSoonCount,
-      workflowIssueCount,
-    },
-  };
-}
-
-function attentionPriority(state: HopeAttention["state"]): number {
-  const order: Record<HopeAttention["state"], number> = {
-    workflow_issue: 0,
-    missed: 1,
-    window_expired: 2,
-    overdue: 3,
-    due: 4,
-    due_soon: 5,
-    upcoming: 6,
-    none: 7,
-  };
-  return order[state];
-}
-
-function highestSeverity(
-  severities: readonly HopeAttention["severity"][],
-): HopeAttention["severity"] {
-  if (severities.includes("critical")) return "critical";
-  if (severities.includes("warn")) return "warn";
-  if (severities.includes("info")) return "info";
-  return "none";
-}
 
 /** Construct the in-memory M10 route backend (the slice). Returns the service (also the ABAC resolver). */
 export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteService {
@@ -830,14 +742,19 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
   const admissionStatuses = seed.admissionStatuses ?? {};
   const statusOfAdmission = (admissionId: string): string =>
     admissionStatuses[admissionId] ?? "active";
-  /** #45 — the subject of a HOPE record, never guessed. Mirrors the DB backend's `admissionPatient`. */
-  const patientOfAdmission = (admissionId: string): string => {
+  /**
+   * #45 — the subject of a HOPE record, never guessed. `recordSfv` passes the DB backend's own message
+   * (`resolveSfvAdmissionPatient`, via `sfvProjectionGapMessage`), so that refusal reads the same on both. The DB backend's
+   * `recordTimepoint` refuses the same way (`timepointProjectionGapMessage`): it takes the patient from the M6 summary,
+   * else the schedule row, else answers M10_ADMISSION_PROJECTION_GAP; it no longer falls back to the admission id. The twin
+   * has no seam to ask, so `seed.admissionPatients` stands in for the summary here.
+   */
+  const patientOfAdmission = (
+    admissionId: string,
+    message = `Admission ${admissionId} could not be projected by the M6 status seam, so the subject of this HOPE record is unknown`,
+  ): string => {
     const patientId = admissionPatients[admissionId];
-    if (!patientId)
-      throw new HopeStateError(
-        "M10_ADMISSION_PROJECTION_GAP",
-        `Admission ${admissionId} could not be projected by the M6 status seam, so the subject of this HOPE record is unknown`,
-      );
+    if (!patientId) throw new HopeStateError("M10_ADMISSION_PROJECTION_GAP", message);
     return patientId;
   };
 
@@ -896,6 +813,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       packageSha256: null,
       packageSizeBytes: null,
       iqiesSubmissionReference: null,
+      cancelledAt: null,
+      cancelReasonCode: null,
       items: [],
       findings: [],
       resultImportedAt: null,
@@ -916,11 +835,17 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     return v;
   };
   const viewS = (r: ScheduleRecord): HopeScheduleView => {
-    const { organizationId: _o, timeZone: _t, ...v } = r;
+    const { organizationId: _o, timeZone: _t, providerEntityId: _p, ...v } = r;
     return v;
   };
   const viewF = (r: SfvRecord): HopeSfvView => {
-    const { organizationId: _o, timeZone: _t, triggeringSymptoms: _s, ...v } = r;
+    const {
+      organizationId: _o,
+      timeZone: _t,
+      providerEntityId: _p,
+      triggeringSymptoms: _s,
+      ...v
+    } = r;
     return v;
   };
   /** Where a rejected assessment's correction stands (the correction is a NEW row; the original is never
@@ -981,6 +906,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       submittedAt: r.submittedAt,
       acceptedAt: r.acceptedAt,
       iqiesSubmissionReference: r.iqiesSubmissionReference,
+      cancelledAt: r.cancelledAt ?? null,
+      cancelReasonCode: r.cancelReasonCode ?? null,
       needsCorrectionCount: n("needs_correction"),
       correctionInProgressCount: n("correction_in_progress"),
       resubmittedCount: n("resubmitted"),
@@ -1034,7 +961,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     return snap;
   }
 
-  return {
+  return withCanonicalIds({
     async listSchedules(organizationId, filter) {
       const all = [...schedules.values()].filter(
         (r) =>
@@ -1049,16 +976,38 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     async getSchedule(organizationId, id) {
       return viewS(findSchedule(organizationId, id));
     },
-    async skipSchedule(organizationId, id, _reasonCode) {
+    async skipSchedule(organizationId, id, reasonCode) {
+      requireSkipReasonCode(reasonCode); // the closed list, as in the DB backend (nothing is stored here)
       const r = findSchedule(organizationId, id);
+      // Only an OPEN schedule can be skipped (spec §2.2.1), as in the DB backend (which answers 409 with this text).
+      if (r.status !== "open")
+        throw new ConflictError(
+          `HOPE schedule ${id} is ${r.status}; only an open schedule can be skipped`,
+        );
       r.status = "skipped";
       return viewS(r);
     },
 
     async recordTimepoint(organizationId, userId, admissionId, args) {
+      requireCalendarTargetDate(args.targetDate); // never rolled forward, as in the DB backend
+      // An RFA-04 SFV is completed through `recordSfv`, never recorded as a draft timepoint: the DB backend's refusal, verbatim.
+      if (args.rfaKind === "04_sfv") {
+        throw new ValidationError(
+          "An SFV completion is recorded with POST /admissions/{admissionId}/hope/sfv, not as a timepoint.",
+          [
+            {
+              field: "rfaKind",
+              code: "M10_RFA_KIND_NOT_A_TIMEPOINT",
+              message: "rfaKind 04_sfv is completed through the SFV route.",
+            },
+          ],
+        );
+      }
       const patientId = patientOfAdmission(admissionId);
-      // #48 — the §4.4 recording gate, mirroring the Drizzle backend exactly (see its `recordTimepoint`
-      // for why each of these guards had zero callers until now).
+      // #48 — the §4.4 recording gate, mirroring the Drizzle backend's guards (see its `recordTimepoint` for why each of
+      // these guards had zero callers until now). An id in any spelling of a uuid names the same record here as in the
+      // database (`withCanonicalIds`); an id that names no seeded record is refused (404 / M10_ADMISSION_PROJECTION_GAP /
+      // an empty read), never treated as an unscheduled or unrestricted record.
       if (args.rfaKind !== "05_discharge") {
         assertAdmissionActiveAtTarget(statusOfAdmission(admissionId) === "active");
       } else {
@@ -1078,7 +1027,10 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         (s) =>
           s.organizationId === organizationId &&
           s.admissionId === admissionId &&
-          (args.scheduleId ? s.id === args.scheduleId : s.rfaKind === args.rfaKind),
+          // A uuid compares case-insensitively in the DB backend (a uuid column), so it does here too.
+          (args.scheduleId
+            ? s.id.toLowerCase() === args.scheduleId.toLowerCase()
+            : s.rfaKind === args.rfaKind),
       );
       const sched = candidates.find((s) => s.status === "open") ?? candidates[0];
       if (args.scheduleId && !sched) {
@@ -1138,19 +1090,56 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     },
 
     async recordSfv(organizationId, userId, admissionId, args) {
+      requireAttestation(args.attestationConfirmed, args.attestationVersion);
+      const completedDate = requireCalendarTargetDate(args.targetDate); // J2052B's date, as in the DB backend
+      // Same order as the DB backend: the admission's patient is resolved first. A seam outage is the retryable
+      // 503; an admission the seam cannot project is the PROJECTION GAP (the slice fails closed like the seam
+      // does). Neither is ever "no SFV obligation".
+      if (seed.unavailableAdmissions?.includes(admissionId)) {
+        // The DB backend's generic label and text: the component behind the 503 is not something the caller learns.
+        throw new DegradedError(
+          "service",
+          "a dependency this request needs is temporarily unavailable; retry the request",
+        );
+      }
+      const admissionPatient = patientOfAdmission(
+        admissionId,
+        sfvProjectionGapMessage(admissionId),
+      );
+      // The SFV must belong to the URL admission (the one `hope.scope` verified). A foreign SFV is
+      // indistinguishable from a nonexistent one, and this lookup precedes every status guard below.
       const sfv = [...sfvs.values()].find(
         (s) =>
           s.organizationId === organizationId &&
-          s.triggeringAssessmentId === args.triggeringAssessmentId,
+          s.admissionId === admissionId &&
+          // A uuid compares case-insensitively in the DB backend (a uuid column), so it does here too.
+          s.triggeringAssessmentId.toLowerCase() === args.triggeringAssessmentId.toLowerCase(),
       );
+      // And its patient must be the admission's. A mismatch is the same NO_TRIGGER as a foreign SFV, so the row
+      // never pairs one patient with another admission's id.
       require_(
-        sfv != null,
+        sfv != null && admissionPatient === sfv.patientId,
         "M10_SFV_NO_TRIGGER",
         `No SFV obligation for triggering assessment ${args.triggeringAssessmentId}.`,
       );
+      // A completion with no complete J2053 content is refused BEFORE anything is written. (The DB backend also
+      // checks each value against the triggering assessment's CMS option set; this slice carries no spec
+      // catalogue, so it judges completeness only, and never has "no spec in force" (422 M10_SPEC_NOT_IN_FORCE) to answer.)
+      require_(
+        buildCompletedSfvRegulatoryAnswerPlan(completedDate, args.data) != null,
+        "M10_SFV_COMPLETION_INCOMPLETE",
+        SFV_COMPLETION_INCOMPLETE_MESSAGE,
+      );
       const at = now();
-      // Insert the signed RFA-04 row, then complete the open SFV (the §4.4 guards live in planSfvCompletion).
+      // The completion guards run BEFORE the signed RFA-04 row exists: a refusal (already completed,
+      // withdrawn, past due) writes nothing (the DB backend gets the same from its transaction).
       const id = nextId();
+      const plan = planSfvCompletion(
+        { id: sfv.id, status: sfv.status, dueAt: sfv.dueAt },
+        id,
+        args.targetDate,
+        { adminOverride: args.adminOverride },
+      );
       const rec: AssessmentRecord = {
         id,
         organizationId,
@@ -1159,7 +1148,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         // `skippedUnsited`, which is what makes the count testable without a database.
         providerEntityId: null,
         patientId: sfv.patientId,
-        admissionId,
+        admissionId: sfv.admissionId,
         rfaKind: "04_sfv",
         status: "signed",
         dischargeReason: null,
@@ -1179,12 +1168,6 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         data: args.data,
       };
       assessments.set(id, rec);
-      const plan = planSfvCompletion(
-        { id: sfv.id, status: sfv.status, dueAt: sfv.dueAt },
-        id,
-        args.targetDate,
-        { adminOverride: args.adminOverride },
-      );
       sfv.status = "completed";
       sfv.completingAssessmentId = plan.completingAssessmentId;
       emit(
@@ -1407,17 +1390,18 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         "M10_VERSION_CONFLICT",
         `Assessment ${id} version is stale.`,
       );
+      const z0350 = normalizeDateText("Z0350", input.z0350); // a Feb 30 is refused, as in the DB backend
       const answeredAt = now();
       const byItem = canonicalAnswers.get(id) ?? new Map();
       byItem.set("Z0350", {
         state: "answered",
-        value: input.z0350,
+        value: z0350,
         source: "derived",
         answeredAt,
         answeredByMembershipId: userId,
       });
       canonicalAnswers.set(id, byItem);
-      r.targetDate = input.z0350;
+      r.targetDate = z0350;
       r.version += 1;
       return {
         assessmentId: id,
@@ -1427,7 +1411,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
             itemCode: "Z0350",
             active: true,
             state: "answered",
-            value: input.z0350,
+            value: z0350,
             source: "derived",
             answeredAt,
             answeredByMembershipId: userId,
@@ -1439,6 +1423,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     },
 
     async signTimepoint(organizationId, userId, id, args) {
+      requireAttestation(args?.attestationConfirmed, args?.attestationVersion);
       const r = findA(organizationId, id);
       require_(
         r.status === "draft",
@@ -1575,7 +1560,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       );
       require_(
         ![...assessments.values()].some(
-          (a) => a.correctsAssessmentId === id && a.status === "draft",
+          (a) => a.correctsAssessmentId === original.id && a.status === "draft",
         ),
         "M10_VERSION_CONFLICT",
         `Assessment ${id} already has a pending regulatory operation.`,
@@ -1688,7 +1673,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       );
       require_(
         ![...assessments.values()].some(
-          (a) => a.correctsAssessmentId === id && a.status === "draft",
+          (a) => a.correctsAssessmentId === original.id && a.status === "draft",
         ),
         "M10_VERSION_CONFLICT",
         `Assessment ${id} already has a pending regulatory operation.`,
@@ -1774,12 +1759,14 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       return { assessmentId: id, requested: true };
     },
 
-    async listSfv(organizationId, state, patientIds) {
+    async listSfv(organizationId, state, patientIds, triggeringAssessmentId) {
       const all = [...sfvs.values()].filter(
         (r) =>
           r.organizationId === organizationId &&
           (!state || r.status === state) &&
-          (!patientIds || patientIds.includes(r.patientId)),
+          (!patientIds || patientIds.includes(r.patientId)) &&
+          (!triggeringAssessmentId ||
+            r.triggeringAssessmentId.toLowerCase() === triggeringAssessmentId.toLowerCase()),
       );
       return { sfvs: all.map(viewF) };
     },
@@ -1787,6 +1774,9 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       return viewF(findSfv(organizationId, id));
     },
     async getValidation(organizationId, id, options) {
+      if (options?.submissionDate !== undefined) {
+        requireCalendarDateTime(options.submissionDate, "submissionDate");
+      }
       findA(organizationId, id);
       // The pre-submission validation engine (M10-T04) binds over the per-section payload at assemble time;
       // the on-demand route returns the row's stored findings (none in the in-mem slice).
@@ -1795,9 +1785,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
 
     async listSubmissions(organizationId, providerEntityId) {
       const all = [...submissions.values()].filter(
-        (r) =>
-          r.organizationId === organizationId &&
-          (!providerEntityId || r.providerEntityId === providerEntityId),
+        (r) => r.organizationId === organizationId && onProviderEntity(r, providerEntityId),
       );
       return { submissions: all.map(viewSub) };
     },
@@ -1805,12 +1793,12 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       return viewSubDetail(findSub(organizationId, id));
     },
     async listAssessmentSubmissions(organizationId, assessmentId) {
-      findA(organizationId, assessmentId);
+      const canonicalId = findA(organizationId, assessmentId).id;
       const submissionsOut = [...submissions.values()]
         .filter((s) => s.organizationId === organizationId)
         .flatMap((s) =>
           s.items
-            .filter((i) => i.assessmentId === assessmentId)
+            .filter((i) => i.assessmentId === canonicalId)
             .map((i) => ({
               submissionId: s.id,
               status: s.status,
@@ -1851,7 +1839,9 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       // original is superseded when the correction signs, and never re-sent unchanged before that.
       const batched = new Set(
         [...submissions.values()].flatMap((sub) =>
-          sub.items.filter((i) => i.status !== "rejected").map((i) => i.assessmentId),
+          sub.items
+            .filter((i) => i.status !== "rejected" && i.status !== "cancelled") // R-08: a cancelled package frees its records
+            .map((i) => i.assessmentId),
         ),
       );
       const rejectedBefore = new Set(
@@ -1862,6 +1852,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       const ready = [...assessments.values()].filter(
         (a) =>
           a.organizationId === organizationId &&
+          a.providerEntityId === providerEntityId &&
           a.status === "signed" &&
           a.regulatory.specVersionId &&
           !a.supersededByAssessmentId &&
@@ -1898,6 +1889,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         submittedAt: null,
         acceptedAt: null,
         iqiesSubmissionReference: null,
+        cancelledAt: null,
+        cancelReasonCode: null,
         items: ready.map((a) => ({
           id: nextId(),
           assessmentId: a.id,
@@ -1925,6 +1918,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     },
     async downloadSubmissionPackage(organizationId, id) {
       const r = findSub(organizationId, id);
+      requireNotCancelled(id, r.status);
       const bytes = Buffer.from(r.packageContentBase64 ?? "", "base64");
       if (bytes.length === 0) throw new ConflictError(`Submission ${id} has no package.`);
       if (r.status === "packaged") {
@@ -1937,20 +1931,49 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         bytes,
       };
     },
-    async markSubmissionUploaded(organizationId, userId, id, args) {
+    async cancelSubmission(organizationId, _userId, id, args) {
       const r = findSub(organizationId, id);
+      if (r.status === "cancelled") return viewSub(r); // replay: the original reason, time and actor stand
+      require_(
+        isCancellableSubmissionStatus(r.status),
+        "M10_SUBMISSION_CANCEL_NOT_ALLOWED",
+        cancelNotAllowedMessage(id, r.status),
+      );
+      r.status = "cancelled";
+      r.cancelledAt = now();
+      r.cancelReasonCode = args.reasonCode;
+      for (const item of r.items) if (item.status === "pending") item.status = "cancelled";
+      // As in the DB backend: the package bytes are dropped with the cancel (the hash and size stay on the view). The
+      // scaffold has no M4 legal-hold reader, so it always purges; the DB backend keeps the bytes of a held batch.
+      r.packageContentBase64 = undefined;
+      return viewSub(r);
+    },
+    async markSubmissionUploaded(organizationId, userId, id, args) {
+      if (args.submittedAt !== undefined) requireCalendarDateTime(args.submittedAt, "submittedAt");
+      // As in the DB backend (and the route): the reference's pattern and the identifier screen, before anything changes.
+      assertSubmissionReferenceIsClean("iqiesSubmissionReference", args.iqiesSubmissionReference);
+      const r = findSub(organizationId, id);
+      requireNotCancelled(id, r.status); // R-08: its own 409 code, before the generic "wrong status" conflict
       if (r.status !== "packaged" && r.status !== "exported") {
         throw new ConflictError(
           `Submission ${id} must be packaged/exported before it can be marked uploaded.`,
         );
       }
-      const at = args.submittedAt ?? now();
+      // `transmittedAt` is the CMS retention anchor: the server's instant of recording, never a date the caller sent. The
+      // caller's date is only `submittedAt` (when the operator says the upload happened). As in the DB backend.
+      const transmittedAt = new Date(now());
+      const submittedAt = args.submittedAt ? new Date(args.submittedAt) : transmittedAt;
       // Built first: a batch with no package hash throws here, before anything on the batch has changed
       // (the DB backend gets the same all-or-nothing from its transaction).
-      const transmitted = manualUploadTransmittedPayload(id, r.packageSha256, new Date(at));
+      const transmitted = manualUploadTransmittedPayload(
+        id,
+        r.packageSha256,
+        transmittedAt,
+        submittedAt,
+      );
       r.status = "submitted_pending_result";
-      r.transmittedAt = at;
-      r.submittedAt = at;
+      r.transmittedAt = transmittedAt.toISOString();
+      r.submittedAt = submittedAt.toISOString();
       r.iqiesSubmissionReference = args.iqiesSubmissionReference ?? null;
       emit(
         "m10.hope.submission_transmitted",
@@ -1960,6 +1983,10 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       return viewSub(r);
     },
     async importSubmissionResult(organizationId, userId, id, args) {
+      // As in the DB backend: the reference, and the REBUILT rows (schema keys, string values, a trimmed assessment id; the same
+      // patterns and screens), before anything changes. The report is hashed as sent, as there.
+      assertSubmissionReferenceIsClean("reportReference", args.reportReference);
+      const results = cleanResultRows(args.results);
       const r = findSub(organizationId, id);
       const { canonical: reportHash, legacy: legacyReportHash } = reportHashes(args.results);
       const isKnown = (hash: string | null | undefined): boolean =>
@@ -1967,46 +1994,71 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       if (isKnown(r.resultReportHash) || r.seenReportHashes?.some(isKnown)) return viewSubDetail(r); // idempotent replay (latest or an older report)
       require_(
         isResultImportable(r.status),
-        r.status === "packaged" || r.status === "queued" || r.status === "ready"
-          ? "M10_SUBMISSION_RESULT_NOT_UPLOADED"
-          : "M10_SUBMISSION_RESULT_ALREADY_RECORDED",
+        resultRefusalCode(r.status),
         `Submission ${id} is ${r.status}; a result can only be recorded for a batch that was downloaded/uploaded and is still awaiting its CMS result.`,
       );
-      const matched = args.results.filter((raw) =>
-        r.items.some((i) => i.assessmentId === raw.assessmentId),
-      );
+      // A report row names its assessment in free text (a pasted report, a CSV cell): any spelling Postgres reads as that
+      // uuid finds the item, as in the DB backend. Text that is no uuid is matched as typed (the slice's own fixtures).
+      const itemOf = (raw: Record<string, unknown>): SubmissionItemRecord | undefined => {
+        if (typeof raw.assessmentId !== "string") return undefined;
+        const wanted = canonicalText(raw.assessmentId.trim());
+        return r.items.find((i) => i.assessmentId === wanted);
+      };
+      const matched = results.filter((raw) => itemOf(raw) !== undefined);
       require_(
         matched.length > 0,
         "M10_SUBMISSION_RESULT_NO_MATCH",
-        `None of the ${args.results.length} report rows names an assessment in submission ${id}.`,
+        `None of the ${results.length} report rows names an assessment in submission ${id}.`,
       );
       const at = now();
       const findings: HopeSubmissionFindingView[] = [];
-      // One report row per finding: the worst outcome per assessment wins, independent of row order.
-      const worst = new Map<string, ReturnType<typeof classifyCmsResult>>();
-      for (const raw of args.results) {
-        const id_ = typeof raw.assessmentId === "string" ? raw.assessmentId : null;
+      // One report row per finding: the worst outcome per assessment wins, independent of row order, and the WINNING row
+      // (the first one that reached that outcome) alone supplies the record id, as in the DB backend: a rejected item never
+      // takes the iQIES record id of an accepted row of the same assessment.
+      const worst = new Map<
+        string,
+        { status: ReturnType<typeof classifyCmsResult>; raw: Record<string, unknown> }
+      >();
+      for (const raw of results) {
         const status = classifyCmsResult(raw);
-        const current = r.items.find((i) => i.assessmentId === id_);
-        if (id_ && current && !isSettledItemStatus(current.status) && status !== "pending")
-          worst.set(id_, worstOutcome(worst.get(id_) ?? status, status));
+        const current = itemOf(raw);
+        const prev = current ? worst.get(current.assessmentId) : undefined;
+        if (
+          current &&
+          !isSettledItemStatus(current.status) &&
+          status !== "pending" &&
+          (!prev || worstOutcome(prev.status, status) === status)
+        )
+          worst.set(current.assessmentId, {
+            status,
+            raw: prev?.status === status ? prev.raw : raw,
+          });
       }
-      for (const raw of args.results) {
-        const item = r.items.find((i) => i.assessmentId === raw.assessmentId);
+      for (const item of r.items) {
+        const winner = worst.get(item.assessmentId);
+        if (!winner) continue;
+        item.status = winner.status;
+        item.processedAt = at;
+        // A blank id is no id (the database backend stores none either).
+        const recordId = nonBlankRecordId(winner.raw.iqiesRecordId);
+        if (recordId !== null) item.iqiesRecordId = recordId;
+      }
+      for (const raw of results) {
+        const item = itemOf(raw);
         const resultStatus = classifyCmsResult(raw);
-        const merged = item ? worst.get(item.assessmentId) : undefined;
-        if (item && merged && merged !== "pending") {
-          item.status = merged;
-          item.processedAt = at;
-          if (typeof raw.iqiesRecordId === "string") item.iqiesRecordId = raw.iqiesRecordId;
-        }
-        const code = typeof raw.code === "string" ? raw.code : null;
-        const itemCode = typeof raw.itemCode === "string" ? raw.itemCode : null;
+        // A blank cell is no code, as in the DB backend (where a stored "" would be a unique key).
+        const code = nullIfBlank(raw.code);
+        const itemCode = nullIfBlank(raw.itemCode);
         const message = typeof raw.message === "string" ? raw.message : null;
         if (code || itemCode || message)
           findings.push({
             id: nextId(),
-            assessmentId: typeof raw.assessmentId === "string" ? raw.assessmentId : null,
+            // A matched row names the stored assessment, not the spelling the report used.
+            assessmentId:
+              item?.assessmentId ??
+              (typeof raw.assessmentId === "string"
+                ? canonicalUuidOrNull(raw.assessmentId.trim())
+                : null),
             severity: findingSeverity({
               resultStatus,
               cmsSeverity: typeof raw.severity === "string" ? raw.severity : null,
@@ -2027,29 +2079,36 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       r.resultImportedAt = at;
       if (outcome.pendingCount === 0) {
         r.acceptedAt = outcome.rejectedCount === 0 ? at : null;
-        const event = settledBatchEvent(id, r.providerEntityId, outcome, args.results);
+        const event = settledBatchEvent(id, r.providerEntityId, outcome, results);
         emit(event.eventName, event.payload, `${id}:result-imported`);
       }
       return viewSubDetail(r);
     },
     async complianceDashboard(organizationId, providerEntityId) {
-      const scoped = [...schedules.values()].filter((s) => s.organizationId === organizationId);
+      // One provider entity named: every figure is narrowed to it, as in the DB backend (the schedule and SFV rates used to
+      // stay org-wide under a response labelled with the entity).
+      const scoped = [...schedules.values()].filter(
+        (s) => s.organizationId === organizationId && onProviderEntity(s, providerEntityId),
+      );
       const completed = scoped.filter((s) => s.status === "completed").length;
       const expired = scoped.filter((s) => s.status === "expired").length;
       const denom = completed + expired;
       const subs = [...submissions.values()].filter(
-        (s) =>
-          s.organizationId === organizationId &&
-          (!providerEntityId || s.providerEntityId === providerEntityId),
+        (s) => s.organizationId === organizationId && onProviderEntity(s, providerEntityId),
       );
-      // F-058 (#150) — terminal batches only; a `queued` batch has no acceptance outcome and counting
+      // F-058 (#150) — batches iQIES has ANSWERED on only; a `queued` batch has no acceptance outcome and counting
       // it as a failed one reads as 0% acceptance (the §1.3 APU-penalty band) for work merely awaiting
-      // transmit. Mirrors the DB backend.
+      // transmit. The same two lists as the DB backend and the M30 rollup (`hope-submission-result.ts`), so a batch
+      // accepted with warnings is accepted and answered here too.
       const terminal = subs.filter((s) =>
-        ["accepted", "rejected", "partially_accepted"].includes(s.status),
+        ANSWERED_BATCH_STATUSES.some((status) => status === s.status),
       );
-      const accepted = terminal.filter((s) => s.status === "accepted").length;
-      const sfvAll = [...sfvs.values()].filter((s) => s.organizationId === organizationId);
+      const accepted = terminal.filter((s) =>
+        ACCEPTED_BATCH_STATUSES.some((status) => status === s.status),
+      ).length;
+      const sfvAll = [...sfvs.values()].filter(
+        (s) => s.organizationId === organizationId && onProviderEntity(s, providerEntityId),
+      );
       const sfvOnTime = sfvAll.filter((s) => s.status === "completed").length;
       const sfvDenom = sfvAll.filter(
         (s) => s.status === "completed" || s.status === "missed",
@@ -2071,12 +2130,10 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       const scopedAssessments = [...assessments.values()]
         .filter((a) => a.organizationId === organizationId && a.admissionId === admissionId)
         .map(viewA);
-      const patientIds = new Set([
-        ...scopedSchedules.map((s) => s.patientId),
-        ...scopedAssessments.map((a) => a.patientId),
-      ]);
+      // The URL admission's own SFVs. A re-admitted patient has one admission per episode, and
+      // another admission's SFV is not completable through this one (the R-01 binding refuses it).
       const scopedSfvs = [...sfvs.values()]
-        .filter((s) => s.organizationId === organizationId && patientIds.has(s.patientId))
+        .filter((s) => s.organizationId === organizationId && s.admissionId === admissionId)
         .map(viewF);
       return buildWorkflowState({
         admissionId,
@@ -2129,5 +2186,5 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       events.length = 0;
       return drained;
     },
-  };
+  });
 }

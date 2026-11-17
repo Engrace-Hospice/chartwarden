@@ -39,6 +39,13 @@ export interface HopeValidationService {
     readonly assessmentId: string;
     readonly mode?: HopeValidationMode;
     readonly submissionDate?: string;
+    /**
+     * Whether a `final` run reconciles (writes) the assessment's stored findings. Default `true`: the final-mode writers persist
+     * (assemble's validation of its candidates, and the on-demand read of a caller who holds `hope.timepoint.write`). A `draft`
+     * run never persists, whatever this says. `false` computes the findings and returns them as a draft run does, writing
+     * nothing: the on-demand read of a caller who does not hold `hope.timepoint.write`.
+     */
+    readonly persist?: boolean;
   }): Promise<HopeValidationRunView>;
 }
 
@@ -130,7 +137,13 @@ export function createHopeValidationService(db: DbClient): HopeValidationService
     const existing = await tx
       .select()
       .from(F)
-      .where(and(eq(F.hopeAssessmentId, assessment.id), eq(F.resolved, false)));
+      .where(
+        and(
+          eq(F.hopeAssessmentId, assessment.id),
+          eq(F.organizationId, assessment.organizationId),
+          eq(F.resolved, false),
+        ),
+      );
     const byFingerprint = new Map(
       existing.flatMap((row) => (row.fingerprint ? [[row.fingerprint, row] as const] : [])),
     );
@@ -141,7 +154,7 @@ export function createHopeValidationService(db: DbClient): HopeValidationService
       await tx
         .update(F)
         .set({ resolved: true, resolvedAt: evaluatedAt, evaluatedAt })
-        .where(eq(F.id, row.id));
+        .where(and(eq(F.id, row.id), eq(F.organizationId, assessment.organizationId)));
     }
 
     for (const finding of findings) {
@@ -160,7 +173,7 @@ export function createHopeValidationService(db: DbClient): HopeValidationService
             details: finding.details ?? {},
             evaluatedAt,
           })
-          .where(eq(F.id, open.id));
+          .where(and(eq(F.id, open.id), eq(F.organizationId, assessment.organizationId)));
         continue;
       }
       await tx.insert(F).values({
@@ -185,7 +198,13 @@ export function createHopeValidationService(db: DbClient): HopeValidationService
     return tx
       .select()
       .from(F)
-      .where(and(eq(F.hopeAssessmentId, assessment.id), eq(F.resolved, false)));
+      .where(
+        and(
+          eq(F.hopeAssessmentId, assessment.id),
+          eq(F.organizationId, assessment.organizationId),
+          eq(F.resolved, false),
+        ),
+      );
   }
 
   return {
@@ -258,7 +277,7 @@ export function createHopeValidationService(db: DbClient): HopeValidationService
             applicability,
             submissionDate: input.submissionDate,
           });
-          if (mode === "draft") {
+          if (mode === "draft" || input.persist === false) {
             return {
               assessmentId: assessment.id,
               mode,

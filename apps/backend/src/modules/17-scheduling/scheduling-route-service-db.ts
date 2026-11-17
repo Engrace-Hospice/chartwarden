@@ -1867,10 +1867,16 @@ export function createDbSchedulingBackend(
       await runWithRequestContext({ organizationId: orgId, userId }, async () => {
         const reader = getSeam("CarePlanReader");
         for (const discipline of proposalDisciplines) {
+          // "patient_level": this is the scheduling WORKER, so there is no human actor whose per-actor Part 2
+          // verdict could apply (the human-facing callers, M7's picker, M8's link check and M15's parent check, all
+          // ask under the actor's own rule). `frequencyText` lands in `visit_proposal.source_payload`, a denylisted
+          // column the proposal list read never projects, so no element text reaches a human from this path either.
           const elements = await reader.relevantElementsForEncounter(
             input.patientId,
             "routine_visit",
             discipline,
+            undefined,
+            "patient_level",
           );
           if (!elements || elements.planId !== input.planId) continue;
           for (const intervention of elements.interventions) {

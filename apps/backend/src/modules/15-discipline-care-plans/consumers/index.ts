@@ -17,7 +17,19 @@ export {
   buildM15PlanBootstrapConsumer,
 } from "./m6-admission-activated";
 export {
+  type AdmissionDischargedFacts,
+  type DischargeablePlan,
+  type DisciplinePlanDischargeDeps,
+  M15_PLAN_DISCHARGE_CONSUMER,
+  type PlanDischargeStep,
+  buildM15AdmissionDischargedConsumer,
+  decideAdmissionDischarge,
+  dischargeReasonOf,
+  parseAdmissionDischarged,
+} from "./m6-admission-discharged";
+export {
   assertParentElements,
+  elementsAudienceFor,
   relevantIpocElements,
   type ParentElementRefs,
 } from "./care-plan-elements";
@@ -39,7 +51,9 @@ export {
   type IdgApplyFacts,
   type IdgRefusalReason,
   type ParsedDisciplineMutation,
+  type PlanCandidate,
   type PlannedDisciplineMutation,
+  choosePlanForDecision,
   decideDisciplinePlanDecision,
 } from "./apply-idg-decision";
 export {

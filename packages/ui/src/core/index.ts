@@ -86,7 +86,12 @@ export {
   useAttemptKey,
 } from "./ops-write/use-attempt-key";
 export type { AttemptKey } from "./ops-write/use-attempt-key";
-export { freshIdempotencyKeyHeaders, newIdempotencyKey } from "./ops-write/idempotency-key";
+export {
+  freshIdempotencyKeyHeaders,
+  isInFlightDuplicate,
+  isKeyStuck,
+  newIdempotencyKey,
+} from "./ops-write/idempotency-key";
 export type { IdempotencyAttempt, IdempotencyKeeper } from "./ops-write/idempotency";
 export { AFTER_SUCCESS_TIMEOUT_MS, useOpsWrite } from "./ops-write/use-ops-write";
 export { reachedNoOne, sendWrite, settleWrite, writeRefused } from "./ops-write/send-write";

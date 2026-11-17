@@ -110,3 +110,39 @@ describe("parseCmsReport", () => {
     expect(r.errors).toEqual(["Data row 2: unrecognised status"]);
   });
 });
+
+// A cell is cut only where the server has a limit that a cut can satisfy (a message: 1000 UTF-16 units), and never through an emoji; a
+// code is kept whole so the dialog's one-word check refuses a long one instead of passing it on as a different, valid code.
+describe("parseCmsReport cell limits", () => {
+  const row = (cells: Record<string, string>) =>
+    parseCmsReport(JSON.stringify([{ assessmentId: "a1", status: "rejected", ...cells }])).rows[0];
+
+  it("drops the half of an emoji that a cut at 1000 units would leave", () => {
+    const message = `${"a".repeat(999)}\u{1F44D}`;
+
+    const parsed = row({ message });
+
+    expect(parsed?.message).toBe("a".repeat(999));
+    expect(parsed?.message).not.toMatch(/[\uD800-\uDBFF]$/);
+  });
+
+  it("keeps an emoji that fits within the limit", () => {
+    const message = `${"a".repeat(998)}\u{1F44D}`;
+
+    expect(row({ message })?.message).toBe(message);
+    expect(row({ message })?.message.length).toBe(1000);
+  });
+
+  it("cuts a longer plain message at 1000 units", () => {
+    expect(row({ message: "b".repeat(1500) })?.message).toBe("b".repeat(1000));
+  });
+
+  it.each([["code"], ["itemCode"]])(
+    "keeps a long %s whole, so it is refused rather than altered",
+    (key) => {
+      const long = "E".repeat(70);
+
+      expect(row({ [key]: long })?.[key as "code" | "itemCode"]).toBe(long);
+    },
+  );
+});

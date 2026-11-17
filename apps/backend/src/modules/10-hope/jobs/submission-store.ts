@@ -17,16 +17,17 @@
 // prod) and no protocol details. Everything here is written against the typed `IqiesAdapter` port, so
 // binding a real transport is implementing three methods.
 //
-// The difference that makes is not cosmetic. Before, an unconfigured deployment's batches sat `queued`
-// in silence. Now the submit worker picks one, the deny-stub raises a `retryable: false` DegradedError,
-// the job DLQs and the M36 DLQ alert fires. The backlog is VISIBLE, which is what lets the
-// `assemble-hope-submission` cron be registered at all (see cron-workers.ts).
+// The difference that makes is meant to be that an unconfigured deployment's batches stop sitting `queued`
+// in silence: the submit worker would pick one, the deny-stub would raise a `retryable: false` DegradedError,
+// the job would DLQ and the M36 DLQ alert would fire. That holds only once the stages are wired, and they are NOT:
+// the submit and reconcile workers are not registered, scheduled or given a Worker (RECOVERY NOTE in the header of
+// ./cron-workers.ts), so today a batch with no transport still sits `queued` in silence.
 //
 // TENANCY. Every query carries an explicit `organization_id` predicate on top of the caller's
 // `withOrgContext` RLS envelope — the org-rollup store's HARD RULE 1, as in ./assemble-store.ts.
 import { type DbClient, schema } from "@chartwarden/db";
 import type { HopeDischargeReason, HopeRfaKind, HopeSubmissionStatus } from "@chartwarden/types";
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull } from "drizzle-orm";
 import { correctsIqiesRecordIdSql } from "./correlated-sql";
 
 const ASSESS = schema.hopeAssessments;
@@ -156,6 +157,32 @@ export async function pendingItemsForSubmission(
 }
 
 /**
+ * Lock one batch that is still `in_flight` for the rest of the caller's transaction, or `false` when it no longer is: another
+ * reconcile tick finished it between the batch-list read (unlocked) and here. A tick that waited on this row's lock
+ * re-reads its status once the lock is free (READ COMMITTED re-evaluates the predicate), so the loser gets `false` and does
+ * nothing, instead of re-applying the winner's item transitions and findings and publishing its events a second time.
+ * Call it BEFORE reading the pending items, so those are read behind the lock.
+ */
+export async function lockInFlightSubmission(
+  tx: DbClient,
+  organizationId: string,
+  submissionId: string,
+): Promise<boolean> {
+  const rows = await tx
+    .select({ id: SUB.id })
+    .from(SUB)
+    .where(
+      and(
+        eq(SUB.id, submissionId),
+        eq(SUB.organizationId, organizationId),
+        eq(SUB.status, "in_flight"),
+      ),
+    )
+    .for("update");
+  return rows.length === 1;
+}
+
+/**
  * Compare-and-set `queued` → `in_flight`. Returns false when the CAS lost.
  *
  * The predicate on `status = 'queued'` is the whole point: two workers may both read the same batch, and
@@ -207,7 +234,13 @@ export async function releaseSubmission(
     );
 }
 
-/** Record a successful transmit — the `planTransmitResult` projection, applied. */
+/**
+ * Record a successful transmit — the `planTransmitResult` projection, applied.
+ *
+ * The UPDATE names the status the caller claimed (`in_flight`, set by `claimSubmissionForTransmit` earlier in the SAME
+ * transaction, which holds the row lock), so it is re-judged against the row it writes instead of trusting the caller's
+ * protocol. Returns whether a row was written; `false` means nothing was recorded and the caller must not announce the transmit.
+ */
 export async function recordTransmit(
   tx: DbClient,
   organizationId: string,
@@ -218,8 +251,8 @@ export async function recordTransmit(
     readonly envelopeSha256: string;
     readonly transmittedAt: string;
   },
-): Promise<void> {
-  await tx
+): Promise<boolean> {
+  const rows = await tx
     .update(SUB)
     .set({
       iqiesBatchId: input.iqiesBatchId,
@@ -228,10 +261,27 @@ export async function recordTransmit(
       transmittedAt: new Date(input.transmittedAt),
       updatedAt: new Date(),
     })
-    .where(and(eq(SUB.id, input.submissionId), eq(SUB.organizationId, organizationId)));
+    .where(
+      and(
+        eq(SUB.id, input.submissionId),
+        eq(SUB.organizationId, organizationId),
+        eq(SUB.status, "in_flight"),
+      ),
+    )
+    .returning({ id: SUB.id });
+  return rows.length === 1;
 }
 
-/** Apply one `planReconcile` item transition: the join row, and the assessment's iQIES record id. */
+/**
+ * Apply one `planReconcile` item transition: the join row, and the assessment's iQIES record id.
+ *
+ * The item UPDATE names the status the transition was judged from (`pending`, what `pendingItemsForSubmission` read), so it
+ * is re-judged against the row it waited for: an item another writer already settled is not rewritten, and its assessment is
+ * not stamped with a record id from a verdict that no longer stands. Returns whether the item was still pending; `false` means
+ * nothing was written and the caller must not fold the batch as if this item had been answered. (The reconcile worker reads
+ * the items behind `lockInFlightSubmission`, so a writer that takes the batch row lock is serialised with it; this predicate is
+ * what catches one that does not.)
+ */
 export async function applyItemTransition(
   tx: DbClient,
   organizationId: string,
@@ -242,8 +292,8 @@ export async function applyItemTransition(
     readonly iqiesRecordId: string | null;
   },
   validationResult: unknown,
-): Promise<void> {
-  await tx
+): Promise<boolean> {
+  const settled = await tx
     .update(ITEM)
     .set({
       itemStatus: transition.itemStatus,
@@ -256,8 +306,11 @@ export async function applyItemTransition(
         eq(ITEM.organizationId, organizationId),
         eq(ITEM.hopeSubmissionId, submissionId),
         eq(ITEM.hopeAssessmentId, transition.hopeAssessmentId),
+        eq(ITEM.itemStatus, "pending"),
       ),
-    );
+    )
+    .returning({ id: ITEM.id });
+  if (settled.length === 0) return false;
 
   // Only acceptance stamps the assessment. `hope_assessment.iqies_record_id` is the TERMINAL marker the
   // assembler reads (`iqies_record_id IS NULL` is half its eligibility rule), so writing it for a
@@ -270,9 +323,16 @@ export async function applyItemTransition(
         and(eq(ASSESS.id, transition.hopeAssessmentId), eq(ASSESS.organizationId, organizationId)),
       );
   }
+  return true;
 }
 
-/** Fold the reconcile plan's batch-level outcome onto the `hope_submission` row. */
+/**
+ * Fold the reconcile plan's batch-level outcome onto the `hope_submission` row.
+ *
+ * The UPDATE names the status the caller judged (`in_flight`, behind `lockInFlightSubmission` in the same transaction), so it
+ * is re-judged against the row it writes. Returns whether a row was written; `false` means nothing was recorded and the
+ * caller must not announce the outcome.
+ */
 export async function recordReconcileOutcome(
   tx: DbClient,
   organizationId: string,
@@ -284,8 +344,8 @@ export async function recordReconcileOutcome(
     readonly acceptanceReport: unknown;
     readonly at: Date;
   },
-): Promise<void> {
-  await tx
+): Promise<boolean> {
+  const rows = await tx
     .update(SUB)
     .set({
       status: input.nextStatus,
@@ -298,7 +358,15 @@ export async function recordReconcileOutcome(
       acceptanceReport: input.acceptanceReport as never,
       updatedAt: input.at,
     })
-    .where(and(eq(SUB.id, input.submissionId), eq(SUB.organizationId, organizationId)));
+    .where(
+      and(
+        eq(SUB.id, input.submissionId),
+        eq(SUB.organizationId, organizationId),
+        eq(SUB.status, "in_flight"),
+      ),
+    )
+    .returning({ id: SUB.id });
+  return rows.length === 1;
 }
 
 /**
