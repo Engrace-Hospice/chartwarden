@@ -287,7 +287,6 @@ describe("C4 findings: every spelling of the guarded command behind a shell is j
       "script -qc 'ls' /dev/null",
       "eval -- 'ls'",
       "csh -c 'ls'",
-      "pwsh -c 'ls'",
     ]) {
       expect(decide(cmd), cmd).toBe("allow");
     }

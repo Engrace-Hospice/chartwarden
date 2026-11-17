@@ -11,6 +11,7 @@ import { containerCommand } from "./container-run";
 import { expandVariables } from "./db-variables";
 import { printedText } from "./inline-code";
 import { COMMAND_SHELLS, shellCommandStrings } from "./shell-command-string";
+import { UNVERIFIED_SHELLS } from "./shell-grammars";
 import { withStdin } from "./stdin-texts";
 import { containerRun, shellStrings } from "./wrappers";
 
@@ -28,6 +29,10 @@ export interface NestedText {
 /** The reason a shell string the guard cannot read asks (R9-ADV-12). */
 export const SHELL_STRING_QUESTION =
   'A shell is handed a command string the guard cannot read: a variable no statement of the command sets, a positional parameter or a command substitution (`bash -c "$C"`, `sh -c "$(…)"`). Put the command in the string itself, or let a human decide.';
+
+/** The reason a `-c` of a shell no table was recorded for asks (wave 12, E1-1: where a shell is not installed, its `-c` asks). */
+export const UNVERIFIED_SHELL_QUESTION =
+  "This shell is not installed where the guard's shell tables were recorded (`fish`, `pwsh`, `powershell`, `ash`), so how it reads its own options is unverified: its command string is judged, and a human decides.";
 
 /** A string that is one expansion and nothing else: `$C`, `${C}`, `$1`, `$@`. */
 const LONE_EXPANSION = /^\$(?:\{[^{}]+\}|[A-Za-z_]\w*|[0-9@*#?!$-])$/;
@@ -86,7 +91,11 @@ export function nestedTexts(
   };
   if (prog === "eval") add(evalLine(args));
   else if (COMMAND_SHELLS.test(prog)) {
-    for (const text of shellCommandStrings(prog, args)) {
+    const strings = shellCommandStrings(prog, args);
+    if (strings.length > 0 && UNVERIFIED_SHELLS.includes(prog)) {
+      out.push({ text: "", question: UNVERIFIED_SHELL_QUESTION });
+    }
+    for (const text of strings) {
       const read = shellStringReadings(text, variables);
       for (const reading of read.texts) add(reading);
       if (read.question) out.push({ text: "", question: SHELL_STRING_QUESTION });

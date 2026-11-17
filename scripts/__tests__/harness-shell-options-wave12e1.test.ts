@@ -200,3 +200,49 @@ describe("su hands the words after the login name to the shell (R9-ADV-21; su it
     expect(suCommandStrings(["root", "--", "script.sh"])).toEqual(["script.sh"]);
   });
 });
+
+describe("a shell no table was recorded for asks on its -c, and its string is still judged (E1-1: fish, pwsh, powershell and ash are not installed here)", () => {
+  const ctx = { root: "/repo", home: "/Users/dev", cwd: "/repo", exists: () => true };
+  const NV = "git commit --no-verify -m x";
+  const decision = (cmd: string): string => classifyBash(cmd, ctx).decision;
+  it.each([
+    "fish -c 'echo hi'",
+    "pwsh -c 'ls'",
+    "pwsh -NoProfile -Command 'ls'",
+    "powershell -c 'ls'",
+    "ash -c 'echo hi'",
+    "fish --command='echo hi'",
+    "fish -C init -c 'echo hi'",
+    "sudo fish -c 'echo hi'",
+  ])("%s asks", (cmd) => {
+    expect(decision(cmd), cmd).toBe("ask");
+  });
+  it.each([`fish -c '${NV}'`, `pwsh -c '${NV}'`, `ash -c '${NV}'`, `powershell -Command '${NV}'`])(
+    "%s is judged, not only asked",
+    (cmd) => {
+      expect(decision(cmd), cmd).toBe("deny");
+    },
+  );
+  it.each(["fish script.fish", "pwsh -File x.ps1", "ash script.sh", "fish --version", "pwsh"])(
+    "a script file or no string runs no -c: %s",
+    (cmd) => {
+      expect(decision(cmd), cmd).toBe("allow");
+    },
+  );
+  it("the installed shells do not ask", () => {
+    for (const cmd of [
+      "bash -c 'echo hi'",
+      "sh -c 'ls'",
+      "dash -c 'ls'",
+      "zsh -c 'ls'",
+      "ksh -c 'ls'",
+      "csh -c 'ls'",
+      "tcsh -c 'ls'",
+    ]) {
+      expect(decision(cmd), cmd).toBe("allow");
+    }
+  });
+  it("the list is the one the table calls unverified", () => {
+    expect([...UNVERIFIED_SHELLS].sort()).toEqual(["ash", "fish", "powershell", "pwsh"]);
+  });
+});

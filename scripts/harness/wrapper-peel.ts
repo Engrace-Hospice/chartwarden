@@ -5,7 +5,7 @@
  * have ONE reader of their options (`option-grammar.ts`) and `timeout` is no longer a special case of its own. Pure.
  */
 import type { EnvSplit } from "./env-split";
-import { type ReadOption, readOptions } from "./option-grammar";
+import { type OptionsRead, type ReadOption, readOptions } from "./option-grammar";
 import { expandSplits } from "./split-string-expand";
 import { type WrapperFiles, wrapperFiles } from "./wrapper-options";
 import { WRAPPER_SPECS, type WrapperSpec } from "./wrapper-specs";
@@ -54,6 +54,26 @@ function takeOperands(
 }
 
 /**
+ * What a wrapper's own script options and `--` mean (E1-6): `leaks … -- CMD` and `lldb -- PROG` run no command without a `--` (`read.optionsEnd` is where the
+ * options stopped, `read.end` is after a `--`), and `expect -c`, `lldb -o`, `zx -e` take a script of the tool's own that the guard cannot read: it asks.
+ */
+function ownScript(
+  wrapper: string,
+  spec: WrapperSpec,
+  read: OptionsRead,
+  options: readonly ReadOption[],
+): { readonly runsNothing: boolean; readonly question?: string } {
+  const asked = named(options, spec.asksWith)[0];
+  if (asked !== undefined) {
+    return {
+      runsNothing: false,
+      question: `${wrapper} ${asked.name.length === 1 ? "-" : "--"}${asked.name} SCRIPT`,
+    };
+  }
+  return { runsNothing: spec.dashDash === true && read.optionsEnd === read.end };
+}
+
+/**
  * The wrapper at `words[at]`, stripped; null when the word is no wrapper or the wrapper has nothing after it (`sudo` alone is
  * the program `sudo`). `split` reads a string the way the wrapper itself does (`env -S`); `handed` is `words` as the programs are
  * handed them (a backslash read once), same indices, undefined when it is the same text.
@@ -78,16 +98,9 @@ export function peelWrapper(
   const operands = takeOperands(spec, all, next, options);
   next += operands.length;
   if (spec.onlyWith !== undefined && named(options, spec.onlyWith).length === 0) return null;
-  // `leaks … -- CMD`, `lldb -- PROG`: no command without a `--` (read.optionsEnd is where the options stopped, read.end is after a `--`)
-  if (
-    spec.dashDash === true &&
-    read.optionsEnd === read.end &&
-    named(options, spec.asksWith).length === 0
-  )
-    return null;
-  const asked = named(options, spec.asksWith)[0];
-  if (asked !== undefined)
-    unplaced ??= `${wrapper} ${asked.name.length === 1 ? "-" : "--"}${asked.name} SCRIPT`;
+  const own = ownScript(wrapper, spec, read, options);
+  if (own.runsNothing) return null;
+  unplaced ??= own.question;
   let stays = named(options, spec.stays).length > 0;
   // `flock FILE -c STRING`, `runuser USER -c STRING`: options may follow the operands once more.
   if (!stays && spec.optionsAfterOperands === true && operands.length > 0) {
