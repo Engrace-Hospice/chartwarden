@@ -15,17 +15,16 @@
  *   longer word is text (a `sed` or `perl` program, a message) and is not read. A finding in the words is an ASK, not a refusal:
  *   the host may be a private container's network alias, and the word may be a placeholder.
  *
- * A program that only prints, searches or moves text (`echo`, `grep`, `git commit -m`, `cp`) does not connect: a URI in its words
- * is text, and a variable set for it is not read. A tool run through a nested shell string is judged when that string is judged.
+ * A program that cannot start another program (`echo`, `grep`, `cp`, an awk or sed or sort whose words are proven inert: `text-programs.ts`)
+ * does not connect: a URI in its words is text, and a variable set for it is not read. A text tool that CAN run a command (`awk
+ * 'BEGIN{system(...)}'`, `sed '1e ...'`, `vim -c '!...'`, `bat --pager`, a pager, `find -exec`, `git -c core.pager=`) keeps the rule
+ * (wave 11, R8-ADV-6): the client it starts reads the variable. A tool run through a nested shell string is judged when that string is judged.
  * Pure.
  */
 import { type DatabaseTarget, databaseTargetOfWords } from "./db-target";
 import { TARGET_CLIENTS } from "./db-target-clients";
 import { opaqueSubstitutions, valuesByName } from "./db-variables";
-
-/** Programs that print, search, move or inspect text and files, and the builtins that set a variable: they connect to nothing. */
-const TEXT_PROGRAMS =
-  /^(?:echo|printf|cat|ls|cd|pwd|head|tail|wc|grep|egrep|fgrep|rg|ag|ack|sed|awk|gawk|cut|tr|sort|uniq|tee|test|\[|\[\[|true|false|:|which|type|command|date|sleep|mkdir|touch|rm|cp|mv|ln|chmod|chown|diff|jq|yq|git|gh|export|declare|typeset|readonly|local|unset|set|source|\.|alias|read|wait|exit|return|kill|basename|dirname|realpath|stat|file|find|xargs|less|more|bat|open|code|vim|vi|nano|emacs)$/;
+import { textProgramIsInert } from "./text-programs";
 
 /** Variables that name the host of a database. */
 const HOST_VARIABLE =
@@ -57,7 +56,7 @@ const uriOf = (word: string): string[] => {
 };
 
 /**
- * The finding for a program that is not a text tool, or null. The variables (`assigns`: inline `NAME=value`; `statements`: the
+ * The finding for a program that can start another program, or null. The variables (`assigns`: inline `NAME=value`; `statements`: the
  * `NAME=value` words the command line's variable statements set) are read for every such program, a client with a table of its
  * own included (it may not know the variable); a refused host there is a refusal. The URIs in the WORDS only for a program that
  * is not a client with a table of its own, and a finding there is advisory (a human decides): the word may be a container's
@@ -69,7 +68,7 @@ export function anyProgramTarget(
   assigns: readonly string[],
   statements: readonly string[],
 ): DatabaseTarget | null {
-  if (prog === "" || TEXT_PROGRAMS.test(prog)) return null;
+  if (prog === "" || textProgramIsInert(prog, args)) return null;
   const variables = [...assigns, ...statements];
   const vars = valuesByName(variables);
   const hosts = variables.flatMap((word) => hostValue(word) ?? []);

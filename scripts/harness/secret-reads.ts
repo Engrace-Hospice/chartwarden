@@ -5,7 +5,7 @@
  * `grep -r x deploy/production` reads every live .env under it (grep -r ignores .gitignore). A text heuristic over
  * a few known locations and commands; what it does not name it cannot see. Pure.
  */
-import { GUARDED_WORDS } from "./env-shapes";
+import { EXTRA_SECRET_WORDS, GUARDED_WORDS } from "./env-shapes";
 import { globMatches, globTokens } from "./glob";
 import { fold } from "./path-alias";
 
@@ -90,12 +90,17 @@ export function holdsLiveEnvDirectly(dir: string, exists: (file: string) => bool
 }
 
 /** The name of an environment variable that holds a secret. */
-const SECRET_VARIABLE =
-  /^[A-Z0-9_]*(?:DATABASE_URL|SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|CREDENTIAL|_KEY)S?$/;
+const SECRET_VARIABLE = new RegExp(
+  String.raw`^[A-Z0-9_]*(?:DATABASE_URL|SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|CREDENTIAL|_KEY|${EXTRA_SECRET_WORDS})S?$`,
+);
 export const isSecretVariable = (name: string): boolean => SECRET_VARIABLE.test(name);
 /** The repo's own key-encryption and administrative variables (`GUARDED_WORDS`): printing one asks. */
 const GUARDED_VARIABLE = new RegExp(`^${GUARDED_WORDS}$`);
 export const isGuardedVariable = (name: string): boolean => GUARDED_VARIABLE.test(name);
+/** `$NAME` or `${NAME}` of a secret-bearing variable inside a word (`echo $DATABASE_URL`): printing one is a deny. */
+export const SECRET_VARIABLE_REFERENCE = new RegExp(
+  String.raw`\$\{?[A-Z0-9_]*(?:DATABASE_URL|SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|_KEY|${EXTRA_SECRET_WORDS})S?\b`,
+);
 /** `$NAME` or `${NAME}` of such a variable inside a word (`echo $M34_TENANT_KEK`). */
 export const GUARDED_VARIABLE_REFERENCE = new RegExp(
   String.raw`\$\{?${GUARDED_WORDS}(?![A-Za-z0-9_])`,
@@ -113,6 +118,23 @@ export interface SecretVerdict {
 
 /** `docker inspect` prints the container's environment unless its format names something else. */
 const INSPECT_LEAKS = /\.Env\b|\{\{\s*(?:json\s+)?\.(?:Config)?\s*\}\}/;
+
+/** `docker inspect` asks unless a `--format` names the one field it prints. */
+function inspectVerdict(args: readonly string[]): SecretVerdict | null {
+  const format = args.findIndex((a) => a === "-f" || a === "--format" || a.startsWith("--format="));
+  const value =
+    format < 0
+      ? ""
+      : (args[format] ?? "").startsWith("--format=")
+        ? (args[format] ?? "").slice(9)
+        : (args[format + 1] ?? "");
+  if (format >= 0 && !INSPECT_LEAKS.test(value)) return null;
+  return {
+    decision: "ask",
+    reason:
+      "`inspect` prints a container's environment, secrets included. Use `--format` with the one field you need.",
+  };
+}
 
 /**
  * A command that hands over a stored secret or the environment of a process: the keychain, a CLI's token,
@@ -149,23 +171,7 @@ export function storedSecretVerdict(prog: string, args: readonly string[]): Secr
   }
   if (prog === "printenv" && args.some(isGuardedVariable))
     return { decision: "ask", reason: GUARDED_REASON };
-  if (/^(?:docker|podman|nerdctl)$/.test(prog) && args[0] === "inspect") {
-    const format = args.findIndex(
-      (a) => a === "-f" || a === "--format" || a.startsWith("--format="),
-    );
-    const value =
-      format < 0
-        ? ""
-        : (args[format] ?? "").startsWith("--format=")
-          ? (args[format] ?? "").slice(9)
-          : (args[format + 1] ?? "");
-    if (format < 0 || INSPECT_LEAKS.test(value)) {
-      return {
-        decision: "ask",
-        reason:
-          "`inspect` prints a container's environment, secrets included. Use `--format` with the one field you need.",
-      };
-    }
-  }
+  if (/^(?:docker|podman|nerdctl)$/.test(prog) && args[0] === "inspect")
+    return inspectVerdict(args);
   return null;
 }

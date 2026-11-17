@@ -93,6 +93,7 @@ import { peelRunnerWithFiles } from "./runners";
 import {
   GUARDED_REASON,
   GUARDED_VARIABLE_REFERENCE,
+  SECRET_VARIABLE_REFERENCE,
   environmentLeak,
   globReachesLiveEnv,
   holdsLiveEnvDirectly,
@@ -161,7 +162,13 @@ import { LOCAL_HOST, MBI, scanContent, secretPathReason } from "./content-scan";
 import { anyProgramTarget } from "./db-any-program";
 import { connectTargetOf } from "./db-connect-commands";
 import { type DatabaseTarget, databaseTarget, databaseTargetReason } from "./db-target";
+import { TARGET_CLIENTS } from "./db-target-clients";
 import { unplacedBindingWords, variableStatementWords } from "./db-variables";
+import { forcedAdd } from "./git-add-force";
+import { pushDecision, pushFacts, pushFinding } from "./git-push-refs";
+import { leakCheckText, secretFlowReason } from "./secret-flows";
+import { type SourceReaders, sourcedStatements } from "./source-carry";
+import { AWK_UNPLACED_REASON, awkCommandStrings } from "./text-programs";
 
 // ---------------------------------------------------------------------------------------------------
 // 3. Shell commands
@@ -648,8 +655,7 @@ const SECRET_BY_NAME =
   /(^|\/)(\.env(\.[^/]*)?|[^/]+\.env(\.(local|development|staging|production|tenant))?|\.pgpass|\.netrc)$/i;
 
 const isLocalHost = (h: string) => LOCAL_HOST.test(h.replace(/^.*@/, "").replace(/:\d+$/, ""));
-const SECRET_VAR =
-  /\$\{?[A-Z0-9_]*(DATABASE_URL|SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY|_KEY)S?\b/;
+const SECRET_VAR = SECRET_VARIABLE_REFERENCE;
 const READ_ONLY_CHECK = /^(ls|test|\[|stat|file)$/;
 const COMPOSE_SAFE = /^(up|down|start|stop|restart|run|exec|ps|logs|build|pull|rm)$/;
 
@@ -1105,6 +1111,7 @@ function nestedCommandVerdicts(
     if (text.trim() !== "") verdicts.push(judge(text, ctx, depth + 1, here));
   }
   verdicts.push(...gitExecVerdicts(parsed, ctx, depth, here));
+  verdicts.push(...awkProgramVerdicts(prog, args, ctx, depth, here));
   const inContainer = containerExec(prog, args);
   if (inContainer !== null) verdicts.push(judge(inContainer, ctx, depth + 1, here));
   // A command run in a fresh container (`docker run IMG psql -h HOST`): its paths are the image's, but a client, a push or a
@@ -1121,6 +1128,19 @@ function nestedCommandVerdicts(
     verdicts.push(judge(container.command, ctx, depth + 1, inside));
   }
   return verdicts;
+}
+
+/** The command lines an awk program runs (`system("…")`, `"…" | getline`, `print | "…"`), judged like a `bash -c` string; an unreadable one asks. */
+function awkProgramVerdicts(
+  prog: string,
+  args: readonly string[],
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  const { commands, unplaced } = awkCommandStrings(prog, args);
+  const out = commands.map((command) => judge(command, ctx, depth + 1, here));
+  return unplaced ? [...out, ask(AWK_UNPLACED_REASON)] : out;
 }
 
 /** The commands a simple command runs inside itself, with the variables it was started with in scope (`PGHOST=H bash -c 'psql'`). */
@@ -1336,11 +1356,11 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   };
   // The variables this text sets are in scope for the commands in it and for every text nested in it.
   const outerStatements = variableStatements;
-  variableStatements = [
-    ...outerStatements,
-    ...variableStatementWords(parsedParts),
-    ...unplacedBindingWords(c),
-  ];
+  const statements = textVariableStatements(c, parts, input, outerStatements);
+  variableStatements = statements.words;
+  verdicts.push(...statements.verdicts);
+  const flow = secretFlowReason(parsedParts, input.bodiesByPart, variableStatements);
+  if (flow !== null) verdicts.push(ask(flow));
   parts.forEach((_part, index) => judgePart(index, walk, input));
   verdicts.push(...trailingVerdicts(c, walk, ctx, depth));
   variableStatements = outerStatements;
@@ -1348,6 +1368,50 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     verdicts.find((v) => v.decision === "deny") ??
     verdicts.find((v) => v.decision === "ask") ?? { decision: "allow", reason: "" }
   );
+}
+
+const SOURCE_READERS: SourceReaders = {
+  substitutions,
+  printedLines: (text) =>
+    segments(text).map((seg) => {
+      const sub = parseSegment(seg);
+      return printedText(sub.prog, sub.args);
+    }),
+  statementsOf: (text) => variableStatementWords(segments(text).map(parseSegment)),
+};
+
+const SOURCED_UNREADABLE_REASON =
+  "A database client follows a `source <( … )` whose text the guard cannot read: the sourced text may have set the host (PGHOST, DATABASE_URL) the client reads. A human decides.";
+
+/**
+ * The variable statements in scope for a text: those around it, its own, those a `source <( … )` / `source /dev/stdin` text sets
+ * (`source-carry.ts`, R8-ADV-12), and the names it binds by a form that puts an unknown value there. A database client after a
+ * sourced text the guard cannot read asks.
+ */
+function textVariableStatements(
+  c: string,
+  parts: readonly Segment[],
+  input: WalkInput,
+  outer: readonly string[],
+): { words: readonly string[]; verdicts: BashVerdict[] } {
+  const { parsedParts, bodiesByPart } = input;
+  const sourced = sourcedStatements(
+    parsedParts,
+    parts.map((part) => part.text),
+    bodiesByPart,
+    SOURCE_READERS,
+  );
+  const words = [
+    ...outer,
+    ...variableStatementWords(parsedParts),
+    ...sourced.words,
+    ...unplacedBindingWords(c),
+  ];
+  const clientAfter = parsedParts.some((p) => TARGET_CLIENTS.has(p.prog));
+  return {
+    words,
+    verdicts: sourced.unreadable && clientAfter ? [ask(SOURCED_UNREADABLE_REASON)] : [],
+  };
 }
 
 // A secret file named inside inline code. `process.env.X` is a property, not a file: the dot must not
@@ -2508,6 +2572,30 @@ function treeOperandReaches(
   return !rel.startsWith("/") && !rel.startsWith("~") && reachesLiveEnv(rel, liveEnvExists(ctx));
 }
 
+const FORCED_ADD_REASON =
+  "A forced `git add` (`-f`, `--force`, `update-index --add`) stages a file `.gitignore` keeps out of the object store; staged, a live env file is in `.git` for good and one `git show :FILE` from the transcript.";
+
+/** A forced add of a secret file is refused like a read of it; a forced add of a whole tree that holds a live env file asks (`git-add-force.ts`, R8-ADV-12). */
+function forcedAddVerdict(
+  sub: string,
+  rest: readonly string[],
+  here: readonly Cwd[],
+  ctx: BashContext,
+): BashVerdict | null {
+  const forced = forcedAdd(sub, rest);
+  if (forced === null) return null;
+  for (const operand of forced.operands) {
+    if (secretPathReason(operand))
+      return deny(`\`${echo(operand)}\` is a secret file. ${FORCED_ADD_REASON}`);
+  }
+  const reaches = forced.operands.some((operand) =>
+    here.some((cwd) => treeOperandReaches(operand, cwd, ctx, "tree", true)),
+  );
+  return reaches
+    ? ask(`${FORCED_ADD_REASON} The pathspec reaches a directory that holds one.`)
+    : null;
+}
+
 const DIFF_SWEEP_REASON =
   "`diff -r`, `colordiff -r` and `git diff --no-index` print every file under a directory, ignoring .gitignore, and a plain `diff DIR DIR` compares the files directly under both, so over the repo root, a directory above it or one that holds a live .env file they print that file. Compare the files you need.";
 
@@ -2830,25 +2918,17 @@ function classifySegment(
     }
     const configDenial = sub === "config" ? gitConfigDenial(rest) : null;
     if (configDenial) return deny(configDenial);
+    const stagedByForce = forcedAddVerdict(sub, rest, here, ctx);
+    if (stagedByForce) return stagedByForce;
     if (sub === "push") {
-      const refs = rest.filter((a) => !a.startsWith("-")); // remote, then refspecs
-      const remoteRefs = refs.slice(1);
-      const targetsMain =
-        remoteRefs.some((r) => /^\+?([^:]*:)?(refs\/heads\/)?main$/.test(r)) ||
-        (ctx.branch === "main" &&
-          (remoteRefs.length === 0 || remoteRefs.some((r) => /^\+?HEAD$/.test(r))));
-      const forced =
-        /\s(--force|-f|--force-with-lease)\b/.test(` ${argline}`) ||
-        remoteRefs.some((r) => r.startsWith("+"));
-      if (targetsMain && forced) {
-        return deny(
-          "Force-pushing main rewrites the change record (see audit/FORCE_PUSH_RECOVERY_AUDIT_2026-09-25.md).",
-        );
-      }
-      if (targetsMain) {
-        return ask(
-          "Pushing to main auto-deploys and costs a CI matrix run. Confirm the human has approved this push, and that rounds are batched.",
-        );
+      // The refspecs are compared decoded (`ma\in`, `main$EMPTY`); `git-push-refs.ts` reads the command line.
+      const found = pushFinding(
+        pushFacts(rest, (text) => withKnownVariables(text, knownVariables)),
+        ctx.branch,
+      );
+      if (found !== null) {
+        const { decision, reason } = pushDecision(found);
+        return decision === "deny" ? deny(reason) : ask(reason);
       }
     }
     const writer = gitWriteVerdict(sub, rest, dirs, here, ctx);
@@ -2956,7 +3036,7 @@ function classifySegment(
 
   // --- Inline interpreter code that names a secret file: `python -c "open('.env').read()"`.
   if (runsInlineCode(prog, args)) {
-    const code = scriptTextVerdict(inlineScriptText(prog, args));
+    const code = scriptTextVerdict(leakCheckText(prog, args));
     if (code?.decision === "deny") return code;
   }
 
@@ -2969,7 +3049,7 @@ function classifySegment(
   const protectedHit = writesProtectedPath(parsed, here, ctx);
   if (protectedHit) return ask(writeHitReason(protectedHit));
   if (runsInlineCode(prog, args)) {
-    const code = scriptTextVerdict(inlineScriptText(prog, args));
+    const code = scriptTextVerdict(leakCheckText(prog, args));
     if (code) return code;
   }
 
