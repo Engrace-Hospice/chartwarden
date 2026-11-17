@@ -10,17 +10,20 @@
  *  - a variable, the positional parameters (`set --`) or an array that an EARLIER statement of the command line binds to a plain literal
  *    is replaced by each value it may hold (`exact` readings: the command says what runs);
  *  - a backslash before an ordinary character is removed (`exact`);
- *  - an expansion no statement places (`${X}`, `$(true)`, a backtick pair) is removed where it is SPLICED into a word with other text, or where
- *    it is the program or the subcommand word (`${X}psql`, `git ${X}push`): the word is read as it would be if the expansion were empty (not
- *    `exact`: the expansion may hold something else at run time, so the verdict of that reading is capped at ask).
+ *  - an expansion no statement places (`${X}`, `$(true)`, a backtick pair) is removed where it is SPLICED into a word with other text AND the word
+ *    left is one a rule reads: the program or the subcommand word (`${X}psql`, `git p${X}ush`), an option (`--no-verify${X}`, `-${X}f`), or a
+ *    protected or secret path (`${X}scripts/harness/patterns.ts`). The word is read as it would be if the expansion were empty (not `exact`: the
+ *    expansion may hold something else at run time, so the verdict of that reading is capped at ask).
  *
  * It is deliberately NARROW: an unplaced expansion that stands alone as an argument (`git checkout $branch`, `git commit -m "$msg"`) is left
- * as typed, and a word that only HOLDS an expansion beside text (`git log --since=$d`) reads as a command that every rule allows anyway.
+ * as typed, and so is a spliced one that leaves no program, subcommand, option or protected path (`git checkout feature/$n`, `psql "…:$PORT/db"`).
  * A word that is a redirection is left alone. A value is used only when it is a plain literal (letters, digits, `_ @ % + = : , . / ~ -` and
  * blanks), so a reading never changes the structure of the line.
  * Pure.
  */
 import { words } from "./command-words";
+import { secretPathReason } from "./content-scan";
+import { isProtectedPath } from "./protected-paths";
 
 /** What an earlier statement of the command line bound: literal values by name (every value, in order), arrays, and the positional parameters. */
 export interface Bindings {
@@ -244,7 +247,29 @@ export interface Readings {
 
 const NONE: Readings = { list: [], overCap: false };
 
-/** Each word's place among the words of the command, leading `NAME=value` words not counted (the program is place 0). */
+/** The word with the quoting dropped and every expansion in `values` written in or removed: what a rule would read if the expansion were empty. */
+function skeleton(pieces: readonly Piece[], valueOf: (src: string) => string | null): string {
+  return pieces
+    .map((p) =>
+      p.kind === "lit"
+        ? p.src.replace(/["']/g, "")
+        : p.kind === "esc"
+          ? p.value
+          : (valueOf(p.src) ?? ""),
+    )
+    .join("");
+}
+
+/** A word that can be a subcommand (`push`, `config`, `replicaof`). */
+const PLAIN_WORD = /^[A-Za-z][A-Za-z0-9-]*$/;
+
+/** Does a rule read this word: an option, or a protected or secret path? (The program and the subcommand are told apart by their place.) */
+const readByARule = (word: string): boolean =>
+  word.startsWith("-") ||
+  ((word.includes("/") || word.startsWith(".")) &&
+    (isProtectedPath(word) || secretPathReason(word) !== null));
+
+/** Each word's place among the words of the command, leading `NAME=value` words not counted (the program is place 0, a subcommand place 1). */
 function wordPlaces(items: readonly Item[]): Map<Item, number> {
   const places = new Map<Item, number>();
   let n = 0;
@@ -273,7 +298,10 @@ function build(
     const redirection = first?.kind === "lit" && REDIRECTION_WORD.test(first.src);
     const content = item.pieces.filter((p) => !(p.kind === "lit" && QUOTE_ONLY.test(p.src)));
     const place = places.get(item);
-    const removable = content.length > 1 || (place !== undefined && place < 2);
+    const left = skeleton(item.pieces, valueOf);
+    const removable =
+      content.length > 1 &&
+      (place === 0 || (place === 1 && PLAIN_WORD.test(left)) || readByARule(left));
     for (const piece of item.pieces) {
       if (piece.kind === "lit" || redirection) out += piece.src;
       else if (piece.kind === "esc") out += piece.value;

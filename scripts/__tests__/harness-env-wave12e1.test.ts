@@ -199,8 +199,9 @@ describe("E1-2: env and sudo take every word with a `=` as an assignment", () =>
   it("only env and sudo read a word with an odd name as an assignment (the others run it)", () => {
     expect(program("env A.B=x ls").prog).toBe("ls");
     expect(program("sudo A.B=x ls").prog).toBe("ls");
-    expect(program("nice A.B=x ls").prog).toBe("A.B=x");
-    expect(program("command A.B=x ls").prog).toBe("A.B=x");
+    // the program word is folded to lower case (wave 13, A1): the odd word is the program, in the form the tables look it up
+    expect(program("nice A.B=x ls").prog).toBe("a.b=x");
+    expect(program("command A.B=x ls").prog).toBe("a.b=x");
     // the command's own arguments are not assignments
     expect(program("env ls A.B=x").args).toEqual(["A.B=x"]);
   });

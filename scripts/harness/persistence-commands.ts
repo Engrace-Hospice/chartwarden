@@ -29,7 +29,7 @@ export function persistenceReason(
   args: readonly string[],
   texts: readonly string[],
 ): string | null {
-  if (prog === "PlistBuddy") {
+  if (prog === "plistbuddy") {
     const changes = args.some((a) => PLISTBUDDY_CHANGES.test(a));
     return changes && args.some((a) => LAUNCH_DIRECTORY.test(a))
       ? reason("`PlistBuddy` changing a launch job's property list")

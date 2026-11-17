@@ -37,11 +37,14 @@ interface Scan {
   /** The words of `args` from where the operands start (after the options and a `--`). */
   readonly operands: readonly string[];
   readonly sawC: boolean;
+  /** `-s`: the shell reads its commands from stdin whatever operands follow (they become `$1 …`). */
+  readonly sawS: boolean;
 }
 
 /** One getopt-style pass over a shell's options, read with the grammar of that shell. */
 function scan(grammar: ShellGrammar, args: readonly string[]): Scan {
   let sawC = false;
+  let sawS = false;
   let i = 0;
   for (; i < args.length; i++) {
     const a = args[i] as string;
@@ -61,6 +64,7 @@ function scan(grammar: ShellGrammar, args: readonly string[]): Scan {
         sawC = true;
         continue;
       }
+      if (letter === "s" && !plus) sawS = true;
       const kind = grammar.valued[letter];
       if (kind === undefined) continue;
       if (kind === "next") {
@@ -78,7 +82,20 @@ function scan(grammar: ShellGrammar, args: readonly string[]): Scan {
       break;
     }
   }
-  return { operands: args.slice(i), sawC };
+  return { operands: args.slice(i), sawC, sawS };
+}
+
+/**
+ * What each grammar of this shell leaves after its options (wave 13, A4: R10-ADV-4): `bash -o pipefail`, `-euo pipefail`, `-O extglob`, `--rcfile F`, `-s -- a b`
+ * take a value or run a script from stdin, and the word after an option's value is the first operand, not the option's value. Null for a shell no grammar was
+ * recorded for (`fish`, `csh`, `pwsh`).
+ */
+export function shellOperandReadings(
+  prog: string,
+  args: readonly string[],
+): ReadonlyArray<Scan> | null {
+  const grammars = SHELL_GRAMMARS.get(prog);
+  return grammars === undefined ? null : grammars.map((grammar) => scan(grammar, args));
 }
 
 /** `csh -cc A B` runs B: every `c` of a `-` cluster takes the next word, a later one replaces an earlier one, ``-b` ends the options after its word. */

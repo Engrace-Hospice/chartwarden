@@ -4,7 +4,7 @@
  * text that `echo`/`printf` hands a shell. A script FILE is not here: the guard cannot read one. Pure.
  */
 
-import { COMMAND_SHELLS } from "./shell-command-string";
+import { COMMAND_SHELLS, shellOperandReadings } from "./shell-command-string";
 
 export const INTERPRETER =
   /^(python[0-9.]*|node|bun|deno|perl|ruby|php|awk|gawk|mawk|nawk|lua|osascript)$/;
@@ -78,11 +78,19 @@ export function readsScriptFromStdin(p: ScriptCommand, index: number): boolean {
   if (!shell && (!INTERPRETER.test(p.prog) || AWK.test(p.prog) || runsInlineCode(p.prog, p.args))) {
     return false;
   }
-  const positional = p.args.filter((a) => !a.startsWith("-") || a === "-");
   if (p.args.some((a) => /^(-v|-V|-h|--version|--help)$/.test(a))) return false;
+  const fed = index > 0 || p.ins.length + p.docs.length > 0;
+  // A shell's own options come first, and an option that takes a value (`-o pipefail`, `-O extglob`, `--rcfile F`) is not the script (wave 13, A4).
+  const readings = shell ? shellOperandReadings(p.prog, p.args) : null;
+  if (readings !== null) {
+    return readings.some(({ operands, sawC, sawS }) =>
+      sawC ? false : sawS ? fed : operands[0] === undefined ? fed : STDIN_SCRIPT.test(operands[0]),
+    );
+  }
+  const positional = p.args.filter((a) => !a.startsWith("-") || a === "-");
   return (
     (positional[0] !== undefined && STDIN_SCRIPT.test(positional[0])) ||
-    (positional.length === 0 && (index > 0 || p.ins.length + p.docs.length > 0))
+    (positional.length === 0 && fed)
   );
 }
 
