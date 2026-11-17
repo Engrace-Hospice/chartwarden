@@ -20,15 +20,21 @@ All commands ran from the repository root.
 
 | Command | Result |
 |---|---|
-| `bun run typecheck` | Passed: production graph plus all seven test-typecheck shards and the DOM-test shard. |
+| `bun run typecheck` | Passed on the final reviewed branch: production graph, all eight Node test-typecheck shards, and the DOM-test shard. |
 | Focused M15 Vitest command over web, route injection, caseload, open-version, and package tests | Passed: 9 files, 96 tests. |
 | `env E2E_BASE_URL=http://localhost:5173 bunx playwright test --config=e2e/playwright.config.ts --project=chromium e2e/specs/discipline-care-plans.spec.ts` | Passed: authenticated synthetic Whitfield journey, four discipline cards, lazy volunteer state, keyboard navigation, 375px no-overflow assertion, and WCAG 2.1 A/AA axe scan. |
 | `bun run build` | Passed for all packages, applications, and scripts. |
-| `bun run arch:fitness` | 49 gates passed in the sandbox; only `arch:docling-lock` could not read the user UV cache. The same gate was rerun with cache access and passed, yielding 50/50 effective green gates. |
-| `bun run test` | Passed: 2,430 files; 35,884 tests passed, 8,383 skipped, 15 todo. Duration 252.32s. |
+| `bun run arch:fitness` | Passed on the final reviewed branch: all 50 gates green. |
+| `bun run test` | A clean pre-review run passed 2,602 files / 38,397 tests (8,569 skipped, 15 todo). The post-review full run passed 38,398 tests and had one unrelated timing-only failure: `external-share-identifiers.test.ts` took 520.9 ms against a 500 ms ceiling during an unusually slow 1,160 s run. Immediate isolated rerun passed all 103 tests in 1.06 s; no threshold or unrelated production code was changed. |
 | Selected-file `bunx biome check` | Passed with no remaining findings. |
 
 Generated implementation-status, UI-parity, OpenAPI, injection-coverage, and E2E/axe-coverage reports were refreshed. The OpenAPI client parity check passed.
+
+Fresh code, React, security, and compliance reviews were completed before the PR. Two High M23
+correctness findings were fixed (Stedi representation fail-closed behavior and concurrent retry
+identity), all three React Medium findings were fixed, and the code/React re-reviews reported no
+remaining Critical or High findings. Security and compliance reviews reported no Critical or High
+findings. The staged PHI scan and secret scan were clean.
 
 ## Security and clinical-control evidence
 

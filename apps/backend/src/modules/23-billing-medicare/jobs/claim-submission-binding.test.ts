@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { claimSubmissionBindingMatches } from "./m23-jobs";
+import { claimSubmissionBindingMatches, persistedRetryAttempt } from "./m23-jobs";
 
 const ORG = "10000000-0000-4000-8000-000000000001";
 const CONFIG = "20000000-0000-4000-8000-000000000002";
@@ -90,5 +90,38 @@ describe("claim submission routing binding", () => {
     await expect(
       claimSubmissionBindingMatches(txFor([config]) as never, fallback, transport),
     ).resolves.toBe(false);
+  });
+});
+
+describe("claim retry identity", () => {
+  it("uses the persisted winner when an idempotent append loses a concurrent race", () => {
+    expect(
+      persistedRetryAttempt({
+        id: "30000000-0000-4000-8000-000000000003",
+        claimControlNumber: "PERSISTED-CCN",
+        externalPatientControlNumber: "PERSISTED-PCN",
+        attemptIndex: 2,
+        dispatchState: "pending",
+        outcome: "queued",
+      }),
+    ).toEqual({
+      claimControlNumber: "PERSISTED-CCN",
+      externalPatientControlNumber: "PERSISTED-PCN",
+      attemptIndex: 2,
+      submissionId: "30000000-0000-4000-8000-000000000003",
+    });
+  });
+
+  it("refuses a persisted retry without an external patient control number", () => {
+    expect(() =>
+      persistedRetryAttempt({
+        id: "30000000-0000-4000-8000-000000000003",
+        claimControlNumber: "PERSISTED-CCN",
+        externalPatientControlNumber: null,
+        attemptIndex: 2,
+        dispatchState: "pending",
+        outcome: "queued",
+      }),
+    ).toThrow("persisted retry has no external patient control number");
   });
 });

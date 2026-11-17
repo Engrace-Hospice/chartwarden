@@ -288,7 +288,10 @@ describe("plan workspace — version actions and current signed projection", () 
       sessionWith(AIDE_POC_EDIT_PERMISSION, PLAN_FINALIZE_PERMISSION),
     );
     await waitFor(() => expect(screen.getByText("Version chain")).toBeTruthy());
-    expect((await axe.run(screen.getByRole("main"))).violations).toEqual([]);
+    expect(
+      (await axe.run(screen.getByRole("region", { name: "Aide Plan of Care workspace" })))
+        .violations,
+    ).toEqual([]);
   });
 });
 

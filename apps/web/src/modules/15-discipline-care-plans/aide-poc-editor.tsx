@@ -439,7 +439,13 @@ export function AidePocEditor(): JSX.Element {
       </Card>
 
       <StickyFooterActions>
-        <Link to={`/patients/${patientId}/discipline-plans/aide-poc`} style={linkStyle}>
+        <Link
+          to={`/patients/${patientId}/discipline-plans/aide-poc`}
+          style={linkStyle}
+          onClick={(event) => {
+            if (!confirmDiscard()) event.preventDefault();
+          }}
+        >
           Done editing — return to the plan to finalize and sign
         </Link>
       </StickyFooterActions>

@@ -388,7 +388,13 @@ export function Modal({
   children: ReactNode;
 }): JSX.Element {
   return (
-    <SharedModal open onClose={onClose} ariaLabel={title} width="34rem">
+    <SharedModal
+      open
+      onClose={closeDisabled ? undefined : onClose}
+      dismissOnScrim={!closeDisabled}
+      ariaLabel={title}
+      width="34rem"
+    >
       <div style={{ display: "flex", flexDirection: "column", gap: t.space4, padding: t.space5 }}>
         <h2 style={modalTitleStyle}>{title}</h2>
         {children}

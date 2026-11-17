@@ -2025,6 +2025,35 @@ export async function claimSubmissionBindingMatches(
   );
 }
 
+/** Resolve a retry from the row that actually won the idempotent append race. */
+export function persistedRetryAttempt(
+  row: Pick<
+    schema.ClaimSubmission,
+    | "id"
+    | "claimControlNumber"
+    | "externalPatientControlNumber"
+    | "attemptIndex"
+    | "dispatchState"
+    | "outcome"
+  >,
+): {
+  readonly claimControlNumber: string;
+  readonly externalPatientControlNumber: string;
+  readonly attemptIndex: number;
+  readonly submissionId: string;
+} | null {
+  if (row.dispatchState !== "pending" || row.outcome !== "queued") return null;
+  if (!row.externalPatientControlNumber) {
+    throw new Error("persisted retry has no external patient control number; retry requires review");
+  }
+  return {
+    claimControlNumber: row.claimControlNumber,
+    externalPatientControlNumber: row.externalPatientControlNumber,
+    attemptIndex: row.attemptIndex,
+    submissionId: row.id,
+  };
+}
+
 /** Retry requests append the next immutable attempt, then use the same split prepare/send/finalize path. */
 export async function runClaimSubmitRetry(
   _workerTx: BillingDb,
@@ -2124,13 +2153,11 @@ export async function runClaimSubmitRetry(
       submittedAt: null,
       workerCorrelationId: null,
     });
-    if (row.dispatchState !== "pending" || row.outcome !== "queued") return null;
+    const persisted = persistedRetryAttempt(row);
+    if (!persisted) return null;
     return {
       reconcile: false as const,
-      claimControlNumber,
-      externalPatientControlNumber,
-      attemptIndex: nextIndex,
-      submissionId: row.id,
+      ...persisted,
       reviewedSourceFingerprint: prior.reviewedSourceFingerprint,
     };
   });

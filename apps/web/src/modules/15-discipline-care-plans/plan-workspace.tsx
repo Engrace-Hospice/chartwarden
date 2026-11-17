@@ -222,7 +222,11 @@ export function DisciplinePlanWorkspace({
     >
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
         <ChartModuleRail patientId={patientId ?? ""} current="discipline-plans" />
-        <main className="wx-kit-column" style={{ ...columnStyle, flex: 1, overflow: "auto" }}>
+        <section
+          aria-label={`${kindLabel(kind)} workspace`}
+          className="wx-kit-column"
+          style={{ ...columnStyle, flex: 1, overflow: "auto" }}
+        >
           <div
             style={{
               display: "flex",
@@ -501,7 +505,7 @@ export function DisciplinePlanWorkspace({
               </TableScroll>
             )}
           </Card>
-        </main>
+        </section>
       </div>
 
       {signing ? (
