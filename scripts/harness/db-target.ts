@@ -140,6 +140,9 @@ function readKeyword(key: string, value: string, r: Reader, depth: number): void
   else if ((key === "service" || key === "passfile") && value !== "")
     r.found.indirect.push(`${key}=${value}`);
   else if (key === "dbname" && depth < MAX_RECURSION) readTargetString(value, r, depth + 1);
+  // The recursion cap ends in an ask (wave 12, F-1): a `dbname` that is itself a connection string past the cap is not read as a database name.
+  else if (key === "dbname" && (URI.test(value) || value.includes("=")))
+    r.found.variables.push(value);
 }
 
 /** A libpq connection string, read by libpq's own grammar. The hosts it names are recorded; true when libpq would accept it. */

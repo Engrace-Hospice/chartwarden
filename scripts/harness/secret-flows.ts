@@ -66,6 +66,9 @@ const writesStdoutToFile = (text: string): boolean =>
 const referencedNames = (text: string): string[] =>
   [...text.matchAll(REFERENCE)].flatMap((m) => (m[1] === undefined ? [] : [m[1]]));
 
+/** At most this many readings of one text: more is NOT judged by its first few, it counts as a leak (the human decides). */
+const MAX_READINGS = 8;
+
 /** `${!K}` with each value of K substituted: `${!K}` with K=M34_TENANT_KEK reads `$M34_TENANT_KEK`. */
 function resolveIndirection(
   text: string,
@@ -81,17 +84,24 @@ function resolveIndirection(
         ? [reading]
         : literals.map((value) => reading.replaceAll(`\${!${name}}`, `\${${value}}`)),
     );
+    if (readings.length > MAX_READINGS) break;
   }
-  return readings.slice(0, 8);
+  return readings;
 }
 
-/** The names a text refers to once variables are expanded and indirections resolved: what the shell would read. */
-function readingsOf(text: string, values: ReadonlyMap<string, readonly string[]>): string[] {
+/** The names a text refers to once variables are expanded and indirections resolved: what the shell would read; `overflow` when there are too many readings to judge. */
+function readingsOf(
+  text: string,
+  values: ReadonlyMap<string, readonly string[]>,
+): { readings: string[]; overflow: boolean } {
   const out: string[] = [];
-  for (const indirect of resolveIndirection(text, values)) {
-    out.push(...expandVariables(indirect, values).texts);
+  let overflow = false;
+  const indirect = resolveIndirection(text, values);
+  if (indirect.length > MAX_READINGS) overflow = true;
+  for (const reading of indirect.slice(0, MAX_READINGS)) {
+    out.push(...expandVariables(reading, values).texts);
   }
-  return out.map((reading) => reading.replace(/\\\$/g, "$"));
+  return { readings: out.map((reading) => reading.replace(/\\\$/g, "$")), overflow };
 }
 
 /** Does this text hold an indirect expansion whose name is not known (`${!K}` for a K no statement sets to a literal)? */
@@ -117,9 +127,12 @@ function taintedNames(
       const name = word.slice(0, eq).replace(/\+$/, "");
       if (tainted.has(name)) continue;
       const value = word.slice(eq + 1);
-      const leaks = readingsOf(value, values).some((reading) =>
-        referencedNames(reading).some((ref) => isGuardedName(ref) || tainted.has(ref)),
-      );
+      const { readings, overflow } = readingsOf(value, values);
+      const leaks =
+        overflow ||
+        readings.some((reading) =>
+          referencedNames(reading).some((ref) => isGuardedName(ref) || tainted.has(ref)),
+        );
       if (leaks) tainted.add(name);
     }
     if (tainted.size === before) break;
@@ -134,8 +147,12 @@ function leaks(
   tainted: ReadonlySet<string>,
 ): boolean {
   if (hasUnknownIndirection(text, values)) return true;
-  return readingsOf(text, values).some((reading) =>
-    referencedNames(reading).some((ref) => isGuardedName(ref) || tainted.has(ref)),
+  const { readings, overflow } = readingsOf(text, values);
+  return (
+    overflow ||
+    readings.some((reading) =>
+      referencedNames(reading).some((ref) => isGuardedName(ref) || tainted.has(ref)),
+    )
   );
 }
 

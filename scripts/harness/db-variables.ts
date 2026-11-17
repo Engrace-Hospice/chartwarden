@@ -65,7 +65,7 @@ export function valuesByName(words: readonly string[]): ReadonlyMap<string, read
 const VARIABLE_REFERENCE = /\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g;
 /** A word the shell would still expand at run time. */
 export const HAS_EXPANSION = /[$`]/;
-/** At most this many readings of one word (each variable's values multiply): more is read as unplaceable. */
+/** At most this many readings of one word (each variable's values multiply): more is read as unplaceable (the word stays one reading). */
 const MAX_READINGS = 8;
 
 export interface Expanded {
@@ -99,8 +99,10 @@ export function expandVariables(
       );
       return placeable ? replaced : [...replaced, text];
     });
+    // Past the cap the readings are NOT judged by their first few: the word itself, still holding its references, joins them as one
+    // reading nobody can place (wave 12, F-1: `x=1; … x=8; x=$KEK; echo $x` read only the eight literals and allowed).
     if (texts.length > MAX_READINGS)
-      return { texts: texts.slice(0, MAX_READINGS), unplaceable: true };
+      return { texts: [...texts.slice(0, MAX_READINGS - 1), word], unplaceable: true };
   }
   return { texts, unplaceable: texts.some((text) => HAS_EXPANSION.test(text)) };
 }
