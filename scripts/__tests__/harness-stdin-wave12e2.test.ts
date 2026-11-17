@@ -93,44 +93,84 @@ describe("E2-1: a text handed to a shell on stdin is read as the shell hands it"
     expect(decide("sh <(cat install.sh)")).toBe("ask");
   });
 
-  it("a text that is one unknown expansion, handed to a shell, asks; a known variable is read", () => {
-    for (const cmd of ['echo "$X" | bash', 'bash <<< "$X"', 'echo "$(cat x.sh)" | bash']) {
+  for (const cmd of [
+    'echo "$X" | bash',
+    'bash <<< "$X"',
+    'echo "$(cat x.sh)" | bash',
+    'bash <<< "$(curl -s http://localhost:1/x)"',
+    "echo `cat x.sh` | sh",
+  ]) {
+    it(`a text that is one unknown expansion, handed to a shell, asks: ${cmd}`, () => {
       expect(decide(cmd), cmd).toBe("ask");
-    }
+    });
+  }
+  it("a known variable is read, and a text that only holds an expansion is not asked about", () => {
     expect(decide(`C=${sq("echo hi")}; echo "$C" | bash`)).toBe("allow");
+    expect(decide("echo 'echo $HOME' | bash")).toBe("allow");
   });
+
+  for (const cmd of [
+    "cat x.sh | bash",
+    "curl -s http://localhost:1/x | sh",
+    "cat x.sh | tr a b | bash",
+    "wget -qO- http://localhost:1/x | bash -s",
+  ]) {
+    it(`a pipeline into a shell from anything but a print asks: ${cmd}`, () => {
+      expect(decide(cmd), cmd).toBe("ask");
+    });
+  }
 });
 
+const WRITERS: Record<string, (t: string) => string> = {
+  "echo >": (t) => `echo ${sq(t)} > /tmp/x.sh`,
+  "printf >": (t) => `printf '%s\\n' ${sq(t)} > /tmp/x.sh`,
+  "cat <<< >": (t) => `cat <<< ${sq(t)} > /tmp/x.sh`,
+  "printf | tee": (t) => `printf '%s\\n' ${sq(t)} | tee /tmp/x.sh`,
+  "echo | tee": (t) => `echo ${sq(t)} | tee /tmp/x.sh`,
+};
+const SOURCE_STDIN_SHAPES: Record<string, (t: string) => string> = {
+  "source /dev/stdin <<<": (t) => `source /dev/stdin <<< ${sq(t)}`,
+  ". /dev/stdin <<<": (t) => `. /dev/stdin <<< ${sq(t)}`,
+  "echo | source /dev/stdin": (t) => `echo ${sq(t)} | source /dev/stdin`,
+  "source /dev/fd/0 <<<": (t) => `source /dev/fd/0 <<< ${sq(t)}`,
+};
+
 describe("E2-1: the other places a typed text was read where the shell hands it decoded", () => {
-  it("a script this line writes with echo, printf, cat or tee and then runs is read as the shell hands it", () => {
-    for (const text of Object.values(REFUSED_TEXTS)) {
-      for (const writer of [
-        (t: string) => `echo ${sq(t)} > /tmp/x.sh`,
-        (t: string) => `printf '%s\n' ${sq(t)} > /tmp/x.sh`,
-        (t: string) => `cat <<< ${sq(t)} > /tmp/x.sh`,
-        (t: string) => `printf '%s\n' ${sq(t)} | tee /tmp/x.sh`,
-        (t: string) => `echo ${sq(t)} | tee /tmp/x.sh`,
-      ]) {
+  for (const [name, writer] of Object.entries(WRITERS)) {
+    it(`a script written with ${name} and then run is read as the shell hands it`, () => {
+      for (const text of Object.values(REFUSED_TEXTS)) {
         const cmd = `${writer(text)}; bash /tmp/x.sh`;
         expect(rank(cmd), cmd).toBe(2);
       }
-    }
-  });
-
-  it("source and . of /dev/stdin run the text they are fed", () => {
-    for (const text of Object.values(REFUSED_TEXTS)) {
-      for (const cmd of [
-        `source /dev/stdin <<< ${sq(text)}`,
-        `. /dev/stdin <<< ${sq(text)}`,
-        `echo ${sq(text)} | source /dev/stdin`,
-        `source /dev/fd/0 <<< ${sq(text)}`,
-      ]) {
-        expect(rank(cmd), cmd).toBe(2);
-      }
-    }
+    });
+  }
+  for (const [name, make] of Object.entries(SOURCE_STDIN_SHAPES)) {
+    it(`${name} runs the text it is fed`, () => {
+      for (const text of Object.values(REFUSED_TEXTS)) expect(rank(make(text)), make(text)).toBe(2);
+    });
+  }
+  it("source of /dev/stdin with a harmless text, and of a script file, stay allowed", () => {
     expect(decide("source /dev/stdin <<< 'export FOO=1'")).toBe("allow");
     expect(decide("source ./setup.sh")).toBe("allow");
   });
+
+  const ESCAPED = NO_VERIFY.replaceAll(" ", "\\ ");
+  const ESCAPED_SHAPES: Record<string, string> = {
+    "echo | bash": `echo ${ESCAPED} | bash`,
+    "bash <<<": `bash <<< ${ESCAPED}`,
+    "printf | sh": `printf '%s\\n' ${ESCAPED} | sh`,
+    "source <(echo)": `source <(echo ${ESCAPED})`,
+    "bash <(echo)": `bash <(echo ${ESCAPED})`,
+    "write then run": `echo ${ESCAPED} > /tmp/x.sh; bash /tmp/x.sh`,
+    "cat <<< | bash": `cat <<< ${ESCAPED} | bash`,
+    "a client": `echo psql\\ -h\\ ${HOST}\\ -c\\ 1 | bash`,
+    "a client <<<": `bash <<< psql\\ -h\\ ${HOST}\\ -c\\ 1`,
+  };
+  for (const [name, cmd] of Object.entries(ESCAPED_SHAPES)) {
+    it(`backslash-escaped spaces are read as the shell hands them: ${name}`, () => {
+      expect(rank(cmd), cmd).toBe(2);
+    });
+  }
 });
 
 describe("E2-1: everyday neighbours stay allowed", () => {
@@ -214,6 +254,19 @@ describe("E2-2: a client or a wrapper is fed through filters, substitutions, var
     });
   }
 
+  const OWN_HEREDOC: Record<string, string> = {
+    psql: `psql <<'EOF'\n${RECONNECT}\nEOF`,
+    "psql -h localhost": `psql -h localhost <<'EOF'\n${RECONNECT}\nEOF`,
+    "docker exec": `docker exec -i db psql <<'EOF'\n${RECONNECT}\nEOF`,
+    mysql: `mysql <<EOF\nconnect db ${HOST}\nEOF`,
+    mongosh: `mongosh <<EOF\nconnect("${HOST}")\nEOF`,
+  };
+  for (const [name, cmd] of Object.entries(OWN_HEREDOC)) {
+    it(`a client's own heredoc body is read: ${name}`, () => {
+      expect(rank(cmd), cmd).toBe(2);
+    });
+  }
+
   it("the round-9 rows, written out", () => {
     const rows = [
       `cat <<'EOF' | psql\n\\c db user ${HOST}\nEOF`,
@@ -229,6 +282,39 @@ describe("E2-2: a client or a wrapper is fed through filters, substitutions, var
     ];
     for (const cmd of rows) expect(rank(cmd), cmd).toBe(2);
   });
+
+  const FUNCTION_SHAPES: Record<string, string> = {
+    "name() { client; }": `f() { psql; }; f <<< '${RECONNECT}'`,
+    "function name { client; }": `function f { psql; }; f <<< '${RECONNECT}'`,
+    "name() ( client )": `f() ( psql ); f <<< '${RECONNECT}'`,
+    "function called after other commands": `f() { psql; }; echo a; f <<< '${RECONNECT}'`,
+    "function fed by a pipe": `f() { psql; }; echo '${RECONNECT}' | f`,
+    "function fed by a heredoc": `f() { psql; }; f <<'EOF'\n${RECONNECT}\nEOF`,
+    "function keyword with mysql": `function f { mysql; }; f <<< 'connect db ${HOST}'`,
+    "function keyword behind docker exec": `function f { docker exec -i db psql; }; f <<< '${RECONNECT}'`,
+    "function keyword fed by a pipe": `function f { psql; }; echo '${RECONNECT}' | f`,
+    "subshell function with mysql": `f() ( mysql ); f <<< 'connect db ${HOST}'`,
+    "subshell function with mongosh": `f() ( mongosh ); f <<< 'connect("${HOST}")'`,
+    "subshell function behind docker exec": `f() ( docker exec -i db psql ); f <<< '${RECONNECT}'`,
+    "function with mysql fed by a pipe": `f() { mysql; }; echo 'connect db ${HOST}' | f`,
+    "function with mongosh fed by a pipe": `f() { mongosh; }; echo 'connect("${HOST}")' | f`,
+    "function with mysql fed by a heredoc": `f() { mysql; }; f <<EOF\nconnect db ${HOST}\nEOF`,
+    "brace group fed by a heredoc": `{ psql; } <<'EOF'\n${RECONNECT}\nEOF`,
+    "while loop fed by a heredoc": `while read l; do psql; done <<'EOF'\n${RECONNECT}\nEOF`,
+    "subshell fed by a heredoc": `( psql ) <<'EOF'\n${RECONNECT}\nEOF`,
+  };
+  for (const [name, cmd] of Object.entries(FUNCTION_SHAPES)) {
+    it(`a function the line defines carries its stdin to the client inside it: ${name}`, () => {
+      expect(rank(cmd), cmd).toBe(2);
+    });
+  }
+
+  for (const filters of [8, 9, 50]) {
+    it(`a function fed by a pipeline longer than the guard reads asks (${filters} filters)`, () => {
+      const cmd = `f() { psql -h localhost; }; echo 'select 1' | ${chain(filters)} | f`;
+      expect(decide(cmd), cmd).toBe("ask");
+    });
+  }
 
   it("a variable the line binds to something it cannot place leaves the client allowed (an unset name is no evidence)", () => {
     expect(decide("echo $X | psql -h localhost")).toBe("allow");
@@ -269,15 +355,16 @@ describe("E2-2: a pipeline longer than the guard reads asks, and the verdict hol
 
   for (const [name, reader] of Object.entries(READERS)) {
     const text = TEXT_OF[name] ?? RECONNECT;
-    it(`${name}: the text is read within ${MAX_PIPE_STAGES} commands back and refused`, () => {
-      // echo is the first stage; the reader sees it MAX_PIPE_STAGES back at the farthest
-      for (const filters of [0, 1, 3, MAX_PIPE_STAGES - 1]) {
+    it(`${name}: the text is read within 8 commands back and refused`, () => {
+      // echo is the first stage: with seven filters it is eight stages back, the farthest the guard reads
+      for (const filters of [0, 1, 3, 7]) {
         const cmd = behind(filters, reader, text);
         expect(rank(cmd), `${filters} filters: ${cmd.slice(0, 80)}`).toBe(2);
       }
     });
     it(`${name}: past the cap it asks and never allows, at depth 9, 50 and 5,000`, () => {
-      for (const filters of [MAX_PIPE_STAGES, MAX_PIPE_STAGES + 1, 50, 5000]) {
+      // eight filters put the text nine stages back: out of reach
+      for (const filters of [8, 9, 50, 5000]) {
         const cmd = behind(filters, reader, text);
         const decision = decide(cmd);
         expect(["ask", "deny"], `${filters} filters`).toContain(decision);
@@ -286,7 +373,7 @@ describe("E2-2: a pipeline longer than the guard reads asks, and the verdict hol
       }
     });
     it(`${name}: a local text behind a long pipeline asks as well (the guard cannot read it)`, () => {
-      for (const filters of [MAX_PIPE_STAGES, 50]) {
+      for (const filters of [8, 9, 50]) {
         const cmd = `echo 'select 1' | ${chain(filters)} | ${reader}`;
         expect(decide(cmd), `${filters} filters`).toBe("ask");
       }

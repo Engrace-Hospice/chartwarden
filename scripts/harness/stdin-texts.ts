@@ -41,7 +41,7 @@ export interface FeedReaders {
   readonly printedLines: (text: string) => ReadonlyArray<readonly string[] | null>;
   /** The readings of a text with each variable some statement of the line assigns replaced by its values. */
   readonly expand: (text: string) => readonly string[];
-  /** Is this program word a function the line defines? */
+  /** Is this program word a function the line defines (`name() {`, `function name`)? */
   readonly isFunction: (name: string) => boolean;
 }
 
@@ -112,16 +112,98 @@ function procsubTexts(
   return { texts, unseen };
 }
 
-/** The texts of the stages a redirect on a compound command or a function call reaches: every command of the line. */
-function ambientOf(stages: readonly StdinStage[], readers: FeedReaders): [string[], string[]] {
-  const strings: string[] = [];
-  const bodies: string[] = [];
-  for (const stage of stages) {
-    if (!GROUP_END.test(stage.prog) && !readers.isFunction(stage.prog)) continue;
-    strings.push(...ownStrings(stage));
-    bodies.push(...(stage.bodies ?? []));
+/** What one stage is fed directly, before the readings of its texts: its own texts, and the texts of the stages piped into it. */
+interface Direct {
+  readonly own: string[];
+  readonly bodies: string[];
+  readonly upstream: string[];
+  readonly upstreamBodies: string[];
+  unseen: boolean;
+  overflow: boolean;
+}
+
+/** The stages piped into the one at `index` (up to {@link MAX_PIPE_STAGES} back) and what each hands over. */
+function directFeed(stages: readonly StdinStage[], index: number, readers: FeedReaders): Direct {
+  const stage = stages[index] as StdinStage;
+  const procsub = procsubTexts(stage, readers);
+  const direct: Direct = {
+    own: [...ownStrings(stage), ...procsub.texts],
+    bodies: [...(stage.bodies ?? [])],
+    upstream: [],
+    upstreamBodies: [],
+    unseen: procsub.unseen,
+    overflow: false,
+  };
+  for (let j = index; stages[j]?.joiner === "|"; j--) {
+    if (index - j >= MAX_PIPE_STAGES) {
+      direct.overflow = true;
+      break;
+    }
+    const source = stages[j - 1];
+    if (source === undefined) break; // a leading pipe has no stage before it (R9-CR-15)
+    const printed = printedTexts(source);
+    const carried = procsubTexts(source, readers);
+    direct.upstream.push(...(printed ?? []), ...ownStrings(source), ...carried.texts);
+    direct.upstreamBodies.push(...(source.bodies ?? []));
+    if (printed === null && source.docs.length === 0 && carried.texts.length === 0) {
+      direct.unseen = true;
+    }
   }
-  return [strings, bodies];
+  return direct;
+}
+
+/** The functions a line defines: the classifier's list (`name() {`, `function name`) and a definition the splitter leaves as a stage `name(`. */
+const definedFunctions = (stages: readonly StdinStage[]): Set<string> =>
+  new Set(
+    stages.flatMap((stage) =>
+      stage.prog.length > 1 && stage.prog.endsWith("(") ? [stage.prog.slice(0, -1)] : [],
+    ),
+  );
+
+/**
+ * What the stages a redirect on a compound command or a function call reaches are fed (`{ psql; } <<< '…'`, `f <<< '…'`, `echo '…' | f`): the
+ * redirect belongs to the group, and every command of the line may read it, so it is handed to all of them.
+ */
+function ambientOf(stages: readonly StdinStage[], readers: FeedReaders): Direct {
+  const ambient: Direct = {
+    own: [],
+    bodies: [],
+    upstream: [],
+    upstreamBodies: [],
+    unseen: false,
+    overflow: false,
+  };
+  const functions = definedFunctions(stages);
+  stages.forEach((stage, index) => {
+    if (
+      !GROUP_END.test(stage.prog) &&
+      !functions.has(stage.prog) &&
+      !readers.isFunction(stage.prog)
+    ) {
+      return;
+    }
+    const direct = directFeed(stages, index, readers);
+    ambient.upstream.push(...direct.own, ...direct.upstream);
+    ambient.upstreamBodies.push(...direct.bodies, ...direct.upstreamBodies);
+    ambient.unseen ||= direct.unseen;
+    ambient.overflow ||= direct.overflow;
+  });
+  return ambient;
+}
+
+/** The readings of every text, and whether one of them stands for a command nobody can name (a whole unknown expansion). */
+function readAll(
+  texts: readonly string[],
+  readers: FeedReaders,
+): { texts: string[]; unseen: boolean } {
+  const out: string[] = [];
+  let unseen = false;
+  for (const text of texts) {
+    const readings = readingsOf(text, readers);
+    if (readings.every((r) => WHOLE_EXPANSION.test(r))) unseen = true;
+    out.push(...readings);
+  }
+  return { texts: unique(out), unseen };
 }
 
 export interface PipelineStdin {
@@ -132,58 +214,24 @@ export interface PipelineStdin {
 /**
  * The stdin of every command of one line, read once per command. A stage before the one at `index` hands over what it prints (`echo`,
  * `printf`) and any text it carries itself; a stage that prints nothing the guard sees, and carries nothing, is unseen. Beyond
- * {@link MAX_PIPE_STAGES} stages back the feed overflows. A leading pipe has no stage before it: the chain ends there (R9-CR-15).
+ * {@link MAX_PIPE_STAGES} stages back, or past {@link MAX_FEED_TEXTS} readings, the feed overflows.
  */
 export function pipelineStdin(stages: readonly StdinStage[], readers: FeedReaders): PipelineStdin {
   const memo = new Map<number, StdinFeed>();
-  let ambient: [string[], string[]] | undefined;
+  let ambient: Direct | undefined;
   const build = (index: number): StdinFeed => {
-    const stage = stages[index] as StdinStage;
-    const own = procsubTexts(stage, readers);
-    const raw = [...ownStrings(stage), ...own.texts];
-    const upstream: string[] = [];
-    const upstreamBodies: string[] = [];
-    let unseen = own.unseen;
-    let overflow = false;
-    for (let j = index; stages[j]?.joiner === "|"; j--) {
-      if (index - j >= MAX_PIPE_STAGES) {
-        overflow = true;
-        break;
-      }
-      const source = stages[j - 1];
-      if (source === undefined) break;
-      const printed = printedTexts(source);
-      const carried = procsubTexts(source, readers);
-      upstream.push(...(printed ?? []), ...ownStrings(source), ...carried.texts);
-      upstreamBodies.push(...(source.bodies ?? []));
-      if (printed === null && source.docs.length === 0 && carried.texts.length === 0) unseen = true;
-    }
+    const direct = directFeed(stages, index, readers);
     ambient ??= ambientOf(stages, readers);
-    upstream.push(...ambient[0]);
-    upstreamBodies.push(...ambient[1]);
-    const read = (texts: readonly string[]): string[] => {
-      const out: string[] = [];
-      for (const text of texts) {
-        const readings = readingsOf(text, readers);
-        if (readings.every((r) => WHOLE_EXPANSION.test(r))) unseen = true;
-        out.push(...readings);
-      }
-      return unique(out);
-    };
-    const feed = {
-      own: read(raw),
-      bodies: [...(stage.bodies ?? [])],
-      upstream: read(upstream),
-      upstreamBodies: unique(upstreamBodies),
-    };
-    overflow ||= feed.own.length + feed.upstream.length > MAX_FEED_TEXTS;
+    const own = readAll(direct.own, readers);
+    const upstream = readAll([...direct.upstream, ...ambient.upstream], readers);
+    const total = own.texts.length + upstream.texts.length;
     return {
-      own: feed.own.slice(0, MAX_FEED_TEXTS),
-      bodies: feed.bodies,
-      upstream: feed.upstream.slice(0, MAX_FEED_TEXTS),
-      upstreamBodies: feed.upstreamBodies,
-      unseen,
-      overflow,
+      own: own.texts.slice(0, MAX_FEED_TEXTS),
+      bodies: direct.bodies,
+      upstream: upstream.texts.slice(0, MAX_FEED_TEXTS),
+      upstreamBodies: unique([...direct.upstreamBodies, ...ambient.upstreamBodies]),
+      unseen: direct.unseen || own.unseen || upstream.unseen,
+      overflow: direct.overflow || ambient.overflow || total > MAX_FEED_TEXTS,
     };
   };
   return {
