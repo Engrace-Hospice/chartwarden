@@ -168,6 +168,16 @@ describe("a database URI in the words of a program that is not a text tool", () 
     expect(decide(fill(template)), template).toBe("allow");
   });
 
+  it("a substitution inside a URI is opaque: its slashes do not move the host", () => {
+    expect(decide(fill("DATABASE_URL={PG}u:$(cat/tmp/pw)@localhost/db node x.js"))).toBe("allow");
+    expect(decide(fill("DATABASE_URL={PG}u:`cat/tmp/pw`@localhost/db node x.js"))).toBe("allow");
+    expect(decide(fill("DATABASE_URL={PG}u:$(cat/tmp/pw)@{H}/db node x.js"))).toBe("deny");
+    // a space inside the substitution must not end the word before the host
+    expect(decide(fill("DATABASE_URL={PG}u:$(cat /tmp/pw)@{H}/db node x.js"))).toBe("deny");
+    expect(decide(fill("export DATABASE_URL={PG}u:$(cat /tmp/pw)@{H}/db; node x.js"))).toBe("deny");
+    expect(decide(fill("DATABASE_URL={PG}u:$(cat /tmp/pw)@localhost/db node x.js"))).toBe("allow");
+  });
+
   it("a variable the line sets is expanded; one it cannot place asks", () => {
     for (const cmd of [
       "w=localhost:5433/x; DATABASE_URL={PG}u:p@$w bun run db:migrate",
