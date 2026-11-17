@@ -1255,3 +1255,300 @@
     flex-wrap: wrap;
   }
 }
+/* M23 unified Medicare notices workspace: responsive, page-scoped queue and status cards. */
+.wx-medicare-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+.wx-notice-counts,
+.wx-notice-workspace-panel,
+.wx-notice-card {
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent);
+  border-radius: 0.9rem;
+  background: var(--color-surface);
+  padding: 1rem;
+}
+.wx-notice-counts-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.wx-notice-counts-head h2,
+.wx-notice-workspace-panel h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.wx-notice-counts-head p {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8rem;
+}
+.wx-notice-counts dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.55rem;
+  margin: 0.8rem 0 0;
+}
+.wx-notice-counts dl > div {
+  padding: 0.65rem;
+  border-radius: 0.65rem;
+  background: var(--color-surface-low);
+}
+.wx-notice-counts dt {
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+}
+.wx-notice-counts dd {
+  margin: 0.2rem 0 0;
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.wx-notice-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+  align-items: end;
+}
+.wx-notice-attention {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.75rem;
+  font-size: 0.875rem;
+}
+.wx-notice-attention input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--color-primary);
+}
+.wx-notice-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  grid-column: 1 / -1;
+}
+.wx-notice-items {
+  display: grid;
+  gap: 0.75rem;
+}
+.wx-notice-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+.wx-notice-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.wx-notice-card-head h2 {
+  margin: 0.2rem 0 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+.wx-notice-card-head h2 a {
+  color: var(--color-primary);
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.18em;
+}
+.wx-notice-eyebrow {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.wx-notice-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+  gap: 0.65rem;
+  margin: 0;
+}
+.wx-notice-facts > div {
+  min-width: 0;
+}
+.wx-notice-facts dt {
+  color: var(--color-on-surface-variant);
+  font-size: 0.72rem;
+}
+.wx-notice-facts dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.wx-notice-blocker,
+.wx-notice-verification {
+  border-inline-start: 0.2rem solid var(--color-error);
+  padding: 0.5rem 0.7rem;
+  background: var(--color-surface-low);
+  font-size: 0.85rem;
+}
+.wx-notice-verification {
+  border-inline-start-color: var(--color-warning);
+}
+.wx-notice-review-status {
+  margin: 0;
+  font-size: 0.85rem;
+}
+.wx-notice-readiness {
+  border-top: 1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent);
+  padding-top: 0.55rem;
+}
+.wx-notice-readiness summary {
+  cursor: pointer;
+  font-size: 0.83rem;
+  font-weight: 650;
+}
+.wx-notice-readiness ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  gap: 0.6rem;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.wx-notice-readiness li {
+  padding: 0.65rem;
+  border-radius: 0.6rem;
+  background: var(--color-surface-low);
+  font-size: 0.8rem;
+}
+.wx-notice-readiness li p {
+  margin: 0.25rem 0 0;
+  color: var(--color-on-surface-variant);
+}
+.wx-notice-follow-up {
+  border-inline-start: 0.2rem solid var(--color-warning);
+  padding: 0.65rem 0.8rem;
+  background: var(--color-surface-low);
+}
+.wx-notice-follow-up h3 {
+  margin: 0 0 0.55rem;
+  font-size: 0.9rem;
+}
+.wx-notice-follow-up ul {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wx-notice-follow-up li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+.wx-notice-follow-up li > div {
+  display: grid;
+  gap: 0.2rem;
+}
+.wx-notice-follow-up small,
+.wx-notice-follow-up p {
+  color: var(--color-on-surface-variant);
+}
+.wx-notice-follow-up p {
+  margin: 0.65rem 0 0;
+  font-size: 0.78rem;
+}
+.wx-notice-card-actions,
+.wx-notice-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+.wx-notice-card-actions a,
+.wx-btn-link {
+  color: var(--color-primary);
+  font-weight: 650;
+}
+.wx-notice-pagination {
+  justify-content: center;
+  padding: 0.5rem;
+}
+.wx-notice-review {
+  display: grid;
+  gap: 1rem;
+  max-width: 64rem;
+  margin: 0 auto;
+}
+.wx-notice-review-section {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent);
+  border-radius: 0.85rem;
+  background: var(--color-surface);
+  padding: 1rem;
+}
+.wx-notice-review-section h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.wx-notice-document-list {
+  display: grid;
+  gap: 0.5rem;
+  max-height: 17rem;
+  overflow: auto;
+  padding: 0.2rem;
+}
+.wx-notice-document-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  border-radius: 0.55rem;
+  background: var(--color-surface-low);
+  padding: 0.65rem;
+}
+.wx-notice-document-option input {
+  margin-top: 0.2rem;
+  accent-color: var(--color-primary);
+}
+.wx-notice-timeline {
+  border-inline-start: 2px solid color-mix(in srgb, var(--color-outline-variant) 55%, transparent);
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 1rem;
+  display: grid;
+  gap: 0.8rem;
+}
+.wx-notice-timeline li {
+  position: relative;
+}
+.wx-notice-timeline li::before {
+  content: "";
+  position: absolute;
+  inline-size: 0.55rem;
+  block-size: 0.55rem;
+  border-radius: 100%;
+  background: var(--color-primary);
+  inset-inline-start: -1.35rem;
+  inset-block-start: 0.25rem;
+}
+@media (max-width: 42rem) {
+  .wx-notice-card-head {
+    flex-direction: column;
+  }
+  .wx-notice-card-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .wx-notice-card-actions > * {
+    width: 100%;
+  }
+  .wx-notice-pagination {
+    justify-content: space-between;
+  }
+}

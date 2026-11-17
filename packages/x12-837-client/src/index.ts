@@ -71,6 +71,8 @@ export { createNgsJ6PortalClient, NgsJ6PortalClient } from "./mac-portal/ngs-j6"
 export {
   captureAccountResponsePage,
   createClaimMdAccountResponseReader,
+  decodeClaimMdCapturedPayload,
+  encodeClaimMdCapturedPayload,
 } from "./clearinghouse/claimmd-account-response";
 export type {
   AccountResponsePage,

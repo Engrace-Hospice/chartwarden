@@ -1452,12 +1452,13 @@ uses only verified M23 acknowledgment `accepted_at` for acceptance/timeliness. A
 tenant-entered outside-filing date is not MAC acceptance. Transfer-out is not an ordinary NOTR; 8xC/8xD use transaction-specific
 prerequisites, not the generic NOE/NOTR deadline. A discharge NOTR final-claim exception is reflected only when an organization-scoped
 TOB 814 for that admission and exact discharge date is recorded in a submitted/acknowledged/paid/denied state. Internal exception review
-does not equal external approval. The NOE exception-review record is an auditable local evidence workflow only: it records a request or decision only when a human operator supplies protected M22 evidence, and recording a decision requires recent step-up. It does not send a request, grant an exception, change NOE timeliness, or create MAC acceptance. The current NOE/NOTR/transfer screens remain separate; the unified worklist/readiness aggregation is not yet available. See [M23 notice lifecycle policy](M23_MEDICARE_NOTICE_RENDERING.md#cm-4c--lifecycle-deadlines-and-user-facing-status) and its CM-4C.2 section.
+does not equal external approval. The NOE exception-review record is an auditable local evidence workflow only: it records a request or decision only when a human operator supplies protected M22 evidence, and recording a decision requires recent step-up. It does not send a request, grant an exception, change NOE timeliness, or create MAC acceptance. The unified Medicare Notices workspace now projects NOE, NOTR, 8xC and supported 8xD records with page-scoped counts, readiness dimensions and persisted operational issues. Its readiness is metadata-only and must not be interpreted as a protected source revalidation, artifact decryption, or transport authorization. See [M23 notice lifecycle policy](M23_MEDICARE_NOTICE_RENDERING.md#cm-4c--lifecycle-deadlines-and-user-facing-status) and its CM-4C.2/CM-4C.3 sections.
 
 The Billing NOE/NOTR action is intentionally disabled while all external notice transports are unqualified. A status of ready means
 internal readiness only. `outcome_unknown` means reconcile the original attempt; do not resubmit. Existing watchdog alerts remain the
-operational deadline signal and are not auto-cleared by a request or transport receipt. No unified notice worklist or task assignment
-system is available yet. If the list says the deadline or MAC acceptance is unknown, investigate the persisted source
+operational deadline signal and are not auto-cleared by a request or transport receipt. Persisted operational issues may be assigned,
+acknowledged and reviewed in the unified workspace; acknowledgment, assignment and DDE task completion never establish resolution or
+MAC acceptance. If the list says the deadline or MAC acceptance is unknown, investigate the persisted source
 and acknowledgment evidence; never manually mark it accepted or move the deadline to make it appear timely.
 
 5. Before creating a Claim.MD route, confirm the M23 provider jurisdiction on the route's effective start date, the M5 claim payer's

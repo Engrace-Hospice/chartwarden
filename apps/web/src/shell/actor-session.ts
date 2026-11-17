@@ -57,12 +57,14 @@ export function needsOrgSelection(session: Session | null): boolean {
  * the authoritative enforcer either way.
  */
 export function canSeeScreen(
-  screen: { requiredPermission?: string },
+  screen: { requiredPermission?: string; requiredAnyPermission?: readonly string[] },
   session: Session | null,
 ): boolean {
-  if (!screen.requiredPermission) return true;
+  const required =
+    screen.requiredAnyPermission ?? (screen.requiredPermission ? [screen.requiredPermission] : []);
+  if (required.length === 0) return true;
   if (!session?.permissions) return false; // unknown perms → fail closed (was fail-open)
-  return session.permissions.includes(screen.requiredPermission);
+  return required.some((permission) => session.permissions?.includes(permission));
 }
 
 /**
@@ -72,11 +74,13 @@ export function canSeeScreen(
  * screen and lets the server (the authoritative enforcer) refuse, so a context-less environment is not blanked.
  */
 export function isScreenDenied(
-  screen: { requiredPermission?: string },
+  screen: { requiredPermission?: string; requiredAnyPermission?: readonly string[] },
   session: Session | null,
 ): boolean {
-  if (!screen.requiredPermission || !session?.permissions) return false;
-  return !session.permissions.includes(screen.requiredPermission);
+  const required =
+    screen.requiredAnyPermission ?? (screen.requiredPermission ? [screen.requiredPermission] : []);
+  if (required.length === 0 || !session?.permissions) return false;
+  return !required.some((permission) => session.permissions?.includes(permission));
 }
 
 /** What a chromed-route guard should do for a given session status (audit #6, TASK-033). */

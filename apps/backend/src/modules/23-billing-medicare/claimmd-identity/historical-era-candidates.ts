@@ -3,7 +3,7 @@
  * This reads immutable Claim.MD send evidence, never current mutable claim lines.
  */
 import { type DbClient, schema } from "@chartwarden/db";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 const E = schema.claimmdSubmissionEvidence;
 const C = schema.claimSubmission;
@@ -115,7 +115,7 @@ export async function readM23HistoricalEraCandidates(input: {
       claimSubmissionId: C.id,
       sourceClaimId: C.claimId,
       sourceKind: C.kind,
-      sourceControl: C.claimControlNumber,
+      sourceControl: sql<string>`COALESCE(${C.externalPatientControlNumber}, ${C.claimControlNumber})`,
       attemptIndex: C.attemptIndex,
       state: C.outcome,
       submittedAt: C.submittedAt,

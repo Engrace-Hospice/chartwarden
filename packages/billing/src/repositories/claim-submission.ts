@@ -17,6 +17,14 @@ import type { BillingDb } from "./db";
 
 const S = schema.claimSubmission;
 
+export class ExternalPatientControlNumberCollisionError extends Error {
+  readonly code = "EXTERNAL_PCN_COLLISION";
+  constructor() {
+    super("external patient control number collision");
+    this.name = "ExternalPatientControlNumberCollisionError";
+  }
+}
+
 /** Data port for `claim_submission` (APPEND-ONLY: idempotent append + read; NO update/delete surface). */
 export class ClaimSubmissionRepository {
   constructor(private readonly db: BillingDb) {}
@@ -27,21 +35,28 @@ export class ClaimSubmissionRepository {
    * collapses to the original row. Returns the persisted submission.
    */
   async append(values: schema.NewClaimSubmission): Promise<schema.ClaimSubmission> {
-    const [inserted] = await this.db
-      .insert(S)
-      .values(values)
-      .onConflictDoNothing({
-        target: [S.providerEntityId, S.claimControlNumber, S.attemptIndex],
-      })
-      .returning();
+    const [inserted] = await this.db.insert(S).values(values).onConflictDoNothing().returning();
     if (inserted) return inserted;
     const existing = await this.findByAttempt(
       values.providerEntityId,
       values.claimControlNumber,
       values.attemptIndex,
     );
-    if (!existing) throw new Error("claim_submission append: conflict but no existing row found");
-    return existing;
+    if (existing) return existing;
+    if (values.externalPatientControlNumber) {
+      const [collision] = await this.db
+        .select({ id: S.id })
+        .from(S)
+        .where(
+          and(
+            eq(S.providerEntityId, values.providerEntityId),
+            eq(S.externalPatientControlNumber, values.externalPatientControlNumber),
+          ),
+        )
+        .limit(1);
+      if (collision) throw new ExternalPatientControlNumberCollisionError();
+    }
+    throw new Error("claim_submission append: conflict but no existing row found");
   }
 
   /** Record the immutable attempt's one terminal outcome transition. Replays return the terminal row. */
@@ -191,6 +206,8 @@ export class ClaimSubmissionRepository {
       .where(
         and(
           eq(S.providerEntityId, providerEntityId),
+          // The idempotency identity remains the internal claim control number. The external PCN is
+          // a transmitted/correlation identifier and must not replace historical attempt identity.
           eq(S.claimControlNumber, claimControlNumber),
           eq(S.attemptIndex, attemptIndex),
         ),

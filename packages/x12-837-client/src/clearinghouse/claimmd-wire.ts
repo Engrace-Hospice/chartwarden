@@ -28,6 +28,15 @@ export type WireResult =
   /** `reached`: the request left and may have been processed (timeout, network error, 5xx). */
   | { readonly ok: false; readonly status: number | null; readonly reached: boolean };
 
+export type WireTextResult =
+  | { readonly ok: true; readonly body: string; readonly contentType: string | null }
+  | {
+      readonly ok: false;
+      readonly status: number | null;
+      readonly reached: boolean;
+      readonly code?: "OVERSIZE" | "INVALID_UTF8";
+    };
+
 function isRecord(v: unknown): v is ClaimMdRecord {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
@@ -66,6 +75,68 @@ async function call(
   const parsed = await readBody(res);
   // A 2xx we cannot read may still have been processed (an upload): treat it as reached, never as clean.
   return parsed ? { ok: true, body: parsed } : { ok: false, status: res.status, reached: true };
+}
+
+/** A bounded-response caller for secure inboxes that must retain exact source bytes. */
+export async function postFormText(
+  fetchImpl: typeof fetch,
+  path: string,
+  accountKey: string,
+  fields: Readonly<Record<string, string>>,
+): Promise<WireTextResult> {
+  let res: Response;
+  try {
+    res = await fetchImpl(`${CLAIMMD_BASE_URL}/${path}/`, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      body: new URLSearchParams({ AccountKey: accountKey, ...fields }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      redirect: "error",
+    });
+  } catch (err) {
+    return { ok: false, status: null, reached: !(err instanceof ClaimMdBudgetExhausted) };
+  }
+  if (!res.ok) return { ok: false, status: res.status, reached: res.status >= 500 };
+  const declaredLength = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > 8 * 1024 * 1024) {
+    await res.body?.cancel().catch(() => {});
+    return { ok: false, status: res.status, reached: true, code: "OVERSIZE" };
+  }
+  try {
+    if (!res.body) return { ok: false, status: res.status, reached: true };
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > 8 * 1024 * 1024) {
+        await reader.cancel().catch(() => {});
+        return { ok: false, status: res.status, reached: true, code: "OVERSIZE" };
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    let body: string;
+    try {
+      body = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      return { ok: false, status: res.status, reached: true, code: "INVALID_UTF8" };
+    }
+    return {
+      ok: true,
+      body,
+      contentType: res.headers.get("content-type"),
+    };
+  } catch {
+    return { ok: false, status: res.status, reached: true };
+  }
 }
 
 /** A urlencoded service call. The key travels in the body, as Claim.MD requires; never in a URL. */

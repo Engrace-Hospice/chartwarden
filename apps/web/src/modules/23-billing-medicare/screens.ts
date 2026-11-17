@@ -30,6 +30,12 @@ const MetricsSurface = lazy(() =>
 );
 const NoeDetail = lazy(() => import("./noe-detail").then((m) => ({ default: m.NoeDetail })));
 const NoeQueue = lazy(() => import("./noe-queue").then((m) => ({ default: m.NoeQueue })));
+const NoeExceptionReview = lazy(() =>
+  import("./noe-exception-review").then((m) => ({ default: m.NoeExceptionReview })),
+);
+const MedicareNoticesWorkspace = lazy(() =>
+  import("./medicare-notices-workspace").then((m) => ({ default: m.MedicareNoticesWorkspace })),
+);
 const NotrDetail = lazy(() => import("./notr-detail").then((m) => ({ default: m.NotrDetail })));
 const NotrQueue = lazy(() => import("./notr-queue").then((m) => ({ default: m.NotrQueue })));
 const TransferNotices = lazy(() =>
@@ -70,6 +76,14 @@ export const billingScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 23,
   slug: "23-billing-medicare",
   screens: [
+    {
+      id: "billing.medicare-notices",
+      path: "/billing/medicare-notices",
+      title: "Medicare Notices",
+      navGroup: "Billing",
+      requiredAnyPermission: ["billing.noe.read", "billing.notr.read"],
+      screen: MedicareNoticesWorkspace,
+    },
     {
       id: "billing.operations",
       path: "/billing/operations",
@@ -173,6 +187,13 @@ export const billingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "billing.noe.read",
       screen: NoeDetail,
+    },
+    {
+      id: "billing.noe.exception-review",
+      path: "/billing/noe/:noeId/exception-review",
+      title: "NOE Exception Review",
+      requiredPermission: "billing.noe.read",
+      screen: NoeExceptionReview,
     },
     // --- NOTR queue + detail (§5.1 #10/#11) ---
     {

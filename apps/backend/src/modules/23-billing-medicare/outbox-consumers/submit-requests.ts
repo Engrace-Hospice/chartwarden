@@ -67,6 +67,13 @@ function queueRequest(event: DispatchableOutboxEvent): {
       event.payload.claimControlNumber,
       "claimControlNumber",
     );
+    const externalPatientControlNumber = event.payload.externalPatientControlNumber;
+    if (
+      externalPatientControlNumber !== undefined &&
+      (typeof externalPatientControlNumber !== "string" ||
+        !/^[A-Z0-9]{17}$/.test(externalPatientControlNumber))
+    )
+      throw new Error("M23 submission request has invalid 'externalPatientControlNumber'");
     const attemptIndex = event.payload.attemptIndex;
     if (!Number.isInteger(attemptIndex) || (attemptIndex as number) < 0) {
       throw new Error("M23 submission request has invalid 'attemptIndex'");
@@ -92,6 +99,9 @@ function queueRequest(event: DispatchableOutboxEvent): {
         claimId,
         submissionId,
         claimControlNumber,
+        ...(typeof externalPatientControlNumber === "string"
+          ? { externalPatientControlNumber }
+          : {}),
         attemptIndex,
         reviewedSourceFingerprint,
         ...(typeof expectedRouteFingerprint === "string" ? { expectedRouteFingerprint } : {}),

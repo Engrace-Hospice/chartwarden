@@ -102,9 +102,14 @@ export {
   type NoeExceptionReviewService,
   type NoeExceptionEvidenceReader,
   buildMedicareNoticeWorklistService,
+  buildMedicareNoticeOperationalIssueEvaluator,
   buildDrizzleArtifactReadinessReader,
   type MedicareNoticeWorklistService,
 } from "./routes/index";
+export {
+  buildMedicareNoticeOperationalIssueService,
+  type MedicareNoticeOperationalIssueService,
+} from "./services/medicare-notice-operational-issues";
 export { mountM23Routes } from "./routes/mount";
 export {
   type Claim837iPartiesDeps,

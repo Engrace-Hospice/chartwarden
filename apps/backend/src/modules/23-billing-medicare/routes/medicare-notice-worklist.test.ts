@@ -4,7 +4,11 @@ import type {
   TransferNoticeService,
   TransferNoticeView,
 } from "../services/transfer-notice-service";
-import { buildMedicareNoticeWorklistService } from "./medicare-notice-worklist";
+import {
+  buildMedicareNoticeWorklistService,
+  evaluateMedicareNoticeOperationalIssues,
+  operationalIssueEvaluationOf,
+} from "./medicare-notice-worklist";
 import type { M23ReadRouteService, NoeView, NotrView } from "./read-service";
 
 const actor = {
@@ -114,6 +118,84 @@ function transfer(id: string, action: "original" | "void", createdAt: string): T
 }
 
 describe("Medicare notice unified worklist", () => {
+  it("derives stable deadline, transport and in-doubt follow-ups without treating a receipt as acceptance", () => {
+    const input = {
+      identity: { type: "noe" as const, noticeId: "00000000-0000-4000-8000-000000000031" },
+      deadlineRisk: "due_today",
+      lifecycle: "outcome_unknown",
+      latestAttempt: {
+        submissionId: "00000000-0000-4000-8000-000000000032",
+        outcome: "submitted",
+        dispatchState: "in_doubt",
+      },
+      readiness: [
+        {
+          key: "transport",
+          state: "blocked" as const,
+          reasonCode: "CH_NOT_WIRED",
+          message: "Notice transport support is not verified.",
+          blockingStage: "dispatch" as const,
+        },
+      ],
+      macAcceptance: "not_verified" as const,
+      exceptionReview: null,
+    };
+    const first = evaluateMedicareNoticeOperationalIssues(input);
+    const second = evaluateMedicareNoticeOperationalIssues(input);
+    expect(first).toEqual(second);
+    expect(first.map((issue) => issue.identity.kind)).toEqual([
+      "deadline_due_today",
+      "submission_in_doubt",
+      "transport_unavailable",
+    ]);
+    expect(
+      first.find((issue) => issue.identity.kind === "submission_in_doubt")?.permittedAction,
+    ).toBe("open_notice");
+    expect(
+      first.find((issue) => issue.identity.kind === "transport_unavailable")?.responsibleArea,
+    ).toBe("platform_integration");
+  });
+
+  it("does not invent a transfer deadline or treat a transport receipt as MAC acceptance", () => {
+    const issues = evaluateMedicareNoticeOperationalIssues({
+      identity: { type: "transfer", noticeId: "00000000-0000-4000-8000-000000000041" },
+      deadlineRisk: "not_applicable",
+      lifecycle: "transport_receipt_confirmed",
+      latestAttempt: {
+        submissionId: "00000000-0000-4000-8000-000000000042",
+        outcome: "transport_receipt_confirmed",
+        dispatchState: "finished",
+      },
+      readiness: [],
+      macAcceptance: "not_verified",
+      exceptionReview: null,
+    });
+    expect(issues.map((issue) => issue.identity.kind)).toEqual(["mac_evidence_pending"]);
+    expect(issues[0]?.summary).toContain("verified MAC acceptance evidence is still pending");
+  });
+
+  it("keeps operator-attested exception decisions separate from MAC acceptance and surfaces denial follow-up", () => {
+    const issues = evaluateMedicareNoticeOperationalIssues({
+      identity: { type: "noe", noticeId: "00000000-0000-4000-8000-000000000051" },
+      deadlineRisk: "overdue",
+      lifecycle: "ack_pending",
+      latestAttempt: null,
+      readiness: [],
+      macAcceptance: "not_verified",
+      exceptionReview: {
+        status: "external_denied_recorded",
+        decisionProvenance: "operator_attested_document",
+        updatedAt: "2026-11-13T12:00:00.000Z",
+        evidenceCount: 1,
+      },
+    });
+    expect(issues.map((issue) => issue.identity.kind)).toEqual([
+      "deadline_overdue",
+      "exception_review_follow_up",
+    ]);
+    expect(issues[1]?.summary).toContain("not a verified MAC acknowledgment");
+  });
+
   it("uses type-qualified identity and stable global pagination across source cursors", async () => {
     const created = "2026-11-13T12:00:00.000Z";
     const noeRows = [noe("00000000-0000-4000-8000-000000000010", created)];
@@ -266,5 +348,32 @@ describe("Medicare notice unified worklist", () => {
     expect(page.items[0]?.exceptionReview?.decisionProvenance).toBe("operator_attested_document");
     expect(page.items[0]?.macAcceptance).toBe("not_verified");
     expect(page.items[0]?.deadline.risk).toBe("approaching");
+  });
+
+  it("maps projected evidence to stable durable observations without patient identifiers", async () => {
+    const id = "00000000-0000-4000-8000-000000000020";
+    const patientId = "00000000-0000-4000-8000-000000000099";
+    const read = {
+      listNoes: vi.fn(async () => ({
+        items: [{ ...noe(id, "2026-11-13T12:00:00.000Z"), patientId }],
+        hasMore: false,
+        nextCursor: null,
+      })),
+      listNotrs: vi.fn(),
+    };
+    const service = buildMedicareNoticeWorklistService({
+      readService: read as unknown as M23ReadRouteService,
+      transferNoticeService: { list: vi.fn() } as unknown as TransferNoticeService,
+    });
+    const page = await service.list(actor, { types: ["noe"] }, ["noe"], undefined, 10);
+    const evaluation = operationalIssueEvaluationOf(page.items[0]!);
+    expect(evaluation.observations.map((item) => item.issueCode)).toEqual([
+      "noe_deadline_follow_up",
+      "transport_unavailable",
+    ]);
+    expect(evaluation.observations.every((item) => /^[a-f0-9]{40}$/.test(item.occurrenceKey))).toBe(
+      true,
+    );
+    expect(JSON.stringify(evaluation)).not.toContain(patientId);
   });
 });

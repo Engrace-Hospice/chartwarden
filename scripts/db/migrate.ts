@@ -166,6 +166,31 @@ const HISTORICAL_FILENAME_RENAMES: ReadonlyMap<string, string> = new Map([
     "1480_m36_death_notification_disclosure_integrity.sql",
     "1456_m36_death_notification_disclosure_integrity.sql",
   ],
+  // The published main line owns ordinals 1494-1501. M23's unpublished local migrations moved
+  // forward to 1502-1507; retain checksum-verified adoption for private ledgers that used the
+  // former local names. A filename collision with main is accepted only when the SQL checksum
+  // proves it is the same M23 migration.
+  [
+    "1502_m23_medicare_notice_operational_issues.sql",
+    "1494_m23_medicare_notice_operational_issues.sql",
+  ],
+  ["1503_m23_claimmd_tenant_response_inbox.sql", "1495_m23_claimmd_tenant_response_inbox.sql"],
+  [
+    "1504_m23_claimmd_tenant_response_outcomes.sql",
+    "1496_m23_claimmd_tenant_response_outcomes.sql",
+  ],
+  [
+    "1505_m23_claim_submission_external_identity_binding.sql",
+    "1497_m23_claim_submission_external_identity_binding.sql",
+  ],
+  [
+    "1506_m23_claim_submission_clearinghouse_config_org_fk.sql",
+    "1498_m23_claim_submission_clearinghouse_config_org_fk.sql",
+  ],
+  [
+    "1507_m23_claim_submission_hold_reasons_and_rls.sql",
+    "1499_m23_claim_submission_hold_reasons_and_rls.sql",
+  ],
 ]);
 
 const HISTORICAL_FILENAME_RENAME_LEGACY_CHECKSUMS: ReadonlyMap<string, readonly string[]> = new Map(

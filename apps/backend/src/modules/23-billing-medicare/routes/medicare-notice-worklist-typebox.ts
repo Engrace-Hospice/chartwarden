@@ -58,6 +58,63 @@ const ReadinessCheckSchema = Type.Object({
     Type.Null(),
   ]),
 });
+const OperationalIssueSchema = Type.Object({
+  identity: Type.Object({
+    type: Type.Union([
+      Type.Literal("noe"),
+      Type.Literal("notr"),
+      Type.Literal("transfer"),
+      Type.Literal("cancellation"),
+    ]),
+    noticeId: uuid(),
+    kind: Type.Union(
+      [
+        "deadline_approaching",
+        "deadline_due_today",
+        "deadline_overdue",
+        "mac_rejection",
+        "transport_rejected",
+        "transport_unavailable",
+        "source_or_routing_blocked",
+        "artifact_integrity_hold",
+        "submission_in_doubt",
+        "mac_evidence_pending",
+        "exception_review_follow_up",
+      ].map((value) => Type.Literal(value)),
+    ),
+  }),
+  severity: Type.Union([Type.Literal("critical"), Type.Literal("warning"), Type.Literal("info")]),
+  status: Type.Literal("active"),
+  responsibleArea: Type.Union([
+    Type.Literal("billing"),
+    Type.Literal("organization_administration"),
+    Type.Literal("platform_integration"),
+    Type.Literal("reconciliation"),
+  ]),
+  summary: Type.String({ maxLength: 240 }),
+  permittedAction: Type.Union([
+    Type.Literal("open_notice"),
+    Type.Literal("open_dde_queue"),
+    Type.Literal("open_noe_exception_review"),
+  ]),
+});
+const PersistedOperationalIssueSchema = Type.Object({
+  id: uuid(),
+  issueCode: Type.String(),
+  status: Type.String(),
+  severity: Type.String(),
+  responsibleArea: Type.String(),
+  assignedMembershipId: Nullable(uuid()),
+  acknowledgedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  ddeWorkItemId: Nullable(uuid()),
+  version: Type.Integer(),
+  updatedAt: Type.String({ format: "date-time" }),
+  notificationDeliveryState: Type.Union([
+    Type.Literal("pending"),
+    Type.Literal("retry_exhausted"),
+    Type.Null(),
+  ]),
+});
 export const MedicareNoticeWorklistResponseSchema = Type.Object({
   items: Type.Array(
     Type.Object({
@@ -103,6 +160,8 @@ export const MedicareNoticeWorklistResponseSchema = Type.Object({
           Type.Literal("open_transfer_notice"),
         ]),
       ),
+      operationalIssues: Type.Array(OperationalIssueSchema),
+      persistedIssues: Type.Array(PersistedOperationalIssueSchema),
       createdAt: Type.String(),
     }),
   ),

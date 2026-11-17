@@ -81864,7 +81864,23 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -81986,7 +82002,23 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -82064,7 +82096,28 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "effectiveTo"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "format": "date",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -99110,6 +99163,738 @@
         }
       }
     },
+    "/api/v1/billing/medicare-notice-issues": {
+      "get": {
+        "operationId": "getApiV1BillingMedicarenoticeissues",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "List organization-scoped Medicare notice operational issues visible under the caller's notice permissions",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "active",
+                  "type": "string"
+                },
+                {
+                  "const": "acknowledged",
+                  "type": "string"
+                },
+                {
+                  "const": "assigned",
+                  "type": "string"
+                },
+                {
+                  "const": "resolved",
+                  "type": "string"
+                },
+                {
+                  "const": "superseded",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "organizationId",
+                      "noticeType",
+                      "noticeId",
+                      "issueCode",
+                      "occurrenceKey",
+                      "status",
+                      "severity",
+                      "responsibleArea",
+                      "ddeWorkItemId",
+                      "assignedMembershipId",
+                      "acknowledgedAt",
+                      "firstDetectedAt",
+                      "lastEvaluatedAt",
+                      "version",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "organizationId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "noticeType": {
+                        "anyOf": [
+                          {
+                            "const": "noe",
+                            "type": "string"
+                          },
+                          {
+                            "const": "notr",
+                            "type": "string"
+                          },
+                          {
+                            "const": "transfer",
+                            "type": "string"
+                          },
+                          {
+                            "const": "cancellation",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "noticeId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "issueCode": {
+                        "type": "string"
+                      },
+                      "occurrenceKey": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "active",
+                            "type": "string"
+                          },
+                          {
+                            "const": "acknowledged",
+                            "type": "string"
+                          },
+                          {
+                            "const": "assigned",
+                            "type": "string"
+                          },
+                          {
+                            "const": "resolved",
+                            "type": "string"
+                          },
+                          {
+                            "const": "superseded",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "severity": {
+                        "anyOf": [
+                          {
+                            "const": "info",
+                            "type": "string"
+                          },
+                          {
+                            "const": "warning",
+                            "type": "string"
+                          },
+                          {
+                            "const": "critical",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "responsibleArea": {
+                        "type": "string"
+                      },
+                      "ddeWorkItemId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "assignedMembershipId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "acknowledgedAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "firstDetectedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "lastEvaluatedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "integer"
+                      },
+                      "createdAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/medicare-notice-issues/{id}/acknowledge": {
+      "post": {
+        "operationId": "postApiV1BillingMedicarenoticeissuesByIdAcknowledge",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Acknowledge that an authorized operator has seen a Medicare notice issue; does not resolve or file the notice",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "noticeType",
+                    "noticeId",
+                    "issueCode",
+                    "occurrenceKey",
+                    "status",
+                    "severity",
+                    "responsibleArea",
+                    "ddeWorkItemId",
+                    "assignedMembershipId",
+                    "acknowledgedAt",
+                    "firstDetectedAt",
+                    "lastEvaluatedAt",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "noticeType": {
+                      "anyOf": [
+                        {
+                          "const": "noe",
+                          "type": "string"
+                        },
+                        {
+                          "const": "notr",
+                          "type": "string"
+                        },
+                        {
+                          "const": "transfer",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancellation",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "noticeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "issueCode": {
+                      "type": "string"
+                    },
+                    "occurrenceKey": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "acknowledged",
+                          "type": "string"
+                        },
+                        {
+                          "const": "assigned",
+                          "type": "string"
+                        },
+                        {
+                          "const": "resolved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "severity": {
+                      "anyOf": [
+                        {
+                          "const": "info",
+                          "type": "string"
+                        },
+                        {
+                          "const": "warning",
+                          "type": "string"
+                        },
+                        {
+                          "const": "critical",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "responsibleArea": {
+                      "type": "string"
+                    },
+                    "ddeWorkItemId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "assignedMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "firstDetectedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "lastEvaluatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/medicare-notice-issues/{id}/assign": {
+      "post": {
+        "operationId": "postApiV1BillingMedicarenoticeissuesByIdAssign",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Assign or unassign a Medicare notice operational issue to an authorized active organization member",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). The same key with a different body is 409 IDEMPOTENCY_CONFLICT. A duplicate that arrives while the first request is still running is 409 IDEMPOTENCY_IN_FLIGHT: keep the key and retry with the SAME key for at most 15 minutes (renewing it would start a second write). A claim still pending after 15 minutes answers 409 IDEMPOTENCY_KEY_STUCK: the first request's outcome is unknown, so do not retry with this key and do not assume it failed; read the resource to see whether the change was applied, and use a new key only if it was not.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "noticeType",
+                    "noticeId",
+                    "issueCode",
+                    "occurrenceKey",
+                    "status",
+                    "severity",
+                    "responsibleArea",
+                    "ddeWorkItemId",
+                    "assignedMembershipId",
+                    "acknowledgedAt",
+                    "firstDetectedAt",
+                    "lastEvaluatedAt",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "noticeType": {
+                      "anyOf": [
+                        {
+                          "const": "noe",
+                          "type": "string"
+                        },
+                        {
+                          "const": "notr",
+                          "type": "string"
+                        },
+                        {
+                          "const": "transfer",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancellation",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "noticeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "issueCode": {
+                      "type": "string"
+                    },
+                    "occurrenceKey": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "acknowledged",
+                          "type": "string"
+                        },
+                        {
+                          "const": "assigned",
+                          "type": "string"
+                        },
+                        {
+                          "const": "resolved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "severity": {
+                      "anyOf": [
+                        {
+                          "const": "info",
+                          "type": "string"
+                        },
+                        {
+                          "const": "warning",
+                          "type": "string"
+                        },
+                        {
+                          "const": "critical",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "responsibleArea": {
+                      "type": "string"
+                    },
+                    "ddeWorkItemId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "assignedMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "acknowledgedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "firstDetectedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "lastEvaluatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "assignedMembershipId"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "assignedMembershipId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/medicare-notice-issues/{id}/history": {
+      "get": {
+        "operationId": "getApiV1BillingMedicarenoticeissuesByIdHistory",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Read append-only, PHI-safe event history for an authorized Medicare notice operational issue",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "eventType",
+                      "reasonCode",
+                      "occurredAt"
+                    ],
+                    "properties": {
+                      "eventType": {
+                        "type": "string"
+                      },
+                      "reasonCode": {
+                        "type": "string"
+                      },
+                      "occurredAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/billing/medicare-notice-worklist": {
       "get": {
         "operationId": "getApiV1BillingMedicarenoticeworklist",
@@ -99333,6 +100118,8 @@
                           "macAcceptance",
                           "exceptionReview",
                           "nextActions",
+                          "operationalIssues",
+                          "persistedIssues",
                           "createdAt"
                         ],
                         "properties": {
@@ -99604,6 +100391,256 @@
                               ]
                             }
                           },
+                          "operationalIssues": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "identity",
+                                "severity",
+                                "status",
+                                "responsibleArea",
+                                "summary",
+                                "permittedAction"
+                              ],
+                              "properties": {
+                                "identity": {
+                                  "type": "object",
+                                  "required": [
+                                    "type",
+                                    "noticeId",
+                                    "kind"
+                                  ],
+                                  "properties": {
+                                    "type": {
+                                      "anyOf": [
+                                        {
+                                          "const": "noe",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "notr",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "transfer",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "cancellation",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "noticeId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "anyOf": [
+                                        {
+                                          "const": "deadline_approaching",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "deadline_due_today",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "deadline_overdue",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "mac_rejection",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "transport_rejected",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "transport_unavailable",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "source_or_routing_blocked",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "artifact_integrity_hold",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "submission_in_doubt",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "mac_evidence_pending",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "exception_review_follow_up",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "severity": {
+                                  "anyOf": [
+                                    {
+                                      "const": "critical",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "warning",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "info",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "status": {
+                                  "const": "active",
+                                  "type": "string"
+                                },
+                                "responsibleArea": {
+                                  "anyOf": [
+                                    {
+                                      "const": "billing",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "organization_administration",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "platform_integration",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "reconciliation",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "summary": {
+                                  "maxLength": 240,
+                                  "type": "string"
+                                },
+                                "permittedAction": {
+                                  "anyOf": [
+                                    {
+                                      "const": "open_notice",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "open_dde_queue",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "open_noe_exception_review",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "persistedIssues": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "issueCode",
+                                "status",
+                                "severity",
+                                "responsibleArea",
+                                "assignedMembershipId",
+                                "acknowledgedAt",
+                                "ddeWorkItemId",
+                                "version",
+                                "updatedAt",
+                                "notificationDeliveryState"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "issueCode": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "type": "string"
+                                },
+                                "severity": {
+                                  "type": "string"
+                                },
+                                "responsibleArea": {
+                                  "type": "string"
+                                },
+                                "assignedMembershipId": {
+                                  "anyOf": [
+                                    {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "acknowledgedAt": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "ddeWorkItemId": {
+                                  "anyOf": [
+                                    {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "version": {
+                                  "type": "integer"
+                                },
+                                "updatedAt": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "notificationDeliveryState": {
+                                  "anyOf": [
+                                    {
+                                      "const": "pending",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "retry_exhausted",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
                           "createdAt": {
                             "type": "string"
                           }
@@ -99714,7 +100751,23 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -240819,7 +241872,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "List auditable NOE late-filing exception reviews",
+        "summary": "List protected NOE exception-review records; these are operator-attested external workflows, not MAC decisions",
         "parameters": [
           {
             "name": "id",
@@ -240827,6 +241880,25 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
             }
           }
         ],
@@ -241056,7 +242128,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Create an auditable NOE late-filing exception review backed by protected evidence",
+        "summary": "Start an operator-managed NOE exception review with protected M22 evidence; does not request or approve an exception",
         "parameters": [
           {
             "name": "id",
@@ -241078,7 +242150,205 @@
         ],
         "responses": {
           "201": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "noeId",
+                    "category",
+                    "justificationDocumentId",
+                    "status",
+                    "evidenceDocumentIds",
+                    "externalRequestReference",
+                    "externalRequestDate",
+                    "externalAuthority",
+                    "externalDecision",
+                    "externalDecisionProvenance",
+                    "externalDecisionDate",
+                    "externalDecisionDocumentId",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "noeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "category": {
+                      "anyOf": [
+                        {
+                          "const": "operations_disruption",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cms_mac_system_issue",
+                          "type": "string"
+                        },
+                        {
+                          "const": "new_hospice_access_delay",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other_external_determination",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "justificationDocumentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "evidence_required",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready_for_external_request",
+                          "type": "string"
+                        },
+                        {
+                          "const": "request_recorded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "awaiting_external_determination",
+                          "type": "string"
+                        },
+                        {
+                          "const": "external_approved_recorded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "external_denied_recorded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "withdrawn",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "evidenceDocumentIds": {
+                      "type": "array",
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "externalRequestReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalRequestDate": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalAuthority": {
+                      "anyOf": [
+                        {
+                          "const": "a_b_mac",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cms",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecision": {
+                      "anyOf": [
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "denied",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecisionProvenance": {
+                      "anyOf": [
+                        {
+                          "const": "operator_attested_document",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecisionDate": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecisionDocumentId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -241144,7 +242414,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Attach protected evidence to an existing NOE exception review",
+        "summary": "Attach additional authorized M22 evidence to an open NOE exception review",
         "parameters": [
           {
             "name": "id",
@@ -241174,7 +242444,205 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "noeId",
+                    "category",
+                    "justificationDocumentId",
+                    "status",
+                    "evidenceDocumentIds",
+                    "externalRequestReference",
+                    "externalRequestDate",
+                    "externalAuthority",
+                    "externalDecision",
+                    "externalDecisionProvenance",
+                    "externalDecisionDate",
+                    "externalDecisionDocumentId",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "noeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "category": {
+                      "anyOf": [
+                        {
+                          "const": "operations_disruption",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cms_mac_system_issue",
+                          "type": "string"
+                        },
+                        {
+                          "const": "new_hospice_access_delay",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other_external_determination",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "justificationDocumentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "evidence_required",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready_for_external_request",
+                          "type": "string"
+                        },
+                        {
+                          "const": "request_recorded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "awaiting_external_determination",
+                          "type": "string"
+                        },
+                        {
+                          "const": "external_approved_recorded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "external_denied_recorded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "withdrawn",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "evidenceDocumentIds": {
+                      "type": "array",
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "externalRequestReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalRequestDate": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalAuthority": {
+                      "anyOf": [
+                        {
+                          "const": "a_b_mac",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cms",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecision": {
+                      "anyOf": [
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "denied",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecisionProvenance": {
+                      "anyOf": [
+                        {
+                          "const": "operator_attested_document",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecisionDate": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecisionDocumentId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -241220,7 +242688,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Read the immutable event history for an NOE exception review",
+        "summary": "Read append-only NOE exception-review events and safe evidence references",
         "parameters": [
           {
             "name": "id",
@@ -241268,7 +242736,40 @@
                           "fromStatus": {
                             "anyOf": [
                               {
-                                "type": "string"
+                                "anyOf": [
+                                  {
+                                    "const": "draft",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "evidence_required",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "ready_for_external_request",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "request_recorded",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "awaiting_external_determination",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "external_approved_recorded",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "external_denied_recorded",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "withdrawn",
+                                    "type": "string"
+                                  }
+                                ]
                               },
                               {
                                 "type": "null"
@@ -241276,7 +242777,40 @@
                             ]
                           },
                           "toStatus": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "const": "draft",
+                                "type": "string"
+                              },
+                              {
+                                "const": "evidence_required",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ready_for_external_request",
+                                "type": "string"
+                              },
+                              {
+                                "const": "request_recorded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "awaiting_external_determination",
+                                "type": "string"
+                              },
+                              {
+                                "const": "external_approved_recorded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "external_denied_recorded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "withdrawn",
+                                "type": "string"
+                              }
+                            ]
                           },
                           "occurredAt": {
                             "format": "date-time",
@@ -241312,7 +242846,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Record a MAC or CMS NOE exception decision with protected evidence",
+        "summary": "Record an externally received decision with step-up and supporting M22 evidence; this is operator attestation, not verified MAC acceptance",
         "parameters": [
           {
             "name": "id",
@@ -241342,7 +242876,205 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "noeId",
+                    "category",
+                    "justificationDocumentId",
+                    "status",
+                    "evidenceDocumentIds",
+                    "externalRequestReference",
+                    "externalRequestDate",
+                    "externalAuthority",
+                    "externalDecision",
+                    "externalDecisionProvenance",
+                    "externalDecisionDate",
+                    "externalDecisionDocumentId",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "noeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "category": {
+                      "anyOf": [
+                        {
+                          "const": "operations_disruption",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cms_mac_system_issue",
+                          "type": "string"
+                        },
+                        {
+                          "const": "new_hospice_access_delay",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other_external_determination",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "justificationDocumentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "evidence_required",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready_for_external_request",
+                          "type": "string"
+                        },
+                        {
+                          "const": "request_recorded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "awaiting_external_determination",
+                          "type": "string"
+                        },
+                        {
+                          "const": "external_approved_recorded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "external_denied_recorded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "withdrawn",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "evidenceDocumentIds": {
+                      "type": "array",
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "externalRequestReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalRequestDate": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalAuthority": {
+                      "anyOf": [
+                        {
+                          "const": "a_b_mac",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cms",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecision": {
+                      "anyOf": [
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "denied",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecisionProvenance": {
+                      "anyOf": [
+                        {
+                          "const": "operator_attested_document",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecisionDate": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecisionDocumentId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -241414,7 +243146,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Record the externally submitted NOE exception request and its evidence",
+        "summary": "Record an externally made exception request with step-up and supporting M22 evidence; WardenX does not transmit it",
         "parameters": [
           {
             "name": "id",
@@ -241444,7 +243176,205 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "noeId",
+                    "category",
+                    "justificationDocumentId",
+                    "status",
+                    "evidenceDocumentIds",
+                    "externalRequestReference",
+                    "externalRequestDate",
+                    "externalAuthority",
+                    "externalDecision",
+                    "externalDecisionProvenance",
+                    "externalDecisionDate",
+                    "externalDecisionDocumentId",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "noeId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "category": {
+                      "anyOf": [
+                        {
+                          "const": "operations_disruption",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cms_mac_system_issue",
+                          "type": "string"
+                        },
+                        {
+                          "const": "new_hospice_access_delay",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other_external_determination",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "justificationDocumentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "draft",
+                          "type": "string"
+                        },
+                        {
+                          "const": "evidence_required",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ready_for_external_request",
+                          "type": "string"
+                        },
+                        {
+                          "const": "request_recorded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "awaiting_external_determination",
+                          "type": "string"
+                        },
+                        {
+                          "const": "external_approved_recorded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "external_denied_recorded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "withdrawn",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "evidenceDocumentIds": {
+                      "type": "array",
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "externalRequestReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalRequestDate": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalAuthority": {
+                      "anyOf": [
+                        {
+                          "const": "a_b_mac",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cms",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecision": {
+                      "anyOf": [
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "denied",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecisionProvenance": {
+                      "anyOf": [
+                        {
+                          "const": "operator_attested_document",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecisionDate": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalDecisionDocumentId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

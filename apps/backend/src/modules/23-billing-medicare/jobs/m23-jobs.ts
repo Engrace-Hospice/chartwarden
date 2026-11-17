@@ -7,12 +7,14 @@ import {
   type EligibilityOutcome,
   canTransition as canClaimTransition,
   deriveControlNumber,
+  generateExternalPatientControlNumber,
   medicareReceiptDay,
   parseControlNumber,
   reduce as reduceClaim,
   repositories,
 } from "@chartwarden/billing";
 import type { DbClient } from "@chartwarden/db";
+import * as schema from "@chartwarden/db/schema";
 // apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts — M23 LIVE BullMQ wiring for the §4.8 jobs.
 //
 // The thin, infra-touching adapter that turns the @chartwarden/billing PURE domain (the claim/noe/notr lifecycle
@@ -55,6 +57,7 @@ import {
   scopeKey,
 } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import { eq } from "drizzle-orm";
 import {
   type HoldableJob,
   holdUnlessClaimsBillingEntitled,
@@ -65,6 +68,8 @@ import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/c
 import { reviewedClaimSourceIsStale } from "../services/claim-preview-integrity";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
 import type { MedicareNoticeDispatchStateMachine } from "../services/medicare-notice-dispatch";
+import type { MedicareNoticeIssueObservation } from "../services/medicare-notice-operational-issues";
+import { noticeDeadlineIssueObservation } from "../services/medicare-notice-operational-issues";
 import type { MedicareNoticeRenderer } from "../services/medicare-notice-renderer";
 import { reportRevokedResponsesPending } from "../tenant-clearinghouse/revoked-responses-alert";
 import { isVoidM23Claim } from "../void-claim";
@@ -163,6 +168,7 @@ export interface ClaimSubmitJob {
   readonly claimId: string;
   readonly submissionId: string;
   readonly claimControlNumber: string;
+  readonly externalPatientControlNumber: string;
   readonly attemptIndex: number;
   readonly expectedRouteFingerprint?: string;
   readonly reviewedSourceFingerprint?: string;
@@ -317,6 +323,7 @@ export interface MacPortalPort {
     /** The same claim as Stedi's JSON; a Stedi-bound transport sends this instead of the raw X12. */
     readonly stediJson?: StediClaimJson;
     readonly controlNumber: string;
+    readonly idempotencyKey?: string;
     /** Present for claim submissions so Claim.MD evidence binds the real M23 source attempt. */
     readonly claimId?: string;
     readonly submissionId?: string;
@@ -602,6 +609,15 @@ export interface M23WorkerDeps {
   readonly jurisdictions?: MacJurisdictionListPort;
   /** ADR-0052 — files a DDE work item for each at-risk NOE/NOTR the window-watch crons walk (absent ⇒ no item). */
   readonly ddeWatchdog?: DdeWatchdogPort;
+  /** Persist the same window-watch evidence for the unified operational issue worklist. */
+  readonly noticeIssueSync?: {
+    synchronize(
+      organizationId: string,
+      observations: readonly MedicareNoticeIssueObservation[],
+    ): Promise<void>;
+    flushNotifications(organizationId: string): Promise<number>;
+    evaluateOrganization?(organizationId: string): Promise<void>;
+  };
   /** Structured logger for failures that must not abort the cron (ids only, never PHI). */
   readonly logger?: { error(fields: Record<string, unknown>, message: string): void };
   /**
@@ -672,7 +688,10 @@ function x12Of(deps: Pick<M23WorkerDeps, "x12">): X12ClientPort {
   );
 }
 
-function macPortalOf(deps: Pick<M23WorkerDeps, "macPortal" | "transport">): MacPortalPort {
+function macPortalOf(
+  deps: Pick<M23WorkerDeps, "macPortal" | "transport">,
+  resolvedOrgTransport?: M23TransportDeps | null,
+): MacPortalPort {
   const u = (fn: string) =>
     unboundWorkerPort(
       `macPortal.${fn}`,
@@ -687,7 +706,22 @@ function macPortalOf(deps: Pick<M23WorkerDeps, "macPortal" | "transport">): MacP
   // #707: a configured vendor owns every upload; the legacy portal is never the fallback. (The pending-file pulls and
   // the health probe stay legacy: the ack crons branch on `activeTransport` before they reach the portal.)
   // Tenant clearinghouses: every organization resolves its own transport and never falls back to the legacy portal.
-  if (hasPerOrgTransport(deps)) return { ...legacy, upload: transportUploadPerOrg(deps) };
+  if (hasPerOrgTransport(deps)) {
+    if (resolvedOrgTransport === undefined)
+      return { ...legacy, upload: transportUploadPerOrg(deps) };
+    // The caller already checked this immutable submission's binding against one authoritative
+    // per-org resolution. Keep that exact adapter for the send; resolving again here could route
+    // the upload through a config changed after validation.
+    if (resolvedOrgTransport === null) {
+      return {
+        ...legacy,
+        upload: async () => {
+          throw new Error("the organization's clearinghouse binding is unavailable");
+        },
+      };
+    }
+    return { ...legacy, upload: transportUpload(resolvedOrgTransport) };
+  }
   const transport = activeTransport(deps);
   return transport ? { ...legacy, upload: transportUpload(transport) } : legacy;
 }
@@ -933,6 +967,7 @@ async function generateClaim837i(
   organizationId: string,
   claim: Parameters<typeof claimDocumentFor>[0] & { readonly providerEntityId: string },
   claimControlNumber: string,
+  externalPatientControlNumber: string,
   /**
    * The org's transport, resolved by the CALLER (see {@link transportForOrg}): resolving it here, inside the caller's open
    * transaction, took a second pooled connection while that transaction held one, which can starve the pool when every
@@ -959,7 +994,7 @@ async function generateClaim837i(
         contextFor: legacyContext.contextFor,
         organizationId,
         claim,
-        claimControlNumber,
+        claimControlNumber: externalPatientControlNumber,
         interchangeFor: async (context) => {
           const memo = await legacyAttempts.allocateInterchangeNumber(
             organizationId,
@@ -975,8 +1010,8 @@ async function generateClaim837i(
     const legacy = await x12Of(deps).generate837i({
       organizationId,
       claimId: claim.id,
-      claimControlNumber,
-      claimDocument: claimDocumentFor(claim, claimControlNumber),
+      claimControlNumber: externalPatientControlNumber,
+      claimDocument: claimDocumentFor(claim, externalPatientControlNumber),
     });
     return { ...legacy, sourceFingerprint: null };
   }
@@ -995,7 +1030,7 @@ async function generateClaim837i(
     contextFor: transport.contexts.contextFor,
     organizationId,
     claim,
-    claimControlNumber,
+    claimControlNumber: externalPatientControlNumber,
     // Remembered under the key the transport files this submission under, so a redelivery renders the same ISA13.
     interchangeFor: async (context) => {
       if (!attempts) {
@@ -1113,6 +1148,7 @@ export async function runClaimSubmitWithinLegacyTransaction(
       job.organizationId,
       claim,
       job.claimControlNumber,
+      reservedSubmission.externalPatientControlNumber ?? "",
       orgTransport,
     );
     if (
@@ -1131,7 +1167,7 @@ export async function runClaimSubmitWithinLegacyTransaction(
       });
       return;
     }
-    uploaded = await macPortalOf(deps).upload({
+    uploaded = await macPortalOf(deps, transport).upload({
       organizationId: job.organizationId,
       providerEntityId: claim.providerEntityId,
       effectiveDate: claim.serviceFrom,
@@ -1369,6 +1405,14 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
           attemptIndex,
         })
       : priorSubmission.claimControlNumber;
+  const externalPatientControlNumber =
+    filedAs === null
+      ? generateExternalPatientControlNumber()
+      : priorSubmission.externalPatientControlNumber;
+  if (!externalPatientControlNumber)
+    throw new Error(
+      "historical submission has no external patient control number; retry requires review",
+    );
 
   let generated: {
     readonly x12: string;
@@ -1392,6 +1436,7 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
         job.organizationId,
         claim,
         claimControlNumber,
+        externalPatientControlNumber,
         transport,
       );
       if (
@@ -1407,6 +1452,14 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
           kind: "claim_837i",
           claimId: job.claimId,
           claimControlNumber,
+          externalPatientControlNumber,
+          clearinghouseVendor: priorSubmission.clearinghouseVendor,
+          clearinghouseAccountReference: priorSubmission.clearinghouseAccountReference,
+          clearinghouseMode: priorSubmission.clearinghouseMode,
+          clearinghouseConfigId: priorSubmission.clearinghouseConfigId,
+          clearinghouseConfigVersion: priorSubmission.clearinghouseConfigVersion,
+          clearinghouseCredentialFingerprint: priorSubmission.clearinghouseCredentialFingerprint,
+          expectedRouteFingerprint: priorSubmission.expectedRouteFingerprint,
           attemptIndex,
           outcome: "held_stale_source",
           outcomeReason: "CLAIM_PREVIEW_STALE",
@@ -1417,14 +1470,15 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
         });
         return;
       }
-      uploaded = await macPortalOf(deps).upload({
+      uploaded = await macPortalOf(deps, transport).upload({
         organizationId: job.organizationId,
         providerEntityId: claim.providerEntityId,
         kind: "claim_837i",
         x12: generated.x12,
         stediJson: generated.stediJson,
         submittedLines: generated.submittedLines,
-        controlNumber: claimControlNumber,
+        controlNumber: externalPatientControlNumber,
+        idempotencyKey: `m23.claim.${claimControlNumber}`,
         claimId: job.claimId,
         submissionId: job.submissionId,
         attemptIndex,
@@ -1442,6 +1496,14 @@ export async function runClaimSubmitRetryWithinLegacyTransaction(
     kind: "claim_837i",
     claimId: job.claimId,
     claimControlNumber,
+    externalPatientControlNumber,
+    clearinghouseVendor: priorSubmission.clearinghouseVendor,
+    clearinghouseAccountReference: priorSubmission.clearinghouseAccountReference,
+    clearinghouseMode: priorSubmission.clearinghouseMode,
+    clearinghouseConfigId: priorSubmission.clearinghouseConfigId,
+    clearinghouseConfigVersion: priorSubmission.clearinghouseConfigVersion,
+    clearinghouseCredentialFingerprint: priorSubmission.clearinghouseCredentialFingerprint,
+    expectedRouteFingerprint: priorSubmission.expectedRouteFingerprint,
     attemptIndex,
     reviewedSourceFingerprint: priorSubmission.reviewedSourceFingerprint,
     outcome: failureReason ? (generated ? "failed_portal" : "failed_worker") : "submitted",
@@ -1508,16 +1570,74 @@ export async function runClaimSubmit(
     if (!claim) throw new Error("M23 claim submission target not found");
     const submission = await submissions.findById(job.submissionId);
     if (
+      submission &&
+      submission.claimId === job.claimId &&
+      submission.organizationId === job.organizationId &&
+      submission.providerEntityId === claim.providerEntityId &&
+      submission.attemptIndex === job.attemptIndex &&
+      (!submission.externalPatientControlNumber || !job.externalPatientControlNumber)
+    ) {
+      if (submission.outcome === "queued" && submission.dispatchState === "pending") {
+        await submissions.terminalize(job.submissionId, {
+          outcome: "held_stale_source",
+          outcomeReason: "EXTERNAL_PCN_REQUIRES_REVIEW",
+          generatedFileUri: null,
+          submittedAt: null,
+          workerCorrelationId: null,
+        });
+      }
+      return null;
+    }
+    if (
       !submission ||
       submission.claimId !== job.claimId ||
       submission.organizationId !== job.organizationId ||
       submission.providerEntityId !== claim.providerEntityId ||
       submission.attemptIndex !== job.attemptIndex ||
-      submission.claimControlNumber !== job.claimControlNumber
+      submission.claimControlNumber !== job.claimControlNumber ||
+      submission.externalPatientControlNumber !== job.externalPatientControlNumber
     ) {
       throw new Error("claim submission reservation does not match the worker job");
     }
     if (submission.outcome !== "queued" || submission.dispatchState === "finished") return null;
+    if (
+      submission.expectedRouteFingerprint !== null &&
+      job.expectedRouteFingerprint !== undefined &&
+      submission.expectedRouteFingerprint !== job.expectedRouteFingerprint
+    ) {
+      if (submission.dispatchState === "pending")
+        await submissions.terminalize(job.submissionId, {
+          outcome: "held_stale_source",
+          outcomeReason: "CLEARINGHOUSE_ROUTE_CHANGED",
+          generatedFileUri: null,
+          submittedAt: null,
+          workerCorrelationId: null,
+        });
+      return null;
+    }
+    const hasPersistedClearinghouseBinding = Boolean(
+      submission.clearinghouseVendor ||
+        submission.clearinghouseAccountReference ||
+        submission.clearinghouseMode ||
+        submission.clearinghouseConfigId ||
+        submission.clearinghouseConfigVersion ||
+        submission.clearinghouseCredentialFingerprint ||
+        submission.expectedRouteFingerprint,
+    );
+    if (
+      hasPersistedClearinghouseBinding &&
+      !(await claimSubmissionBindingMatches(tx as unknown as BillingDb, submission, orgTransport))
+    ) {
+      if (submission.dispatchState === "pending")
+        await submissions.terminalize(job.submissionId, {
+          outcome: "held_stale_source",
+          outcomeReason: "CLEARINGHOUSE_BINDING_CHANGED",
+          generatedFileUri: null,
+          submittedAt: null,
+          workerCorrelationId: null,
+        });
+      return null;
+    }
     if (submission.dispatchState === "sending" || submission.dispatchState === "in_doubt") {
       return { kind: "already_started" as const, claim, submission };
     }
@@ -1569,6 +1689,7 @@ export async function runClaimSubmit(
         job.organizationId,
         claim,
         job.claimControlNumber,
+        job.externalPatientControlNumber,
         orgTransport,
       );
     } catch {
@@ -1704,14 +1825,15 @@ export async function runClaimSubmit(
 
   let uploaded: Awaited<ReturnType<ReturnType<typeof macPortalOf>["upload"]>>;
   try {
-    uploaded = await macPortalOf(deps).upload({
+    uploaded = await macPortalOf(deps, orgTransport).upload({
       organizationId: job.organizationId,
       providerEntityId: prepared.claim.providerEntityId,
       kind: "claim_837i",
       x12: prepared.generated.x12,
       stediJson: prepared.generated.stediJson,
       submittedLines: prepared.generated.submittedLines,
-      controlNumber: job.claimControlNumber,
+      controlNumber: job.externalPatientControlNumber,
+      idempotencyKey: `m23.claim.${job.claimControlNumber}`,
       claimId: job.claimId,
       submissionId: job.submissionId,
       attemptIndex: job.attemptIndex,
@@ -1843,6 +1965,66 @@ export async function runClaimSubmit(
   });
 }
 
+/** Compare the immutable submission-time route with the current tenant configuration before dispatch. */
+export async function claimSubmissionBindingMatches(
+  tx: BillingDb,
+  submission: import("@chartwarden/db/schema").ClaimSubmission,
+  transport: M23TransportDeps | null,
+): Promise<boolean> {
+  const expectedVendor = submission.clearinghouseVendor;
+  if (
+    !expectedVendor ||
+    !submission.clearinghouseAccountReference ||
+    !submission.clearinghouseMode ||
+    !submission.expectedRouteFingerprint
+  )
+    return false;
+  if (!transport || transport.binding.vendor !== expectedVendor) return false;
+  const transaction = tx as BillingDb & { select?: (...args: unknown[]) => unknown };
+  // Lightweight repository fakes exercise the vendor/route fence; production Drizzle handles always expose select().
+  if (typeof transaction.select !== "function") {
+    return (
+      submission.clearinghouseConfigId === null &&
+      submission.clearinghouseConfigVersion === null &&
+      submission.clearinghouseCredentialFingerprint === null
+    );
+  }
+  const [current] = await tx
+    .select({
+      id: schema.tenantClearinghouseConfig.id,
+      vendor: schema.tenantClearinghouseConfig.vendor,
+      mode: schema.tenantClearinghouseConfig.mode,
+      status: schema.tenantClearinghouseConfig.status,
+      version: schema.tenantClearinghouseConfig.version,
+      credentialFingerprint: schema.tenantClearinghouseConfig.credentialFingerprint,
+      organizationId: schema.tenantClearinghouseConfig.organizationId,
+      baaRevokedAt: schema.tenantClearinghouseConfig.baaRevokedAt,
+    })
+    .from(schema.tenantClearinghouseConfig)
+    .where(eq(schema.tenantClearinghouseConfig.organizationId, submission.organizationId))
+    .limit(1);
+  if (submission.clearinghouseConfigId === null) {
+    // The only valid no-row binding is the explicitly configured platform fallback. A tenant row, even inactive,
+    // supersedes that fallback and must never be silently bypassed.
+    return (
+      !current &&
+      submission.clearinghouseConfigVersion === null &&
+      submission.clearinghouseCredentialFingerprint === null
+    );
+  }
+  return Boolean(
+    current &&
+      current.id === submission.clearinghouseConfigId &&
+      current.organizationId === submission.organizationId &&
+      current.status === "active" &&
+      current.baaRevokedAt === null &&
+      current.vendor === expectedVendor &&
+      current.mode === submission.clearinghouseMode &&
+      current.version === submission.clearinghouseConfigVersion &&
+      current.credentialFingerprint === submission.clearinghouseCredentialFingerprint,
+  );
+}
+
 /** Retry requests append the next immutable attempt, then use the same split prepare/send/finalize path. */
 export async function runClaimSubmitRetry(
   _workerTx: BillingDb,
@@ -1864,6 +2046,10 @@ export async function runClaimSubmitRetry(
       prior.attemptIndex !== job.attemptIndex
     )
       throw new Error("claim retry does not match its durable submission");
+    if (!prior.externalPatientControlNumber)
+      throw new Error(
+        "historical submission has no external patient control number; retry requires review",
+      );
     // Queue redelivery after a terminal successful/held attempt must be a no-op. Only known retryable failures
     // may allocate the next immutable attempt; otherwise a late job could append a spurious failed attempt.
     if (
@@ -1878,6 +2064,7 @@ export async function runClaimSubmitRetry(
       return {
         reconcile: true as const,
         claimControlNumber: prior.claimControlNumber,
+        externalPatientControlNumber: prior.externalPatientControlNumber,
         attemptIndex: prior.attemptIndex,
         submissionId: prior.id,
         reviewedSourceFingerprint: prior.reviewedSourceFingerprint,
@@ -1920,6 +2107,14 @@ export async function runClaimSubmitRetry(
       kind: "claim_837i",
       claimId: claim.id,
       claimControlNumber,
+      externalPatientControlNumber: generateExternalPatientControlNumber(),
+      clearinghouseVendor: prior.clearinghouseVendor,
+      clearinghouseAccountReference: prior.clearinghouseAccountReference,
+      clearinghouseMode: prior.clearinghouseMode,
+      clearinghouseConfigId: prior.clearinghouseConfigId,
+      clearinghouseConfigVersion: prior.clearinghouseConfigVersion,
+      clearinghouseCredentialFingerprint: prior.clearinghouseCredentialFingerprint,
+      expectedRouteFingerprint: prior.expectedRouteFingerprint,
       attemptIndex: nextIndex,
       outcome: "queued",
       reviewedSourceFingerprint: prior.reviewedSourceFingerprint,
@@ -1932,6 +2127,7 @@ export async function runClaimSubmitRetry(
     return {
       reconcile: false as const,
       claimControlNumber,
+      externalPatientControlNumber: row.externalPatientControlNumber,
       attemptIndex: nextIndex,
       submissionId: row.id,
       reviewedSourceFingerprint: prior.reviewedSourceFingerprint,
@@ -1943,6 +2139,7 @@ export async function runClaimSubmitRetry(
       organizationId: job.organizationId,
       claimId: job.claimId,
       claimControlNumber: next.claimControlNumber,
+      externalPatientControlNumber: next.externalPatientControlNumber,
       attemptIndex: next.attemptIndex,
       submissionId: next.submissionId,
       expectedRouteFingerprint: job.expectedRouteFingerprint,
@@ -1957,6 +2154,7 @@ export async function runClaimSubmitRetry(
     claimId: job.claimId,
     submissionId: next.submissionId,
     claimControlNumber: next.claimControlNumber,
+    externalPatientControlNumber: next.externalPatientControlNumber,
     attemptIndex: next.attemptIndex,
     expectedRouteFingerprint: job.expectedRouteFingerprint,
     ...(next.reviewedSourceFingerprint
@@ -2872,6 +3070,7 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
 
   const ddeFailures: { organizationId: string; failures: readonly unknown[] }[] = [];
   for (const { organizationId } of orgs) {
+    const issueObservations: MedicareNoticeIssueObservation[] = [];
     await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (txAny) => {
       const tx = txAny as unknown as BillingDb;
       const noes = new NoeRepository(tx);
@@ -2879,6 +3078,13 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
       const candidates = await noes.listWindowWatchCandidates(organizationId, asOf);
       for (const noe of candidates) {
         const days = daysToTarget(noe.windowTargetAt, now);
+        const issue = noticeDeadlineIssueObservation({
+          noticeType: "noe",
+          noticeId: noe.id,
+          sourceVersion: noe.version,
+          daysToDeadline: days,
+        });
+        if (issue) issueObservations.push(issue);
         if (days < 0) {
           await noticeWindowOf(deps).recordBreach({
             tx,
@@ -2898,12 +3104,6 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
               breachedAt: now.toISOString(),
             },
           });
-          await alertsOf(deps).dispatch({
-            alertCode: "m23.noe.window_breached",
-            severity: "critical",
-            organizationId,
-            payload: { noeId: noe.id, admissionId: noe.admissionId },
-          });
         } else if (days <= 2) {
           await outbox.publish(tx, {
             eventName: "m23.noe.window_warning",
@@ -2916,24 +3116,32 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
               daysIntoWindow: NOTICE_WINDOW_DAYS - days,
             },
           });
-          await alertsOf(deps).dispatch({
-            alertCode: "m23.noe.window_warning",
-            severity: "warn",
-            organizationId,
-            payload: {
-              noeId: noe.id,
-              admissionId: noe.admissionId,
-              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-            },
-          });
         }
       }
     });
     // ADR-0052: after (and apart from) the warnings / breach stamps above, so a failure here cannot undo them.
-    ddeFailures.push({
-      organizationId,
-      failures: await queueDdeWorkIsolated(deps, organizationId, "noe", now),
-    });
+    const failures = await queueDdeWorkIsolated(deps, organizationId, "noe", now);
+    if (deps.noticeIssueSync?.evaluateOrganization) {
+      try {
+        await deps.noticeIssueSync.evaluateOrganization(organizationId);
+      } catch (error) {
+        failures.push(error);
+      }
+    } else if (deps.noticeIssueSync && issueObservations.length) {
+      try {
+        await deps.noticeIssueSync.synchronize(organizationId, issueObservations);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (deps.noticeIssueSync) {
+      try {
+        await deps.noticeIssueSync.flushNotifications(organizationId);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    ddeFailures.push({ organizationId, failures });
   }
   reportDdeFailures(deps, "noe", ddeFailures);
 }
@@ -2946,6 +3154,7 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
 
   const ddeFailures: { organizationId: string; failures: readonly unknown[] }[] = [];
   for (const { organizationId } of orgs) {
+    const issueObservations: MedicareNoticeIssueObservation[] = [];
     await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (txAny) => {
       const tx = txAny as unknown as BillingDb;
       const notrs = new NotrRepository(tx);
@@ -2953,6 +3162,13 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
       const candidates = await notrs.listWindowWatchCandidates(organizationId, asOf);
       for (const notr of candidates) {
         const days = daysToTarget(notr.windowTargetAt, now);
+        const issue = noticeDeadlineIssueObservation({
+          noticeType: "notr",
+          noticeId: notr.id,
+          sourceVersion: notr.version,
+          daysToDeadline: days,
+        });
+        if (issue) issueObservations.push(issue);
         if (days < 0) {
           await noticeWindowOf(deps).recordBreach({
             tx,
@@ -2972,12 +3188,6 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
               breachedAt: now.toISOString(),
             },
           });
-          await alertsOf(deps).dispatch({
-            alertCode: "m23.notr.window_breached",
-            severity: "critical",
-            organizationId,
-            payload: { notrId: notr.id },
-          });
         } else if (days <= 2) {
           await outbox.publish(tx, {
             eventName: "m23.notr.window_warning",
@@ -2990,24 +3200,32 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
               daysIntoWindow: NOTICE_WINDOW_DAYS - days,
             },
           });
-          await alertsOf(deps).dispatch({
-            alertCode: "m23.notr.window_warning",
-            severity: "warn",
-            organizationId,
-            payload: {
-              notrId: notr.id,
-              admissionId: notr.admissionId,
-              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-            },
-          });
         }
       }
     });
     // ADR-0052: after (and apart from) the warnings / breach stamps above, so a failure here cannot undo them.
-    ddeFailures.push({
-      organizationId,
-      failures: await queueDdeWorkIsolated(deps, organizationId, "notr", now),
-    });
+    const failures = await queueDdeWorkIsolated(deps, organizationId, "notr", now);
+    if (deps.noticeIssueSync?.evaluateOrganization) {
+      try {
+        await deps.noticeIssueSync.evaluateOrganization(organizationId);
+      } catch (error) {
+        failures.push(error);
+      }
+    } else if (deps.noticeIssueSync && issueObservations.length) {
+      try {
+        await deps.noticeIssueSync.synchronize(organizationId, issueObservations);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (deps.noticeIssueSync) {
+      try {
+        await deps.noticeIssueSync.flushNotifications(organizationId);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    ddeFailures.push({ organizationId, failures });
   }
   reportDdeFailures(deps, "notr", ddeFailures);
 }
@@ -3854,6 +4072,7 @@ export function buildM23WorkerDeps(deps: {
   activeOrgs?: ActiveOrgListPort;
   jurisdictions?: MacJurisdictionListPort;
   ddeWatchdog?: DdeWatchdogPort;
+  noticeIssueSync?: M23WorkerDeps["noticeIssueSync"];
   logger?: { error(fields: Record<string, unknown>, message: string): void };
 }): M23WorkerDeps {
   return {
@@ -3880,6 +4099,7 @@ export function buildM23WorkerDeps(deps: {
     activeOrgs: deps.activeOrgs,
     jurisdictions: deps.jurisdictions,
     ddeWatchdog: deps.ddeWatchdog,
+    noticeIssueSync: deps.noticeIssueSync,
     logger: deps.logger,
   };
 }

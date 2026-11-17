@@ -164,7 +164,11 @@ function x12Problem(x12: string, ctx: ClearinghouseContext, controlNumber: strin
   }
 }
 
-function jsonProblem(document: unknown, ctx: ClearinghouseContext): string | null {
+function jsonProblem(
+  document: unknown,
+  ctx: ClearinghouseContext,
+  controlNumber: string,
+): string | null {
   const { usage } = ctx;
   if (document === null || typeof document !== "object" || Array.isArray(document)) {
     return "JSON document must be an object";
@@ -173,6 +177,11 @@ function jsonProblem(document: unknown, ctx: ClearinghouseContext): string | nul
   const npi = (document as { billing?: { npi?: unknown } }).billing?.npi;
   if (ctx.billingNpi !== undefined && npi !== ctx.billingNpi)
     return "the billing provider NPI does not match the context";
+  const patientControlNumber = (
+    document as { claimInformation?: { patientControlNumber?: unknown } }
+  ).claimInformation?.patientControlNumber;
+  if (patientControlNumber !== controlNumber)
+    return "patientControlNumber does not match submission controlNumber";
   const indicator = (document as { usageIndicator?: unknown }).usageIndicator;
   return indicator === (usage === "test" ? "T" : "P")
     ? null
@@ -343,7 +352,7 @@ export class StediTransport implements ClearinghouseTransport {
     const problem =
       payload.format === "x12"
         ? x12Problem(payload.x12, ctx, submission.controlNumber)
-        : jsonProblem(payload.document, ctx);
+        : jsonProblem(payload.document, ctx, submission.controlNumber);
     if (problem) return refuse(problem);
     let scope: string;
     let identity: string;

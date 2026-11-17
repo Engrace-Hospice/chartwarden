@@ -13,6 +13,11 @@ const AREAS: NavArea[] = [
     views: [
       { to: "/billing/operations", label: "Operations", match: ["/billing/operations"] },
       { to: "/billing/queue", label: "All work", match: ["/billing/queue"] },
+      {
+        to: "/billing/medicare-notices",
+        label: "Medicare notices",
+        match: ["/billing/medicare-notices"],
+      },
       { to: "/billing/noe", label: "NOE / NOTR", match: ["/billing/noe", "/billing/notr"] },
       { to: "/billing/transfer-notices", label: "Transfers", match: ["/billing/transfer-notices"] },
       { to: "/billing/dde", label: "DDE queue", match: ["/billing/dde"] },

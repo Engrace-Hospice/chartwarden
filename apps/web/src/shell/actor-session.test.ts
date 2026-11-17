@@ -121,6 +121,19 @@ describe("FB-T15 canSeeScreen — role-scoped nav/tile gating", () => {
     expect(canSeeScreen({ requiredPermission: "audit.read" }, session)).toBe(false);
   });
 
+  it("a mixed-permission screen is visible when the actor holds any required key", () => {
+    const noticeReader: Session = { ...session, permissions: ["billing.notr.read"] };
+    const screen = { requiredAnyPermission: ["billing.noe.read", "billing.notr.read"] };
+    expect(canSeeScreen(screen, noticeReader)).toBe(true);
+    expect(isScreenDenied(screen, noticeReader)).toBe(false);
+    expect(canSeeScreen(screen, { ...noticeReader, permissions: ["billing.claim.read"] })).toBe(
+      false,
+    );
+    expect(isScreenDenied(screen, { ...noticeReader, permissions: ["billing.claim.read"] })).toBe(
+      true,
+    );
+  });
+
   it("when the permission set is unknown (no session yet) gated screens FAIL CLOSED — hidden (audit #6)", () => {
     expect(canSeeScreen({ requiredPermission: "audit.read" }, null)).toBe(false);
     const noPerms: Session = { userId: "u", organizationId: "org_a" };

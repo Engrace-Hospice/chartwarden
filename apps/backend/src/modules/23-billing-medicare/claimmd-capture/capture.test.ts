@@ -1,4 +1,8 @@
 import type { AccountResponsePage } from "@chartwarden/x12-837-client";
+import {
+  decodeClaimMdCapturedPayload,
+  encodeClaimMdCapturedPayload,
+} from "@chartwarden/x12-837-client";
 import { describe, expect, it, vi } from "vitest";
 import { createClaimMdInboxCipher } from "./cipher";
 import { createClaimMdResponseCapture } from "./service";
@@ -16,6 +20,8 @@ const page: AccountResponsePage = {
   afterCursor: "0",
   nextCursor: "1",
   body: { claim: { pcn: "synthetic" }, last_responseid: "1" },
+  rawPayload: '{"claim":{"pcn":"synthetic"},"last_responseid":"1"}',
+  sourceFormat: "json",
   digest: "a".repeat(64),
   parentCount: 1,
   events: [
@@ -31,6 +37,27 @@ const page: AccountResponsePage = {
 };
 
 describe("Claim.MD response capture service", () => {
+  it("refuses tenant-owned account references before acquiring a platform inbox lease", async () => {
+    const store = {
+      acquire: vi.fn(async () => lease),
+      commit: vi.fn(),
+      release: vi.fn(),
+    };
+    const reader = { fetchAccountResponses: vi.fn() };
+    const service = createClaimMdResponseCapture({
+      store: store as unknown as ReturnType<typeof createClaimMdResponseStore>,
+      reader,
+    });
+
+    await expect(service.runOnce("tenant:org-a", "production")).resolves.toMatchObject({
+      code: "UNSUPPORTED_ACCOUNT_OWNERSHIP",
+      pages: 0,
+      cursor: null,
+    });
+    expect(store.acquire).not.toHaveBeenCalled();
+    expect(reader.fetchAccountResponses).not.toHaveBeenCalled();
+  });
+
   it("does not move the cursor when persistence fails; releases the lease safely", async () => {
     const store = {
       acquire: vi.fn(async () => lease),
@@ -70,9 +97,16 @@ describe("Claim.MD response capture service", () => {
   it("seals account-wide payload with AAD and refuses wrong stream/cursor", () => {
     const key = Buffer.alloc(32, 7);
     const cipher = createClaimMdInboxCipher({ activeId: "test", byId: new Map([["test", key]]) });
-    const sealed = cipher.seal(lease.streamId, "0", JSON.stringify(page.body));
+    const rawPayload = JSON.stringify(page.body);
+    const sealed = cipher.seal(
+      lease.streamId,
+      "0",
+      encodeClaimMdCapturedPayload({ rawPayload, sourceFormat: "json" }),
+    );
     expect(sealed.toString()).not.toContain("synthetic");
-    expect(cipher.open(lease.streamId, "0", sealed)).toEqual(JSON.stringify(page.body));
+    const opened = cipher.open(lease.streamId, "0", sealed);
+    expect(JSON.parse(opened)).toMatchObject({ rawPayload, sourceFormat: "json" });
+    expect(decodeClaimMdCapturedPayload(opened)).toEqual(page.body);
     expect(() => cipher.open(lease.streamId, "1", sealed)).toThrow();
   });
 });

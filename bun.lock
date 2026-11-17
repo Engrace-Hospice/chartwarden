@@ -456,6 +456,9 @@
     "packages/x12-837-client": {
       "name": "@chartwarden/x12-837-client",
       "version": "0.0.0",
+      "dependencies": {
+        "saxes": "^6.0.0",
+      },
     },
     "packages/xero-client": {
       "name": "@chartwarden/xero-client",

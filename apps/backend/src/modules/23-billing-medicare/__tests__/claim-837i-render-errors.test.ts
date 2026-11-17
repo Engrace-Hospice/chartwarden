@@ -1,5 +1,5 @@
-// M23 — render837i turns ANY X12BuildError (the base class, e.g. a refusal raised only by the Stedi-JSON builder)
-// into a field-name-only gap, so a validation the raw builder does not share can never crash the loader.
+// M23 — a Stedi-only builder refusal must not block a valid raw-X12 Claim.MD claim. The Stedi transport boundary
+// separately refuses submission when this optional representation is absent.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const thrown = vi.hoisted(() => ({ makeError: null as null | (() => Error) }));
@@ -22,11 +22,11 @@ describe("render837i", () => {
     thrown.makeError = null;
   });
 
-  it("reports a base X12BuildError as an invalid-field gap (name only, never a value)", () => {
+  it("keeps valid raw X12 when only the Stedi representation refuses the input", () => {
     const r = render837i({} as never);
     expect(r).toEqual({
-      ok: false,
-      gaps: [{ field: "subscriber.address.state", reason: "invalid" }],
+      ok: true,
+      value: { x12: "ISA~" },
     });
   });
 

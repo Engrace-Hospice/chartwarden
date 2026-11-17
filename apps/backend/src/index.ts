@@ -1257,6 +1257,8 @@ import {
   buildMacOnboardingCredentialPort,
   buildMacSecretCipherFromEnv,
   buildMedicareNoticeDispatchStateMachine,
+  buildMedicareNoticeOperationalIssueEvaluator,
+  buildMedicareNoticeOperationalIssueService,
   buildMedicareNoticeWorklistService,
   buildNoeExceptionReviewService,
   buildNoticeWindowPort,
@@ -7945,6 +7947,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             payerNameByCanonicalId: async (tx, payerId) =>
               (await m23ActiveMedicarePayerById(tx, payerId))?.name ?? null,
           });
+          const m23NoticeOperationalIssues = buildMedicareNoticeOperationalIssueService(
+            dbHandle.db,
+            getSeam("AlertEmitter") as AlertEmitter,
+          );
           // ADR-0110 — the claims-billing add-on gate on M23's new-work routes (route-classes.ts); submitting a void
           // claim stays open (read under the caller's org).
           withClaimsBillingGate(
@@ -7972,7 +7978,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                       getSeam("DocumentReader").documentMetadata({ documentId, organizationId }),
                   }),
                   artifactReadiness: buildDrizzleArtifactReadinessReader(dbHandle.db),
+                  operationalIssues: m23NoticeOperationalIssues,
                 }),
+                medicareNoticeOperationalIssueService: m23NoticeOperationalIssues,
                 previewIntegrityKey: process.env.CLAIM_PREVIEW_INTEGRITY_KEY,
                 renderClaimPreview: async ({
                   organizationId,
@@ -7996,6 +8004,34 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                     { binding: clearinghouseBinding, env: process.env },
                     organizationId,
                   );
+                  const resolvedSubmissionBinding = clearinghouseBinding.forOrg
+                    ? await clearinghouseBinding.forOrg(organizationId)
+                    : clearinghouseBinding;
+                  const configSnapshot = await withOrgContext(
+                    dbHandle.db,
+                    { organizationId, userId: actorUserId },
+                    async (tx) => {
+                      const [row] = await (tx as DbClient)
+                        .select({
+                          id: schema.tenantClearinghouseConfig.id,
+                          vendor: schema.tenantClearinghouseConfig.vendor,
+                          mode: schema.tenantClearinghouseConfig.mode,
+                          status: schema.tenantClearinghouseConfig.status,
+                          version: schema.tenantClearinghouseConfig.version,
+                          credentialFingerprint:
+                            schema.tenantClearinghouseConfig.credentialFingerprint,
+                        })
+                        .from(schema.tenantClearinghouseConfig)
+                        .where(eq(schema.tenantClearinghouseConfig.organizationId, organizationId))
+                        .limit(1);
+                      return row ?? null;
+                    },
+                  );
+                  const clearinghouseVendor = resolvedSubmissionBinding.vendor;
+                  const tenantConfigIsActive =
+                    configSnapshot?.status === "active" &&
+                    configSnapshot.vendor === clearinghouseVendor &&
+                    configSnapshot.mode !== null;
                   return withOrgContext(
                     dbHandle.db,
                     { organizationId, userId: actorUserId },
@@ -8028,6 +8064,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                             sourceFingerprint: rendered.sourceFingerprint,
                             accountReference,
                             usage: context.usage,
+                            ...(clearinghouseVendor === "claimmd" || clearinghouseVendor === "stedi"
+                              ? {
+                                  clearinghouseVendor,
+                                  clearinghouseConfigId: tenantConfigIsActive
+                                    ? configSnapshot.id
+                                    : null,
+                                  clearinghouseConfigVersion: tenantConfigIsActive
+                                    ? configSnapshot.version
+                                    : null,
+                                  clearinghouseCredentialFingerprint: tenantConfigIsActive
+                                    ? configSnapshot.credentialFingerprint
+                                    : null,
+                                }
+                              : {}),
                           }
                         : {
                             status: "blocked" as const,
@@ -11381,6 +11431,33 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         }
       },
     };
+    const m23WorkerOperationalIssues = buildMedicareNoticeOperationalIssueService(
+      dbHandle.db,
+      getSeam("AlertEmitter") as AlertEmitter,
+    );
+    const m23WorkerOperationalIssueEvaluator = buildMedicareNoticeOperationalIssueEvaluator({
+      issues: m23WorkerOperationalIssues,
+      worklist: buildMedicareNoticeWorklistService({
+        readService: buildDrizzleM23ReadService(dbHandle.db),
+        transferNoticeService: buildTransferNoticeService(dbHandle.db, {
+          outbox: m23OutboxPublisher,
+          billsOutside: async (organizationId) =>
+            (await getSeam("TenantClearinghouseReader").choiceForOrg(organizationId)).vendor ===
+            "outside",
+          jobs: buildM23OutboxBackedSubmissionGate({
+            "transfer_notice.submit": m23SubmissionQueues !== null,
+          }),
+          transferInFacts: (organizationId, transferEventId) =>
+            transferInNoticeContextForOrg(dbHandle.db, organizationId, transferEventId),
+        }),
+        exceptionReviews: buildNoeExceptionReviewService(dbHandle.db, {
+          documentMetadata: ({ documentId, organizationId }) =>
+            getSeam("DocumentReader").documentMetadata({ documentId, organizationId }),
+        }),
+        artifactReadiness: buildDrizzleArtifactReadinessReader(dbHandle.db),
+        operationalIssues: m23WorkerOperationalIssues,
+      }),
+    });
     const m23CoreWorkerDeps = buildM23WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
@@ -11391,6 +11468,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       // F-161 (#248) — the §4.9 window-watch/portal-health alert routing, over the live M36 AlertEmitter
       // seam (the M27 `WX-PR-013` pattern).
       alerts: m23AlertPort,
+      noticeIssueSync: {
+        synchronize: (organizationId, observations) =>
+          m23WorkerOperationalIssues.synchronize(organizationId, observations),
+        flushNotifications: (organizationId) =>
+          m23WorkerOperationalIssues.flushNotifications(organizationId),
+        evaluateOrganization: (organizationId) =>
+          m23WorkerOperationalIssueEvaluator.evaluateOrganization(organizationId),
+      },
       activeOrgs: m23ActiveOrgs,
       noticeWindow: buildNoticeWindowPort(),
       validationRunner: m23ValidationRunner,

@@ -42,6 +42,11 @@ if [[ "${BIL_TEST_ONLY:-}" == "m23" ]]; then
   bunx vitest run apps/backend/__tests__/m23-claim-validation-overview.live.test.ts
   exit 0
 fi
+if [[ "${BIL_TEST_ONLY:-}" == "m23-claim-submission" ]]; then
+  # The existing CI-registered M23 worker suite includes the migration/PCN/RLS qualification cases.
+  CHARTWARDEN_REQUIRE_LIVE=1 bun run test:m23:claim-submit-worker:live
+  exit 0
+fi
 if [[ "${BIL_TEST_ONLY:-}" == "rls" ]]; then
   bunx vitest run packages/db/migrations/__tests__/m25-rls-isolation.live.test.ts
   exit 0

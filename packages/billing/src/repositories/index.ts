@@ -65,7 +65,10 @@ export {
   type ClaimStateHistoryRecord,
   type NewClaimStateHistoryInput,
 } from "./claim-state-history";
-export { ClaimSubmissionRepository } from "./claim-submission";
+export {
+  ClaimSubmissionRepository,
+  ExternalPatientControlNumberCollisionError,
+} from "./claim-submission";
 export { ClaimAcknowledgmentRepository } from "./claim-acknowledgment";
 export {
   DdeWorkEventRepository,

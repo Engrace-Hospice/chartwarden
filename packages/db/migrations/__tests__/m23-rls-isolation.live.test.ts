@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 /**
  * M23 Billing — Medicare — RLS cross-tenant denial — LIVE Postgres (§3.5 / §9.3).
  *
- * WHY THIS SUITE EXISTS. M23 owns 17 tables and, until now, TWO of them were named in any live RLS
- * suite — the `Live` ratio in IMPLEMENTATION_STATUS read `2/17`. Those are not incidental tables: a
+ * WHY THIS SUITE EXISTS. The M23 persistence covered here includes high-risk claim, beneficiary,
+ * notice-rendering, exception-review, operational-issue and notification-outbox records. Those are
+ * not incidental tables: a
  * `claim` row carries `patient_id`, the admission and election-period ids, dates of service and the
  * billed level of care; `claim_line` carries the HIPPS/Q-code detail; `eligibility_check` carries the
  * Medicare Part-A response for a named patient. The policies were written in 0077 and the audit
@@ -30,6 +31,7 @@ const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 
 type SeedIds = {
+  membership: string;
   pe: string;
   claim: string;
   claimLine: string;
@@ -56,11 +58,19 @@ type SeedIds = {
   claimmdEnrollment: string;
   noeExceptionReview: string;
   noeExceptionReviewEvent: string;
+  operationalIssue: string;
+  operationalIssueEvent: string;
+  operationalIssueNotification: string;
+  tenantResponseAccount: string;
+  tenantResponseCredential: string;
+  tenantResponseBatch: string;
+  tenantResponseItem: string;
+  tenantResponseOutcome: string;
 };
 
 /**
- * Every ORG-SCOPED M23 table. `wage_index_factor` is deliberately absent — it carries no
- * organization_id (CMS-published platform reference data) and is asserted separately below.
+ * The org-scoped M23 tables exercised by this suite. `wage_index_factor` is deliberately absent — it
+ * carries no organization_id (CMS-published platform reference data) and is asserted separately below.
  */
 const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "claim", key: "claim" },
@@ -88,6 +98,20 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "claimmd_medicare_payer_enrollment", key: "claimmdEnrollment" },
   { table: "noe_exception_review", key: "noeExceptionReview" },
   { table: "noe_exception_review_event", key: "noeExceptionReviewEvent" },
+  { table: "medicare_notice_operational_issue", key: "operationalIssue" },
+  { table: "medicare_notice_operational_issue_event", key: "operationalIssueEvent" },
+  {
+    table: "medicare_notice_operational_issue_notification",
+    key: "operationalIssueNotification",
+  },
+  { table: "claimmd_tenant_response_account", key: "tenantResponseAccount" },
+  {
+    table: "claimmd_tenant_response_account_credential",
+    key: "tenantResponseCredential",
+  },
+  { table: "claimmd_tenant_response_batch", key: "tenantResponseBatch" },
+  { table: "claimmd_tenant_response_item", key: "tenantResponseItem" },
+  { table: "claimmd_tenant_response_item_outcome", key: "tenantResponseOutcome" },
 ];
 
 describe.skipIf(!DB_URL)(
@@ -95,6 +119,7 @@ describe.skipIf(!DB_URL)(
   () => {
     let db: Client;
     let a: SeedIds;
+    let b: SeedIds;
 
     async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
       await db.query("SET ROLE chartwarden_app");
@@ -126,10 +151,20 @@ describe.skipIf(!DB_URL)(
       const from = "2026-01-01";
       const to = "2026-01-31";
       const patient = `44444444-4444-4444-4444-44444444444${n}`;
-      const m = "00000000-0000-0000-0000-000000000000"; // membership sentinel
-      const ccn = `00000${n}`;
       const one = async (sql: string, params: unknown[]): Promise<string> =>
         (await db.query(sql, params)).rows[0].id as string;
+      const user = await one(
+        `INSERT INTO "user" (email,email_verified,name,status)
+         VALUES ($1,true,$2,'active') RETURNING id`,
+        [`m23-rls-${n}@example.test`, `M23 RLS Operator ${n}`],
+      );
+      const membership = await one(
+        `INSERT INTO membership (user_id,organization_id,status)
+         VALUES ($1,$2,'active') RETURNING id`,
+        [user, org],
+      );
+      const m = membership;
+      const ccn = `00000${n}`;
 
       const pe = await one(
         `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
@@ -270,6 +305,37 @@ describe.skipIf(!DB_URL)(
        VALUES ($1,$2,decode($3,'hex'),$4,128,'v1') RETURNING id`,
         [org, renderIdentity, "ab".repeat(32), "a".repeat(64)],
       );
+      const exceptionReview = await one(
+        `INSERT INTO noe_exception_review
+         (organization_id,noe_id,category,justification_document_id,status,
+          created_by_membership_id,updated_by_membership_id)
+         VALUES ($1,$2,'operations_disruption',gen_random_uuid(),'draft',$3,$3)
+         RETURNING id`,
+        [org, noe, membership],
+      );
+      const exceptionReviewEvent = await one(
+        `INSERT INTO noe_exception_review_event
+         (organization_id,review_id,event_type,to_status,actor_membership_id)
+         VALUES ($1,$2,'created','draft',$3) RETURNING id`,
+        [org, exceptionReview, membership],
+      );
+      const operationalIssue = await one(
+        `INSERT INTO medicare_notice_operational_issue
+         (organization_id,notice_type,notice_id,issue_code,occurrence_key,severity,responsible_area)
+         VALUES ($1,'noe',$2,'deadline_approaching',$3,'warning','billing') RETURNING id`,
+        [org, noe, `deadline-approaching-${n}`],
+      );
+      const operationalIssueEvent = await one(
+        `INSERT INTO medicare_notice_operational_issue_event
+         (organization_id,issue_id,event_key,event_type,reason_code,next_state)
+         VALUES ($1,$2,$3,'detected','deadline_approaching','active') RETURNING id`,
+        [org, operationalIssue, `issue-detected-${n}`],
+      );
+      const operationalIssueNotification = await one(
+        `INSERT INTO medicare_notice_operational_issue_notification
+         (organization_id,issue_event_id) VALUES ($1,$2) RETURNING id`,
+        [org, operationalIssueEvent],
+      );
       // `notr_one_event_kind`: CHECK (revocation + transfer + discharge event ids = 1) — the NOTR names
       // the ONE M6 event that ended the benefit period, and `trigger_kind` must agree with which id is set.
       const notr = await one(
@@ -351,7 +417,63 @@ describe.skipIf(!DB_URL)(
         [evidenceId, org, pe, claim, submission, `attempt-${n}`, claimLine, payloadSha256],
       );
 
+      const tenantConfig = await one(
+        `INSERT INTO tenant_clearinghouse_config
+         (organization_id,vendor,mode,status,secret_cipher,secret_dek_version,
+          credential_fingerprint,credential_fingerprint_key_id,verification_kind,verification_evidence,
+          verified_at,verified_by_membership_id,activated_at,activated_by_membership_id,
+          baa_vendor,baa_effective_date,baa_document_ref,baa_recorded_at,baa_recorded_by_membership_id,
+          baa_verified_at,baa_verified_by_membership_id,set_by_membership_id)
+         VALUES ($1,'claimmd','test','active','synthetic-encrypted-credential',1,$2,$3,
+          'attested','synthetic account verification',now(),$4,now(),$4,'claimmd','2026-01-01',
+          'ticket-m23-test',now(),$4,now(),$4,$4) RETURNING id`,
+        [org, String(n).repeat(64), "a".repeat(16), membership],
+      );
+      const tenantResponseAccount = await one(
+        `INSERT INTO claimmd_tenant_response_account
+         (organization_id,tenant_config_id,usage,state,verified_by_membership_id,
+          verification_reference,verified_at,coverage_started_at)
+         VALUES ($1,$2,'test','verified',$3,$4,now(),now()) RETURNING id`,
+        [org, tenantConfig, membership, `m23-test-account-${n}`],
+      );
+      const tenantResponseCredential = await one(
+        `INSERT INTO claimmd_tenant_response_account_credential
+         (organization_id,account_id,usage,credential_fingerprint,fingerprint_key_id,
+          verified_by_membership_id,verification_reference,verified_at)
+         VALUES ($1,$2,'test',$3,$4,$5,$6,now()) RETURNING id`,
+        [
+          org,
+          tenantResponseAccount,
+          String(n).repeat(64),
+          "a".repeat(16),
+          membership,
+          `m23-test-key-${n}`,
+        ],
+      );
+      const tenantResponseBatch = await one(
+        `INSERT INTO claimmd_tenant_response_batch
+         (organization_id,account_id,usage,after_cursor,next_cursor,source_format,key_version,
+          payload_cipher,payload_digest,parent_count,item_count,capture_id)
+         VALUES ($1,$2,'test','0','1','json','tenant-test-v1',decode(repeat('ab',32),'hex'),
+          $3,1,1,gen_random_uuid()) RETURNING id`,
+        [org, tenantResponseAccount, "b".repeat(64)],
+      );
+      const tenantResponseItem = await one(
+        `INSERT INTO claimmd_tenant_response_item
+         (organization_id,account_id,batch_id,response_id,source_cursor,parent_index,message_index,
+          payload_digest,capture_state)
+         VALUES ($1,$2,$3,$4,'0',0,0,$5,'captured') RETURNING id`,
+        [org, tenantResponseAccount, tenantResponseBatch, String(n), "c".repeat(64)],
+      );
+      const tenantResponseOutcome = await one(
+        `INSERT INTO claimmd_tenant_response_item_outcome
+         (organization_id,account_id,item_id,consumer_key,idempotency_key,outcome)
+         VALUES ($1,$2,$3,'test.ack','seed-outcome','processed') RETURNING id`,
+        [org, tenantResponseAccount, tenantResponseItem],
+      );
+
       return {
+        membership,
         pe,
         claim,
         claimLine,
@@ -378,12 +500,42 @@ describe.skipIf(!DB_URL)(
         claimmdEnrollment,
         noeExceptionReview,
         noeExceptionReviewEvent,
+        operationalIssue,
+        operationalIssueEvent,
+        operationalIssueNotification,
+        tenantResponseAccount,
+        tenantResponseCredential,
+        tenantResponseBatch,
+        tenantResponseItem,
+        tenantResponseOutcome,
       };
     }
 
     beforeAll(async () => {
       db = new Client({ connectionString: DB_URL });
       await db.connect();
+      // This must execute before resetSchema(): an accidental shared/incorrect target must not get
+      // destructive DDL. The isolated runner passes these values directly into Vitest's env.
+      const identity = await db.query<{
+        database_name: string;
+        cluster_name: string;
+        system_identifier: string;
+        is_superuser: boolean;
+      }>(`
+        SELECT current_database() AS database_name,
+               current_setting('cluster_name') AS cluster_name,
+               (pg_control_system()).system_identifier::text AS system_identifier,
+               (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS is_superuser
+      `);
+      expect(identity.rows).toHaveLength(1);
+      expect(identity.rows[0]).toMatchObject({
+        database_name: expect.stringMatching(/^m23_[a-f0-9]{32}$/),
+        cluster_name: process.env.CHARTWARDEN_TEST_CLUSTER_ID,
+        system_identifier: process.env.CHARTWARDEN_TEST_CLUSTER_SYSTEM_IDENTIFIER,
+        is_superuser: true,
+      });
+      expect(process.env.CHARTWARDEN_TEST_CLUSTER_ID).toMatch(/^chartwarden-m23-[a-f0-9]{32}$/);
+      expect(process.env.CHARTWARDEN_TEST_CLUSTER_SYSTEM_IDENTIFIER).toMatch(/^\d+$/);
       await resetSchema();
       await applyMigrations();
       await db.query(
@@ -391,7 +543,7 @@ describe.skipIf(!DB_URL)(
         [ORG_A, ORG_B],
       );
       a = await seedOrg(ORG_A, 1);
-      await seedOrg(ORG_B, 2);
+      b = await seedOrg(ORG_B, 2);
     }, 120_000);
 
     afterAll(async () => {
@@ -510,6 +662,179 @@ describe.skipIf(!DB_URL)(
         ]),
       );
       expect(upd.rowCount, "org B updated an org-A rule config").toBe(0);
+    });
+
+    it("enforces exception-review and operational-issue tenant ownership with append-only histories", async () => {
+      const foreignIssue = await withOrg(ORG_B, () =>
+        db.query("SELECT id FROM medicare_notice_operational_issue WHERE id=$1", [
+          a.operationalIssue,
+        ]),
+      );
+      expect(foreignIssue.rowCount).toBe(0);
+
+      const foreignReview = await withOrg(ORG_B, () =>
+        db.query("SELECT id FROM noe_exception_review WHERE id=$1", [a.noeExceptionReview]),
+      );
+      expect(foreignReview.rowCount).toBe(0);
+
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            "UPDATE medicare_notice_operational_issue SET assigned_membership_id=$2 WHERE id=$1",
+            [a.operationalIssue, b.membership],
+          ),
+        ),
+      ).rejects.toThrow(/active same-organization membership/);
+
+      await expect(
+        db.query(
+          "UPDATE medicare_notice_operational_issue_event SET reason_code='changed' WHERE id=$1",
+          [a.operationalIssueEvent],
+        ),
+      ).rejects.toThrow(/append-only/);
+      await expect(
+        db.query("DELETE FROM noe_exception_review_event WHERE id=$1", [a.noeExceptionReviewEvent]),
+      ).rejects.toThrow(/append-only/);
+    });
+
+    it("tenant Claim.MD inbox is org-scoped and captured evidence and credential bindings are immutable", async () => {
+      for (const [table, id] of [
+        ["claimmd_tenant_response_account", a.tenantResponseAccount],
+        ["claimmd_tenant_response_account_credential", a.tenantResponseCredential],
+        ["claimmd_tenant_response_batch", a.tenantResponseBatch],
+        ["claimmd_tenant_response_item", a.tenantResponseItem],
+        ["claimmd_tenant_response_item_outcome", a.tenantResponseOutcome],
+      ] as const) {
+        await expect(
+          withOrg(ORG_A, () => db.query(`DELETE FROM ${table} WHERE id=$1`, [id])),
+        ).rejects.toThrow();
+      }
+      const foreignUpdate = await withOrg(ORG_B, () =>
+        db.query("UPDATE claimmd_tenant_response_batch SET captured_at=now() WHERE id=$1", [
+          a.tenantResponseBatch,
+        ]),
+      );
+      expect(foreignUpdate.rowCount).toBe(0);
+      const wrongTenantRead = await withOrg(ORG_B, () =>
+        db.query("SELECT id FROM claimmd_tenant_response_item WHERE id=$1", [a.tenantResponseItem]),
+      );
+      expect(wrongTenantRead.rowCount).toBe(0);
+      const wrongTenantOutcomeRead = await withOrg(ORG_B, () =>
+        db.query("SELECT id FROM claimmd_tenant_response_item_outcome WHERE id=$1", [
+          a.tenantResponseOutcome,
+        ]),
+      );
+      expect(wrongTenantOutcomeRead.rowCount).toBe(0);
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            "UPDATE claimmd_tenant_response_item_outcome SET outcome='quarantined' WHERE id=$1",
+            [a.tenantResponseOutcome],
+          ),
+        ),
+      ).rejects.toThrow();
+      const ownedInsert = await withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO claimmd_tenant_response_batch
+             (organization_id,account_id,usage,after_cursor,next_cursor,source_format,key_version,
+              payload_cipher,payload_digest,parent_count,item_count,capture_id)
+             VALUES ($1,$2,'test','10','11','json','tenant-test-v1',decode(repeat('cd',32),'hex'),
+              $3,0,0,gen_random_uuid()) RETURNING id`,
+          [ORG_A, a.tenantResponseAccount, "d".repeat(64)],
+        ),
+      );
+      expect(ownedInsert.rowCount).toBe(1);
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO claimmd_tenant_response_batch
+               (organization_id,account_id,usage,after_cursor,next_cursor,source_format,key_version,
+                payload_cipher,payload_digest,parent_count,item_count,capture_id)
+               VALUES ($1,$2,'test','10','11','json','tenant-test-v1',decode(repeat('cd',32),'hex'),
+                $3,0,0,gen_random_uuid())`,
+            [ORG_A, a.tenantResponseAccount, "d".repeat(64)],
+          ),
+        ),
+      ).rejects.toThrow();
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            "UPDATE claimmd_tenant_response_account_credential SET verification_reference='changed' WHERE id=$1",
+            [a.tenantResponseCredential],
+          ),
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("deduplicates active issues and keeps issue event plus notification intent transactional", async () => {
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            `INSERT INTO medicare_notice_operational_issue
+             (organization_id,notice_type,notice_id,issue_code,occurrence_key,severity,responsible_area)
+             VALUES ($1,'noe',$2,'deadline_approaching','duplicate-occurrence','critical','billing')`,
+            [ORG_A, a.noe],
+          ),
+        ),
+      ).rejects.toThrow(/duplicate key|med_notice_issue_open_occurrence_uq/);
+
+      const rolledBackEventKey = `rollback-${randomUUID()}`;
+      await withOrg(ORG_A, async () => {
+        await db.query("BEGIN");
+        try {
+          const issue = await db.query<{ id: string }>(
+            `INSERT INTO medicare_notice_operational_issue
+             (organization_id,notice_type,notice_id,issue_code,occurrence_key,severity,responsible_area)
+             VALUES ($1,'noe',$2,'notification_delivery_gap',$3,'warning','platform_integration')
+             RETURNING id`,
+            [ORG_A, a.noe, rolledBackEventKey],
+          );
+          const event = await db.query<{ id: string }>(
+            `INSERT INTO medicare_notice_operational_issue_event
+             (organization_id,issue_id,event_key,event_type,reason_code,next_state)
+             VALUES ($1,$2,$3,'detected','notification_delivery_gap','active') RETURNING id`,
+            [ORG_A, issue.rows[0]?.id, rolledBackEventKey],
+          );
+          await db.query(
+            `INSERT INTO medicare_notice_operational_issue_notification
+             (organization_id,issue_event_id) VALUES ($1,$2)`,
+            [ORG_A, event.rows[0]?.id],
+          );
+        } finally {
+          await db.query("ROLLBACK");
+        }
+      });
+      const persisted = await db.query(
+        "SELECT id FROM medicare_notice_operational_issue_event WHERE event_key=$1",
+        [rolledBackEventKey],
+      );
+      expect(persisted.rowCount).toBe(0);
+    });
+
+    it("fences notification publication and preserves cross-tenant outbox isolation", async () => {
+      const published = await withOrg(ORG_A, () =>
+        db.query(
+          `UPDATE medicare_notice_operational_issue_notification
+              SET state='published',attempts=attempts+1,last_attempt_at=now(),published_at=now()
+            WHERE id=$1 AND state='pending' RETURNING id`,
+          [a.operationalIssueNotification],
+        ),
+      );
+      expect(published.rowCount).toBe(1);
+      const duplicate = await withOrg(ORG_A, () =>
+        db.query(
+          `UPDATE medicare_notice_operational_issue_notification
+              SET attempts=attempts+1 WHERE id=$1 AND state='pending' RETURNING id`,
+          [a.operationalIssueNotification],
+        ),
+      );
+      expect(duplicate.rowCount).toBe(0);
+      const foreign = await withOrg(ORG_B, () =>
+        db.query("SELECT id FROM medicare_notice_operational_issue_notification WHERE id=$1", [
+          a.operationalIssueNotification,
+        ]),
+      );
+      expect(foreign.rowCount).toBe(0);
     });
 
     it("line evidence is append-only for its owner and invisible to another tenant", async () => {
@@ -735,7 +1060,9 @@ describe.skipIf(!DB_URL)(
             `INSERT INTO claim_acknowledgment (organization_id, submission_id, kind, mac_jurisdiction,
              ack_file_uri, ack_received_at, parsed_payload, outcome_status)
            VALUES ($1,$2,'ack_277ca','palmetto_jm',$3,now(),'{}'::jsonb,'accepted')`,
-            [ORG_B, a.submission, uri],
+            // Use org B's own submission so this assertion isolates the global unique-index signal
+            // rather than relying on a cross-organization submission FK reference.
+            [ORG_B, b.submission, uri],
           ),
         ),
         "if this stops throwing, the index became org-scoped — update this case",

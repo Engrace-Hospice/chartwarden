@@ -1,7 +1,8 @@
 // Account-wide Claim.MD response reader for BIL-1.1. No tenant/provider filters and no billing state mapping.
 import { createHash } from "node:crypto";
 import { type ClaimMdRequestCounter, budgetedFetch } from "./claimmd-rate-limit";
-import { type ClaimMdRecord, postForm, str, topAttr, vendorError } from "./claimmd-wire";
+import { parseClaimMdResponseXml } from "./claimmd-response-xml";
+import { type ClaimMdRecord, postFormText, str, topAttr, vendorError } from "./claimmd-wire";
 
 export type ClaimMdUsage = "test" | "production";
 const CURSOR = /^[0-9]{1,30}$/;
@@ -19,6 +20,8 @@ export interface AccountResponsePage {
   readonly afterCursor: string;
   readonly nextCursor: string;
   readonly body: ClaimMdRecord;
+  readonly rawPayload: string;
+  readonly sourceFormat: "json" | "xml";
   readonly digest: string;
   readonly parentCount: number;
   readonly events: readonly CapturedResponseEvent[];
@@ -38,6 +41,34 @@ export type AccountResponseRead =
         | "CURSOR_REGRESSION";
     };
 
+const CAPTURE_ENVELOPE = "claimmd-response-capture.v1";
+
+/** Decode new encrypted source envelopes and legacy encrypted JSON-page payloads. */
+export function decodeClaimMdCapturedPayload(payload: string): ClaimMdRecord | null {
+  try {
+    const decoded: unknown = JSON.parse(payload);
+    if (record(decoded) && decoded.format === CAPTURE_ENVELOPE) {
+      if (typeof decoded.rawPayload !== "string") return null;
+      if (decoded.sourceFormat === "json") {
+        const body: unknown = JSON.parse(decoded.rawPayload);
+        return record(body) ? body : null;
+      }
+      if (decoded.sourceFormat === "xml") return parseClaimMdResponseXml(decoded.rawPayload);
+      return null;
+    }
+    return record(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
+export function encodeClaimMdCapturedPayload(input: {
+  readonly rawPayload: string;
+  readonly sourceFormat: "json" | "xml";
+}): string {
+  return JSON.stringify({ format: CAPTURE_ENVELOPE, ...input });
+}
+
 const record = (x: unknown): x is ClaimMdRecord =>
   x !== null && typeof x === "object" && !Array.isArray(x);
 const digest = (x: unknown) => createHash("sha256").update(JSON.stringify(x)).digest("hex");
@@ -49,6 +80,7 @@ const container = (body: ClaimMdRecord): ClaimMdRecord =>
 export function captureAccountResponsePage(
   body: ClaimMdRecord,
   afterCursor: string,
+  source?: { readonly rawPayload: string; readonly sourceFormat: "json" | "xml" },
 ): AccountResponseRead {
   if (!CURSOR.test(afterCursor)) return { ok: false, code: "BAD_CURSOR" };
   const root = container(body);
@@ -104,15 +136,18 @@ export function captureAccountResponsePage(
       });
     }
   }
-  const encoded = JSON.stringify(body);
-  if (Buffer.byteLength(encoded, "utf8") > MAX_BODY_BYTES) return { ok: false, code: "OVERSIZE" };
+  const rawPayload = source?.rawPayload ?? JSON.stringify(body);
+  if (Buffer.byteLength(rawPayload, "utf8") > MAX_BODY_BYTES)
+    return { ok: false, code: "OVERSIZE" };
   return {
     ok: true,
     page: {
       afterCursor,
       nextCursor,
       body,
-      digest: digest(body),
+      rawPayload,
+      sourceFormat: source?.sourceFormat ?? "json",
+      digest: createHash("sha256").update(rawPayload, "utf8").digest("hex"),
       parentCount: parents.length,
       events,
       full: parents.length === MAX_PARENTS,
@@ -145,10 +180,37 @@ export function createClaimMdAccountResponseReader(input: {
       if (!CURSOR.test(afterCursor)) return { ok: false, code: "BAD_CURSOR" };
       const key = input.accounts[accountReference]?.[usage];
       if (!key) return { ok: false, code: "CREDENTIAL" };
-      const wire = await postForm(guarded, "response", key, { ResponseID: afterCursor });
-      if (!wire.ok) return { ok: false, code: "TRANSPORT" };
-      if (vendorError(wire.body)) return { ok: false, code: "BUSINESS_ERROR" };
-      return captureAccountResponsePage(wire.body, afterCursor);
+      const wire = await postFormText(guarded, "response", key, { ResponseID: afterCursor });
+      if (!wire.ok)
+        return {
+          ok: false,
+          code:
+            wire.code === "OVERSIZE"
+              ? "OVERSIZE"
+              : wire.code === "INVALID_UTF8"
+                ? "BAD_ENVELOPE"
+                : "TRANSPORT",
+        };
+      if (Buffer.byteLength(wire.body, "utf8") > MAX_BODY_BYTES)
+        return { ok: false, code: "OVERSIZE" };
+      const isXml =
+        wire.contentType?.toLowerCase().includes("xml") || wire.body.trimStart().startsWith("<");
+      let body: ClaimMdRecord | null = null;
+      if (isXml) body = parseClaimMdResponseXml(wire.body);
+      else {
+        try {
+          const parsed: unknown = JSON.parse(wire.body);
+          body = record(parsed) ? parsed : null;
+        } catch {
+          body = null;
+        }
+      }
+      if (!body) return { ok: false, code: "BAD_ENVELOPE" };
+      if (vendorError(body)) return { ok: false, code: "BUSINESS_ERROR" };
+      return captureAccountResponsePage(body, afterCursor, {
+        rawPayload: wire.body,
+        sourceFormat: isXml ? "xml" : "json",
+      });
     },
   };
 }

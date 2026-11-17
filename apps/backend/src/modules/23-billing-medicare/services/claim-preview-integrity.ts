@@ -29,6 +29,11 @@ export interface ClaimPreviewScope {
   readonly routeFingerprint: string;
   readonly accountReference: string;
   readonly usage: "test" | "production";
+  /** Tenant routing revision sealed into the preview; absent only for pre-binding legacy tokens. */
+  readonly clearinghouseVendor?: "claimmd" | "stedi";
+  readonly clearinghouseConfigId?: string | null;
+  readonly clearinghouseConfigVersion?: number | null;
+  readonly clearinghouseCredentialFingerprint?: string | null;
   readonly issuedAt: number;
   readonly expiresAt: number;
   readonly version: typeof TOKEN_VERSION;
@@ -155,6 +160,18 @@ export function verifyClaimPreviewToken(
       !/^[0-9a-f]{64}$/.test(value.routeFingerprint) ||
       !/^[A-Za-z0-9._:-]{1,128}$/.test(value.accountReference) ||
       !Number.isInteger(value.claimVersion)
+    )
+      return null;
+    if (
+      value.clearinghouseVendor !== undefined &&
+      ((value.clearinghouseVendor !== "claimmd" && value.clearinghouseVendor !== "stedi") ||
+        (value.clearinghouseConfigId === null) !== (value.clearinghouseConfigVersion === null) ||
+        (value.clearinghouseConfigId === null) !==
+          (value.clearinghouseCredentialFingerprint === null) ||
+        (value.clearinghouseConfigId !== null &&
+          (!/^[0-9a-f-]{36}$/i.test(value.clearinghouseConfigId ?? "") ||
+            !Number.isInteger(value.clearinghouseConfigVersion) ||
+            !/^[0-9a-f]{64}$/.test(value.clearinghouseCredentialFingerprint ?? ""))))
     )
       return null;
     return value;

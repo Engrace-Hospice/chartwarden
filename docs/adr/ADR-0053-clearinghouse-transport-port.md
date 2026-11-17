@@ -34,6 +34,29 @@ The claim cycle today is split and keyed on the wrong axis:
 
 ## Decisions
 
+### M23-CM5-T1.2C — external claim identity and submit-time route binding
+
+`claim.claim_control_number` and `claim_submission.claim_control_number` remain the canonical internal M23 identifiers and retain their
+existing idempotency semantics. New 837I attempts receive a separate cryptographically generated 17-character uppercase alphanumeric
+`external_patient_control_number`, allocated once with the immutable submission attempt and protected by a provider-scoped unique
+index. Retries reuse the stored value for the same attempt; a new attempt gets a new value. Historical attempts remain unchanged and
+retain `NULL` in the new field. Claim.MD ACK and ERA identity readers prefer the external PCN and fall back to the internal number only
+for historical rows.
+
+The PCN is rendered as the same X12 CLM01 and Stedi JSON `patientControlNumber`; the X12/JSON agreement check now includes that field.
+This satisfies Stedi's 20-character maximum and its 17-character recommendation without truncating an internal identifier. Original
+payer claim identifiers and TOB 817/818 references retain their existing roles.
+
+The authenticated preparation token now seals the selected vendor, account reference, mode, tenant configuration ID/revision and
+keyed credential fingerprint with the reviewed route and source fingerprints. The submission row persists that binding plus the
+external PCN, under an append-time uniqueness constraint and an update guard. Before sending, the Worker checks organization,
+submission/job identity, selected vendor and the current tenant configuration's active state, revision and credential fingerprint;
+route/source drift or a revoked account is held instead of being re-resolved to another vendor. Raw credentials are never copied into
+the attempt or job. Legacy submissions without the new identity remain readable and are not retroactively rewritten.
+
+This is additive migration 1505. Runtime PostgreSQL, migration execution, live RLS and concurrency qualification remain deferred to
+M23-CM5-T1.3. No tenant poller or tenant inbox cutover is part of this change.
+
 **D1 — One port for the whole cycle.** `ClearinghouseTransport`
 (`packages/x12-837-client/src/clearinghouse/types.ts`) has eight methods: `checkEligibility`, `validateOnly`,
 `submitNotice`, `submitClaim` (replacement and void via `adjustment`), `fetchAcknowledgments`, `fetchRemittances`,
@@ -530,3 +553,9 @@ clearinghouses a binding built from a tenant's own sealed credential carries `ac
 - **NOE / NOTR jobs keep main's contract.** Every job carries `submissionId`; it is checked against the stored attempt
   (organization, provider entity, notice, kind) and `attemptIndex` is passed through. A job without it fails loudly; a park closes
   only the job's own matching attempt.
+
+## Amendment 2026-11-15 — tenant response evidence boundary (CM-5A.3A)
+
+Migration 1503 adds a separate tenant-owned encrypted Claim.MD response repository; it does not change the per-account poll ownership above. The stable inbox account UUID is provisioned only after explicit operator verification and is bound to the active tenant clearinghouse config and its current keyed credential fingerprint. Credential rotation retains the UUID only after a separate authorized confirmation. The current config schema does not expose a vendor-issued Claim.MD account identifier, so the internal verification record is not represented as independent vendor proof. Raw pages use the tenant DEK and organization/account/batch/cursor-bound AES-GCM AAD; the platform BIL-1.1 role, key and inbox remain separate.
+
+The existing tenant poller remains the sole active reader and cursor owner. A typed archive-before-existing-ACK adapter is available for a future one-fetch integration but is not composed into the poller, which currently yields normalized ACK data rather than exact raw page provenance. Historical per-provider and ACK-kind cursors remain distinct; inventory is read-only and no cursor cutover or backfill occurs. Runtime PostgreSQL/RLS qualification for migrations 1503–1504 remains outstanding.

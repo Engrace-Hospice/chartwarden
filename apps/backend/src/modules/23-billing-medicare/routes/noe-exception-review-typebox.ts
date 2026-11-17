@@ -34,6 +34,16 @@ export const AddNoeExceptionEvidenceSchema = Type.Object({
   evidenceDocumentIds: Type.Array(uuid(), { minItems: 1, maxItems: 20 }),
 });
 
+const NoeExceptionReviewStatusSchema = Type.Union([
+  Type.Literal("draft"),
+  Type.Literal("evidence_required"),
+  Type.Literal("ready_for_external_request"),
+  Type.Literal("request_recorded"),
+  Type.Literal("awaiting_external_determination"),
+  Type.Literal("external_approved_recorded"),
+  Type.Literal("external_denied_recorded"),
+  Type.Literal("withdrawn"),
+]);
 const nullableString = Type.Union([Type.String(), Type.Null()]);
 export const NoeExceptionReviewViewSchema = Type.Object({
   id: uuid(),
@@ -45,18 +55,7 @@ export const NoeExceptionReviewViewSchema = Type.Object({
     Type.Literal("other_external_determination"),
   ]),
   justificationDocumentId: uuid(),
-  status: Type.Union(
-    [
-      "draft",
-      "evidence_required",
-      "ready_for_external_request",
-      "request_recorded",
-      "awaiting_external_determination",
-      "external_approved_recorded",
-      "external_denied_recorded",
-      "withdrawn",
-    ].map((value) => Type.Literal(value)),
-  ),
+  status: NoeExceptionReviewStatusSchema,
   evidenceDocumentIds: Type.Array(uuid()),
   externalRequestReference: nullableString,
   externalRequestDate: Type.Union([date(), Type.Null()]),
@@ -76,8 +75,8 @@ export const NoeExceptionReviewHistoryResponseSchema = Type.Object({
   items: Type.Array(
     Type.Object({
       eventType: Type.String(),
-      fromStatus: nullableString,
-      toStatus: Type.String(),
+      fromStatus: Type.Union([NoeExceptionReviewStatusSchema, Type.Null()]),
+      toStatus: NoeExceptionReviewStatusSchema,
       occurredAt: Type.String({ format: "date-time" }),
       evidenceDocumentIds: Type.Array(uuid()),
     }),

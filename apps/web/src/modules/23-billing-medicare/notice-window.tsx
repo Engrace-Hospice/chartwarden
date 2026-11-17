@@ -734,9 +734,11 @@ function NoticePreview({
 export function NoticeWindowDetail({
   config,
   id,
+  children,
 }: {
   config: NoticeWindowConfig;
   id: string;
+  children?: ReactNode;
 }): JSX.Element {
   const client = useApiClient();
   const [record, setRecord] = useState<NoticeRecord | null>(null);
@@ -875,6 +877,7 @@ export function NoticeWindowDetail({
           <Field label="Total charge" value={dollars(record.totalChargeCents)} />
         ) : null}
         <NoticeActions record={record} config={config} onChanged={() => void load()} />
+        {children}
       </div>
     </DetailPageLayout>
   );

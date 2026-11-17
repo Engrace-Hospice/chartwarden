@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
+import { decodeClaimMdCapturedPayload } from "@chartwarden/x12-837-client";
 import { and, asc, eq, isNull, lte, or, sql } from "drizzle-orm";
 import type { CapturedClaimMdMessage } from "./interpret";
 
@@ -110,7 +111,7 @@ export function createClaimMdAckSource(input: {
         if (!row) return null;
         let body: unknown;
         try {
-          body = JSON.parse(
+          body = decodeClaimMdCapturedPayload(
             input.cipher.open(row.stream.id, row.batch.afterCursor, row.batch.payloadCipher),
           );
         } catch {

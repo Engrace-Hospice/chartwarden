@@ -117,9 +117,9 @@ function RequireScreenPermission({
   enforce = true,
   children,
 }: {
-  screen: { requiredPermission?: string; title: string };
   /** False for a param-path screen: its descriptor key is only a nav key, so nothing is blocked (see the route builder). */
   enforce?: boolean;
+  screen: { requiredPermission?: string; requiredAnyPermission?: readonly string[]; title: string };
   children: ReactNode;
 }): JSX.Element {
   const { session } = useSessionState();

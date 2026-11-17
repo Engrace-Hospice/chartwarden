@@ -11,6 +11,7 @@ import type { DdeProviderVendor } from "@chartwarden/x12-837-client";
 import type { ClaimAssemblyService } from "../services/claim-assembly";
 import type { ClearinghouseAttemptResolutionService } from "../services/clearinghouse-attempt-resolution-service";
 import type { DdeQueueService } from "../services/dde-queue-service";
+import type { MedicareNoticeOperationalIssueService } from "../services/medicare-notice-operational-issues";
 import type { TransferNoticeService } from "../services/transfer-notice-service";
 import type { TenantClearinghouseRouteService } from "../tenant-clearinghouse/tenant-service";
 import type { ClaimMdMedicareRoutingService } from "./claimmd-medicare-routing-service";
@@ -109,6 +110,7 @@ export interface M23RouteServices {
   readonly claimMdMedicareRoutingService?: ClaimMdMedicareRoutingService;
   readonly noeExceptionReviewService?: NoeExceptionReviewService;
   readonly medicareNoticeWorklistService?: MedicareNoticeWorklistService;
+  readonly medicareNoticeOperationalIssueService?: MedicareNoticeOperationalIssueService;
 }
 
 export {
@@ -146,10 +148,15 @@ export {
   type NoeExceptionEvidenceReader,
 } from "./noe-exception-review-service";
 export {
+  buildMedicareNoticeOperationalIssueEvaluator,
   buildMedicareNoticeWorklistService,
   type MedicareNoticeWorklistService,
 } from "./medicare-notice-worklist";
 export { buildDrizzleArtifactReadinessReader } from "./medicare-notice-worklist";
+export {
+  buildMedicareNoticeOperationalIssueService,
+  type MedicareNoticeOperationalIssueService,
+} from "../services/medicare-notice-operational-issues";
 
 export {
   type SequestrationPolicyRouteService,

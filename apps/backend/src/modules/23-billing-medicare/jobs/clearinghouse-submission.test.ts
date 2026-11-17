@@ -343,3 +343,23 @@ describe("M23 Claim.MD evidence boundary", () => {
     expect(submitNotice).not.toHaveBeenCalled();
   });
 });
+
+describe("M23 vendor-specific claim representations", () => {
+  it("fails closed for Stedi when a valid raw X12 claim has no Stedi JSON representation", async () => {
+    const submitClaim = vi.fn();
+    const stedi = {
+      binding: { vendor: "stedi", transport: { submitClaim } },
+      contexts: { contextFor: async () => context, providerEntitiesFor: async () => [] },
+    };
+    await expect(
+      transportUpload(stedi as never)({
+        organizationId: context.organizationId,
+        providerEntityId: context.providerEntityId,
+        kind: "claim_837i",
+        x12,
+        controlNumber: "WXHOSP0001",
+      }),
+    ).rejects.toMatchObject({ code: "CH_INVALID_REQUEST", ambiguous: false });
+    expect(submitClaim).not.toHaveBeenCalled();
+  });
+});

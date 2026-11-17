@@ -54,6 +54,30 @@ export const MedicareProviderRoutingBodySchema = Type.Object({
     ),
   ),
 });
+const NullableDate = Type.Union([Type.String({ format: "date" }), Type.Null()]);
+export const MedicareProviderRoutingResponse = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      id: Type.String({ format: "uuid" }),
+      macJurisdiction: Type.String(),
+      effectiveFrom: Type.String({ format: "date" }),
+      effectiveTo: NullableDate,
+      provenance: Type.String(),
+      setReason: Type.String(),
+      createdAt: Type.String({ format: "date-time" }),
+    }),
+  ),
+  migrationIssues: Type.Array(
+    Type.Object({
+      reasonCode: Type.String(),
+      candidateJurisdictions: Type.Array(Type.String()),
+      createdAt: Type.String({ format: "date-time" }),
+    }),
+  ),
+});
+export const MedicareProviderRoutingConfigureResponse = Type.Object({
+  id: Type.String({ format: "uuid" }),
+});
 
 export function registerMedicareProviderRoutingRoutes(
   app: FastifyInstance,

@@ -61,6 +61,7 @@ export const tenantClearinghouseConfig = pgTable(
   },
   (t) => [
     uniqueIndex("tenant_clearinghouse_config_org_uq").on(t.organizationId),
+    uniqueIndex("tenant_clearinghouse_config_id_org_uq").on(t.id, t.organizationId),
     uniqueIndex("tenant_clearinghouse_config_fingerprint_uq")
       .on(t.credentialFingerprint)
       .where(sql`credential_fingerprint IS NOT NULL`),

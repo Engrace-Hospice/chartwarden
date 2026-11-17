@@ -105,7 +105,10 @@ describe("StediTransport.submitClaim", () => {
 
   it("posts a JSON document to the JSON endpoint", async () => {
     const { calls, transport } = harness();
-    const document = { usageIndicator: "T", claimInformation: { a: 1 } };
+    const document = {
+      usageIndicator: "T",
+      claimInformation: { a: 1, patientControlNumber: "CCN-1" },
+    };
     const r = await transport.submitClaim(CTX, claim({ payload: { format: "json", document } }));
     expect(r.ok).toBe(true);
     expect(calls[0]?.url.endsWith("/institutionalclaims/v1/submission")).toBe(true);
@@ -147,8 +150,18 @@ describe("StediTransport.submitClaim", () => {
 
   it("treats JSON key order as the same submission and a reused key with another kind as a conflict", async () => {
     const { calls, transport } = harness();
-    const a = { usageIndicator: "T", x: { c: 2, d: 3 }, y: 1 };
-    const b = { y: 1, x: { d: 3, c: 2 }, usageIndicator: "T" };
+    const a = {
+      usageIndicator: "T",
+      claimInformation: { patientControlNumber: "CCN-1" },
+      x: { c: 2, d: 3 },
+      y: 1,
+    };
+    const b = {
+      y: 1,
+      x: { d: 3, c: 2 },
+      claimInformation: { patientControlNumber: "CCN-1" },
+      usageIndicator: "T",
+    };
     await transport.submitClaim(CTX, claim({ payload: { format: "json", document: a } }));
     const again = await transport.submitClaim(
       CTX,
@@ -313,7 +326,11 @@ describe("StediTransport billing provider binding", () => {
 
   it("checks a JSON claim's billing NPI the same way", async () => {
     const { calls, transport } = harness();
-    const document = { usageIndicator: "T", billing: { npi: "1234567893" } };
+    const document = {
+      usageIndicator: "T",
+      billing: { npi: "1234567893" },
+      claimInformation: { patientControlNumber: "CCN-1" },
+    };
     const ok = await transport.submitClaim(
       { ...CTX, billingNpi: "1234567893" },
       claim({ payload: { format: "json", document } }),
@@ -328,6 +345,17 @@ describe("StediTransport billing provider binding", () => {
       }),
     );
     expect(code(bad)).toBe(CH.INVALID_REQUEST);
+    expect(calls).toHaveLength(1);
+    const mismatch = await transport.submitClaim(
+      CTX,
+      claim({
+        controlNumber: "CCN-3",
+        idempotencyKey: "idem-3",
+        payload: { format: "json", document },
+      }),
+    );
+    expect(code(mismatch)).toBe(CH.INVALID_REQUEST);
+    if (!mismatch.ok) expect(mismatch.degraded.reason).toContain("patientControlNumber");
     expect(calls).toHaveLength(1);
   });
 });
