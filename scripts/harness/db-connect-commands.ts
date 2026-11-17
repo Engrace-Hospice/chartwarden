@@ -47,10 +47,13 @@ const DBLINK_VARIABLE =
 /** The first word of a connect command's arguments, or SQL's dblink call, that holds a psql variable reference. */
 function variableReference(prog: string, text: string): string | undefined {
   if (!POSTGRES_CLIENTS.test(prog)) return undefined;
-  for (const { name, rest } of metaCommands(text)) {
-    if (!CONNECT_NAME.test(name)) continue;
-    const word = tokens(rest).find((w) => COLON_VARIABLE.test(w));
-    if (word !== undefined) return word;
+  // A literal backslash and `n` is a line break to the shells whose `echo` and `printf` interpret it (`echo '\set c x\n\c :c' | psql` under sh or zsh).
+  for (const reading of text.includes("\\n") ? [text, text.replaceAll("\\n", "\n")] : [text]) {
+    for (const { name, rest } of metaCommands(reading)) {
+      if (!CONNECT_NAME.test(name)) continue;
+      const word = tokens(rest).find((w) => COLON_VARIABLE.test(w));
+      if (word !== undefined) return word;
+    }
   }
   return DBLINK_VARIABLE.exec(text)?.[0];
 }

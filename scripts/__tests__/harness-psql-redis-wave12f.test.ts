@@ -112,6 +112,21 @@ describe("F-7: a psql variable in a connect command or a dblink call asks", () =
   it("a remote host named next to a variable is still the finding that denies", () => {
     expect(connectTargetOf("psql", [`\\c host=${H} :c`])).toMatchObject({ kind: "remote" });
   });
+
+  // `sh` and zsh `echo` and `printf` turn a literal backslash and `n` into a line break: the connect command is then its own line.
+  it.each([
+    "psql <<< '\\set c host={H}\\n\\c :c'",
+    "echo '\\set c host={H}\\n\\c :c' | psql",
+    "printf '\\\\set c host={H}\\\\n\\\\c :c\\\\n' | psql",
+  ])("%s asks", (template) => {
+    const cmd = fill(template);
+    expect(decide(cmd), cmd).not.toBe("allow");
+  });
+
+  it("a literal backslash and n without a connect command asks about nothing", () => {
+    expect(decide("psql <<< 'select 1\\nselect 2'")).toBe("allow");
+    expect(connectTargetOf("psql", ["\\echo a\\nb :x"])).toBeNull();
+  });
 });
 
 const REDIS_OUTBOUND: readonly string[] = [
