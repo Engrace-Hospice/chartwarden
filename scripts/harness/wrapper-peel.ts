@@ -78,7 +78,17 @@ export function peelWrapper(
   const operands = takeOperands(spec, all, next, options);
   next += operands.length;
   if (spec.onlyWith !== undefined && named(options, spec.onlyWith).length === 0) return null;
-  let stays = named(options, spec.stays).length > 0;
+  // `leaks … -- CMD`, `lldb -- PROG`: no command without a `--` (read.optionsEnd is where the options stopped, read.end is after a `--`)
+  if (
+    spec.dashDash === true &&
+    read.optionsEnd === read.end &&
+    named(options, spec.asksWith).length === 0
+  )
+    return null;
+  const asked = named(options, spec.asksWith)[0];
+  if (asked !== undefined)
+    unplaced ??= `${wrapper} ${asked.name.length === 1 ? "-" : "--"}${asked.name} SCRIPT`;
+  let stays = asked !== undefined || named(options, spec.stays).length > 0;
   // `flock FILE -c STRING`, `runuser USER -c STRING`: options may follow the operands once more.
   if (!stays && spec.optionsAfterOperands === true && operands.length > 0) {
     const more = readOptions(spec.grammar, all, next);

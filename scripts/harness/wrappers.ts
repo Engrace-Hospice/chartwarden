@@ -120,6 +120,8 @@ export function shellStrings(
       return suCommandStrings(args);
     case "runuser":
     case "flock":
+    case "dtrace":
+      // dtrace `-c COMMAND` runs the command under tracing (E1-6)
       return commandOptionValues(args);
     case "script": {
       // macOS `script [-q] FILE cmd args…` runs the command; Linux `script -c 'cmd' FILE`. FILE is written (writers.ts).
