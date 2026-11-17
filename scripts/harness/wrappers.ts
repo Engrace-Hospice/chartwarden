@@ -10,19 +10,14 @@
  */
 
 import { localCommandOfOption, optionCommandStrings, sshLikeCommands } from "./option-commands";
-import { commandOptionValues } from "./shell-command-string";
+import { commandOptionValues, suCommandStrings } from "./shell-command-string";
+import { joinedAndQuoted, shellQuote } from "./shell-quote";
+
+export { joinedAndQuoted, shellQuote };
 
 /** Homebrew's GNU tools carry a `g` prefix on macOS (`gxargs -a FILE`, `gnice`): each is the wrapper it prefixes. */
 const GNU_PREFIXED = /^g(xargs|nice|stdbuf|env|nohup|time|timeout|chroot)$/;
 export const gnuName = (program: string): string => GNU_PREFIXED.exec(program)?.[1] ?? program;
-
-/**
- * A word as the shell must read it back as one word. A single quote is written `'"'"'` (close, a double-quoted quote, reopen), never `'\''`:
- * every reader that lexes the text again WITHOUT decoding backslashes (the readers of `db-connect-commands.ts` see the words as typed) would
- * keep the backslash and read `(\'host=H\')` where the shell reads `('host=H')` (R8-CR-3). Both spellings are the same word to a shell.
- */
-export const shellQuote = (w: string): string =>
-  /^[A-Za-z0-9_@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'"'"'`)}'`;
 
 /** The words of `args` after options (those in `valueFlag` take the next word as a value). */
 function afterOptions(args: readonly string[], valueFlag: RegExp): string[] {
@@ -109,18 +104,6 @@ function tarCommands(args: readonly string[]): string[] {
   return out;
 }
 
-/**
- * The words a wrapper hands to a shell as ONE string: the shell reads them joined by spaces, and the user meant them as the words they typed,
- * so both are judged (`watch bash -c -- 'CMD'`: joined, the string is only the first word).
- */
-export function joinedAndQuoted(words: readonly string[]): string[] {
-  const joined = words.join(" ");
-  // one word is one command line already (`watch 'rm x'`): quoting it back would name a program called `rm x`
-  if (words.length < 2) return [joined];
-  const quoted = words.map(shellQuote).join(" ");
-  return quoted === joined ? [joined] : [joined, quoted];
-}
-
 /** The command lines `prog` hands to a shell, as strings to judge. */
 export function shellStrings(
   prog: string,
@@ -134,6 +117,7 @@ export function shellStrings(
       // `entr [-acdnprsxz] utility [args]` (`-s` makes the words one shell command): the words are a command line.
       return joinedAndQuoted(afterOptions(args, /^$/));
     case "su":
+      return suCommandStrings(args);
     case "runuser":
     case "flock":
       return commandOptionValues(args);
