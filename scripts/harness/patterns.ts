@@ -117,6 +117,7 @@ import {
   type FeedReaders,
   PIPE_FEED_REASON,
   type PipelineStdin,
+  type StdinFeed,
   type StdinStage,
   allTexts,
   pipelineStdin,
@@ -139,6 +140,7 @@ import {
   trimSlashes,
   work,
 } from "./work-budget";
+import { xargsRuns } from "./xargs-feed";
 import { type Bindings, MAX_READINGS, NO_BINDINGS, bindAfter, readingsOf } from "./word-readings";
 import { shellQuote, sshHost } from "./wrappers";
 import { extraOutputFiles, localPath } from "./writers";
@@ -1126,6 +1128,7 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
     ...nestedWithInlineVariables(parsed, stdinOf, ctx, depth, here),
     ...shellWordVerdicts(parsed, stdinOf, ctx, depth, here),
   );
+  walk.verdicts.push(...xargsVerdicts(part.text, stdin.feed(index), ctx, depth, here));
   if (readsScriptFromStdin(parsed, index)) walk.scriptTexts.push(...pipelineTexts(parts, index));
   // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a command
   // line; a script piped in from anything else cannot be read. A script this line wrote (a heredoc, `echo '…' > F`) and
@@ -1338,6 +1341,25 @@ function readingVerdicts(
   } finally {
     judgingReading = false;
   }
+  return verdicts;
+}
+
+const XARGS_REASON =
+  "`xargs` hands the text it is fed to a shell, `ssh`, `eval` or another program as the command to run (`… | xargs -I{} sh -c '{}'`), and the guard cannot see that text. Write the command out, or let a human decide.";
+
+/** The command lines `xargs` makes of the text it is fed (`xargs-feed.ts`), judged like any other; one that runs data it cannot see asks (wave 13, A9). */
+function xargsVerdicts(
+  text: string,
+  feed: StdinFeed,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  if (!text.includes("xargs")) return [];
+  const run = xargsRuns(words(text), allTexts(feed), feed.unseen || feed.overflow);
+  if (run === null) return [];
+  const verdicts = run.lines.map((line) => judge(line, ctx, depth + 1, here));
+  if (run.question) verdicts.push(ask(XARGS_REASON));
   return verdicts;
 }
 
