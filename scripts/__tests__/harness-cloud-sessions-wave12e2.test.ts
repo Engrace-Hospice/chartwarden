@@ -154,6 +154,8 @@ const ASKS: Readonly<Record<string, readonly string[]>> = {
     "kubectl get secret x",
     "kubectl get --raw /api/v1/namespaces/x/secrets",
     "kubectl get --raw=/api/v1/namespaces/x/secrets",
+    "kubectl -n x get --raw=/api/v1/secrets",
+    "kubectl --context c get --raw=/api/v1/namespaces/y/secrets?limit=1",
     "kubectl get --raw /api/v1/secrets",
   ],
   fly: [
