@@ -208,9 +208,7 @@
       "takesValue": false
     }
   ],
-  "shortOptions": [
-    "g"
-  ],
+  "shortOptions": ["g"],
   "abbreviations": {
     "a": "ambiguous",
     "a-": "unknown",

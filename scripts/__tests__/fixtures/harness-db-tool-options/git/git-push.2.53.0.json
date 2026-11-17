@@ -212,17 +212,7 @@
       "takesValue": false
     }
   ],
-  "shortOptions": [
-    "4",
-    "6",
-    "d",
-    "f",
-    "n",
-    "o",
-    "q",
-    "u",
-    "v"
-  ],
+  "shortOptions": ["4", "6", "d", "f", "n", "o", "q", "u", "v"],
   "abbreviations": {
     "a": "ambiguous",
     "a-": "unknown",

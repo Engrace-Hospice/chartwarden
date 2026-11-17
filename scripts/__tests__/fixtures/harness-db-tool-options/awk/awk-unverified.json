@@ -4,7 +4,24 @@
   "unverified": [
     {
       "flavour": "gawk",
-      "valued": ["-F", "-v", "-f", "-e", "-E", "-i", "-l", "-L", "-W", "--field-separator", "--assign", "--file", "--source", "--exec", "--include", "--load"],
+      "valued": [
+        "-F",
+        "-v",
+        "-f",
+        "-e",
+        "-E",
+        "-i",
+        "-l",
+        "-L",
+        "-W",
+        "--field-separator",
+        "--assign",
+        "--file",
+        "--source",
+        "--exec",
+        "--include",
+        "--load"
+      ],
       "programFromFile": ["-f", "--file", "-E", "--exec", "-i", "--include"],
       "programText": ["-e", "--source"]
     },

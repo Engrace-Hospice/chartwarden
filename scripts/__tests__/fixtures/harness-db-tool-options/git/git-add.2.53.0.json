@@ -156,18 +156,7 @@
       "takesValue": false
     }
   ],
-  "shortOptions": [
-    "A",
-    "N",
-    "U",
-    "e",
-    "f",
-    "i",
-    "n",
-    "p",
-    "u",
-    "v"
-  ],
+  "shortOptions": ["A", "N", "U", "e", "f", "i", "n", "p", "u", "v"],
   "abbreviations": {
     "a": "ok",
     "a-": "unknown",
