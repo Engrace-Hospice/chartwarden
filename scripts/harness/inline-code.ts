@@ -61,11 +61,17 @@ export interface ScriptCommand {
   readonly args: readonly string[];
   readonly ins: readonly string[];
   readonly docs: readonly string[];
+  /** The program and arguments as the program is HANDED them, where that differs from the typed ones (an escaped quote is the quote). */
+  readonly handed?: { readonly prog: string; readonly args: readonly string[] };
 }
 
+/** A script operand that is stdin itself or a process substitution: `-`, `/dev/stdin`, `/dev/fd/0`, `<(echo …)` (R9-ADV-12). */
+const STDIN_SCRIPT = /^(?:-|\/dev\/stdin|\/dev\/fd\/0|\/proc\/self\/fd\/0|<\(.*)$/;
+
 /**
- * A program whose script arrives on stdin: `python3 -`, `node <<EOF`, `… | python3`, `bash <<< '…'`, `… | sh -s`.
- * Not an interpreter with inline code, a `bash -c '…'` (the script is an operand), or one that names a script FILE.
+ * A program whose script arrives on stdin: `python3 -`, `node <<EOF`, `… | python3`, `bash <<< '…'`, `… | sh -s`,
+ * `bash /dev/stdin <<< '…'`, `bash <(echo '…')`. Not an interpreter with inline code, a `bash -c '…'` (the script is an operand),
+ * or one that names a script FILE.
  */
 export function readsScriptFromStdin(p: ScriptCommand, index: number): boolean {
   const shell = SHELL_PROGRAM.test(p.prog);
@@ -75,7 +81,7 @@ export function readsScriptFromStdin(p: ScriptCommand, index: number): boolean {
   const positional = p.args.filter((a) => !a.startsWith("-") || a === "-");
   if (p.args.some((a) => /^(-v|-V|-h|--version|--help)$/.test(a))) return false;
   return (
-    positional[0] === "-" ||
+    (positional[0] !== undefined && STDIN_SCRIPT.test(positional[0])) ||
     (positional.length === 0 && (index > 0 || p.ins.length + p.docs.length > 0))
   );
 }
@@ -85,7 +91,7 @@ export function readsScriptFromStdin(p: ScriptCommand, index: number): boolean {
 // ---------------------------------------------------------------------------------------------------
 
 /** Escapes a printing command turns into characters: a literal `\n` in `echo -e` and in a printf format. */
-const unescapePrinted = (t: string): string =>
+export const unescapePrinted = (t: string): string =>
   t.replace(/\\([nt\\])/g, (_m, c: string) => (c === "n" ? "\n" : c === "t" ? "\t" : "\\"));
 
 const FORMAT_CONVERSION = /%[-+ 0#]*\d*(?:\.\d+)?[sbdiouxXcq]/g;
@@ -110,36 +116,20 @@ export function printedText(prog: string, args: readonly string[]): string | nul
   return unescapePrinted(printfOutput(operands[0] ?? "", operands.slice(1)));
 }
 
+/**
+ * What `echo` or `printf` writes, read from the typed words and from the words as the program is handed them (a backslash-quote is
+ * the quote there): both are texts a shell or a client may be handed (`echo 'env -S '\''x'\''' | bash`, R9-CR-2). Null for any other command.
+ */
+export function printedTexts(c: Pick<ScriptCommand, "prog" | "args" | "handed">): string[] | null {
+  const typed = printedText(c.prog, c.args);
+  if (typed === null) return null;
+  const handed = c.handed === undefined ? null : printedText(c.handed.prog, c.handed.args);
+  return handed === null || handed === typed ? [typed] : [typed, handed];
+}
+
 /** One command of a line: its program, arguments and the operator that joined it to the one before. */
 export interface ScriptStage extends ScriptCommand {
   readonly joiner: string;
   /** Here-string words (`<<< 'text'`). */
   readonly strings: readonly string[];
-}
-
-/** The scripts handed to the shell at `index`, and whether some of what it reads is text the guard cannot see. */
-export interface HandedScripts {
-  readonly texts: string[];
-  readonly unreadable: boolean;
-}
-
-/**
- * What the shell at `stages[index]` reads as its script: a here-string, and what the `echo` or `printf` before
- * it in its pipeline prints. A pipeline into a shell from anything else (`curl … | sh`, `cat f | bash`) is a
- * script the guard cannot read. A shell that was not handed stdin has none.
- */
-export function scriptsHandedToShell(stages: readonly ScriptStage[], index: number): HandedScripts {
-  const none: HandedScripts = { texts: [], unreadable: false };
-  const shell = stages[index] as ScriptStage;
-  if (!readsScriptFromStdin(shell, index) || !SHELL_PROGRAM.test(shell.prog)) return none;
-  const texts = shell.strings.map(unescapePrinted);
-  let unreadable = false;
-  for (let j = index; stages[j]?.joiner === "|"; j--) {
-    const source = stages[j - 1] as ScriptStage;
-    const printed = printedText(source.prog, source.args);
-    if (printed !== null) texts.push(printed);
-    // A heredoc's body is judged line by line already (`cat <<EOF | sh`); anything else is unseen text.
-    else if (source.docs.length === 0) unreadable = true;
-  }
-  return { texts, unreadable };
 }

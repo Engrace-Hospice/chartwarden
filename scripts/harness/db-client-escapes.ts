@@ -23,12 +23,12 @@ import {
   tokens,
   writeOf,
 } from "./client-reading";
-import { printedText } from "./inline-code";
 import { optionValues } from "./option-values";
 import { postgresReading } from "./postgres-commands";
 import { embeddedNames } from "./protected-operands";
 import { sqlFileReadings } from "./sql-file-functions";
 import { sqliteReading } from "./sqlite-commands";
+import type { StdinFeed } from "./stdin-texts";
 
 export type { ClientFindings } from "./client-reading";
 
@@ -157,40 +157,21 @@ function mongoReading(text: string): Reading[] {
 // The text a client is handed, and what it holds
 // ---------------------------------------------------------------------------------------------------------
 
-/** One simple command of a line, as far as this module needs it. */
-export interface ClientStage {
-  readonly prog: string;
-  readonly args: readonly string[];
-  /** Here-string words (`<<< 'text'`). */
-  readonly strings: readonly string[];
-  /** The operator that joined it to the command before it. */
-  readonly joiner: string;
-}
-
 /**
- * Every text the client at `stages[index]` reads as commands: each argument and the value attached to it
- * (`--command=…`, `-c…`), a here-string, the heredoc bodies of this command, and what an `echo` or `printf` earlier in
- * its pipeline prints. Returned as the text the guard lexed and, when it differs, the text the client receives after the
- * shell reduced the backslashes of a double-quoted word; each is one text (its parts on separate lines, in order) so that
- * `.cd` and `\cd` carry from one argument to the next.
+ * Every text the client reads as commands: each argument and the value attached to it (`--command=…`, `-c…`), what it is fed on stdin
+ * (`stdin-texts.ts`: a here-string, a heredoc body, a process substitution, what a command earlier in its pipeline prints or passes on, a
+ * known variable), in the order its own, its arguments, then upstream. Returned as the text the guard lexed and, when it differs, the text the
+ * client receives after the shell reduced the backslashes of a double-quoted word; each is one text (its parts on separate lines, in order)
+ * so that `.cd` and `\cd` carry from one argument to the next.
  */
-export function clientTexts(
-  stages: readonly ClientStage[],
-  index: number,
-  bodies: readonly string[],
-): string[] {
-  const client = stages[index] as ClientStage;
-  const parts: string[] = [...client.strings, ...bodies];
-  for (const arg of client.args) {
+export function clientTexts(args: readonly string[], feed: StdinFeed): string[] {
+  const parts: string[] = [...feed.own, ...feed.bodies];
+  for (const arg of args) {
     parts.push(arg);
     const attached = /^--[A-Za-z][\w-]*=(.*)$/s.exec(arg) ?? /^-[A-Za-z](.+)$/s.exec(arg);
     if (attached) parts.push(attached[1] as string);
   }
-  for (let j = index; stages[j]?.joiner === "|"; j--) {
-    const source = stages[j - 1] as ClientStage;
-    const printed = printedText(source.prog, source.args);
-    if (printed !== null) parts.push(printed);
-  }
+  parts.push(...feed.upstream, ...feed.upstreamBodies);
   const readings = parts.map(bothReadings);
   const lexed = parts.join("\n");
   const received = readings.map((r) => r.at(-1) as string).join("\n");
