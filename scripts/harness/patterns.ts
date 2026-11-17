@@ -75,6 +75,7 @@ import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./op
 import { setPackageScriptsReader } from "./package-scripts";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
 import { persistenceReason } from "./persistence-commands";
+import { expandedProgramWord } from "./program-words";
 import {
   protectedDirectories,
   protectedNameSamples,
@@ -314,6 +315,8 @@ interface Parsed {
   readonly assigns: string[];
   readonly outs: string[];
   readonly ins: string[];
+  /** The files a wrapper's own options name and the wrapper reads (`xargs -a F`, `sshpass -f F`): read whatever program it runs. */
+  readonly wrapperReads: string[];
   readonly docs: string[];
   readonly strings: string[];
 }
@@ -337,6 +340,7 @@ function parseSegment(seg: string): Parsed {
         }),
     outs: [...outs, ...writes],
     ins: [...ins, ...reads],
+    wrapperReads: reads,
     docs,
     strings,
   };
@@ -936,6 +940,19 @@ function dynamicProgramVerdicts(
     verdicts.push(named ?? ask(DYNAMIC_PROGRAM_REASON));
   }
   if (BRACE_GROUP_WORD.test(parsed.word)) verdicts.push(ask(DYNAMIC_PROGRAM_REASON));
+  // zsh `=psql -h H` and `psql${IFS}-h${IFS}H`: the program word stands for words of its own (`program-words.ts`).
+  const stood = expandedProgramWord(parsed.word);
+  if (stood !== null) {
+    const as = {
+      ...parsed,
+      prog: stood.prog,
+      word: stood.prog,
+      args: [...stood.args, ...parsed.args],
+    };
+    const named = classifySegment(text, as, ctx, here);
+    if (named) verdicts.push(named);
+    if (stood.ifs) verdicts.push(ask(DYNAMIC_PROGRAM_REASON));
+  }
   return verdicts;
 }
 
@@ -1771,6 +1788,7 @@ const NO_COMMAND: Parsed = {
   assigns: [],
   outs: [],
   ins: [],
+  wrapperReads: [],
   docs: [],
   strings: [],
 };
@@ -2530,6 +2548,40 @@ function literalAssignmentsOf(cmd: string): ReadonlyMap<string, string> {
   return new Map([...literalValues(words)].filter(([name]) => !rebound.has(name)));
 }
 
+/**
+ * The first live secret file among the file words `files`: a wildcard that reaches one, or a name or path that is one. A bare word is a
+ * file only if one of that name exists where the command runs; a path or a dot-env name is judged as written. `skipByName`: a compose
+ * lifecycle command's `--env-file` value.
+ */
+function secretFileVerdict(
+  files: readonly string[],
+  skipByName: boolean,
+  prog: string,
+  here: readonly Cwd[],
+  ctx: BashContext,
+): BashVerdict | null {
+  for (const t of files) {
+    if (skipByName && SECRET_BY_NAME.test(t)) continue; // --env-file value for a lifecycle command
+    if (globReachesSecret(t)) {
+      return deny(
+        `\`${echo(t)}\` expands onto a live secret file (.env, key material). Name the file you need, and not a secret one.`,
+      );
+    }
+    const why = secretPathReason(t);
+    if (!why) continue;
+    const pathLike =
+      SECRET_BY_NAME.test(t) ||
+      t.includes("/") ||
+      namesFileIn(t, here, ctx, FILE_READER.test(prog));
+    if (pathLike) {
+      return deny(
+        `\`${echo(t)}\` is ${why}. Agents do not read secrets or dumps; use .env.example for shape, and ask the human for any value you truly need.`,
+      );
+    }
+  }
+  return null;
+}
+
 /** A file a program reads LINE BY LINE as names or code (`file -f F`, `wc --files0-from=F`) prints the lines it cannot use: a secret one is a read (`file-list-options.ts`). */
 function listedFileVerdict(prog: string, args: readonly string[]): BashVerdict | null {
   for (const listed of listedFiles(prog, args)) {
@@ -2704,28 +2756,19 @@ function classifySegment(
     !READ_ONLY_CHECK.test(prog) &&
     !(prog === "git" && /^(status|check-ignore|ls-files|add|rm|mv)$/.test(args[0] ?? ""))
   ) {
-    for (const t of [...fileArgs(args), ...fileArgs(ins), ...fileArgs(outs)]) {
-      if (isCompose && SECRET_BY_NAME.test(t)) continue; // --env-file value for a lifecycle command
-      if (globReachesSecret(t)) {
-        return deny(
-          `\`${echo(t)}\` expands onto a live secret file (.env, key material). Name the file you need, and not a secret one.`,
-        );
-      }
-      const why = secretPathReason(t);
-      if (!why) continue;
-      // A bare word is a file only if one of that name exists where the command runs; a path or a `.env` name is
-      // judged as written.
-      const pathLike =
-        SECRET_BY_NAME.test(t) ||
-        t.includes("/") ||
-        namesFileIn(t, here, ctx, FILE_READER.test(prog));
-      if (pathLike) {
-        return deny(
-          `\`${echo(t)}\` is ${why}. Agents do not read secrets or dumps; use .env.example for shape, and ask the human for any value you truly need.`,
-        );
-      }
-    }
+    const secret = secretFileVerdict(
+      [...fileArgs(args), ...fileArgs(ins), ...fileArgs(outs)],
+      isCompose,
+      prog,
+      here,
+      ctx,
+    );
+    if (secret) return secret;
   }
+  // The file a wrapper's own option reads (`xargs -a F`, `sshpass -f F`) is read whatever the program behind it is: `ls` and the other
+  // read-only names do not print F, but the wrapper hands its lines to them as arguments and they print those in errors (R8-CR-11).
+  const wrapped = secretFileVerdict(fileArgs(parsed.wrapperReads), isCompose, prog, here, ctx);
+  if (wrapped) return wrapped;
 
   // --- Whole-tree reads that go around .gitignore, and archives of the repo root: from every directory the
   // command may be in, so a `cd` that may not have applied cannot move the sweep off the root.

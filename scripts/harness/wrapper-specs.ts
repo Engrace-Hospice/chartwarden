@@ -46,16 +46,21 @@ const grammar = (g: Partial<OptionGrammar>): OptionGrammar => ({
 /** `command`, `nohup`, `setsid`, the shell keywords and the like take no option the guard reads: any dash word is a flag. */
 const LAX_NO_OPTIONS: WrapperSpec = { grammar: grammar({ lax: true }) };
 
-/** GNU parallel's long options that take no value (the manual's OPTIONS, names without `--`). */
+/**
+ * GNU parallel's long options that take no value (the manual's OPTIONS, names without `--`). GNU parallel is NOT installed here: this and the
+ * value list are from the manual and UNVERIFIED (`fixtures/harness-tool-options/unverified-tools.json`); a name that is in neither list asks
+ * (the grammar is strict), so a gap costs a question, not a hidden command. `--transfer` is a flag, `--transferfile`/`--tf`/`--trc` take a
+ * value (R8-CR-10).
+ */
 const PARALLEL_FLAGS: readonly string[] = [
-  ..."null bar bg bibtex citation cat cleanup compress csv ctag dry-run embed eta fg fifo filter-hosts gnu group interactive keep-order line-buffer lb link xapply controlmaster nonall onall no-notice no-run-if-empty pipe spreadstdin pipepart plain plus progress quote round-robin round remove-rec-sep resume resume-failed retry-failed regexp semaphore sem shebang shebang-wrap shellquote shuf skip-first-line tty tag ungroup use-sockets-instead-of-threads use-cores-instead-of-threads use-cpus-instead-of-cores verbose version wait xargs help number-of-cpus number-of-cores number-of-sockets number-of-threads show-limits silent files notice record-env tee output-as-files outputasfiles will-cite timestamp".split(
+  ..."null bar bg bibtex citation cat cleanup compress csv ctag transfer dry-run embed eta fg fifo filter-hosts gnu group interactive keep-order line-buffer lb link xapply controlmaster nonall onall no-notice no-run-if-empty pipe spreadstdin pipepart plain plus progress quote round-robin round remove-rec-sep resume resume-failed retry-failed regexp semaphore sem shebang shebang-wrap shellquote shuf skip-first-line tty tag ungroup use-sockets-instead-of-threads use-cores-instead-of-threads use-cpus-instead-of-cores verbose version wait xargs help number-of-cpus number-of-cores number-of-sockets number-of-threads show-limits silent files notice record-env tee output-as-files outputasfiles will-cite timestamp".split(
     " ",
   ),
 ];
 
 /** GNU parallel's long options that take a value (`--jobs 4`, `--tagstring x`, `--nice 5`, `--trim lr`, ...). */
 const PARALLEL_VALUES: readonly string[] = [
-  ..."arg-file argfile arg-file-sep arg-sep argsep basefile bf basenamereplace bnr basenameextensionreplace bner block block-size blocktimeout bt colsep col-sep compress-program ctagstring delay delimiter dirnamereplace dnr eof env extensionreplace er group-by halt halt-on-error header hgrp hostgroup hostgroups id jobs joblog jl limit load max-args max-chars max-lines max-procs max-replace-args memfree memsuspend minversion nice parens parset process-slot-var profile recstart recend replace replacement results res retries return rpl rsync-opts shard sql sqlmaster sqlworker sshdelay sshlogin sshloginfile slf ssh tagstring template tmpl timeout tmpdir total-jobs total trim workdir wd".split(
+  ..."transferfile tf trc arg-file argfile arg-file-sep arg-sep argsep basefile bf basenamereplace bnr basenameextensionreplace bner block block-size blocktimeout bt colsep col-sep compress-program ctagstring delay delimiter dirnamereplace dnr eof env extensionreplace er group-by halt halt-on-error header hgrp hostgroup hostgroups id jobs joblog jl limit load max-args max-chars max-lines max-procs max-replace-args memfree memsuspend minversion nice parens parset process-slot-var profile recstart recend replace replacement results res retries return rpl rsync-opts shard sql sqlmaster sqlworker sshdelay sshlogin sshloginfile slf ssh tagstring template tmpl timeout tmpdir total-jobs total trim workdir wd".split(
     " ",
   ),
 ];
@@ -544,6 +549,11 @@ export const WRAPPER_SPECS: ReadonlyMap<string, WrapperSpec> = new Map<string, W
   ],
   ["timeout", TIMEOUT],
   ["command", LAX_NO_OPTIONS],
+  // zsh precommand modifiers (wave 11, R8-ADV-7): `noglob`, `nocorrect`, a leading `-` and `repeat N` run the command after them.
+  ["noglob", LAX_NO_OPTIONS],
+  ["nocorrect", LAX_NO_OPTIONS],
+  ["-", LAX_NO_OPTIONS],
+  ["repeat", { grammar: grammar({ lax: true }), operands: 1 }],
   ["builtin", LAX_NO_OPTIONS],
   ["nohup", LAX_NO_OPTIONS],
   ["setsid", LAX_NO_OPTIONS],

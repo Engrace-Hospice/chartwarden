@@ -24,7 +24,7 @@ import type { RecordedOption, ToolFixture } from "./helpers/record-tool-options"
 
 const FIXTURE_DIR = join(__dirname, "fixtures", "harness-tool-options");
 const fixtures: ToolFixture[] = readdirSync(FIXTURE_DIR)
-  .filter((name) => name.endsWith(".json"))
+  .filter((name) => name.endsWith(".json") && name !== "unverified-tools.json")
   .map((name) => JSON.parse(readFileSync(join(FIXTURE_DIR, name), "utf8")) as ToolFixture);
 const fixtureOf = (command: string): ToolFixture => {
   const found = fixtures.find((f) => f.command === command);
@@ -487,5 +487,83 @@ describe("an option whose arity no probe could settle is neither a flag nor a va
     expect(readOptions(loose, ["--trust-policy", "x", "cmd"], 0).unplaced).toBe("--trust-policy");
     expect(readOptions(loose, ["--trust-policy-exclude", "x", "cmd"], 0).end).toBe(2);
     expect(readOptions(loose, ["--trust", "x", "cmd"], 0).unplaced).toBe("--trust");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------
+// Coverage: no wrapper or runner table escapes rule 12
+// ---------------------------------------------------------------------------------------------------
+
+describe("every wrapper and runner is covered by a recording or says why it is not", () => {
+  const unverified = JSON.parse(
+    readFileSync(join(FIXTURE_DIR, "unverified-tools.json"), "utf8"),
+  ) as { tools: Record<string, { evidence: string; note: string }> };
+  const recorded = new Set(["bun", "bunx", "pnpm", "pnpx", "npm", "npx"]);
+  const KEYWORDS = new Set(["then", "do", "else", "elif", "if", "while", "until", "!"]);
+
+  it("a wrapper, manager or bare runner is recorded or listed with its evidence", async () => {
+    const { WRAPPER_SPECS } = await import("../harness/wrapper-specs");
+    const { MANAGERS, BARE_RUNNERS } = await import("../harness/runners");
+    const names = [...WRAPPER_SPECS.keys(), ...MANAGERS.keys(), ...BARE_RUNNERS.keys()].filter(
+      (n) => !recorded.has(n) && !KEYWORDS.has(n),
+    );
+    const missing = names.filter((n) => unverified.tools[n] === undefined);
+    expect(missing, "add it to unverified-tools.json with its evidence, or record it").toEqual([]);
+    for (const entry of Object.values(unverified.tools)) {
+      expect(["manpage", "help-text", "manual", "builtin"]).toContain(entry.evidence);
+    }
+  });
+
+  it("every installed tool with a recording is listed in the recordings, not as unverified", () => {
+    for (const name of ["bun", "pnpm", "npm", "npx", "docker", "podman"]) {
+      expect(unverified.tools[name], name).toBeUndefined();
+    }
+  });
+});
+
+describe("R8-ADV-9: `pnpm WORD` runs the PATH program WORD unless it is a pnpm command or a script", () => {
+  it("every command pnpm lists is known, so it is not read as a program", () => {
+    for (const command of fixtureOf("pnpm").commands ?? []) {
+      expect(G.PNPM_COMMANDS.has(command), command).toBe(true);
+    }
+  });
+  it.each([
+    `pnpm ${NO_VERIFY}`,
+    `pnpm psql -h ${HOST} -c 'select 1'`,
+    "pnpm git push --force origin main",
+    `pnpm -r ${NO_VERIFY}`,
+    `pnpm --filter x ${NO_VERIFY}`,
+    `pnpm -C apps/web ${NO_VERIFY}`,
+    `pnpm --dir apps/web ${NO_VERIFY}`,
+    `pnpm --prefix x ${NO_VERIFY}`,
+    `pnpm -r --parallel ${NO_VERIFY}`,
+    `corepack pnpm ${NO_VERIFY}`,
+    `/opt/homebrew/bin/pnpm ${NO_VERIFY}`,
+    "pnpm cp /tmp/y .claude/settings.json",
+  ])("%s is judged as the program it runs", (cmd) => {
+    expect(rank(cmd), cmd).toBeGreaterThanOrEqual(1);
+  });
+  it("pnpm's own commands, scripts and everyday forms stay allowed", () => {
+    for (const cmd of [
+      "pnpm install",
+      "pnpm i",
+      "pnpm add zod",
+      "pnpm test",
+      "pnpm start",
+      "pnpm run build",
+      "pnpm exec tsc --noEmit",
+      "pnpm dlx cowsay hi",
+      "pnpm -r run build",
+      "pnpm --filter web build",
+      "pnpm arch:fitness",
+      "pnpm lint",
+      "pnpm dev",
+      "pnpm update",
+      "pnpm why zod",
+      "pnpm store prune",
+      "pnpm config set x y",
+    ]) {
+      expect(rank(cmd), cmd).toBe(0);
+    }
   });
 });

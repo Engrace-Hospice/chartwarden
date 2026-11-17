@@ -77,7 +77,8 @@ export const COMPOSE_EXEC_GRAMMAR = grammar({
 /** The options that come before the subcommand: `docker -H host run`, `docker compose -f x.yml run`, `podman --remote run`. */
 const DOCKER_GLOBAL = grammar({
   flags: "Dv",
-  values: "Hcl",
+  // `-H HOST`, `-c CONTEXT`, `-l LEVEL`; nerdctl's `-n NAMESPACE` and `-a ADDRESS` (R8-ADV-10: `nerdctl -n k8s.io run IMG CMD`)
+  values: "Hclna",
   lax: true,
   longFlags: words("debug tls tlsverify version help remote"),
   longValues: words(

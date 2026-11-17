@@ -1,0 +1,333 @@
+{
+  "comment": "Tools whose option tables are NOT held against a recording (rule 12 of wave 11): the recorder cannot probe them here. harness-tool-options-wave11.test.ts fails when a wrapper or runner is in neither this list nor a recording.",
+  "tools": {
+    "-": {
+      "evidence": "builtin",
+      "note": "a shell builtin or precommand modifier: it takes no option the guard reads (any dash word is a flag)"
+    },
+    "arch": {
+      "evidence": "manpage",
+      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
+    },
+    "asdf": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "builtin": {
+      "evidence": "builtin",
+      "note": "a shell builtin or precommand modifier: it takes no option the guard reads (any dash word is a flag)"
+    },
+    "busybox": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "caffeinate": {
+      "evidence": "manpage",
+      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
+    },
+    "chronic": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "chroot": {
+      "evidence": "manpage",
+      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
+    },
+    "chrt": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "command": {
+      "evidence": "builtin",
+      "note": "a shell builtin or precommand modifier: it takes no option the guard reads (any dash word is a flag)"
+    },
+    "conda": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "coproc": {
+      "evidence": "builtin",
+      "note": "a shell builtin or precommand modifier: it takes no option the guard reads (any dash word is a flag)"
+    },
+    "cpulimit": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "devbox": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "direnv": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "doas": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "docker-compose": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "doppler": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "dotenv": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "dotenvx": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "dtruss": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "env": {
+      "evidence": "manpage",
+      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
+    },
+    "env-cmd": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "exec": {
+      "evidence": "builtin",
+      "note": "a shell builtin or precommand modifier: it takes no option the guard reads (any dash word is a flag)"
+    },
+    "fakeroot": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "firejail": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "flock": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "flox": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "gdb": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "hatch": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "ionice": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "lerna": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "lima": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "ltrace": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "micromamba": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "mise": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "nerdctl": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "nice": {
+      "evidence": "manpage",
+      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
+    },
+    "nix": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "nix-shell": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "nocorrect": {
+      "evidence": "builtin",
+      "note": "a shell builtin or precommand modifier: it takes no option the guard reads (any dash word is a flag)"
+    },
+    "noglob": {
+      "evidence": "builtin",
+      "note": "a shell builtin or precommand modifier: it takes no option the guard reads (any dash word is a flag)"
+    },
+    "nohup": {
+      "evidence": "manpage",
+      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
+    },
+    "nsenter": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "numactl": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "nx": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "op": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "parallel": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "pdm": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "perf": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "pipenv": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "pipx": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "pkexec": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "poetry": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "proxychains": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "proxychains4": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "repeat": {
+      "evidence": "builtin",
+      "note": "a shell builtin or precommand modifier: it takes no option the guard reads (any dash word is a flag)"
+    },
+    "runuser": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "rye": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "setpriv": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "setsid": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "ssh-agent": {
+      "evidence": "manpage",
+      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
+    },
+    "sshpass": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "stdbuf": {
+      "evidence": "manpage",
+      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
+    },
+    "strace": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "sudo": {
+      "evidence": "manpage",
+      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
+    },
+    "systemd-run": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "taskset": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "time": {
+      "evidence": "manpage",
+      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
+    },
+    "timeout": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "torify": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "toybox": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "tsocks": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "unbuffer": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "unshare": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "uv": {
+      "evidence": "help-text",
+      "note": "option table read from the installed tool's --help; not probed"
+    },
+    "uvx": {
+      "evidence": "help-text",
+      "note": "option table read from the installed tool's --help; not probed"
+    },
+    "valgrind": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "volta": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "xargs": {
+      "evidence": "manpage",
+      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
+    },
+    "xcrun": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    },
+    "yarn": {
+      "evidence": "manual",
+      "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
+    }
+  }
+}

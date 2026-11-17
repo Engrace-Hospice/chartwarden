@@ -115,6 +115,8 @@ function tarCommands(args: readonly string[]): string[] {
  */
 export function joinedAndQuoted(words: readonly string[]): string[] {
   const joined = words.join(" ");
+  // one word is one command line already (`watch 'rm x'`): quoting it back would name a program called `rm x`
+  if (words.length < 2) return [joined];
   const quoted = words.map(shellQuote).join(" ");
   return quoted === joined ? [joined] : [joined, quoted];
 }

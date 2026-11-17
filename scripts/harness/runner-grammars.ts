@@ -96,6 +96,20 @@ export const PNPM: OptionGrammar = loose({
   ),
 });
 
+/**
+ * The commands pnpm runs itself (`pnpm help -a`, recorded in the `pnpm` fixture: the first group), then the aliases and the commands it
+ * hands to npm that `help -a` does not list (unverified: from the documentation). Any other first word is a PATH program that pnpm runs
+ * as `pnpm exec WORD` (`pnpm echo HIT` prints HIT on pnpm 10.30), unless it names a script of the package.
+ */
+export const PNPM_COMMANDS: ReadonlySet<string> = new Set([
+  ...words(
+    "add approve-builds audit bin c cache cat-file cat-index config create dedupe deploy dlx doctor env exec fetch find-hash i ignored-builds import init install install-test it licenses link list ln ls outdated pack patch patch-commit patch-remove prune publish rb rebuild remove rm root run self-update start store t test unlink up update why",
+  ),
+  ...words(
+    "recursive m multi uninstall un upgrade ll la server setup completion help access adduser bugs deprecate dist-tag docs edit info login logout owner ping prefix profile pkg repo restart search set star stars stop team token unpublish unstar version view whoami",
+  ),
+]);
+
 /** `pnpm dlx [options] <package>` (`pnpm help dlx`; the value placeholders are documented at pnpm.io/cli/dlx). */
 export const PNPM_DLX: OptionGrammar = loose({
   flags: "cs",

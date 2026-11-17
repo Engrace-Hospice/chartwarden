@@ -238,6 +238,19 @@ function yarnWorkspaces(
   return peel(["yarn", ...words.slice(end)], isScript, sink);
 }
 
+/** `pnpm WORD ARGS`: the program WORD when it is neither a pnpm command nor a package script (`isScript`; a colon says script, as `arch:fitness`). */
+function pnpmProgram(
+  words: readonly string[],
+  at: number,
+  isScript: ScriptLookup,
+  sink: Sink,
+): readonly string[] | null {
+  const word = words[at];
+  if (word === undefined || word.startsWith("-") || G.PNPM_COMMANDS.has(word)) return null;
+  if (word.includes(":") || isScript(word)) return null;
+  return innerOf(words.slice(at), PNPM_EXEC, sink);
+}
+
 /** The words of the command a runner starts, and the files its own options name; null when it starts none. */
 function peel(
   words: readonly string[],
@@ -267,7 +280,9 @@ function peel(
     const through = yarnWorkspaces(words, at, isScript, sink);
     if (through !== null) return through;
   }
-  // bun and yarn run a PATH program when the name is no script; npm and pnpm only run scripts.
+  // pnpm runs the PATH program of a word that is no pnpm command and no script: `pnpm git commit …` is `pnpm exec git commit …` (R8-ADV-9).
+  if (name === "pnpm") return pnpmProgram(words, at, isScript, sink);
+  // bun and yarn run a PATH program when the name is no script; npm only runs scripts.
   if (name !== "bun" && name !== "yarn") return null;
   const builtins = name === "bun" ? BUN_BUILTINS : YARN_BUILTINS;
   const options = name === "bun" ? G.BUN_RUN : G.YARN;
