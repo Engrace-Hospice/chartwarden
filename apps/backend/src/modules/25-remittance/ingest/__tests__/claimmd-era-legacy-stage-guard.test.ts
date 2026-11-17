@@ -21,9 +21,12 @@ function advice(): ParsedRemittanceAdvice {
     transactionSetControlNumber: "0001",
     paymentMethod: "eft",
     totalPaymentAmount: 10,
+    paymentEffectiveDate: "2026-06-15",
+    adjudicationCutoffDate: null,
+    functionalGroupCreationDate: "2026-06-16",
     productionDate: "2026-06-15",
     checkOrEftTraceNumber: "SYNTH-TRACE-1",
-    payee: { name: "SYNTHETIC", idQualifier: "XX", id: "1999999999" },
+    payee: { name: "SYNTHETIC", idQualifier: "XX", id: "1234567893" },
     claims: [],
   };
 }
@@ -49,7 +52,7 @@ describe("M25 legacy intake vs Claim.MD stage identity", () => {
     const service = buildDrizzleM25IngestService(db as never, {
       client,
       outbox,
-      payeeNpi: async () => "1999999999",
+      payeeNpi: async () => "1234567893",
     });
     const result = await service.receiveAdvice(
       { organizationId: ORG },

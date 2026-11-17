@@ -42,6 +42,8 @@ export interface Parse835Request {
   readonly rawEdi?: string;
   /** ST02 of the transaction set to parse; required when the file holds more than one ST/SE set. */
   readonly transactionSetControlNumber?: string;
+  /** GS06 scope when ST02 is reused across functional groups. */
+  readonly functionalGroupControlNumber?: string;
 }
 
 /** Reads the staged raw 835 by object key (injected: this package holds no storage code). */
@@ -115,7 +117,13 @@ export function createX12835Client(opts: X12835ClientOptions = {}): X12835Worker
     async parse835(input) {
       const raw = await loadRaw(input);
       if (typeof raw !== "string") return raw;
-      return parseX12835(raw, input.payerProgram, parseOpts, input.transactionSetControlNumber);
+      return parseX12835(
+        raw,
+        input.payerProgram,
+        parseOpts,
+        input.transactionSetControlNumber,
+        input.functionalGroupControlNumber,
+      );
     },
 
     async parse835All(input) {

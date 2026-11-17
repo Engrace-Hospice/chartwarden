@@ -141,13 +141,20 @@ export function buildDrizzleM25WriteService(
     const lineId = denial[0]?.remittanceLineId;
     const advice = lineId
       ? await tx
-          .select({ productionDate: RA.productionDate })
+          .select({
+            paymentEffectiveDate: RA.paymentEffectiveDate,
+            productionDate: RA.productionDate,
+          })
           .from(RL)
           .innerJoin(RA, eq(RA.id, RL.remittanceAdviceId))
           .where(eq(RL.id, lineId))
           .limit(1)
       : [];
-    const adviceDay = advice[0]?.productionDate ? noticeDayOf(advice[0].productionDate) : null;
+    const adviceDay = advice[0]?.paymentEffectiveDate
+      ? noticeDayOf(new Date(`${advice[0].paymentEffectiveDate}T00:00:00.000Z`))
+      : advice[0]?.productionDate
+        ? noticeDayOf(advice[0].productionDate)
+        : null;
     if (given) {
       // The remittance is the notice; a later date cannot lengthen the window it set. With no 835, the
       // denial's open date is the latest the notice can be.

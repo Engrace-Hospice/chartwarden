@@ -73,7 +73,7 @@ describe("parseX12835 clean multi-claim 835", () => {
         amount: 25,
         providerIdentifier: "1512345678",
         fiscalPeriod: "2026-12-31",
-        segmentPosition: 31,
+        segmentPosition: 32,
         occurrence: 1,
       },
       {
@@ -82,7 +82,7 @@ describe("parseX12835 clean multi-claim 835", () => {
         amount: -75,
         providerIdentifier: "1512345678",
         fiscalPeriod: "2026-12-31",
-        segmentPosition: 31,
+        segmentPosition: 32,
         occurrence: 2,
       },
     ]);
@@ -303,7 +303,9 @@ describe("parseX12835 fails closed", () => {
       "BPR04",
     );
     expectDegraded(
-      wrap835(replaceSeg(CLEAN_BODY, "BPR", CLEAN_BODY[0]!.replace("*C*", "*D*"))),
+      wrap835(
+        replaceSeg(CLEAN_BODY, "BPR", CLEAN_BODY[0]!.replace("BPR*C*1250.00*C", "BPR*C*1250.00*D")),
+      ),
       "X12_835_PARSE_FAILED",
       "BPR03",
     );

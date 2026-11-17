@@ -277,7 +277,6 @@ import {
   createDbSessionStepUpWriter,
 } from "./modules/02-identity/step-up-adapters-db";
 import { buildSeamMedicarePayerPort } from "./modules/25-remittance/ingest/medicare-payer-port";
-import { parsePayeeTinPolicy } from "./modules/25-remittance/ingest/payee-tin-policy";
 import { buildDrizzleRemittanceCursorStore } from "./modules/25-remittance/ingest/pull-cursor-store";
 import { partnerAccessAvailability } from "./modules/36-messaging/external-share/external-share-proxy";
 import { familyAccessAvailability } from "./modules/36-messaging/family/family-access-gate";
@@ -5331,7 +5330,6 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // sealed EIN is read through M1's published reader and opened with M2's tax-id cipher (the M23 837I precedent), so M25
   // touches neither table nor DEK. A decrypt failure rejects and the ingest service refuses the file (fail closed).
   const m25PayeeTinDeps = {
-    payeeTinPolicy: parsePayeeTinPolicy(process.env.M25_PAYEE_TIN_POLICY),
     payeeTin: dbHandle
       ? (organizationId: string, providerEntityId: string): Promise<string | null> =>
           withOrgContext(dbHandle.db, { organizationId, userId: "" }, async (tx) => {

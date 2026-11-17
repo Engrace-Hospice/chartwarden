@@ -5,6 +5,7 @@ export * from "./types";
 export {
   parseX12835,
   parseX12835AllSets,
+  parseX12835Grouped,
   type ParseX12835Options,
 } from "./parse-x12-835";
 export * from "./parse-277ca";

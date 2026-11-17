@@ -18,6 +18,7 @@ export interface WrapOptions {
   isa15?: string;
   gs01?: string;
   gs08?: string;
+  gs04?: string;
 }
 
 /** Build a full interchange around `body` (the segments strictly between ST and SE). */
@@ -48,7 +49,7 @@ export function wrap835(body: readonly string[], o: WrapOptions = {}): string {
     comp,
   ].join(el);
   const segs = [
-    `GS*${o.gs01 ?? "HP"}*SYNTHMAC*SYNTHHOSPICE*20260616*1200*${gs06}*X*${o.gs08 ?? "005010X221A1"}`,
+    `GS*${o.gs01 ?? "HP"}*SYNTHMAC*SYNTHHOSPICE*${o.gs04 ?? "20260616"}*1200*${gs06}*X*${o.gs08 ?? "005010X221A1"}`,
     `ST*${o.st01 ?? "835"}*${st02}`,
     ...body,
     `SE*${o.seCount ?? body.length + 2}*${o.se02 ?? st02}`,
@@ -70,6 +71,33 @@ export function wrap835Sets(sets: readonly (readonly [string, readonly string[]]
   return open + mid + tail.replace("GE*1*", `GE*${sets.length}*`);
 }
 
+/** Several independent GS/GE groups under one ISA/IEA interchange. */
+export function wrap835Groups(
+  groups: readonly {
+    gs06: string;
+    gs04: string;
+    sets: readonly (readonly [string, readonly string[]])[];
+  }[],
+): string {
+  const first = wrap835(groups[0]?.sets[0]?.[1] ?? [], {
+    gs06: groups[0]?.gs06,
+    gs04: groups[0]?.gs04,
+  });
+  const isa = first.slice(0, first.indexOf("GS*"));
+  const iea = first.slice(first.indexOf("IEA*")).replace("IEA*1*", `IEA*${groups.length}*`);
+  const chunks = groups.map((group) => {
+    const wrapped = wrap835Sets(group.sets);
+    const start = wrapped.indexOf("GS*");
+    const end = wrapped.indexOf("IEA*");
+    return wrapped
+      .slice(start, end)
+      .replace("20260616", group.gs04)
+      .replace("*77*X*", `*${group.gs06}*X*`)
+      .replace(/GE\*\d+\*77~/, `GE*${group.sets.length}*${group.gs06}~`);
+  });
+  return isa + chunks.join("") + iea;
+}
+
 const HEADER = [
   "TRN*1*EFT0001*1512345678",
   "REF*EV*RECV01",
@@ -83,7 +111,7 @@ const HEADER = [
 
 /** BPR02 = sum(CLP04) 1200.00 - sum(PLB) (-50.00: WO 25.00 reduces, L6 interest -75.00 increases) = 1250.00. */
 export const CLEAN_BODY: readonly string[] = [
-  "BPR*I*1250.00*C*ACH*CCP*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615",
+  "BPR*C*1250.00*C*ACH*CCP*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615",
   ...HEADER,
   // claim 1: two service lines, line-level CAS (one SVC with two CAS segments, one with a quantity)
   "CLP*PCN-0001*1*1000.00*800.00*50.00*MC*ICN-A1*11*1",
@@ -100,6 +128,7 @@ export const CLEAN_BODY: readonly string[] = [
   "SVC*HC:Q5002*400.00*300.00**2",
   "CAS*PR*2*50.00",
   "CAS*CO*45*50.00*2",
+  "AMT*I*75.00",
   // claim 2: revenue-coded line
   "CLP*PCN-0002*1*500.00*400.00*0.00*MC*ICN-A2",
   "MIA*0****MA01",
@@ -114,7 +143,7 @@ export const CLEAN_BODY: readonly string[] = [
 
 /** A single denied claim (CLP02=4), no service lines, no PLB. */
 export const DENIAL_BODY: readonly string[] = [
-  "BPR*I*0.00*C*NON*CCP*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615",
+  "BPR*H*0.00*C*NON************20260615",
   ...HEADER,
   "CLP*PCN-0009*4*250.00*0.00*0.00*MC*ICN-D1",
   "CAS*CO*45*250.00",
@@ -122,7 +151,7 @@ export const DENIAL_BODY: readonly string[] = [
 
 /** Float-trap amounts: 0.10 + 0.20 must foot to exactly 0.30. */
 export const FLOAT_TRAP_BODY: readonly string[] = [
-  "BPR*I*0.30*C*CHK************20260615",
+  "BPR*C*0.30*C*CHK************20260615",
   ...HEADER,
   "CLP*PCN-0005*1*0.30*0.30*0.00*MC*ICN-F1",
   "SVC*HC:Q5001*0.10*0.10",

@@ -659,6 +659,9 @@ export function buildDrizzleM25ReadService(
       payerKind: r.payerKind,
       paymentMethod: r.paymentMethod,
       totalPaymentAmount: r.totalPaymentAmount,
+      paymentEffectiveDate: r.paymentEffectiveDate,
+      adjudicationCutoffDate: r.adjudicationCutoffDate,
+      functionalGroupCreationDate: r.functionalGroupCreationDate,
       parseStatus: r.parseStatus,
       receivedAt: iso(r.receivedAt),
     };

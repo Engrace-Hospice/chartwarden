@@ -2,11 +2,11 @@
 import { createHash } from "node:crypto";
 import type { ParsedRemittanceAdvice, X12835WorkerClient } from "@chartwarden/x12-835-client";
 import { describe, expect, it } from "vitest";
-import { parsePayeeTinPolicy } from "../payee-tin-policy";
 import {
+  type PayeeNpiLookup,
   type PayeeTinLookup,
-  type PayeeTinPolicy,
   buildDrizzleM25IngestService,
+  normaliseTin,
 } from "../service-drizzle";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -23,6 +23,9 @@ function advice(payee: ParsedRemittanceAdvice["payee"]): ParsedRemittanceAdvice 
     transactionSetControlNumber: "0001",
     paymentMethod: "eft",
     totalPaymentAmount: 0,
+    paymentEffectiveDate: "2026-06-15",
+    adjudicationCutoffDate: null,
+    functionalGroupCreationDate: "2026-06-16",
     productionDate: "2026-06-15",
     payee,
     claims: [],
@@ -36,23 +39,24 @@ const noMore = async () => {
 function receive(
   payee: ParsedRemittanceAdvice["payee"],
   tin: PayeeTinLookup | undefined,
-  policy?: PayeeTinPolicy,
   payerKind: "medicare" | "medicaid" = "medicaid",
   client?: X12835WorkerClient,
+  npiLookup: PayeeNpiLookup = async () => NPI,
+  organizationId = ORG,
+  providerEntityId = PE,
 ) {
   const service = buildDrizzleM25IngestService({} as never, {
     client: client ?? {
       parse835: async () => ({ ok: true, value: advice(payee) }),
       parse277ca: noMore,
     },
-    payeeNpi: async () => NPI,
+    payeeNpi: npiLookup,
     ...(tin ? { payeeTin: tin } : {}),
-    ...(policy ? { payeeTinPolicy: policy } : {}),
   });
   return service.receiveAdvice(
-    { organizationId: ORG },
+    { organizationId },
     {
-      providerEntityId: PE,
+      providerEntityId,
       payerId: PE,
       payerKind,
       minioObjectKey: "k",
@@ -65,7 +69,6 @@ function receive(
 describe("835 payee TIN (#671)", () => {
   const npiPayee = { name: "X", idQualifier: "XX", id: NPI };
   const fiPayee = { name: "X", idQualifier: "FI", id: "123456789" };
-  const allowMedicaid = parsePayeeTinPolicy(JSON.stringify({ [ORG]: ["medicaid"] }));
 
   it("refuses an NPI-matching payee whose REF*TJ is not the tenant's TIN", async () => {
     const r = await receive({ ...npiPayee, taxId: "999-99-9999" }, async () => "12-3456789");
@@ -88,42 +91,51 @@ describe("835 payee TIN (#671)", () => {
     const r = await receive(fiPayee, async () => "123456789");
     expect(r).toMatchObject({ outcome: "malformed", reason: expect.stringContaining("no NPI") });
   });
-  it("refuses a tax-id-only payee when the policy does not cover this payer program", async () => {
-    const r = await receive(fiPayee, async () => "123456789", allowMedicaid, "medicare");
+  it("rejects TIN-only identity even when the TIN matches; no approved payer-program policy exists", async () => {
+    const r = await receive(fiPayee, async () => "12-3456789", "medicaid");
     expect(r).toMatchObject({ outcome: "malformed", reason: expect.stringContaining("no NPI") });
   });
-  it("on an allowed program refuses a wrong or unreadable TIN", async () => {
-    expect(await receive(fiPayee, async () => "987654321", allowMedicaid)).toMatchObject({
+
+  it("normalizes only bare nine-digit, EIN, or SSN forms", () => {
+    expect(normaliseTin("123456789")).toBe("123456789");
+    expect(normaliseTin("12-3456789")).toBe("123456789");
+    expect(normaliseTin("123-45-6789")).toBe("123456789");
+    expect(normaliseTin("12/3456789")).toBeNull();
+    expect(normaliseTin("TIN:123456789")).toBeNull();
+    expect(normaliseTin("1-23456789")).toBeNull();
+  });
+
+  it("rejects malformed NPIs and refuses REF*TJ when no secure TIN seam is bound", async () => {
+    expect(await receive({ ...npiPayee, id: "1234567890" }, async () => NPI)).toMatchObject({
       outcome: "malformed",
-      reason: expect.stringContaining("tax id is not"),
+      reason: expect.stringContaining("NPI is invalid"),
     });
-    const unreadable = await receive(
-      fiPayee,
-      async () => {
-        throw new Error("x");
-      },
-      allowMedicaid,
-    );
-    expect(unreadable).toMatchObject({
+    expect(await receive({ ...npiPayee, taxId: "123456789" }, undefined)).toMatchObject({
       outcome: "malformed",
-      reason: expect.stringContaining("could not be read"),
+      reason: expect.stringContaining("no tax id lookup"),
     });
+    expect(
+      await receive(npiPayee, undefined, "medicaid", undefined, async () => "1234567890"),
+    ).toMatchObject({ outcome: "malformed", reason: expect.stringContaining("no valid NPI") });
   });
-  it("on an allowed program an exact TIN match passes the payee check (proceeds to the db)", async () => {
-    // The db stub is `{}`: reaching it throws, which proves the payee check let the file through.
-    await expect(receive(fiPayee, async () => "12-3456789", allowMedicaid)).rejects.toThrow();
-  });
-  it("policy is tenant-scoped and default-deny", () => {
-    const policy = parsePayeeTinPolicy(JSON.stringify({ [OTHER_ORG]: ["medicaid"] }));
-    expect(policy(ORG, "medicaid")).toBe(false);
-    expect(policy(OTHER_ORG, "medicaid")).toBe(true);
-    expect(policy(OTHER_ORG, "medicare")).toBe(false);
-    expect(parsePayeeTinPolicy(undefined)(ORG, "medicaid")).toBe(false);
-  });
-  it("rejects a malformed policy loudly", () => {
-    expect(() => parsePayeeTinPolicy("{")).toThrow();
-    expect(() => parsePayeeTinPolicy(JSON.stringify({ nope: ["medicaid"] }))).toThrow();
-    expect(() => parsePayeeTinPolicy(JSON.stringify({ [ORG]: ["cash"] }))).toThrow();
+
+  it("queries authoritative NPI using the authenticated organization and selected provider", async () => {
+    let seen: readonly [string, string] | undefined;
+    await expect(
+      receive(
+        npiPayee,
+        undefined,
+        "medicaid",
+        undefined,
+        async (organizationId, providerEntityId) => {
+          seen = [organizationId, providerEntityId];
+          return NPI;
+        },
+        OTHER_ORG,
+        "44444444-4444-4444-8444-444444444444",
+      ),
+    ).rejects.toThrow();
+    expect(seen).toEqual([OTHER_ORG, "44444444-4444-4444-8444-444444444444"]);
   });
 });
 
@@ -142,7 +154,7 @@ describe("receive parses once per file (#671)", () => {
       },
       parse277ca: noMore,
     };
-    const r = await receive(undefined, undefined, undefined, "medicare", client);
+    const r = await receive(undefined, undefined, "medicare", client);
     expect(r).toMatchObject({ outcome: "malformed" });
     expect([singles, alls]).toEqual([0, 1]);
   });

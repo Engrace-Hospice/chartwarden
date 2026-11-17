@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync, readdirSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -58,7 +59,113 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
       "SELECT count(*)::int AS n FROM _chartwarden_migration",
     );
     expect(rows[0]!.n).toBe(result.ran.length);
+    expect(result.ran).toContain("1508_m25_835_group_identity_dates.sql");
   }, 300_000);
+
+  it("upgrades a historical M25 schema without rewriting financial or ambiguous date data", async () => {
+    await resetSchema();
+    const historicalDir = await mkdtemp(join(tmpdir(), "chartwarden-m25-835-historical-"));
+    const files = readdirSync(MIGRATIONS_DIR)
+      .filter((file) => file.endsWith(".sql") && file !== "1508_m25_835_group_identity_dates.sql")
+      .sort();
+    const organizationId = "71000000-0000-4000-8000-000000000001";
+    const providerEntityId = "72000000-0000-4000-8000-000000000001";
+    const payerId = "73000000-0000-4000-8000-000000000001";
+
+    try {
+      for (const file of files)
+        await writeFile(
+          join(historicalDir, file),
+          readFileSync(join(MIGRATIONS_DIR, file), "utf8"),
+        );
+      const before = await applyMigrations(db, { migrationsDir: historicalDir });
+      expect(before.ran.some((file) => Number(file.slice(0, 4)) >= 1500)).toBe(true);
+      expect(before.ran).not.toContain("1508_m25_835_group_identity_dates.sql");
+
+      await db.query(
+        `INSERT INTO organization (id, slug, legal_name, display_name)
+         VALUES ($1, 'm25-835-historical-upgrade', 'Synthetic Historical Org', 'Synthetic Historical Org')`,
+        [organizationId],
+      );
+      await db.query(
+        `INSERT INTO remittance_advice (
+          organization_id, provider_entity_id, payer_id, payer_kind,
+          interchange_control_number, transaction_set_control_number, payment_method,
+          total_payment_amount, plb_total_amount, production_date, minio_object_key, file_sha256
+        ) VALUES ($1, $2, $3, 'medicare', '700000001', '700000001', 'check', 12.34, 0.01,
+          '2025-02-03T00:00:00Z', 'synthetic/historical-835', repeat('a', 64))`,
+        [organizationId, providerEntityId, payerId],
+      );
+
+      const upgraded = await applyMigrations(db, { migrationsDir: MIGRATIONS_DIR });
+      expect(upgraded.ran).toEqual(["1508_m25_835_group_identity_dates.sql"]);
+      expect((await applyMigrations(db, { migrationsDir: MIGRATIONS_DIR })).ran).toEqual([]);
+
+      const historical = await db.query<{
+        total_payment_amount: string;
+        plb_total_amount: string;
+        production_date: Date | null;
+        payment_effective_date: string | null;
+        adjudication_cutoff_date: string | null;
+        interchange_sender_code: string | null;
+        functional_group_control_number: string | null;
+        payee_identity_evidence: unknown;
+      }>(
+        `SELECT total_payment_amount, plb_total_amount, production_date, payment_effective_date,
+                adjudication_cutoff_date, interchange_sender_code, functional_group_control_number,
+                payee_identity_evidence FROM remittance_advice WHERE organization_id=$1`,
+        [organizationId],
+      );
+      expect(historical.rows).toHaveLength(1);
+      expect(historical.rows[0]).toMatchObject({
+        total_payment_amount: "12.34",
+        plb_total_amount: "0.01",
+        payment_effective_date: null,
+        adjudication_cutoff_date: null,
+        interchange_sender_code: null,
+        functional_group_control_number: null,
+        payee_identity_evidence: null,
+      });
+      expect(historical.rows[0]!.production_date?.toISOString()).toBe("2025-02-03T00:00:00.000Z");
+
+      const index = await db.query<{ indexdef: string }>(
+        "SELECT indexdef FROM pg_indexes WHERE schemaname='public' AND indexname='ux_remittance_envelope_dedupe'",
+      );
+      expect(index.rows[0]?.indexdef).toContain("NULLS NOT DISTINCT");
+      for (const group of ["700000101", "700000102"]) {
+        await db.query(
+          `INSERT INTO remittance_advice (
+            organization_id, provider_entity_id, payer_id, payer_kind, interchange_control_number,
+            interchange_sender_code, interchange_receiver_code, functional_group_control_number,
+            transaction_set_control_number, payment_method, total_payment_amount, production_date,
+            minio_object_key, file_sha256
+          ) VALUES ($1,$2,$3,'medicare','700000002','SYNTH-PAYER','SYNTH-PROVIDER',$4,'700000001',
+            'check',12.34,'2025-02-03T00:00:00Z',$5,repeat('b',64))`,
+          [organizationId, providerEntityId, payerId, group, `synthetic/group-${group}`],
+        );
+      }
+      const grouped = await db.query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM remittance_advice WHERE organization_id=$1 AND interchange_control_number='700000002'",
+        [organizationId],
+      );
+      expect(grouped.rows[0]!.n).toBe(2);
+
+      await expect(
+        db.query(
+          `INSERT INTO remittance_advice (
+          organization_id, provider_entity_id, payer_id, payer_kind, interchange_control_number,
+          transaction_set_control_number, payment_method, total_payment_amount, production_date,
+          minio_object_key, file_sha256
+        ) VALUES ($1,$2,$3,'medicare','700000003','700000001','check',12.34,'2025-02-03T00:00:00Z',
+          'synthetic/old-writer',repeat('c',64))
+        ON CONFLICT (interchange_control_number, transaction_set_control_number, provider_entity_id) DO NOTHING`,
+          [organizationId, providerEntityId, payerId],
+        ),
+      ).rejects.toMatchObject({ code: "42P10" });
+    } finally {
+      await rm(historicalDir, { force: true, recursive: true });
+    }
+  }, 600_000);
 
   it("a second run against an already-migrated database is a true no-op", async () => {
     const result = await applyMigrations(db, { migrationsDir: MIGRATIONS_DIR });

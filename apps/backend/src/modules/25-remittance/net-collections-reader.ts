@@ -34,7 +34,8 @@ const CENTS = sql<string>`coalesce(sum(round(${RA.totalPaymentAmount} * 100)) FI
 const POSTED_COUNT = sql<string>`count(*) FILTER (WHERE ${POSTED})`;
 const PENDING_COUNT = sql<string>`count(*) FILTER (WHERE NOT (${POSTED}))`;
 /** The UTC calendar month of the payment date, `YYYY-MM`. */
-const PAYMENT_MONTH = sql<string>`to_char(${RA.productionDate} AT TIME ZONE 'UTC', 'YYYY-MM')`;
+const PAYMENT_DATE = sql<Date | null>`coalesce(${RA.paymentEffectiveDate}::date, (${RA.productionDate} AT TIME ZONE 'UTC')::date)`;
+const PAYMENT_MONTH = sql<string>`to_char(${PAYMENT_DATE}, 'YYYY-MM')`;
 
 interface Period {
   readonly periodStart: Date;
@@ -58,8 +59,8 @@ export function buildNetCollectionsReader(db: DbClient): NetCollectionsReader {
   const inPeriod = (organizationId: string, { periodStart, periodEnd }: Period) =>
     and(
       eq(RA.organizationId, organizationId),
-      gte(RA.productionDate, periodStart),
-      lt(RA.productionDate, periodEnd),
+      gte(PAYMENT_DATE, periodStart),
+      lt(PAYMENT_DATE, periodEnd),
     );
 
   return {

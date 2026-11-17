@@ -169,6 +169,7 @@ export { tokenizeInterchange, X12FormatError } from "./eligibility/x12-envelope"
 export {
   build837iTransferNotice,
   TransferNotice837iBuildError,
+  isValidNpi,
 } from "./notices/build-837i-transfer-notice";
 export type {
   TransferNotice837iInput,

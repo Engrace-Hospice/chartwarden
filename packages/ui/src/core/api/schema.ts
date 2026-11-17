@@ -75391,6 +75391,24 @@ export interface operations {
                         /** @constant */
                         outcome: "malformed";
                         reason: string;
+                    } | {
+                        /** @constant */
+                        outcome: "unsupported";
+                        /** @constant */
+                        code: "X12_835_UNSUPPORTED_ROUTING";
+                        reason: string;
+                    } | {
+                        /** @constant */
+                        outcome: "review_required";
+                        stageId: string;
+                        reason: string;
+                    } | {
+                        /** @constant */
+                        outcome: "held_duplicate";
+                        adviceId: string;
+                        existingAdviceId: string;
+                        /** @constant */
+                        reason: "LEGACY_IDENTITY_AMBIGUOUS";
                     };
                 };
             };
@@ -75424,6 +75442,9 @@ export interface operations {
                             paymentMethod: string;
                             /** @description Decimal string — never a float */
                             totalPaymentAmount: string;
+                            paymentEffectiveDate: string | null;
+                            adjudicationCutoffDate: string | null;
+                            functionalGroupCreationDate: string | null;
                             parseStatus: string;
                             /** Format: date-time */
                             receivedAt: string;
@@ -110021,6 +110042,9 @@ export interface operations {
                             paymentMethod: string;
                             /** @description Decimal string — never a float */
                             totalPaymentAmount: string;
+                            paymentEffectiveDate: string | null;
+                            adjudicationCutoffDate: string | null;
+                            functionalGroupCreationDate: string | null;
                             parseStatus: string;
                             /** Format: date-time */
                             receivedAt: string;
@@ -110060,6 +110084,9 @@ export interface operations {
                         paymentMethod: string;
                         /** @description Decimal string — never a float */
                         totalPaymentAmount: string;
+                        paymentEffectiveDate: string | null;
+                        adjudicationCutoffDate: string | null;
+                        functionalGroupCreationDate: string | null;
                         parseStatus: string;
                         /** Format: date-time */
                         receivedAt: string;

@@ -96,6 +96,9 @@ export const claimmdEraM25Stage = pgTable(
     eraId: varchar("era_id", { length: 64 }).notNull(),
     fileIndex: integer("file_index").notNull(),
     interchangeControlNumber: varchar("interchange_control_number", { length: 9 }).notNull(),
+    interchangeSenderCode: varchar("interchange_sender_code", { length: 15 }),
+    interchangeReceiverCode: varchar("interchange_receiver_code", { length: 15 }),
+    functionalGroupControlNumber: varchar("functional_group_control_number", { length: 9 }),
     transactionSetControlNumber: varchar("transaction_set_control_number", { length: 9 }).notNull(),
     original835Digest: varchar("original_835_digest", { length: 64 }).notNull(),
     sourceFileDigest: varchar("source_file_digest", { length: 64 }),
@@ -114,11 +117,16 @@ export const claimmdEraM25Stage = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    sourceComponent: unique("claimmd_era_m25_stage_component_uq").on(
-      t.sourceInboxId,
-      t.fileIndex,
-      t.transactionSetControlNumber,
-    ),
+    sourceComponent: unique("claimmd_era_m25_stage_component_uq")
+      .on(
+        t.sourceInboxId,
+        t.fileIndex,
+        t.interchangeSenderCode,
+        t.interchangeReceiverCode,
+        t.functionalGroupControlNumber,
+        t.transactionSetControlNumber,
+      )
+      .nullsNotDistinct(),
     deliveryIdentity: unique("claimmd_era_m25_stage_delivery_key_uq").on(t.idempotencyKey),
     byTenant: index("claimmd_era_m25_stage_org_ix").on(
       t.organizationId,

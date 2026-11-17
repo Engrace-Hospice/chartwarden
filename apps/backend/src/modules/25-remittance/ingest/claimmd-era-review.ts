@@ -523,7 +523,7 @@ export function projectClaimMdEraReviewItem(
       trace: str(advice.checkOrEftTraceNumber),
       method: str(advice.paymentMethod),
       amount: num(advice.totalPaymentAmount),
-      date: str(advice.productionDate),
+      date: str(advice.paymentEffectiveDate),
     },
     claims,
     providerAdjustments: array(advice.providerAdjustments)
@@ -884,7 +884,8 @@ export function buildDrizzleClaimMdEraReviewService(
       !parsed.transactionSetControlNumber ||
       !parsed.checkOrEftTraceNumber ||
       !["check", "eft"].includes(parsed.paymentMethod) ||
-      !Number.isFinite(Date.parse(parsed.productionDate))
+      !parsed.paymentEffectiveDate ||
+      !Number.isFinite(Date.parse(parsed.paymentEffectiveDate))
     )
       blockers.push("UNSUPPORTED_OR_INCOMPLETE_835");
 
@@ -2443,6 +2444,12 @@ export function buildDrizzleClaimMdEraReviewService(
             "the staged source lacks required payment identity",
             409,
           );
+        if (!parsed.paymentEffectiveDate)
+          throw new ChartWardenError(
+            "POSTING_SOURCE_INVALID",
+            "the staged source lacks a payment effective date",
+            409,
+          );
         const [advice] = await tx
           .insert(schema.remittanceAdvice)
           .values({
@@ -2457,7 +2464,10 @@ export function buildDrizzleClaimMdEraReviewService(
             totalPaymentAmount: (paymentCents / 100).toFixed(2),
             plbTotalAmount: "0.00",
             contentDigest: stage.contentDigest,
-            productionDate: new Date(parsed.productionDate),
+            paymentEffectiveDate: parsed.paymentEffectiveDate,
+            adjudicationCutoffDate: parsed.adjudicationCutoffDate,
+            functionalGroupCreationDate: parsed.functionalGroupCreationDate,
+            productionDate: new Date(parsed.paymentEffectiveDate),
             receivedAt: new Date(),
             minioObjectKey: `claimmd-stage/${stage.id}/${sourceFileSha256}`,
             fileSha256: sourceFileSha256,
