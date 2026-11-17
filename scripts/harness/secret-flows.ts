@@ -154,8 +154,8 @@ export function secretFlowReason(
       if (names.some((name) => isGuardedName(name) || tainted.has(name))) return SECRET_FLOW_REASON;
     }
     if (!PRINTING.test(part.prog)) continue;
-    // `cat > file <<EOF ... $NAME ... EOF` writes the text to a file: it does not reach the transcript (`tee` copies it to stdout too).
-    if (part.prog !== "tee" && writesStdoutToFile(partTexts[index] ?? "")) continue;
+    // `cat > file <<EOF ... $NAME ... EOF` writes the text to a file: it does not reach the transcript (`tee FILE` still prints).
+    if (writesStdoutToFile(partTexts[index] ?? "")) continue;
     const texts = [...part.args, ...part.strings, ...(bodies[index] ?? [])];
     if (texts.some((text) => leaks(text, values, tainted))) return SECRET_FLOW_REASON;
   }
