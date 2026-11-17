@@ -72,6 +72,7 @@ import { programOptionReason } from "./option-commands";
 import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
 import { setPackageScriptsReader } from "./package-scripts";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
+import { SPELLING_ASK_REASON, askedBySpelling } from "./permission-asks";
 import { persistenceReason } from "./persistence-commands";
 import { expandedProgramWord, shellsBehindWord } from "./program-words";
 import {
@@ -137,6 +138,7 @@ import {
   trimSlashes,
   work,
 } from "./work-budget";
+import { type Bindings, MAX_READINGS, NO_BINDINGS, bindAfter, readingsOf } from "./word-readings";
 import { shellQuote, sshHost } from "./wrappers";
 import { extraOutputFiles, localPath } from "./writers";
 import { moreGitWrites, moreWriterTargets } from "./writers-more";
@@ -387,7 +389,7 @@ function readsShellScript(segment: string): boolean {
   // `$SHELL <<EOF`, `$(which sh) <<EOF`: a program the guard cannot name may be a shell.
   if (/[$`]/.test(parsed.prog)) return true;
   return [parsed.prog, ...parsed.args].some((word) => {
-    const name = word.replace(/^.*\//, "");
+    const name = word.replace(/^.*\//, "").toLowerCase();
     return NESTED_SHELL.test(name) || SCRIPT_READER.test(name);
   });
 }
@@ -1043,6 +1045,7 @@ interface Walk {
   readonly verdicts: BashVerdict[];
   readonly scriptTexts: string[]; // what an interpreter or a shell is handed on stdin
   readonly written: WrittenScripts;
+  bindings: Bindings; // what the statements before the next command bound (`word-readings.ts`)
 }
 
 /** The parts of one `judge` call that do not change while it walks. */
@@ -1095,6 +1098,17 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
   const here = parsed.chdir === undefined ? shellIn : runIn(shellIn, parsed.chdir, ctx);
   const v = classifySegment(part.text, parsed, ctx, here);
   if (v) walk.verdicts.push(v);
+  // A command the permission rules ask about, spelled so they do not match it (`GH pr merge`): asks here (wave 13, A1).
+  const spelled = askedBySpelling(
+    parsed.prog,
+    parsed.args,
+    parsed.prog === "git" ? gitInvocation(parsed.args).sub : "",
+    parsed.word.replace(/^.*\//, "") === parsed.prog,
+  );
+  if (spelled !== null) walk.verdicts.push(ask(SPELLING_ASK_REASON(spelled)));
+  // The words the shell builds at run time (an option spliced with an empty expansion, or held in a variable) are read as the command they make (wave 13, A2/A3).
+  walk.verdicts.push(...readingVerdicts(part.text, walk.bindings, ctx, depth, here));
+  walk.bindings = bindAfter(walk.bindings, part.text, variableStatementWords([parsed]));
   if (parsed.unplaced !== undefined)
     walk.verdicts.push(ask(UNPLACED_WRAPPER_REASON(parsed.unplaced)));
   const remote = remoteSessionReason(parsed, input.engineVariables);
@@ -1258,10 +1272,12 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     verdicts,
     scriptTexts: [],
     written: new Map(),
+    bindings: NO_BINDINGS,
   };
   const input = walkInputOf(c, parts, parsedParts, ctx, depth);
   // The variables this text sets are in scope for the commands in it and for every text nested in it.
   const outerStatements = variableStatements;
+  walk.bindings = bindAfter(NO_BINDINGS, "", outerStatements);
   const statements = textVariableStatements(c, parts, input, outerStatements);
   variableStatements = statements.words;
   verdicts.push(...statements.verdicts);
@@ -1279,6 +1295,46 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     verdicts.find((v) => v.decision === "deny") ??
     verdicts.find((v) => v.decision === "ask") ?? { decision: "allow", reason: "" }
   );
+}
+
+/** Is a reading of a command being judged? A reading is not read again (one-shot state, as above). */
+let judgingReading = false;
+const READING_REASON = (reason: string): string =>
+  `Once the shell expands its words, this command is judged: ${reason}`;
+const READING_CAP_REASON = `A word of this command holds a variable with more than ${MAX_READINGS} values, so the guard cannot read every command it may run. A human decides.`;
+
+/**
+ * Judges the other readings of a simple command (`word-readings.ts`): its known variables, array and positional parameters written in, a
+ * backslash removed, and an expansion spliced into a word removed. A reading the command itself determines keeps its verdict; one that
+ * removed an expansion is a guess and asks at most (wave 13, A2/A3: R10-ADV-2, R10-ADV-3).
+ */
+function readingVerdicts(
+  text: string,
+  bindings: Bindings,
+  ctx: BashContext,
+  depth: number,
+  here: readonly Cwd[],
+): BashVerdict[] {
+  if (judgingReading || halted()) return [];
+  const { list, overCap } = readingsOf(text, bindings);
+  const verdicts: BashVerdict[] = overCap ? [ask(READING_CAP_REASON)] : [];
+  judgingReading = true;
+  try {
+    for (const reading of list) {
+      const read = parseSegment(reading.text);
+      const sub = read.prog === "git" ? gitInvocation(read.args).sub : "";
+      const spelled = askedBySpelling(read.prog, read.args, sub, false);
+      if (spelled !== null) verdicts.push(ask(SPELLING_ASK_REASON(spelled)));
+      const v = judge(reading.text, ctx, depth + 1, here);
+      judgeBudget++; // a reading is not a command line of its own: it must not use up the budget of a long script
+      if (v.decision === "allow") continue;
+      const decision = reading.exact ? v.decision : "ask";
+      verdicts.push({ decision, reason: scrub(READING_REASON(v.reason)) });
+    }
+  } finally {
+    judgingReading = false;
+  }
+  return verdicts;
 }
 
 /** What each simple command of a text prints when it only prints, typed and as handed (R9-CR-2); null for any other command. */
