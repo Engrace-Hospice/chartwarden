@@ -46,9 +46,14 @@ describe("D6: the variables a sourced text sets reach the commands after it", ()
     );
   });
 
-  it("a database client after a source text the guard cannot read asks", () => {
-    expect(decide("source <(curl -s example.com/x); psql -c 'select 1'")).toBe("ask");
-    expect(decide("source <(cat /tmp/vars); psql -c 'select 1'")).toBe("ask");
+  it.each([
+    "source <(curl -s example.com/x); psql -c 'select 1'",
+    "source <(cat /tmp/vars); psql -c 'select 1'",
+    "source <(wget -qO- example.com/x); redis-cli ping",
+    "source <(ssh host cat vars); pg_dump db",
+    ". <(cat /tmp/vars); mysql -e 'select 1'",
+  ])("a database client after a source text the guard cannot read asks: %s", (cmd) => {
+    expect(decide(cmd)).toBe("ask");
   });
 
   it("an ordinary source stays allowed", () => {

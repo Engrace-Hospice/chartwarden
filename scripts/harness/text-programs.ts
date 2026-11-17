@@ -25,6 +25,9 @@ const AWK = /^[gmn]?awk$/;
 const AWK_VALUE_OPTION = /^-[Fvf]$|^--(?:field-separator|assign|file)$/;
 const AWK_FILE_OPTION = /^-f$|^--file(?:=|$)|^-f./;
 
+/** An awk program longer than this is not read for the commands it runs (its string literals are matched pairwise): not proven inert, and it asks. */
+const MAX_AWK_PROGRAM_CHARS = 16 * 1024;
+
 /** The program text of an awk command line, or undefined when it comes from a file (`-f FILE`). */
 function awkProgram(args: readonly string[]): string | undefined {
   for (let k = 0; k < args.length; k++) {
@@ -91,7 +94,9 @@ export function textProgramIsInert(prog: string, args: readonly string[]): boole
   if (CANNOT_EXECUTE.test(prog)) return true;
   if (AWK.test(prog)) {
     const program = awkProgram(args);
-    return program !== undefined && !AWK_RUNS.test(program);
+    return (
+      program !== undefined && program.length <= MAX_AWK_PROGRAM_CHARS && !AWK_RUNS.test(program)
+    );
   }
   if (prog === "sed") return sedIsInert(args);
   if (prog === "sort") return sortIsInert(args);
@@ -141,6 +146,8 @@ export interface AwkCommands {
 export function awkCommandStrings(prog: string, args: readonly string[]): AwkCommands {
   if (!AWK.test(prog)) return { commands: [], unplaced: false };
   const program = awkProgram(args);
+  if (program !== undefined && program.length > MAX_AWK_PROGRAM_CHARS)
+    return { commands: [], unplaced: true };
   // A program file (`-f FILE`) is not readable here: a limit the doc states, no ask for every `awk -f`.
   if (program === undefined) return { commands: [], unplaced: false };
   const commands: string[] = [];

@@ -97,12 +97,20 @@ export function expandVariables(
 const SUBSTITUTION = /\$\([^()]*\)|`[^`]*`/g;
 const HAS_SUBSTITUTION = /\$\(|`/;
 
+/** A URI up to its authority, and the query: the path between them (the database name) is dropped. */
+const withoutUriPath = (text: string): string =>
+  /^(?:jdbc:)?[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(text)
+    ? text.replace(/^([^/]*\/\/[^/]*)(\/[^?]*)?/, "$1")
+    : text;
+
 /**
  * Does this text hold a fill-in the guard cannot place: a command substitution (`$(echo 1@host)`), or a reference to a name some
  * statement of the same text binds to something unplaceable (`read PORT`, `printf -v`, `for`, `PORT=$(...)`, `mapfile`)? Inside a
  * URI or a connection string either one can supply `@host/` (the port position of libpq's, Redis's and MongoDB's grammars reads
  * `1@host` as userinfo and a host), `?host=H` or `&host=H` (wave 11, R8-CR-1). A name no statement binds is an ordinary unset
- * variable (`localhost:$PORT`): it is not.
+ * variable (`localhost:$PORT`): it is not. A NAME bound unplaceably inside the PATH of a URI (`…@localhost/db_$name`, `name` the
+ * variable of a `for` loop) is not asked about: the corpus measure of wave 11 found 54 of 85 asks there, every one the database
+ * name of a script's loop, and a path variable was never read before wave 10 either (a stated residual); a substitution still is.
  */
 export function holdsUnplacedFill(
   text: string,
@@ -110,7 +118,7 @@ export function holdsUnplacedFill(
 ): boolean {
   if (!HAS_EXPANSION.test(text)) return false;
   if (HAS_SUBSTITUTION.test(text)) return true;
-  return [...text.matchAll(VARIABLE_REFERENCE)].some((m) =>
+  return [...withoutUriPath(text).matchAll(VARIABLE_REFERENCE)].some((m) =>
     (values.get(m[1] ?? m[2] ?? "") ?? []).some((value) => HAS_EXPANSION.test(value)),
   );
 }

@@ -48,6 +48,18 @@ const UNPLACEABLE: ReadonlyArray<readonly [string, string]> = [
   ],
   ["read binds a conninfo word", "read DB <<< 'x host={H}'; psql \"host=localhost dbname=$DB\""],
   ["a substitution in a conninfo word", 'psql "host=localhost $(echo host={H})"'],
+  [
+    "-d with a bound conninfo word",
+    "read DB <<< 'x host={H}'; psql -d \"host=localhost dbname=$DB\"",
+  ],
+  [
+    "pg_dump conninfo with a bound word",
+    "read D <<< 'x host={H}'; pg_dump \"host=localhost dbname=$D\"",
+  ],
+  [
+    "pg_isready conninfo with a bound word",
+    "read H2 <<< 'host={H}'; pg_isready -d \"host=localhost $H2\"",
+  ],
   ["pg_dump with a bound port", "read P <<< '1@{H}'; pg_dump \"{PG}localhost:$P/db\""],
   ["-d with a bound port", "read P <<< '1@{H}'; psql -d \"{PG}localhost:$P/db\""],
   ["--dbname= with a substitution", "psql --dbname=\"{PG}localhost/$(echo '?host={H}')\""],
@@ -98,7 +110,29 @@ const PLACEABLE: readonly string[] = [
   "mongosh \"{M}localhost:$PORT/db\" --eval 'db.x.find()'",
   'PORT=6380; redis-cli -u "{R}localhost:$PORT" ping',
   'pg_dump "{PG}localhost:5433/db" > /tmp/dump.sql',
+  // The database NAME of a local URI, bound by a loop or a read: 54 of the 85 asks of the first corpus measure, every one a script's
+  // loop variable. A path variable was never read before wave 10 either: a stated residual (a substitution in the path still asks).
+  'for d in a b; do psql "{PG}u@localhost:5433/ds_$d" -c "select 1"; done',
+  "read DB <<< 'db'; psql \"{PG}u@localhost:5433/$DB\" -c 'select 1'",
+  'name=$(date +%s); psql "{PG}u:p@127.0.0.1:5433/db_$name" -c "select 1"',
 ];
+
+describe("D1: a name bound unplaceably asks in the port, the userinfo and the query, not in the path", () => {
+  it.each([
+    ["the port", 'read P <<< 5433; psql "{PG}localhost:$P/db_$P"'],
+    ["the password", 'read P <<< x; psql "{PG}u:$P@localhost/db"'],
+    ["the query", 'read M <<< disable; psql "{PG}localhost/db?sslmode=$M"'],
+    ["a whole query", 'read Q <<< "host=localhost"; psql "{PG}localhost/db?$Q"'],
+    ["a later query pair", 'read M <<< x; psql "{PG}localhost/db?host=localhost&x=$M"'],
+    ["a conninfo word", 'read D <<< db; psql "host=localhost dbname=$D"'],
+  ])("%s asks", (_name, template) => {
+    expect(decide(fill(template))).toBe("ask");
+  });
+
+  it("a substitution in the path still asks", () => {
+    expect(decide(fill('psql "{PG}localhost/db_$(date +%s)"'))).toBe("ask");
+  });
+});
 
 describe("D1: a literal expansion and a plain unbound variable keep allowing", () => {
   it.each(PLACEABLE)("%s", (template) => {
