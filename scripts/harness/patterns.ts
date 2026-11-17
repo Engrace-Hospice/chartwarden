@@ -2382,6 +2382,9 @@ function treeOperandReaches(
 const FORCED_ADD_REASON =
   "A forced `git add` (`-f`, `--force`, `update-index --add`) stages a file `.gitignore` keeps out of the object store; staged, a live env file is in `.git` for good and one `git show :FILE` from the transcript.";
 
+const PATHSPEC_FILE_REASON =
+  "`git add --pathspec-from-file` reads the names it stages from standard input, a device, a variable or (with `-f`) a file, which the guard cannot read: they could name a live env file `.gitignore` keeps out of the object store. A human decides.";
+
 /** A forced add of a secret file is refused like a read of it; a forced add of a whole tree that holds a live env file asks (`git-add-force.ts`, R8-ADV-12). */
 function forcedAddVerdict(
   sub: string,
@@ -2391,10 +2394,12 @@ function forcedAddVerdict(
 ): BashVerdict | null {
   const forced = forcedAdd(sub, rest);
   if (forced === null) return null;
-  for (const operand of forced.operands) {
+  const named = forced.pathspecSource === undefined ? [] : [forced.pathspecSource];
+  for (const operand of forced.unforced ? named : [...forced.operands, ...named]) {
     if (secretPathReason(operand))
       return deny(`\`${echo(operand)}\` is a secret file. ${FORCED_ADD_REASON}`);
   }
+  if (forced.pathspecSource !== undefined) return ask(PATHSPEC_FILE_REASON);
   const reaches = forced.operands.some((operand) =>
     here.some((cwd) => treeOperandReaches(operand, cwd, ctx, "tree", true)),
   );
