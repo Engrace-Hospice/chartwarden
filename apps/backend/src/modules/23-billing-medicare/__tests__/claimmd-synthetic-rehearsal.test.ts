@@ -4,6 +4,7 @@ import {
   createSessionContextResolver,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
+  registerPredicate,
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@chartwarden/auth";
@@ -17,15 +18,24 @@ import {
   UNBOUND_BINDING,
 } from "@chartwarden/x12-837-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildServer, createSessionAuthenticate, getSeam, registerSeam } from "../../../bootstrap";
+import {
+  buildServer,
+  createSessionAuthenticate,
+  getSeam,
+  registerSeam,
+  stepUpFreshFor,
+} from "../../../bootstrap";
 import type { OrganizationStageReader } from "../../../bootstrap/onboarding-org-gate";
-import { registerAuthorizationAbacPredicates } from "../../03-authorization/abac-predicates";
-import { registerCarePlanAbacPredicates } from "../../07-care-plan/abac-predicates";
 import { registerM23AbacPredicates } from "../abac-predicates";
 import { tenantClaimMdAccountReference } from "../claimmd-evidence/store";
 import { resolveClaimMdM23PayerRoute } from "../jobs/clearinghouse-context";
 import type { AckCursorKey, M23TransportDeps } from "../jobs/clearinghouse-submission";
-import { type ClaimSubmitJob, runClaimSubmit, runTransportAckPull } from "../jobs/m23-jobs";
+import {
+  type ClaimSubmitJob,
+  type M23WorkerDeps,
+  runClaimSubmit,
+  runTransportAckPull,
+} from "../jobs/m23-jobs";
 import { registerClaimsRoutes } from "../routes/claims.routes";
 import { buildDrizzleM23ReadService } from "../routes/read-service-drizzle";
 import { buildDrizzleM23WriteService } from "../routes/write-service-drizzle";
@@ -829,7 +839,6 @@ describe("M23-CM5-T1 synthetic Claim.MD 837I rehearsal", () => {
         },
       ]).store,
     );
-    registerAuthorizationAbacPredicates({ now: () => Date.now() });
     const abacReader = {
       async loadClaim(readContext: { organizationId: string }, claimId: string) {
         const row = store.claims.get(claimId);
@@ -860,12 +869,25 @@ describe("M23-CM5-T1 synthetic Claim.MD 837I rehearsal", () => {
       resolver: abacReader,
       isInCaseload: async (q) => q.organizationId === ORG && q.patientId === PATIENT,
     });
-    registerCarePlanAbacPredicates({
-      resolver: {} as never,
-      isInCaseload: async (q) => q.organizationId === ORG && q.patientId === PATIENT,
-      isConsentActive: async () => false,
-      sudInternalAccess: async () => ({ allowed: false, restrictedToNamedWorkforce: true }),
-    });
+    registerPredicate(
+      "caseload_or_scope",
+      async (context, target) =>
+        context.organizationId === ORG && target.patientId === PATIENT,
+    );
+    registerPredicate("step_up_recent", (context, target) =>
+      stepUpFreshFor(
+        {
+          organizationId: context.organizationId,
+          sessionId:
+            typeof context.attributes.sessionId === "string"
+              ? context.attributes.sessionId
+              : null,
+          operationKey:
+            typeof target.operationKey === "string" ? target.operationKey : undefined,
+        },
+        () => Date.now(),
+      ),
+    );
     registerAbacRegistry();
 
     registerSeam("SessionContextResolver", createSessionContextResolver(sessionRows));
@@ -1017,6 +1039,7 @@ describe("M23-CM5-T1 synthetic Claim.MD 837I rehearsal", () => {
     let acceptedBody = accepted.json() as {
       submissionId: string;
       claimControlNumber: string;
+      externalPatientControlNumber: string;
       attemptIndex: number;
     };
     expect((await submit("session-a", "http-accepted-submit")).statusCode).toBe(202); // HTTP-14 idempotent replay
@@ -1081,7 +1104,7 @@ describe("M23-CM5-T1 synthetic Claim.MD 837I rehearsal", () => {
       },
       outbox: { publish: async (_tx: unknown, event: unknown) => void store.emitted.push(event) },
       now: () => NOW,
-    } as never;
+    } as unknown as M23WorkerDeps;
     let queuedJob = jobs[0]?.payload as ClaimSubmitJob;
     vendor.setMode("immediate_reject");
     await runClaimSubmit(makeFakeDb() as never, workerDeps, queuedJob);
@@ -1303,7 +1326,7 @@ describe("M23-CM5-T1 synthetic Claim.MD 837I rehearsal", () => {
           binding: { vendor: "claimmd", account: "tenant", transport: scenarioTransport },
           attempts: scenarioAttempts,
         },
-      } as never;
+      } as M23WorkerDeps;
       const uploadsBefore = vendor.uploadCalls();
       await runClaimSubmit(makeFakeDb() as never, scenarioWorkerDeps, scenario.job);
       expect(vendor.uploadCalls(), `Claim.MD upload count for ${mode}`).toBe(uploadsBefore + 1);
@@ -1373,7 +1396,7 @@ describe("M23-CM5-T1 synthetic Claim.MD 837I rehearsal", () => {
         },
         attempts: stediAttempts,
       },
-    } as never;
+    } as M23WorkerDeps;
     const claimMdUploadsBeforeStedi = vendor.uploadCalls();
     await runClaimSubmit(makeFakeDb() as never, stediWorkerDeps, stediScenario.job);
     expect(stedi.requestCalls()).toBe(1);

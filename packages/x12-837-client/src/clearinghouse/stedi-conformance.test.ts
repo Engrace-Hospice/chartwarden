@@ -83,8 +83,20 @@ function createStediHarness(): ClearinghouseHarness {
     payloads: {
       x12: stediX12,
       jsonDocuments: () => [
-        { usageIndicator: "T", billing: { npi: "1234567893" }, x: { c: 2, d: 3 }, y: 1 },
-        { y: 1, x: { d: 3, c: 2 }, billing: { npi: "1234567893" }, usageIndicator: "T" },
+        {
+          usageIndicator: "T",
+          billing: { npi: "1234567893" },
+          claimInformation: { patientControlNumber: "CCN-0018j" },
+          x: { c: 2, d: 3 },
+          y: 1,
+        },
+        {
+          y: 1,
+          x: { d: 3, c: 2 },
+          claimInformation: { patientControlNumber: "CCN-0018j" },
+          billing: { npi: "1234567893" },
+          usageIndicator: "T",
+        },
       ],
     },
   };

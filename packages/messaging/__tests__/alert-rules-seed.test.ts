@@ -146,6 +146,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m23.noe.window_warning",
       "m23.notr.window_breached",
       "m23.notr.window_warning",
+      "m23.notice.operational_issue.warning",
+      "m23.notice.operational_issue.critical",
       "m23.claim.submission_stalled",
       "m23.eligibility.expired",
       "m23.mac_portal.unavailable",

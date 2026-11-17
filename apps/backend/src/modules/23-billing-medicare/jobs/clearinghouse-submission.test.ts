@@ -345,8 +345,17 @@ describe("M23 Claim.MD evidence boundary", () => {
 });
 
 describe("M23 vendor-specific claim representations", () => {
-  it("fails closed for Stedi when a valid raw X12 claim has no Stedi JSON representation", async () => {
-    const submitClaim = vi.fn();
+  it("uses Stedi's raw-X12 path when a valid claim has no JSON representation", async () => {
+    const submitClaim = vi.fn(async () => ({
+      ok: true as const,
+      data: {
+        clearinghouseSubmissionId: "stedi-synthetic",
+        idempotencyKey: "claim:WXHOSP0001",
+        controlNumber: "WXHOSP0001",
+        receivedAt: new Date().toISOString(),
+        replayed: false,
+      },
+    }));
     const stedi = {
       binding: { vendor: "stedi", transport: { submitClaim } },
       contexts: { contextFor: async () => context, providerEntitiesFor: async () => [] },
@@ -359,7 +368,13 @@ describe("M23 vendor-specific claim representations", () => {
         x12,
         controlNumber: "WXHOSP0001",
       }),
-    ).rejects.toMatchObject({ code: "CH_INVALID_REQUEST", ambiguous: false });
-    expect(submitClaim).not.toHaveBeenCalled();
+    ).resolves.toEqual({
+      accepted: true,
+      generatedFileUri: "clearinghouse:stedi:stedi-synthetic",
+    });
+    expect(submitClaim).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ payload: { format: "x12", x12 } }),
+    );
   });
 });

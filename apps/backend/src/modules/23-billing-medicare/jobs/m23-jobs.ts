@@ -1167,7 +1167,7 @@ export async function runClaimSubmitWithinLegacyTransaction(
       });
       return;
     }
-    uploaded = await macPortalOf(deps, transport).upload({
+    uploaded = await macPortalOf(deps, orgTransport).upload({
       organizationId: job.organizationId,
       providerEntityId: claim.providerEntityId,
       effectiveDate: claim.serviceFrom,
@@ -2101,13 +2101,14 @@ export async function runClaimSubmitRetry(
       claimId: claim.id,
       attemptIndex: nextIndex,
     });
+    const externalPatientControlNumber = generateExternalPatientControlNumber();
     const row = await submissions.append({
       organizationId: job.organizationId,
       providerEntityId: claim.providerEntityId,
       kind: "claim_837i",
       claimId: claim.id,
       claimControlNumber,
-      externalPatientControlNumber: generateExternalPatientControlNumber(),
+      externalPatientControlNumber,
       clearinghouseVendor: prior.clearinghouseVendor,
       clearinghouseAccountReference: prior.clearinghouseAccountReference,
       clearinghouseMode: prior.clearinghouseMode,
@@ -2127,7 +2128,7 @@ export async function runClaimSubmitRetry(
     return {
       reconcile: false as const,
       claimControlNumber,
-      externalPatientControlNumber: row.externalPatientControlNumber,
+      externalPatientControlNumber,
       attemptIndex: nextIndex,
       submissionId: row.id,
       reviewedSourceFingerprint: prior.reviewedSourceFingerprint,

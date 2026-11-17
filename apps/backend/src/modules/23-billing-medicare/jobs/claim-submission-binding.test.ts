@@ -15,7 +15,7 @@ function txFor(rows: readonly Record<string, unknown>[]) {
   return { select: () => query };
 }
 
-const submission = {
+const submission: Parameters<typeof claimSubmissionBindingMatches>[1] = {
   organizationId: ORG,
   clearinghouseVendor: "stedi",
   clearinghouseAccountReference: "tenant-account-1",

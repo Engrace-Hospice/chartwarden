@@ -215,7 +215,7 @@ export type TransportUpload = (input: {
   readonly effectiveDate?: string;
   readonly kind: TransportUploadKind;
   readonly x12: string;
-  /** The same claim as Stedi's JSON; used for a Stedi claim, where it replaces the raw X12 (no ISA13 to match). */
+  /** The same claim as Stedi JSON; preferred when available, while unsupported JSON shapes use raw X12. */
   readonly stediJson?: StediClaimJson;
   readonly controlNumber: string;
   /** Stable internal attempt identity; kept separate from the vendor-facing CLM01. */
@@ -240,9 +240,8 @@ export type TransportUpload = (input: {
 }) => Promise<{ readonly accepted: boolean; readonly generatedFileUri: string }>;
 
 /**
- * Stedi's raw-X12 route requires ISA13 to equal the submission's control number, which ours (a numeric interchange
- * number against an alphanumeric claim control number) never does; its JSON route carries no ISA13. So a Stedi claim
- * goes as JSON, after proving it agrees with the X12 built from the same input. Everything else is raw X12.
+ * A Stedi claim uses JSON when the renderer supplies a verified JSON representation that agrees with the X12.
+ * Claims outside that mapper's supported surface retain the transport's raw-X12 path; everything else is raw X12.
  */
 function payloadFor(
   vendor: string | null,
@@ -257,11 +256,7 @@ function payloadFor(
     return { format: "x12", x12: input.x12 };
   }
   if (!input.stediJson) {
-    throw failure(
-      kind,
-      CH.INVALID_REQUEST,
-      "the claim cannot be represented within Stedi's JSON submission limits",
-    );
+    return { format: "x12", x12: input.x12 };
   }
   const disagree = compareStediClaimJsonToX12(input.stediJson, input.x12);
   if (disagree.length > 0) {

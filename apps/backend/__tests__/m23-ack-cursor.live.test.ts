@@ -13,7 +13,11 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { deriveControlNumber, type repositories } from "@chartwarden/billing";
+import {
+  deriveControlNumber,
+  generateExternalPatientControlNumber,
+  type repositories,
+} from "@chartwarden/billing";
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
@@ -100,6 +104,7 @@ describe.skipIf(!DB_URL)("M23 ack cursor - LIVE Postgres", () => {
       claimId: claimId as never,
       attemptIndex: 0,
     });
+    const externalPatientControlNumber = generateExternalPatientControlNumber();
     await admin.query("UPDATE claim SET claim_control_number = $1 WHERE id = $2", [ccn, claimId]);
     await admin.query(
       `INSERT INTO validation_run (organization_id, claim_id, trigger, outcome, run_input_hash, rules_executed,
@@ -110,8 +115,9 @@ describe.skipIf(!DB_URL)("M23 ack cursor - LIVE Postgres", () => {
     const submissionId = (
       await admin.query(
         `INSERT INTO claim_submission (organization_id, provider_entity_id, kind, claim_id, claim_control_number,
-         attempt_index, outcome) VALUES ($1,$2,'claim_837i',$3,$4,0,'queued') RETURNING id`,
-        [ORG, pe, claimId, ccn],
+         external_patient_control_number, attempt_index, outcome)
+         VALUES ($1,$2,'claim_837i',$3,$4,$5,0,'queued') RETURNING id`,
+        [ORG, pe, claimId, ccn, externalPatientControlNumber],
       )
     ).rows[0].id as string;
     await withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) =>
@@ -120,6 +126,7 @@ describe.skipIf(!DB_URL)("M23 ack cursor - LIVE Postgres", () => {
         claimId,
         submissionId,
         claimControlNumber: ccn,
+        externalPatientControlNumber,
         attemptIndex: 0,
       }),
     );
