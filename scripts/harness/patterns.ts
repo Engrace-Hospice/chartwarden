@@ -58,13 +58,11 @@ import { globMatches, globTokens } from "./glob";
 import { switchesHarness } from "./harness-switch";
 import {
   SHELL_PROGRAM,
-  type ScriptStage,
   inlineScriptText,
   mayWriteFileOperands,
-  printedText,
+  printedTexts,
   readsScriptFromStdin,
   runsInlineCode,
-  scriptsHandedToShell,
 } from "./inline-code";
 import { launchctlReason } from "./launchctl-rules";
 import { type Listed, asListing } from "./listing";
@@ -88,7 +86,7 @@ import {
   isProtectedPath,
   protectedPathPattern,
 } from "./protected-paths";
-import { remoteAccessReason } from "./remote-access";
+import { engineVariableWords, remoteAccessReason } from "./remote-access";
 import {
   GUARDED_REASON,
   GUARDED_VARIABLE_REFERENCE,
@@ -113,7 +111,16 @@ import {
   splitCommand,
 } from "./shell-lex";
 import { EXEC_SWEEP_READER, siblingCommands } from "./sibling-sweeps";
-import { stdinTexts } from "./stdin-texts";
+import {
+  type FeedReaders,
+  PIPE_FEED_REASON,
+  type PipelineStdin,
+  type StdinStage,
+  allTexts,
+  pipelineStdin,
+  scriptsHandedToShell,
+  withStdin,
+} from "./stdin-texts";
 import { readTar } from "./tar-grammar";
 import { isToolchainPath } from "./toolchain-paths";
 import { type SweepDepth, diffSweepOperands, gitDiffSweepOperands } from "./tree-sweep";
@@ -155,7 +162,12 @@ import { anyProgramTarget } from "./db-any-program";
 import { connectTargetOf } from "./db-connect-commands";
 import { type DatabaseTarget, databaseTarget, databaseTargetReason } from "./db-target";
 import { TARGET_CLIENTS } from "./db-target-clients";
-import { unplacedBindingWords, valuesByName, variableStatementWords } from "./db-variables";
+import {
+  expandVariables,
+  unplacedBindingWords,
+  valuesByName,
+  variableStatementWords,
+} from "./db-variables";
 import { forcedAdd } from "./git-add-force";
 import { pushDecision, pushFacts, pushFinding } from "./git-push-refs";
 import { leakCheckText, secretFlowReason } from "./secret-flows";
@@ -230,6 +242,8 @@ interface Redirects {
   readonly docs: string[];
   /** The here-string words alone (`<<< 'text'`). */
   readonly strings: string[];
+  /** The same words as the command is handed them (an escaped quote is the quote), for a text a shell or a client reads (R9-CR-2). */
+  readonly handedStrings: string[];
 }
 
 const REDIRECT_OPERATOR = /(?:>>|>\||>&|<<<|<<-?|<&|<>|>|<)/y;
@@ -256,7 +270,9 @@ function fdPrefixLength(seg: string, at: number): number {
 }
 
 function splitRedirects(seg: string): Redirects {
-  if (!/[<>]/.test(seg)) return { rest: seg, outs: [], ins: [], docs: [], strings: [] };
+  if (!/[<>]/.test(seg)) {
+    return { rest: seg, outs: [], ins: [], docs: [], strings: [], handedStrings: [] };
+  }
   // The segment has its heredoc body taken out already, so `<<` reads as an ordinary operator here.
   const { kind } = scanShell(seg, false);
   let rest = "";
@@ -264,6 +280,7 @@ function splitRedirects(seg: string): Redirects {
   const ins: string[] = [];
   const docs: string[] = [];
   const strings: string[] = [];
+  const handedStrings: string[] = [];
   for (let i = 0; i < seg.length; i++) {
     const ch = seg[i] as string;
     const k = kind[i];
@@ -289,12 +306,15 @@ function splitRedirects(seg: string): Redirects {
     const { word, end } = readWord(seg, i + 1, kind);
     i = end - 1;
     const target = words(word)[0] ?? "";
-    if (op === "<<<") strings.push(target);
+    if (op === "<<<") {
+      strings.push(target);
+      handedStrings.push(words(word, true)[0] ?? "");
+    }
     // `<>` opens its file for reading AND writing.
     if (op === "<>") outs.push(target);
     (op.startsWith("<<") ? docs : op.startsWith(">") ? outs : ins).push(target);
   }
-  return { rest, outs, ins, docs, strings };
+  return { rest, outs, ins, docs, strings, handedStrings };
 }
 
 interface Parsed {
@@ -325,11 +345,13 @@ interface Parsed {
   readonly wrapperReads: string[];
   readonly docs: string[];
   readonly strings: string[];
+  /** The here-string words as the command is handed them (`Redirects.handedStrings`). */
+  readonly handedStrings: string[];
 }
 
 /** Program, arguments and redirections of one simple command. */
 function parseSegment(seg: string): Parsed {
-  const { rest, outs, ins, docs, strings } = splitRedirects(seg);
+  const { rest, outs, ins, docs, strings, handedStrings } = splitRedirects(seg);
   const { writes, reads, ...command } = program(rest);
   const handed = /\\/.test(rest) ? program(rest, true) : undefined;
   return {
@@ -349,6 +371,7 @@ function parseSegment(seg: string): Parsed {
     wrapperReads: reads,
     docs,
     strings,
+    handedStrings,
   };
 }
 
@@ -655,33 +678,38 @@ function pipelineTexts(parts: readonly Segment[], index: number): string[] {
   return texts;
 }
 
+/** The files `source` reads standard input from. */
+const SOURCE_STDIN = /^(?:\/dev\/stdin|\/dev\/fd\/0|\/proc\/self\/fd\/0)$/;
+
 const UNREADABLE_SCRIPT_REASON =
   "A shell is handed a script that the guard cannot read (`curl … | sh`, `cat f | bash`). Read the script first, then run it as a file or as `bash -c '…'`. A human decides.";
 
 /** Verdicts for the script text handed to the shell at `index`, read as command lines. */
 function handedScriptVerdicts(
   parts: readonly Segment[],
-  parsed: readonly Parsed[],
+  stages: readonly StdinStage[],
+  stdin: PipelineStdin,
   index: number,
   ctx: BashContext,
   depth: number,
   here: readonly Cwd[],
 ): BashVerdict[] {
-  const p = parsed[index] as Parsed;
+  const p = stages[index] as StdinStage;
   const texts: string[] = [];
   let unreadable = false;
   if (SOURCES.test(p.prog)) {
-    // `source <(echo '…')`: the substitution's output is the script.
+    // `source <(echo '…')`: the substitution's output is the script (read as typed and as handed, R9-CR-2).
     for (const inner of substitutions(parts[index]?.text ?? "")) {
-      for (const seg of segments(inner)) {
-        const sub = parseSegment(seg);
-        const printed = printedText(sub.prog, sub.args);
-        if (printed !== null) texts.push(printed);
-      }
+      for (const printed of printedReadings(inner)) if (printed !== null) texts.push(...printed);
+    }
+    // `source /dev/stdin <<< '…'` runs what it is fed (its heredoc body is read by the lexer already).
+    if (p.args.some((a) => SOURCE_STDIN.test(a))) {
+      const feed = stdin.feed(index);
+      texts.push(...feed.own, ...feed.upstream);
+      unreadable = feed.unseen || feed.overflow;
     }
   } else if (SHELL_PROGRAM.test(p.prog)) {
-    const stages: ScriptStage[] = parsed.map((q, i) => ({ ...q, joiner: parts[i]?.joiner ?? "" }));
-    const handed = scriptsHandedToShell(stages, index);
+    const handed = scriptsHandedToShell(stages, index, stdin);
     texts.push(...handed.texts);
     unreadable = handed.unreadable;
   }
@@ -725,22 +753,23 @@ const DB_WRITE_REASON =
  * asks, a file it writes is judged like a redirect target, and a secret file it reads is refused.
  */
 function dbClientVerdicts(
-  parts: readonly Segment[],
-  parsed: readonly Parsed[],
+  stages: readonly StdinStage[],
+  stdin: PipelineStdin,
   index: number,
-  bodies: readonly string[],
   here: readonly Cwd[],
   ctx: BashContext,
 ): BashVerdict[] {
-  const client = parsed[index] as Parsed;
+  const client = stages[index] as StdinStage;
   if (!isDbClient(client.prog)) return [];
-  const stages = parsed.map((q, i) => ({ ...q, joiner: parts[i]?.joiner ?? "" }));
-  const texts = clientTexts(stages, index, bodies);
+  const feed = stdin.feed(index);
+  const texts = clientTexts(client.args, feed);
   const found = clientFindings(client.prog, texts, client.args);
   if (found === null) return [];
   // A reconnection from inside the client (`\c host=H`, `dblink_connect('...')`, `connect("H")`) is a target too.
   const reconnect = connectTargetOf(client.prog, texts);
-  const out: BashVerdict[] = reconnect === null ? [] : [databaseTargetVerdict(reconnect)];
+  // A pipeline longer than the guard reads back hides the text the client is fed: ask, never read it as nothing (R9-ADV-5).
+  const out: BashVerdict[] = feed.overflow ? [ask(PIPE_FEED_REASON)] : [];
+  if (reconnect !== null) out.push(databaseTargetVerdict(reconnect));
   out.push(...found.shell.slice(0, 1).map((what) => ask(`${DB_SHELL_REASON} (${what})`)));
   for (const target of found.writes) {
     const hit = writesProtectedPath({ ...NO_COMMAND, outs: [target] }, here, ctx);
@@ -870,7 +899,7 @@ function writeThenRun(
     }
   }
   const previous = parts[index]?.joiner === "|" ? parsed[index - 1] : undefined;
-  const piped = previous === undefined ? null : printedText(previous.prog, previous.args);
+  const piped = previous === undefined ? null : (printedTexts(previous)?.join("\n") ?? null);
   for (const file of writtenTexts(p, bodies, piped)) {
     for (const key of pathKeys(file.target, here, ctx)) {
       written.set(key, `${written.get(key) ?? ""}\n${file.text}`);
@@ -893,8 +922,11 @@ function nestedCommandVerdicts(
   for (const line of (parsed.handed ?? parsed).lines ?? [])
     if (line.trim() !== "") verdicts.push(judge(line, ctx, depth + 1, here));
   if (prog === "find") {
-    for (const run of findExecCommands(args))
-      verdicts.push(judge(run.command, ctx, depth + 1, run.inFileDir ? [null] : here));
+    // The command `find` runs reads the stdin `find` is fed (`find -exec psql \; <<< '\c host=H'`, R9-ADV-14).
+    for (const run of findExecCommands(args)) {
+      const fed = withStdin(run.command, stdinOf());
+      verdicts.push(judge(fed, ctx, depth + 1, run.inFileDir ? [null] : here));
+    }
   }
   // `bash -c '…'`, `eval …`, a wrapper's string, the command behind a container (`nested-texts.ts`).
   const variables = (): ReadonlyMap<string, readonly string[]> => valuesByName(variableStatements);
@@ -903,6 +935,7 @@ function nestedCommandVerdicts(
     if (nested.text !== "") verdicts.push(judge(nested.text, ctx, depth + 1, inside));
     if (nested.unplaced !== undefined) verdicts.push(ask(UNPLACED_WRAPPER_REASON(nested.unplaced)));
     if (nested.question !== undefined) verdicts.push(ask(nested.question));
+    if (nested.asks !== undefined) verdicts.push(ask(nested.asks));
   }
   verdicts.push(...gitExecVerdicts(parsed, ctx, depth, here));
   verdicts.push(...awkProgramVerdicts(prog, args, ctx, depth, here));
@@ -1017,15 +1050,40 @@ interface WalkInput {
   readonly parts: readonly Segment[];
   readonly parsedParts: readonly Parsed[];
   readonly bodiesByPart: readonly string[][];
+  /** The commands with their joiners, texts and heredoc bodies, and what each is fed on stdin (`stdin-texts.ts`). */
+  readonly stages: readonly StdinStage[];
+  readonly stdin: PipelineStdin;
+  /** The container-engine variables the text's own statements set, uncapped (`remote-access.ts`). */
+  readonly engineVariables: readonly string[];
   /** `CDPATH` makes `cd harness` land in a directory the guard cannot see, so no `cd` is trusted once it is named. */
   readonly cdpath: boolean;
   readonly ctx: BashContext;
   readonly depth: number;
 }
 
+/**
+ * Why this command opens a session on another machine, or null (`remote-access.ts`). The engine's variables count whether the command sets them or
+ * an earlier statement exported them (`export DOCKER_HOST=ssh://H; docker exec …`).
+ */
+function remoteSessionReason(parsed: Parsed, engineVariables: readonly string[]): string | null {
+  return remoteAccessReason(
+    parsed.prog,
+    parsed.args,
+    [...variableStatements, ...engineVariables, ...parsed.assigns],
+    isLocalHost,
+  );
+}
+
+/** What a wrapper hands to the command it runs; a pipeline longer than the guard reads hides it, so it asks (R9-ADV-5). */
+function fedTexts(walk: Walk, stdin: PipelineStdin, index: number): string[] {
+  const feed = stdin.feed(index);
+  if (feed.overflow) walk.verdicts.push(ask(PIPE_FEED_REASON));
+  return allTexts(feed);
+}
+
 /** Judge the simple command at `index`, in the directories the ones before it may have left the shell in. */
 function judgePart(index: number, walk: Walk, input: WalkInput): void {
-  const { parts, parsedParts, bodiesByPart, cdpath, ctx, depth } = input;
+  const { parts, parsedParts, bodiesByPart, stages, stdin, cdpath, ctx, depth } = input;
   const part = parts[index] as Segment;
   if (halted()) return;
   // A word the brace budget cuts asks only if THIS command holds a group the shell would expand (the lexer's reading).
@@ -1039,17 +1097,12 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
   if (v) walk.verdicts.push(v);
   if (parsed.unplaced !== undefined)
     walk.verdicts.push(ask(UNPLACED_WRAPPER_REASON(parsed.unplaced)));
-  const remote = remoteAccessReason(parsed.prog, parsed.args, parsed.assigns);
+  const remote = remoteSessionReason(parsed, input.engineVariables);
   if (remote !== null) walk.verdicts.push(ask(remote));
-  const stdinOf = (): readonly string[] =>
-    stdinTexts(
-      parsedParts.map((q, i) => ({ ...q, joiner: parts[i]?.joiner ?? "" })),
-      index,
-      bodiesByPart[index] ?? [],
-    );
+  const stdinOf = (): readonly string[] => fedTexts(walk, stdin, index);
   // A SQL client's own shell escapes and file commands (`sqlite3 .shell`, `psql \\!`, `mysql system`).
   walk.verdicts.push(
-    ...dbClientVerdicts(parts, parsedParts, index, bodiesByPart[index] ?? [], here, ctx),
+    ...dbClientVerdicts(stages, stdin, index, here, ctx),
     ...siblingSweepVerdicts(parts, parsedParts, index, ctx, depth, here),
     ...dynamicProgramVerdicts(part.text, parsed, ctx, here),
     ...nestedWithInlineVariables(parsed, stdinOf, ctx, depth, here),
@@ -1060,7 +1113,7 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
   // line; a script piped in from anything else cannot be read. A script this line wrote (a heredoc, `echo '…' > F`) and
   // runs: the text is judged as the script it is.
   walk.verdicts.push(
-    ...handedScriptVerdicts(parts, parsedParts, index, ctx, depth, here),
+    ...handedScriptVerdicts(parts, stages, stdin, index, ctx, depth, here),
     ...writeThenRun(
       parts,
       parsedParts,
@@ -1100,12 +1153,18 @@ function refusedOutright(
   return null;
 }
 
-/** What a command line asks before any simple command is read: a loader variable, and a text that ends inside a quote. */
+const LEADING_PIPE_REASON =
+  "The command line starts with a pipe, so what feeds the first command is unknown and a shell would refuse it. A human decides.";
+
+/** What a command line asks before any simple command is read: a loader variable, a leading pipe, and a text that ends inside a quote. */
 function preambleVerdicts(
+  parts: readonly Segment[],
   parsedParts: readonly Parsed[],
   incomplete: string | null,
 ): BashVerdict[] {
   const verdicts: BashVerdict[] = [];
+  // A pipe with nothing before it is no shell the guard can place (R9-CR-15): the shell refuses it or reads it its own way.
+  if (parts[0]?.joiner === "|") verdicts.push(ask(LEADING_PIPE_REASON));
   // A variable bun or perl reads at start (`BUN_OPTIONS=--preload=…`, `PERL5OPT`, `LD_PRELOAD`), or one that picks a
   // nested agent's hook binary: set anywhere in this command line, so a later or earlier statement counts too.
   const loaderReason = loaderEnvReason(
@@ -1146,6 +1205,34 @@ function trailingVerdicts(c: string, walk: Walk, ctx: BashContext, depth: number
   return verdicts;
 }
 
+/** The parts of one `judge` call that do not change while it walks; what each command is fed is read lazily, after its statements are set. */
+function walkInputOf(
+  c: string,
+  parts: readonly Segment[],
+  parsedParts: readonly Parsed[],
+  ctx: BashContext,
+  depth: number,
+): WalkInput {
+  const bodiesByPart = heredocBodiesByPart(c, parsedParts);
+  const stages = parsedParts.map((q, i) => ({
+    ...q,
+    joiner: parts[i]?.joiner ?? "",
+    text: parts[i]?.text ?? "",
+    bodies: bodiesByPart[i] ?? [],
+  }));
+  return {
+    parts,
+    parsedParts,
+    bodiesByPart,
+    stages,
+    stdin: pipelineStdin(stages, FEED_READERS),
+    engineVariables: engineVariableWords(parsedParts),
+    cdpath: /\bCDPATH\b/.test(c),
+    ctx,
+    depth,
+  };
+}
+
 function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd[]): BashVerdict {
   const c = cmd.trim();
   if (depth > MAX_NESTING || --judgeBudget < 0) {
@@ -1164,7 +1251,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
 
   // Every simple command is judged, in order; any deny wins, else the first ask, else allow. Writes are
   // judged against every directory the command could be running in (see `Cwd`), and so are the whole-tree reads.
-  const verdicts = preambleVerdicts(parsedParts, incomplete);
+  const verdicts = preambleVerdicts(parts, parsedParts, incomplete);
   const walk: Walk = {
     after: start,
     anywhere: start,
@@ -1172,14 +1259,7 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
     scriptTexts: [],
     written: new Map(),
   };
-  const input: WalkInput = {
-    parts,
-    parsedParts,
-    bodiesByPart: heredocBodiesByPart(c, parsedParts),
-    cdpath: /\bCDPATH\b/.test(c),
-    ctx,
-    depth,
-  };
+  const input = walkInputOf(c, parts, parsedParts, ctx, depth);
   // The variables this text sets are in scope for the commands in it and for every text nested in it.
   const outerStatements = variableStatements;
   const statements = textVariableStatements(c, parts, input, outerStatements);
@@ -1201,23 +1281,32 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   );
 }
 
+/** What each simple command of a text prints when it only prints, typed and as handed (R9-CR-2); null for any other command. */
+const printedReadings = (text: string): Array<string[] | null> =>
+  segments(text).map((seg) => printedTexts(parseSegment(seg)));
+
+/** What a command is fed on stdin is read through the statements of the line being judged (`stdin-texts.ts`). */
+const FEED_READERS: FeedReaders = {
+  substitutions,
+  printedLines: printedReadings,
+  expand: (text) => expandVariables(text, valuesByName(variableStatements)).texts,
+  isFunction: (name) => localFunctions.has(name),
+};
+
 const SOURCE_READERS: SourceReaders = {
   substitutions,
-  printedLines: (text) =>
-    segments(text).map((seg) => {
-      const sub = parseSegment(seg);
-      return printedText(sub.prog, sub.args);
-    }),
+  printedLines: (text) => printedReadings(text).flatMap((printed) => printed ?? [null]),
   statementsOf: (text) => variableStatementWords(segments(text).map(parseSegment)),
 };
 
 const SOURCED_UNREADABLE_REASON =
-  "A database client follows a `source <( … )` whose text the guard cannot read: the sourced text may have set the host (PGHOST, DATABASE_URL) the client reads. A human decides.";
+  "A database client is in the same command line as a `source <( … )` whose text the guard cannot read: the sourced text may have set the host (PGHOST, DATABASE_URL) the client reads. A human decides.";
 
 /**
  * The variable statements in scope for a text: those around it, its own, those a `source <( … )` / `source /dev/stdin` text sets
- * (`source-carry.ts`, R8-ADV-12), and the names it binds by a form that puts an unknown value there. A database client after a
- * sourced text the guard cannot read asks.
+ * (`source-carry.ts`, R8-ADV-12), and the names it binds by a form that puts an unknown value there. When a sourced text cannot be read
+ * (`source <(curl …)`), ANY database client in the same text asks, whether it stands before or after the `source`: the statements are tracked for
+ * the whole text without order, and a function body defined before the `source` runs after it (R9-CR-16: the comment said "after").
  */
 function textVariableStatements(
   c: string,
@@ -1883,6 +1972,7 @@ const NO_COMMAND: Parsed = {
   wrapperReads: [],
   docs: [],
   strings: [],
+  handedStrings: [],
 };
 
 /** A protected path quoted inside an inline-code argument, e.g. `open('.claude/settings.json','w')`. */

@@ -4,10 +4,11 @@ import { words } from "./command-words";
  * `bash -c 'CMD'`, `eval CMD`, a wrapper's string (`watch`, `su -c`, `ssh host CMD`, `rsync -e`, `script -c`), the command behind a container
  * image or name (`docker run|exec`, `compose run|exec`), and a command run in a container that mounts the repo: each is judged as a command
  * line of its own. A text is the text the SHELL would see: a re-quoted word has no backslash the readers keep (`wrappers.ts` `shellQuote`),
- * and the stdin the segment is fed (a here-string, a heredoc, a pipe from `echo`) is handed to the command that really reads it, so a
- * client's `\c host=H` is seen behind a `docker exec -i` (R8-CR-5). Pure.
+ * and the stdin the segment is fed (a here-string, a heredoc, what every earlier stage prints or carries, a process substitution, a known variable, a
+ * group's redirect: `stdin-texts.ts`) is handed to the command that really reads it, so a client's `\c host=H` is seen behind a `docker exec -i`
+ * (R8-CR-5, R9-CR-3). Pure.
  */
-import { containerCommand } from "./container-run";
+import { containerCommand, hiddenEnvFileReason } from "./container-run";
 import { expandVariables } from "./db-variables";
 import { printedText } from "./inline-code";
 import { COMMAND_SHELLS, shellCommandStrings } from "./shell-command-string";
@@ -24,6 +25,8 @@ export interface NestedText {
   readonly unplaced?: string;
   /** A question with its whole reason (a shell string the guard cannot read): asked as it stands. */
   readonly question?: string;
+  /** A reason the guard asks outright (an env-file whose content it cannot see). */
+  readonly asks?: string;
 }
 
 /** The reason a shell string the guard cannot read asks (R9-ADV-12). */
@@ -111,7 +114,12 @@ export function nestedTexts(
       ...(behind.unplaced === undefined
         ? {}
         : { unplaced: `${prog} ${behind.verb} ${behind.unplaced}` }),
+      ...(behind.hiddenEnvFile === undefined ? {} : { asks: hiddenEnvFileReason(prog, behind) }),
     });
+    // An env-file the guard cannot see sets variables even for the image's own command: the ask stands without a command behind it.
+    if (behind.command === "" && behind.hiddenEnvFile !== undefined) {
+      out.push({ text: "", asks: hiddenEnvFileReason(prog, behind) });
+    }
   }
   // A command run in a container that mounts the repo: its paths read as the host's.
   const mounted = containerRun(prog, args);

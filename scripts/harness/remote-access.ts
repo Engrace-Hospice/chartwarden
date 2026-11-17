@@ -1,12 +1,16 @@
 /**
- * Programs that open a shell or a tunnel on another machine (wave 10, A9; round-7 R7-ADV-15). A non-local `ssh` asks, and so does
- * `docker exec`; the same access through `kubectl exec POD -- CMD`, `kubectl port-forward|cp|debug|attach`, `docker -H host`,
- * `DOCKER_HOST=ssh://…`, `docker context use`, `gcloud sql connect`, `gcloud compute ssh`, `aws rds …`, `aws ssm start-session`,
- * `fly postgres connect|proxy`, `fly ssh`, `heroku pg:psql`, `supabase db … --db-url|--linked`, `autossh` and `cloudflared access`
- * was never read. What runs on the other side is not the guard's to read (a remote command names that machine's files, and a
- * database reached through a tunnel is a database), so each of these ASKS, whatever the command behind it: a human decides, like
- * a non-local ssh. A text heuristic: a spelling this table does not know passes. Pure.
+ * Programs that open a shell or a tunnel on another machine (wave 10, A9; round-7 R7-ADV-15; wave 12 part E2). A non-local `ssh` asks, and so does
+ * `docker exec`; the same access through `kubectl exec POD -- CMD`, `kubectl port-forward|cp|debug|attach|proxy`, `docker -H host`, `podman --connection|--url|-r`,
+ * `DOCKER_HOST=ssh://…` and `CONTAINER_HOST=…` (set for the command or exported earlier), `docker context use`, `autossh` and `cloudflared access` was never read.
+ * The hosted-service CLIs (`heroku`, `railway`, `render`, `az`, `doctl`, `aws`, `supabase`, `gcloud`, `fly`) are NAMED SUBCOMMANDS, kept in `cloud-cli-sessions.ts`
+ * (`heroku run`, `heroku config`, `gcloud sql connect`, `aws ssm send-command`, `supabase db dump`, …: other spellings pass); a jump host, forward or proxy of ssh,
+ * scp, sftp, mosh and et that names another machine is `ssh-hops.ts`. What runs on the other side is not the guard's to read (a remote command names that machine's
+ * files, and a database reached through a tunnel is a database), so each of these ASKS, whatever the command behind it: a human decides, like a non-local ssh. A text
+ * heuristic: a spelling this table does not know passes. Pure.
  */
+
+import { cloudCliReason } from "./cloud-cli-sessions";
+import { remoteHopReason } from "./ssh-hops";
 
 /** The value options that stand before a subcommand and must not be read as one (`kubectl -n prod exec …`). */
 const VALUE_OPTION: ReadonlyMap<string, RegExp> = new Map([
@@ -25,6 +29,10 @@ const VALUE_OPTION: ReadonlyMap<string, RegExp> = new Map([
   ["fly", /^(?:-a|--app|-c|--config|-o|--org|-r|--region|-t|--access-token)$/],
   ["flyctl", /^(?:-a|--app|-c|--config|-o|--org|-r|--region|-t|--access-token)$/],
   ["heroku", /^(?:-a|--app|-r|--remote)$/],
+  ["az", /^(?:--subscription|-o|--output|--query)$/],
+  ["doctl", /^(?:-t|--access-token|--context|-o|--output|--format|-c|--config)$/],
+  ["railway", /^(?:-s|--service|-e|--environment|-p|--project)$/],
+  ["render", /^(?:-o|--output|--config|--profile)$/],
   ["supabase", /^(?:--workdir|--experimental|-o|--output|--db-url|--project-ref)$/],
   ["cloudflared", /^(?:--config|--origincert|--loglevel|--logfile)$/],
 ]);
@@ -45,15 +53,50 @@ function positionals(prog: string, args: readonly string[]): string[] {
 const reason = (what: string): string =>
   `${what} opens a shell, a tunnel or a database session on another machine, which is the access a non-local ssh is. Agents do not reach production from a session; a human decides.`;
 
-const KUBECTL_REMOTE = new Set(["exec", "port-forward", "cp", "debug", "attach", "run"]);
+const KUBECTL_REMOTE = new Set(["exec", "port-forward", "cp", "debug", "attach", "run", "proxy"]);
+const isRawOption = (a: string): boolean => a === "--raw" || a.startsWith("--raw=");
+/** A raw API path that names secrets (`/api/v1/namespaces/x/secrets`, `…/secrets/name`). */
+const RAW_SECRET_PATH = /\/secrets?(?:\/|$|\?)/;
 /** `kubectl get secret`, `secrets`, `secret/NAME`, `pods,secrets`: the values of a cluster's secrets are printed (base64). */
 const SECRET_RESOURCE = /(?:^|,)secrets?(?:\/|,|$)/;
-const DOCKER_ENGINES = new Set(["docker", "podman", "nerdctl"]);
-const REMOTE_DOCKER_HOST = /^DOCKER_HOST=(?:ssh|tcp):\/\//i;
-const DOCKER_HOST_OPTION = /^(?:-H|--host)(?:=|$)|^-H.+/;
+const DOCKER_ENGINES = new Set(["docker", "podman", "nerdctl", "docker-compose", "podman-compose"]);
+const COMPOSE_ENGINES = new Set(["docker-compose", "podman-compose"]);
+/** `DOCKER_HOST` and podman's `CONTAINER_HOST` that point away from this machine (R9-ADV-13). */
+const REMOTE_ENGINE_HOST = /^(?:DOCKER|CONTAINER)_HOST=(?:ssh|tcp):\/\//i;
+/** podman's `--url URL`, docker's and podman's `-H HOST` and `--host HOST`: the engine is somewhere else. */
+const ENGINE_HOST_OPTION = /^(?:-H|--host|--url)(?:=|$)|^-H.+/;
+/** podman's `-r` and `--remote`: talk to the service of a named (usually remote) connection. */
+const ENGINE_REMOTE_FLAG = /^(?:-r|--remote)$/;
+/** podman's `--connection NAME` and `CONTAINER_CONNECTION=NAME`: a named service; the machine's own default connection is this machine. */
+const CONNECTION_OPTION = /^--connection(?:=(.*))?$/;
+const CONNECTION_VARIABLE = /^CONTAINER_CONNECTION=(.*)$/;
+const LOCAL_CONNECTION = /^podman-machine-default(?:-root)?$/;
 
+/** The statement words that set one of the engine variables: `export NAME=v`, `declare -x NAME=v`, `NAME=v` as a statement. */
+const ENGINE_VARIABLE = /^(?:DOCKER_HOST|CONTAINER_HOST|DOCKER_CONTEXT|CONTAINER_CONNECTION)\+?=/;
+const ENGINE_SETTERS = /^(?:export|declare|typeset|readonly|local)$/;
+
+/**
+ * The engine variables a command line's own statements set (`export DOCKER_HOST=ssh://H; docker exec …`), read from the commands themselves with no cap
+ * on how many statements come first (the variable tracker keeps 256 words: a 3,000-statement padding must not hide this one). Pure.
+ */
+export function engineVariableWords(
+  parts: ReadonlyArray<{ prog: string; args: readonly string[]; assigns: readonly string[] }>,
+): string[] {
+  const words: string[] = [];
+  for (const part of parts) {
+    if (ENGINE_SETTERS.test(part.prog)) words.push(...part.assigns, ...part.args);
+    else if (part.prog === "") words.push(...part.assigns);
+  }
+  return words.filter((w) => ENGINE_VARIABLE.test(w));
+}
+
+/** The options that take a value and stand before the subcommand (docker, podman, nerdctl `--help`), so the value is not read as the subcommand. */
 const DOCKER_VALUE_OPTION =
-  /^(?:-c|--context|-l|--log-level|--config|--tlscacert|--tlscert|--tlskey|-n|--namespace|-a|--address)$/;
+  /^(?:-c|--context|-l|--log-level|--config|--tlscacert|--tlscert|--tlskey|-n|--namespace|-a|--address|--identity|--root|--runroot|--storage-driver|--storage-opt|--tmpdir|--cgroup-manager|--conmon|--events-backend|--hooks-dir|--imagestore|--module|--network-cmd-path|--network-config-dir|--out|--ssh|--cloud)$/;
+/** `docker-compose`'s own value options before the subcommand. */
+const COMPOSE_VALUE_OPTION =
+  /^(?:-f|--file|-p|--project-name|--project-directory|--env-file|--profile|--ansi|--parallel|--progress)$/;
 /** The contexts that name the engine on THIS machine (Docker Desktop, colima, OrbStack, Rancher Desktop, the default). */
 const LOCAL_CONTEXT =
   /^(?:default|desktop-linux|desktop-windows|colima(?:-.*)?|orbstack|rancher-desktop)$/;
@@ -63,26 +106,57 @@ const CONTEXT_VARIABLE = /^DOCKER_CONTEXT=(.*)$/;
  * `docker -H host …`, `docker --context prod …`, `DOCKER_HOST=ssh://… docker …`, `DOCKER_CONTEXT=prod docker …`, `docker context use X`: the
  * options before the subcommand are read (nerdctl's `-n NAMESPACE` and `-a ADDRESS` take a value too).
  */
-function dockerReason(args: readonly string[], assigns: readonly string[]): string | null {
-  if (assigns.some((a) => REMOTE_DOCKER_HOST.test(a))) {
-    return reason("A docker command on a remote DOCKER_HOST");
+function dockerReason(
+  prog: string,
+  args: readonly string[],
+  assigns: readonly string[],
+): string | null {
+  return engineVariableReason(assigns) ?? engineOptionReason(prog, args);
+}
+
+/** `DOCKER_HOST=ssh://…`, `CONTAINER_HOST=…`, `DOCKER_CONTEXT=prod`, `CONTAINER_CONNECTION=prod`: set for the command or exported earlier. */
+function engineVariableReason(assigns: readonly string[]): string | null {
+  if (assigns.some((a) => REMOTE_ENGINE_HOST.test(a))) {
+    return reason("A container command on a remote DOCKER_HOST or CONTAINER_HOST");
   }
   for (const assign of assigns) {
-    const named = CONTEXT_VARIABLE.exec(assign)?.[1];
-    if (named !== undefined && !LOCAL_CONTEXT.test(named)) return reason("`DOCKER_CONTEXT`");
+    const context = CONTEXT_VARIABLE.exec(assign)?.[1];
+    if (context !== undefined && !LOCAL_CONTEXT.test(context)) return reason("`DOCKER_CONTEXT`");
+    const connection = CONNECTION_VARIABLE.exec(assign)?.[1];
+    if (connection !== undefined && connection !== "" && !LOCAL_CONNECTION.test(connection)) {
+      return reason("`CONTAINER_CONNECTION`");
+    }
   }
+  return null;
+}
+
+/** The engine's own options before the subcommand: `-H`, `--host`, `--url`, `--connection`, `-r`, `--remote`, `--context`, and `context use`. */
+function engineOptionReason(prog: string, args: readonly string[]): string | null {
   for (let k = 0; k < args.length; k++) {
     const a = args[k] as string;
-    if (DOCKER_HOST_OPTION.test(a)) return reason("`docker -H`");
+    if (ENGINE_HOST_OPTION.test(a)) return reason(`\`${prog} ${a.split("=")[0]}\``);
+    if (ENGINE_REMOTE_FLAG.test(a)) return reason(`\`${prog} ${a}\``);
+    const connection = CONNECTION_OPTION.exec(a);
+    if (connection !== null) {
+      const named = connection[1] ?? args[k + 1] ?? "";
+      if (!LOCAL_CONNECTION.test(named)) return reason(`\`${prog} --connection\``);
+    }
     const context = CONTEXT_OPTION.exec(a);
     if (context !== null) {
       const named = context[1] ?? args[k + 1] ?? "";
-      if (!LOCAL_CONTEXT.test(named)) return reason("`docker --context`");
+      if (!LOCAL_CONTEXT.test(named) && !LOCAL_CONNECTION.test(named)) {
+        return reason(`\`${prog} --context\``);
+      }
     }
     if (!a.startsWith("-")) {
-      return a === "context" && args[k + 1] === "use" ? reason("`docker context use`") : null;
+      return a === "context" && args[k + 1] === "use" ? reason(`\`${prog} context use\``) : null;
     }
-    if (DOCKER_VALUE_OPTION.test(a)) k++;
+    if (
+      DOCKER_VALUE_OPTION.test(a) ||
+      (COMPOSE_ENGINES.has(prog) && COMPOSE_VALUE_OPTION.test(a))
+    ) {
+      k++;
+    }
   }
   return null;
 }
@@ -138,6 +212,11 @@ function kubectlReason(words: readonly string[], args: readonly string[]): strin
   if (first === "config" && second === "view" && args.includes("--raw")) {
     return secretsReason("`kubectl config view --raw`");
   }
+  // `kubectl create token` mints a service-account token; `kubectl get --raw /api/v1/namespaces/x/secrets` reads the API path directly (kubectl --help, v1.36.1).
+  if (first === "create" && second === "token") return secretsReason("`kubectl create token`");
+  if (first === "get" && args.some((a) => RAW_SECRET_PATH.test(a)) && args.some(isRawOption)) {
+    return secretsReason("`kubectl get --raw` of a secrets path");
+  }
   return first !== undefined && KUBECTL_REMOTE.has(first) ? reason(`\`kubectl ${first}\``) : null;
 }
 
@@ -148,40 +227,24 @@ export function remoteAccessReason(
   prog: string,
   args: readonly string[],
   assigns: readonly string[] = [],
+  isLocalHost: (host: string) => boolean = () => false,
 ): string | null {
+  const hop = remoteHopReason(prog, args, isLocalHost);
+  if (hop !== null) return reason(hop);
   if (prog === "podman" && args[0] === "machine" && args[1] === "ssh")
     return reason("`podman machine ssh`");
-  if (DOCKER_ENGINES.has(prog)) return dockerReason(args, assigns);
+  if (DOCKER_ENGINES.has(prog)) return dockerReason(prog, args, assigns);
   if (prog === "autossh") return reason("`autossh`");
   const words = positionals(prog, args);
   const [first, second] = words;
   const session = SESSION_TOOLS.get(prog);
   if (session?.(first, second) === true) return reason(`\`${prog} ${first}\``);
+  // The named subcommands of the hosted-service CLIs (`cloud-cli-sessions.ts`).
+  const cloud = cloudCliReason(prog, words, args);
+  if (cloud !== null) return reason(cloud);
   switch (prog) {
     case "kubectl":
       return kubectlReason(words, args);
-    case "gcloud":
-      return (first === "sql" && second === "connect") ||
-        (first === "compute" && (second === "ssh" || second === "scp"))
-        ? reason(`\`gcloud ${first} ${second}\``)
-        : null;
-    case "aws":
-      return first === "rds" ||
-        (first === "ssm" && second === "start-session") ||
-        (first === "ecs" && second === "execute-command")
-        ? reason(`\`aws ${first}${second === undefined ? "" : ` ${second}`}\``)
-        : null;
-    case "fly":
-    case "flyctl":
-      return first === "ssh" ||
-        first === "proxy" ||
-        ((first === "postgres" || first === "pg") && (second === "connect" || second === "proxy"))
-        ? reason(`\`${prog} ${first}\``)
-        : null;
-    case "heroku":
-      return words.some((w) => w === "pg:psql" || w === "pg:pull" || w === "pg:push")
-        ? reason("`heroku pg:psql`")
-        : null;
     case "supabase":
       return first === "db" && args.some((a) => /^--(?:db-url|linked)(?:=|$)/.test(a))
         ? reason("`supabase db` against a remote database")

@@ -10,7 +10,7 @@
  * the command may run in) and judges the written text as the script it is. A text heuristic: a file written by an
  * earlier tool call, built from a variable or a command's output, or edited in place stays unread. Pure.
  */
-import { SHELL_PROGRAM, printedText, runsInlineCode } from "./inline-code";
+import { SHELL_PROGRAM, printedTexts, runsInlineCode } from "./inline-code";
 import { runsCommandString } from "./shell-command-string";
 
 /** The parts of a parsed command the writer side reads. */
@@ -23,6 +23,9 @@ export interface WriterCommand {
   readonly docs: readonly string[];
   /** The here-string words alone. */
   readonly strings: readonly string[];
+  /** The program and arguments, and the here-string words, as the program is HANDED them (an escaped quote is the quote; R9-CR-2). */
+  readonly handed?: { readonly prog: string; readonly args: readonly string[] };
+  readonly handedStrings?: readonly string[];
 }
 
 export interface WrittenText {
@@ -49,9 +52,9 @@ export function writtenTexts(
 ): WrittenText[] {
   let text: string | null;
   let targets: readonly string[] = p.outs;
-  if (p.prog === "echo" || p.prog === "printf") text = printedText(p.prog, p.args);
+  if (p.prog === "echo" || p.prog === "printf") text = printedTexts(p)?.join("\n") ?? null;
   else if (p.prog === "cat" || p.prog === "tee") {
-    const typed = [...bodies, ...p.strings];
+    const typed = [...bodies, ...p.strings, ...(p.handedStrings ?? [])];
     text = typed.length > 0 ? typed.join("\n") : piped;
     if (p.prog === "tee") targets = [...targets, ...p.args.filter((a) => !a.startsWith("-"))];
   } else return [];

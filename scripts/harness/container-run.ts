@@ -9,7 +9,8 @@
  * own `--help` lists them (`option-grammar.ts`): the image is the first word that is no option or option value, an
  * `--entrypoint X` makes X the program, and `-e NAME=VALUE` becomes an assignment in front of the command so a database
  * variable set for the container is read like one set for the shell. An option the table does not know asks (rule 3 of
- * wave 10): the image word cannot be told from an option's value. `exec` (docker, podman, nerdctl, compose) is read here too since wave 11: the same options, the same `-e` assignments. Pure.
+ * wave 10): the image word cannot be told from an option's value. `exec` (docker, podman, nerdctl, compose) is read here too since wave 11: the same options, the same `-e` assignments.
+ * An `--env-file` or `--env-from-file` whose operand is a process substitution, stdin or a descriptor sets variables nobody can read: it asks (wave 12, R9-ADV-20). Pure.
  */
 import { type OptionGrammar, readOptions } from "./option-grammar";
 import { shellQuote } from "./wrappers";
@@ -97,8 +98,10 @@ const ENGINES: ReadonlySet<string> = new Set(["docker", "podman", "nerdctl"]);
 const COMPOSE_PROGRAMS: ReadonlySet<string> = new Set(["docker-compose", "podman-compose"]);
 
 export interface ContainerCommand {
-  /** The command the container runs, as one command line (`-e NAME=VALUE` assignments in front). */
+  /** The command the container runs, as one command line (`-e NAME=VALUE` assignments in front); empty when the image's own command runs. */
   readonly command: string;
+  /** An `--env-file` operand whose content the guard cannot see (a process substitution, stdin, a descriptor): it can set any variable (R9-ADV-20). */
+  readonly hiddenEnvFile?: string;
   /** Which subcommand it came from, for the question the guard asks about an option it cannot place. */
   readonly verb: "run" | "exec";
   /** A word of the run options the table could not place: the image cannot be told from an option's value. */
@@ -124,14 +127,38 @@ function commandBehind(
     ...(entrypoint === undefined || entrypoint === "" ? [] : [entrypoint]),
     ...args.slice(read.end + 1),
   ];
+  const hiddenEnvFile = hiddenEnvFileOf(read.options);
+  const hidden = hiddenEnvFile === undefined ? {} : { hiddenEnvFile };
   // Nothing after the image: the image's own command runs, which the guard cannot read.
-  if (behind.length === environment.length) return null;
+  if (behind.length === environment.length) {
+    return hiddenEnvFile === undefined ? null : { command: "", verb, ...hidden };
+  }
   return {
     command: behind.map(shellQuote).join(" "),
     verb,
+    ...hidden,
     ...(read.unplaced === undefined ? {} : { unplaced: read.unplaced }),
   };
 }
+
+/** The file operands whose content is not on disk: a process substitution, stdin, a file descriptor (`-` too). */
+const HIDDEN_ENV_FILE = /^(?:-|<\(.*|\/dev\/stdin|\/dev\/fd\/\d+|\/proc\/self\/fd\/\d+)$/;
+
+/** The first `--env-file` / `--env-from-file` option (spelled with its operand) whose operand names no file on disk. */
+function hiddenEnvFileOf(
+  options: readonly { name: string; value: string | undefined }[],
+): string | undefined {
+  const hit = options.find(
+    (o) =>
+      (o.name === "env-file" || o.name === "env-from-file") &&
+      o.value !== undefined &&
+      HIDDEN_ENV_FILE.test(o.value),
+  );
+  return hit === undefined ? undefined : `--${hit.name} ${hit.value}`;
+}
+
+export const hiddenEnvFileReason = (prog: string, behind: ContainerCommand): string =>
+  `\`${prog} ${behind.verb} ${behind.hiddenEnvFile ?? "--env-file"}\` reads its environment from a process substitution, stdin or a descriptor, so the guard cannot see which variables (PGHOST, DATABASE_URL) it sets for the command in the container. A human decides.`;
 
 /**
  * `docker|podman|nerdctl run|create …`, `… container run|create …`, `… compose run …`, `docker-compose run …`: the command
@@ -140,18 +167,30 @@ function commandBehind(
 export function containerCommand(prog: string, args: readonly string[]): ContainerCommand | null {
   const compose = COMPOSE_PROGRAMS.has(prog);
   if (!compose && !ENGINES.has(prog)) return null;
-  if (compose) return composeCommand(args, readOptions(COMPOSE_GLOBAL, args, 0).end);
+  if (compose) return composeCommand(args, 0);
   let at = readOptions(DOCKER_GLOBAL, args, 0).end;
   if (args[at] === "container") at++;
   const sub = args[at];
   if (sub === "run" || sub === "create") return commandBehind(RUN_GRAMMAR, args, at + 1);
   if (sub === "exec") return commandBehind(EXEC_GRAMMAR, args, at + 1, "exec");
   if (sub !== "compose") return null;
-  return composeCommand(args, readOptions(COMPOSE_GLOBAL, args, at + 1).end);
+  return composeCommand(args, at + 1);
 }
 
-/** `compose run|exec [options] SERVICE COMMAND…` with `at` at the subcommand. */
-function composeCommand(args: readonly string[], at: number): ContainerCommand | null {
-  if (args[at] === "run") return commandBehind(COMPOSE_RUN_GRAMMAR, args, at + 1);
-  return args[at] === "exec" ? commandBehind(COMPOSE_EXEC_GRAMMAR, args, at + 1, "exec") : null;
+/**
+ * `compose [global options] run|exec [options] SERVICE COMMAND…` with `from` after `compose` (or at the start of `docker-compose`'s arguments). A
+ * global `--env-file` that names no file on disk sets variables for every service (R9-ADV-20).
+ */
+function composeCommand(args: readonly string[], from: number): ContainerCommand | null {
+  const global = readOptions(COMPOSE_GLOBAL, args, from);
+  const at = global.end;
+  const found =
+    args[at] === "run"
+      ? commandBehind(COMPOSE_RUN_GRAMMAR, args, at + 1)
+      : args[at] === "exec"
+        ? commandBehind(COMPOSE_EXEC_GRAMMAR, args, at + 1, "exec")
+        : null;
+  const hiddenEnvFile = hiddenEnvFileOf(global.options);
+  if (hiddenEnvFile === undefined) return found;
+  return { command: "", verb: "run", ...found, hiddenEnvFile };
 }
