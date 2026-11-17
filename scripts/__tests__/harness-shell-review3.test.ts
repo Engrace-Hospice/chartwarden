@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { classifyBash } from "../harness/patterns";
+import { FULL_BUDGET, type Measured, measure, netMs } from "./helpers/work-counters";
 
 const ROOT = "/repo";
 const HOME = "/Users/dev";
@@ -115,42 +116,52 @@ describe("4 — `~` and `$HOME` spelled paths onto the repo", () => {
 });
 
 // The guard fails OPEN when the hook is killed at its 10 s timeout, so no input may make it slow. Each case
-// below took 0.5 s to minutes at e9f9688c6; the fixed classifier answers in a few milliseconds, so the bound
-// is generous.
+// below took 0.5 s to minutes at e9f9688c6. Wave 12 (G-1, R9-COMP-9): the bounds of 100 to 1,000 ms had been
+// widened to 3 and 5 s after a load failure, which let a 10x slowdown pass (a 5 s classifier is 1.5 s from the
+// guard's 6.5 s deadline). Each case now asserts what the classifier SPENT of its per-command budget (counts, the
+// same on every machine) and keeps the clock only as a safety net twice the worst loaded run (`work-counters.ts`).
 describe("2 and 7 — bounded work on hostile input", () => {
-  const FAST_MS = 5000;
   const LIMIT = 64 * 1024;
-  // The best of three runs: one slow run on a loaded machine is not a regression, three are.
-  const timed = (cmd: string) => {
-    let best = Number.POSITIVE_INFINITY;
-    let verdict = v(cmd);
-    for (let run = 0; run < 3; run++) {
-      const started = performance.now();
-      verdict = v(cmd);
-      best = Math.min(best, performance.now() - started);
-    }
-    return { verdict, ms: best };
+  /** A string a word hands to a shell is the only text judged twice in these commands (`bash -c x`). */
+  const NESTED_SLACK = 16;
+  const NOTHING_SPENT = {
+    chars: 0,
+    braces: 0,
+    braceChars: 0,
+    resolutions: 0,
+    resolutionChars: 0,
   };
   const repeat = (unit: string, chars: number): string =>
     unit.repeat(Math.floor(chars / unit.length));
+  /** Nothing is nested in these commands: every character is judged once and no budget is overdrawn. */
+  const judgedOnce = (cmd: string, m: Measured): void => {
+    expect(m.spent.chars).toBeLessThanOrEqual(cmd.length + NESTED_SLACK);
+    expect(m.spent.braces).toBeLessThanOrEqual(FULL_BUDGET.braces);
+    expect(m.spent.resolutions).toBeLessThanOrEqual(FULL_BUDGET.resolutions + 1);
+  };
 
   it.each([22, 30, 5000])(
     "denies the secret read and answers fast beside a %i-star glob",
     (stars) => {
-      const { verdict, ms } = timed(`cat .env; echo .${"*".repeat(stars)}zz`);
-      expect(verdict.decision).toBe("deny");
-      expect(ms).toBeLessThan(FAST_MS);
+      const cmd = `cat .env; echo .${"*".repeat(stars)}zz`;
+      const m = measure(cmd, ctx);
+      expect(m.verdict.decision).toBe("deny");
+      expect(m.spent.chars).toBe(cmd.length); // judged once, exactly
+      expect(m.ms).toBeLessThan(netMs(0.9));
     },
   );
 
   it.each([
-    ["a glob word", `cat .${"*".repeat(30)}zz`],
-    ["find -name", `find . -name '.${"*".repeat(30)}zz'`],
-    ["stars between literals", `cat ${"*a".repeat(2000)}*zz`],
-    ["a run of unclosed brackets", `cat .${"[".repeat(60_000)}zz`],
-    ["question marks", `cat ${"?".repeat(60_000)}env`],
-  ])("judges %s quickly", (_name, cmd) => {
-    expect(timed(cmd).ms).toBeLessThan(FAST_MS);
+    ["a glob word", `cat .${"*".repeat(30)}zz`, 0.1],
+    ["find -name", `find . -name '.${"*".repeat(30)}zz'`, 0.1],
+    ["stars between literals", `cat ${"*a".repeat(2000)}*zz`, 0.7],
+    ["a run of unclosed brackets", `cat .${"[".repeat(60_000)}zz`, 10.4],
+    ["question marks", `cat ${"?".repeat(60_000)}env`, 8.6],
+  ])("judges %s quickly: each character once, inside its safety net", (_name, cmd, worstMs) => {
+    const m = measure(cmd, ctx);
+    judgedOnce(cmd, m);
+    expect(m.exhausted).toBe(false);
+    expect(m.ms).toBeLessThan(netMs(worstMs));
   });
 
   it.each([
@@ -176,12 +187,14 @@ describe("2 and 7 — bounded work on hostile input", () => {
   });
 
   it("refuses at once a command longer than 64 KB, before parsing it", () => {
-    const { verdict, ms } = timed(repeat("cd a;", LIMIT + 4_000));
-    expect(verdict.decision).toBe("deny");
-    expect(verdict.reason).toMatch(/too (long|large)/i);
-    // A wall-clock bound only guards against a super-linear blow-up (these inputs took seconds when a rule went quadratic), not a micro-benchmark: it is 3 s so a loaded CI machine cannot fail it.
-    expect(ms).toBeLessThan(3000);
-    expect(d(`cat .env${" ".repeat(LIMIT)}`)).toBe("deny");
+    const m = measure(repeat("cd a;", LIMIT + 4_000), ctx);
+    expect(m.verdict.decision).toBe("deny");
+    expect(m.verdict.reason).toMatch(/too (long|large)/i);
+    expect(m.spent).toEqual(NOTHING_SPENT); // refused before a character was judged
+    expect(m.ms).toBeLessThan(netMs(0.1));
+    const padded = measure(`cat .env${" ".repeat(LIMIT)}`, ctx);
+    expect(padded.verdict.decision).toBe("deny");
+    expect(padded.spent).toEqual(NOTHING_SPENT);
   });
 
   it("still judges a command that fits in 64 KB", () => {
@@ -189,29 +202,45 @@ describe("2 and 7 — bounded work on hostile input", () => {
     expect(d(`cat .env; echo ${"a".repeat(LIMIT - 20)}`)).toBe("deny");
   });
 
-  it("keeps a 60 KB chain of cd linear", () => {
-    const { verdict, ms } = timed(`${repeat("cd a;", 60_000)}ls`);
-    expect(verdict.decision).toBe("allow");
-    expect(ms).toBeLessThan(3000);
-    expect(timed(`${repeat("cd a/b/c/d/e/f/g/h/i/j;", 60_000)}ls`).ms).toBeLessThan(3000);
+  // A cd resolves against the directories it could be in (at most 16) and is charged in characters: a chain of N cds
+  // spends a few characters each, so the total stays within a small multiple of the text. Resolving each cd against
+  // every earlier one (the quadratic shape) would spend N times that.
+  it.each([
+    ["a", "cd a;", 105.5],
+    ["a/b/.../j", "cd a/b/c/d/e/f/g/h/i/j;", 45.1],
+  ])("keeps a 60 KB chain of cd %s linear", (_name, unit, worstMs) => {
+    const cmd = `${repeat(unit, 60_000)}ls`;
+    const m = measure(cmd, ctx);
+    expect(m.verdict.decision).toBe("allow");
+    judgedOnce(cmd, m);
+    expect(m.spent.resolutions).toBe(0); // a cd is charged in characters only
+    expect(m.spent.resolutionChars).toBeLessThanOrEqual(2 * cmd.length);
+    expect(m.ms).toBeLessThan(netMs(worstMs));
   });
 
   it.each([
-    ["an open brace group of commas", `cat {${",".repeat(60_000)}`],
-    ["the same in a redirect", `echo x > {${",".repeat(60_000)}`],
-    ["a run of two-way groups", `cat ${"{a,b}".repeat(12_000)}`],
-    ["a run of unclosed braces", `cat ${"{".repeat(60_000)}`],
-    ["rm with a long flag word", `rm -${"a".repeat(60_000)}1 x`],
-    ["grep with a long flag word", `grep -${"r".repeat(60_000)}1 foo .`],
-    ["rg with a long flag word", `rg -${"u".repeat(60_000)}1 foo`],
-    ["unzip with a long flag word", `unzip -${"l".repeat(60_000)}1 x.zip`],
-    ["git clean with a long flag word", `git clean -${"n".repeat(60_000)}1`],
-    ["chmod with a long flag word", `chmod -${"R".repeat(60_000)}1 755 x`],
-    ["cp with a long flag word", `cp -${"a".repeat(60_000)}1 x y`],
-    ["bash with a long flag word", `bash -${"c".repeat(60_000)}1 x`],
-  ])("judges %s quickly", (_name, cmd) => {
-    expect(timed(cmd).ms).toBeLessThan(FAST_MS);
-  });
+    ["an open brace group of commas", `cat {${",".repeat(60_000)}`, 5.7, false],
+    ["the same in a redirect", `echo x > {${",".repeat(60_000)}`, 10.3, false],
+    // One word of 12,000 groups is past the brace cap for a word: it is cut, and the command asks.
+    ["a run of two-way groups", `cat ${"{a,b}".repeat(12_000)}`, 21.0, true],
+    ["a run of unclosed braces", `cat ${"{".repeat(60_000)}`, 10.6, false],
+    ["rm with a long flag word", `rm -${"a".repeat(60_000)}1 x`, 6.2, false],
+    ["grep with a long flag word", `grep -${"r".repeat(60_000)}1 foo .`, 8.9, false],
+    ["rg with a long flag word", `rg -${"u".repeat(60_000)}1 foo`, 7.1, false],
+    ["unzip with a long flag word", `unzip -${"l".repeat(60_000)}1 x.zip`, 8.5, false],
+    ["git clean with a long flag word", `git clean -${"n".repeat(60_000)}1`, 8.4, false],
+    ["chmod with a long flag word", `chmod -${"R".repeat(60_000)}1 755 x`, 10.9, false],
+    ["cp with a long flag word", `cp -${"a".repeat(60_000)}1 x y`, 7.4, false],
+    ["bash with a long flag word", `bash -${"c".repeat(60_000)}1 x`, 8.4, false],
+  ])(
+    "judges %s quickly: each character once, inside its safety net",
+    (_name, cmd, worstMs, cut) => {
+      const m = measure(cmd, ctx);
+      judgedOnce(cmd, m);
+      expect(m.exhausted).toBe(cut);
+      expect(m.ms).toBeLessThan(netMs(worstMs));
+    },
+  );
 
   it("expands braces as before", () => {
     expect(d("cat .en{v,}")).toBe("deny");

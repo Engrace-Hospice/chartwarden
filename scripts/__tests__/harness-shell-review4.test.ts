@@ -6,6 +6,7 @@
 import { homedir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { classifyBash } from "../harness/patterns";
+import { FULL_BUDGET, type Measured, measure, netMs } from "./helpers/work-counters";
 
 const ROOT = "/repo";
 const HOME = "/Users/dev";
@@ -42,69 +43,81 @@ describe("a write after `A || cd X && W` may run where A ran, not only in X", ()
 // slow is a bypass. The 64 KB cap bounds the text, not the work: 1,300 words that each expand to 256 brace
 // alternatives, judged against 16 candidate directories, are five million path resolutions.
 describe("path resolution and brace expansion draw on a per-command budget", () => {
-  const FAST_MS = 5000;
   const cwd = { root: ROOT, home: HOME, cwd: ROOT };
   const cds = `${Array.from({ length: 15 }, (_, i) => `cd /tmp/d${i};`).join(" ")} `;
   const eightGroups = "{a,b}{c,d}{e,f}{g,h}{i,j}{k,l}{m,n}{o,p}";
   const eightEmpty = "{,}{,}{,}{,}{,}{,}{,}{,}";
   const words = (count: number, braces: string): string =>
     Array.from({ length: count }, (_, i) => `w${i}${braces}`).join(" ");
-  // The best of three runs: one slow run on a loaded machine is not a regression, three are.
-  const timed = (cmd: string) => {
-    let best = Number.POSITIVE_INFINITY;
-    let verdict = classifyBash(cmd, cwd);
-    for (let run = 0; run < 3; run++) {
-      const started = performance.now();
-      verdict = classifyBash(cmd, cwd);
-      best = Math.min(best, performance.now() - started);
-    }
-    return { verdict, ms: best };
-  };
+  // Wave 12 (G-1, R9-COMP-9): these rows asserted `< 5000` ms (2 s in their titles) and so passed a 100x slowdown.
+  // What stops the work is the BUDGET, so the counts say so: the brace and resolution budgets are drawn down to their
+  // cap and no further (a resolution budget is overdrawn by the one resolution that finds it empty), and every
+  // character is judged once. The clock is a safety net at twice the worst loaded run (`work-counters.ts`).
+  const OVERDRAW = 1;
+  // The caps themselves, spelled out (not read from the budget): a change to one is a decision about how much work a
+  // command may cost, so it fails here, in `harness-timing-wave12.test.ts` and in the work-budget tests together.
+  const BRACE_CAP = 4096;
+  const RESOLUTION_CAP = 16_384;
 
   it.each([
-    ["rm -f", eightGroups, 1300],
-    ["rm -f", eightEmpty, 1900],
-    ["touch", eightGroups, 1300],
-    ["touch", eightEmpty, 1900],
-    ["mv", eightGroups, 1300],
-    ["mv", eightEmpty, 1900],
+    ["rm -f", eightGroups, 1300, 35.7],
+    ["rm -f", eightEmpty, 1900, 44.3],
+    ["touch", eightGroups, 1300, 35.7],
+    ["touch", eightEmpty, 1900, 50.7],
+    ["mv", eightGroups, 1300, 44.5],
+    ["mv", eightEmpty, 1900, 47.7],
   ])(
-    "answers `%s` over many brace words after fifteen absolute cds in under 2 s (%s x %i)",
-    (prog, braces, count) => {
+    "answers `%s` over many brace words after fifteen absolute cds within its budget (%s x %i)",
+    (prog, braces, count, worstMs) => {
       const cmd = `${cds}${prog} ${words(count, braces)} /tmp/dest`;
       expect(cmd.length).toBeLessThan(64 * 1024);
-      const { verdict, ms } = timed(cmd);
-      expect(ms).toBeLessThan(FAST_MS);
-      expect(verdict.decision).toBe("ask");
-      expect(verdict.reason).toMatch(/too many/i);
-      expect(verdict.reason).not.toMatch(/cannot resolve/i);
+      const m = measure(cmd, cwd);
+      expect(m.spent.braces).toBe(BRACE_CAP); // expansion stopped at the cap, not before and not after
+      expect(m.spent.resolutions).toBeLessThanOrEqual(RESOLUTION_CAP + OVERDRAW);
+      expect(m.spent.chars).toBeLessThanOrEqual(cmd.length);
+      expect(m.ms).toBeLessThan(netMs(worstMs));
+      expect(m.verdict.decision).toBe("ask");
+      expect(m.verdict.reason).toMatch(/too many/i);
+      expect(m.verdict.reason).not.toMatch(/cannot resolve/i);
     },
     60_000,
   );
 
   it("asks about brace expansion alone, with no write and no cd to multiply it", () => {
-    const { verdict, ms } = timed(`cat ${words(1300, eightGroups)}`);
-    expect(verdict.decision).toBe("ask");
-    expect(verdict.reason).toMatch(/too many/i);
-    expect(ms).toBeLessThan(FAST_MS);
+    const m = measure(`cat ${words(1300, eightGroups)}`, cwd);
+    expect(m.verdict.decision).toBe("ask");
+    expect(m.verdict.reason).toMatch(/too many/i);
+    expect(m.spent.braces).toBe(BRACE_CAP);
+    expect(m.spent.resolutions).toBeLessThanOrEqual(1); // one `cat` operand resolved: nothing multiplies the braces
+    expect(m.ms).toBeLessThan(netMs(37.6));
   });
 
   it("asks about plain targets alone, with no brace to multiply them", () => {
     const plain = Array.from({ length: 9000 }, (_, i) => `f${i}`).join(" ");
-    const { verdict, ms } = timed(`${cds}rm -f ${plain}`);
-    expect(verdict.decision).toBe("ask");
-    expect(verdict.reason).toMatch(/too many/i);
-    expect(ms).toBeLessThan(FAST_MS);
+    const m = measure(`${cds}rm -f ${plain}`, cwd);
+    expect(m.verdict.decision).toBe("ask");
+    expect(m.verdict.reason).toMatch(/too many/i);
+    expect(m.spent.braces).toBe(0);
+    // 9,000 targets from 16 candidate directories would be 144,000 resolutions: the budget stops it at its cap.
+    expect(m.spent.resolutions).toBe(RESOLUTION_CAP + OVERDRAW);
+    expect(m.ms).toBeLessThan(netMs(57.2));
   });
 
   it("still denies a secret read that sits beside the expansion", () => {
     const cmd = `cat .env; ${cds}rm -f ${words(1300, eightGroups)}`;
-    expect(timed(cmd).verdict.decision).toBe("deny");
+    const m = measure(cmd, cwd);
+    expect(m.verdict.decision).toBe("deny");
+    expect(m.spent.braces).toBe(BRACE_CAP);
+    expect(m.ms).toBeLessThan(netMs(39.4));
   });
 
   it("spends the budget per command: the next command starts with a full one", () => {
-    expect(timed(`${cds}rm -f ${words(1300, eightGroups)}`).verdict.decision).toBe("ask");
+    expect(measure(`${cds}rm -f ${words(1300, eightGroups)}`, cwd).verdict.decision).toBe("ask");
     expect(d("rm -f build/a{,.orig} build/b{1,2,3}.tmp")).toBe("allow");
+    const next = measure("rm -f build/a{,.orig} build/b{1,2,3}.tmp", cwd);
+    // Five alternatives, each expanded at most twice: nothing of the last command's spending is carried over.
+    expect(next.exhausted).toBe(false);
+    expect(next.spent.braces).toBeLessThanOrEqual(2 * 5);
   });
 
   it.each([
@@ -506,19 +519,17 @@ describe("a tilde form the guard cannot place, and a spoofed HOME, do not hide a
 // after the payload is the call that ran.
 describe("nested commands are judged once each, within a text budget and a time limit", () => {
   const CAP = 64 * 1024;
-  const FAST_MS = 5000;
   const atRoot = { ...ctx, cwd: ROOT, exists: () => false };
-  // The best of three runs: one slow run on a loaded machine is not a regression, three are.
-  const timed = (cmd: string) => {
-    let best = Number.POSITIVE_INFINITY;
-    let verdict = classifyBash(cmd, atRoot);
-    for (let run = 0; run < 3; run++) {
-      const started = performance.now();
-      verdict = classifyBash(cmd, atRoot);
-      best = Math.min(best, performance.now() - started);
-    }
-    return { verdict, ms: best };
+  // Wave 12 (G-1, R9-COMP-9): the bound was 2 s, then 5 s. The text budget is what stops a nested payload, so the
+  // count says so: the judged characters are drawn down past the cap by at most the one level that overdraws it, and
+  // the judging halts. The clock is a safety net at twice the worst loaded run (`work-counters.ts`).
+  /** The judged-text budget is checked after a level is charged, so one level (the whole text) can overdraw it. */
+  const stoppedByTheTextBudget = (m: Measured, cmd: string): void => {
+    expect(m.halted).toBe(true);
+    expect(m.spent.chars).toBeGreaterThan(FULL_BUDGET.chars);
+    expect(m.spent.chars).toBeLessThanOrEqual(FULL_BUDGET.chars + cmd.length);
   };
+  const timed = (cmd: string) => measure(cmd, atRoot);
   /** `$(` x levels, one huge word with sixteen brace groups, `)` x levels, then a secret read. */
   const nestedBraces = (levels: number): string => {
     const tail = "\ncat .env";
@@ -528,24 +539,35 @@ describe("nested commands are judged once each, within a text budget and a time 
   const nestedSegments = (): string =>
     `${"$(".repeat(31)}${"a;".repeat(30_000)}${")".repeat(31)}\ncat .env`;
 
-  it.each([5, 7, 9, 20, 30])("denies the secret read after a payload nested %i deep, fast", (n) => {
-    const { verdict, ms } = timed(nestedBraces(n));
-    expect(verdict.decision).toBe("deny");
-    expect(ms).toBeLessThan(FAST_MS);
+  it.each([
+    [5, 28.2],
+    [7, 28.5],
+    [9, 27.4],
+    [20, 38.5],
+    [30, 30.8],
+  ])("denies the secret read after a payload nested %i deep, fast", (n, worstMs) => {
+    const cmd = nestedBraces(n);
+    const m = timed(cmd);
+    expect(m.verdict.decision).toBe("deny");
+    stoppedByTheTextBudget(m, cmd);
+    expect(m.ms).toBeLessThan(netMs(worstMs));
   });
 
   it("denies the secret read after 31 nested substitutions of 30,000 segments each, fast", () => {
-    const { verdict, ms } = timed(nestedSegments());
-    expect(verdict.decision).toBe("deny");
-    expect(ms).toBeLessThan(FAST_MS);
+    const cmd = nestedSegments();
+    const m = timed(cmd);
+    expect(m.verdict.decision).toBe("deny");
+    stoppedByTheTextBudget(m, cmd);
+    expect(m.ms).toBeLessThan(netMs(20.4));
   });
 
   it("asks, not allows, when nothing in the payload is itself refused", () => {
     const cheap = `${"$(".repeat(31)}${"a;".repeat(30_000)}${")".repeat(31)}`;
-    const { verdict, ms } = timed(cheap);
-    expect(verdict.decision).toBe("ask");
-    expect(verdict.reason).toMatch(/too many|too big/i);
-    expect(ms).toBeLessThan(FAST_MS);
+    const m = timed(cheap);
+    expect(m.verdict.decision).toBe("ask");
+    expect(m.verdict.reason).toMatch(/too many|too big/i);
+    stoppedByTheTextBudget(m, cheap);
+    expect(m.ms).toBeLessThan(netMs(19.8));
   });
 
   // Cheap per character (one long word), so only the text budget, not the clock, can stop it: each level judges the
@@ -553,11 +575,17 @@ describe("nested commands are judged once each, within a text budget and a time 
   it("budgets the text judged across nested commands: 3 levels of 60 KB pass, 5 do not", () => {
     const nested = (levels: number): string =>
       `${"$(".repeat(levels)}echo ${"y".repeat(60_000)}${")".repeat(levels)}`;
-    expect(timed(nested(3)).verdict.decision).toBe("allow");
-    const over = timed(nested(5));
+    const within = timed(nested(3));
+    expect(within.verdict.decision).toBe("allow");
+    expect(within.halted).toBe(false);
+    expect(within.spent.chars).toBeLessThanOrEqual(FULL_BUDGET.chars); // four passes over 60 KB: under 256 KB
+    expect(within.ms).toBeLessThan(netMs(21.4));
+    const cmd = nested(5);
+    const over = timed(cmd);
     expect(over.verdict.decision).toBe("ask");
     expect(over.verdict.reason).toMatch(/too many|too big/i);
-    expect(over.ms).toBeLessThan(FAST_MS);
+    stoppedByTheTextBudget(over, cmd);
+    expect(over.ms).toBeLessThan(netMs(18.3));
   });
 
   it("asks once its time limit has passed, and judges normally within it", () => {
