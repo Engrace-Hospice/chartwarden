@@ -19,6 +19,8 @@
 export const PASSKEY_REQUIRED_ROLE_KEYS: ReadonlySet<string> = new Set([
   "org_admin",
   "platform_ops",
+  // SUPERADMIN_ROLE_KEY: it reads as both of the above (expandSuperadminRoles), so it is held to the same factor.
+  "superadmin",
 ]);
 
 export type MfaRequirement = "none" | "second_factor" | "passkey";

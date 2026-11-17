@@ -24,7 +24,7 @@ import type {
 } from "@chartwarden/types";
 import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { effectiveReachWithDiagnostics } from "../roles/grant-scope";
-import { roleConfersKey } from "../roles/platform-reserved";
+import { expandSuperadminRoles, roleConfersKey } from "../roles/platform-reserved";
 import { setEffectivePermissionResolver } from "./require-role";
 import {
   type EffectivePermissionStore,
@@ -33,6 +33,7 @@ import {
 } from "./resolve";
 import type { RoleGrant } from "./resolve";
 import { withSessionClassPermissions } from "./session-class-permissions";
+import { answersFromCatalog, effectivePermissionKeys } from "./superadmin-permissions";
 
 export interface DbEffectivePermissionStoreOptions {
   /**
@@ -102,16 +103,26 @@ export function createDbEffectivePermissionStore(
         );
         if (grantRows.length === 0) return [];
 
-        // The permission keys each granted role confers (`role_permission` → `permission.key`).
-        const roleIds = [...new Set(grantRows.map((g) => g.roleId))];
+        // The permission keys each granted role confers (`role_permission` → `permission.key`). The platform-owned
+        // `superadmin` is answered from the code catalog below, so its ~900 stored rows are not read at all.
+        const roleIds = [
+          ...new Set(
+            grantRows
+              .filter((g) => !answersFromCatalog(g.roleKey, g.roleOrganizationId))
+              .map((g) => g.roleId),
+          ),
+        ];
         await capRemaining();
-        const permRows = await tx
-          .select({
-            roleId: schema.rolePermissions.roleId,
-            permissionKey: schema.rolePermissions.permissionKey,
-          })
-          .from(schema.rolePermissions)
-          .where(inArray(schema.rolePermissions.roleId, roleIds));
+        const permRows =
+          roleIds.length === 0
+            ? []
+            : await tx
+                .select({
+                  roleId: schema.rolePermissions.roleId,
+                  permissionKey: schema.rolePermissions.permissionKey,
+                })
+                .from(schema.rolePermissions)
+                .where(inArray(schema.rolePermissions.roleId, roleIds));
         const permsByRole = new Map<string, string[]>();
         for (const p of permRows) {
           const keys = permsByRole.get(p.roleId);
@@ -123,7 +134,12 @@ export function createDbEffectivePermissionStore(
           roleKey: g.roleKey,
           enabled: g.enabled,
           expiresAt: g.expiresAt ?? null,
-          permissionKeys: permsByRole.get(g.roleId) ?? [],
+          // `superadmin` is answered from the code catalog, not its stored rows (it supersedes the two full-catalog roles).
+          permissionKeys: effectivePermissionKeys(
+            g.roleKey,
+            permsByRole.get(g.roleId) ?? [],
+            g.roleOrganizationId,
+          ),
         }));
       });
     },
@@ -222,7 +238,8 @@ export function createDbActorEnrichmentReader(
               category: r.roleCategory,
             }),
           );
-        const roles = [...new Set(liveGrants.map((r) => r.roleKey))];
+        // A platform-owned `superadmin` reads as org_admin + every platform role (it already passed roleConfersKey above).
+        const roles = expandSuperadminRoles([...new Set(liveGrants.map((r) => r.roleKey))]);
         // GAP-007 — a grant's `scope` NARROWS the member's default reach (see roles/grant-scope.ts): the PE /
         // location ids stamped on the request context, which `provider_entity_scope` / `location_scope` and every
         // module's own scope predicate read, are the union of the live roles' reach, never wider than the defaults.

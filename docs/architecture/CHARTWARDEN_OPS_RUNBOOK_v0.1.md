@@ -2353,9 +2353,22 @@ DATABASE_ADMIN_URL=<owner connection> bun run db:platform-role revoke \
 - **Allowed keys** are exactly the platform keys a predicate reads (`PLATFORM_GRANTABLE_ROLE_KEYS` in
   `packages/auth/src/roles/platform-reserved.ts`): `platform_owner`, `platform_admin`,
   `platform_billing_admin`, `platform_support_t2`, `platform_sales`, `platform_ops`,
-  `platform_security_owner`, `ai_safety_owner`. Any other key is refused before the database is touched.
-- **The user must already hold an ACTIVE membership** in the named org. A platform role is bound to a
-  membership; the CLI never creates users or memberships.
+  `platform_security_owner`, `ai_safety_owner`, `superadmin` ([ADR-0112](../adr/ADR-0112-superadmin-platform-role.md):
+  one role that reads as `administrator`, `org_admin` and every platform role; grant it to at most two named
+  people, only in the ChartWarden platform org, and only once `CHARTWARDEN_MFA_ENFORCEMENT=true`; the CLI and a
+  `membership_role` trigger (which also fires in a `replica` session) both refuse an organization that has a
+  `tenant_account`, and a second trigger refuses giving the platform org one while it holds the binding). Any
+  other key is refused before the database is touched.
+- **A grant needs an ACTIVE membership** in the named org. A platform role is bound to a membership; the CLI
+  never creates users or memberships. A **revoke** also reaches a suspended membership, so an offboarded holder's
+  binding cannot lie dormant and return on reactivation.
+- **`superadmin` needs a non-tenant organization, and nothing creates one.** M34 onboarding always adds a
+  `tenant_account`, and the CLI and the migration 1501 triggers refuse that for this role. The ChartWarden
+  platform organization and its first membership are therefore created by an operator with SQL (an
+  `organization` row with no `tenant_account`, then the user and an active `membership`), and only then granted
+  with the CLI. Only the grant is audited under the ticket (the CLI sets its correlation id); run that SQL in a
+  transaction that first sets `app.correlation_id` to the same change-ticket reference and paste it on the ticket. The triggers are `SECURITY DEFINER` and need an owner that bypasses RLS (a superuser, as in
+  production's compose); do not apply migration 1501 as a non-superuser owner.
 - **Connection.** Use the owner connection the migration runner uses (`DATABASE_ADMIN_URL`, else
   `DATABASE_URL`). `chartwarden_app` cannot write platform-owned rows.
 - **What it writes.** It upserts the platform-owned role row (one per key, `role_platform_key_idx`), adds
@@ -2369,7 +2382,9 @@ DATABASE_ADMIN_URL=<owner connection> bun run db:platform-role revoke \
   it on the change ticket. `actor_user_id` is NULL because the operator acts on a database connection,
   so the ticket is the attribution. Find the rows with
   `SELECT * FROM audit_event WHERE correlation_id LIKE 'ops-cli:platform-role:%:CHG-1234:%'`.
-- **Effect.** Role keys are re-read on every request. Cached permission sets expire within 5 minutes.
+- **Effect.** Role keys are re-read on every request. Cached permission sets expire within 5 minutes, except a
+  `superadmin` set, which is never cached, so revoking it bites on the next request even if the holder signs in
+  again. Revoking `superadmin` also deletes the holder's sessions (only when a binding was removed).
 - **`clinical_safety_lead` is not granted here.** It is a tenant role. It carries the AI Safety Owner
   authority only on a deployment started with `CHARTWARDEN_SINGLE_TENANT_DEPLOYMENT=true` (M32 §4.7).
 - Review platform-role holders in the §12.2 quarterly access review:

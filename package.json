@@ -29,6 +29,7 @@
     "storage:reconcile-tenants": "bun run scripts/storage/reconcile-tenant-storage.ts",
     "db:seed": "bun run scripts/db/seed.ts",
     "db:seed:org-admin": "bun run scripts/db/seed-org-admin.ts",
+    "db:seed:superadmin": "bun run scripts/db/seed-superadmin.ts",
     "db:sync:permissions": "bun --env-file=.env run scripts/db/sync-permission-catalog.ts",
     "db:sync:ai-capabilities": "bun --env-file=.env run scripts/db/sync-ai-capability-catalog.ts",
     "db:sync:ai-backends": "bun run scripts/db/sync-ai-backends.ts",

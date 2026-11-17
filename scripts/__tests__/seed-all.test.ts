@@ -17,6 +17,13 @@ describe("seed-all — db:seed:all without a shell (distroless release image)", 
     expect(steps[0]).toEqual(["bun", "run", "scripts/db/seed.ts"]);
   });
 
+  it("never reaches the superadmin seed (production's reseed workflow runs this chain)", () => {
+    // seed-superadmin creates an account with the whole catalog and refuses a non-local environment itself, but
+    // being absent from this chain is the first line of defence; re-adding it must fail a test, not a deploy.
+    expect(steps.flat().some((token) => token.includes("seed-superadmin"))).toBe(false);
+    expect(scripts["db:seed:all"]).not.toContain("superadmin");
+  });
+
   it("passes `-- args` through to the named script", () => {
     expect(steps).toContainEqual([
       "bun",

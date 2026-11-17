@@ -125,6 +125,26 @@ describe("createEffectivePermissionResolver — caching + invalidation (§2.5)",
     expect(loads).toBe(1);
   });
 
+  it("never caches a superadmin set, so a revoke is seen on the very next request (ADR-0112)", async () => {
+    // The CLI that revokes superadmin is another process and cannot call invalidateActor here; a
+    // cached set (keyed by org + user, not session) would also survive a fresh sign-in.
+    let held = true;
+    let loads = 0;
+    const handle = createEffectivePermissionResolver(
+      {
+        loadGrants: () => {
+          loads += 1;
+          return held ? [grant({ roleKey: "superadmin", permissionKeys: ["role.manage"] })] : [];
+        },
+      },
+      { clock: () => 0 },
+    );
+    expect((await handle.resolver(contextFor())).has("role.manage")).toBe(true);
+    held = false; // revoked out of band; no invalidateActor call
+    expect((await handle.resolver(contextFor())).has("role.manage")).toBe(false);
+    expect(loads).toBe(2);
+  });
+
   it("invalidateActor drops only that actor's entry (role granted/revoked, §2.5)", async () => {
     let loads = 0;
     const handle = createEffectivePermissionResolver(

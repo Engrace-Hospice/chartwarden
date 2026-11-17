@@ -117,6 +117,38 @@ controls:
       - script: test:s11:adversarial-stages:live
       - file: apps/backend/src/modules/02-identity/session-writer-db.ts
 
+  - id: CW-AC-45
+    title: >-
+      The superadmin role (above sysadmin and orgadmin) is one platform-owned role bound only by the ticketed operator CLI to a ChartWarden membership (refused inside any tenant by the CLI and by database triggers), reserved so no tenant row can carry it, required to use a passkey by policy, never cached by the permission resolver, and not a bypass of RLS (the consented support session and break-glass are separate controls it does not change)
+    hipaa: ["164.312(a)(1)", "164.312(d)", "164.308(a)(3)(ii)(A)", "164.308(a)(4)"]
+    soc2: ["CC6.1", "CC6.2", "CC6.3"]
+    status: partial
+    evidence:
+      - script: test:auth:live
+      - file: packages/auth/src/roles/platform-reserved.ts
+      - file: packages/auth/src/rbac/superadmin-permissions.ts
+      - file: packages/auth/src/identity/mfa-policy.ts
+      - file: packages/auth/__tests__/platform-reserved-roles.test.ts
+      - file: packages/auth/__tests__/superadmin-permissions.test.ts
+      - file: apps/backend/__tests__/mfa-enrolment-matrix.test.ts
+      - file: scripts/db/lib/platform-role.ts
+      - file: scripts/db/lib/local-seed-guard.ts
+      - file: scripts/db/seed-superadmin.ts
+      - file: scripts/__tests__/platform-role-cli.test.ts
+      - file: scripts/__tests__/local-seed-guard.test.ts
+      - file: scripts/__tests__/seed-all.test.ts
+      - file: scripts/__tests__/migration-permission-keys.test.ts
+      - file: packages/auth/src/rbac/resolve.ts
+      - file: packages/auth/__tests__/rbac-resolve.test.ts
+      - file: apps/backend/src/modules/03-authorization/routes/authz-routes.ts
+      - file: apps/backend/__tests__/authz-routes.test.ts
+      - file: packages/db/migrations/1501_m3_role_reserve_superadmin.sql
+      - file: docs/adr/ADR-0112-superadmin-platform-role.md
+    gap:
+      reason: The passkey requirement is policy that the server enforces only when CHARTWARDEN_MFA_ENFORCEMENT=true (opt-in today, see mfa-policy.ts), so until it is on a superadmin can hold the role with a password alone. The role is also Proposed (ADR-0112) until the owner accepts it and names its holders. Do not grant it in production before both. Detection depends on CW-MON-01, which is a gap, so granting or using superadmin raises no alert today, and the grant is a database-owner CLI call attributed only to a change-ticket string. Isolation is asserted live on tenant-scoped rows (role catalog, memberships) as chartwarden_app; no test drives a superadmin against the consented support session or break-glass themselves (CW-AC-40 and CW-AC-03 are unchanged and carry those proofs) and patient-table isolation was checked by hand. Also unverified, so not claimed - how the background fan-outs that enumerate active organizations behave for the platform org, which has no tenant_account or key ring.
+      owner: platform
+      review_by: 2027-01-31
+
   - id: CW-AC-03
     title: Emergency access (break-glass) as a two-person, audited control
     hipaa: ["164.312(a)(2)(ii)"]
