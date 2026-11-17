@@ -64,6 +64,7 @@ import {
   readsScriptFromStdin,
   runsInlineCode,
 } from "./inline-code";
+import { DOWNLOAD_SCRIPT_REASON, downloadsScript } from "./download-script";
 import { launchctlReason } from "./launchctl-rules";
 import { type Listed, asListing } from "./listing";
 import { runsLiveSuite } from "./live-suite";
@@ -698,11 +699,14 @@ function handedScriptVerdicts(
 ): BashVerdict[] {
   const p = stages[index] as StdinStage;
   const texts: string[] = [];
+  const out: BashVerdict[] = [];
   let unreadable = false;
   if (SOURCES.test(p.prog)) {
     // `source <(echo '…')`: the substitution's output is the script (read as typed and as handed, R9-CR-2).
     for (const inner of substitutions(parts[index]?.text ?? "")) {
       for (const printed of printedReadings(inner)) if (printed !== null) texts.push(...printed);
+      // `source <(curl …)` runs a download, as `bash <(curl …)` does (wave 13, B9)
+      if (downloadsScript(inner)) out.push(ask(DOWNLOAD_SCRIPT_REASON));
     }
     // `source /dev/stdin <<< '…'` runs what it is fed (its heredoc body is read by the lexer already).
     if (p.args.some((a) => SOURCE_STDIN.test(a))) {
@@ -715,7 +719,7 @@ function handedScriptVerdicts(
     texts.push(...handed.texts);
     unreadable = handed.unreadable;
   }
-  const out = texts.map((text) => judge(text, ctx, depth + 1, here));
+  out.push(...texts.map((text) => judge(text, ctx, depth + 1, here)));
   if (unreadable) out.push(ask(UNREADABLE_SCRIPT_REASON));
   return out;
 }
@@ -825,7 +829,7 @@ function gitExecVerdicts(
 ): BashVerdict[] {
   const words = assignmentWords(parsed.prog, parsed.args, parsed.assigns);
   const out: BashVerdict[] = [];
-  const env = gitEnvVerdict(words);
+  const env = gitEnvVerdict(words, parsed.prog === "git" ? variableStatements : null);
   if (env) out.push(env.decision === "deny" ? deny(env.reason) : ask(env.reason));
   out.push(...envWriteVerdicts(words, here, ctx));
   for (const text of envCommandStrings(words)) out.push(judge(text, ctx, depth + 1, here));

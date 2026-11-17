@@ -130,13 +130,27 @@ export function forcedAdd(sub: string, rest: readonly string[]): ForcedAdd | nul
     return read.everything || unreadable ? { operands: ["."], ...extra } : null;
   }
   // `git update-index --add FILE` stages a file whatever `.gitignore` says; `--cacheinfo MODE,SHA,PATH` stages a known object.
-  if (sub === "update-index" && updateIndexAdds(rest)) {
+  if (sub === "update-index") {
+    // `--stdin` and `--index-info` read the paths (or `MODE SHA STAGE<TAB>PATH` lines) from stdin, which the guard cannot read: asks, as a pathspec file it
+    // cannot read does (wave 13, A8: a here-string of an ignored file's name, or `git ls-files -o -i | git update-index --add --stdin`).
+    const before = rest.slice(0, rest.indexOf("--") < 0 ? undefined : rest.indexOf("--"));
+    const fromStdin = before.some(
+      (word) => namesUpdateIndexOption(word, "stdin") || namesUpdateIndexOption(word, "index-info"),
+    );
+    const adds = updateIndexAdds(rest);
     const operands = pathspecs(
       withoutCacheinfoObjects(rest),
       GIT_UPDATE_INDEX_LONG_OPTIONS,
       UPDATE_INDEX_VALUED,
     );
-    return operands.length > 0 ? { operands } : null;
+    if (fromStdin) {
+      return {
+        operands: operands.length > 0 ? operands : ["."],
+        pathspecSource: "-",
+        ...(adds ? {} : { unforced: true as const }),
+      };
+    }
+    if (adds) return operands.length > 0 ? { operands } : null;
   }
   return null;
 }
