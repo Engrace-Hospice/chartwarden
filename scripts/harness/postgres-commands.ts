@@ -4,7 +4,7 @@
  * from`, `\lo_import` read one (wave 8, T3(a); round-6 ADV6-6, CR6-3). psql starts a meta-command at ANY unquoted
  * backslash, not only at the start of a line: `select 1; \o X`, `select 1 \g X`, `-c "select 1 \\o X"`. So the text is
  * walked once, skipping what psql does not read as commands (single and double quotes, dollar quotes, `--` and block
- * comments), and each command takes the rest of its line up to a `\\` (the separator). `\cd DIR` moves the directory a
+ * comments), and each command takes the rest of its line up to the next unquoted backslash (`\\`, the separator, or the next command). `\cd DIR` moves the directory a
  * later relative file is under. A command assembled at run time (`psql -c "$CMD"`) is unseen. Pure.
  */
 import {
@@ -26,6 +26,7 @@ export interface MetaCommand {
   readonly rest: string;
 }
 
+const LINE_END = new RegExp(LINE_BREAK.source, "g");
 const COMMAND_NAME = /^(?:!|[A-Za-z_][A-Za-z0-9_]*)/;
 const DOLLAR_TAG = /^\$(?:[A-Za-z_]\w*)?\$/;
 
@@ -52,9 +53,26 @@ function skipQuoted(text: string, i: number): number {
   return i;
 }
 
+/**
+ * Where the arguments of a command that starts at `from` end on this line (`lineEnd` is the line's end): at the first backslash
+ * outside quotes. A second backslash (`\\`) goes back to SQL and any other one starts the NEXT command (`\x\c db user H` runs `\x`,
+ * then `\c`; wave 13, R10-ADV A6, from the psql manual: "parsing for arguments stops at the end of the line, or when another
+ * unquoted backslash is found"). A single-quoted argument takes a backslash as an escape, a double- or back-quoted one does not.
+ */
+function argumentEnd(text: string, from: number, lineEnd: number): number {
+  for (let i = from; i < lineEnd; i++) {
+    const ch = text[i];
+    if (ch === "\\") return i;
+    if (ch !== "'" && ch !== '"' && ch !== "`") continue;
+    for (i++; i < lineEnd && text[i] !== ch; i++) if (ch === "'" && text[i] === "\\") i++;
+  }
+  return lineEnd;
+}
+
 /** Every meta-command in the text, in order. */
 export function metaCommands(text: string): MetaCommand[] {
   const out: MetaCommand[] = [];
+  let lineEnd = -1;
   for (let i = 0; i < text.length; ) {
     const skipped = skipQuoted(text, i);
     if (skipped !== i) {
@@ -75,12 +93,14 @@ export function metaCommands(text: string): MetaCommand[] {
       continue;
     }
     const start = i + 1 + name.length;
-    const lineEnd = text.slice(start).search(LINE_BREAK);
-    const line = text.slice(start, lineEnd < 0 ? undefined : start + lineEnd);
-    // The rest of a `\!` line is the command; any other command's arguments end at the `\\` separator.
-    const cut = name === "!" ? -1 : line.indexOf("\\\\");
-    out.push({ name, rest: (cut < 0 ? line : line.slice(0, cut)).trim() });
-    i = start + (cut < 0 ? line.length : cut);
+    if (lineEnd < start) {
+      LINE_END.lastIndex = start;
+      lineEnd = LINE_END.exec(text)?.index ?? text.length;
+    }
+    // The rest of a `\!` line is the command; any other command's arguments end at the next unquoted backslash.
+    const end = name === "!" ? lineEnd : argumentEnd(text, start, lineEnd);
+    out.push({ name, rest: text.slice(start, end).trim() });
+    i = end;
   }
   return out;
 }
