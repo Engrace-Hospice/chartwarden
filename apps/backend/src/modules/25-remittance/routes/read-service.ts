@@ -19,6 +19,9 @@ export interface RemittanceAdviceSummary {
   readonly payerKind: string;
   readonly paymentMethod: string;
   readonly totalPaymentAmount: string;
+  readonly paymentEffectiveDate: string | null;
+  readonly adjudicationCutoffDate: string | null;
+  readonly functionalGroupCreationDate: string | null;
   readonly parseStatus: string;
   readonly receivedAt: string;
 }

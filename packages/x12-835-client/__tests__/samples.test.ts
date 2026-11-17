@@ -96,12 +96,4 @@ describe("committed .835 samples", () => {
     expect(ok(raw, "0002").totalPaymentAmount).toBe(250);
     expect(refusal(raw, "0003")).toMatch(/no transaction set/);
   });
-
-  it("01 + an injected second GS group is refused (still unsupported)", () => {
-    const raw = SAMPLES["01-clean-routine-home-care"].replace(
-      "GE*1*77~",
-      "GE*1*77~\nGS*HP*A*B*20260616*1200*78*X*005010X221A1~",
-    );
-    expect(refusal(raw)).toMatch(/exactly one GS\/GE/);
-  });
 });

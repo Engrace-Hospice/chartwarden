@@ -8,8 +8,8 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 
 /**
  * POST /internal/remittance/advices (route #32, WX-PR-012, system-principal only) — receive a raw 835
- * ALREADY staged in MinIO by the (unbuilt) clearinghouse-pull transport; `rawEdi` is used only to derive
- * the ISA/ST dedup key locally, never persisted verbatim.
+ * ALREADY staged in MinIO by the clearinghouse-pull transport; `rawEdi` is used for envelope validation
+ * and group-scoped identity extraction, never persisted verbatim.
  */
 export const ReceiveAdviceRequestSchema = Type.Object({
   providerEntityId: Type.String({ format: "uuid" }),
@@ -29,6 +29,22 @@ export const ReceiveAdviceResponseSchema = Type.Union([
   Type.Object({ outcome: Type.Literal("queued"), adviceId: Type.String() }),
   Type.Object({ outcome: Type.Literal("duplicate"), existingAdviceId: Type.String() }),
   Type.Object({ outcome: Type.Literal("malformed"), reason: Type.String() }),
+  Type.Object({
+    outcome: Type.Literal("unsupported"),
+    code: Type.Literal("X12_835_UNSUPPORTED_ROUTING"),
+    reason: Type.String(),
+  }),
+  Type.Object({
+    outcome: Type.Literal("review_required"),
+    stageId: Type.String(),
+    reason: Type.String(),
+  }),
+  Type.Object({
+    outcome: Type.Literal("held_duplicate"),
+    adviceId: Type.String(),
+    existingAdviceId: Type.String(),
+    reason: Type.Literal("LEGACY_IDENTITY_AMBIGUOUS"),
+  }),
 ]);
 
 /** POST /remittance/lines/:id/manual-match — bind an unmatched line to a claim with a documented reason. */
@@ -274,6 +290,9 @@ export const RemittanceAdviceSummarySchema = Type.Object({
   payerKind: Type.String(),
   paymentMethod: Type.String(),
   totalPaymentAmount: Type.String({ description: "Decimal string — never a float" }),
+  paymentEffectiveDate: Type.Union([Type.String({ format: "date" }), Type.Null()]),
+  adjudicationCutoffDate: Type.Union([Type.String({ format: "date" }), Type.Null()]),
+  functionalGroupCreationDate: Type.Union([Type.String({ format: "date" }), Type.Null()]),
   parseStatus: Type.String(),
   receivedAt: Type.String({ format: "date-time" }),
 });

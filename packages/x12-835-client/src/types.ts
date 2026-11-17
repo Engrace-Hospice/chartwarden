@@ -114,7 +114,7 @@ export interface ParsedRemittanceParty {
   id?: string;
   /** REF*TJ — federal tax id (payee). */
   taxId?: string;
-  /** REF*PQ — payee id assigned by the payer, i.e. the PTAN (payee loop). */
+  /** REF*PQ — payer-assigned payee identifier; its presence does not establish that it is a PTAN. */
   payerAssignedId?: string;
   /** REF*2U — additional payer identification (payer loop). */
   additionalPayerId?: string;
@@ -144,10 +144,22 @@ export interface ParsedRemittanceAdvice {
   payerProgram: PayerProgram;
   /** ISA13 — interchange control number. */
   interchangeControlNumber: string;
+  /** ISA06/ISA08 — envelope sender/receiver identity used to scope control-number dedupe. */
+  interchangeSenderCode?: string;
+  interchangeReceiverCode?: string;
   /** ST02 — transaction set control number. */
   transactionSetControlNumber: string;
   /** GS06 functional group control number for the original transaction set. */
   functionalGroupControlNumber?: string;
+  /** GS01/02/03/05/08 and one-based group position preserve the transaction's enclosing group provenance. */
+  functionalGroupIdentifierCode?: string;
+  functionalGroupSenderCode?: string;
+  functionalGroupReceiverCode?: string;
+  functionalGroupCreationTime?: string;
+  functionalGroupVersion?: string;
+  functionalGroupPosition?: number;
+  /** One-based transaction position within its GS/GE group. */
+  transactionSetPosition?: number;
   /** TRN02 — the check / EFT trace number. */
   checkOrEftTraceNumber?: string;
   /** BPR04 — the payment method. */
@@ -160,8 +172,14 @@ export interface ParsedRemittanceAdvice {
   providerAdjustments?: readonly ParsedProviderAdjustment[];
   /** Unknown ST..SE segments the normalized M25 model does not yet understand. PHI-bearing; memory only. */
   unknownSegments?: readonly { readonly segmentId: string; readonly elements: readonly string[] }[];
-  /** BPR16 (check issue / EFT effective date), falling back to DTM*405 (production date) — ISO date-time. */
-  productionDate: string;
+  /** BPR16 — payment effective/settlement date. Null when the payment scenario carries no date. */
+  paymentEffectiveDate?: string | null;
+  /** DTM*405 — adjudication cutoff/production-cycle date, when explicitly sent. Never inferred from BPR16. */
+  adjudicationCutoffDate?: string | null;
+  /** Enclosing GS04 — functional-group creation date. */
+  functionalGroupCreationDate?: string;
+  /** @deprecated Compatibility alias for older consumers; use the source-specific date fields above. */
+  productionDate: string | null;
   /** TRN03 — the originating company identifier. */
   originatingCompanyId?: string;
   /** N1*PR loop (always set by the parser; optional so hand-built advices still type). */
@@ -170,6 +188,27 @@ export interface ParsedRemittanceAdvice {
   payee?: ParsedRemittanceParty;
   /** The CLP claim-payment segments. */
   claims: ParsedClaim835[];
+}
+
+/** One fully normalized functional group with its own unmerged 835 transaction sets. */
+export interface Parsed835FunctionalGroup {
+  readonly functionalIdentifierCode: string;
+  readonly applicationSenderCode: string;
+  readonly applicationReceiverCode: string;
+  readonly creationDate: string;
+  readonly creationTime: string;
+  readonly controlNumber: string;
+  readonly version: string;
+  readonly position: number;
+  readonly transactionSets: readonly ParsedRemittanceAdvice[];
+}
+
+/** Explicit interchange hierarchy for consumers that need group provenance rather than a flat projection. */
+export interface Parsed835Interchange {
+  readonly interchangeControlNumber: string;
+  readonly senderCode: string;
+  readonly receiverCode: string;
+  readonly functionalGroups: readonly Parsed835FunctionalGroup[];
 }
 
 /** One claim rejection inside a 277CA (used by M23; M25 reads the M23-published `m23.claim.rejected`). */

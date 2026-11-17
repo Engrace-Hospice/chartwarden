@@ -67,7 +67,6 @@ import {
   MAX_REFUSALS_PER_REMITTANCE,
   pullRemittances,
 } from "../src/modules/25-remittance/ingest/clearinghouse-pull";
-import { parsePayeeTinPolicy } from "../src/modules/25-remittance/ingest/payee-tin-policy";
 import { buildDrizzleRemittanceCursorStore } from "../src/modules/25-remittance/ingest/pull-cursor-store";
 import type {
   ClaimMatchCandidateProvider,
@@ -564,6 +563,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         checkOrEftTraceNumber: trace,
         paymentMethod: "eft",
         totalPaymentAmount: 42,
+        paymentEffectiveDate: "2026-03-01",
         productionDate: "2026-03-01",
         claims: [
           {
@@ -1517,6 +1517,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         checkOrEftTraceNumber: trace,
         paymentMethod: "eft",
         totalPaymentAmount: 42,
+        paymentEffectiveDate: "2026-03-01",
         productionDate: "2026-03-01",
         claims: [
           {
@@ -2853,6 +2854,19 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       return `${buildRawEdi(isa13, st02)}${body.map((x) => `${x}~`).join("")}SE*${body.length + 2}*${st02}~GE*1*1~IEA*1*${isa13.padStart(9, "0")}~`;
     }
 
+    function npiPayeeEdi(isa13: string, st02: string, npi: string, payeeTin?: string): string {
+      const body = [
+        "BPR*I*500.00*C*ACH*CCP*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615",
+        `TRN*1*EFT-${isa13}*1512345678`,
+        "N1*PR*SYNTHETIC MAC",
+        `N1*PE*SYNTH HOSPICE*XX*${npi}`,
+        ...(payeeTin ? [`REF*TJ*${payeeTin}`] : []),
+        `CLP*PCN-${isa13}*1*500.00*500.00*0.00*MC*ICN-${isa13}`,
+        "SVC*HC:T1005*500.00*500.00",
+      ];
+      return `${buildRawEdi(isa13, st02)}${body.map((x) => `${x}~`).join("")}SE*${body.length + 2}*${st02}~GE*1*1~IEA*1*${isa13.padStart(9, "0")}~`;
+    }
+
     beforeAll(async () => {
       ids.a = await seedProvider(ORG_A, TENANT_NPI, "H67101", TIN);
       ids.b = await seedProvider(ORG_B, "1999999984", "H67102", "987654321");
@@ -2862,14 +2876,12 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       org: string,
       pe: string,
       raw: string,
-      policy: Record<string, string[]>,
       payerKind: "medicare" | "medicaid" = "medicaid",
     ) =>
       buildDrizzleM25IngestService(handle.db, {
         client: createX12835Client({ readRaw: async () => raw }),
         payeeNpi: async () => TENANT_NPI,
         payeeTin,
-        payeeTinPolicy: parsePayeeTinPolicy(JSON.stringify(policy)),
       }).receiveAdvice(
         { organizationId: org },
         {
@@ -2889,51 +2901,50 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         )
       ).rows[0].n as number;
 
-    it("a policy-allowed tax-id-only payee with the sealed TIN is queued", async () => {
+    it("refuses a tax-id-only payee even when the sealed TIN matches", async () => {
       const raw = fiOnlyEdi("000000801", "0801", "12-3456789");
-      const r = await receive(ORG_A, ids.a as string, raw, {
-        [ORG_A]: ["medicaid"],
-      });
-      expect(r.outcome).toBe("queued");
+      const r = await receive(ORG_A, ids.a as string, raw);
+      expect(r.outcome).toBe("malformed");
+      expect(await adviceCount("000000801")).toBe(0);
     });
 
-    it("the same file is refused by default and on a program the policy does not cover", async () => {
+    it("refuses tax-id-only identity regardless of payer kind", async () => {
       const raw = fiOnlyEdi("000000802", "0802", TIN);
-      expect((await receive(ORG_A, ids.a as string, raw, {})).outcome).toBe("malformed");
-      expect(
-        (await receive(ORG_A, ids.a as string, raw, { [ORG_A]: ["medicaid"] }, "medicare")).outcome,
-      ).toBe("malformed");
+      expect((await receive(ORG_A, ids.a as string, raw)).outcome).toBe("malformed");
+      expect((await receive(ORG_A, ids.a as string, raw, "medicare")).outcome).toBe("malformed");
       expect(await adviceCount("000000802")).toBe(0);
     });
 
     it("a wrong TIN is refused and nothing is stored", async () => {
       const raw = fiOnlyEdi("000000803", "0803", "987654321");
-      const r = await receive(ORG_A, ids.a as string, raw, {
-        [ORG_A]: ["medicaid"],
-      });
+      const r = await receive(ORG_A, ids.a as string, raw);
       expect(r.outcome).toBe("malformed");
       expect(await adviceCount("000000803")).toBe(0);
     });
 
-    it("cross-tenant: org A's policy and TIN never open org B's provider entity, and vice versa", async () => {
+    it("TIN lookup is tenant scoped and tax-id-only identity cannot cross tenants", async () => {
       expect(await payeeTin(ORG_A, ids.b as string)).toBeNull();
       expect(await payeeTin(ORG_B, ids.a as string)).toBeNull();
       const raw = fiOnlyEdi("000000804", "0804", TIN);
       // Org B holds PE b (TIN 987654321): org A's TIN on the file must not match it.
-      const r = await receive(ORG_B, ids.b as string, raw, {
-        [ORG_B]: ["medicaid"],
-      });
+      const r = await receive(ORG_B, ids.b as string, raw);
       expect(r.outcome).toBe("malformed");
-      // Org A's policy does not extend to org B.
+      // A matching tax id still cannot replace the missing NPI identity.
       const rawB = fiOnlyEdi("000000805", "0805", "987654321");
-      const denied = await receive(ORG_B, ids.b as string, rawB, {
-        [ORG_A]: ["medicaid"],
-      });
+      const denied = await receive(ORG_B, ids.b as string, rawB);
       expect(denied.outcome).toBe("malformed");
       expect(await adviceCount("000000804")).toBe(0);
     });
 
-    it("an unopenable sealed TIN (wrong tenant AAD) fails closed", async () => {
+    it("compares an NPI payee REF*TJ through the sealed TIN reader", async () => {
+      const matching = npiPayeeEdi("000000807", "0807", TENANT_NPI, TIN);
+      expect((await receive(ORG_A, ids.a as string, matching)).outcome).toBe("queued");
+      const mismatch = npiPayeeEdi("000000808", "0808", TENANT_NPI, "987654321");
+      expect((await receive(ORG_A, ids.a as string, mismatch)).outcome).toBe("malformed");
+      expect(await adviceCount("000000808")).toBe(0);
+    });
+
+    it("an unopenable sealed TIN (wrong tenant AAD) fails closed for an NPI payee", async () => {
       const foreign = await cipher.encrypt({
         organizationId: ORG_B,
         providerEntityId: ids.b as string,
@@ -2944,10 +2955,8 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
         ids.a,
       ]);
       try {
-        const raw = fiOnlyEdi("000000806", "0806", TIN);
-        const r = await receive(ORG_A, ids.a as string, raw, {
-          [ORG_A]: ["medicaid"],
-        });
+        const raw = npiPayeeEdi("000000806", "0806", TENANT_NPI, TIN);
+        const r = await receive(ORG_A, ids.a as string, raw);
         expect(r).toMatchObject({
           outcome: "malformed",
           reason: expect.stringContaining("could not be read"),

@@ -296,6 +296,11 @@ async function pullOne(
         quarantined.push(`${label}: remittance ${file.remittanceId} ${REMITTANCE_QUARANTINED}`);
         continue;
       }
+      if (received.outcome === "unsupported") {
+        // This is a valid interchange shape M25 cannot route. Keep the cursor pinned for operator action;
+        // it is neither malformed content nor a successful duplicate.
+        throw new Error(`remittance ${file.remittanceId} has unsupported X12 group routing`);
+      }
       await deps.cursors.clearRefusals(key, file.remittanceId, fileSha256);
       if (received.outcome === "queued") queued += 1;
       else duplicates += 1;
