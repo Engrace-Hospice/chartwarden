@@ -11,6 +11,7 @@
  * earlier tool call, built from a variable or a command's output, or edited in place stays unread. Pure.
  */
 import { SHELL_PROGRAM, printedText, runsInlineCode } from "./inline-code";
+import { runsCommandString } from "./shell-command-string";
 
 /** The parts of a parsed command the writer side reads. */
 export interface WriterCommand {
@@ -88,7 +89,7 @@ function firstOperand(args: readonly string[], valueOption: RegExp): string | un
 /** How a command reads a script: as shell text, as interpreter code, or not at all (`bash -c CODE`, `node -e CODE`). */
 function runnerKind(prog: string, args: readonly string[]): "shell" | "script" | null {
   if (prog === "source" || prog === ".") return "shell";
-  if (SHELL_PROGRAM.test(prog)) return args.some((a) => /^-[A-Za-z]*c$/.test(a)) ? null : "shell";
+  if (SHELL_PROGRAM.test(prog)) return runsCommandString(prog, args) ? null : "shell";
   return FILE_INTERPRETER.test(prog) && !runsInlineCode(prog, args) ? "script" : null;
 }
 

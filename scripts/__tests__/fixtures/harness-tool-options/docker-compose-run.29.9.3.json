@@ -1,0 +1,150 @@
+{
+  "tool": "docker",
+  "version": "29.9.3",
+  "command": "docker compose run",
+  "method": "flag-needs-argument",
+  "options": [
+    {
+      "name": "--build",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cap-add",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cap-drop",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--detach",
+      "short": "-d",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--dry-run",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--entrypoint",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--env",
+      "short": "-e",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--env-from-file",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--interactive",
+      "short": "-i",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--label",
+      "short": "-l",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--name",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-deps",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-recreate",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-tty",
+      "short": "-T",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--publish",
+      "short": "-p",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--pull",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--quiet",
+      "short": "-q",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--quiet-build",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--quiet-pull",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--remove-orphans",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--rm",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--service-ports",
+      "short": "-P",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--use-aliases",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--user",
+      "short": "-u",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--volume",
+      "short": "-v",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--workdir",
+      "short": "-w",
+      "takesValue": true,
+      "evidence": "probe"
+    }
+  ],
+  "rejected": []
+}

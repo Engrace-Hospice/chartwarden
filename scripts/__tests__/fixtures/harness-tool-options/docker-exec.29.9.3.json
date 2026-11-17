@@ -1,0 +1,60 @@
+{
+  "tool": "docker",
+  "version": "29.9.3",
+  "command": "docker exec",
+  "method": "flag-needs-argument",
+  "options": [
+    {
+      "name": "--detach",
+      "short": "-d",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--detach-keys",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--env",
+      "short": "-e",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--env-file",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--interactive",
+      "short": "-i",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--privileged",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--tty",
+      "short": "-t",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--user",
+      "short": "-u",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--workdir",
+      "short": "-w",
+      "takesValue": true,
+      "evidence": "probe"
+    }
+  ],
+  "rejected": []
+}

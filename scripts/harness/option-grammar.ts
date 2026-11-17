@@ -20,7 +20,9 @@
  * Anything the table does not place (an unknown letter, an unknown long option, an ambiguous prefix) is reported as
  * `unplaced`: the guard cannot tell where the inner command starts, so it asks instead of letting a guessed word
  * stand for the command (rule 3 of wave 10: unknown is not allow). A grammar for a tool whose options cannot be listed
- * completely is `lax`: it reads an unknown option as a flag, the older behaviour, and says so in its comment.
+ * completely is `lax`: it reads an unknown option as a flag when nothing bare follows it, and says so in its comment. An unlisted
+ * LONG option followed by a bare word is not read as a flag even then (wave 11, rule 2: `--name VALUE CMD` and `--flag CMD` look alike,
+ * and the lax reading is what hid `bun run --cwd x CMD` and `pnpm --prefix x exec CMD`): it is `unplaced`, and the guard asks.
  * Pure.
  */
 
@@ -49,6 +51,12 @@ export interface OptionGrammar {
   readonly exact?: boolean;
   /** A value option does not take a next word that starts with a dash (commander, clap: `dotenv -c -- cmd`). */
   readonly softValues?: boolean;
+  /**
+   * Long options the tool HAS but whose arity no probe could settle (`pnpm --node-linker`: every probe errors before the command runs).
+   * Never read as a flag or as a value: the guard asks (wave 11, rule 12). Listed so that an unambiguous-prefix reading cannot take
+   * them for a longer name.
+   */
+  readonly unverified?: readonly string[];
 }
 
 export interface ReadOption {
@@ -82,6 +90,7 @@ export function resolveLong(grammar: OptionGrammar, given: string): LongKind {
   if (given === "") return undefined;
   if (grammar.longFlags.includes(given)) return { kind: "flag", name: given };
   if (grammar.longValues.includes(given)) return { kind: "value", name: given };
+  if (grammar.unverified?.includes(given) === true) return "ambiguous";
   if (grammar.exact === true) return undefined;
   const candidates = [
     ...grammar.longFlags
@@ -92,6 +101,10 @@ export function resolveLong(grammar: OptionGrammar, given: string): LongKind {
       .map((name) => ({ kind: "value" as const, name })),
   ];
   const first = candidates[0];
+  // a prefix of a name whose arity is unverified cannot be placed either
+  if (grammar.unverified?.some((n) => n.startsWith(given)) === true) {
+    return "ambiguous";
+  }
   if (first === undefined) return undefined;
   return candidates.every((c) => c.kind === first.kind) ? first : "ambiguous";
 }
@@ -117,8 +130,12 @@ function readLong(
   const given = word.slice(2, eq < 0 ? undefined : eq);
   const found = resolveLong(grammar, given);
   if (found === undefined || found === "ambiguous") {
-    // `--name=value` is one word whatever the option is: only a bare unknown option leaves its value in doubt.
-    const unplaced = eq >= 0 || (grammar.lax === true && found === undefined) ? undefined : word;
+    // `--name=value` is one word whatever the option is: only a bare unknown option leaves its value in doubt. A lax grammar reads an
+    // unlisted `--name` as a flag, which is what hid the round-8 holes: an unlisted `--name VALUE` followed by a bare word asks (wave 11).
+    const next = words[k + 1];
+    const bareNext = next !== undefined && !next.startsWith("-");
+    const flagLike = grammar.lax === true && found === undefined && !bareNext;
+    const unplaced = eq >= 0 || flagLike ? undefined : word;
     return {
       used: 1,
       option: { name: given, at: k, value: eq < 0 ? undefined : word.slice(eq + 1) },

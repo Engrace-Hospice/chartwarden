@@ -630,9 +630,12 @@ const count = (text: string, ch: string): number => text.split(ch).length - 1;
 /** `function name` of `function name { … }` and `function name() { … }`: bash and zsh's way to define a function. */
 const FUNCTION_HEADER = /^\s*function\s+[^\s(){};&|<>]+/;
 
-/** Drop a function header, a leading `(`/`{`, and trailing `)`/`}` that close a group opened elsewhere (not `$(date)` or `{a,b}`). */
+/**
+ * Drop a function header, a leading `(`/`{`, and trailing `)`/`}` that close a group opened elsewhere (not `$(date)` or `{a,b}`). A `{` opens
+ * a group only before a blank: `{psql,-h,H}` is one brace-expansion word, which the program-word rule must still see (wave 11, R8-ADV-7).
+ */
 function ungroup(segment: string): string {
-  const t = segment.replace(FUNCTION_HEADER, "").replace(/^[\s({]+/, "");
+  const t = segment.replace(FUNCTION_HEADER, "").replace(/^(?:\s|\(|\{(?=\s|$))+/, "");
   let paren = count(t, ")") - count(t, "(");
   let brace = count(t, "}") - count(t, "{");
   let end = t.length;

@@ -83,8 +83,17 @@ export function parallelExtras(
     const subs = command.map((word) => word.replace(pattern, () => datum));
     return render(uses ? subs : [...command, datum], isLine);
   };
+  // The data past the cap are judged together, once, each as a word of its own (a quoted joined datum would hide the name of a file in it).
+  const placeMany = (rest: readonly string[]): string => {
+    const spread = command.flatMap((word) =>
+      word.replace(pattern, "") === word
+        ? [word]
+        : rest.map((datum) => word.replace(pattern, () => datum)),
+    );
+    return render(uses ? spread : [...command, ...rest], isLine);
+  };
   const lines = data.slice(0, MAX_DATA_LINES).map(place);
-  if (data.length > MAX_DATA_LINES) lines.push(place(data.slice(MAX_DATA_LINES).join(" ")));
+  if (data.length > MAX_DATA_LINES) lines.push(placeMany(data.slice(MAX_DATA_LINES)));
   // No data (`parallel 'cp {} x' < list`): a command that is one string is still a command line.
   if (data.length === 0 && isLine) lines.push(render(command, true));
   return { words: kept, lines, reads };

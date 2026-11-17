@@ -1,3 +1,5 @@
+import { globMatches, globTokens } from "./glob";
+import { protectedNameSamples, protectedNamesComplete } from "./protected-names";
 /**
  * What a `find` expression does to the files it walks: which actions (`-delete`, `-exec rm …`) run, and whether a
  * test ANDed in front of one limits it to files that cannot be protected ones.
@@ -9,8 +11,7 @@
  * A text heuristic; a test the module does not know (`-newer`, `-perm`, `-type`) narrows nothing. Pure, but for one
  * lazy listing of the protected files in the tree (`protected-names.ts`), when a name or path test has to be judged.
  */
-import { globMatches, globTokens } from "./glob";
-import { protectedNameSamples, protectedNamesComplete } from "./protected-names";
+import { COMMAND_SHELLS, shellCommandStrings } from "./shell-command-string";
 
 const baseOf = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 
@@ -240,10 +241,10 @@ export function execCommandWrites(
   if (/^g?sed$/.test(prog)) return args.some(inPlace);
   if (/^(?:perl|ruby)$/.test(prog)) return args.some((a) => /^-[A-Za-z]*i/.test(a));
   if (/^g?awk$/.test(prog)) return args.includes("inplace");
-  if (/^(?:bash|sh|zsh|dash|ksh)$/.test(prog)) {
-    const flag = args.findIndex((a) => /^-[a-z]*c$/.test(a));
-    const script = flag < 0 ? "" : (args[flag + 1] ?? "");
-    return script.includes("{}") && SCRIPT_WRITER.test(script);
+  if (COMMAND_SHELLS.test(prog)) {
+    return shellCommandStrings(prog, args).some(
+      (script) => script.includes("{}") && SCRIPT_WRITER.test(script),
+    );
   }
   return false;
 }

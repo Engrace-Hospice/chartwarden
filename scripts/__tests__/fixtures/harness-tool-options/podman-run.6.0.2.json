@@ -1,0 +1,744 @@
+{
+  "tool": "podman",
+  "version": "6.0.2",
+  "command": "podman run",
+  "method": "flag-needs-argument",
+  "options": [
+    {
+      "name": "--add-host",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--annotation",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--arch",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--attach",
+      "short": "-a",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--authfile",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--blkio-weight",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--blkio-weight-device",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cap-add",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cap-drop",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cgroup-conf",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cgroup-parent",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cgroupns",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cgroups",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--chrootdirs",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cidfile",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cpu-period",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cpu-quota",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cpu-rt-period",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cpu-rt-runtime",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cpu-shares",
+      "short": "-c",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cpus",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cpuset-cpus",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--cpuset-mems",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--creds",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--detach",
+      "short": "-d",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--detach-keys",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--device",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--device-cgroup-rule",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--device-read-bps",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--device-read-iops",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--device-write-bps",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--device-write-iops",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--disable-content-trust",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--dns",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--dns-option",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--dns-search",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--entrypoint",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--env",
+      "short": "-e",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--env-file",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--env-merge",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--expose",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--gidmap",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--gpus",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--group-add",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--group-entry",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--health-cmd",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--health-interval",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--health-log-destination",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--health-max-log-count",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--health-max-log-size",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--health-on-failure",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--health-retries",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--health-start-period",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--health-startup-cmd",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--health-startup-interval",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--health-startup-retries",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--health-startup-success",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--health-startup-timeout",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--health-timeout",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--help",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--hostname",
+      "short": "-h",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--hosts-file",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--hostuser",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--http-proxy",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--image-volume",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--init",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--init-path",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--interactive",
+      "short": "-i",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--ip",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--ip6",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--ipc",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--label",
+      "short": "-l",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--label-file",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--log-driver",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--log-opt",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--mac-address",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--memory",
+      "short": "-m",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--memory-reservation",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--memory-swap",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--memory-swappiness",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--mount",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--name",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--network",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--network-alias",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-healthcheck",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-hostname",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no-hosts",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--oom-kill-disable",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--oom-score-adj",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--os",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--passwd",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--passwd-entry",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--personality",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--pid",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--pids-limit",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--platform",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--pod",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--pod-id-file",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--privileged",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--publish",
+      "short": "-p",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--publish-all",
+      "short": "-P",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--pull",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--quiet",
+      "short": "-q",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--rdt-class",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--read-only",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--read-only-tmpfs",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--replace",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--requires",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--restart",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--retry",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--retry-delay",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--rm",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--rmi",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--rootfs",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--sdnotify",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--seccomp-policy",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--secret",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--security-opt",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--shm-size",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--shm-size-systemd",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--sig-proxy",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--stop-signal",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--stop-timeout",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--subgidname",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--subuidname",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--sysctl",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--systemd",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--timeout",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--tls-verify",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--tmpfs",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--tty",
+      "short": "-t",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--tz",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--uidmap",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--ulimit",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--umask",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--unsetenv",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--unsetenv-all",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--user",
+      "short": "-u",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--userns",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--uts",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--variant",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--volume",
+      "short": "-v",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--volumes-from",
+      "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--workdir",
+      "short": "-w",
+      "takesValue": true,
+      "evidence": "probe"
+    }
+  ],
+  "rejected": []
+}

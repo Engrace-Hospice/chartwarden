@@ -4,10 +4,12 @@
  * text that `echo`/`printf` hands a shell. A script FILE is not here: the guard cannot read one. Pure.
  */
 
+import { COMMAND_SHELLS } from "./shell-command-string";
+
 export const INTERPRETER =
   /^(python[0-9.]*|node|bun|deno|perl|ruby|php|awk|gawk|mawk|nawk|lua|osascript)$/;
-/** A shell that runs the text it is handed. */
-export const SHELL_PROGRAM = /^(bash|sh|zsh|dash|ksh|fish)$/;
+/** A shell that runs the text it is handed (`shell-command-string.ts` reads its command string). */
+export const SHELL_PROGRAM = COMMAND_SHELLS;
 const AWK = /^[gmn]?awk$/;
 
 /** What an interpreter takes its code from, besides the generic `-c`/`-e`/`-p`/`-E`/`--eval`/`--print`. */

@@ -449,7 +449,7 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
         "sqlite3 data.db 'select 1'",
         "docker exec app ls",
         "docker exec --interactive=false --tty=0 app ls",
-        "docker --context prod exec app ls",
+        "docker --context default exec app ls",
         "docker run image true",
         "podman exec app ls",
         "podman run --stdin=false --tty=0 image true",
@@ -474,9 +474,10 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
         "timeout 10 ls",
         "timeout --signal TERM 10 ls",
       ]) {
-        // Wave 10 (A9): `kubectl exec|debug` opens a session on another machine and asks (Codex: denies) whatever it runs, so these
-        // rows are no longer allowed outright; what this test pins is that the INTERACTIVE-shell rule does not fire for them.
-        if (/^kubectl\b.*\b(?:exec|debug)\b/.test(command)) {
+        // Wave 10 (A9) and wave 11 (C9): `kubectl exec|debug|run` opens a session on another machine and asks (Codex: denies) whatever it runs,
+        // so these rows are no longer allowed outright; what this test pins is that the INTERACTIVE-shell rule does not fire for them.
+        // (`docker --context prod` asks as well since wave 11: the row names the local `default` context.)
+        if (/^kubectl\b.*\b(?:exec|debug|run)\b/.test(command)) {
           expect(JSON.stringify(shell(command).out ?? ""), command).not.toContain(
             "interactive shell",
           );
