@@ -20,8 +20,10 @@ import { shellQuote } from "./wrappers";
 
 /** How many commands back a pipeline is read for what it pipes in; a longer chain is reported (`StdinFeed.overflow`), never ignored. */
 export const MAX_PIPE_STAGES = 8;
-/** At most this many readings are carried to one command; more are reported like a longer pipeline. */
+/** At most this many texts of one kind (own, piped in, or from a group) are read for one command; more are reported like a longer pipeline. */
 const MAX_FEED_TEXTS = 64;
+/** The variable tracker expands a word to at most this many readings (`db-variables.ts` MAX_READINGS): a word that reaches it was cut. */
+const MAX_EXPANSIONS = 8;
 
 /** One command of a line, as far as its stdin is read. */
 export interface StdinStage extends ScriptStage {
@@ -78,21 +80,33 @@ const ownStrings = (stage: StdinStage): string[] => [
 const ESCAPED_QUOTE = /\\(['"])/g;
 
 /** A text with its variables expanded, as typed and with an escaped quote read as the quote (R9-CR-2, the variable half). */
-function expansionsOf(text: string, readers: FeedReaders): string[] {
-  return readers
-    .expand(text)
-    .flatMap((expanded) => [expanded, expanded.replace(ESCAPED_QUOTE, "$1")]);
+function expansionsOf(text: string, readers: FeedReaders): { texts: string[]; capped: boolean } {
+  const expanded = readers.expand(text);
+  return {
+    texts: expanded.flatMap((e) => [e, e.replace(ESCAPED_QUOTE, "$1")]),
+    capped: expanded.length >= MAX_EXPANSIONS,
+  };
 }
 
-/** What a text may stand for: itself, its known variables expanded, and what each plain print inside a substitution of it prints. */
-function readingsOf(text: string, readers: FeedReaders): string[] {
-  const out = [text, ...expansionsOf(text, readers)];
+/**
+ * What a text may stand for: itself, its known variables expanded, and what each plain print inside a substitution of it prints. `capped` when a
+ * variable has more values than the tracker expands (a silent cut is never read as nothing: the callers ask).
+ */
+function readingsOf(text: string, readers: FeedReaders): { readings: string[]; capped: boolean } {
+  const own = expansionsOf(text, readers);
+  const out = [text, ...own.texts];
+  let capped = own.capped;
   for (const inner of readers.substitutions(text)) {
     for (const printed of readers.printedLines(inner)) {
-      if (printed !== null) out.push(...printed.flatMap((p) => [p, ...expansionsOf(p, readers)]));
+      if (printed === null) continue;
+      for (const p of printed) {
+        const more = expansionsOf(p, readers);
+        out.push(p, ...more.texts);
+        capped ||= more.capped;
+      }
     }
   }
-  return unique(out);
+  return { readings: unique(out), capped };
 }
 
 /** What the process substitutions of a command's own text print, and whether one of them is no plain print (`bash <(curl …)`). */
@@ -191,19 +205,26 @@ function ambientOf(stages: readonly StdinStage[], readers: FeedReaders): Direct 
   return ambient;
 }
 
-/** The readings of every text, and whether one of them stands for a command nobody can name (a whole unknown expansion). */
-function readAll(
-  texts: readonly string[],
-  readers: FeedReaders,
-): { texts: string[]; unseen: boolean } {
+/** What reading a list of texts gives: their readings (the first {@link MAX_FEED_TEXTS} texts only), and the two things that end in an ask. */
+interface Read {
+  readonly texts: string[];
+  /** One of them stands for a command nobody can name (a whole unknown expansion). */
+  readonly unseen: boolean;
+  /** There were more texts than the guard carries. */
+  readonly overflow: boolean;
+}
+
+function readAll(texts: readonly string[], readers: FeedReaders): Read {
   const out: string[] = [];
   let unseen = false;
-  for (const text of texts) {
-    const readings = readingsOf(text, readers);
-    if (readings.every((r) => WHOLE_EXPANSION.test(r))) unseen = true;
-    out.push(...readings);
+  let capped = false;
+  for (const text of texts.slice(0, MAX_FEED_TEXTS)) {
+    const read = readingsOf(text, readers);
+    if (read.readings.every((r) => WHOLE_EXPANSION.test(r))) unseen = true;
+    capped ||= read.capped;
+    out.push(...read.readings);
   }
-  return { texts: unique(out), unseen };
+  return { texts: unique(out), unseen, overflow: capped || texts.length > MAX_FEED_TEXTS };
 }
 
 export interface PipelineStdin {
@@ -214,24 +235,36 @@ export interface PipelineStdin {
 /**
  * The stdin of every command of one line, read once per command. A stage before the one at `index` hands over what it prints (`echo`,
  * `printf`) and any text it carries itself; a stage that prints nothing the guard sees, and carries nothing, is unseen. Beyond
- * {@link MAX_PIPE_STAGES} stages back, or past {@link MAX_FEED_TEXTS} readings, the feed overflows.
+ * {@link MAX_PIPE_STAGES} stages back, or with more than {@link MAX_FEED_TEXTS} texts of one kind, the feed overflows (the callers ask).
  */
 export function pipelineStdin(stages: readonly StdinStage[], readers: FeedReaders): PipelineStdin {
   const memo = new Map<number, StdinFeed>();
-  let ambient: Direct | undefined;
+  let ambient: { direct: Direct; read: Read } | undefined;
   const build = (index: number): StdinFeed => {
     const direct = directFeed(stages, index, readers);
-    ambient ??= ambientOf(stages, readers);
+    if (ambient === undefined) {
+      const found = ambientOf(stages, readers);
+      ambient = { direct: found, read: readAll(found.upstream, readers) };
+    }
     const own = readAll(direct.own, readers);
-    const upstream = readAll([...direct.upstream, ...ambient.upstream], readers);
-    const total = own.texts.length + upstream.texts.length;
+    const upstream = readAll(direct.upstream, readers);
     return {
-      own: own.texts.slice(0, MAX_FEED_TEXTS),
+      own: own.texts,
       bodies: direct.bodies,
-      upstream: upstream.texts.slice(0, MAX_FEED_TEXTS),
-      upstreamBodies: unique([...direct.upstreamBodies, ...ambient.upstreamBodies]),
-      unseen: direct.unseen || own.unseen || upstream.unseen,
-      overflow: direct.overflow || ambient.overflow || total > MAX_FEED_TEXTS,
+      upstream: unique([...upstream.texts, ...ambient.read.texts]),
+      upstreamBodies: unique([...direct.upstreamBodies, ...ambient.direct.upstreamBodies]),
+      unseen:
+        direct.unseen ||
+        ambient.direct.unseen ||
+        own.unseen ||
+        upstream.unseen ||
+        ambient.read.unseen,
+      overflow:
+        direct.overflow ||
+        ambient.direct.overflow ||
+        own.overflow ||
+        upstream.overflow ||
+        ambient.read.overflow,
     };
   };
   return {

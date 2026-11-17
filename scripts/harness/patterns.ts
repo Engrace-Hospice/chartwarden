@@ -86,7 +86,7 @@ import {
   isProtectedPath,
   protectedPathPattern,
 } from "./protected-paths";
-import { remoteAccessReason } from "./remote-access";
+import { engineVariableWords, remoteAccessReason } from "./remote-access";
 import {
   GUARDED_REASON,
   GUARDED_VARIABLE_REFERENCE,
@@ -1025,6 +1025,8 @@ interface WalkInput {
   /** The commands with their joiners, texts and heredoc bodies, and what each is fed on stdin (`stdin-texts.ts`). */
   readonly stages: readonly StdinStage[];
   readonly stdin: PipelineStdin;
+  /** The container-engine variables the text's own statements set, uncapped (`remote-access.ts`). */
+  readonly engineVariables: readonly string[];
   /** `CDPATH` makes `cd harness` land in a directory the guard cannot see, so no `cd` is trusted once it is named. */
   readonly cdpath: boolean;
   readonly ctx: BashContext;
@@ -1051,7 +1053,7 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
   const remote = remoteAccessReason(
     parsed.prog,
     parsed.args,
-    [...variableStatements, ...parsed.assigns],
+    [...variableStatements, ...input.engineVariables, ...parsed.assigns],
     isLocalHost,
   );
   if (remote !== null) walk.verdicts.push(ask(remote));
@@ -1191,6 +1193,7 @@ function walkInputOf(
     bodiesByPart,
     stages,
     stdin: pipelineStdin(stages, FEED_READERS),
+    engineVariables: engineVariableWords(parsedParts),
     cdpath: /\bCDPATH\b/.test(c),
     ctx,
     depth,

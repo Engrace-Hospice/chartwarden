@@ -71,6 +71,25 @@ const CONNECTION_OPTION = /^--connection(?:=(.*))?$/;
 const CONNECTION_VARIABLE = /^CONTAINER_CONNECTION=(.*)$/;
 const LOCAL_CONNECTION = /^podman-machine-default(?:-root)?$/;
 
+/** The statement words that set one of the engine variables: `export NAME=v`, `declare -x NAME=v`, `NAME=v` as a statement. */
+const ENGINE_VARIABLE = /^(?:DOCKER_HOST|CONTAINER_HOST|DOCKER_CONTEXT|CONTAINER_CONNECTION)\+?=/;
+const ENGINE_SETTERS = /^(?:export|declare|typeset|readonly|local)$/;
+
+/**
+ * The engine variables a command line's own statements set (`export DOCKER_HOST=ssh://H; docker exec …`), read from the commands themselves with no cap
+ * on how many statements come first (the variable tracker keeps 256 words: a 3,000-statement padding must not hide this one). Pure.
+ */
+export function engineVariableWords(
+  parts: ReadonlyArray<{ prog: string; args: readonly string[]; assigns: readonly string[] }>,
+): string[] {
+  const words: string[] = [];
+  for (const part of parts) {
+    if (ENGINE_SETTERS.test(part.prog)) words.push(...part.assigns, ...part.args);
+    else if (part.prog === "") words.push(...part.assigns);
+  }
+  return words.filter((w) => ENGINE_VARIABLE.test(w));
+}
+
 /** The options that take a value and stand before the subcommand (docker, podman, nerdctl `--help`), so the value is not read as the subcommand. */
 const DOCKER_VALUE_OPTION =
   /^(?:-c|--context|-l|--log-level|--config|--tlscacert|--tlscert|--tlskey|-n|--namespace|-a|--address|--identity|--root|--runroot|--storage-driver|--storage-opt|--tmpdir|--cgroup-manager|--conmon|--events-backend|--hooks-dir|--imagestore|--module|--network-cmd-path|--network-config-dir|--out|--ssh|--cloud)$/;

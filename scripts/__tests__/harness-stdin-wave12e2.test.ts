@@ -459,3 +459,25 @@ describe("E2-7: an unreadable sourced text makes any database client in the same
     expect(verdict.reason).toContain("same command line");
   });
 });
+
+describe("W2: a variable bound more often than the tracker expands is a text cut short, and it asks", () => {
+  const assigned = (n: number, last: string): string =>
+    `${Array.from({ length: n }, (_, i) => `X=${sq(`echo v${i}`)};`).join(" ")} X=${sq(last)};`;
+  for (const n of [1, 5, 7]) {
+    it(`${n + 1} bindings of one name: the last (refused) value is read and refused`, () => {
+      const cmd = `${assigned(n, NO_VERIFY)} echo "$X" | bash`;
+      expect(rank(cmd), cmd).toBe(2);
+    });
+  }
+  for (const n of [8, 9, 20, 200]) {
+    it(`${n + 1} bindings of one name: the text is out of reach of the readings, so it asks and never allows`, () => {
+      for (const cmd of [
+        `${assigned(n, NO_VERIFY)} echo "$X" | bash`,
+        `${assigned(n, NO_VERIFY)} bash <<< "$X"`,
+        `${assigned(n, RECONNECT)} echo "$X" | psql -h localhost`,
+      ]) {
+        expect(rank(cmd), cmd.slice(0, 80)).toBeGreaterThanOrEqual(1);
+      }
+    });
+  }
+});

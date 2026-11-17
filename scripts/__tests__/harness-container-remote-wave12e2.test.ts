@@ -105,6 +105,41 @@ describe("E2-4: a container engine pointed at another machine asks", () => {
   });
 });
 
+describe("E2-4: an engine variable is read whatever comes before it, and into nested texts", () => {
+  const pad = (n: number): string => Array.from({ length: n }, (_, i) => `p${i}=1;`).join(" ");
+  for (const n of [255, 256, 257, 300, 3000]) {
+    it(`${n} statements before an exported DOCKER_HOST do not hide it`, () => {
+      const cmd = `${pad(n)} export DOCKER_HOST=${SSH}; docker exec ${PSQL}`;
+      expect(decide(cmd), `${n} statements`).toBe("ask");
+    });
+    it(`${n} statements before a CONTAINER_HOST assignment do not hide it`, () => {
+      const cmd = `${pad(n)} CONTAINER_HOST=${SSH}; podman exec ${PSQL}`;
+      expect(decide(cmd), `${n} statements`).toBe("ask");
+    });
+  }
+  for (const [name, cmd] of Object.entries({
+    "bash -c": `export DOCKER_HOST=${SSH}; bash -c 'docker exec ${PSQL}'`,
+    eval: `export DOCKER_HOST=${SSH}; eval 'docker exec ${PSQL}'`,
+    subshell: `export DOCKER_HOST=${SSH}; (docker exec ${PSQL})`,
+    "sh -c with CONTAINER_HOST": `export CONTAINER_HOST=${SSH}; sh -c 'podman exec ${PSQL}'`,
+    "bash -c with a bare assignment": `DOCKER_HOST=${SSH}; bash -c 'docker exec ${PSQL}'`,
+    "nested twice": `export DOCKER_HOST=${SSH}; bash -c "bash -c 'docker exec ${PSQL}'"`,
+  })) {
+    it(`an engine variable exported outside reaches a command inside ${name}`, () => {
+      expect(decide(cmd), cmd).toBe("ask");
+    });
+  }
+  for (const setter of ["declare -x", "typeset -x", "readonly", "local", "export -n"]) {
+    it(`${setter} sets an engine variable the padding does not hide`, () => {
+      const cmd = `${pad(300)} ${setter} DOCKER_HOST=${SSH}; docker exec ${PSQL}`;
+      expect(decide(cmd), cmd).toBe("ask");
+    });
+  }
+  it("a harmless variable among the padding is not an engine variable", () => {
+    expect(decide(`${pad(300)} export DOCKER_BUILDKIT=1; docker build .`)).toBe("allow");
+  });
+});
+
 describe("E2-4: everyday container work stays allowed", () => {
   const NEIGHBOURS = [
     `podman exec ${PSQL}`,
