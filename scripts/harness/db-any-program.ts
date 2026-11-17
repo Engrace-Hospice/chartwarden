@@ -8,7 +8,9 @@
  * - a database variable set inline, by `export`, by a bare assignment or by `env X=v`: a host variable (`PGHOST`, `MYSQL_HOST`, ...)
  *   or a variable that holds a database URI (`DATABASE_URL`, `REDIS_URL`, `*_DATABASE_URL`, ...), with a non-local host in it. The
  *   variables that statements of the same command line set are expanded; a host that still holds a variable the guard cannot
- *   place asks. Read for a client with a table of its own too.
+ *   place asks. Read for a client with a table of its own too. A variable that holds a libpq connection string
+ *   (`DATABASE_URL="host=a,b host=c"`) is read WHOLE: every host of a comma list, every duplicate `host=` (libpq takes the last), a
+ *   `hostaddr`; and `PGSERVICE` / `PGSERVICEFILE` ask, because a service file can name a remote host (wave 12, F-8).
  * - a database URI (`postgres://`, `postgresql://`, `mysql://`, `mongodb://`, `mongodb+srv://`, `redis://`, `rediss://`,
  *   `clickhouse://`, `cockroachdb://`, `sqlserver://`, `cassandra://`, `jdbc:...`) that is a whole word or the value of one word
  *   (`--url=URI`, `-url=jdbc:...`, `-x url=URI`, `-e DATABASE_URL=URI`), with a non-local host in it. A URI in the middle of a
@@ -55,6 +57,25 @@ const uriOf = (word: string): string[] => {
   return uri === undefined ? [] : [uri];
 };
 
+/** A libpq connection string in a variable's value (`DATABASE_URL="host=a host=b"`, `PGDATABASE="host=H"`): it names a host, hostaddr or service key. */
+const CONNINFO_VALUE = /(?:^|\s)(?:host|hostaddr|service)\s*=/;
+/** The variables that name a service (or a service file) by which libpq looks a host up: a pg_service.conf the guard cannot read. */
+const SERVICE_VARIABLE = /^(?:PGSERVICE|PGSERVICEFILE)$/;
+
+/** The connection string a `NAME=value` word carries (its value names a `host`, `hostaddr` or `service` key). */
+function conninfoOf(word: string): string[] {
+  const assignment = split(word);
+  return assignment !== null && CONNINFO_VALUE.test(assignment[1]) ? [assignment[1]] : [];
+}
+
+/** The `PGSERVICE=name` / `PGSERVICEFILE=file` a word sets (a non-empty value). */
+function serviceOf(word: string): string[] {
+  const assignment = split(word);
+  return assignment !== null && SERVICE_VARIABLE.test(assignment[0]) && assignment[1] !== ""
+    ? [word]
+    : [];
+}
+
 /**
  * The finding for a program that can start another program, or null. The variables (`assigns`: inline `NAME=value`; `statements`: the
  * `NAME=value` words the command line's variable statements set) are read for every such program, a client with a table of its
@@ -72,7 +93,13 @@ export function anyProgramTarget(
   const variables = [...assigns, ...statements];
   const vars = valuesByName(variables);
   const hosts = variables.flatMap((word) => hostValue(word) ?? []);
-  const fromVariables = databaseTargetOfWords([...new Set(variables.flatMap(uriOf))], hosts, vars);
+  const fromVariables = databaseTargetOfWords(
+    [...new Set(variables.flatMap(uriOf))],
+    hosts,
+    vars,
+    [...new Set(variables.flatMap(conninfoOf))],
+    [...new Set(variables.flatMap(serviceOf))],
+  );
   if (fromVariables !== null || TARGET_CLIENTS.has(prog)) return fromVariables;
   const fromWords = databaseTargetOfWords([...new Set(args.flatMap(uriOf))], [], vars);
   return fromWords === null ? null : { ...fromWords, advisory: true };

@@ -487,12 +487,15 @@ const NEUTRAL: TargetClient = {
 
 /**
  * The finding for database URIs and host values found in the words of any program (`db-any-program.ts`): each `uris` entry is
- * a `scheme://` URI (a remote host, a `?host=` or a `service=` in it is a finding), each `hosts` entry a host value.
+ * a `scheme://` URI (a remote host, a `?host=` or a `service=` in it is a finding), each `hosts` entry a host value, each `conninfos` entry
+ * a libpq connection string, each `indirect` entry a service or service-file variable the guard cannot read.
  */
 export function databaseTargetOfWords(
   uris: readonly string[],
   hosts: readonly string[],
   vars: ReadonlyMap<string, readonly string[]> = new Map(),
+  conninfos: readonly string[] = [],
+  indirect: readonly string[] = [],
 ): DatabaseTarget | null {
   const found: Found = {
     hosts: [],
@@ -505,6 +508,14 @@ export function databaseTargetOfWords(
   const r: Reader = { spec: NEUTRAL, found, vars, unplacedIsVariable: true };
   for (const uri of uris) for (const text of expandVariables(uri, vars).texts) readUri(text, r);
   for (const host of hosts) for (const text of expandVariables(host, vars).texts) addHosts(r, text);
+  // A libpq connection string held in a variable (`DATABASE_URL="host=a,b host=c"`): the WHOLE string is read, so a second host, a duplicate
+  // `host=` (libpq takes the last) or a `hostaddr` is a host too, and the project-container exemption holds only when every one is (wave 12, F-8).
+  for (const conninfo of conninfos) {
+    for (const text of expandVariables(conninfo, vars).texts) {
+      if (!readConninfo(text, r, 0)) found.unparsed.push(text);
+    }
+  }
+  found.indirect.push(...indirect);
   return findingOf(found, undefined);
 }
 
