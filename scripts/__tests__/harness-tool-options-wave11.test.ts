@@ -246,6 +246,10 @@ const SHAPES: Readonly<Record<string, Shape>> = {
     build: (o, i) => `npx ${o.join(" ")} -- ${i}`,
     skip: new Set([...COMMON_SKIP, "-c", "--call", "--versions"]),
   },
+  env: {
+    build: (o, i) => `env ${o.join(" ")} ${i}`,
+    skip: new Set([...COMMON_SKIP, "-S", "--split-string"]),
+  },
   "docker run": {
     build: (o, i) => `docker run ${o.join(" ")} IMG ${i}`,
     skip: new Set([...COMMON_SKIP, "--entrypoint"]),
@@ -281,7 +285,8 @@ function spellings(option: RecordedOption): Array<readonly string[]> {
       ? []
       : [option.short]
     : [option.name];
-  if (option.takesValue === false) {
+  // a short letter whose arity no probe settled is read as the flag it is in the table: a stray word after it is a command of its own
+  if (option.takesValue === false || (option.takesValue === "unverified" && longs.length === 0)) {
     for (const t of [...longs, ...shorts]) out.push([t]);
     return out;
   }
@@ -463,4 +468,48 @@ describe("R8-ADV-9: `pnpm WORD` runs the PATH program WORD unless it is a pnpm c
       expect(rank(cmd), cmd).toBe(0);
     }
   });
+});
+
+// ---------------------------------------------------------------------------------------------------
+// Clusters of the recorded short flags, and `--` after the options
+// ---------------------------------------------------------------------------------------------------
+
+describe("MONOTONICITY over the recorded options: clusters of short flags and `--` keep the guarded command judged", () => {
+  /** Commands whose real CLI takes `--` between its options and the command (pflag); the npm shapes carry their own `--`. */
+  const DASHDASH = new Set([
+    "docker run",
+    "docker exec",
+    "docker compose run",
+    "docker compose exec",
+    "podman run",
+    "podman exec",
+  ]);
+  for (const [command, shape] of Object.entries(SHAPES)) {
+    it(command, () => {
+      const fixture = fixtureOf(command);
+      const shortFlags = fixture.options
+        .filter((o) => o.takesValue === false && !shape.skip.has(o.name))
+        .flatMap((o) =>
+          o.name.startsWith("--") ? (o.short === undefined ? [] : [o.short]) : [o.name],
+        )
+        .filter((t) => !shape.skip.has(t));
+      const weaker: string[] = [];
+      let checked = 0;
+      const check = (spelled: readonly string[]): void => {
+        for (const [label, inner] of INNERS) {
+          const alone = rank(inner);
+          const wrapped = shape.build(spelled, inner);
+          checked++;
+          if (rank(wrapped) < alone) weaker.push(`${label}: ${wrapped}`);
+        }
+      };
+      // every pair of short flags as one cluster, and each flag then `--`
+      for (const a of shortFlags.slice(0, 8)) {
+        for (const b of shortFlags.slice(0, 8)) if (a !== b) check([`${a}${b.slice(1)}`]);
+        if (DASHDASH.has(command)) check([a, "--"]);
+      }
+      if (DASHDASH.has(command)) check(["--"]);
+      expect(weaker.slice(0, 5), `${command}: ${weaker.length} of ${checked}`).toEqual([]);
+    });
+  }
 });
