@@ -25,7 +25,7 @@
  * deliberately absent from `db:seed:all`, which production's reseed workflow expands and runs. The production path
  * is the ticketed, audited `bun run db:platform-role grant --role superadmin` (OPS_RUNBOOK §16.5).
  *
- * Prereqs: DB migrated through 1495. Run: bun run db:seed:superadmin (needs the backend up, for sign-up).
+ * Prereqs: DB migrated through 1501. Run: bun run db:seed:superadmin (needs the backend up, for sign-up).
  */
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";

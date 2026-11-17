@@ -399,7 +399,7 @@ describe.skipIf(!DB_URL)(
         ["platform_admin", "admin_executive"],
         ["helpdesk", "platform_staff"],
         ["ai_safety_owner", "clinical_staff"], // 0321
-        ["superadmin", "clinical_staff"], // 1495
+        ["superadmin", "clinical_staff"], // 1501
       ]) {
         await expect(
           admin.query(
@@ -505,7 +505,7 @@ describe.skipIf(!DB_URL)(
       await admin.query("ALTER TABLE role DROP CONSTRAINT role_platform_authority_platform_owned");
       const spoof = await newRole("ai_safety_owner", "clinical_staff");
       const legacy = await newRole("platform_ops", "admin_executive");
-      // A tenant-owned `superadmin` (1495): it would otherwise read as administrator + org_admin + every platform
+      // A tenant-owned `superadmin` (1501): it would otherwise read as administrator + org_admin + every platform
       // role with the whole catalog, so it must confer neither its key, its expansion nor its permissions.
       const superSpoof = await newRole("superadmin", "clinical_staff");
       await admin.query(
@@ -573,7 +573,7 @@ describe.skipIf(!DB_URL)(
       await handleR.close();
     });
 
-    it("superadmin (migration 1495): ChartWarden's own org, supersedes administrator and org_admin, reaches no tenant's rows", async () => {
+    it("superadmin (migration 1501): ChartWarden's own org, supersedes administrator and org_admin, reaches no tenant's rows", async () => {
       const { createDbClient: mkDbS } = await import("@chartwarden/db");
       const {
         FULL_CATALOG_EXCLUDED_KEYS,
@@ -674,7 +674,7 @@ describe.skipIf(!DB_URL)(
       expect(visible).toEqual([]);
 
       // It belongs to ChartWarden, never a tenant: an organization with a tenant_account refuses the binding, in the
-      // operator CLI's guard and, for ad-hoc SQL and seeds, in the membership_role trigger (1495).
+      // operator CLI's guard and, for ad-hoc SQL and seeds, in the membership_role trigger (1501).
       await admin.query(
         "INSERT INTO tenant_account (organization_id, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,'T','t@example.test','t@example.test')",
         [tenantOrg],

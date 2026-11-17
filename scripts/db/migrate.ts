@@ -425,7 +425,7 @@ async function main(): Promise<void> {
   const appPassword = process.env.CHARTWARDEN_APP_PASSWORD ?? "chartwarden_app";
 
   const db = new Client({ connectionString: url });
-  // A migration's RAISE WARNING (e.g. 1495: tenant roles keyed `superadmin`) otherwise reaches only the server log,
+  // A migration's RAISE WARNING (e.g. 1501: tenant roles keyed `superadmin`) otherwise reaches only the server log,
   // so the operator applying it never sees it. Warnings only: the ~800 `DROP ... IF EXISTS` statements each raise a
   // NOTICE on a fresh database, and printing those would bury the one line this exists to show.
   db.on("notice", (n) => {
