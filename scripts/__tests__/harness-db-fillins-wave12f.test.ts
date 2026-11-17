@@ -28,6 +28,9 @@ const SUBSTITUTIONS: readonly string[] = [
   'P=1@{H}; psql "{PG}localhost:${P^^}/db" -c 1',
   'P=1@{H}; psql "{PG}localhost:${P,,}/db" -c 1',
   'P=1@{H}; psql "{PG}localhost:${P:0}/db" -c 1',
+  'P=1@{H}; psql "{PG}localhost:${P:1:2}/db" -c 1',
+  'P=1@{H}; psql "{PG}localhost:${P: -9}/db" -c 1',
+  'P=1@{H}; psql "{PG}localhost:${P:(0)}/db" -c 1',
   'P=1@{H}; psql "{PG}localhost:${P@Q}/db" -c 1',
   'X=P; P=1@{H}; psql "{PG}localhost:${!X}/db" -c 1',
   'f() { psql "{PG}localhost:${@}/db" -c 1; }; f 1@{H}',
@@ -38,6 +41,11 @@ const SUBSTITUTIONS: readonly string[] = [
   'P=x; psql -d "{PG}localhost:${P/x/1@{H}}/db" -c 1',
   'P=x; psql --dbname="{PG}localhost:${P/x/1@{H}}/db" -c 1',
   'P=x; redis-cli -u "redis://localhost:${P/x/1@{H}}/0" ping',
+  'psql "{PG}localhost/db?${Q:-host={H}}" -c 1',
+  'Q=host={H}; psql "{PG}localhost/db?${Q:0:20}" -c 1',
+  'Q=host={H}; psql "{PG}localhost/db?${Q: -20}" -c 1',
+  'psql "{PG}localhost/db?${Q:-a=b}" -c 1',
+  'psql "host=localhost ${Q:-host={H}}" -c 1',
   'P=x; mongosh "mongodb://localhost:${P/x/1@{H}}/db"',
   'P=x; mysql "mysql://u@localhost:${P/x/1@{H}}/db"',
   'P=x; pg_dump "{PG}localhost:${P/x/1@{H}}/db"',
@@ -113,6 +121,11 @@ describe("F-3: everyday neighbours stay allow", () => {
     'f() { psql -h localhost -c "select $1"; }; f 1',
     "psql 'host=localhost dbname=db'",
     'psql "host=localhost port=${PORT} dbname=db" -c 1',
+    'psql "{PG}${U:-u}@localhost/db" -c 1',
+    'psql "{PG}u:${PW:-x}@localhost:5432/db" -c 1',
+    'psql "host=localhost user=${PGUSER:-postgres} dbname=db" -c 1',
+    'psql "{PG}localhost/${DB:-x}" -c 1',
+    'psql "{PG}localhost/x?sslmode=${SSL:-disable}" -c 1',
   ])("%s", (template) => {
     const cmd = fill(template);
     expect(decide(cmd), cmd).toBe("allow");
@@ -128,7 +141,12 @@ describe("holdsRewritingFillIn", () => {
     "${P^^}",
     "${P,,}",
     "${P:1:2}",
-    "${P:-x}",
+    "${P:-a=b}",
+    "${Q:-host=H}",
+    "${P:-1@H}",
+    "${H:-a,b}",
+    "${P:+a/b}",
+    "${P:=a b}",
     "${P@Q}",
     "${1}",
     "${@}",
@@ -144,10 +162,24 @@ describe("holdsRewritingFillIn", () => {
     expect(holdsRewritingFillIn(text)).toBe(true);
   });
 
-  it.each(["${P}", "$P", "${PORT}", "localhost:5432", "a=b", "{}", "{a}", "{ a, b }", "$$", "$?"])(
-    "%s is not",
-    (text) => {
-      expect(holdsRewritingFillIn(text)).toBe(false);
-    },
-  );
+  it.each([
+    "${P:-x}",
+    "${PGUSER:-postgres}",
+    "${SSL:-disable}",
+    "${P:=5432}",
+    "${U:-u}",
+    "${X-y}",
+    "${P}",
+    "$P",
+    "${PORT}",
+    "localhost:5432",
+    "a=b",
+    "{}",
+    "{a}",
+    "{ a, b }",
+    "$$",
+    "$?",
+  ])("%s is not", (text) => {
+    expect(holdsRewritingFillIn(text)).toBe(false);
+  });
 });

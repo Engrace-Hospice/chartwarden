@@ -108,14 +108,24 @@ export function expandVariables(
 }
 
 /**
- * A fill-in the shell rewrites or supplies and the variable tracker cannot place (wave 12, F-3; R9-ADV-11): a parameter expansion that is
- * more than a bare `${NAME}` (`${P/x/1@host}`, `${P//x/y}`, `${P/#x/y}`, `${P#x}`, `${P%x}`, `${P^^}`, `${P,,}`, `${P:1:2}`, `${P@Q}`, `${#P}`,
- * `${1}`), a positional parameter (`$1`, `$@`, `$*`: a function builds the URI from its arguments and the caller supplies `1@host`), or a
- * brace expansion the lexer left whole (`?{host=H,a=b}`, `{a,host=H}`, `{1..3}`). Inside a URI, a connection string or a database name any
- * of them can supply `@host`, `?host=H` or `host=H`.
+ * A fill-in the shell rewrites or supplies and the variable tracker cannot place (wave 12, F-3; R9-ADV-11): a parameter expansion that
+ * TRANSFORMS its value (`${P/x/1@host}`, `${P//x/y}`, `${P/#x/y}`, `${P#x}`, `${P%x}`, `${P^^}`, `${P,,}`, `${P:1:2}`, `${P@Q}`, `${#P}`,
+ * `${!X}`, `${1}`), a default whose text carries structure (`${Q:-host=H}`, `${P:-1@H}`: the shell puts that text in the word when the
+ * variable is unset), a positional parameter (`$1`, `$@`, `$*`: a function builds the URI from its arguments and the caller supplies
+ * `1@host`), or a brace expansion the lexer left whole (`?{host=H,a=b}`, `{a,host=H}`, `{1..3}`). Inside a URI, a connection string or a
+ * database name any of them can supply `@host`, `?host=H` or `host=H`. A plain default (`${PGUSER:-postgres}`, `${SSL:-disable}`, the
+ * corpus measure of wave 12 found 25 real commands asking when every default asked) is read like a bare `$NAME`: its text is a literal
+ * word with none of `= & ? @ / ,` or a blank in it.
  */
-const REWRITING_FILL_IN =
-  /\$\{[A-Za-z_]\w*[^}\w]|\$\{[^A-Za-z_}]|\$[0-9@*]|\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}/;
+const REWRITING_FILL_IN = new RegExp(
+  [
+    String.raw`\$\{[A-Za-z_]\w*(?:[/#%^,@]|:\s*[0-9(]|:\s+-)`,
+    String.raw`\$\{[A-Za-z_]\w*:?[-=+?][^}]*[=&?@/,\s]`,
+    String.raw`\$\{[^A-Za-z_}]`,
+    String.raw`\$[0-9@*]`,
+    String.raw`\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}`,
+  ].join("|"),
+);
 export const holdsRewritingFillIn = (text: string): boolean => REWRITING_FILL_IN.test(text);
 
 /** A `$( … )` or backtick substitution without a nested one. */
