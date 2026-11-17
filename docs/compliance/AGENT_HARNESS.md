@@ -1804,7 +1804,7 @@ tool, abbreviations and quoted operands included.
   the recorded and the installed major in its title, and an installed but unrecorded major is a named `skip`. `VERIFIED_OPTIONS` (the data) is compared with the fixtures for every tool by
   `harness-db-flags-wave12f.test.ts`: the production table is that data UNITED with the hand table, so round-9 mutants P16 and P17 (dropping `U` or `h` from psql's letters) survived wave 11; they are killed
   now and the claim in the file header and the wave-11 section is corrected.
-- *Structure and tests.* `patterns.ts` changed at one site (`forcedAddVerdict`); `classifySegment` did not grow. New modules: `secret-flow-routes.ts` (binders, redirect targets, environment aliases),
+- *Structure and tests.* Part F changed `patterns.ts` at one site (`forcedAddVerdict`); `classifySegment` did not grow. New modules: `secret-flow-routes.ts` (binders, redirect targets, environment aliases),
   `git-long-options.ts` (the three option tables and git's prefix rule); new recorders `helpers/record-git-options.ts` and `helpers/record-awk-options.ts` (the PostgreSQL recorder gained the major argument and
   the hidden-name probe). Test files: `harness-statement-cap-wave12f`, `harness-secret-flows-wave12f`, `harness-db-fillins-wave12f`, `harness-git-wave12f`, `harness-text-programs-wave12f`,
   `harness-psql-redis-wave12f`, `harness-db-conninfo-wave12f`, `harness-db-flags-wave12f` and `harness-heavy-wave12f` (each fixture test loads only its own fixture directory: `git/`, `awk/` and `pg18/` are
@@ -1921,9 +1921,9 @@ What is NOT done after wave 12, measured at commit `bd8b9d2cc` (the tip of the p
   behind it cannot be placed. `usql <URI>` allows. (`drizzle-kit` and `prisma` `--name` and `--port` were fixed after the merge: `harness-db-orm-names-wave12.test.ts`.)
 - **`sftp sftp://localhost/file` asks.** The older remote-target rule of `patterns.ts` (`ssh|scp|sftp|rsync`) takes the first word that holds a `:` or an `@` and reads the scheme `sftp` of the URL as the host
   (the question says "Remote access to `sftp`"), although `ssh-hops.ts` reads the same URL as `localhost`; `sftp localhost` allows.
-- **`patterns.ts` is 3,088 lines and `classifySegment` is 280 lines** (`patterns.ts:2809` to the end of the file). The soft ceiling is 800 lines; wave 11 reported 2,884 lines and a `classifySegment` of 289.
-  Wave 12 did not touch `classifySegment` and added one function to `patterns.ts` (`forcedAddVerdict`). Splitting the classifier is a refactor of its own: it threads the one-shot state variables
-  (`variableStatements` among them) through every rule.
+- **`patterns.ts` is 3,088 lines and `classifySegment` is 280 lines** (`patterns.ts:2809` to the end of the file). The soft ceiling is 800 lines; the file was 2,969 lines at the wave-11 tip `b290ef92a` (the wave-11
+  part C text says 2,884, written before part D merged) and `classifySegment` was 280 there too. No hunk of the wave-12 diff lies inside `classifySegment`; `patterns.ts` grew by 119 lines in other functions
+  (`forcedAddVerdict` among them). Splitting the classifier is a refactor of its own: it threads the one-shot state variables (`variableStatements` among them) through every rule.
 - **Functions in `scripts/harness/*.ts` still over 50 lines**, 13 of 739 top-level functions, counted from the first line of the declaration (signature and return type included) to the closing brace. Nested
   functions and methods of object literals are not counted, and neither are the helpers under `scripts/__tests__/helpers/`.
 
