@@ -3,7 +3,7 @@
  * hook's stdin text and which agent drives it), one answer out. The entry thread owns the deadline, so a
  * judgement stuck in a loop costs the call, never the guard.
  *
- * `CW_HARNESS_TEST_FAULT` (`hang`, `exit` = the worker closes itself, `process-exit`, `throw`) is the seam a test uses to force each way a judgement can
+ * `CW_HARNESS_TEST_FAULT` (`hang`, `exit` = the worker closes itself, `process-exit`, `throw`, `malformed` = an answer that is not a decision) is the seam a test uses to force each way a judgement can
  * fail and prove the entry thread still refuses the call. Production never sets it, and the shared settings must
  * not either (`FORBIDDEN_ENV`).
  */
@@ -29,6 +29,11 @@ function forceFault(fault: string | undefined): void {
 }
 
 self.onmessage = (event: MessageEvent<{ raw: string; codex: boolean }>) => {
-  forceFault(process.env.CW_HARNESS_TEST_FAULT);
-  postMessage(judgeHook(parseHookInput(event.data.raw), event.data.codex));
+  const fault = process.env.CW_HARNESS_TEST_FAULT;
+  forceFault(fault);
+  postMessage(
+    fault === "malformed"
+      ? { reason: "forced fault: not a decision" }
+      : judgeHook(parseHookInput(event.data.raw), event.data.codex),
+  );
 };

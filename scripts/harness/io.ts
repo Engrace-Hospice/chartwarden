@@ -28,7 +28,8 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { EMPTY_REGISTRY, type SyntheticRegistry, registryFrom } from "./patterns";
 
 export interface HookInput {
@@ -66,6 +67,21 @@ export async function readHookInput(): Promise<HookInput> {
 export function projectDir(input?: HookInput): string {
   return process.env.CLAUDE_PROJECT_DIR || input?.cwd || process.cwd();
 }
+
+/**
+ * `--codex`: the repo root is where THIS script lives. The pinned hook command walks up from the session directory to
+ * the nearest directory that holds `.git`, `.codex/hooks.json` and `scripts/harness/pre-tool-guard.ts` and runs that
+ * script (it used to run `$(git rev-parse --show-toplevel)/…`, which `git config core.worktree` re-pointed), so the
+ * script's grandparent is the checkout of the Codex session, with no `git` call and no environment variable to move
+ * it: `CLAUDE_PROJECT_DIR`
+ * (a developer may export it from a Claude shell, pointing at another tree) used to override the root here, and
+ * protected-path matching then ran against the wrong tree without a word. `CW_HARNESS_ROOT_FOR_TESTS` is the
+ * test seam; production never sets it. (Moved here from `guard-judge.ts` in wave 12 so the emergency ledger line of
+ * `emergency-ledger.ts` is written to the same root as every other line.)
+ */
+export const codexRoot = (): string =>
+  process.env.CW_HARNESS_ROOT_FOR_TESTS ||
+  resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export function loadRegistry(root: string): SyntheticRegistry {
   const p = join(root, "compliance", "synthetic-identifiers.json");
