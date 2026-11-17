@@ -21,6 +21,7 @@
 import { userInfo } from "node:os";
 
 import { hasBareBraceGroup } from "./bare-braces";
+import { ASSIGNMENT, program, unescapeWord, words } from "./command-words";
 import { containerCommand } from "./container-run";
 import { clientFindings, clientTexts, isDbClient } from "./db-client-escapes";
 import { environmentDumpReason } from "./env-dump";
@@ -71,11 +72,9 @@ import { type Listed, asListing } from "./listing";
 import { runsLiveSuite } from "./live-suite";
 import { programOptionReason } from "./option-commands";
 import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
-import { isPackageScript, setPackageScriptsReader } from "./package-scripts";
-import { parallelExtras, replacementTags } from "./parallel-command";
+import { setPackageScriptsReader } from "./package-scripts";
 import { aliasNormalise, fold, relativeTo } from "./path-alias";
 import { persistenceReason } from "./persistence-commands";
-import { programName } from "./program-name";
 import {
   protectedDirectories,
   protectedNameSamples,
@@ -89,7 +88,6 @@ import {
   protectedPathPattern,
 } from "./protected-paths";
 import { remoteAccessReason } from "./remote-access";
-import { peelRunnerWithFiles } from "./runners";
 import {
   GUARDED_REASON,
   GUARDED_VARIABLE_REFERENCE,
@@ -129,15 +127,7 @@ import {
   trimSlashes,
   work,
 } from "./work-budget";
-import { peelWrapper } from "./wrapper-peel";
-import {
-  containerExec,
-  containerRun,
-  gnuName,
-  shellQuote,
-  shellStrings,
-  sshHost,
-} from "./wrappers";
+import { containerExec, containerRun, shellQuote, shellStrings, sshHost } from "./wrappers";
 import { extraOutputFiles, localPath } from "./writers";
 import { moreGitWrites, moreWriterTargets } from "./writers-more";
 import { fileRuns, heredocCount, isScriptText, writtenTexts } from "./written-scripts";
@@ -218,203 +208,6 @@ function substitutions(cmd: string): string[] {
 
 /** `bash -c "…"`, `sh -c '…'`, `eval …`: the quoted string is itself a command line. */
 const NESTED_SHELL = SHELL_PROGRAM;
-
-/**
- * Shell words, keeping a quoted string as one word (quotes stripped), also INSIDE a word: in
- * `FOO='a b' git push` the value is one word, so the program is still `git`. Splitting at the space
- * inside the quotes read `b'` as the program and let the whole command through unchecked.
- */
-// A `$( … )` or backtick substitution stays INSIDE its word (`cat $(printf '.%s' env)` is one `cat` with
-// one argument), and bash's `$'\x2eenv'` is decoded, because the shell would.
-const ANSI_ESCAPES: Readonly<Record<string, string>> = { n: "\n", t: "\t", r: "\r" };
-
-/** The text bash makes of the body of `$'…'`: `\x2e`, `\056`, `.` and the common one-letter escapes. */
-function ansiC(body: string): string {
-  return body.replace(
-    /\\(?:x([0-9a-fA-F]{1,2})|([0-7]{1,3})|u([0-9a-fA-F]{1,4})|U([0-9a-fA-F]{1,8})|(.))/gs,
-    (_m, x?: string, o?: string, u?: string, big?: string, ch?: string) => {
-      const hex = x ?? u ?? big;
-      const code = hex !== undefined ? Number.parseInt(hex, 16) : Number.parseInt(o ?? "", 8);
-      if (hex !== undefined || o !== undefined) {
-        return Number.isFinite(code) && code <= 0x10ffff ? String.fromCodePoint(code) : "";
-      }
-      return ANSI_ESCAPES[ch ?? ""] ?? ch ?? "";
-    },
-  );
-}
-
-/** Index of the next unescaped `'` at or after `from` (the end of a `$'…'` body), or the text length. */
-function closingQuote(text: string, from: number): number {
-  for (let i = from; i < text.length; i++) {
-    if (text[i] === "\\") i++;
-    else if (text[i] === "'") return i;
-  }
-  return text.length;
-}
-
-/** What a backslash removes inside double quotes (`\"`, `\\`, `\$`, a backtick), and a line continuation: the rest stays. */
-const DOUBLE_QUOTE_ESCAPES = new Set(['"', "\\", "$", "`"]);
-
-/**
- * The words of one simple command. With `values`, a word is what the program is handed, so a string it runs as a command
- * line can be read again: `\x` is `x` outside quotes, `\"` `\\` `\$` `` \` `` lose their backslash inside double quotes, a
- * backslash-newline is gone, and single quotes keep every backslash (R7-CR-1). Without it a backslash pair stays as typed.
- */
-function words(seg: string, values = false): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let started = false;
-  let quote: string | null = null;
-  let depth = 0; // inside `$( … )`
-  let tick = false; // inside `…`
-  const escaped = (backslash: string, next: string, doubleQuoted: boolean): string => {
-    if (!values) return backslash + next;
-    if (next === "\n") return "";
-    return !doubleQuoted || DOUBLE_QUOTE_ESCAPES.has(next) ? next : backslash + next;
-  };
-  for (let i = 0; i < seg.length; i++) {
-    const ch = seg[i] as string;
-    if (tick || depth > 0) {
-      cur += ch;
-      if (tick) tick = ch !== "`";
-      else if (ch === "(") depth++;
-      else if (ch === ")") depth--;
-      continue;
-    }
-    if (quote === "'") {
-      if (ch === "'") quote = null;
-      else cur += ch;
-      continue;
-    }
-    if (ch === "`" || (ch === "$" && seg[i + 1] === "(")) {
-      started = true;
-      if (ch === "`") tick = true;
-      else {
-        depth = 1;
-        cur += "$";
-        i++;
-      }
-      cur += seg[i];
-      continue;
-    }
-    if (quote === '"') {
-      if (ch === '"') quote = null;
-      else if (ch === "\\" && i + 1 < seg.length) cur += escaped(ch, seg[++i] as string, true);
-      else cur += ch;
-      continue;
-    }
-    if (ch === "$" && seg[i + 1] === "'") {
-      const end = closingQuote(seg, i + 2);
-      cur += ansiC(seg.slice(i + 2, end));
-      started = true;
-      i = end;
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-      started = true;
-    } else if (/\s/.test(ch)) {
-      if (started) out.push(cur);
-      cur = "";
-      started = false;
-    } else if (ch === "\\" && i + 1 < seg.length) {
-      const text = escaped(ch, seg[++i] as string, false);
-      cur += text;
-      started ||= text !== "";
-    } else {
-      cur += ch;
-      started = true;
-    }
-  }
-  if (started) out.push(cur);
-  return out;
-}
-
-// `NAME=v` and `NAME+=v` both assign for the one command that follows.
-const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
-/**
- * The program a simple command runs, skipping `VAR=value` prefixes and wrapper commands (`sudo`, `env`, `then`: the
- * table of `wrapper-specs.ts`, read by `wrapper-peel.ts`). A name the shell would unquote (`\cd`, `c\d`) is the program
- * it names. `chdir` is the directory a wrapper moves the command into, when it names one.
- */
-function program(
-  seg: string,
-  values = false,
-): {
-  prog: string;
-  /** The program as typed, before its directory is dropped (`./x.sh`, `/tmp/x.sh`). */
-  word: string;
-  args: string[];
-  assigns: string[];
-  chdir?: string;
-  /** Wrapper words the option tables could not place: the guard cannot tell where the command starts. */
-  unplaced?: string;
-  /** Command lines a wrapper runs in addition to the command (`parallel cmd ::: data`): judged as command lines. */
-  lines?: string[];
-  /** Files a wrapper's own option writes (`time -o F`): judged like redirect targets. */
-  writes: string[];
-  /** Secret-named files a wrapper's own option reads (`xargs -a F`): judged like input redirects. */
-  reads: string[];
-} {
-  let w = words(seg, values);
-  const writes: string[] = [];
-  const reads: string[] = [];
-  const unplaced: string[] = [];
-  const lines: string[] = [];
-  let k = 0;
-  let lastWrapper = "";
-  let chdir: string | undefined;
-  while (k < w.length) {
-    const word = w[k] ?? "";
-    if (ASSIGNMENT.test(word)) {
-      k++;
-      continue;
-    }
-    const wrapper = peelWrapper(gnuName(programName(word)), w, k, (text) => words(text, values));
-    if (wrapper !== null) {
-      // `flock -c 'cmd' file`, `sudo -e FILE`: the words are a string or files, not a command: the wrapper stays the program.
-      if (wrapper.stays) break;
-      lastWrapper = wrapper.wrapper;
-      chdir = wrapper.chdir ?? chdir;
-      // The files a wrapper's own options and operands name (`xargs -a F`, `parallel --joblog F`, `flock F`).
-      writes.push(...wrapper.files.writes);
-      reads.push(...wrapper.files.reads);
-      if (wrapper.unplaced !== undefined) unplaced.push(`${wrapper.wrapper} ${wrapper.unplaced}`);
-      // `env -S 'cmd arg'` runs the words of its string as the command.
-      w = [...w.slice(0, wrapper.next), ...wrapper.insert, ...w.slice(wrapper.next)];
-      k = wrapper.next;
-      if (wrapper.wrapper === "parallel") {
-        // The data after `:::` are not arguments of the command: the command is judged with each datum where parallel puts it.
-        const split = parallelExtras(w, k, replacementTags(wrapper.options));
-        w = split.words;
-        lines.push(...split.lines);
-        reads.push(...split.reads);
-      }
-      continue;
-    }
-    // `bunx git push`, `npx -c '…'`, `bun run cp …`: the program the runner starts is the command (`runners.ts`).
-    const peeled = peelRunnerWithFiles(w.slice(k), isPackageScript);
-    if (peeled === null) break;
-    // `dotenv -e FILE -- cmd`: the runner's file options are read like `< FILE`, whatever the command is.
-    reads.push(...peeled.files);
-    // The word the runner starts is a name the shell is asked to open too: a runner handed a live env file's name reads it.
-    reads.push(peeled.inner[0] ?? "");
-    unplaced.push(...(peeled.unplaced ?? []).map((option) => `${programName(word)} ${option}`));
-    w = [...w.slice(0, k), ...peeled.inner];
-  }
-  // `env -u X` with no command prints the environment: it is still `env`.
-  const prog =
-    k >= w.length && lastWrapper === "env" ? "env" : unescapeWord(w[k] ?? "").replace(/^.*\//, "");
-  return {
-    prog,
-    word: unescapeWord(w[k] ?? ""),
-    args: prog === "env" && k >= w.length ? [] : w.slice(k + 1),
-    assigns: w.slice(0, k).filter((x) => ASSIGNMENT.test(x)),
-    writes,
-    reads,
-    ...(unplaced.length === 0 ? {} : { unplaced: unplaced.join("; ") }),
-    ...(lines.length === 0 ? {} : { lines }),
-    ...(chdir === undefined ? {} : { chdir }),
-  };
-}
 
 /** The redirections of one simple command, pulled out so they are not mistaken for its arguments. */
 interface Redirects {
@@ -569,9 +362,6 @@ const UNPLACED_WRAPPER_REASON = (words: string): string =>
 
 const WORK_BUDGET_REASON =
   "This command has too many brace alternatives, path targets or nested commands, or is too big, for the guard to check in time (the work grows with each word times each directory a `cd` may have left it in, and with every command nested in another). Split it into smaller commands, or let a human run it.";
-
-/** What the shell does to a word before the program sees it: remove backslashes, expand braces. */
-const unescapeWord = (t: string): string => t.replace(/\\(.)/gs, "$1");
 
 const isQuote = (ch: string | undefined): boolean => ch === "'" || ch === '"' || ch === "`";
 
