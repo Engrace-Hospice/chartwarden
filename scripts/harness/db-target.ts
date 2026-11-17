@@ -28,9 +28,11 @@ import {
  *   network, and a resolver search domain could resolve it elsewhere; a human decides (`db-container-hosts.ts`).
  * - `option`: a long option the guard cannot place (an ambiguous or an unknown abbreviation of the client's own options), so it
  *   cannot tell whether the word names a host or takes the next word; a human decides.
+ * - `outbound`: a Redis command that makes the server the client is connected to open a connection OUT to a host (`REPLICAOF host port`,
+ *   `CLUSTER MEET host port`, `MIGRATE host port ...`, `FAILOVER TO host port`): a local server then talks to a remote one; a human decides.
  */
 export interface DatabaseTarget {
-  readonly kind: "remote" | "unparsed" | "indirect" | "variable" | "option" | "alias";
+  readonly kind: "remote" | "unparsed" | "indirect" | "variable" | "option" | "alias" | "outbound";
   /** The host, the string that did not parse or the name of the indirection. */
   readonly subject: string;
   /** Found in a program's words, not in a client's own options: a human decides instead of a refusal (`db-any-program.ts`). */
@@ -382,6 +384,29 @@ function findingOf(found: Found, variable: string | undefined): DatabaseTarget |
   return found.aliases[0] === undefined ? null : { kind: "alias", subject: found.aliases[0] };
 }
 
+/** Redis clients whose positional words are a Redis command. */
+const REDIS_CLIENT = /^(?:redis-cli|valkey-cli)$/;
+
+/**
+ * The host a Redis command makes its server connect out to (wave 12, F-7; R9-ADV-18): `REPLICAOF host port` (`NO ONE` stops replicating),
+ * `SLAVEOF`, `CLUSTER MEET host port`, `MIGRATE host port key db timeout`, `FAILOVER TO host port`. A local server then talks to a host
+ * the client never named: a finding unless the host is local or a project container. `words` are the command and its arguments.
+ */
+export function redisOutboundTarget(words: readonly string[]): DatabaseTarget | null {
+  const [command, ...rest] = words.map((w) => shellUnescape(w));
+  const lower = (rest.at(0) ?? "").toLowerCase();
+  const name = (command ?? "").toLowerCase();
+  let host: string | undefined;
+  if (name === "replicaof" || name === "slaveof") host = lower === "no" ? undefined : rest[0];
+  else if (name === "cluster" && lower === "meet") host = rest[1];
+  else if (name === "migrate") host = rest[0];
+  else if (name === "failover" && lower === "to") host = rest[1];
+  if (host === undefined || host === "") return null;
+  const local =
+    !HAS_EXPANSION.test(host) && (LOCAL_HOST.test(host) || containerHostKind(host) === "project");
+  return local ? null : { kind: "outbound", subject: host };
+}
+
 /**
  * The finding for a database client command, or null when it names nothing the guard must act on (a local target, no
  * target, or a program that is not a database client). `args` are the lexer's words (backslashes still in them); `assigns`
@@ -415,7 +440,11 @@ export function databaseTarget(
   readEnvironment(r, assigns, true);
   readEnvironment(r, statements, false);
   const database = args.find((word) => DATABASE_URL_VARIABLE.test(word));
-  return findingOf(found, database);
+  const finding = findingOf(found, database);
+  const outbound = REDIS_CLIENT.test(prog)
+    ? redisOutboundTarget(positionals.map((w) => w.shell))
+    : null;
+  return finding !== null && finding.kind !== "alias" ? finding : (outbound ?? finding);
 }
 
 /**
@@ -496,6 +525,8 @@ export function databaseTargetReason(
       return `\`${subject}\` is an option the guard cannot place for this database client (an ambiguous or unknown abbreviation), so it cannot tell whether it names the database host. Spell the option out, or confirm it is a local or private-container database with synthetic data.`;
     case "alias":
       return `\`${subject}\` is a bare container-network name: it resolves on a private compose network, and a resolver search domain could resolve it somewhere else. Confirm it is a local or private-container database with synthetic data.`;
+    case "outbound":
+      return `The Redis command names \`${subject}\` as a host the server will connect OUT to (replication, a cluster meeting, a key migration, a failover): a local server then talks to a host that is not a local or private-container database. Confirm it is one with synthetic data.`;
     case "variable":
       return `\`${subject}\` could point anywhere (a variable or a substitution in the place of a database target). Confirm it is a local or private-container database with synthetic data.`;
   }

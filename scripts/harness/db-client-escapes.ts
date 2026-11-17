@@ -32,7 +32,16 @@ import { sqliteReading } from "./sqlite-commands";
 
 export type { ClientFindings } from "./client-reading";
 
-type Kind = "sqlite" | "postgres" | "mysql" | "editor" | "sqlcmd" | "sqlplus" | "mongo" | "sql";
+type Kind =
+  | "sqlite"
+  | "postgres"
+  | "mysql"
+  | "editor"
+  | "sqlcmd"
+  | "sqlplus"
+  | "mongo"
+  | "sql"
+  | "redis";
 
 const CLIENTS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
   ["sqlite3", "sqlite"],
@@ -51,6 +60,10 @@ const CLIENTS: ReadonlyMap<string, Kind> = new Map<string, Kind>([
   ["clickhouse-client", "sql"],
   ["clickhouse-local", "sql"],
   ["trino", "sql"],
+  // redis-cli has no shell or file escapes, but its commands (stdin, here-string) can make the server connect OUT (`REPLICAOF host port`):
+  // `connectTargetOf` reads them (wave 12, F-7).
+  ["redis-cli", "redis"],
+  ["valkey-cli", "redis"],
   // An editor takes its commands as an argument, on standard input or in a here-document (`ed f <<< 'w F'`, `vim -c 'w! F'`):
   // every name in that text is a file it may write (wave 8, ADV6-2).
   ["ed", "editor"],
@@ -213,6 +226,8 @@ function readingsOf(kind: Kind, text: string): Reading[] {
       return mongoReading(text);
     case "sql":
       return sqlFileReadings(text);
+    case "redis":
+      return [];
     case "editor":
       return embeddedNames([text], true).map((name) => writeOf(name));
   }
