@@ -22,7 +22,6 @@ import { userInfo } from "node:os";
 
 import { hasBareBraceGroup } from "./bare-braces";
 import { ASSIGNMENT, program, unescapeWord, words } from "./command-words";
-import { containerCommand } from "./container-run";
 import { clientFindings, clientTexts, isDbClient } from "./db-client-escapes";
 import { environmentDumpReason } from "./env-dump";
 import { assignsHookVariable, isAgentSpawn, loaderEnvReason } from "./env-hazards";
@@ -70,6 +69,7 @@ import {
 import { launchctlReason } from "./launchctl-rules";
 import { type Listed, asListing } from "./listing";
 import { runsLiveSuite } from "./live-suite";
+import { nestedTexts } from "./nested-texts";
 import { programOptionReason } from "./option-commands";
 import { type LongOption, isLongInPlace, isLongOption, optionValues } from "./option-values";
 import { setPackageScriptsReader } from "./package-scripts";
@@ -99,6 +99,7 @@ import {
   storedSecretVerdict,
 } from "./secret-reads";
 import { literalValues, withKnownVariables } from "./shell-assignments";
+import { shellCommandStrings } from "./shell-command-string";
 import {
   BARE,
   COMMENT,
@@ -111,6 +112,7 @@ import {
 } from "./shell-lex";
 import { EXEC_SWEEP_READER } from "./sibling-sweeps";
 import { siblingCommands } from "./sibling-sweeps";
+import { stdinTexts } from "./stdin-texts";
 import { readTar } from "./tar-grammar";
 import { isToolchainPath } from "./toolchain-paths";
 import { type SweepDepth, diffSweepOperands, gitDiffSweepOperands } from "./tree-sweep";
@@ -127,7 +129,7 @@ import {
   trimSlashes,
   work,
 } from "./work-budget";
-import { containerExec, containerRun, shellQuote, shellStrings, sshHost } from "./wrappers";
+import { shellQuote, sshHost } from "./wrappers";
 import { extraOutputFiles, localPath } from "./writers";
 import { moreGitWrites, moreWriterTargets } from "./writers-more";
 import { fileRuns, heredocCount, isScriptText, writtenTexts } from "./written-scripts";
@@ -871,6 +873,7 @@ function writeThenRun(
 /** The commands a simple command runs INSIDE itself: `bash -c '…'`, `eval …`, `find -exec …`, a wrapper's string, git's, a container's. */
 function nestedCommandVerdicts(
   parsed: Parsed,
+  stdinOf: () => readonly string[],
   ctx: BashContext,
   depth: number,
   here: readonly Cwd[],
@@ -880,49 +883,31 @@ function nestedCommandVerdicts(
   const { prog, args } = parsed.handed ?? parsed;
   for (const line of (parsed.handed ?? parsed).lines ?? [])
     if (line.trim() !== "") verdicts.push(judge(line, ctx, depth + 1, here));
-  if (prog === "eval") {
-    verdicts.push(judge(args.join(" "), ctx, depth + 1, here));
-  } else if (NESTED_SHELL.test(prog)) {
-    const k = args.findIndex((a) => /^-[a-z]*c$/.test(a));
-    if (k >= 0) verdicts.push(judge(args[k + 1] ?? "", ctx, depth + 1, here));
-  } else if (prog === "find") {
+  if (prog === "find") {
     for (const run of findExecCommands(args))
       verdicts.push(judge(run.command, ctx, depth + 1, run.inFileDir ? [null] : here));
   }
-  // A command line a wrapper hands to a shell (`watch 'x'`, `su -c 'x'`, `ssh h 'x'`, `rsync -e 'x'`), and a
-  // command run in a container that mounts the repo (its paths read as the host's).
-  for (const text of shellStrings(prog, args, isLocalHost)) {
-    if (text.trim() !== "") verdicts.push(judge(text, ctx, depth + 1, here));
+  // `bash -c '…'`, `eval …`, a wrapper's string, the command behind a container (`nested-texts.ts`).
+  for (const nested of nestedTexts(prog, args, stdinOf, isLocalHost)) {
+    const inside = nested.workdir === undefined ? here : runIn(here, nested.workdir, ctx);
+    verdicts.push(judge(nested.text, ctx, depth + 1, inside));
+    if (nested.unplaced !== undefined) verdicts.push(ask(UNPLACED_WRAPPER_REASON(nested.unplaced)));
   }
   verdicts.push(...gitExecVerdicts(parsed, ctx, depth, here));
-  const inContainer = containerExec(prog, args);
-  if (inContainer !== null) verdicts.push(judge(inContainer, ctx, depth + 1, here));
-  // A command run in a fresh container (`docker run IMG psql -h HOST`): its paths are the image's, but a client, a push or a
-  // secret read is the same wherever it runs.
-  const fresh = containerCommand(prog, args);
-  if (fresh !== null) {
-    verdicts.push(judge(fresh.command, ctx, depth + 1, here));
-    if (fresh.unplaced !== undefined)
-      verdicts.push(ask(UNPLACED_WRAPPER_REASON(`${prog} run ${fresh.unplaced}`)));
-  }
-  const container = containerRun(prog, args);
-  if (container) {
-    const inside = container.workdir === undefined ? here : runIn(here, container.workdir, ctx);
-    verdicts.push(judge(container.command, ctx, depth + 1, inside));
-  }
   return verdicts;
 }
 
 /** The commands a simple command runs inside itself, with the variables it was started with in scope (`PGHOST=H bash -c 'psql'`). */
 function nestedWithInlineVariables(
   parsed: Parsed,
+  stdinOf: () => readonly string[],
   ctx: BashContext,
   depth: number,
   here: readonly Cwd[],
 ): BashVerdict[] {
   const outer = variableStatements;
   variableStatements = [...outer, ...parsed.assigns];
-  const verdicts = nestedCommandVerdicts(parsed, ctx, depth, here);
+  const verdicts = nestedCommandVerdicts(parsed, stdinOf, ctx, depth, here);
   variableStatements = outer;
   return verdicts;
 }
@@ -997,7 +982,18 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
     ...dbClientVerdicts(parts, parsedParts, index, bodiesByPart[index] ?? [], here, ctx),
     ...siblingSweepVerdicts(parts, parsedParts, index, ctx, depth, here),
     ...dynamicProgramVerdicts(part.text, parsed, ctx, here),
-    ...nestedWithInlineVariables(parsed, ctx, depth, here),
+    ...nestedWithInlineVariables(
+      parsed,
+      () =>
+        stdinTexts(
+          parsedParts.map((q, i) => ({ ...q, joiner: parts[i]?.joiner ?? "" })),
+          index,
+          bodiesByPart[index] ?? [],
+        ),
+      ctx,
+      depth,
+      here,
+    ),
   );
   if (readsScriptFromStdin(parsed, index)) walk.scriptTexts.push(...pipelineTexts(parts, index));
   // What a shell is handed as its script (`echo '…' | sh`, `sh <<< '…'`, `source <(echo '…')`) is judged as a command
@@ -2221,9 +2217,8 @@ function execReadsFiles(words: readonly string[]): boolean {
   const parsed = parseSegment(words.map(shellQuote).join(" "));
   if (isFileReader(parsed.prog)) return true;
   if (!SHELL_PROGRAM.test(parsed.prog)) return false;
-  const script = parsed.args[parsed.args.findIndex((a) => /^-[a-z]*c$/.test(a)) + 1];
-  return (
-    script !== undefined && segments(script).some((seg) => isFileReader(parseSegment(seg).prog))
+  return shellCommandStrings(parsed.prog, parsed.args).some((script) =>
+    segments(script).some((seg) => isFileReader(parseSegment(seg).prog)),
   );
 }
 

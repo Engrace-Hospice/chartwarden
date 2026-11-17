@@ -29,6 +29,8 @@ export interface WrapperSpec {
   readonly optionsAfterOperands?: boolean;
   /** The program runs a command only with one of these options (`gdb --args PROG`); without one it is no wrapper. */
   readonly onlyWith?: readonly string[];
+  /** Options after which the words that follow are ONE command line for a shell, not a program and its arguments (`sudo -s 'CMD'`, `sudo -i CMD ARGS`). */
+  readonly shellLine?: readonly string[];
 }
 
 const words = (list: string): string[] => list.split(" ");
@@ -102,6 +104,8 @@ const SUDO: WrapperSpec = {
   }),
   stays: ["e", "edit"],
   chdir: ["D", "chdir"],
+  // `sudo -s|-i [command]` hands the command to the user's shell with `-c` (R8-CR-6: `sudo -s 'git push --force origin main'`).
+  shellLine: ["s", "shell", "i", "login"],
 };
 
 const XARGS: WrapperSpec = {

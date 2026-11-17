@@ -10,7 +10,7 @@ import { parallelExtras, replacementTags } from "./parallel-command";
 import { programName } from "./program-name";
 import { peelRunnerWithFiles } from "./runners";
 import { peelWrapper } from "./wrapper-peel";
-import { gnuName } from "./wrappers";
+import { gnuName, joinedAndQuoted } from "./wrappers";
 
 /** What the shell does to a word before the program sees it: remove backslashes, expand braces. */
 export const unescapeWord = (t: string): string => t.replace(/\\(.)/gs, "$1");
@@ -204,6 +204,14 @@ export function program(
           ...handed.slice(wrapper.next),
         ];
       k = wrapper.next;
+      if (wrapper.shellLine) {
+        // `sudo -s 'CMD ARGS'`: the shell runs the words joined as one command line.
+        const line = (rest: readonly string[]): string[] => ["sh", "-c", rest.join(" ")];
+        // and as the words typed, quoted back: sudo keeps their boundaries (`sudo -s psql -c 'select 1'`)
+        lines.push(...joinedAndQuoted(w.slice(k)).slice(1));
+        w = [...w.slice(0, k), ...line(w.slice(k))];
+        if (handed) handed = [...handed.slice(0, k), ...line(handed.slice(k))];
+      }
       if (wrapper.wrapper === "parallel") {
         // The data after `:::` are not arguments of the command: the command is judged with each datum where parallel puts it.
         const split = parallelExtras(w, k, replacementTags(wrapper.options));
@@ -217,16 +225,17 @@ export function program(
     // `bunx git push`, `npx -c '…'`, `bun run cp …`: the program the runner starts is the command (`runners.ts`).
     const peeled = peelRunnerWithFiles(w.slice(k), isPackageScript);
     if (peeled === null) break;
+    unplaced.push(...(peeled.unplaced ?? []).map((option) => `${programName(word)} ${option}`));
+    if (peeled.inner === null) break;
     // `dotenv -e FILE -- cmd`: the runner's file options are read like `< FILE`, whatever the command is.
     reads.push(...peeled.files);
     // The word the runner starts is a name the shell is asked to open too: a runner handed a live env file's name reads it.
     reads.push(peeled.inner[0] ?? "");
-    unplaced.push(...(peeled.unplaced ?? []).map((option) => `${programName(word)} ${option}`));
     w = [...w.slice(0, k), ...peeled.inner];
     if (handed) {
       const again = peelRunnerWithFiles(handed.slice(k), isPackageScript);
       handed =
-        again !== null && again.inner.length === peeled.inner.length
+        again?.inner != null && again.inner.length === peeled.inner.length
           ? [...handed.slice(0, k), ...again.inner]
           : null;
     }

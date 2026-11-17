@@ -22,6 +22,8 @@ export interface WrapperPeel {
   readonly options: readonly ReadOption[];
   /** The files its options and operands read and write. */
   readonly files: WrapperFiles;
+  /** The words from `next` on are ONE command line for a shell (`sudo -s 'CMD'`): the classifier hands them to `sh -c`. */
+  readonly shellLine: boolean;
   /** Words that run before `next` and stand for the command (`env -S 'cmd arg'`): spliced in at `next`. */
   readonly insert: readonly string[];
   /** The first word of its own the table could not place: the guard cannot tell where the command starts. */
@@ -110,6 +112,7 @@ export function peelWrapper(
     stays,
     ...(dir === undefined ? {} : { chdir: dir.value ?? "" }),
     options,
+    shellLine: !stays && named(options, spec.shellLine).length > 0 && next < words.length,
     files: wrapperFiles(wrapper, words.slice(at + 1, read.optionsEnd), operands),
     insert,
     ...(unplaced === undefined ? {} : { unplaced }),

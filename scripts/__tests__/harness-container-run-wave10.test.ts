@@ -112,11 +112,11 @@ describe("containerCommand reads the options the way the tools list them", () =>
     );
   });
 
-  it("names no command when nothing follows the image, and is null for anything but a run", () => {
+  it("names no command when nothing follows the image, and is null for anything but a run or an exec (wave 11 reads exec too)", () => {
     expect(behind("docker", "run", "img")).toBeUndefined();
     expect(behind("docker", "run", "-e", "A=1", "img")).toBeUndefined();
     expect(containerCommand("docker", ["ps"])).toBeNull();
-    expect(containerCommand("docker", ["exec", "api", "ls"])).toBeNull();
+    expect(containerCommand("docker", ["exec", "api"])).toBeNull();
     expect(containerCommand("docker", ["compose", "up"])).toBeNull();
     expect(containerCommand("git", ["run", "img", "ls"])).toBeNull();
     expect(containerCommand("docker-compose", ["up"])).toBeNull();

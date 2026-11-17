@@ -10,14 +10,19 @@
  */
 
 import { localCommandOfOption, optionCommandStrings, sshLikeCommands } from "./option-commands";
+import { commandOptionValues } from "./shell-command-string";
 
 /** Homebrew's GNU tools carry a `g` prefix on macOS (`gxargs -a FILE`, `gnice`): each is the wrapper it prefixes. */
 const GNU_PREFIXED = /^g(xargs|nice|stdbuf|env|nohup|time|timeout|chroot)$/;
 export const gnuName = (program: string): string => GNU_PREFIXED.exec(program)?.[1] ?? program;
 
-/** A word as the shell must read it back as one word. */
+/**
+ * A word as the shell must read it back as one word. A single quote is written `'"'"'` (close, a double-quoted quote, reopen), never `'\''`:
+ * every reader that lexes the text again WITHOUT decoding backslashes (the readers of `db-connect-commands.ts` see the words as typed) would
+ * keep the backslash and read `(\'host=H\')` where the shell reads `('host=H')` (R8-CR-3). Both spellings are the same word to a shell.
+ */
 export const shellQuote = (w: string): string =>
-  /^[A-Za-z0-9_@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, "'\\''")}'`;
+  /^[A-Za-z0-9_@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'"'"'`)}'`;
 
 /** The words of `args` after options (those in `valueFlag` take the next word as a value). */
 function afterOptions(args: readonly string[], valueFlag: RegExp): string[] {
@@ -27,18 +32,6 @@ function afterOptions(args: readonly string[], valueFlag: RegExp): string[] {
   }
   if (args[k] === "--") k++;
   return args.slice(k);
-}
-
-/** The value of `-c STR`, `-cSTR`, `--command STR` and `--command=STR`. */
-function commandOption(args: readonly string[]): string[] {
-  const out: string[] = [];
-  for (let k = 0; k < args.length; k++) {
-    const a = args[k] ?? "";
-    if (a === "-c" || a === "--command") out.push(args[++k] ?? "");
-    else if (a.startsWith("--command=")) out.push(a.slice("--command=".length));
-    else if (/^-[A-Za-z]*c.+/.test(a) && !a.startsWith("--")) out.push(a.slice(a.indexOf("c") + 1));
-  }
-  return out;
 }
 
 /** `-e CMD`, `-eCMD`, `--rsh=CMD`, `--rsh CMD` of rsync. */
@@ -94,9 +87,10 @@ export const sshHost = (args: readonly string[]): string | undefined => sshWords
 function sshCommands(args: readonly string[], isLocal: (host: string) => boolean): string[] {
   const { operands, local } = sshWords(args);
   const [host, ...remote] = operands;
-  return host !== undefined && remote.length > 0 && isLocal(host)
-    ? [...local, remote.join(" ")]
-    : local;
+  if (host === undefined || remote.length === 0 || !isLocal(host)) return local;
+  // The remote shell reads the words joined by spaces (that is what ssh sends); what the user meant by quoting them is the same words
+  // quoted back: both are judged, so `ssh localhost bash -c -- 'CMD'` is read as the user meant it and as the remote shell will.
+  return [...local, ...joinedAndQuoted(remote)];
 }
 
 /** tar options that run a program: `--checkpoint-action=exec=CMD`, `--to-command=CMD`, `-I CMD`. */
@@ -115,6 +109,16 @@ function tarCommands(args: readonly string[]): string[] {
   return out;
 }
 
+/**
+ * The words a wrapper hands to a shell as ONE string: the shell reads them joined by spaces, and the user meant them as the words they typed,
+ * so both are judged (`watch bash -c -- 'CMD'`: joined, the string is only the first word).
+ */
+export function joinedAndQuoted(words: readonly string[]): string[] {
+  const joined = words.join(" ");
+  const quoted = words.map(shellQuote).join(" ");
+  return quoted === joined ? [joined] : [joined, quoted];
+}
+
 /** The command lines `prog` hands to a shell, as strings to judge. */
 export function shellStrings(
   prog: string,
@@ -123,18 +127,18 @@ export function shellStrings(
 ): string[] {
   switch (prog) {
     case "watch":
-      return [afterOptions(args, /^-(?:n|-interval)$|^--interval$/).join(" ")];
+      return joinedAndQuoted(afterOptions(args, /^-(?:n|-interval)$|^--interval$/));
     case "entr":
       // `entr [-acdnprsxz] utility [args]` (`-s` makes the words one shell command): the words are a command line.
-      return [afterOptions(args, /^$/).join(" ")];
+      return joinedAndQuoted(afterOptions(args, /^$/));
     case "su":
     case "runuser":
     case "flock":
-      return commandOption(args);
+      return commandOptionValues(args);
     case "script": {
       // macOS `script [-q] FILE cmd args…` runs the command; Linux `script -c 'cmd' FILE`. FILE is written (writers.ts).
       const [, ...command] = afterOptions(args, /^-[tFcEIOBT]$/);
-      return [...commandOption(args), command.join(" ")];
+      return [...commandOptionValues(args), command.join(" ")];
     }
     case "ssh":
       return sshCommands(args, isLocalHost);
@@ -233,20 +237,4 @@ export function containerRun(prog: string, args: readonly string[]): ContainerRu
   return mappedDir !== undefined && mappedDir !== workdir
     ? { command, workdir: mappedDir }
     : { command };
-}
-
-const EXEC_VALUE_FLAG = /^-[euw]$|^--(?:env|user|workdir|env-file|detach-keys|index)$/;
-
-/**
- * `docker exec api env`, `docker compose exec api printenv X`: the command that runs in the container, as a command
- * line (its environment is the container's, but a read of a secret or a dump of the environment is the same read).
- * Null for anything that is not an `exec` with a command.
- */
-export function containerExec(prog: string, args: readonly string[]): string | null {
-  if (!/^(?:docker|podman|nerdctl|docker-compose|podman-compose)$/.test(prog)) return null;
-  const at = args.indexOf("exec");
-  if (at < 0) return null;
-  const rest = afterOptions(args.slice(at + 1), EXEC_VALUE_FLAG);
-  const [, ...command] = rest;
-  return command.length > 0 ? command.map(shellQuote).join(" ") : null;
 }
