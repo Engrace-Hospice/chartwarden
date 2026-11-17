@@ -146,6 +146,28 @@ describe("D5: credential names the suffix lists missed are denied like a passwor
   );
 });
 
+describe("D5: text written to a file does not reach the transcript", () => {
+  it.each([
+    "cat > /tmp/out <<EOF\nvalue: ${K}\nEOF",
+    "cat >> /tmp/out <<< ${K}",
+    "cat <<< ${K} > /tmp/out",
+    "cat <<< ${K} > /dev/null",
+    "x=${K}; cat > /tmp/out <<< $x",
+  ])("%s", (template) => {
+    expect(decide(fill(template))).toBe("allow");
+  });
+
+  it.each([
+    "cat <<< ${K} 2>/tmp/e",
+    "cat <<< ${K} 2>&1",
+    "tee /tmp/out <<< ${K}",
+    "tee -a /tmp/out <<EOF\n${K}\nEOF",
+    "cat <<< ${K} | cat > /tmp/out",
+  ])("%s still asks (stdout is not the file)", (template) => {
+    expect(decide(fill(template))).toBe("ask");
+  });
+});
+
 describe("D5: ordinary variables and the presence check stay allowed", () => {
   it.each([
     "echo $HOME",

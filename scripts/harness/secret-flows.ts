@@ -54,6 +54,10 @@ export function leakCheckText(prog: string, args: readonly string[]): string {
   return prints ? `console.log(${args.filter((a) => !a.startsWith("-")).join(" ")})` : text;
 }
 
+/** Does the command text send its standard output to a file (`> f`, `>> f`, `>| f`, `> /dev/null`; not `2> f` or `>&2`)? */
+const writesStdoutToFile = (text: string): boolean =>
+  /(?<![0-9&<>])>[>|]?\s*(?!&)[^\s>&|]/.test(text);
+
 /** The names a text references, `$NAME` and `${NAME}` alike (`${!K}` names K). */
 const referencedNames = (text: string): string[] =>
   [...text.matchAll(REFERENCE)].flatMap((m) => (m[1] === undefined ? [] : [m[1]]));
@@ -140,6 +144,7 @@ export function secretFlowReason(
   parts: readonly FlowPart[],
   bodies: ReadonlyArray<readonly string[]>,
   statements: readonly string[],
+  partTexts: readonly string[] = [],
 ): string | null {
   const values = valuesByName(statements);
   const tainted = taintedNames(statements, values);
@@ -149,6 +154,8 @@ export function secretFlowReason(
       if (names.some((name) => isGuardedName(name) || tainted.has(name))) return SECRET_FLOW_REASON;
     }
     if (!PRINTING.test(part.prog)) continue;
+    // `cat > file <<EOF ... $NAME ... EOF` writes the text to a file: it does not reach the transcript (`tee` copies it to stdout too).
+    if (part.prog !== "tee" && writesStdoutToFile(partTexts[index] ?? "")) continue;
     const texts = [...part.args, ...part.strings, ...(bodies[index] ?? [])];
     if (texts.some((text) => leaks(text, values, tainted))) return SECRET_FLOW_REASON;
   }

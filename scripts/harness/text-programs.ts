@@ -95,7 +95,9 @@ export function textProgramIsInert(prog: string, args: readonly string[]): boole
   if (AWK.test(prog)) {
     const program = awkProgram(args);
     return (
-      program !== undefined && program.length <= MAX_AWK_PROGRAM_CHARS && !AWK_RUNS.test(program)
+      program !== undefined &&
+      program.length <= MAX_AWK_PROGRAM_CHARS &&
+      !AWK_RUNS.test(maskAwk(program))
     );
   }
   if (prog === "sed") return sedIsInert(args);
@@ -106,6 +108,43 @@ export function textProgramIsInert(prog: string, args: readonly string[]): boole
 // ----------------------------------------------------------------------------------------------------- awk's commands
 
 const STRING_LITERAL = /"((?:[^"\\]|\\.)*)"/gs;
+
+/** A pipe inside a string literal is text, not an operator: it is stored as this character while the program is scanned. */
+const QUOTED_PIPE = "\u0001";
+
+/**
+ * The program with regular-expression literals replaced by `R` (`$1 ~ /a|b/` holds no pipe) and the pipes inside string
+ * literals made inert (`split($0, a, "|")`). A `/` opens a regular expression when what came before it cannot end an operand
+ * (an identifier, a number, `)`, `]` or a string: there it divides). Misreading one costs an ask, never a miss: the masked text
+ * only decides which pipes are operators.
+ */
+function maskAwk(program: string): string {
+  let out = "";
+  for (let i = 0; i < program.length; i++) {
+    const ch = program[i] as string;
+    if (ch === '"') {
+      out += ch;
+      for (i++; i < program.length && program[i] !== '"'; i++) {
+        const inner = program[i] as string;
+        if (inner === "\\" && i + 1 < program.length) {
+          out += inner + (program[++i] as string);
+        } else out += inner === "|" ? QUOTED_PIPE : inner;
+      }
+      if (i < program.length) out += '"';
+    } else if (ch === "/" && !/[\w$)\]"]$/.test(out.trimEnd())) {
+      let inClass = false;
+      for (i++; i < program.length; i++) {
+        const inner = program[i] as string;
+        if (inner === "\\") i++;
+        else if (inner === "[") inClass = true;
+        else if (inner === "]") inClass = false;
+        else if (inner === "/" && !inClass) break;
+      }
+      out += "R";
+    } else out += ch;
+  }
+  return out;
+}
 
 const unescapeAwk = (text: string): string => text.replace(/\\(.)/gs, "$1");
 
@@ -129,7 +168,9 @@ function balancedArgument(program: string, open: number): string {
 function literalValue(expression: string): string | undefined {
   const rest = expression.replace(STRING_LITERAL, "").trim();
   if (rest !== "") return undefined;
-  return [...expression.matchAll(STRING_LITERAL)].map((m) => unescapeAwk(m[1] ?? "")).join("");
+  return [...expression.matchAll(STRING_LITERAL)]
+    .map((m) => unescapeAwk((m[1] ?? "").replaceAll(QUOTED_PIPE, "|")))
+    .join("");
 }
 
 export const AWK_UNPLACED_REASON =
@@ -150,6 +191,7 @@ export function awkCommandStrings(prog: string, args: readonly string[]): AwkCom
     return { commands: [], unplaced: true };
   // A program file (`-f FILE`) is not readable here: a limit the doc states, no ask for every `awk -f`.
   if (program === undefined) return { commands: [], unplaced: false };
+  const masked = maskAwk(program);
   const commands: string[] = [];
   let unplaced = false;
   const take = (expression: string): void => {
@@ -157,16 +199,16 @@ export function awkCommandStrings(prog: string, args: readonly string[]): AwkCom
     if (value === undefined) unplaced = true;
     else commands.push(value);
   };
-  for (const m of program.matchAll(/\bsystem\s*\(/g)) {
-    take(balancedArgument(program, m.index + m[0].length - 1));
+  for (const m of masked.matchAll(/\bsystem\s*\(/g)) {
+    take(balancedArgument(masked, m.index + m[0].length - 1));
   }
   // `"cmd" | getline`, `cmd | getline x`: the left side of the pipe is the command.
-  for (const m of program.matchAll(
+  for (const m of masked.matchAll(
     /((?:"(?:[^"\\]|\\.)*"\s*)+|[\w$]+)\s*(?<!\|)\|(?!\|)\s*getline\b/g,
   ))
     take(m[1] ?? "");
   // `print x | "cmd"`, `printf … | cmd`: the right side of a pipe that is not getline.
-  for (const m of program.matchAll(
+  for (const m of masked.matchAll(
     /(?<!\|)\|(?!\|)(?!\s*getline\b)\s*((?:"(?:[^"\\]|\\.)*"\s*)+|[\w$]+)/g,
   ))
     take(m[1] ?? "");

@@ -1359,7 +1359,12 @@ function judge(cmd: string, ctx: BashContext, depth: number, start: readonly Cwd
   const statements = textVariableStatements(c, parts, input, outerStatements);
   variableStatements = statements.words;
   verdicts.push(...statements.verdicts);
-  const flow = secretFlowReason(parsedParts, input.bodiesByPart, variableStatements);
+  const flow = secretFlowReason(
+    parsedParts,
+    input.bodiesByPart,
+    variableStatements,
+    parts.map((part) => part.text),
+  );
   if (flow !== null) verdicts.push(ask(flow));
   parts.forEach((_part, index) => judgePart(index, walk, input));
   verdicts.push(...trailingVerdicts(c, walk, ctx, depth));

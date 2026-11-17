@@ -98,6 +98,16 @@ describe("D4: a client run from awk's own program text is judged as a command li
     expect(decide(cmd)).toBe("ask");
   });
 
+  it.each([
+    "awk '$1 ~ /a|b/ {print}' f",
+    "awk '{n = split($0, a, \"|\"); print n}' f",
+    "awk -F'|' '{print $1}' f",
+    "awk '$1 / 2 > 3 || $2 == \"x\" {print}' f",
+    "awk 'NR % 2 == 0 && /x|y|z/' f",
+  ])("a pipe inside a regular expression or a string is no command: %s", (cmd) => {
+    expect(decide(cmd)).toBe("allow");
+  });
+
   it("awkCommandStrings returns the literal command lines and says when one is not a literal", () => {
     expect(awkCommandStrings("awk", ['BEGIN{system("a" "b")}'])).toEqual({
       commands: ["ab"],
@@ -124,6 +134,10 @@ const INERT: readonly string[] = [
   "PGHOST={H} awk '{print $1}' file",
   "PGHOST={H} awk -F, '{print $2}' file",
   "PGHOST={H} awk '$1 == 1 || $2 == 2 {print}' file",
+  "PGHOST={H} awk '$1 ~ /a|b/ {print}' file",
+  "PGHOST={H} awk '{n = split($0, a, \"|\"); print n}' file",
+  "PGHOST={H} awk -F'|' '{print $1}' file",
+  "PGHOST={H} awk '$1 / 2 > 3 {print}' file",
   "PGHOST={H} awk -v n=3 'NR > n' file",
   "PGHOST={H} sed -n 1,5p file",
   "PGHOST={H} sed 's/a/b/g' file",
