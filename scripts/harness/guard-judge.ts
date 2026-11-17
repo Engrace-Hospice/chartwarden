@@ -7,10 +7,13 @@
  *   Bash                                                          → `classifyBash` (deny / ask / allow)
  *
  * Silence means "no opinion": the normal permission rules in .claude/settings.json still apply. Every
- * deny/ask this judgement reaches is written to the agent ledger (metadata only). The emergency denies are NOT:
- * the entry thread's deadline, a worker that died or errored, a malformed answer (`hard-deadline.ts`) and the
- * internal-error deny below are deliberate silences, because a worker that is failing cannot be trusted to log and
- * the entry thread must stay free to answer its own timer (`harness-ledger-asks.test.ts` pins both halves).
+ * deny/ask this judgement reaches is written to the agent ledger (metadata only). So is every emergency deny (HIPAA
+ * 164.312(b), audit controls; wave 12): the denies for an input it cannot parse and for an internal error are logged
+ * here, and the entry thread's own (the deadline, a worker that died or errored, a malformed answer:
+ * `hard-deadline.ts`) by a child process it starts AFTER the deny is out, under a hard timeout (`emergency-ledger.ts`),
+ * because a failing worker cannot be trusted to log and the entry thread must stay free to answer its own timer. A line
+ * that cannot be written is lost, never the deny (`harness-ledger-asks.test.ts` pins every path, and the deny when the
+ * ledger directory is unwritable).
  *
  * Fails CLOSED: empty or unparseable input, an internal error, and content too large to scan all answer
  * `deny`, because a guard that goes quiet when it breaks is a guard an oversized or malformed call can
@@ -33,7 +36,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   MAX_PATCH_CHARS,
   mcpStrings,
@@ -42,7 +44,15 @@ import {
   withoutOddChars,
 } from "./codex-patch";
 import type { GuardAnswer } from "./hard-deadline";
-import { type HookInput, appendLedger, loadRegistry, projectDir, relPath, sha256 } from "./io";
+import {
+  type HookInput,
+  appendLedger,
+  codexRoot,
+  loadRegistry,
+  projectDir,
+  relPath,
+  sha256,
+} from "./io";
 import { listLiveEnvFiles } from "./live-env-files";
 import { listLiveSuiteFiles } from "./live-suite-files";
 import { claudeMcpFinding } from "./mcp-claude";
@@ -124,20 +134,6 @@ function refuseSecret(log: Log, name: string, why: string): never {
   log("deny", reason, name);
   return respond("deny", reason);
 }
-
-/**
- * `--codex`: the repo root is where THIS script lives. The pinned hook command walks up from the session directory to
- * the nearest directory that holds `.git`, `.codex/hooks.json` and `scripts/harness/pre-tool-guard.ts` and runs that
- * script (it used to run `$(git rev-parse --show-toplevel)/…`, which `git config core.worktree` re-pointed), so the
- * script's grandparent is the checkout of the Codex session, with no `git` call and no environment variable to move
- * it: `CLAUDE_PROJECT_DIR`
- * (a developer may export it from a Claude shell, pointing at another tree) used to override the root here, and
- * protected-path matching then ran against the wrong tree without a word. `CW_HARNESS_ROOT_FOR_TESTS` is the
- * test seam; production never sets it.
- */
-const codexRoot = (): string =>
-  process.env.CW_HARNESS_ROOT_FOR_TESTS ||
-  resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /** A path as the repo sees it: real paths on both sides, relative paths resolved from the directory `base`. */
 function pathResolver(root: string, base: string): (p: string) => string {
@@ -401,6 +397,7 @@ function newContent(tool: string, input: Record<string, unknown>): string | unde
 function judge(hook: HookInput): void {
   if (hook.invalid) {
     if (process.env.CW_HARNESS_FAIL_OPEN === "1") return;
+    logOwnDeny(hook, "empty or unparseable hook input: the guard could not judge this call");
     respond(
       "deny",
       "The guard received empty or unparseable input, so it cannot judge this call. (CW_HARNESS_FAIL_OPEN=1 lets a human bypass for a session.)",
@@ -572,9 +569,36 @@ export function judgeHook(hook: HookInput, codex: boolean): GuardAnswer {
         stderr: `[chartwarden-harness] pre-tool-guard error (failing open): ${String(err)}\n`,
       };
     }
+    logOwnDeny(
+      hook,
+      `internal error (${err instanceof Error ? err.name : typeof err}): the guard could not judge this call`,
+    );
     return answerFor(
       "deny",
       `The guard hit an internal error and cannot judge this call: ${String(err).slice(0, 200)}`,
     );
+  }
+}
+
+/**
+ * One ledger line for a deny the judgement made about the guard's own state, not about a command (an input it cannot
+ * parse, an internal error): the tool's name when there is one and `why`, never the call or an error's text (it can
+ * quote what the guard was reading). Best effort: it never throws.
+ */
+function logOwnDeny(hook: HookInput, why: string): void {
+  try {
+    const tool = typeof hook.tool_name === "string" ? hook.tool_name : "";
+    appendLedger(
+      CODEX ? codexRoot() : projectDir(hook),
+      typeof hook.session_id === "string" ? hook.session_id : undefined,
+      {
+        event: "pre_tool",
+        tool: tool && CODEX ? `codex/${tool}` : tool,
+        decision: "deny",
+        reason: why,
+      },
+    );
+  } catch {
+    // a lost line, never a changed answer
   }
 }
