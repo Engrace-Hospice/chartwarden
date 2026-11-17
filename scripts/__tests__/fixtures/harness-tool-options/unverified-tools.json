@@ -85,10 +85,6 @@
       "evidence": "manual",
       "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"
     },
-    "env": {
-      "evidence": "manpage",
-      "note": "option table read from the manual page installed on the macOS the guard runs on; the recorder does not probe it (needs privileges, a tty or a network)"
-    },
     "env-cmd": {
       "evidence": "manual",
       "note": "NOT installed on this machine: the option table is from the manual and unverified; an unlisted option asks (strict table) or, in a lax table, an unlisted --name followed by a bare word asks"

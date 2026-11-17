@@ -212,6 +212,8 @@ interface Target {
   readonly method: Method;
   /** Arguments that print the tool's version. */
   readonly versionArgs: readonly string[];
+  /** The tool has no stable `--version` (BSD env): `bsd` or `gnu-X.Y` is the version. */
+  readonly flavour?: boolean;
   /** Help texts to read option names from: the argument lists to run. */
   readonly helpArgs: ReadonlyArray<readonly string[]>;
   /** Extra names to probe that no help text lists (the config names npm and pnpm share). */
@@ -461,6 +463,25 @@ export const TARGETS: readonly Target[] = [
       "-H": [false, "npm help (shorthand for --help)"],
     },
   },
+  {
+    // env's short options (`wrapper-specs.ts`): the probe is `env OPT VALUE /bin/echo HIT`. The long options are GNU coreutils' and BSD env rejects or
+    // ignores them, so only the letters are probed (the GNU names are listed in the table with that reason).
+    key: "env",
+    tool: "env",
+    method: "echo-hit",
+    flavour: true,
+    versionArgs: ["--version"],
+    helpArgs: [],
+    letters: "i0vuCSPahx",
+    argv: (t, v) => [t, ...(v === undefined ? [] : [v]), "/bin/echo", "HIT"],
+    exits: new Set<string>(),
+    rejects: /illegal option|invalid option|unrecognized option/,
+    // `-S STRING` is a command line, so no value makes `/bin/echo HIT` the next word: documented in env(1).
+    manual: {
+      "-S": [true, "env(1): -S string"],
+      "--split-string": [true, "env(1): --split-string=S"],
+    },
+  },
   ...(["run", "exec"] as const).map(
     (sub): Target => ({
       key: `docker ${sub}`,
@@ -506,6 +527,10 @@ export const TARGETS: readonly Target[] = [
 /** The version number out of `--version` output (`1.4.4`, `Docker version 29.9.3, build x`, `podman version 5.8.0`). */
 export const versionOf = (text: string): string =>
   /(\d+\.\d+(?:\.\d+)?)/.exec(text.trim())?.[1] ?? "unknown";
+
+/** BSD env (macOS) has no `--version`; GNU env prints one: the flavour stands for the version of a tool without one. */
+const flavourOf = (text: string): string =>
+  /GNU coreutils/.test(text) ? `gnu-${versionOf(text)}` : "bsd";
 
 type Probed = TakesValue | "rejected";
 
@@ -577,7 +602,9 @@ export async function recordTarget(
 ): Promise<ToolFixture> {
   const box = makeSandbox(bin);
   try {
-    const version = versionOf((await run(bin, target.versionArgs, box)).out);
+    const printed = await run(bin, target.versionArgs, box);
+    const version =
+      target.flavour === true ? flavourOf(`${printed.out}${printed.err}`) : versionOf(printed.out);
     const helps = await Promise.all(target.helpArgs.map((args) => run(bin, args, box)));
     const fromHelp = candidatesOf(...helps.map((h) => `${h.out}\n${h.err}`));
     const extra = (await target.extraNames?.(bin, box)) ?? [];

@@ -126,6 +126,21 @@ const ORB_MANAGEMENT = new Set(
   ),
 );
 
+const secretsReason = (what: string): string =>
+  `${what} prints the secrets or credentials of a cluster, which is another machine. Agents do not read secrets or reach production from a session; a human decides.`;
+
+/** `kubectl exec|run|…` opens a session, `get secret` and `config view --raw` print what the cluster keeps secret. */
+function kubectlReason(words: readonly string[], args: readonly string[]): string | null {
+  const [first, second] = words;
+  if (first === "get" && words.slice(1).some((w) => SECRET_RESOURCE.test(w))) {
+    return secretsReason("`kubectl get secret`");
+  }
+  if (first === "config" && second === "view" && args.includes("--raw")) {
+    return secretsReason("`kubectl config view --raw`");
+  }
+  return first !== undefined && KUBECTL_REMOTE.has(first) ? reason(`\`kubectl ${first}\``) : null;
+}
+
 /**
  * Why this command opens a remote session, or null. `assigns` are the `NAME=value` words in front of the program.
  */
@@ -144,19 +159,7 @@ export function remoteAccessReason(
   if (session?.(first, second) === true) return reason(`\`${prog} ${first}\``);
   switch (prog) {
     case "kubectl":
-      if (first === "get" && words.slice(1).some((w) => SECRET_RESOURCE.test(w))) {
-        return reason(
-          "`kubectl get secret` prints a cluster's secrets, and the cluster is another machine, which",
-        );
-      }
-      if (first === "config" && second === "view" && args.includes("--raw")) {
-        return reason(
-          "`kubectl config view --raw` prints the cluster credentials, and a cluster is another machine, which",
-        );
-      }
-      return first !== undefined && KUBECTL_REMOTE.has(first)
-        ? reason(`\`kubectl ${first}\``)
-        : null;
+      return kubectlReason(words, args);
     case "gcloud":
       return (first === "sql" && second === "connect") ||
         (first === "compute" && (second === "ssh" || second === "scp"))

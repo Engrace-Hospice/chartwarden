@@ -28,7 +28,6 @@ export interface EnvSplit {
 export type EnvLookup = (name: string) => string | undefined;
 
 const BLANK = /[ \t\n\v\f\r]/;
-const NAME_CHAR = /[A-Za-z0-9_]/;
 const CONTROL: Readonly<Record<string, string>> = {
   t: "\t",
   n: "\n",
@@ -40,7 +39,42 @@ const PLAIN_ESCAPES = new Set(["\\", '"', "'", "$", "#"]);
 
 class Unplaced extends Error {}
 
-/** One scan of the string; `unplaced` is thrown as an Unplaced and caught once. */
+const fail = (why: string): never => {
+  throw new Unplaced(why);
+};
+
+/** What a backslash escape does to the word being read. */
+type Escape =
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "separator" }
+  | { readonly kind: "stop" };
+
+/** The escape `\next`, read in or out of double quotes; an escape env rejects fails. */
+function escapeOf(next: string | undefined, inDouble: boolean): Escape {
+  if (next === undefined) return fail("a backslash at the end of the string");
+  if (next === "_") return inDouble ? { kind: "text", text: " " } : { kind: "separator" };
+  if (next === "c") return inDouble ? fail("`\\c` inside quotes") : { kind: "stop" };
+  const control = CONTROL[next];
+  if (control !== undefined) return { kind: "text", text: control };
+  return PLAIN_ESCAPES.has(next) ? { kind: "text", text: next } : fail(`\`\\${next}\``);
+}
+
+/** The `${NAME}` that starts at `at` (a `$`): its value and the index of its closing brace. */
+function expansionAt(
+  text: string,
+  at: number,
+  lookup: EnvLookup,
+): { value: string; close: number } {
+  const close = text[at + 1] === "{" ? text.indexOf("}", at + 2) : -1;
+  const name = close < 0 ? "" : text.slice(at + 2, close);
+  if (close < 0 || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) fail("a `$` that is not `${NAME}`");
+  const value = lookup(name);
+  return value === undefined
+    ? fail(`\`\${${name}}\`, a variable the guard cannot place`)
+    : { value, close };
+}
+
+/** One scan of the string; a rejected construct is thrown as an Unplaced and caught once. */
 function scan(text: string, lookup: EnvLookup): string[] {
   const words: string[] = [];
   let current = "";
@@ -51,8 +85,9 @@ function scan(text: string, lookup: EnvLookup): string[] {
     current = "";
     inWord = false;
   };
-  const fail = (why: string): never => {
-    throw new Unplaced(why);
+  const add = (more: string): void => {
+    current += more;
+    inWord = true;
   };
 
   for (let i = 0; i < text.length; i++) {
@@ -61,60 +96,26 @@ function scan(text: string, lookup: EnvLookup): string[] {
       if (ch === "'") quote = null;
       else if (ch === "\\" && (text[i + 1] === "\\" || text[i + 1] === "'")) current += text[++i];
       else current += ch;
-      continue;
-    }
-    if (ch === "\\") {
-      const next = text[i + 1];
-      if (next === undefined) fail("a backslash at the end of the string");
-      i++;
-      if (next === "_") {
-        if (quote === '"') current += " ";
-        else endWord();
-      } else if (next === "c") {
-        if (quote !== null) fail("`\\c` inside quotes");
+    } else if (ch === "\\") {
+      const found = escapeOf(text[++i], quote === '"');
+      if (found.kind === "text") add(found.text);
+      else {
         endWord();
-        return words;
-      } else if (next !== undefined && next in CONTROL) {
-        current += CONTROL[next];
-        inWord = true;
-      } else if (next !== undefined && PLAIN_ESCAPES.has(next)) {
-        current += next;
-        inWord = true;
-      } else fail(`\`\\${next}\``);
-      continue;
-    }
-    if (ch === "$") {
-      const close = text[i + 1] === "{" ? text.indexOf("}", i + 2) : -1;
-      const name = close < 0 ? "" : text.slice(i + 2, close);
-      if (
-        close < 0 ||
-        name === "" ||
-        ![...name].every((c) => NAME_CHAR.test(c)) ||
-        /^\d/.test(name)
-      ) {
-        fail("a `$` that is not `${NAME}`");
+        if (found.kind === "stop") return words;
       }
-      const value = lookup(name);
-      if (value === undefined) fail(`\`\${${name}}\`, a variable the guard cannot place`);
-      current += value;
-      inWord = true;
-      i = close;
-      continue;
-    }
-    if (quote === '"') {
+    } else if (ch === "$") {
+      const expansion = expansionAt(text, i, lookup);
+      add(expansion.value);
+      i = expansion.close;
+    } else if (quote === '"') {
       if (ch === '"') quote = null;
       else current += ch;
-      continue;
-    }
-    if (ch === "'" || ch === '"') {
+    } else if (ch === "'" || ch === '"') {
       quote = ch;
       inWord = true;
     } else if (BLANK.test(ch)) endWord();
     else if (ch === "#" && !inWord) return words;
-    else {
-      current += ch;
-      inWord = true;
-    }
+    else add(ch);
   }
   if (quote !== null) fail("a quote that is never closed");
   endWord();

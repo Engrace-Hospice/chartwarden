@@ -7,6 +7,7 @@
  * It is skipped ONLY when the tool is not installed. A full re-record costs minutes (npm and pnpm start node for every probe), so a deterministic sample of the
  * valued options and of the flags is probed here; the recorder's CLI re-records everything.
  */
+import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import {
   TARGETS,
@@ -32,6 +33,9 @@ const sampleOf = (fixture: ToolFixture): ReadonlySet<string> => {
   return new Set([...everyNth(valued, VALUED_SAMPLE), ...everyNth(flags, FLAG_SAMPLE)]);
 };
 
+const isGnuEnv = (bin: string): boolean =>
+  /GNU coreutils/.test(spawnSync(bin, ["--version"], { encoding: "utf8" }).stdout);
+
 /** The commands whose option names come from a help text alone (no probe to repeat): their names are compared instead. */
 const HELP_ONLY = new Set(["bun x", "pnpm dlx"]);
 
@@ -42,7 +46,12 @@ for (const target of TARGETS) {
       `the installed ${target.tool} still reads its options as the recording and the production table say`,
       async () => {
         const committed = fixtureOf(target.key);
-        const installed = installedVersion(bin as string);
+        const installed =
+          target.flavour === true
+            ? committed.version.startsWith("gnu") === isGnuEnv(bin as string)
+              ? committed.version
+              : "other flavour"
+            : installedVersion(bin as string);
         if (HELP_ONLY.has(target.key)) {
           // names only: every recorded option must still be in the tool's own help text
           const { spawnSync } = await import("node:child_process");

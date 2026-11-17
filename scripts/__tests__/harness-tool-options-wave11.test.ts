@@ -35,6 +35,7 @@ describe("the recordings are well formed", () => {
         "docker compose run",
         "docker exec",
         "docker run",
+        "env",
         "npm exec",
         "npx",
         "pnpm",
@@ -44,7 +45,7 @@ describe("the recordings are well formed", () => {
       ].sort(),
     );
     for (const f of fixtures) {
-      expect(f.version, f.command).toMatch(/^\d+\.\d+/);
+      expect(f.version, f.command).toMatch(/^(?:\d+\.\d+|bsd|gnu-\d+\.\d+)/);
       expect(["echo-hit", "flag-needs-argument", "help"]).toContain(f.method);
       expect(f.options.length, f.command).toBeGreaterThan(4);
       for (const o of f.options) {
@@ -394,7 +395,7 @@ describe("every wrapper and runner is covered by a recording or says why it is n
   const unverified = JSON.parse(
     readFileSync(join(FIXTURE_DIR, "unverified-tools.json"), "utf8"),
   ) as { tools: Record<string, { evidence: string; note: string }> };
-  const recorded = new Set(["bun", "bunx", "pnpm", "pnpx", "npm", "npx"]);
+  const recorded = new Set(["bun", "bunx", "pnpm", "pnpx", "npm", "npx", "env"]);
   const KEYWORDS = new Set(["then", "do", "else", "elif", "if", "while", "until", "!"]);
 
   it("a wrapper, manager or bare runner is recorded or listed with its evidence", async () => {
@@ -411,7 +412,7 @@ describe("every wrapper and runner is covered by a recording or says why it is n
   });
 
   it("every installed tool with a recording is listed in the recordings, not as unverified", () => {
-    for (const name of ["bun", "pnpm", "npm", "npx", "docker", "podman"]) {
+    for (const name of ["bun", "pnpm", "npm", "npx", "docker", "podman", "env"]) {
       expect(unverified.tools[name], name).toBeUndefined();
     }
   });

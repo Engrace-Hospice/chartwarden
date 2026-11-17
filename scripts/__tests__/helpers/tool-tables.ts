@@ -12,6 +12,7 @@ import {
 } from "../../harness/container-run";
 import { type OptionGrammar, readOptions } from "../../harness/option-grammar";
 import * as G from "../../harness/runner-grammars";
+import { WRAPPER_SPECS } from "../../harness/wrapper-specs";
 import type { RecordedOption, ToolFixture } from "./record-tool-options";
 
 export const FIXTURE_DIR = join(__dirname, "..", "fixtures", "harness-tool-options");
@@ -37,6 +38,35 @@ export interface Table {
 
 const OLDER_DOCKER = "older docker versions read it, docker 29 rejects it";
 export const TABLES: readonly Table[] = [
+  {
+    name: "env",
+    grammar: (WRAPPER_SPECS.get("env") as { grammar: OptionGrammar }).grammar,
+    commands: ["env"],
+    // GNU env's long options and BSD env's `-P`, `-a`, `-0`: each system knows the part of the union that is its own
+    legacy: [
+      "--ignore-environment",
+      "--null",
+      "--debug",
+      "--list-signal-handling",
+      "--help",
+      "--version",
+      "--block-signal",
+      "--default-signal",
+      "--ignore-signal",
+      "--unset",
+      "--chdir",
+      "--split-string",
+      "--argv0",
+      "-i",
+      "-0",
+      "-v",
+      "-u",
+      "-C",
+      "-S",
+      "-P",
+      "-a",
+    ],
+  },
   { name: "BUN_GLOBAL", grammar: G.BUN_GLOBAL, commands: ["bun"], legacy: [] },
   { name: "BUN_RUN", grammar: G.BUN_RUN, commands: ["bun run"], legacy: [] },
   { name: "BUNX", grammar: G.BUNX, commands: ["bun x"], legacy: ["--help", "-b"] },

@@ -126,6 +126,45 @@ export function words(seg: string, values = false): string[] {
 
 // `NAME=v` and `NAME+=v` both assign for the one command that follows.
 export const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\+?=/;
+/** The words of a command and the same words as the programs are handed them (`undefined`: the same text; `null`: the indices were lost). */
+interface Pair {
+  readonly w: readonly string[];
+  readonly handed: readonly string[] | null | undefined;
+}
+
+/** `insert` put in at `at`, in both readings. */
+const insertAt = (pair: Pair, at: number, insert: readonly string[]): Pair => ({
+  w: [...pair.w.slice(0, at), ...insert, ...pair.w.slice(at)],
+  handed: pair.handed
+    ? [...pair.handed.slice(0, at), ...insert, ...pair.handed.slice(at)]
+    : pair.handed,
+});
+
+/** The words from `at` on read as one command line for `sh -c` (`sudo -s 'CMD'`), in both readings. */
+const shellLineFrom = (pair: Pair, at: number): Pair => {
+  const line = (rest: readonly string[]): string[] => ["sh", "-c", rest.join(" ")];
+  return {
+    w: [...pair.w.slice(0, at), ...line(pair.w.slice(at))],
+    handed: pair.handed
+      ? [...pair.handed.slice(0, at), ...line(pair.handed.slice(at))]
+      : pair.handed,
+  };
+};
+
+/** The words from `at` on replaced by `inner` (what a runner starts); the handed reading is peeled again and must agree in length. */
+function replaceFrom(pair: Pair, at: number, inner: readonly string[]): Pair {
+  const w = [...pair.w.slice(0, at), ...inner];
+  if (!pair.handed) return { w, handed: pair.handed };
+  const again = peelRunnerWithFiles(pair.handed.slice(at), isPackageScript);
+  return {
+    w,
+    handed:
+      again?.inner != null && again.inner.length === inner.length
+        ? [...pair.handed.slice(0, at), ...again.inner]
+        : null,
+  };
+}
+
 /** The value `${NAME}` has in `env -S` after the assignments in front of the wrapper (`F=x env -S 'cat ${F}'`): the last one wins. */
 function inlineVariables(words: readonly string[], upTo: number): EnvLookup {
   return (name) => {
@@ -161,11 +200,12 @@ export function program(
   /** Secret-named files a wrapper's own option reads (`xargs -a F`): judged like input redirects. */
   reads: string[];
 } {
-  let w = words(seg, values);
-  // The words as the programs are HANDED them (an escaped quote inside double quotes is the quote), same indices as `w`: `env -S`
-  // reads its string from them. null once a rewrite below changes the indices (the wrapper then asks).
-  let handed: readonly string[] | null | undefined =
-    values || !/\\/.test(seg) ? undefined : words(seg, true);
+  // The words as the programs are HANDED them (an escaped quote inside double quotes is the quote), same indices as the words: `env -S`
+  // reads its string from them. null once a rewrite changes the indices (the wrapper then asks).
+  let pair: Pair = {
+    w: words(seg, values),
+    handed: values || !/\\/.test(seg) ? undefined : words(seg, true),
+  };
   const writes: string[] = [];
   const reads: string[] = [];
   const unplaced: string[] = [];
@@ -173,18 +213,18 @@ export function program(
   let k = 0;
   let lastWrapper = "";
   let chdir: string | undefined;
-  while (k < w.length) {
-    const word = w[k] ?? "";
+  while (k < pair.w.length) {
+    const word = pair.w[k] ?? "";
     if (ASSIGNMENT.test(word)) {
       k++;
       continue;
     }
     const wrapper = peelWrapper(
       gnuName(programName(word)),
-      w,
+      pair.w,
       k,
-      (text) => splitEnvString(text, inlineVariables(w, k)),
-      handed,
+      (text) => splitEnvString(text, inlineVariables(pair.w, k)),
+      pair.handed,
     );
     if (wrapper !== null) {
       // `flock -c 'cmd' file`, `sudo -e FILE`: the words are a string or files, not a command: the wrapper stays the program.
@@ -195,35 +235,25 @@ export function program(
       writes.push(...wrapper.files.writes);
       reads.push(...wrapper.files.reads);
       if (wrapper.unplaced !== undefined) unplaced.push(`${wrapper.wrapper} ${wrapper.unplaced}`);
-      // `env -S 'cmd arg'` runs the words of its string as the command.
-      w = [...w.slice(0, wrapper.next), ...wrapper.insert, ...w.slice(wrapper.next)];
-      if (handed)
-        handed = [
-          ...handed.slice(0, wrapper.next),
-          ...wrapper.insert,
-          ...handed.slice(wrapper.next),
-        ];
+      // The words an `env -S` string stands for run as the command.
+      pair = insertAt(pair, wrapper.next, wrapper.insert);
       k = wrapper.next;
       if (wrapper.shellLine) {
-        // `sudo -s 'CMD ARGS'`: the shell runs the words joined as one command line.
-        const line = (rest: readonly string[]): string[] => ["sh", "-c", rest.join(" ")];
-        // and as the words typed, quoted back: sudo keeps their boundaries (`sudo -s psql -c 'select 1'`)
-        lines.push(...joinedAndQuoted(w.slice(k)).slice(1));
-        w = [...w.slice(0, k), ...line(w.slice(k))];
-        if (handed) handed = [...handed.slice(0, k), ...line(handed.slice(k))];
+        // `sudo -s 'CMD ARGS'`: the shell runs the words joined as one command line, and the words typed, quoted back (sudo keeps their boundaries).
+        lines.push(...joinedAndQuoted(pair.w.slice(k)).slice(1));
+        pair = shellLineFrom(pair, k);
       }
       if (wrapper.wrapper === "parallel") {
         // The data after `:::` are not arguments of the command: the command is judged with each datum where parallel puts it.
-        const split = parallelExtras(w, k, replacementTags(wrapper.options));
-        w = split.words;
-        if (handed !== undefined) handed = null;
+        const split = parallelExtras(pair.w, k, replacementTags(wrapper.options));
+        pair = { w: split.words, handed: pair.handed === undefined ? undefined : null };
         lines.push(...split.lines);
         reads.push(...split.reads);
       }
       continue;
     }
     // `bunx git push`, `npx -c '…'`, `bun run cp …`: the program the runner starts is the command (`runners.ts`).
-    const peeled = peelRunnerWithFiles(w.slice(k), isPackageScript);
+    const peeled = peelRunnerWithFiles(pair.w.slice(k), isPackageScript);
     if (peeled === null) break;
     unplaced.push(...(peeled.unplaced ?? []).map((option) => `${programName(word)} ${option}`));
     if (peeled.inner === null) break;
@@ -231,15 +261,9 @@ export function program(
     reads.push(...peeled.files);
     // The word the runner starts is a name the shell is asked to open too: a runner handed a live env file's name reads it.
     reads.push(peeled.inner[0] ?? "");
-    w = [...w.slice(0, k), ...peeled.inner];
-    if (handed) {
-      const again = peelRunnerWithFiles(handed.slice(k), isPackageScript);
-      handed =
-        again?.inner != null && again.inner.length === peeled.inner.length
-          ? [...handed.slice(0, k), ...again.inner]
-          : null;
-    }
+    pair = replaceFrom(pair, k, peeled.inner);
   }
+  const w = pair.w;
   // `env -u X` with no command prints the environment: it is still `env`.
   const prog =
     k >= w.length && lastWrapper === "env" ? "env" : unescapeWord(w[k] ?? "").replace(/^.*\//, "");

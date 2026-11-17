@@ -227,7 +227,12 @@ describe("producer paths: every way the string reaches env", () => {
   });
 
   it("a string env would reject asks (nothing would run, but a guessed reading must not stand)", () => {
-    for (const cmd of ["env -S 'git push \\z'", "env -S 'git push $F'", "env -S 'echo \"x'"]) {
+    for (const cmd of [
+      "env -S 'git push \\z'",
+      "env -S 'git push $F'",
+      "env -S 'echo \"x'",
+      "env -S 'echo \"x\\cy\"'",
+    ]) {
       expect(rank(cmd), cmd).toBeGreaterThanOrEqual(1);
     }
   });
