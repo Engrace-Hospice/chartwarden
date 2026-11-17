@@ -25,6 +25,7 @@ import {
   removeCopies,
   runClaude,
 } from "./_guard-copy";
+import { withoutGuardSwitches } from "./helpers/scrubbed-env";
 
 afterAll(removeCopies);
 
@@ -129,7 +130,7 @@ function runRaw(
     const started = performance.now();
     const child = spawn("/bin/sh", ["-c", hook], {
       cwd: dir,
-      env: { ...process.env, CLAUDE_PROJECT_DIR: dir, ...env },
+      env: { ...withoutGuardSwitches(process.env), CLAUDE_PROJECT_DIR: dir, ...env },
       stdio: ["pipe", "pipe", "ignore"],
     });
     let stdout = "";

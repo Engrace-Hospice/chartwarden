@@ -28,6 +28,7 @@ import {
 } from "../harness/patterns";
 import { splitNul } from "../harness/stop-gate";
 import { ISSUED_SSN_PARTS } from "./_fixtures";
+import { scrubbedGitEnv } from "./helpers/scrubbed-env";
 import { netMs } from "./helpers/work-counters";
 
 const ROOT = join(__dirname, "../..");
@@ -379,7 +380,10 @@ describe("M7 — non-ASCII file names are scanned, not skipped", () => {
   });
   it("phi-scan fails on an SSN in a file whose name git would quote", () => {
     const repo = mkdtempSync(join(tmp, "repo-"));
-    const git = (...a: string[]) => spawnSync("git", a, { cwd: repo, encoding: "utf8" });
+    // Wave 12 (R9-COMP-10): no GIT_DIR / GIT_INDEX_FILE from a hook (they would aim `git add` at the real repository),
+    // no developer git configuration.
+    const env = scrubbedGitEnv(tmp);
+    const git = (...a: string[]) => spawnSync("git", a, { cwd: repo, encoding: "utf8", env });
     git("init", "-q");
     writeFileSync(
       join(repo, "café.ts"),
@@ -390,6 +394,7 @@ describe("M7 — non-ASCII file names are scanned, not skipped", () => {
       spawnSync("bun", [join(ROOT, "scripts/harness/phi-scan.ts"), flag], {
         cwd: repo,
         encoding: "utf8",
+        env,
       });
     const all = scan("--all");
     expect(all.status).toBe(1);

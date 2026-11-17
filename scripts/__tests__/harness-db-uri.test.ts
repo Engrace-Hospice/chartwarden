@@ -8,9 +8,13 @@
  * PATH and in the package manager's directories, and a test timeout of its own bounds the probes.
  */
 import { spawnSync } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { parseConninfo, uriReadings } from "../harness/db-uri";
 import { findBinary } from "./helpers/record-pg-options";
+import { scrubbedToolEnv } from "./helpers/scrubbed-env";
 
 describe("parseConninfo: libpq's conninfo_parse", () => {
   it.each([
@@ -112,17 +116,37 @@ describe("uriReadings: the userinfo ends at the first @ before the first /", () 
 });
 
 const PG_ISREADY = findBinary("pg_isready");
+// Wave 12 (R9-COMP-10): the probe runs with PATH, a scratch HOME and LANG=C, like the recorders: a developer's PGHOSTADDR,
+// PGSERVICE or PGPASSFILE (and a service or password file in their home) must not reach libpq. pg_isready does not
+// authenticate, and every string below names 127.0.0.1, ::1 or localhost.
+const PROBE_HOME = mkdtempSync(join(tmpdir(), "cw-pg-isready-"));
+afterAll(() => rmSync(PROBE_HOME, { recursive: true, force: true }));
+const PROBE_ENV = scrubbedToolEnv(PROBE_HOME, { PGCONNECT_TIMEOUT: "2" });
 const REAL = "127.0.0.1";
 const PROBE_TEST_TIMEOUT_MS = 30_000;
 
 describe.skipIf(PG_ISREADY === undefined)(
   "against the real libpq (pg_isready -d, loopback, port 1)",
   () => {
+    // The developer's libpq environment, poisoned on purpose: PGHOSTADDR names another loopback address (127.0.0.3, never
+    // routed off the machine), which libpq then prints as the host it tries, and a service and a password file that are
+    // not there. A probe that inherited this would read 127.0.0.3 in every case below, so each case is also the proof that
+    // PROBE_ENV keeps the parent's PG* variables out.
+    beforeAll(() => {
+      vi.stubEnv("PGHOSTADDR", "127.0.0.3");
+      vi.stubEnv("PGSERVICE", "cw-no-such-service");
+      vi.stubEnv("PGPASSFILE", join(PROBE_HOME, "no-such-passfile"));
+    });
+    afterAll(() => {
+      vi.unstubAllEnvs();
+    });
     /** The host libpq tries, from its `host:port - no response` line. */
     const libpqHost = (conn: string): string | undefined => {
       const run = spawnSync(PG_ISREADY ?? "pg_isready", ["-t", "1", "-d", conn], {
         encoding: "utf8",
         timeout: 10_000,
+        cwd: PROBE_HOME,
+        env: PROBE_ENV,
       });
       return /^(\S+):\d+ - /.exec(`${run.stdout}${run.stderr}`.trim())?.[1];
     };

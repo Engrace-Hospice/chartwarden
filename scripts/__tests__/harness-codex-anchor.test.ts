@@ -20,6 +20,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { scrubbedGitEnv } from "./helpers/scrubbed-env";
 
 const ROOT = join(__dirname, "../..");
 const HOOK: string = JSON.parse(readFileSync(join(ROOT, ".codex/hooks.json"), "utf8")).hooks
@@ -34,6 +35,8 @@ const scratch = (): string => {
 afterAll(() => {
   for (const d of made) rmSync(d, { recursive: true, force: true });
 });
+/** The HOME every git call of this file runs with: empty, so no developer configuration reaches it. */
+const GIT_HOME = scratch();
 
 const stub = (marker: string): string =>
   `console.log(${JSON.stringify(marker)}, import.meta.dir);\n`;
@@ -42,7 +45,12 @@ const put = (file: string, text: string): void => {
   writeFileSync(file, text);
 };
 const git = (cwd: string, ...args: string[]): void => {
-  const r = spawnSync("git", ["-c", "user.email=a@b.c", "-c", "user.name=n", ...args], { cwd });
+  // Wave 12 (R9-COMP-10): a scratch HOME and no GIT_DIR / GIT_INDEX_FILE: a test run started from a git hook must not
+  // add or commit to the REAL repository, nor a developer's gpgsign or template settings change this one.
+  const r = spawnSync("git", ["-c", "user.email=a@b.c", "-c", "user.name=n", ...args], {
+    cwd,
+    env: scrubbedGitEnv(GIT_HOME),
+  });
   if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
 };
 

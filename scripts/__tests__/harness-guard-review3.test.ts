@@ -20,6 +20,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { scrubbedGitEnv } from "./helpers/scrubbed-env";
 
 const ROOT = join(__dirname, "../..");
 const GUARD = join(ROOT, "scripts/harness/pre-tool-guard.ts");
@@ -323,7 +324,8 @@ describe("finding 5: a tsconfig.json cannot rewrite the guard's own imports", ()
       writeFileSync(join(cwd, "base.json"), JSON.stringify(paths));
       writeFileSync(join(cwd, config), JSON.stringify({ extends: "./base.json" }));
     } else writeFileSync(join(cwd, config), JSON.stringify(paths));
-    spawnSync("git", ["init", "-q", dir]);
+    // Wave 12 (R9-COMP-10): no GIT_DIR from a hook, no developer git configuration.
+    spawnSync("git", ["init", "-q", dir], { env: scrubbedGitEnv(scratch("cw-githome-")) });
     return { dir, cwd };
   };
   const hostile = (config: string): string => hostileAt(config).dir;

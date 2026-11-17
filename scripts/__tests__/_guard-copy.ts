@@ -15,6 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { withoutGuardSwitches } from "./helpers/scrubbed-env";
 
 export const REPO = join(__dirname, "../..");
 const commandOf = (file: string): string =>
@@ -80,7 +81,13 @@ function run(hook: string, dir: string, payload: unknown, env: Record<string, st
     input: JSON.stringify(payload),
     encoding: "utf8",
     timeout: 20_000,
-    env: { ...process.env, CW_AGENT_LEDGER: "off", CLAUDE_PROJECT_DIR: dir, ...env },
+    // Wave 12 (R9-COMP-10): not the developer's own switches of the guard (`CW_HARNESS_FAIL_OPEN=1` makes every deny an allow).
+    env: {
+      ...withoutGuardSwitches(process.env),
+      CW_AGENT_LEDGER: "off",
+      CLAUDE_PROJECT_DIR: dir,
+      ...env,
+    },
   });
   return {
     status: r.status,
