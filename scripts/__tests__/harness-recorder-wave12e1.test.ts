@@ -255,12 +255,16 @@ describe("F9: npx -p is --package (valued), npm exec -p is --parseable (a flag)"
 });
 
 describe("E1-8: the env table's unexplained-name check covers the options BSD env records", () => {
-  it("none of the recorded short options is excused as `legacy`", () => {
+  const recorded = fixtureOf("env").options.flatMap((o) => [
+    o.name,
+    ...(o.short === undefined ? [] : [o.short]),
+  ]);
+  it.each(recorded)("%s, which BSD env records, is not excused as `legacy`", (name) => {
     const env = TABLES.find((t) => t.name === "env");
-    const recorded = fixtureOf("env").options.flatMap((o) => [
-      o.name,
-      ...(o.short === undefined ? [] : [o.short]),
-    ]);
-    expect((env?.legacy ?? []).filter((name) => recorded.includes(name))).toEqual([]);
+    expect(env?.legacy ?? []).not.toContain(name);
+  });
+  it("what is excused is GNU env's long options and the GNU-only -a", () => {
+    const env = TABLES.find((t) => t.name === "env");
+    expect((env?.legacy ?? []).filter((n) => !n.startsWith("--"))).toEqual(["-a"]);
   });
 });
