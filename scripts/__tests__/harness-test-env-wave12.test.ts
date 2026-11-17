@@ -6,7 +6,7 @@
  * helper, with a poisoned parent environment (loopback addresses and scratch paths only: nothing here reaches anything).
  */
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -55,6 +55,18 @@ describe("scrubbedToolEnv: PATH, a scratch HOME and LANG, whatever the parent ho
     expect(scrubbedGitEnv(scratch)[name]).not.toBe(POISON[name as keyof typeof POISON]);
   });
 
+  it("runs a tool in the C locale and the scratch home, whatever the parent's are", () => {
+    vi.stubEnv("LANG", "en_US.UTF-8");
+    vi.stubEnv("LC_ALL", "en_US.UTF-8");
+    const probe = (env: Record<string, string>) =>
+      spawnSync("/bin/sh", ["-c", 'printf "%s|%s|%s" "$LANG" "$LC_ALL" "$HOME"'], {
+        env,
+        encoding: "utf8",
+      }).stdout;
+    expect(probe(scrubbedToolEnv(scratch))).toBe(`C||${scratch}`);
+    expect(probe(scrubbedGitEnv(scratch))).toBe(`C||${scratch}`);
+  });
+
   it("keeps the extras last, so a probe can still set what it means to", () => {
     expect(scrubbedToolEnv(scratch, { LANG: "en_US.UTF-8" }).LANG).toBe("en_US.UTF-8");
   });
@@ -79,11 +91,41 @@ describe("scrubbedGitEnv: a poisoned GIT_DIR does not reach git, the control sho
     expect(scrubbed.stdout.trim()).toBe(".git");
   });
 
-  it("holds no system and no global git configuration", () => {
-    expect(scrubbedGitEnv(scratch)).toMatchObject({
-      GIT_CONFIG_NOSYSTEM: "1",
-      GIT_CONFIG_GLOBAL: "/dev/null",
-    });
+  // A developer's global configuration changes what a commit or a hook does (`commit.gpgsign`, `core.hooksPath`,
+  // `init.templateDir`): the poisoned file below is read through GIT_CONFIG_GLOBAL, and only the scrubbed run ignores it.
+  it.each([
+    ["user.name", "poisoned-name"],
+    ["core.hooksPath", "poisoned-hooks"],
+  ])("a global git configuration (%s) of the parent does not reach git", (key, value) => {
+    const file = join(scratch, "poison-gitconfig");
+    writeFileSync(file, "[user]\n\tname = poisoned-name\n[core]\n\thooksPath = poisoned-hooks\n");
+    vi.stubEnv("GIT_CONFIG_GLOBAL", file);
+    const read = (env: Record<string, string>) =>
+      spawnSync("git", ["config", "--get", key], {
+        cwd: scratch,
+        env,
+        encoding: "utf8",
+      }).stdout.trim();
+    expect(read({ ...process.env } as Record<string, string>)).toBe(value); // the hazard
+    expect(read(scrubbedGitEnv(scratch))).toBe("");
+  });
+
+  it("ignores a system git configuration, which is not under HOME", () => {
+    const file = join(scratch, "poison-system-gitconfig");
+    writeFileSync(file, "[user]\n\tname = poisoned-system-name\n");
+    const read = (env: Record<string, string>) =>
+      spawnSync("git", ["config", "--get", "user.name"], {
+        cwd: scratch,
+        env: { ...env, GIT_CONFIG_SYSTEM: file },
+        encoding: "utf8",
+      }).stdout.trim();
+    const { GIT_CONFIG_NOSYSTEM: _off, ...withSystem } = scrubbedGitEnv(scratch);
+    expect(read(withSystem)).toBe("poisoned-system-name"); // the hazard
+    expect(read(scrubbedGitEnv(scratch))).toBe("");
+  });
+
+  it("holds the system switch, so a test that reads it reads the helper", () => {
+    expect(scrubbedGitEnv(scratch)).toMatchObject({ GIT_CONFIG_NOSYSTEM: "1" });
   });
 });
 
@@ -110,7 +152,7 @@ describe("withoutGuardSwitches: the developer's own switches of the guard stay o
   });
 });
 
-describe("a real hook run through _guard-copy does not inherit the developer's fail-open switch", () => {
+describe("a real hook run through _guard-copy does not inherit the developer's switches of the guard", () => {
   // A `cwd` that is not text is an internal error: with CW_HARNESS_FAIL_OPEN=1 the guard answers allow, without it deny.
   const internalError = { ...bashPayload("ls"), cwd: 5 };
 
@@ -123,5 +165,20 @@ describe("a real hook run through _guard-copy does not inherit the developer's f
     expect(runClaude(guardCopy(), internalError, { CW_HARNESS_FAIL_OPEN: "1" }).decision).toBe(
       "allow",
     );
+  });
+
+  // A forced worker fault left in a shell would refuse every call of every test.
+  it.each(["throw", "exit", "malformed"])(
+    "an everyday call is allowed although the parent environment forces the worker fault %s",
+    (fault) => {
+      vi.stubEnv("CW_HARNESS_TEST_FAULT", fault);
+      expect(runClaude(guardCopy(), bashPayload("git status")).decision).toBe("allow");
+    },
+  );
+
+  it("control: a test that forces the fault itself still gets it", () => {
+    expect(
+      runClaude(guardCopy(), bashPayload("git status"), { CW_HARNESS_TEST_FAULT: "throw" }).status,
+    ).toBe(2);
   });
 });

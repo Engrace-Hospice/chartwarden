@@ -15,9 +15,9 @@ export function scrubbedToolEnv(
   return { PATH: process.env.PATH ?? "", HOME: home, LANG: "C", ...extra };
 }
 
-/** For git: also no system configuration and no global one, whatever `HOME` holds. */
+/** For git: also no system configuration (`/etc/gitconfig` is not under `HOME`); the global one is under the scratch `HOME`. */
 export function scrubbedGitEnv(home: string): Record<string, string> {
-  return scrubbedToolEnv(home, { GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" });
+  return scrubbedToolEnv(home, { GIT_CONFIG_NOSYSTEM: "1" });
 }
 
 /**
