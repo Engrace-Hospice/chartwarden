@@ -1,0 +1,341 @@
+{
+  "tool": "pg_recvlogical",
+  "version": "16.13",
+  "command": "pg_recvlogical --help; getopt behaviour probes against 127.0.0.1 port 1",
+  "options": [
+    {
+      "name": "create-slot",
+      "takesValue": false
+    },
+    {
+      "name": "drop-slot",
+      "takesValue": false
+    },
+    {
+      "name": "start",
+      "takesValue": false
+    },
+    {
+      "name": "endpos",
+      "short": "E",
+      "takesValue": true
+    },
+    {
+      "name": "file",
+      "short": "f",
+      "takesValue": true
+    },
+    {
+      "short": "F",
+      "takesValue": true
+    },
+    {
+      "name": "if-not-exists",
+      "takesValue": false
+    },
+    {
+      "name": "startpos",
+      "short": "I",
+      "takesValue": true
+    },
+    {
+      "name": "no-loop",
+      "short": "n",
+      "takesValue": false
+    },
+    {
+      "name": "option",
+      "short": "o",
+      "takesValue": true
+    },
+    {
+      "name": "plugin",
+      "short": "P",
+      "takesValue": true
+    },
+    {
+      "name": "status-interval",
+      "short": "s",
+      "takesValue": true
+    },
+    {
+      "name": "slot",
+      "short": "S",
+      "takesValue": true
+    },
+    {
+      "name": "two-phase",
+      "short": "t",
+      "takesValue": false
+    },
+    {
+      "name": "verbose",
+      "short": "v",
+      "takesValue": false
+    },
+    {
+      "name": "version",
+      "short": "V",
+      "takesValue": false
+    },
+    {
+      "name": "help",
+      "short": "?",
+      "takesValue": false
+    },
+    {
+      "name": "dbname",
+      "short": "d",
+      "takesValue": true,
+      "role": "string"
+    },
+    {
+      "name": "host",
+      "short": "h",
+      "takesValue": true,
+      "role": "host"
+    },
+    {
+      "name": "port",
+      "short": "p",
+      "takesValue": true
+    },
+    {
+      "name": "username",
+      "short": "U",
+      "takesValue": true
+    },
+    {
+      "name": "no-password",
+      "short": "w",
+      "takesValue": false
+    },
+    {
+      "name": "password",
+      "short": "W",
+      "takesValue": false
+    }
+  ],
+  "abbreviations": [
+    {
+      "prefix": "c",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "cr",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "d",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "db",
+      "outcome": "string"
+    },
+    {
+      "prefix": "dbn",
+      "outcome": "string"
+    },
+    {
+      "prefix": "dr",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "dro",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "e",
+      "outcome": "value"
+    },
+    {
+      "prefix": "en",
+      "outcome": "value"
+    },
+    {
+      "prefix": "f",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "fi",
+      "outcome": "value"
+    },
+    {
+      "prefix": "h",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "he",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "hel",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ho",
+      "outcome": "host"
+    },
+    {
+      "prefix": "hos",
+      "outcome": "host"
+    },
+    {
+      "prefix": "i",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "if",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "n",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-l",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-lo",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-p",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-pa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "o",
+      "outcome": "value"
+    },
+    {
+      "prefix": "op",
+      "outcome": "value"
+    },
+    {
+      "prefix": "p",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "pa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "pas",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "pl",
+      "outcome": "value"
+    },
+    {
+      "prefix": "plu",
+      "outcome": "value"
+    },
+    {
+      "prefix": "po",
+      "outcome": "value"
+    },
+    {
+      "prefix": "por",
+      "outcome": "value"
+    },
+    {
+      "prefix": "s",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "sl",
+      "outcome": "value"
+    },
+    {
+      "prefix": "slo",
+      "outcome": "value"
+    },
+    {
+      "prefix": "st",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "sta",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "star",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "startp",
+      "outcome": "value"
+    },
+    {
+      "prefix": "startpo",
+      "outcome": "value"
+    },
+    {
+      "prefix": "stat",
+      "outcome": "value"
+    },
+    {
+      "prefix": "statu",
+      "outcome": "value"
+    },
+    {
+      "prefix": "t",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "tw",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "u",
+      "outcome": "value"
+    },
+    {
+      "prefix": "us",
+      "outcome": "value"
+    },
+    {
+      "prefix": "v",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ve",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ver",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "verb",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "verbo",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "vers",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "versi",
+      "outcome": "flag"
+    }
+  ]
+}

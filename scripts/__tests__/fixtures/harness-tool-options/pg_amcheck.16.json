@@ -1,0 +1,555 @@
+{
+  "tool": "pg_amcheck",
+  "version": "16.13",
+  "command": "pg_amcheck --help; getopt behaviour probes against 127.0.0.1 port 1",
+  "options": [
+    {
+      "name": "all",
+      "short": "a",
+      "takesValue": false
+    },
+    {
+      "name": "database",
+      "short": "d",
+      "takesValue": true
+    },
+    {
+      "name": "exclude-database",
+      "short": "D",
+      "takesValue": true
+    },
+    {
+      "name": "index",
+      "short": "i",
+      "takesValue": true
+    },
+    {
+      "name": "exclude-index",
+      "short": "I",
+      "takesValue": true
+    },
+    {
+      "name": "relation",
+      "short": "r",
+      "takesValue": true
+    },
+    {
+      "name": "exclude-relation",
+      "short": "R",
+      "takesValue": true
+    },
+    {
+      "name": "schema",
+      "short": "s",
+      "takesValue": true
+    },
+    {
+      "name": "exclude-schema",
+      "short": "S",
+      "takesValue": true
+    },
+    {
+      "name": "table",
+      "short": "t",
+      "takesValue": true
+    },
+    {
+      "name": "exclude-table",
+      "short": "T",
+      "takesValue": true
+    },
+    {
+      "name": "no-dependent-indexes",
+      "takesValue": false
+    },
+    {
+      "name": "no-dependent-toast",
+      "takesValue": false
+    },
+    {
+      "name": "no-strict-names",
+      "takesValue": false
+    },
+    {
+      "name": "exclude-toast-pointers",
+      "takesValue": false
+    },
+    {
+      "name": "on-error-stop",
+      "takesValue": false
+    },
+    {
+      "name": "skip",
+      "takesValue": true
+    },
+    {
+      "name": "startblock",
+      "takesValue": true
+    },
+    {
+      "name": "endblock",
+      "takesValue": true
+    },
+    {
+      "name": "heapallindexed",
+      "takesValue": false
+    },
+    {
+      "name": "parent-check",
+      "takesValue": false
+    },
+    {
+      "name": "rootdescend",
+      "takesValue": false
+    },
+    {
+      "name": "host",
+      "short": "h",
+      "takesValue": true,
+      "role": "host"
+    },
+    {
+      "name": "port",
+      "short": "p",
+      "takesValue": true
+    },
+    {
+      "name": "username",
+      "short": "U",
+      "takesValue": true
+    },
+    {
+      "name": "no-password",
+      "short": "w",
+      "takesValue": false
+    },
+    {
+      "name": "password",
+      "short": "W",
+      "takesValue": false
+    },
+    {
+      "name": "maintenance-db",
+      "takesValue": true,
+      "role": "string"
+    },
+    {
+      "name": "echo",
+      "short": "e",
+      "takesValue": false
+    },
+    {
+      "name": "jobs",
+      "short": "j",
+      "takesValue": true
+    },
+    {
+      "name": "progress",
+      "short": "P",
+      "takesValue": false
+    },
+    {
+      "name": "verbose",
+      "short": "v",
+      "takesValue": false
+    },
+    {
+      "name": "version",
+      "short": "V",
+      "takesValue": false,
+      "argv1Only": true
+    },
+    {
+      "name": "install-missing",
+      "takesValue": "optional"
+    },
+    {
+      "name": "help",
+      "short": "?",
+      "takesValue": false,
+      "argv1Only": true
+    }
+  ],
+  "abbreviations": [
+    {
+      "prefix": "a",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "al",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "d",
+      "outcome": "value"
+    },
+    {
+      "prefix": "da",
+      "outcome": "value"
+    },
+    {
+      "prefix": "e",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ec",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ech",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "en",
+      "outcome": "value"
+    },
+    {
+      "prefix": "end",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ex",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exc",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "excl",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclu",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclud",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude-d",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-da",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-i",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-in",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-r",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-re",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-s",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-sc",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-t",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "exclude-ta",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-tab",
+      "outcome": "value"
+    },
+    {
+      "prefix": "exclude-to",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "exclude-toa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "h",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "he",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "hea",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ho",
+      "outcome": "host"
+    },
+    {
+      "prefix": "hos",
+      "outcome": "host"
+    },
+    {
+      "prefix": "i",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "in",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "ind",
+      "outcome": "value"
+    },
+    {
+      "prefix": "inde",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ins",
+      "outcome": "optional"
+    },
+    {
+      "prefix": "inst",
+      "outcome": "optional"
+    },
+    {
+      "prefix": "j",
+      "outcome": "value"
+    },
+    {
+      "prefix": "jo",
+      "outcome": "value"
+    },
+    {
+      "prefix": "m",
+      "outcome": "string"
+    },
+    {
+      "prefix": "ma",
+      "outcome": "string"
+    },
+    {
+      "prefix": "n",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-d",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-de",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-dep",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-depe",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-depen",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-depend",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-depende",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-dependen",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-dependent",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-dependent-",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "no-dependent-i",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-dependent-in",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-dependent-t",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-dependent-to",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-p",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-pa",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-s",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "no-st",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "o",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "on",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "p",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "pa",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "par",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "pare",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "pas",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "pass",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "po",
+      "outcome": "value"
+    },
+    {
+      "prefix": "por",
+      "outcome": "value"
+    },
+    {
+      "prefix": "pr",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "pro",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "r",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "re",
+      "outcome": "value"
+    },
+    {
+      "prefix": "rel",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ro",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "roo",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "s",
+      "outcome": "ambiguous"
+    },
+    {
+      "prefix": "sc",
+      "outcome": "value"
+    },
+    {
+      "prefix": "sch",
+      "outcome": "value"
+    },
+    {
+      "prefix": "sk",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ski",
+      "outcome": "value"
+    },
+    {
+      "prefix": "st",
+      "outcome": "value"
+    },
+    {
+      "prefix": "sta",
+      "outcome": "value"
+    },
+    {
+      "prefix": "t",
+      "outcome": "value"
+    },
+    {
+      "prefix": "ta",
+      "outcome": "value"
+    },
+    {
+      "prefix": "u",
+      "outcome": "value"
+    },
+    {
+      "prefix": "us",
+      "outcome": "value"
+    },
+    {
+      "prefix": "v",
+      "outcome": "flag"
+    },
+    {
+      "prefix": "ve",
+      "outcome": "flag"
+    }
+  ]
+}
