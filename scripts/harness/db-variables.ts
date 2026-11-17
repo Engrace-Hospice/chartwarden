@@ -107,6 +107,17 @@ export function expandVariables(
   return { texts, unplaceable: texts.some((text) => HAS_EXPANSION.test(text)) };
 }
 
+/**
+ * A fill-in the shell rewrites or supplies and the variable tracker cannot place (wave 12, F-3; R9-ADV-11): a parameter expansion that is
+ * more than a bare `${NAME}` (`${P/x/1@host}`, `${P//x/y}`, `${P/#x/y}`, `${P#x}`, `${P%x}`, `${P^^}`, `${P,,}`, `${P:1:2}`, `${P@Q}`, `${#P}`,
+ * `${1}`), a positional parameter (`$1`, `$@`, `$*`: a function builds the URI from its arguments and the caller supplies `1@host`), or a
+ * brace expansion the lexer left whole (`?{host=H,a=b}`, `{a,host=H}`, `{1..3}`). Inside a URI, a connection string or a database name any
+ * of them can supply `@host`, `?host=H` or `host=H`.
+ */
+const REWRITING_FILL_IN =
+  /\$\{[A-Za-z_]\w*[^}\w]|\$\{[^A-Za-z_}]|\$[0-9@*]|\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}/;
+export const holdsRewritingFillIn = (text: string): boolean => REWRITING_FILL_IN.test(text);
+
 /** A `$( … )` or backtick substitution without a nested one. */
 const SUBSTITUTION = /\$\([^()]*\)|`[^`]*`/g;
 const HAS_SUBSTITUTION = /\$\(|`/;
@@ -130,6 +141,7 @@ export function holdsUnplacedFill(
   text: string,
   values: ReadonlyMap<string, readonly string[]>,
 ): boolean {
+  if (holdsRewritingFillIn(text)) return true;
   if (!HAS_EXPANSION.test(text)) return false;
   if (HAS_SUBSTITUTION.test(text)) return true;
   return [...withoutUriPath(text).matchAll(VARIABLE_REFERENCE)].some((m) =>
