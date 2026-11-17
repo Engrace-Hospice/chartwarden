@@ -476,8 +476,9 @@ describe("pre-tool-guard --codex — the 2026-11-09 adversarial review", () => {
       ]) {
         // Wave 10 (A9) and wave 11 (C9): `kubectl exec|debug|run` opens a session on another machine and asks (Codex: denies) whatever it runs,
         // so these rows are no longer allowed outright; what this test pins is that the INTERACTIVE-shell rule does not fire for them.
-        // (`docker --context prod` asks as well since wave 11: the row names the local `default` context.)
-        if (/^kubectl\b.*\b(?:exec|debug|run)\b/.test(command)) {
+        // (`docker --context prod` asks as well since wave 11: the row names the local `default` context.) Wave 12 (E2-4): `podman --connection prod`
+        // points podman at another machine and asks (Codex: denies) like `docker --context prod`; the same is pinned for it.
+        if (/^kubectl\b.*\b(?:exec|debug|run)\b|^podman\s+--connection\s+prod\b/.test(command)) {
           expect(JSON.stringify(shell(command).out ?? ""), command).not.toContain(
             "interactive shell",
           );

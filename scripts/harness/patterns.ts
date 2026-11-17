@@ -933,6 +933,7 @@ function nestedCommandVerdicts(
     const inside = nested.workdir === undefined ? here : runIn(here, nested.workdir, ctx);
     verdicts.push(judge(nested.text, ctx, depth + 1, inside));
     if (nested.unplaced !== undefined) verdicts.push(ask(UNPLACED_WRAPPER_REASON(nested.unplaced)));
+    if (nested.asks !== undefined) verdicts.push(ask(nested.asks));
   }
   verdicts.push(...gitExecVerdicts(parsed, ctx, depth, here));
   verdicts.push(...awkProgramVerdicts(prog, args, ctx, depth, here));
@@ -1046,7 +1047,11 @@ function judgePart(index: number, walk: Walk, input: WalkInput): void {
   if (v) walk.verdicts.push(v);
   if (parsed.unplaced !== undefined)
     walk.verdicts.push(ask(UNPLACED_WRAPPER_REASON(parsed.unplaced)));
-  const remote = remoteAccessReason(parsed.prog, parsed.args, parsed.assigns);
+  // The engine's variables count whether the command sets them or an earlier statement exported them (`export DOCKER_HOST=ssh://H; docker exec …`).
+  const remote = remoteAccessReason(parsed.prog, parsed.args, [
+    ...variableStatements,
+    ...parsed.assigns,
+  ]);
   if (remote !== null) walk.verdicts.push(ask(remote));
   // A SQL client's own shell escapes and file commands (`sqlite3 .shell`, `psql \\!`, `mysql system`).
   walk.verdicts.push(

@@ -6,7 +6,7 @@
  * and the stdin the segment is fed (a here-string, a heredoc, a pipe from `echo`) is handed to the command that really reads it, so a
  * client's `\c host=H` is seen behind a `docker exec -i` (R8-CR-5). Pure.
  */
-import { containerCommand } from "./container-run";
+import { containerCommand, hiddenEnvFileReason } from "./container-run";
 import { shellCommandStrings } from "./shell-command-string";
 import { COMMAND_SHELLS } from "./shell-command-string";
 import { withStdin } from "./stdin-texts";
@@ -19,6 +19,8 @@ export interface NestedText {
   readonly workdir?: string;
   /** A question the guard asks instead of guessing (a container option it cannot place), phrased as the words after "after `". */
   readonly unplaced?: string;
+  /** A reason the guard asks outright (an env-file whose content it cannot see). */
+  readonly asks?: string;
 }
 
 /** `eval -- CMD`: the arguments are the command line; a leading `--` ends eval's options. */
@@ -55,7 +57,12 @@ export function nestedTexts(
       ...(behind.unplaced === undefined
         ? {}
         : { unplaced: `${prog} ${behind.verb} ${behind.unplaced}` }),
+      ...(behind.hiddenEnvFile === undefined ? {} : { asks: hiddenEnvFileReason(prog, behind) }),
     });
+    // An env-file the guard cannot see sets variables even for the image's own command: the ask stands without a command behind it.
+    if (behind.command === "" && behind.hiddenEnvFile !== undefined) {
+      out.push({ text: "", asks: hiddenEnvFileReason(prog, behind) });
+    }
   }
   // A command run in a container that mounts the repo: its paths read as the host's.
   const mounted = containerRun(prog, args);
