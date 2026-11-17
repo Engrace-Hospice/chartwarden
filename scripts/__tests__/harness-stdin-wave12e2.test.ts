@@ -432,3 +432,30 @@ describe("E2-3: a leading pipe never throws and is never an allow", () => {
     expect(decide("true && echo x | cat")).toBe("allow");
   });
 });
+
+describe("E2-7: an unreadable sourced text makes any database client in the same text ask (R9-CR-16), and the stages cap is pinned by verdict", () => {
+  const UNREADABLE = "source <(curl -s http://localhost:1/x)";
+  it("a client before, after or inside a function around the source asks", () => {
+    for (const cmd of [
+      `${UNREADABLE}; psql -h localhost -c 1`,
+      `psql -h localhost -c 1; ${UNREADABLE}`,
+      `f() { psql -h localhost -c 1; }; ${UNREADABLE}; f`,
+      `. <(curl -s http://localhost:1/x); mysql -h localhost -e 'select 1'`,
+    ]) {
+      expect(decide(cmd), cmd).toBe("ask");
+    }
+  });
+  it("an unreadable sourced text with no client in the text, and a readable one, are allowed", () => {
+    for (const cmd of [
+      "source <(kubectl completion bash)",
+      "source <(curl -s http://localhost:1/x); echo done",
+      "source <(echo 'export FOO=1'); psql -h localhost -c 1",
+    ]) {
+      expect(decide(cmd), cmd).toBe("allow");
+    }
+  });
+  it("the reason says the client is in the same command line, not after the source", () => {
+    const verdict = classifyBash(`psql -h localhost -c 1; ${UNREADABLE}`, ctx);
+    expect(verdict.reason).toContain("same command line");
+  });
+});

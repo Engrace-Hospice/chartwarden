@@ -1264,12 +1264,13 @@ const SOURCE_READERS: SourceReaders = {
 };
 
 const SOURCED_UNREADABLE_REASON =
-  "A database client follows a `source <( … )` whose text the guard cannot read: the sourced text may have set the host (PGHOST, DATABASE_URL) the client reads. A human decides.";
+  "A database client is in the same command line as a `source <( … )` whose text the guard cannot read: the sourced text may have set the host (PGHOST, DATABASE_URL) the client reads. A human decides.";
 
 /**
  * The variable statements in scope for a text: those around it, its own, those a `source <( … )` / `source /dev/stdin` text sets
- * (`source-carry.ts`, R8-ADV-12), and the names it binds by a form that puts an unknown value there. A database client after a
- * sourced text the guard cannot read asks.
+ * (`source-carry.ts`, R8-ADV-12), and the names it binds by a form that puts an unknown value there. When a sourced text cannot be read
+ * (`source <(curl …)`), ANY database client in the same text asks, whether it stands before or after the `source`: the statements are tracked for
+ * the whole text without order, and a function body defined before the `source` runs after it (R9-CR-16: the comment said "after").
  */
 function textVariableStatements(
   c: string,
