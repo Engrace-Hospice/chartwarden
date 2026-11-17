@@ -13,7 +13,7 @@
 // caller READ (a 409 STALE_VERSION means the row moved under you — reload, never retry blind). The server stays the only
 // authorization point: nothing here decides what a caller may see.
 import { envelopeErrorMessage } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
+import type { ApiClient, operations } from "@chartwarden/ui";
 
 // ── wire shapes (mirror of the §4.1 response DTOs) ─────────────────────────────────────────────────────
 
@@ -25,21 +25,20 @@ export interface CursorPage<T> {
   total_count?: number;
 }
 
-export interface PlanListItem {
-  planId: string;
-  patientId: string;
-  admissionId: string;
-  providerEntityId: string;
-  locationId: string;
-  kind: string;
-  status: string;
-  nextSupervisoryDueAt: string | null;
-  initialAssessmentClockStartedAt: string | null;
-  initialAssessmentSignedAt: string | null;
-  spiritualCareDeclinedAt: string | null;
-  updatedAt: string;
-  version: number;
-}
+type Json<T> = T extends { content: { "application/json": infer Body } } ? Body : never;
+type Ok<Operation> = Operation extends { responses: { 200: infer Response } }
+  ? Json<Response>
+  : never;
+type Ok201<Operation> = Operation extends { responses: { 201: infer Response } }
+  ? Json<Response>
+  : never;
+type RequestBody<Operation> = Operation extends { requestBody: infer Body } ? Json<Body> : never;
+
+/** Generated from the authoritative OpenAPI response for route 1. */
+export type PlanListPage = Ok<operations["getApiV1Disciplineplans"]>;
+export type PlanListItem = PlanListPage["data"][number];
+export type OpenVersionInput = RequestBody<operations["postApiV1DisciplineplansByPlanIdVersions"]>;
+export type OpenVersionResult = Ok201<operations["postApiV1DisciplineplansByPlanIdVersions"]>;
 
 export interface GoalView {
   goalId: string;
@@ -258,10 +257,25 @@ export function errorMessage(error: unknown, fallback: string): string {
 export async function listPlans(
   client: ApiClient,
   query: { patientId?: string; kind?: string; status?: string; limit?: number },
-): Promise<{ page: CursorPage<PlanListItem> | null; error: unknown }> {
+): Promise<{ page: PlanListPage | null; error: unknown }> {
   const res = await client.GET("/api/v1/discipline-plans", { params: { query } } as never);
   if (res.error) return { page: null, error: res.error };
-  return { page: res.data as unknown as CursorPage<PlanListItem>, error: null };
+  return { page: res.data ?? null, error: null };
+}
+
+/** Route 6 — open the first draft or the next clinician-authored interim revision. */
+export async function openPlanVersion(
+  client: ApiClient,
+  planId: string,
+  planVersion: number,
+  body: OpenVersionInput,
+): Promise<{ version: OpenVersionResult | null; error: unknown }> {
+  const res = await client.POST("/api/v1/discipline-plans/{planId}/versions", {
+    params: { path: { planId }, header: writeHeaders(planVersion) },
+    body,
+  } as never);
+  if (res.error) return { version: null, error: res.error };
+  return { version: res.data as OpenVersionResult, error: null };
 }
 
 /** Route 2 — the full plan, already SQL-filtered by the §7.8/§7.9 gates. */

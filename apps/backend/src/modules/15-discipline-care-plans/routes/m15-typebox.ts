@@ -32,6 +32,7 @@ import type {
   VolunteerEffectiveStatusView,
 } from "./read-service";
 import type { VolunteerHourEntryView } from "./write-service";
+import type { OpenDisciplinePlanVersionView } from "./write-service";
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -70,6 +71,20 @@ export const PlanKind = Type.Union([
   Type.Literal("msw_plan"),
   Type.Literal("spiritual_plan"),
   Type.Literal("volunteer_plan"),
+]);
+
+/** `discipline_plan_version_kind` (§3.2). */
+export const VersionKind = Type.Union([
+  Type.Literal("initial"),
+  Type.Literal("idg_review"),
+  Type.Literal("interim_revision"),
+  Type.Literal("discharge"),
+]);
+
+/** The human-authored subset accepted by `POST .../versions`. */
+export const OpenVersionKind = Type.Union([
+  Type.Literal("initial"),
+  Type.Literal("interim_revision"),
 ]);
 
 /** `discipline_goal_source` (§3.2). */
@@ -155,6 +170,12 @@ export const SupervisoryCadenceQuerySchema = Type.Object({
 });
 
 // ── request bodies (§4.2) ───────────────────────────────────────────────────────────────────────────
+
+/** Route 6 — open the first draft or the next interim authoring revision. */
+export const OpenVersionBody = Type.Object({
+  kind: OpenVersionKind,
+  reason: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+});
 
 /** Route 6 — the tenant may TIGHTEN the D11 quorum; the pure resolver refuses a loosening set. */
 export const FinalizeVersionBody = Type.Object({
@@ -361,6 +382,29 @@ const cursorPage = <T extends TSchema>(item: T) =>
 const RedactedCategorySchema = Type.Union([Type.Literal("sud"), Type.Literal("family_violence")]);
 
 /** Route 1 — a plan as the worklist sees it. */
+const DisciplinePlanActionSummaryResponseSchema = Type.Object({
+  openVersion: Type.Union([
+    Type.Object({
+      versionId: Str,
+      sequence: Int,
+      status: Type.Union([Type.Literal("draft"), Type.Literal("in_review")]),
+      kind: Type.Union([
+        Type.Literal("initial"),
+        Type.Literal("interim_revision"),
+        Type.Literal("idg_review"),
+      ]),
+    }),
+    Type.Null(),
+  ]),
+  latestSignedVersion: Type.Union([
+    Type.Object({ versionId: Str, sequence: Int, signedAt: Str }),
+    Type.Null(),
+  ]),
+  missingSignerRoles: Type.Array(Str),
+  ownerMembershipIds: Type.Array(Str),
+  idgDecisionId: StrN,
+});
+
 export const DisciplinePlanListItemResponseSchema = Type.Object({
   planId: Str,
   patientId: Str,
@@ -375,6 +419,7 @@ export const DisciplinePlanListItemResponseSchema = Type.Object({
   spiritualCareDeclinedAt: StrN,
   updatedAt: Str,
   version: Int,
+  actionSummary: DisciplinePlanActionSummaryResponseSchema,
 });
 
 /** A `discipline_goal` row on the full-plan read. */
@@ -470,11 +515,22 @@ export const DisciplinePlanVersionListItemResponseSchema = Type.Object({
   planId: Str,
   sequence: Int,
   status: Str,
-  kind: PlanKind,
+  kind: VersionKind,
   idgMeetingId: StrN,
   finalizedAt: StrN,
   signedAt: StrN,
   supersededAt: StrN,
+  version: Int,
+});
+
+/** Route 6 — the new draft identity; clinical content and signer sets do not exist yet. */
+export const OpenDisciplinePlanVersionResponseSchema = Type.Object({
+  versionId: Str,
+  planId: Str,
+  sequence: Int,
+  status: Type.Literal("draft"),
+  kind: OpenVersionKind,
+  createdAt: Str,
   version: Int,
 });
 
@@ -519,6 +575,7 @@ export const DisciplinePlanDetailResponseSchema = Type.Object({
   spiritualCareDeclinedAt: StrN,
   updatedAt: Str,
   version: Int,
+  actionSummary: DisciplinePlanActionSummaryResponseSchema,
   aideMembershipId: StrN,
   supervisingRnMembershipId: StrN,
   supervisoryCadenceDaysOverride: Type.Union([Int, Type.Null()]),
@@ -678,6 +735,10 @@ type _VersionListItem = Conforms<
 type _VersionDetail = Conforms<
   Static<typeof DisciplinePlanVersionDetailResponseSchema>,
   DisciplinePlanVersionDetail
+>;
+type _OpenVersion = Conforms<
+  Static<typeof OpenDisciplinePlanVersionResponseSchema>,
+  OpenDisciplinePlanVersionView
 >;
 type _Goal = Conforms<Static<typeof DisciplineGoalViewResponseSchema>, DisciplineGoalView>;
 type _Intervention = Conforms<

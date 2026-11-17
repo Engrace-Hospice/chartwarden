@@ -142,6 +142,39 @@ export function checkAuthoringDiscipline(
   );
 }
 
+/**
+ * The plan-kind form of `discipline_scope` for routes whose subject discipline is derived from the
+ * server-loaded plan rather than supplied in the request. The RN case-manager role is the platform alias
+ * for the RN discipline; the IDG coordinator remains the sole cross-discipline exception. The Clinical
+ * Supervisor override is intentionally absent: it requires a documented reason and RN re-sign workflow.
+ */
+export function checkPlanKindAuthoringScope(
+  kind: DisciplinePlanKind,
+  roles: readonly string[],
+): void {
+  if (roles.includes("idg_coordinator")) return;
+  const disciplines = new Set<DisciplineAuthorRole>();
+  for (const role of roles) {
+    if (role === "rn_case_manager") {
+      disciplines.add("rn");
+    } else if (
+      role === "rn" ||
+      role === "lpn" ||
+      role === "chha" ||
+      role === "msw" ||
+      role === "chaplain" ||
+      role === "volunteer_coordinator"
+    ) {
+      disciplines.add(role);
+    }
+  }
+  require_(
+    PLAN_KIND_AUTHOR_DISCIPLINES[kind].some((discipline) => disciplines.has(discipline)),
+    "DISCIPLINE_SCOPE_VIOLATION",
+    `actor may not author a '${kind}' discipline plan`,
+  );
+}
+
 /** §2.3 — an intervention must carry a machine-readable frequency (`frequency_value NOT NULL`). */
 export function checkInterventionFrequency(frequencyValue: string | null | undefined): void {
   require_(

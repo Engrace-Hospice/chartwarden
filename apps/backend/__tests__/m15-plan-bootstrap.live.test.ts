@@ -41,8 +41,11 @@ import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
 import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
 import {
   M15_OUTBOX_EVENTS,
+  buildDrizzleM15ReadService,
+  buildDrizzleM15WriteService,
   buildM15PlanBootstrapConsumer,
 } from "../src/modules/15-discipline-care-plans/index";
+import type { M15WriteActor } from "../src/modules/15-discipline-care-plans/routes/actor";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
@@ -84,6 +87,7 @@ describe.skipIf(!DB_URL)("F-103 — M15 bootstraps the three CoP plans, LIVE Pos
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbAdmissionRouteService>;
   let dispatcher: ReturnType<typeof createOutboxDispatcher>;
+  let disciplineWrites: ReturnType<typeof buildDrizzleM15WriteService>;
   const providerOf: Record<string, string> = {};
   const locationOf: Record<string, string> = {};
 
@@ -121,6 +125,31 @@ describe.skipIf(!DB_URL)("F-103 — M15 bootstraps the three CoP plans, LIVE Pos
     );
     return rows as { organization_id: string; payload: Record<string, unknown> }[];
   }
+  async function planIdFor(admissionId: string, kind: string): Promise<string> {
+    const { rows } = await admin.query(
+      "SELECT id FROM discipline_care_plan WHERE admission_id=$1 AND kind=$2",
+      [admissionId, kind],
+    );
+    return rows[0]?.id as string;
+  }
+  async function versionsFor(planId: string) {
+    const { rows } = await admin.query(
+      `SELECT sequence, status, kind, state_snapshot, required_signer_set
+         FROM discipline_care_plan_version WHERE plan_id=$1 ORDER BY sequence`,
+      [planId],
+    );
+    return rows;
+  }
+  const author = (organizationId: string): M15WriteActor => ({
+    organizationId,
+    userId: USER,
+    membershipId: USER,
+    roles: ["msw"],
+    sessionClass: "staff",
+    actorKind: "user",
+    locationIds: [],
+    stepUpRecent: false,
+  });
 
   /** The §418.24 chain through the REAL write service, to an ACTIVE admission. */
   async function activeAdmission(org: string, patientId: string): Promise<string> {
@@ -199,6 +228,9 @@ describe.skipIf(!DB_URL)("F-103 — M15 bootstraps the three CoP plans, LIVE Pos
     await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     registerM5IntakeSeams(handle.db); // M5 intake seams M6 conversion + readiness consult
+    disciplineWrites = buildDrizzleM15WriteService(handle.db, {
+      isInCaseload: async () => true,
+    });
 
     const catalog = buildBootOutboxCatalog([
       M6_OUTBOX_EVENTS,
@@ -373,5 +405,84 @@ describe.skipIf(!DB_URL)("F-103 — M15 bootstraps the three CoP plans, LIVE Pos
       expect(p.organization_id).toBe(ORG_B);
       expect(p.provider_entity_id).toBe(providerOf[ORG_B]);
     }
+  });
+
+  it("opens an initial version on demand as the NOBYPASSRLS app role", async () => {
+    const admissionId = await activeAdmission(ORG_A, randomUUID());
+    await dispatcher.tick();
+    const planId = await planIdFor(admissionId, "msw_plan");
+
+    const opened = await disciplineWrites.openVersion(author(ORG_A), planId, {
+      expectedVersion: 0,
+      kind: "initial",
+    });
+
+    expect(opened).toMatchObject({ planId, sequence: 1, status: "draft", kind: "initial" });
+    expect(await versionsFor(planId)).toEqual([
+      expect.objectContaining({
+        sequence: "1",
+        status: "draft",
+        kind: "initial",
+        state_snapshot: null,
+        required_signer_set: null,
+      }),
+    ]);
+
+    const reads = buildDrizzleM15ReadService(handle.db, {
+      caseload: { isInCaseload: async () => true },
+    });
+    const page = await reads.listPlans(author(ORG_A), { admissionId, limit: 10 });
+    const row = page.data.find((candidate) => candidate.planId === planId);
+    expect(row?.actionSummary).toEqual({
+      openVersion: {
+        versionId: opened.versionId,
+        sequence: 1,
+        status: "draft",
+        kind: "initial",
+      },
+      latestSignedVersion: null,
+      missingSignerRoles: [],
+      ownerMembershipIds: [],
+      idgDecisionId: null,
+    });
+  });
+
+  it("keeps a cross-tenant plan id indistinguishable from an absent plan", async () => {
+    const admissionId = await activeAdmission(ORG_A, randomUUID());
+    await dispatcher.tick();
+    const planId = await planIdFor(admissionId, "msw_plan");
+
+    await expect(
+      disciplineWrites.openVersion(author(ORG_B), planId, {
+        expectedVersion: 0,
+        kind: "initial",
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND", statusCode: 404 });
+    expect(await versionsFor(planId)).toHaveLength(0);
+  });
+
+  it("serializes concurrent opens so exactly one initial draft exists", async () => {
+    const admissionId = await activeAdmission(ORG_A, randomUUID());
+    await dispatcher.tick();
+    const planId = await planIdFor(admissionId, "msw_plan");
+
+    const attempts = await Promise.allSettled([
+      disciplineWrites.openVersion(author(ORG_A), planId, {
+        expectedVersion: 0,
+        kind: "initial",
+      }),
+      disciplineWrites.openVersion(author(ORG_A), planId, {
+        expectedVersion: 0,
+        kind: "initial",
+      }),
+    ]);
+
+    expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(1);
+    const rejected = attempts.find((attempt) => attempt.status === "rejected");
+    expect(rejected?.status === "rejected" ? rejected.reason : null).toMatchObject({
+      code: "STALE_VERSION",
+      statusCode: 409,
+    });
+    expect(await versionsFor(planId)).toHaveLength(1);
   });
 });

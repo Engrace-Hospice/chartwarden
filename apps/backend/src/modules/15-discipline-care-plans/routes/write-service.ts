@@ -21,6 +21,28 @@ import type {
   VolunteerComplianceGateView,
 } from "./read-service";
 
+/** The two human-authored version kinds exposed by `POST .../versions`. */
+export type OpenDisciplinePlanVersionKind = "initial" | "interim_revision";
+
+/** Route 6 — open the first draft or the next authoring revision. */
+export interface OpenVersionInput {
+  readonly expectedVersion: number;
+  readonly kind: OpenDisciplinePlanVersionKind;
+  /** Optional non-PHI reason label; deliberately not persisted or logged. */
+  readonly reason?: string;
+}
+
+/** The intentionally small creation response; snapshots and signer sets do not exist until finalize. */
+export interface OpenDisciplinePlanVersionView {
+  readonly versionId: string;
+  readonly planId: string;
+  readonly sequence: number;
+  readonly status: "draft";
+  readonly kind: OpenDisciplinePlanVersionKind;
+  readonly createdAt: string;
+  readonly version: number;
+}
+
 /** A §2.4 `m15.*` transactional-outbox emission. PHI-free by construction (§8.1 payload scrubbing).
  *
  * F-103 — `organizationId` was ABSENT from this shape and from all six emit sites. `outbox_event`
@@ -249,6 +271,11 @@ export interface M15WriteService {
    * plan is absent / cross-tenant (the gate turns that into a 404, never an allow).
    */
   planPatientId(actor: M15ReadActor, planId: string): Promise<string | null>;
+  openVersion(
+    actor: M15WriteActor,
+    planId: string,
+    input: OpenVersionInput,
+  ): Promise<OpenDisciplinePlanVersionView>;
   finalizeVersion(
     actor: M15WriteActor,
     planId: string,

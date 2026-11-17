@@ -251,6 +251,7 @@ import {
   FinalizeVersionBody as M15FinalizeVersionBody,
   GateListQuerySchema as M15GateListQuerySchema,
   HourRatioQuerySchema as M15HourRatioQuerySchema,
+  OpenVersionBody as M15OpenVersionBody,
   PlanListQuerySchema as M15PlanListQuerySchema,
   RelevantElementsQuerySchema as M15RelevantElementsQuerySchema,
   RevokeVolunteerGateBody as M15RevokeVolunteerGateBody,
@@ -1240,6 +1241,7 @@ import {
   DisciplinePlanVersionDetailResponseSchema as M15DisciplinePlanVersionDetailResponseSchema,
   DisciplinePlanVersionListPageResponseSchema as M15DisciplinePlanVersionListPageResponseSchema,
   MswRiskFactorPageResponseSchema as M15MswRiskFactorPageResponseSchema,
+  OpenDisciplinePlanVersionResponseSchema as M15OpenDisciplinePlanVersionResponseSchema,
   RelevantElementsPageResponseSchema as M15RelevantElementsPageResponseSchema,
   SupervisoryCadencePageResponseSchema as M15SupervisoryCadencePageResponseSchema,
   VolunteerAssignmentViewResponseSchema as M15VolunteerAssignmentViewResponseSchema,
@@ -8110,6 +8112,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "One version with its sealed state snapshot, frozen D11 quorum and collected signatures (§4.1 #5)",
     response: M15DisciplinePlanVersionDetailResponseSchema,
+  },
+  "POST /api/v1/discipline-plans/:planId/versions": {
+    summary:
+      "Open the first draft or the next interim revision; IDG-review and discharge versions remain system-owned",
+    body: M15OpenVersionBody,
+    response: M15OpenDisciplinePlanVersionResponseSchema,
+    status: 201,
   },
   "POST /api/v1/discipline-plans/:planId/versions/:versionId/finalize": {
     summary:

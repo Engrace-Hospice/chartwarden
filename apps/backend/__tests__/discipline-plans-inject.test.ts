@@ -173,6 +173,18 @@ function createM15Backend(): {
     spiritualCareDeclinedAt: null,
     updatedAt: NOW,
     version: 1,
+    actionSummary: {
+      openVersion: {
+        versionId: VERSION,
+        sequence: 1,
+        status: "draft",
+        kind: "initial",
+      },
+      latestSignedVersion: null,
+      missingSignerRoles: [],
+      ownerMembershipIds: [AIDE_MEMBERSHIP, RN_MEMBERSHIP],
+      idgDecisionId: null,
+    },
     aideMembershipId: AIDE_MEMBERSHIP,
     supervisingRnMembershipId: RN_MEMBERSHIP,
     supervisoryCadenceDaysOverride: null,
@@ -484,6 +496,38 @@ function createM15Backend(): {
   const writeService: M15WriteService = {
     async planPatientId(_actor, planId) {
       return plans.get(planId)?.patientId ?? null;
+    },
+    async openVersion(_actor, planId, input) {
+      const plan = plans.get(planId);
+      if (!plan) throw new NotFoundError("discipline plan not found");
+      const versionId = `abababab-abab-4bab-8bab-${String(versions.size + 1).padStart(12, "0")}`;
+      const sequence =
+        [...versions.values()].filter((version) => version.planId === planId).length + 1;
+      const row: VersionRow = {
+        versionId,
+        planId,
+        sequence,
+        status: "draft",
+        kind: input.kind,
+        idgMeetingId: null,
+        finalizedAt: null,
+        signedAt: null,
+        supersededAt: null,
+        version: 0,
+        stateSnapshot: null,
+        requiredSignerSet: null,
+        signatures: [],
+      };
+      versions.set(versionId, row);
+      return {
+        versionId,
+        planId,
+        sequence,
+        status: "draft",
+        kind: input.kind,
+        createdAt: NOW,
+        version: 0,
+      };
     },
     async finalizeVersion(_actor, _planId, versionId, input) {
       const row = versions.get(versionId);
@@ -904,6 +948,72 @@ describe("M15 route smoke — the M1 boundary", () => {
     expect(res.statusCode).toBe(422);
     await app.close();
   });
+
+  it("requires If-Match before opening a version", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/discipline-plans/${PLAN}/versions`,
+      headers: { ...SUPER_HEADERS, "idempotency-key": "open-no-if-match" },
+      payload: { kind: "interim_revision" },
+    });
+    expect(res.statusCode).toBe(428);
+    expect(res.json().error.code).toBe("IF_MATCH_REQUIRED");
+    await app.close();
+  });
+
+  it("refuses system-owned version kinds on the authoring route", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/discipline-plans/${PLAN}/versions`,
+      headers: {
+        ...SUPER_HEADERS,
+        "idempotency-key": "open-idg-review",
+        "if-match": "1",
+      },
+      payload: { kind: "idg_review" },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("VALIDATION_FAILED");
+    await app.close();
+  });
+
+  it("permission-gates version creation before plan facts are disclosed", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/discipline-plans/${PLAN}/versions`,
+      headers: {
+        ...NONE_HEADERS,
+        "idempotency-key": "open-without-grant",
+        "if-match": "1",
+      },
+      payload: { kind: "interim_revision" },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("replays a successful open through the platform idempotency middleware", async () => {
+    const { app } = makeServer();
+    const request = {
+      method: "POST" as const,
+      url: `/api/v1/discipline-plans/${PLAN}/versions`,
+      headers: {
+        ...SUPER_HEADERS,
+        "idempotency-key": "open-replay",
+        "if-match": "1",
+      },
+      payload: { kind: "interim_revision" },
+    };
+    const first = await app.inject(request);
+    const replay = await app.inject(request);
+    expect(first.statusCode).toBe(201);
+    expect(replay.statusCode).toBe(201);
+    expect(replay.json()).toEqual(first.json());
+    await app.close();
+  });
 });
 
 // ── one legitimately-authorized 2xx call per route (the bulk of the file) ──────────────────────────────
@@ -958,6 +1068,14 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // 6–7 — the version finalize / sign ladder.
+  {
+    label: "6 POST .../versions",
+    method: "POST",
+    url: `/api/v1/discipline-plans/${PLAN}/versions`,
+    headers: { ...SUPER_HEADERS, ...IDEMP("k-open-version"), ...IFM },
+    payload: { kind: "interim_revision" },
+    expectStatus: 201,
+  },
   {
     label: "6 POST .../versions/:versionId/finalize",
     method: "POST",

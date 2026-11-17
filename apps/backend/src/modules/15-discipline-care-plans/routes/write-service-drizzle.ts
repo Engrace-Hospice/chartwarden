@@ -43,14 +43,17 @@ import {
   checkGoalTextVerbatim,
   checkInterventionFrequency,
   checkOptimisticConcurrency,
+  checkPlanKindAuthoringScope,
   checkPlanWritable,
   computeNextSupervisoryDueAt,
   decideRecordSignature,
   decideRecordSupervisoryVisit,
+  openDisciplinePlanVersion,
   resolveRequiredSignerSet,
   transitionDisciplineAssessment,
   transitionDisciplineGoal,
   transitionDisciplineIntervention,
+  transitionDisciplinePlan,
   transitionDisciplinePlanVersion,
 } from "../lifecycle/index";
 import {
@@ -85,6 +88,8 @@ import type {
   DisclosureGate,
   FinalizeVersionInput,
   M15WriteService,
+  OpenDisciplinePlanVersionView,
+  OpenVersionInput,
   OutboxEmission,
   RevokeVolunteerGateInput,
   SignAssessmentInput,
@@ -99,6 +104,8 @@ import type {
 } from "./write-service";
 
 const SIGNER_SLOT_UNIQUE_INDEX = "discipline_care_plan_signature_version_membership_uq";
+const PLAN_OPEN_UNIQUE_INDEX = "discipline_care_plan_version_plan_open_uq";
+const PLAN_SEQUENCE_UNIQUE_INDEX = "discipline_care_plan_version_plan_sequence_uq";
 const PG_UNIQUE_VIOLATION = "23505";
 
 /**
@@ -121,6 +128,22 @@ function isSignerSlotCollision(err: unknown): boolean {
     String(e?.message ?? "").includes(SIGNER_SLOT_UNIQUE_INDEX) ||
     String(e?.cause?.message ?? "").includes(SIGNER_SLOT_UNIQUE_INDEX)
   );
+}
+
+function uniqueConstraint(err: unknown): string | null {
+  const e = err as {
+    code?: string;
+    constraint?: string;
+    message?: string;
+    cause?: { code?: string; constraint?: string; message?: string };
+  };
+  if ((e?.code ?? e?.cause?.code) !== PG_UNIQUE_VIOLATION) return null;
+  const named = e?.constraint ?? e?.cause?.constraint;
+  if (named) return named;
+  const message = `${e?.message ?? ""} ${e?.cause?.message ?? ""}`;
+  if (message.includes(PLAN_OPEN_UNIQUE_INDEX)) return PLAN_OPEN_UNIQUE_INDEX;
+  if (message.includes(PLAN_SEQUENCE_UNIQUE_INDEX)) return PLAN_SEQUENCE_UNIQUE_INDEX;
+  return null;
 }
 
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
@@ -378,6 +401,115 @@ export function buildDrizzleM15WriteService(
           .limit(1);
         return row?.patientId ?? null;
       });
+    },
+
+    // ── 6 — open an initial version or an interim revision ──────────────────────────────────────────
+    async openVersion(actor, planId, input: OpenVersionInput) {
+      try {
+        return await withOrgContext(db, scope(actor), async (tx) => {
+          // The root is the per-plan serialization point. RLS makes a cross-tenant id lock nothing; the
+          // non-leaking lookup below then answers the same 404 as an absent/off-caseload plan.
+          await tx.execute(
+            sql`select id from discipline_care_plan where id = ${planId} and organization_id = ${actor.organizationId} for update`,
+          );
+          const plan = await planOr404(tx, actor, planId);
+          checkOptimisticConcurrency(input.expectedVersion, plan.version);
+          if (actor.kind !== "system") {
+            checkPlanKindAuthoringScope(plan.kind as DisciplinePlanKind, actor.roles);
+          }
+
+          const versions = await tx
+            .select({ sequence: V.sequence, status: V.status })
+            .from(V)
+            .where(eq(V.planId, planId));
+          const open = versions.some(
+            (version) => version.status === "draft" || version.status === "in_review",
+          );
+
+          let nextPlanStatus = plan.status;
+          if (input.kind === "initial") {
+            if (versions.length > 0) {
+              throw new DisciplinePlanStateError(
+                "VERSION_ALREADY_EXISTS",
+                "an initial version already exists for this plan",
+              );
+            }
+            if (plan.status !== "draft") {
+              throw new DisciplinePlanStateError(
+                "ILLEGAL_TRANSITION",
+                `an initial version cannot be opened from '${plan.status}'`,
+              );
+            }
+          } else {
+            if (open) {
+              throw new DisciplinePlanStateError(
+                "OPEN_VERSION_EXISTS",
+                "the plan already has an open version",
+              );
+            }
+            const transition = transitionDisciplinePlan(plan.status as never, {
+              type: "openNextVersion",
+            });
+            nextPlanStatus = transition.to as typeof plan.status;
+          }
+
+          const opened = openDisciplinePlanVersion(input.kind);
+          const sequence =
+            versions.reduce((max, version) => Math.max(max, version.sequence), 0) + 1;
+          const [created] = await tx
+            .insert(V)
+            .values({
+              ...inherit(plan),
+              planId,
+              sequence,
+              status: opened.status,
+              kind: opened.kind,
+              stateSnapshot: null,
+              requiredSignerSet: null,
+            })
+            .returning();
+          if (!created) throw new NotFoundError("discipline plan version insert failed");
+
+          const [updatedPlan] = await tx
+            .update(P)
+            .set({
+              status: nextPlanStatus,
+              updatedAt: new Date(now()),
+              version: nextVersion(plan.version),
+            })
+            .where(and(eq(P.id, planId), eq(P.version, plan.version)))
+            .returning();
+          if (!updatedPlan) {
+            throw new DisciplinePlanStateError("STALE_VERSION", "the plan changed concurrently");
+          }
+
+          const response: OpenDisciplinePlanVersionView = {
+            versionId: created.id,
+            planId: created.planId,
+            sequence: created.sequence,
+            status: "draft",
+            kind: input.kind,
+            createdAt: iso(created.createdAt),
+            version: created.version,
+          };
+          return response;
+        });
+      } catch (error) {
+        const constraint = uniqueConstraint(error);
+        if (constraint === PLAN_OPEN_UNIQUE_INDEX) {
+          throw new DisciplinePlanStateError(
+            "OPEN_VERSION_EXISTS",
+            "the plan already has an open version",
+          );
+        }
+        if (constraint === PLAN_SEQUENCE_UNIQUE_INDEX) {
+          throw new DisciplinePlanStateError(
+            "VERSION_ALREADY_EXISTS",
+            "a plan version with this sequence already exists",
+          );
+        }
+        throw error;
+      }
     },
 
     // ── 6 — finalize (`draft → in_review`; seals the snapshot + the D11 quorum) ──────────────────────
