@@ -7,18 +7,30 @@
  * in them (libpq removes backslashes of its own in a connection string, so the reader needs both).
  */
 import { LOCAL_HOST } from "./content-scan";
+import { containerHostKind } from "./db-container-hosts";
+import { type Role, readLongOption, readShortOption } from "./db-long-options";
 import { TARGET_CLIENTS, type TargetClient } from "./db-target-clients";
 import { parseConninfo, uriReadings } from "./db-uri";
-import { HAS_EXPANSION, expandVariables, opaqueSubstitutions, valuesByName } from "./db-variables";
+import {
+  HAS_EXPANSION,
+  expandVariables,
+  holdsUnplacedFill,
+  opaqueSubstitutions,
+  valuesByName,
+} from "./db-variables";
 
 /**
  * - `remote`: a host that is not local; the command is refused.
  * - `unparsed`: a target string the reader cannot parse (an open quote, a word libpq would refuse); refused.
  * - `indirect`: the host lives in a service, a password file, a login path or a DSN alias the guard cannot read; a human decides.
  * - `variable`: `$DATABASE_URL`, `"$URL"` or `$(cat f)` in the place of a target could point anywhere; a human decides.
+ * - `alias`: a bare container-network name (`db`, `mysql`, `mongo`) as the host a program is started with: it resolves on a compose
+ *   network, and a resolver search domain could resolve it elsewhere; a human decides (`db-container-hosts.ts`).
+ * - `option`: a long option the guard cannot place (an ambiguous or an unknown abbreviation of the client's own options), so it
+ *   cannot tell whether the word names a host or takes the next word; a human decides.
  */
 export interface DatabaseTarget {
-  readonly kind: "remote" | "unparsed" | "indirect" | "variable";
+  readonly kind: "remote" | "unparsed" | "indirect" | "variable" | "option" | "alias";
   /** The host, the string that did not parse or the name of the indirection. */
   readonly subject: string;
   /** Found in a program's words, not in a client's own options: a human decides instead of a refusal (`db-any-program.ts`). */
@@ -40,6 +52,8 @@ interface Found {
   unparsed: string[];
   indirect: string[];
   variables: string[];
+  options: string[];
+  aliases: string[];
 }
 
 /** A command-line word: what the lexer kept (`raw`) and what the shell would pass on (`shell`: backslashes removed). */
@@ -93,12 +107,17 @@ function unwrapHost(piece: string): string {
 const addHosts = (r: Reader, value: string): void => {
   for (const host of hostsOf(value, r.spec)) {
     if (r.unplacedIsVariable && HAS_EXPANSION.test(host)) r.found.variables.push(host);
-    else r.found.hosts.push(host);
+    else if (r.unplacedIsVariable && containerHostKind(host) === "generic")
+      r.found.aliases.push(host);
+    else if (!(r.unplacedIsVariable && containerHostKind(host) === "project"))
+      r.found.hosts.push(host);
   }
 };
 
 /** `postgres://[userinfo@]host[:port][,host2]/db?host=...&service=...`, read as libpq reads it and as other URL parsers do. */
 function readUri(text: string, r: Reader): void {
+  // A fill-in the guard cannot place can supply the host (`localhost:$(echo 1@H)/db`, `?$(echo host=H)`): a human decides.
+  if (holdsUnplacedFill(text, r.vars)) r.found.variables.push(text);
   const rest = URI.exec(opaqueSubstitutions(text))?.[2] ?? "";
   for (const { hostSection, query } of uriReadings(rest)) {
     if ((hostSection.match(/\[/g) ?? []).length !== (hostSection.match(/\]/g) ?? []).length) {
@@ -125,6 +144,7 @@ function readKeyword(key: string, value: string, r: Reader, depth: number): void
 
 /** A libpq connection string, read by libpq's own grammar. The hosts it names are recorded; true when libpq would accept it. */
 function readConninfo(text: string, r: Reader, depth: number): boolean {
+  if (holdsUnplacedFill(text, r.vars)) r.found.variables.push(text);
   const { pairs, error } = parseConninfo(text);
   for (const [key, value] of pairs) readKeyword(key, value, r, depth);
   // A string whose FIRST word has no `=` (`select 1 where a = 'b'`, handed to a shell function that is called `psql`) is
@@ -214,44 +234,6 @@ function readPositional(word: Word, index: number, r: Reader): void {
   }
 }
 
-type Role = "host" | "string" | "alias" | "indirect" | "value" | "flag";
-
-/** A long option is its name or an unambiguous prefix of two characters or more (three for a plain value option). */
-const prefixOf = (names: readonly string[] | undefined, given: string, minimum: number): boolean =>
-  given.length >= minimum && (names ?? []).some((name) => name.startsWith(given));
-
-/** The long-option tables of a client, in the order they win, with the shortest prefix each accepts. */
-const longTables = (
-  spec: TargetClient,
-): ReadonlyArray<readonly [Role, readonly string[] | undefined, number]> => [
-  ["host", spec.hostLong, 2],
-  ["string", spec.stringLong, 2],
-  ["alias", spec.aliasLong, 2],
-  ["indirect", spec.indirectLong, 3],
-  ["value", spec.valueLong, 3],
-];
-
-/**
- * What a long option is. The exact name of any option wins (an exact flag such as pgbench's `--log` or redis-cli's `--tls`
- * is a flag although it is also the start of `--log-prefix` or `--tls-ciphers`); a client that reads no abbreviations
- * reads nothing else; the rest take an unambiguous prefix, as getopt_long does.
- */
-function longRole(spec: TargetClient, given: string): Role {
-  const tables = longTables(spec);
-  for (const [role, names] of tables) if (names?.includes(given)) return role;
-  if (spec.flagLong?.includes(given) || spec.exactLong) return "flag";
-  for (const [role, names, minimum] of tables) if (prefixOf(names, given, minimum)) return role;
-  return "flag";
-}
-
-function shortRole(spec: TargetClient, letter: string): Role | "attached" {
-  if (spec.hostShort?.includes(letter)) return "host";
-  if (spec.stringShort?.includes(letter)) return "string";
-  if (spec.aliasShort?.includes(letter)) return "alias";
-  if (spec.attachedShort?.includes(letter)) return "attached";
-  return spec.valueShort.includes(letter) ? "value" : "flag";
-}
-
 function takeValue(role: Role, value: Word, r: Reader, name: string): void {
   // `-h postgres://u@HOST/db` is not valid libpq, but it is what the agent means: read it as the URI it is.
   if (role === "host") {
@@ -269,6 +251,25 @@ function takeValue(role: Role, value: Word, r: Reader, name: string): void {
     r.found.indirect.push(`${name}=${value.shell}`);
 }
 
+/**
+ * What a long option of a command line is, with every abbreviation read as getopt_long reads it (`db-long-options.ts`). An
+ * abbreviation the client's table cannot place asks, because the word may be the host option (`createdb --h=HOST`): an
+ * ambiguous one always, an unknown one when the table is proven against the real program (the real program refuses it) or
+ * when a bare word follows it (an unlisted option that may take that word as its value, which would hide it).
+ */
+const PRINTS_AND_EXITS: ReadonlySet<string> = new Set(["help", "version"]);
+
+function placed(r: Reader, given: string, next: Word | undefined, attached: boolean): Role {
+  const read = readLongOption(r.spec, given);
+  if (read !== "ambiguous" && read !== "unknown") return read;
+  // PostgreSQL's programs read `--help` and `--version` from `argv[1]`, not as options: they print and exit, nothing connects.
+  if (read === "unknown" && PRINTS_AND_EXITS.has(given)) return "flag";
+  const hidesWord = !attached && next !== undefined && !next.shell.startsWith("-");
+  if (read === "ambiguous" || r.spec.verified === true || hidesWord)
+    r.found.options.push(`--${given}`);
+  return "flag";
+}
+
 const NO_WORD: Word = { raw: "", shell: "" };
 
 /** The options, their values and the positional words of a command line, in one pass. */
@@ -283,7 +284,7 @@ function scan(r: Reader, words: readonly Word[]): Word[] {
     else if (arg.startsWith("--")) {
       const eq = arg.indexOf("=");
       const given = arg.slice(2, eq < 0 ? undefined : eq);
-      const role = longRole(r.spec, given);
+      const role = placed(r, given, words[k + 1], eq >= 0);
       if (role === "flag") continue;
       const value =
         eq >= 0
@@ -302,7 +303,7 @@ function scanCluster(r: Reader, words: readonly Word[], at: number): number {
   const word = words[at] as Word;
   const arg = word.shell;
   for (let p = 1; p < arg.length; p++) {
-    const role = shortRole(r.spec, arg[p] as string);
+    const role = readShortOption(r.spec, arg[p] as string);
     if (role === "flag") continue;
     if (role === "attached") return at;
     const rest = arg.slice(p + 1);
@@ -330,12 +331,12 @@ function scanAnywhere(r: Reader, words: readonly Word[]): void {
     if (arg.startsWith("--") && arg.length > 2) {
       const eq = arg.indexOf("=");
       const given = arg.slice(2, eq < 0 ? undefined : eq);
-      const role = longRole(spec, given);
+      const role = readLongOption(spec, given);
       if (role !== "host" && role !== "string" && role !== "alias") return;
       const value = eq >= 0 ? wordOf(word.raw.slice(word.raw.indexOf("=") + 1)) : separate;
       if (value !== undefined) takeValue(role, value, r, `--${given}`);
     } else if (arg.length === 2 && arg.startsWith("-") && separate !== undefined) {
-      const role = shortRole(spec, arg[1] as string);
+      const role = readShortOption(spec, arg[1] as string);
       if (role === "host" || role === "string" || role === "alias")
         takeValue(role, separate, r, arg);
     }
@@ -373,7 +374,9 @@ function findingOf(found: Found, variable: string | undefined): DatabaseTarget |
   if (found.unparsed[0] !== undefined) return { kind: "unparsed", subject: found.unparsed[0] };
   if (found.indirect[0] !== undefined) return { kind: "indirect", subject: found.indirect[0] };
   const unplaced = found.variables[0] ?? variable;
-  return unplaced === undefined ? null : { kind: "variable", subject: unplaced };
+  if (unplaced !== undefined) return { kind: "variable", subject: unplaced };
+  if (found.options[0] !== undefined) return { kind: "option", subject: found.options[0] };
+  return found.aliases[0] === undefined ? null : { kind: "alias", subject: found.aliases[0] };
 }
 
 /**
@@ -390,7 +393,14 @@ export function databaseTarget(
 ): DatabaseTarget | null {
   const spec = TARGET_CLIENTS.get(prog);
   if (spec === undefined) return null;
-  const found: Found = { hosts: [], unparsed: [], indirect: [], variables: [] };
+  const found: Found = {
+    hosts: [],
+    unparsed: [],
+    indirect: [],
+    variables: [],
+    options: [],
+    aliases: [],
+  };
   const r: Reader = { spec, found, vars: valuesByName([...assigns, ...statements]) };
   const words = args.map(wordOf);
   const positionals = scan(r, words);
@@ -416,7 +426,14 @@ export function databaseTargetOfText(
 ): DatabaseTarget | null {
   const spec = TARGET_CLIENTS.get(prog);
   if (spec === undefined) return null;
-  const found: Found = { hosts: [], unparsed: [], indirect: [], variables: [] };
+  const found: Found = {
+    hosts: [],
+    unparsed: [],
+    indirect: [],
+    variables: [],
+    options: [],
+    aliases: [],
+  };
   const r: Reader = { spec, found, vars: new Map() };
   for (const [text, role] of targets) {
     if (role === "host") addHosts(r, text);
@@ -445,7 +462,14 @@ export function databaseTargetOfWords(
   hosts: readonly string[],
   vars: ReadonlyMap<string, readonly string[]> = new Map(),
 ): DatabaseTarget | null {
-  const found: Found = { hosts: [], unparsed: [], indirect: [], variables: [] };
+  const found: Found = {
+    hosts: [],
+    unparsed: [],
+    indirect: [],
+    variables: [],
+    options: [],
+    aliases: [],
+  };
   const r: Reader = { spec: NEUTRAL, found, vars, unplacedIsVariable: true };
   for (const uri of uris) for (const text of expandVariables(uri, vars).texts) readUri(text, r);
   for (const host of hosts) for (const text of expandVariables(host, vars).texts) addHosts(r, text);
@@ -465,6 +489,10 @@ export function databaseTargetReason(
       return `The database target \`${subject}\` cannot be read, so the guard cannot tell which host it connects to. Agents work against local or private-container databases with synthetic data only.`;
     case "indirect":
       return `\`${subject}\` names the database host in a service, password, login or DSN file the guard cannot read. Confirm it is a local or private-container database with synthetic data.`;
+    case "option":
+      return `\`${subject}\` is an option the guard cannot place for this database client (an ambiguous or unknown abbreviation), so it cannot tell whether it names the database host. Spell the option out, or confirm it is a local or private-container database with synthetic data.`;
+    case "alias":
+      return `\`${subject}\` is a bare container-network name: it resolves on a private compose network, and a resolver search domain could resolve it somewhere else. Confirm it is a local or private-container database with synthetic data.`;
     case "variable":
       return `\`${subject}\` could point anywhere (a variable or a substitution in the place of a database target). Confirm it is a local or private-container database with synthetic data.`;
   }

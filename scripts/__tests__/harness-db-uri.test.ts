@@ -1,13 +1,16 @@
 /**
  * Wave 10, B1-B3: the two grammars of `db-uri.ts`, as libpq reads them. The unit tests pin the grammar; the differential
  * test asks the REAL libpq (`pg_isready -d STRING`) which host it would connect to, when the PostgreSQL 16 client programs
- * are installed. Every string in it names only loopback addresses (127.0.0.2 plays "the real host", `localhost` the decoy)
- * and port 1, a closed local port: no non-local host is ever contacted.
+ * are installed. Every string in it names only loopback addresses (127.0.0.1 plays "the real host", `localhost` the decoy:
+ * libpq prints the host as it was written) and port 1, a closed local port: no non-local host is ever contacted. Wave 11
+ * (R8-CR-12): the real host was 127.0.0.2, which macOS does not alias: each probe then waited out pg_isready's 1 s connect
+ * timeout and three of them failed the 5 s test limit under load. 127.0.0.1 is refused at once; the program is looked up on
+ * PATH and in the package manager's directories, and a test timeout of its own bounds the probes.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parseConninfo, uriReadings } from "../harness/db-uri";
+import { findBinary } from "./helpers/record-pg-options";
 
 describe("parseConninfo: libpq's conninfo_parse", () => {
   it.each([
@@ -97,20 +100,27 @@ describe("uriReadings: the userinfo ends at the first @ before the first /", () 
     );
   });
 
+  it("a URL parser takes the userinfo to the LAST @ of an authority that a ? or # ends (wave 11: kills indexOf for lastIndexOf)", () => {
+    // libpq reads `b@c` as the host (first @), the MongoDB reading takes `e` (last @ before the first /), a WHATWG URL
+    // ends the authority at `?` and takes the host after ITS last @: `c`. With the first @ it would read `b@c` again.
+    expect(sections("a@b@c?d@e/x")).toEqual(expect.arrayContaining(["b@c", "e", "c"]));
+  });
+
   it("at most three readings", () => {
     expect(uriReadings("a@b@c?d#e/f?g#h").length).toBeLessThanOrEqual(3);
   });
 });
 
-const PG_ISREADY = "/opt/homebrew/opt/postgresql@16/bin/pg_isready";
-const REAL = "127.0.0.2";
+const PG_ISREADY = findBinary("pg_isready");
+const REAL = "127.0.0.1";
+const PROBE_TEST_TIMEOUT_MS = 30_000;
 
-describe.skipIf(!existsSync(PG_ISREADY))(
+describe.skipIf(PG_ISREADY === undefined)(
   "against the real libpq (pg_isready -d, loopback, port 1)",
   () => {
     /** The host libpq tries, from its `host:port - no response` line. */
     const libpqHost = (conn: string): string | undefined => {
-      const run = spawnSync(PG_ISREADY, ["-t", "1", "-d", conn], {
+      const run = spawnSync(PG_ISREADY ?? "pg_isready", ["-t", "1", "-d", conn], {
         encoding: "utf8",
         timeout: 10_000,
       });
@@ -128,16 +138,20 @@ describe.skipIf(!existsSync(PG_ISREADY))(
       `postgresql://u@${REAL}:1/db#frag`,
       `postgres://[::1]:1/db?host=${REAL}`,
     ];
-    it.each(URI_CASES)("the host libpq tries is among the hosts read from %s", (uri) => {
-      const host = libpqHost(uri);
-      expect(host).toBe(REAL);
-      const rest = uri.replace(/^postgres(?:ql)?:\/\//, "");
-      const read = uriReadings(rest).flatMap((r) => [
-        ...r.hostSection.split(",").map((h) => h.replace(/:\d+$/, "")),
-        ...r.query.split("&").map((pair) => (pair.startsWith("host=") ? pair.slice(5) : "")),
-      ]);
-      expect(read).toContain(REAL);
-    });
+    it.each(URI_CASES)(
+      "the host libpq tries is among the hosts read from %s",
+      (uri) => {
+        const host = libpqHost(uri);
+        expect(host).toBe(REAL);
+        const rest = uri.replace(/^postgres(?:ql)?:\/\//, "");
+        const read = uriReadings(rest).flatMap((r) => [
+          ...r.hostSection.split(",").map((h) => h.replace(/:\d+$/, "")),
+          ...r.query.split("&").map((pair) => (pair.startsWith("host=") ? pair.slice(5) : "")),
+        ]);
+        expect(read).toContain(REAL);
+      },
+      PROBE_TEST_TIMEOUT_MS,
+    );
 
     const CONNINFO_CASES = [
       `host=localhost\\ x host=${REAL} port=1`,
@@ -148,11 +162,15 @@ describe.skipIf(!existsSync(PG_ISREADY))(
       `host=localhost host=${REAL} port=1`,
       `host='a\\'b' host=${REAL} port=1`,
     ];
-    it.each(CONNINFO_CASES)("the last host= of %s is the host libpq tries", (text) => {
-      expect(libpqHost(text)).toBe(REAL);
-      const { pairs, error } = parseConninfo(text);
-      expect(error).toBeUndefined();
-      expect(pairs.filter(([key]) => key === "host").map(([, value]) => value)).toContain(REAL);
-    });
+    it.each(CONNINFO_CASES)(
+      "the last host= of %s is the host libpq tries",
+      (text) => {
+        expect(libpqHost(text)).toBe(REAL);
+        const { pairs, error } = parseConninfo(text);
+        expect(error).toBeUndefined();
+        expect(pairs.filter(([key]) => key === "host").map(([, value]) => value)).toContain(REAL);
+      },
+      PROBE_TEST_TIMEOUT_MS,
+    );
   },
 );

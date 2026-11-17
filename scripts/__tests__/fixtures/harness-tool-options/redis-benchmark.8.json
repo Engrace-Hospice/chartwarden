@@ -1,0 +1,155 @@
+{
+  "tool": "redis-benchmark",
+  "version": "8.10.0",
+  "command": "redis-benchmark --help; behaviour probes against 127.0.0.1 port 1",
+  "options": [
+    {
+      "short": "h",
+      "takesValue": true,
+      "role": "host"
+    },
+    {
+      "short": "p",
+      "takesValue": true
+    },
+    {
+      "short": "s",
+      "takesValue": true
+    },
+    {
+      "short": "a",
+      "takesValue": true
+    },
+    {
+      "name": "user",
+      "takesValue": true
+    },
+    {
+      "short": "u",
+      "takesValue": true,
+      "role": "string"
+    },
+    {
+      "short": "c",
+      "takesValue": true
+    },
+    {
+      "short": "n",
+      "takesValue": true
+    },
+    {
+      "short": "d",
+      "takesValue": true
+    },
+    {
+      "name": "dbnum",
+      "takesValue": true
+    },
+    {
+      "short": "3",
+      "takesValue": false
+    },
+    {
+      "name": "threads",
+      "takesValue": true
+    },
+    {
+      "name": "cluster",
+      "takesValue": false
+    },
+    {
+      "name": "enable-tracking",
+      "takesValue": false
+    },
+    {
+      "short": "k",
+      "takesValue": true
+    },
+    {
+      "short": "r",
+      "takesValue": true
+    },
+    {
+      "short": "P",
+      "takesValue": true
+    },
+    {
+      "short": "q",
+      "takesValue": false
+    },
+    {
+      "name": "precision",
+      "takesValue": true
+    },
+    {
+      "name": "csv",
+      "takesValue": false
+    },
+    {
+      "short": "l",
+      "takesValue": false
+    },
+    {
+      "short": "t",
+      "takesValue": true
+    },
+    {
+      "short": "I",
+      "takesValue": false
+    },
+    {
+      "short": "x",
+      "takesValue": false
+    },
+    {
+      "name": "seed",
+      "takesValue": true
+    },
+    {
+      "name": "tls",
+      "takesValue": false
+    },
+    {
+      "name": "sni",
+      "takesValue": true
+    },
+    {
+      "name": "cacert",
+      "takesValue": true
+    },
+    {
+      "name": "cacertdir",
+      "takesValue": true
+    },
+    {
+      "name": "insecure",
+      "takesValue": false
+    },
+    {
+      "name": "cert",
+      "takesValue": true
+    },
+    {
+      "name": "key",
+      "takesValue": true
+    },
+    {
+      "name": "tls-ciphers",
+      "takesValue": true
+    },
+    {
+      "name": "tls-ciphersuites",
+      "takesValue": true
+    },
+    {
+      "name": "help",
+      "takesValue": false
+    },
+    {
+      "name": "version",
+      "takesValue": false
+    }
+  ],
+  "abbreviations": [],
+  "exactLong": true
+}

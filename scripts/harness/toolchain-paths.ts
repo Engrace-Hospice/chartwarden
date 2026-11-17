@@ -13,7 +13,7 @@
  * commands in the wave-8 section of the doc. **Residual:** the guard runs under whatever `bun` the PATH of the hook resolves;
  * pinning an absolute path in a shared settings file is machine-specific and is not proposed. (2) The files a user-level
  * agent or git or launchd reads at start, which switch a hook off or run a program: `~/.gitconfig`, `~/.config/git/*`,
- * `~/.claude.json`, `~/Library/LaunchAgents/**`, `~/.claude/{rules,plugins,hooks,commands,agents,skills}/**`,
+ * `~/.claude.json`, `~/Library/LaunchAgents/**`, `~/Library/LaunchDaemons/**` (wave 11, D10), `~/.claude/{rules,plugins,hooks,commands,agents,skills}/**`,
  * `~/.codex/{config.toml,hooks.json,AGENTS.md}` (the settings files, every `CLAUDE.md` and the whole `.codex/` are
  * protected by `protected-paths.ts` at any depth). NOT `~/.claude/projects/**` (the memory files the Write tool writes every
  * session), the caches or the history.
@@ -29,7 +29,7 @@ const TOOLCHAIN_PATH = new RegExp(
     // A program the hook commands and the guard call, by name, in any directory (a PATH shadow).
     String.raw`(?:^|\/)(?:bunx?|perl|env|sh|node|git|python3)$`,
     // What git, an agent or launchd reads at start: global git config, the user-level agent set-up, launch agents.
-    String.raw`^~\/(?:\.gitconfig|\.config\/git\/.*|\.claude\.json|Library\/LaunchAgents\/.*|\.claude\/(?:rules|plugins|hooks|commands|agents|skills)\/.*|\.codex\/(?:config\.toml|hooks\.json|AGENTS\.md))$`,
+    String.raw`^~\/(?:\.gitconfig|\.config\/git\/.*|\.claude\.json|Library\/Launch(?:Agents|Daemons)\/.*|\.claude\/(?:rules|plugins|hooks|commands|agents|skills)\/.*|\.codex\/(?:config\.toml|hooks\.json|AGENTS\.md))$`,
   ].join("|"),
   // APFS and NTFS resolve `.ZSHENV` to the real file.
   "i",

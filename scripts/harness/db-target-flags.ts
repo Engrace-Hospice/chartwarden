@@ -1,19 +1,21 @@
 /**
- * The options the real client programs take, per client (wave 10, B4; round-7 R7-ADV-3, R7-CR-6): the short letters and the
- * long names that take a value, and the long names that take none. A long option is its exact name first, then an
- * unambiguous prefix of one (getopt_long): `--log` of pgbench is a flag although it is also a prefix of `--log-prefix`,
- * `--tls` of redis-cli although it prefixes `--tls-ciphers`. Reading a flag as the start of a value option swallowed the
- * next word, `-h HOST` with it. These lists were read from the real `--help` of PostgreSQL 16's client programs and of
- * redis-cli 8 on the developer machine; `scripts/__tests__/harness-db-target-help.test.ts` re-reads them when the program is
- * installed and fails on a difference. The clients that are not installed here keep the hand-kept tables of
- * `db-target-clients.ts` (from their documentation, unverified). Data only.
+ * The options the real client programs take, per client: the short letters and the long names that take a value, and the long
+ * names that take none (wave 10, B4, round-7 R7-ADV-3, R7-CR-6; regenerated in wave 11, part D, from the recorded fixtures).
+ * A long option is its exact name first, then an unambiguous prefix of one character or more (getopt_long, `db-long-options.ts`):
+ * `--log` of pgbench is a flag although it is also a prefix of `--log-prefix`, `--tls` of redis-cli although it prefixes
+ * `--tls-ciphers`. These lists were first read from the `--help` of PostgreSQL 16's programs and redis 8's; wave 11 replaced them
+ * by what `scripts/__tests__/helpers/record-pg-options.ts` records from the installed programs (their own getopt parser, not
+ * only the help text), and `scripts/__tests__/harness-db-options-wave11.test.ts` proves this table against the committed
+ * fixtures (`fixtures/harness-tool-options`) and re-records them live when the programs are installed. The table is NOT built
+ * from the fixtures at run time: a test compares the two, so neither can drift. The clients that are not installed here keep
+ * the hand-kept tables of `db-target-clients.ts` (from their documentation, UNVERIFIED). Data only.
  */
 export interface VerifiedOptions {
   /** Short option letters that take a value. */
   readonly valueShort: string;
   /** Long option names (without `--`) that take a value. */
   readonly valueLong: readonly string[];
-  /** Long option names (without `--`) that take none. */
+  /** Long option names (without `--`) that take none (an option with an optional argument counts: it never takes the next word). */
   readonly flagLong: readonly string[];
 }
 
@@ -21,7 +23,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
   [
     "psql",
     {
-      valueShort: "cdfvLoFPRThpU",
+      valueShort: "FLPRTUcdfhopv",
       valueLong: [
         "command",
         "dbname",
@@ -46,6 +48,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "echo-queries",
         "expanded",
         "field-separator-zero",
+        "help",
         "html",
         "list",
         "no-align",
@@ -66,7 +69,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
   [
     "pg_dump",
     {
-      valueShort: "fFjZeEnNStTdhpU",
+      valueShort: "EFNSTUZdefhjnpt",
       valueLong: [
         "compress",
         "dbname",
@@ -106,6 +109,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "disable-dollar-quoting",
         "disable-triggers",
         "enable-row-security",
+        "help",
         "if-exists",
         "inserts",
         "large-objects",
@@ -139,7 +143,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
   [
     "pg_dumpall",
     {
-      valueShort: "fESdhlpU",
+      valueShort: "ESUdfhlp",
       valueLong: [
         "database",
         "dbname",
@@ -188,14 +192,13 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "tablespaces-only",
         "use-set-session-authorization",
         "verbose",
-        "version",
       ],
     },
   ],
   [
     "pg_restore",
     {
-      valueShort: "dfFIjLnNPStThpU",
+      valueShort: "FILNPSTUdfhjnpt",
       valueLong: [
         "dbname",
         "exclude-schema",
@@ -241,22 +244,21 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "strict-names",
         "use-set-session-authorization",
         "verbose",
-        "version",
       ],
     },
   ],
   [
     "pg_isready",
     {
-      valueShort: "dhptU",
+      valueShort: "Udhpt",
       valueLong: ["dbname", "host", "port", "timeout", "username"],
-      flagLong: ["quiet", "version"],
+      flagLong: ["quiet"],
     },
   ],
   [
     "pgbench",
     {
-      valueShort: "IFsbfcDjLMPRtThpU",
+      valueShort: "DFILMPRTUbcfhjpst",
       valueLong: [
         "aggregate-interval",
         "builtin",
@@ -302,14 +304,13 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "unlogged-tables",
         "vacuum-all",
         "verbose-errors",
-        "version",
       ],
     },
   ],
   [
     "createuser",
     {
-      valueShort: "acgmvhpU",
+      valueShort: "Uacghmpv",
       valueLong: [
         "connection-limit",
         "host",
@@ -341,14 +342,13 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "pwprompt",
         "replication",
         "superuser",
-        "version",
       ],
     },
   ],
   [
     "createdb",
     {
-      valueShort: "DElOSThpU",
+      valueShort: "DEOSTUhlp",
       valueLong: [
         "encoding",
         "host",
@@ -366,37 +366,37 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "template",
         "username",
       ],
-      flagLong: ["echo", "no-password", "password", "version"],
+      flagLong: ["echo", "no-password", "password"],
     },
   ],
   [
     "dropdb",
     {
-      valueShort: "hpU",
+      valueShort: "Uhp",
       valueLong: ["host", "maintenance-db", "port", "username"],
-      flagLong: ["echo", "force", "if-exists", "interactive", "no-password", "password", "version"],
+      flagLong: ["echo", "force", "if-exists", "interactive", "no-password", "password"],
     },
   ],
   [
     "dropuser",
     {
-      valueShort: "hpU",
+      valueShort: "Uhp",
       valueLong: ["host", "port", "username"],
-      flagLong: ["echo", "if-exists", "interactive", "no-password", "password", "version"],
+      flagLong: ["echo", "if-exists", "interactive", "no-password", "password"],
     },
   ],
   [
     "clusterdb",
     {
-      valueShort: "dthpU",
+      valueShort: "Udhpt",
       valueLong: ["dbname", "host", "maintenance-db", "port", "table", "username"],
-      flagLong: ["all", "echo", "no-password", "password", "quiet", "verbose", "version"],
+      flagLong: ["all", "echo", "no-password", "password", "quiet", "verbose"],
     },
   ],
   [
     "vacuumdb",
     {
-      valueShort: "djnNPthpU",
+      valueShort: "NPUdhjnpt",
       valueLong: [
         "buffer-usage-limit",
         "dbname",
@@ -431,14 +431,13 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "quiet",
         "skip-locked",
         "verbose",
-        "version",
       ],
     },
   ],
   [
     "reindexdb",
     {
-      valueShort: "dijSthpU",
+      valueShort: "SUdhijpt",
       valueLong: [
         "dbname",
         "host",
@@ -460,14 +459,13 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "quiet",
         "system",
         "verbose",
-        "version",
       ],
     },
   ],
   [
     "pg_amcheck",
     {
-      valueShort: "dDiIrRsStThpUj",
+      valueShort: "DIRSTUdhijprst",
       valueLong: [
         "database",
         "endblock",
@@ -504,14 +502,13 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "progress",
         "rootdescend",
         "verbose",
-        "version",
       ],
     },
   ],
   [
     "pg_basebackup",
     {
-      valueShort: "DFrtTXZclSdhpsU",
+      valueShort: "DFSTUXZcdhlprst",
       valueLong: [
         "checkpoint",
         "compress",
@@ -534,6 +531,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
       flagLong: [
         "create-slot",
         "gzip",
+        "help",
         "manifest-force-encode",
         "no-clean",
         "no-estimate-size",
@@ -553,7 +551,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
   [
     "pg_receivewal",
     {
-      valueShort: "DEsSZdhpU",
+      valueShort: "DESUZdhps",
       valueLong: [
         "compress",
         "dbname",
@@ -568,6 +566,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
       flagLong: [
         "create-slot",
         "drop-slot",
+        "help",
         "if-not-exists",
         "no-loop",
         "no-password",
@@ -582,7 +581,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
   [
     "pg_recvlogical",
     {
-      valueShort: "EfIoPsSdhpU",
+      valueShort: "EFIPSUdfhops",
       valueLong: [
         "dbname",
         "endpos",
@@ -599,6 +598,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
       flagLong: [
         "create-slot",
         "drop-slot",
+        "help",
         "if-not-exists",
         "no-loop",
         "no-password",
@@ -613,7 +613,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
   [
     "pg_upgrade",
     {
-      valueShort: "bBdDjoOpPsU",
+      valueShort: "BDOPUbdjops",
       valueLong: [
         "jobs",
         "new-bindir",
@@ -627,13 +627,13 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "socketdir",
         "username",
       ],
-      flagLong: ["check", "clone", "copy", "link", "no-sync", "retain", "verbose", "version"],
+      flagLong: ["check", "clone", "copy", "link", "no-sync", "retain", "verbose"],
     },
   ],
   [
     "redis-cli",
     {
-      valueShort: "hptsaurindD",
+      valueShort: "DXadhinprstu",
       valueLong: [
         "cacert",
         "cacertdir",
@@ -670,9 +670,11 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "askpass",
         "bigkeys",
         "csv",
+        "help",
         "hotkeys",
         "insecure",
         "json",
+        "keystats",
         "latency",
         "latency-dist",
         "latency-history",
@@ -697,13 +699,14 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
   [
     "redis-benchmark",
     {
-      valueShort: "hpsaucndkrPt",
+      valueShort: "Pacdhknprstu",
       valueLong: [
         "cacert",
         "cacertdir",
         "cert",
         "dbnum",
         "key",
+        "precision",
         "seed",
         "sni",
         "threads",
@@ -711,7 +714,7 @@ export const VERIFIED_OPTIONS: ReadonlyMap<string, VerifiedOptions> = new Map([
         "tls-ciphersuites",
         "user",
       ],
-      flagLong: ["cluster", "csv", "enable-tracking", "insecure", "precision", "tls", "version"],
+      flagLong: ["cluster", "csv", "enable-tracking", "help", "insecure", "tls", "version"],
     },
   ],
 ]);

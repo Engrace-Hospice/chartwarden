@@ -33,28 +33,28 @@ const realOrNull = (path: string): string | null => {
   }
 };
 
+/**
+ * A link to a directory that lies inside a walked root, by a path with no skipped directory in it, is a second name for
+ * something walked on its own. One whose target lies under a skipped directory (`apps/web/src/viadist -> ../dist`) leads to
+ * a place the walk never entered: a gap (wave 10, B11; round-7 R7-CR-11).
+ */
+function insideWalkedRoots(walkedRoots: readonly string[], path: string): boolean {
+  const real = realOrNull(path);
+  if (real === null) return false;
+  const top = walkedRoots.find((root) => real === root || real.startsWith(`${root}/`));
+  if (top === undefined) return false;
+  return !real
+    .slice(top.length)
+    .split("/")
+    .some((segment) => SKIPPED_DIRECTORIES.has(segment));
+}
+
 /** Repo-relative paths of the live suite files under `root`, and whether the walk saw everything. */
 export function listLiveSuiteFiles(root: string): Listing {
   const base = root.replace(/\/+$/, "");
-  let walkedRoots: readonly string[] | null = null;
-  /**
-   * A link to a directory that lies inside a walked root, by a path with no skipped directory in it, is a second name for
-   * something walked on its own. One whose target lies under a skipped directory (`apps/web/src/viadist -> ../dist`) leads to
-   * a place the walk never entered: a gap (wave 10, B11; round-7 R7-CR-11).
-   */
-  const insideWalkedRoots = (path: string): boolean => {
-    walkedRoots ??= ROOTS.map((top) => realOrNull(`${base}/${top}`)).filter(
-      (real): real is string => real !== null,
-    );
-    const real = realOrNull(path);
-    if (real === null) return false;
-    const top = walkedRoots.find((root) => real === root || real.startsWith(`${root}/`));
-    if (top === undefined) return false;
-    return !real
-      .slice(top.length)
-      .split("/")
-      .some((segment) => SKIPPED_DIRECTORIES.has(segment));
-  };
+  const walkedRoots = ROOTS.map((top) => realOrNull(`${base}/${top}`)).filter(
+    (real): real is string => real !== null,
+  );
   const found: string[] = [];
   let directories = 0;
   let complete = true;
@@ -76,7 +76,8 @@ export function listLiveSuiteFiles(root: string): Listing {
       const path = `${rel}/${entry.name}`;
       const target = entry.isSymbolicLink() ? linkTarget(`${base}/${path}`) : null;
       if (target === "unreadable") complete = false;
-      else if (target === "directory") complete &&= insideWalkedRoots(`${base}/${path}`);
+      else if (target === "directory")
+        complete &&= insideWalkedRoots(walkedRoots, `${base}/${path}`);
       else if (target === "dangling") continue;
       else if (entry.isDirectory()) walk(path, depth + 1);
       // A link to a file is judged by its own name and by the name of the file it points at (`alias.test.ts -> real.live.test.ts`).

@@ -454,15 +454,22 @@ describe("B6: a variable the command line sets is read, wherever and however oft
 /** What the corpus measure of wave 10 showed: real commands the first version of the reader refused or mis-read. */
 describe("B6 corpus regressions: a variable the guard cannot place is asked about, never bent into the target", () => {
   it.each([
-    'w=$(cat /tmp/pw) && psql "{PG}postgres:${w}@127.0.0.1:5433/postgres" -c "select 1"',
-    'psql "{PG}postgres:$(cat /tmp/pw)@127.0.0.1:5433/postgres" -c "select 1"',
-    "psql '{PG}u@localhost:$(cat /tmp/port)/db' -c 'select 1'",
     "psql \"host=localhost port=$PORT dbname=x\" -c 'select 1'",
     'psql() { docker exec c psql -U postgres -c "$1"; }; psql "select * from t where a=\'b\'"',
     "psql 'select a = b'",
   ])("%s keeps allowing", (template) => {
     const cmd = fill(template);
     expect(decide(cmd), cmd).toBe("allow");
+  });
+
+  // Wave 11 (R8-CR-1, a deliberate change of these three payloads): a command substitution inside a URI, or a name bound to one
+  // (`w=$(cat /tmp/pw)`), can supply `@host/`, `?host=H` or a port of `1@host`, so the URI ASKS instead of reading as inert.
+  it.each([
+    'w=$(cat /tmp/pw) && psql "{PG}postgres:${w}@127.0.0.1:5433/postgres" -c "select 1"',
+    'psql "{PG}postgres:$(cat /tmp/pw)@127.0.0.1:5433/postgres" -c "select 1"',
+    "psql '{PG}u@localhost:$(cat /tmp/port)/db' -c 'select 1'",
+  ])("%s asks (a substitution may supply the host)", (template) => {
+    expect(decide(fill(template)), template).toBe("ask");
   });
 
   it.each([
@@ -492,8 +499,13 @@ describe("B13: option abbreviations, the sqlcmd transport prefix and libpq's unq
     expect(decide(fill("psql --out {PG}{H}/x -c 'select 1'"))).toBe("allow");
     expect(decide(fill("psql --outp {PG}{H}/x -c 'select 1'"))).toBe("allow");
     expect(decide(fill("pg_dump --fil {PG}{H}/x db"))).toBe("allow");
-    // two characters are below the minimum for a plain value option: `--ou` may be anything, so the word after it is read
-    expect(decide(fill("psql --ou {PG}{H}/x -c 'select 1'"))).toBe("deny");
+    // wave 11 (R8-ADV-4): getopt_long reads ONE character (the recorded fixture of psql 16: `--o`, `--ou` resolve to
+    // `--output`), so these were deny under the wave-10 minimum of three and are the file name they are for the real program.
+    expect(decide(fill("psql --ou {PG}{H}/x -c 'select 1'"))).toBe("allow");
+    expect(decide(fill("psql --o {PG}{H}/x -c 'select 1'"))).toBe("allow");
+    // `--p` is `--port`, `--password` or `--pset`: ambiguous, so the guard asks instead of guessing which word is a value
+    expect(decide("psql --p x -c 'select 1'")).toBe("ask");
+    expect(decide(fill("psql --p {PG}{H}/x -c 'select 1'"))).toBe("deny");
   });
 
   it.each([

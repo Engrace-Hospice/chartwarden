@@ -60,6 +60,8 @@ export interface TargetClient {
   readonly exactLong?: boolean;
   /** `rs0/host1,host2`: a replica-set name and a slash precede the host list (MongoDB tools only). */
   readonly replicaSet?: boolean;
+  /** The table is proven against the real program (`db-target-flags.ts`, the recorded fixtures): an unknown option there is a finding. */
+  readonly verified?: true;
   /** A `$VAR` or substitution word in a positional place may be a connection string: it cannot be placed, so a human decides. */
   readonly positionalVariable?: boolean;
 }
@@ -86,8 +88,53 @@ const libpq = (spec: Partial<TargetClient> & Pick<TargetClient, "valueShort">): 
 const MYSQL_INDIRECT = ["login-path", "defaults-file", "defaults-extra-file"];
 
 /** The mysql family: `-h`/`--host`, `-pPASSWORD` attached, a login path or defaults file that may name the host. */
+/** Flags of the mysql family (documentation, unverified): listed so `mysql --batch --silent db` places its database name. */
+const MYSQL_FLAGS = [
+  "batch",
+  "raw",
+  "silent",
+  "skip-column-names",
+  "vertical",
+  "table",
+  "verbose",
+  "force",
+  "no-defaults",
+  "compress",
+  "html",
+  "xml",
+  "quick",
+  "single-transaction",
+  "routines",
+  "triggers",
+  "events",
+  "no-data",
+  "no-create-info",
+  "add-drop-table",
+  "all-databases",
+  "databases",
+  "complete-insert",
+  "skip-lock-tables",
+  "hex-blob",
+  "skip-comments",
+  "ssl",
+  "help",
+  "version",
+  "binary-mode",
+  "auto-rehash",
+  "no-auto-rehash",
+  "column-names",
+  "comments",
+  "unbuffered",
+  "wait",
+  "reconnect",
+  "safe-updates",
+  "one-database",
+  "secure-auth",
+];
+
 const mysqlTool = (valueShort: string, valueLong: readonly string[] = []): TargetClient => ({
   valueShort,
+  flagLong: MYSQL_FLAGS,
   attachedShort: "p",
   valueLong: ["host", "port", "user", "socket", "protocol", ...MYSQL_INDIRECT, ...valueLong],
   hostShort: "h",
@@ -154,8 +201,31 @@ const MONGO_VALUE_LONG = [
   "serverSelectionTimeoutMS",
 ];
 
+/** Flags of the MongoDB shell and tools (documentation, unverified): listed so an everyday `mongosh --quiet script.js` places. */
+const MONGO_FLAGS = [
+  "quiet",
+  "nodb",
+  "norc",
+  "shell",
+  "json",
+  "ipv6",
+  "tls",
+  "ssl",
+  "verbose",
+  "retryWrites",
+  "gzip",
+  "drop",
+  "help",
+  "version",
+  "build-info",
+  "tlsAllowInvalidCertificates",
+  "tlsAllowInvalidHostnames",
+  "tlsInsecure",
+];
+
 const mongoShell: TargetClient = {
   valueShort: "u",
+  flagLong: MONGO_FLAGS,
   attachedShort: "p",
   valueLong: ["host", "uri", ...MONGO_VALUE_LONG],
   hostLong: ["host"],
@@ -171,6 +241,7 @@ const mongoShell: TargetClient = {
 
 const mongoTool: TargetClient = {
   valueShort: "hupdcoqfj",
+  flagLong: MONGO_FLAGS,
   valueLong: [
     "host",
     "uri",
@@ -395,8 +466,8 @@ const CLIENT_SPECS: ReadonlyArray<readonly [string, TargetClient]> = [
     "dropuser",
     libpq({ valueShort: "", stringShort: undefined, stringLong: [], positional: "none" }),
   ],
-  ["clusterdb", libpqDatabase({ valueShort: "" })],
-  ["pg_amcheck", libpqDatabase({ valueShort: "" })],
+  ["clusterdb", libpqDatabase({ valueShort: "", stringLong: ["dbname", "maintenance-db"] })],
+  ["pg_amcheck", libpqDatabase({ valueShort: "", stringLong: ["dbname", "maintenance-db"] })],
   // pg_upgrade has no host option (it talks to its own servers on a socket directory) but reads the libpq variables.
   [
     "pg_upgrade",
@@ -450,6 +521,7 @@ const CLIENT_SPECS: ReadonlyArray<readonly [string, TargetClient]> = [
     "vacuumdb",
     libpqDatabase({
       valueShort: "dhpUtnNj",
+      stringLong: ["dbname", "maintenance-db"],
       valueLong: [
         "dbname",
         "host",
@@ -469,6 +541,7 @@ const CLIENT_SPECS: ReadonlyArray<readonly [string, TargetClient]> = [
     "reindexdb",
     libpqDatabase({
       valueShort: "dhpUtiSj",
+      stringLong: ["dbname", "maintenance-db"],
       valueLong: [
         "dbname",
         "host",
@@ -516,7 +589,24 @@ const CLIENT_SPECS: ReadonlyArray<readonly [string, TargetClient]> = [
     "pgcli",
     libpqDatabase({
       valueShort: "hpUudD",
+      // pgcli's flags and a few of its value options (documentation, unverified): `pgcli --file x.sql` places its file.
+      flagLong: [
+        "less-chatty",
+        "list",
+        "ping",
+        "single-connection",
+        "auto-vertical-output",
+        "no-password",
+        "password",
+        "version",
+        "help",
+        "no-warn",
+      ],
       valueLong: [
+        "file",
+        "init-command",
+        "ssh-tunnel",
+        "warn",
         "host",
         "port",
         "username",
@@ -685,6 +775,7 @@ function verified(name: string, spec: TargetClient): TargetClient {
     valueShort: unique(spec.valueShort + real.valueShort),
     valueLong: [...new Set([...spec.valueLong, ...real.valueLong])],
     flagLong: [...new Set([...(spec.flagLong ?? []), ...real.flagLong])],
+    verified: true,
   };
 }
 
