@@ -8,10 +8,16 @@
       "name": "--call",
       "short": "-c",
       "takesValue": true,
-      "evidence": "probe"
+      "evidence": "probe",
+      "runsOperandAsCommand": true
     },
     {
       "name": "--include-workspace-root",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no",
       "takesValue": false,
       "evidence": "probe"
     },

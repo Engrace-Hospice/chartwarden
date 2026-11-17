@@ -93,7 +93,8 @@
       "name": "--call",
       "short": "-c",
       "takesValue": true,
-      "evidence": "probe"
+      "evidence": "probe",
+      "runsOperandAsCommand": true
     },
     {
       "name": "--cert",
@@ -443,6 +444,11 @@
     {
       "name": "--name",
       "takesValue": true,
+      "evidence": "probe"
+    },
+    {
+      "name": "--no",
+      "takesValue": false,
       "evidence": "probe"
     },
     {
@@ -832,67 +838,7 @@
       "evidence": "probe"
     },
     {
-      "name": "-0",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-1",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-2",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-3",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-4",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-5",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-6",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-7",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-8",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-9",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
       "name": "-a",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-A",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-b",
       "takesValue": false,
       "evidence": "probe"
     },
@@ -932,17 +878,7 @@
       "evidence": "probe"
     },
     {
-      "name": "-F",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
       "name": "-g",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-G",
       "takesValue": false,
       "evidence": "probe"
     },
@@ -962,28 +898,13 @@
       "evidence": "probe"
     },
     {
-      "name": "-I",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
       "name": "-j",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-J",
       "takesValue": false,
       "evidence": "probe"
     },
     {
       "name": "-k",
       "takesValue": true,
-      "evidence": "probe"
-    },
-    {
-      "name": "-K",
-      "takesValue": false,
       "evidence": "probe"
     },
     {
@@ -1002,22 +923,7 @@
       "evidence": "probe"
     },
     {
-      "name": "-M",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
       "name": "-n",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-N",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-o",
       "takesValue": false,
       "evidence": "probe"
     },
@@ -1042,47 +948,12 @@
       "evidence": "probe"
     },
     {
-      "name": "-Q",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-r",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-R",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
       "name": "-s",
       "takesValue": false,
       "evidence": "probe"
     },
     {
       "name": "-S",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-t",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-T",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-u",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-U",
       "takesValue": false,
       "evidence": "probe"
     },
@@ -1097,40 +968,44 @@
       "evidence": "probe"
     },
     {
-      "name": "-W",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-x",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-X",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
       "name": "-y",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-Y",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-z",
-      "takesValue": false,
-      "evidence": "probe"
-    },
-    {
-      "name": "-Z",
       "takesValue": false,
       "evidence": "probe"
     }
   ],
-  "rejected": []
+  "rejected": [
+    "-0",
+    "-1",
+    "-2",
+    "-3",
+    "-4",
+    "-5",
+    "-6",
+    "-7",
+    "-8",
+    "-9",
+    "-A",
+    "-F",
+    "-G",
+    "-I",
+    "-J",
+    "-K",
+    "-M",
+    "-N",
+    "-Q",
+    "-R",
+    "-T",
+    "-U",
+    "-W",
+    "-X",
+    "-Y",
+    "-Z",
+    "-b",
+    "-o",
+    "-r",
+    "-t",
+    "-u",
+    "-x",
+    "-z"
+  ]
 }

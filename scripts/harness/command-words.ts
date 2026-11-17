@@ -244,6 +244,8 @@ export function program(
     );
     if (wrapper !== null) {
       // `flock -c 'cmd' file`, `sudo -e FILE`: the words are a string or files, not a command: the wrapper stays the program.
+      if (wrapper.unplaced !== undefined && wrapper.stays)
+        unplaced.push(`${wrapper.wrapper} ${wrapper.unplaced}`);
       if (wrapper.stays) break;
       lastWrapper = wrapper.wrapper;
       chdir = wrapper.chdir ?? chdir;
@@ -276,6 +278,8 @@ export function program(
     if (peeled.inner === null) break;
     // `dotenv -e FILE -- cmd`: the runner's file options are read like `< FILE`, whatever the command is.
     reads.push(...peeled.files);
+    // the command lines it runs besides the one it hands back (`bun run --parallel 'A' 'B'`, `npm exec -c A -c B`)
+    lines.push(...(peeled.lines ?? []));
     // The word the runner starts is a name the shell is asked to open too: a runner handed a live env file's name reads it.
     reads.push(peeled.inner[0] ?? "");
     pair = replaceFrom(pair, k, peeled.inner);

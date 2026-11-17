@@ -36,13 +36,13 @@ export interface Table {
   readonly legacy: readonly string[];
 }
 
-const OLDER_DOCKER = "older docker versions read it, docker 29 rejects it";
 export const TABLES: readonly Table[] = [
   {
     name: "env",
     grammar: (WRAPPER_SPECS.get("env") as { grammar: OptionGrammar }).grammar,
     commands: ["env"],
-    // GNU env's long options and BSD env's `-P`, `-a`, `-0`: each system knows the part of the union that is its own
+    // GNU env's long options and `-a` (the GNU argv0 option, BSD env rejects it): the short options BSD env does record are NOT listed here, so a
+    // table that read one wrongly would be reported (E1-8; wave 11 listed `-i -0 -v -u -C -S -P` too, which silenced the check for them)
     legacy: [
       "--ignore-environment",
       "--null",
@@ -57,13 +57,6 @@ export const TABLES: readonly Table[] = [
       "--chdir",
       "--split-string",
       "--argv0",
-      "-i",
-      "-0",
-      "-v",
-      "-u",
-      "-C",
-      "-S",
-      "-P",
       "-a",
     ],
   },
@@ -105,7 +98,6 @@ export const TABLES: readonly Table[] = [
     legacy: [],
   },
 ];
-void OLDER_DOCKER;
 
 type Reading = "value" | "flag" | "unplaced";
 

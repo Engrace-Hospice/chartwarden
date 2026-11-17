@@ -67,28 +67,28 @@
     },
     {
       "name": "--fetch-retries",
-      "takesValue": "unverified",
-      "evidence": "unverified"
+      "takesValue": true,
+      "evidence": "help"
     },
     {
       "name": "--fetch-retry-factor",
-      "takesValue": "unverified",
-      "evidence": "unverified"
+      "takesValue": true,
+      "evidence": "help"
     },
     {
       "name": "--fetch-retry-maxtimeout",
-      "takesValue": "unverified",
-      "evidence": "unverified"
+      "takesValue": true,
+      "evidence": "help"
     },
     {
       "name": "--fetch-retry-mintimeout",
-      "takesValue": "unverified",
-      "evidence": "unverified"
+      "takesValue": true,
+      "evidence": "help"
     },
     {
       "name": "--fetch-timeout",
-      "takesValue": "unverified",
-      "evidence": "unverified"
+      "takesValue": true,
+      "evidence": "help"
     },
     {
       "name": "--filter",

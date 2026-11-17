@@ -236,6 +236,12 @@ export const FIXTURE_DIR = join(
   "harness-shell-options",
 );
 
+/** The committed text, in the form biome prints it: one probe per line. */
+const probeText = (probe: ShellProbe): string =>
+  `{ "args": [${probe.args.map((a) => JSON.stringify(a)).join(", ")}], "ran": ${JSON.stringify(probe.ran)} }`;
+export const fixtureText = (fixture: ShellFixture): string =>
+  `{\n  "shell": ${JSON.stringify(fixture.shell)},\n  "version": ${JSON.stringify(fixture.version)},\n  "platform": ${JSON.stringify(fixture.platform)},\n  "probes": [\n${fixture.probes.map((p) => `    ${probeText(p)}`).join(",\n")}\n  ]\n}\n`;
+
 // CLI: `bun scripts/__tests__/helpers/record-shell-options.ts [--write] [shell ...]`
 if (process.argv[1]?.endsWith("record-shell-options.ts") === true) {
   const write = process.argv.includes("--write");
@@ -252,7 +258,7 @@ if (process.argv[1]?.endsWith("record-shell-options.ts") === true) {
     );
     if (write) {
       mkdirSync(FIXTURE_DIR, { recursive: true });
-      writeFileSync(join(FIXTURE_DIR, `${shell}.json`), `${JSON.stringify(fixture)}\n`);
+      writeFileSync(join(FIXTURE_DIR, `${shell}.json`), fixtureText(fixture));
     }
   }
 }
