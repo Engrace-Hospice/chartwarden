@@ -31,8 +31,10 @@ const H = `prod${"."}example${"."}com`;
 const ctx = { root: "/repo", home: "/Users/dev", cwd: "/repo", exists: () => false };
 const decide = (cmd: string): string => classifyBash(cmd, ctx).decision;
 
+const UNVERIFIED_FILE = "unverified.json";
+
 const fixtures: readonly ToolFixture[] = readdirSync(FIXTURE_DIR)
-  .filter((file) => file.endsWith(".json"))
+  .filter((file) => file.endsWith(".json") && file !== UNVERIFIED_FILE)
   .sort()
   .map((file) => JSON.parse(readFileSync(`${FIXTURE_DIR}/${file}`, "utf8")) as ToolFixture);
 
@@ -44,6 +46,33 @@ const specOf = (tool: string) => {
 
 /** The roles a table may give an option the real program says takes a value. */
 const VALUE_ROLES = new Set(["host", "string", "alias", "indirect", "value"]);
+
+describe("rule 12: a client is proven by a fixture or listed as unverified, never silently neither", () => {
+  const unverified = (
+    JSON.parse(readFileSync(`${FIXTURE_DIR}/${UNVERIFIED_FILE}`, "utf8")) as {
+      unverified: string[];
+    }
+  ).unverified;
+  const proven = new Set(fixtures.map((f) => f.tool));
+
+  it("the verified clients and the unverified list partition the client table", () => {
+    const table = [...TARGET_CLIENTS.keys()].sort();
+    expect([...proven, ...unverified].sort()).toEqual(table);
+    for (const tool of proven) expect(unverified, tool).not.toContain(tool);
+  });
+
+  it("the table marks exactly the fixture-backed clients verified", () => {
+    for (const [name, spec] of TARGET_CLIENTS) {
+      expect(spec.verified === true, name).toBe(proven.has(name));
+    }
+  });
+
+  it("an unverified client's unlisted long option followed by a bare word asks (it may take that word as its value)", () => {
+    for (const name of unverified) {
+      expect(decide(`${name} --nosuch-option-zzz bareword`), name).not.toBe("allow");
+    }
+  });
+});
 
 describe("every probed program has a fixture, and the fixtures name only probed programs", () => {
   it("covers PROBED_TOOLS exactly", () => {
@@ -182,4 +211,60 @@ describe("rule 12 (live): the fixture is the installed program's behaviour today
       180_000,
     );
   }
+});
+
+describe("D2: how the reader treats what it cannot place", () => {
+  const psql = specOf("psql");
+
+  it("a name that is in two tables takes the most severe role", () => {
+    expect(readLongOption({ ...psql, flagLong: [...(psql.flagLong ?? []), "host"] }, "host")).toBe(
+      "host",
+    );
+    expect(
+      readLongOption(
+        { ...psql, valueLong: ["zzz"], flagLong: ["zzz"], hostLong: [], stringLong: [] },
+        "zzz",
+      ),
+    ).toBe("value");
+  });
+
+  it("an exact flag stays a flag although it prefixes a value option, and a client with exact names reads no prefix", () => {
+    const pgbench = specOf("pgbench");
+    expect(readLongOption(pgbench, "log")).toBe("flag");
+    expect(readLongOption(pgbench, "log-")).toBe("value");
+    const redis = specOf("redis-cli");
+    expect(readLongOption(redis, "tls")).toBe("flag");
+    expect(readLongOption(redis, "tls-c")).toBe("unknown");
+  });
+
+  it.each([
+    ["psql --nosuch -h localhost", "ask"],
+    ["psql --nosuch x -h localhost", "ask"],
+    ["psql --nosuch=x -h localhost", "ask"],
+    ["createdb --nosuch -h localhost x", "ask"],
+    ["redis-cli --nosuch -h localhost", "ask"],
+    ["psql --p x", "ask"],
+    ["createdb --l x", "allow"],
+    // an unlisted option of a client whose table comes from documentation: only a bare word after it is in doubt
+    ["mysql --nosuch -h localhost", "allow"],
+    ["mysql --nosuch=1 -h localhost", "allow"],
+    ["mysql --nosuch db -h localhost", "ask"],
+    ["mongosh --nosuch db", "ask"],
+    ["mysql --batch --silent db", "allow"],
+    ["mongosh --quiet script.js", "allow"],
+  ] as const)("%s is %s", (cmd, expected) => {
+    expect(decide(cmd), cmd).toBe(expected);
+  });
+
+  it("a help or version word of a PostgreSQL program prints and exits: no ask", () => {
+    for (const cmd of [
+      "createdb --help",
+      "createdb --version",
+      "pg_dump --help",
+      "psql --help",
+      "dropdb --help",
+    ]) {
+      expect(decide(cmd), cmd).toBe("allow");
+    }
+  });
 });
