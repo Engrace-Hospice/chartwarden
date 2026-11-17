@@ -13,7 +13,7 @@ import { basename } from "node:path";
  * - `dangling`: the target does not exist, so the link holds nothing.
  * - `unreadable`: the target cannot be resolved (a link that loops back on itself, a permission error): a gap.
  */
-export type LinkTarget = "file" | "directory" | "dangling" | "unreadable";
+type LinkTarget = "file" | "directory" | "dangling" | "unreadable";
 
 export function linkTarget(path: string): LinkTarget {
   try {
