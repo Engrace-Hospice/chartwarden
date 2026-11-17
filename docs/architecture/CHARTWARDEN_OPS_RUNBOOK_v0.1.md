@@ -2363,12 +2363,12 @@ DATABASE_ADMIN_URL=<owner connection> bun run db:platform-role revoke \
   never creates users or memberships. A **revoke** also reaches a suspended membership, so an offboarded holder's
   binding cannot lie dormant and return on reactivation.
 - **`superadmin` needs a non-tenant organization, and nothing creates one.** M34 onboarding always adds a
-  `tenant_account`, and the CLI and the migration 1495 triggers refuse that for this role. The ChartWarden
+  `tenant_account`, and the CLI and the migration 1501 triggers refuse that for this role. The ChartWarden
   platform organization and its first membership are therefore created by an operator with SQL (an
   `organization` row with no `tenant_account`, then the user and an active `membership`), and only then granted
   with the CLI. Only the grant is audited under the ticket (the CLI sets its correlation id); run that SQL in a
   transaction that first sets `app.correlation_id` to the same change-ticket reference and paste it on the ticket. The triggers are `SECURITY DEFINER` and need an owner that bypasses RLS (a superuser, as in
-  production's compose); do not apply migration 1495 as a non-superuser owner.
+  production's compose); do not apply migration 1501 as a non-superuser owner.
 - **Connection.** Use the owner connection the migration runner uses (`DATABASE_ADMIN_URL`, else
   `DATABASE_URL`). `chartwarden_app` cannot write platform-owned rows.
 - **What it writes.** It upserts the platform-owned role row (one per key, `role_platform_key_idx`), adds

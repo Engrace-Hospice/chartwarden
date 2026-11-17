@@ -43,7 +43,7 @@ export const roles = pgTable(
       .on(t.key)
       .where(sql`${t.organizationId} IS NULL`),
     orgIdx: index("role_org_idx").on(t.organizationId),
-    // GAP-003 (0318, widened by 0321 and 1495; NOT VALID): platform authority lives only on platform-owned rows.
+    // GAP-003 (0318, widened by 0321 and 1501; NOT VALID): platform authority lives only on platform-owned rows.
     platformAuthorityPlatformOwned: check(
       "role_platform_authority_platform_owned",
       sql`${t.organizationId} IS NULL OR (${t.key} NOT LIKE 'platform\\_%' AND ${t.key} NOT IN ('ai_safety_owner', 'superadmin') AND ${t.category} <> 'platform_staff')`,

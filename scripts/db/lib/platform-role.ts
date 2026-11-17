@@ -95,7 +95,7 @@ export function platformRoleGrantKeys(key: PlatformGrantableRoleKey): readonly s
  * `superadmin` holds the catalog (less the withheld keys) and, unlike a `platform_*` role, no consented support session stands between
  * it and a tenant's PHI once it is bound inside that tenant. So it is bound only where there is no tenant: an
  * organization with a `tenant_account` is a tenant, and a typo in `--org` must not turn a clinician into a superadmin.
- * (Migration 1495's trigger refuses the same binding for ad-hoc SQL and seeds.)
+ * (Migration 1501's trigger refuses the same binding for ad-hoc SQL and seeds.)
  */
 export async function assertSuperadminOrg(db: Client, organizationId: string): Promise<void> {
   const tenant = await db.query(
