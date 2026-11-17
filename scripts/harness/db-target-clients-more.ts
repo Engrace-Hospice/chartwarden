@@ -251,7 +251,18 @@ export const MORE_CLIENT_SPECS: ReadonlyArray<readonly [string, TargetClient]> =
   ["atlas", urlTool(["url", "dev-url", "to", "from", "config", "env", "schema", "dir"], "u")],
   [
     "prisma",
-    urlTool(["url", "shadow-database-url", "to-url", "from-url", "schema", "datasource", "config"]),
+    // `prisma migrate dev --name init`, `prisma studio --port 5555`: a migration name and a port are values, not unplaced words (R9-CR-8).
+    urlTool([
+      "url",
+      "shadow-database-url",
+      "to-url",
+      "from-url",
+      "schema",
+      "datasource",
+      "config",
+      "name",
+      "port",
+    ]),
   ],
   [
     "drizzle-kit",
@@ -262,6 +273,7 @@ export const MORE_CLIENT_SPECS: ReadonlyArray<readonly [string, TargetClient]> =
         "dialect",
         "schema",
         "out",
+        "name",
         "host",
         "port",
         "user",
