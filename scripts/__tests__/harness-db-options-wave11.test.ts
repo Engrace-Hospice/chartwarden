@@ -2,7 +2,7 @@
  * Wave 11, part D, rule 12 (round-8 R8-ADV-4, R8-CR-12): the option tables of the database clients are proven against the
  * REAL programs. `scripts/__tests__/helpers/record-pg-options.ts` records each installed client (PostgreSQL 16's, redis 8's:
  * `--help`, the program's own getopt parser, the role of every valued option, every abbreviation up to one character past
- * where it is unique; every probe names 127.0.0.1 port 1) into `fixtures/harness-tool-options/<tool>.<major>.json`.
+ * where it is unique; every probe names 127.0.0.1 port 1) into `fixtures/harness-db-tool-options/<tool>.<major>.json`.
  *
  *   1. (no tool needed) every recorded option is read by the production table the way the real program reads it: a recorded
  *      valued option is never a flag, a recorded flag never a valued option, the role of a host or connection-string option

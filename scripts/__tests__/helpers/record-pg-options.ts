@@ -30,7 +30,7 @@ export const FIXTURE_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
   "..",
   "fixtures",
-  "harness-tool-options",
+  "harness-db-tool-options",
 );
 
 export type Role = "host" | "string";

@@ -9,7 +9,7 @@
  * down. A prefix that spans a flag and a value option is `ambiguous`; one that names nothing is `unknown`. Both ask: the
  * guard cannot tell whether the word names a host. A client that reads no abbreviation (redis-cli, mongosh, ...) takes exact
  * names only. The tables are proven against the installed programs by the fixtures of
- * `scripts/__tests__/fixtures/harness-tool-options` (`harness-db-options-wave11.test.ts`). Pure.
+ * `scripts/__tests__/fixtures/harness-db-tool-options` (`harness-db-options-wave11.test.ts`). Pure.
  */
 import type { TargetClient } from "./db-target-clients";
 import { type OptionGrammar, resolveLong } from "./option-grammar";

@@ -6,7 +6,7 @@
  * `--tls-ciphers`. These lists were first read from the `--help` of PostgreSQL 16's programs and redis 8's; wave 11 replaced them
  * by what `scripts/__tests__/helpers/record-pg-options.ts` records from the installed programs (their own getopt parser, not
  * only the help text), and `scripts/__tests__/harness-db-options-wave11.test.ts` proves this table against the committed
- * fixtures (`fixtures/harness-tool-options`) and re-records them live when the programs are installed. The table is NOT built
+ * fixtures (`fixtures/harness-db-tool-options`) and re-records them live when the programs are installed. The table is NOT built
  * from the fixtures at run time: a test compares the two, so neither can drift. The clients that are not installed here keep
  * the hand-kept tables of `db-target-clients.ts` (from their documentation, UNVERIFIED). Data only.
  */

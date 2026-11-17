@@ -1422,7 +1422,7 @@ and the git rules. The lesson of the round, read twice: three CRITICAL regressio
 test that "proved" them iterated the same table. **Rule 12 of the brief is the answer, and this part applies it to the PostgreSQL 16 and redis 8 client tables:** a recorder reads the INSTALLED program, a committed
 fixture holds what it saw, and a test that needs no tool fails when the production table reads a recorded option another way.
 
-- *Option tables proven against the real tools* (`scripts/__tests__/helpers/record-pg-options.ts`, `scripts/__tests__/fixtures/harness-tool-options/<tool>.<major>.json`, `harness-db-options-wave11.test.ts`; R8-ADV-4,
+- *Option tables proven against the real tools* (`scripts/__tests__/helpers/record-pg-options.ts`, `scripts/__tests__/fixtures/harness-db-tool-options/<tool>.<major>.json`, `harness-db-options-wave11.test.ts`; R8-ADV-4,
   R8-CR-12, R8-CR-13). The recorder runs `psql`, `pg_dump`, `pg_dumpall`, `pg_restore`, `pg_isready`, `pgbench`, `createdb`, `dropdb`, `createuser`, `dropuser`, `clusterdb`, `vacuumdb`, `reindexdb`, `pg_amcheck`,
   `pg_basebackup`, `pg_receivewal`, `pg_recvlogical`, `pg_upgrade` (16.13) and `redis-cli`, `redis-benchmark` (8.10) and records, for each option: its name and short letter from `--help`; whether it takes a value, from the
   program's OWN getopt parser (a valued option at the end of the line fails with "requires an argument", a long flag given `=x` with "doesn't allow an argument": both before any connection); its role (a probe whose value is `127.0.0.1`
