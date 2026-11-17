@@ -138,7 +138,8 @@ export const NPM: OptionGrammar = loose({
 export const NPX: OptionGrammar = loose({
   flags: NPM.flags.replace(/[pn]/g, ""),
   values: `${NPM.values}pn`,
-  longFlags: NPM.longFlags,
+  // `--no-install` is npx's own legacy spelling of `--no` (49 distinct real commands use it); `npm config` has no such name
+  longFlags: [...NPM.longFlags, "no-install"],
   longValues: [...NPM.longValues, "node-arg"],
 });
 

@@ -352,6 +352,10 @@ describe("rule 2 on real command lines: an unlisted or unverified option followe
     expect(rank("bun run --cwd apps/backend test")).toBe(0);
     expect(rank("npm exec --tag x -- ls")).toBe(0);
     expect(rank("npx --yes -- tsc --noEmit")).toBe(0);
+    // npx's legacy --no-install: 49 distinct real commands of this machine use it
+    expect(rank("npx --no-install tsc --noEmit")).toBe(0);
+    expect(rank("npx --no-install -- tsc")).toBe(0);
+    expect(rank(`npx --no-install ${NO_VERIFY}`)).toBe(2);
     expect(rank("pnpm --silent exec ls")).toBe(0);
   });
 

@@ -16,6 +16,11 @@
       "evidence": "probe"
     },
     {
+      "name": "--no-install",
+      "takesValue": false,
+      "evidence": "probe"
+    },
+    {
       "name": "--node-arg",
       "takesValue": true,
       "evidence": "probe"
