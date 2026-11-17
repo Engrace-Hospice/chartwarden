@@ -9,8 +9,16 @@
 const LAUNCH_DIRECTORY = /\bLaunch(?:Agents|Daemons)\b/i;
 const PLUTIL_WRITES = /^-(?:insert|replace|remove|create|convert)$/;
 const AT_READS = /^(?:-l|-c|-d)$/;
+/** `do script`, JXA's `doScript`, iTerm's `write text`, a typed `keystroke`, a login item, a launch job. */
 const OSASCRIPT_RUNS =
-  /\bdo\s+(?:shell\s+)?script\b|\bkeystroke\b|\blogin\s+item\b|\bcreate\s+launch/i;
+  /\bdo\s+(?:shell\s+)?script\b|\bdoScript\b|\bwrite\s+text\b|\bkeystroke\b|\blogin\s+item\b|\bcreate\s+launch/i;
+/** A script FILE runs unread (`osascript run.scpt`): it may do any of the above. */
+const SCRIPT_FILE = /\.(?:scpt|scptd|applescript|jxa)$/i;
+/** A property-list editor's change (`PlistBuddy -c "Add :Label string x" FILE`). */
+const PLISTBUDDY_CHANGES = /^(?:add|set|delete|import|merge|copy|clear)\b/i;
+const LOGIN_HOOKS = /\b(?:LoginHook|LogoutHook)\b/;
+const REMOTE_ACCESS_SETTING = /^-setremote(?:login|appleevents)$/i;
+const DIRECTORY_SERVICE_CHANGE = /^-(?:create|append|merge|delete|passwd|change)$/;
 
 const reason = (what: string): string =>
   `${what} arranges for a command to run later, outside this session (a launch job, a cron table, a queued command, a typed one). A human decides.`;
@@ -21,8 +29,28 @@ export function persistenceReason(
   args: readonly string[],
   texts: readonly string[],
 ): string | null {
+  if (prog === "PlistBuddy") {
+    const changes = args.some((a) => PLISTBUDDY_CHANGES.test(a));
+    return changes && args.some((a) => LAUNCH_DIRECTORY.test(a))
+      ? reason("`PlistBuddy` changing a launch job's property list")
+      : null;
+  }
+  // Remote access and directory-service accounts: an administrator's change that outlives the session.
+  if (prog === "systemsetup") {
+    const turnsOn =
+      args.some((a) => REMOTE_ACCESS_SETTING.test(a)) && args.some((a) => /^on$/i.test(a));
+    return turnsOn ? reason("`systemsetup` turning a remote access service on") : null;
+  }
+  if (prog === "dscl") {
+    return args.some((a) => DIRECTORY_SERVICE_CHANGE.test(a))
+      ? reason("`dscl` changing a directory-service record")
+      : null;
+  }
   if (prog === "defaults") {
     const writes = args.some((a) => /^(?:write|import|delete|rename)$/.test(a));
+    if (writes && args.some((a) => LOGIN_HOOKS.test(a))) {
+      return reason("`defaults` setting a login or logout hook");
+    }
     return writes && args.some((a) => LAUNCH_DIRECTORY.test(a))
       ? reason("`defaults` writing a launch job's property list")
       : null;
@@ -48,7 +76,7 @@ export function persistenceReason(
   }
   if (prog === "osascript") {
     const code = [...args, ...texts].join("\n");
-    return OSASCRIPT_RUNS.test(code)
+    return OSASCRIPT_RUNS.test(code) || args.some((a) => SCRIPT_FILE.test(a))
       ? reason("`osascript` running a script or typing into an application")
       : null;
   }
