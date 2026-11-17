@@ -2729,6 +2729,19 @@ function literalAssignmentsOf(cmd: string): ReadonlyMap<string, string> {
   return new Map([...literalValues(words)].filter(([name]) => !rebound.has(name)));
 }
 
+/** A file a program reads LINE BY LINE as names or code (`file -f F`, `wc --files0-from=F`) prints the lines it cannot use: a secret one is a read (`file-list-options.ts`). */
+function listedFileVerdict(prog: string, args: readonly string[]): BashVerdict | null {
+  for (const listed of listedFiles(prog, args)) {
+    const why = secretPathReason(listed);
+    if (why) {
+      return deny(
+        `\`${echo(listed)}\` is ${why}. \`${echo(prog)}\` reads it line by line and prints the lines it cannot use. Agents do not read secrets or dumps.`,
+      );
+    }
+  }
+  return null;
+}
+
 function classifySegment(
   seg: string,
   parsed: Parsed,
@@ -2882,14 +2895,8 @@ function classifySegment(
   if (indirect) return indirect;
 
   // --- A file whose lines a program reads as names or code and prints in an error (`file -f F`, `wc --files0-from=F`).
-  for (const listed of listedFiles(prog, args)) {
-    const why = secretPathReason(listed);
-    if (why) {
-      return deny(
-        `\`${echo(listed)}\` is ${why}. \`${echo(prog)}\` reads it line by line and prints the lines it cannot use. Agents do not read secrets or dumps.`,
-      );
-    }
-  }
+  const listed = listedFileVerdict(prog, args);
+  if (listed) return listed;
 
   // --- Secret files read through the shell (the Read tool is blocked separately).
   if (
