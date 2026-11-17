@@ -118,12 +118,21 @@ const HOPS: ReadonlyArray<{ name: string; args: string[]; shows: RegExp }> = [
 ];
 
 const ssh = spawnSync("ssh", ["-V"], { encoding: "utf8" });
-const SSH_INSTALLED = ssh.error === undefined;
+/** The recordings are OpenSSH_10.6p1 on macOS: another ssh (a Linux runner's 9.x, a newer macOS one) skips with this reason (wave 13, C2). */
+const RECORDED_SSH = "OpenSSH_10.6p1";
+const SSH_RECORDED =
+  ssh.error === undefined && `${ssh.stderr}${ssh.stdout}`.startsWith(RECORDED_SSH);
+const SSH_SKIP_REASON = `needs ${RECORDED_SSH} to compare against ssh -G (installed: ${ssh.error === undefined ? `${ssh.stderr}${ssh.stdout}`.split(",")[0]?.trim() : "no ssh"})`;
+const sshIt = (name: string, body: () => void) =>
+  it(name, (skipContext) => {
+    if (!SSH_RECORDED) skipContext.skip(SSH_SKIP_REASON);
+    body();
+  });
 const SCRATCH_HOME = mkdtempSync(join(tmpdir(), "cw-ssh-hops-"));
 
 describe("E2-5: the spellings are what the installed ssh reads them as (ssh -G, offline)", () => {
   for (const { name, args, shows } of HOPS) {
-    it.skipIf(!SSH_INSTALLED)(`${name}: ssh -G configures the hop`, () => {
+    sshIt(`${name}: ssh -G configures the hop`, () => {
       const out = spawnSync("ssh", ["-G", "-F", "/dev/null", ...args], {
         encoding: "utf8",
         env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: SCRATCH_HOME, LANG: "C" },
@@ -133,22 +142,19 @@ describe("E2-5: the spellings are what the installed ssh reads them as (ssh -G, 
     });
   }
 
-  it.skipIf(!SSH_INSTALLED)(
-    "an option after the first command word belongs to the command, not to ssh",
-    () => {
-      const out = spawnSync(
-        "ssh",
-        ["-G", "-F", "/dev/null", "localhost", "ls", "-L", `5433:${HOST}:5432`],
-        {
-          encoding: "utf8",
-          env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: SCRATCH_HOME, LANG: "C" },
-          timeout: 5000,
-        },
-      );
-      expect(out.stdout).not.toMatch(/^localforward /m);
-    },
-  );
-  it.skipIf(!SSH_INSTALLED)("a forward to a socket on the far side names no host", () => {
+  sshIt("an option after the first command word belongs to the command, not to ssh", () => {
+    const out = spawnSync(
+      "ssh",
+      ["-G", "-F", "/dev/null", "localhost", "ls", "-L", `5433:${HOST}:5432`],
+      {
+        encoding: "utf8",
+        env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: SCRATCH_HOME, LANG: "C" },
+        timeout: 5000,
+      },
+    );
+    expect(out.stdout).not.toMatch(/^localforward /m);
+  });
+  sshIt("a forward to a socket on the far side names no host", () => {
     const out = spawnSync(
       "ssh",
       ["-G", "-F", "/dev/null", "-L", "127.0.0.1:5433:/tmp/sock", "localhost"],
@@ -206,7 +212,7 @@ const CLUSTERS: ReadonlyArray<{ name: string; args: string[]; shows: RegExp[] }>
 
 describe("E2-5: a clustered option does not make its value the host (ssh -G, offline)", () => {
   for (const { name, args, shows } of CLUSTERS) {
-    it.skipIf(!SSH_INSTALLED)(`${name}: ssh reads the host after the value`, () => {
+    sshIt(`${name}: ssh reads the host after the value`, () => {
       const out = spawnSync("ssh", ["-G", "-F", "/dev/null", ...args], {
         encoding: "utf8",
         env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: SCRATCH_HOME, LANG: "C" },
