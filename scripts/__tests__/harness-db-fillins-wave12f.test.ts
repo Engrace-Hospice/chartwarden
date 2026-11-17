@@ -125,6 +125,10 @@ describe("F-3: everyday neighbours stay allow", () => {
     'psql "{PG}u:${PW:-x}@localhost:5432/db" -c 1',
     'psql "host=localhost user=${PGUSER:-postgres} dbname=db" -c 1',
     'psql "{PG}localhost/${DB:-x}" -c 1',
+    'run() { psql "{PG}localhost:5433/$1" -c "$2"; }; run db "select 1"',
+    'run() { psql "{PG}u@localhost/${1}" -c 1; }; run db',
+    'run() { psql "{PG}localhost/$@" -c 1; }; run db',
+    'run() { psql "{PG}u:pw@localhost:5432/$1?sslmode=disable" -c 1; }; run db',
     'psql "{PG}localhost/x?sslmode=${SSL:-disable}" -c 1',
   ])("%s", (template) => {
     const cmd = fill(template);
@@ -179,6 +183,9 @@ describe("holdsRewritingFillIn", () => {
     "{ a, b }",
     "$$",
     "$?",
+    `${PG}localhost/$1`,
+    `${PG}localhost:5433/\${1}`,
+    `${PG}u@localhost/$@`,
   ])("%s is not", (text) => {
     expect(holdsRewritingFillIn(text)).toBe(false);
   });

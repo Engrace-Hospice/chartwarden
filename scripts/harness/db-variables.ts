@@ -121,12 +121,19 @@ const REWRITING_FILL_IN = new RegExp(
   [
     String.raw`\$\{[A-Za-z_]\w*(?:[/#%^,@]|:\s*[0-9(]|:\s+-)`,
     String.raw`\$\{[A-Za-z_]\w*:?[-=+?][^}]*[=&?@/,\s]`,
-    String.raw`\$\{[^A-Za-z_}]`,
-    String.raw`\$[0-9@*]`,
+    String.raw`\$\{[^A-Za-z_0-9@*}]`,
     String.raw`\{[^{}\s]*(?:,|\.\.)[^{}\s]*\}`,
   ].join("|"),
 );
-export const holdsRewritingFillIn = (text: string): boolean => REWRITING_FILL_IN.test(text);
+/**
+ * A positional parameter (`$1`, `$@`, `${1}`) is a fill-in anywhere but in the PATH of a URI: there it is the database name a shell function
+ * is handed (`run() { psql "<uri>/$1" -c "$2"; }`), the same position a bare variable bound to something unplaceable is not asked about
+ * (`holdsUnplacedFill`); the corpus measure of wave 12 found 24 of 25 real asks in that position. The port, the userinfo, the query and a
+ * connection string keep the ask (`localhost:$1/db` supplies `1@host`).
+ */
+const POSITIONAL_FILL_IN = /\$[0-9@*]|\$\{[0-9@*]/;
+export const holdsRewritingFillIn = (text: string): boolean =>
+  REWRITING_FILL_IN.test(text) || POSITIONAL_FILL_IN.test(withoutUriPath(text));
 
 /** A `$( … )` or backtick substitution without a nested one. */
 const SUBSTITUTION = /\$\([^()]*\)|`[^`]*`/g;
